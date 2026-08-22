@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, jwtVerify } from 'jose';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { createWriteStream, mkdirSync, readFileSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
@@ -49,6 +49,18 @@ async function sendCode(email, code) {
   } else {
     app.log.warn({ email, code }, 'RESEND_API_KEY missing; login code logged for setup testing');
   }
+}
+
+async function storeAssetVersion(asset,userId,part,notes){
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, PNG, JPG, SVG, ZIP'),{statusCode:415});
+  const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  try{
+    await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
+    const version=(await pool.query('select current_version+1 version from assets where id=$1',[asset.id])).rows[0].version;
+    const row=(await pool.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
+      values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
+    await pool.query('update assets set current_version=$1,updated_at=now() where id=$2',[version,asset.id]);return row;
+  }catch(error){await unlink(path).catch(()=>{});throw error}
 }
 
 app.get('/health', async () => {
@@ -111,7 +123,9 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   const productionAlerts=await pool.query(`select pr.id,pr.po_number,pr.status,pr.eta_date,p.title product_title,c.name client_name
     from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
     where pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date<current_date and pr.status not in ('complete','delivered')) order by pr.eta_date nulls last`);
-  return {clients:clients.rows,actions:actions.rows,productionAlerts:productionAlerts.rows};
+  const collaboration=await pool.query(`select n.*,c.name client_name from notifications n join clients c on c.id=n.client_id
+    where n.read_at is null order by n.created_at desc limit 30`);
+  return {clients:clients.rows,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
 });
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>({
   connected:shopifyConfigured(),
@@ -173,7 +187,7 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
-  const [products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments]=await Promise.all([
+  const [products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments]=await Promise.all([
     pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
@@ -187,9 +201,14 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select qi.* from qc_inspections qi join production_runs pr on pr.id=qi.production_run_id join products p on p.id=pr.product_id
       where p.client_id=$1 order by qi.created_at desc`,[client.id]),
     pool.query(`select sh.* from shipments sh join production_runs pr on pr.id=sh.production_run_id join products p on p.id=pr.product_id
-      where p.client_id=$1 order by sh.created_at desc`,[client.id])
+      where p.client_id=$1 order by sh.created_at desc`,[client.id]),
+    pool.query(`select a.* from assets a join products p on p.id=a.product_id where p.client_id=$1 order by a.updated_at desc`,[client.id]),
+    pool.query(`select av.* from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id
+      where p.client_id=$1 order by av.created_at desc`,[client.id]),
+    pool.query(`select co.*,u.email author_email from comments co left join users u on u.id=co.author_id where co.client_id=$1 order by co.created_at desc`,[client.id])
   ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
-    suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows};
+    suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
+    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,status,emailDomains}=req.body||{};return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
@@ -248,6 +267,62 @@ app.patch('/v1/admin/shipments/:id',{preHandler:[authenticate,adminOnly]},async(
     delivered_at=coalesce($8,delivered_at),updated_at=now() where id=$9 returning *`,[carrier||null,trackingNumber||null,trackingUrl||null,status||null,destination||null,
     shippedAt||null,etaDate||null,deliveredAt||null,req.params.id])).rows[0];if(!shipment)return reply.code(404).send({error:'Shipment not found'});return shipment;
 });
+app.post('/v1/admin/products/:id/assets',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const product=(await pool.query('select * from products where id=$1',[req.params.id])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
+  const name=String(req.query?.name||'').trim(),kind=String(req.query?.kind||'artwork'),visibility=req.query?.visibility==='internal'?'internal':'client';
+  if(!name)return reply.code(400).send({error:'Asset name required'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
+  const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,$4)
+    on conflict(product_id,name) do update set kind=excluded.kind,visibility=excluded.visibility,updated_at=now() returning *`,[product.id,name,kind,visibility])).rows[0];
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  return reply.code(201).send({asset:{...asset,current_version:version.version},version});
+});
+app.post('/v1/admin/assets/:id/versions',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const asset=(await pool.query('select a.*,p.client_id from assets a join products p on p.id=a.product_id where a.id=$1',[req.params.id])).rows[0];
+  if(!asset)return reply.code(404).send({error:'Asset not found'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[asset.client_id,asset.product_id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  return reply.code(201).send(version);
+});
+app.patch('/v1/admin/assets/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {name,kind,status,visibility}=req.body||{};const asset=(await pool.query(`update assets set name=coalesce($1,name),kind=coalesce($2,kind),status=coalesce($3,status),
+    visibility=coalesce($4,visibility),updated_at=now() where id=$5 returning *`,[name||null,kind||null,status||null,visibility||null,req.params.id])).rows[0];
+  if(!asset)return reply.code(404).send({error:'Asset not found'});return asset;
+});
+app.post('/v1/products/:id/assets',{preHandler:authenticate},async(req,reply)=>{
+  const product=(await pool.query('select * from products where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
+  const name=String(req.query?.name||'Client upload').trim(),kind=String(req.query?.kind||'artwork');const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
+  const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,'client')
+    on conflict(product_id,name) do update set kind=excluded.kind,visibility='client',updated_at=now() returning *`,[product.id,name,kind])).rows[0];
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
+    [product.client_id,'client-upload',`Client uploaded ${asset.name} v${version.version}`,'asset',asset.id]);
+  return reply.code(201).send({asset:{...asset,current_version:version.version},version});
+});
+app.get('/v1/asset-versions/:id/download',{preHandler:authenticate},async(req,reply)=>{
+  const row=(await pool.query(`select av.*,a.visibility,p.client_id from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id where av.id=$1`,[req.params.id])).rows[0];
+  if(!row||((req.auth.role!=='admin')&&(row.client_id!==req.auth.clientId||row.visibility!=='client')))return reply.code(404).send({error:'File not found'});
+  return reply.type(row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`).send(createReadStream(join(uploadDir,row.storage_name)));
+});
+app.post('/v1/admin/comments',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {productId,assetId,approvalId,body,visibility='client'}=req.body||{};if(!body?.trim())return reply.code(400).send({error:'Comment required'});
+  const product=(await pool.query('select * from products where id=$1',[productId])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
+  const comment=(await pool.query(`insert into comments(client_id,product_id,asset_id,approval_id,author_id,author_role,body,visibility)
+    values($1,$2,$3,$4,$5,'admin',$6,$7) returning *`,[product.client_id,product.id,assetId||null,approvalId||null,req.auth.sub,String(body).slice(0,5000),visibility==='internal'?'internal':'client'])).rows[0];
+  if(comment.visibility==='client')await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[product.client_id,'staff-comment',`Future Basics commented on ${product.title}`,'comment',comment.id]);
+  return reply.code(201).send(comment);
+});
+app.post('/v1/comments',{preHandler:authenticate},async(req,reply)=>{
+  const {productId,assetId,approvalId,body}=req.body||{};if(!body?.trim())return reply.code(400).send({error:'Comment required'});
+  const product=(await pool.query('select * from products where id=$1 and client_id=$2',[productId,req.auth.clientId])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
+  const comment=(await pool.query(`insert into comments(client_id,product_id,asset_id,approval_id,author_id,author_role,body,visibility)
+    values($1,$2,$3,$4,$5,'client',$6,'client') returning *`,[product.client_id,product.id,assetId||null,approvalId||null,req.auth.sub,String(body).slice(0,5000)])).rows[0];
+  const mentions=(String(body).match(/@[a-zA-Z0-9._-]+/g)||[]).join(', ');await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
+    [product.client_id,'client-comment',`Client commented on ${product.title}${mentions?' · '+mentions:''}`,'comment',comment.id]);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'comment','Client added a comment']);
+  return reply.code(201).send(comment);
+});
+app.patch('/v1/admin/notifications/:id/read',{preHandler:[authenticate,adminOnly]},async req=>
+  (await pool.query('update notifications set read_at=now() where id=$1 returning *',[req.params.id])).rows[0]
+);
 app.post('/v1/admin/products/:id/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {quantity,unitCostCents,toolingCents=0,freightCents=0,wholesaleCents,srpCents,expiresAt,notes}=req.body||{};
   const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
@@ -332,7 +407,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
   const product=(await pool.query('select * from products where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];
   if(!product)return reply.code(404).send({error:'Product not found'});
-  const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments]=await Promise.all([
+  const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
     pool.query('select * from quotes where product_id=$1 order by version desc',[product.id]),
@@ -344,10 +419,16 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
       (select qi.status from qc_inspections qi where qi.production_run_id=pr.id order by qi.created_at desc limit 1) qc_status
       from production_runs pr where pr.product_id=$1 order by pr.created_at desc`,[product.id]),
     pool.query(`select sh.id,sh.production_run_id,sh.carrier,sh.tracking_number,sh.tracking_url,sh.status,sh.destination,sh.shipped_at,sh.eta_date,sh.delivered_at
-      from shipments sh join production_runs pr on pr.id=sh.production_run_id where pr.product_id=$1 order by sh.created_at desc`,[product.id])
+      from shipments sh join production_runs pr on pr.id=sh.production_run_id where pr.product_id=$1 order by sh.created_at desc`,[product.id]),
+    pool.query(`select * from assets where product_id=$1 and visibility='client' order by updated_at desc`,[product.id]),
+    pool.query(`select av.* from asset_versions av join assets a on a.id=av.asset_id
+      where a.product_id=$1 and a.visibility='client' order by av.created_at desc`,[product.id]),
+    pool.query(`select c.*,u.email author_email from comments c left join users u on u.id=c.author_id
+      where c.product_id=$1 and c.visibility='client' order by c.created_at desc`,[product.id])
   ]);
   return {product,brief:brief.rows[0]||null,milestones:milestones.rows,quotes:quotes.rows,approvals:approvals.rows,files:files.rows,
-    activity:activity.rows,productionRuns:productionRuns.rows,shipments:shipments.rows};
+    activity:activity.rows,productionRuns:productionRuns.rows,shipments:shipments.rows,assets:assets.rows,
+    assetVersions:assetVersions.rows,comments:comments.rows};
 });
 
 app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req, reply) => {
