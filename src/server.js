@@ -113,7 +113,8 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
     pool.query('select * from quotes where product_id=$1 order by version desc',[product.id]),
     pool.query('select * from approvals where product_id=$1 order by requested_at desc',[product.id]),
-    pool.query('select * from files where request_id in(select id from requests where client_id=$2) order by created_at desc',[product.id,req.auth.clientId]),
+    pool.query(`select f.* from files f join requests r on r.id=f.request_id
+      where r.product_id=$1 and r.client_id=$2 order by f.created_at desc`,[product.id,req.auth.clientId]),
     pool.query('select * from activities where product_id=$1 order by created_at desc',[product.id])
   ]);
   return {product,milestones:milestones.rows,quotes:quotes.rows,approvals:approvals.rows,files:files.rows,activity:activity.rows};
@@ -132,12 +133,14 @@ app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req,
 });
 
 app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
-  const { type, title, details, dueDate } = req.body || {};
+  const { type, title, details, dueDate, productId } = req.body || {};
   if (!type || !title || !details) return reply.code(400).send({ error: 'type, title, and details are required' });
   const row = (await pool.query(
-    'insert into requests(client_id,user_id,type,title,details,due_date) values($1,$2,$3,$4,$5,$6) returning *',
-    [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null]
+    `insert into requests(client_id,user_id,type,title,details,due_date,product_id)
+     select $1,$2,$3,$4,$5,$6,p.id from products p where p.id=$7 and p.client_id=$1 returning *`,
+    [req.auth.clientId, req.auth.sub, type, title, details, dueDate || null, productId || null]
   )).rows[0];
+  if(!row)return reply.code(400).send({error:'Select a valid product'});
   return reply.code(201).send(row);
 });
 
