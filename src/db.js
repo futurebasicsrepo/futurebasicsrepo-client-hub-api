@@ -190,6 +190,47 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    create table if not exists product_configurations (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid unique not null references products(id) on delete cascade,
+      supplier_id uuid references suppliers(id),
+      blank_name text,
+      material text,
+      construction text,
+      decoration_method text,
+      decoration_locations text[] not null default '{}',
+      artwork_width_in numeric(8,2),
+      artwork_height_in numeric(8,2),
+      colorways text[] not null default '{}',
+      sizes text[] not null default '{}',
+      variant_plan jsonb not null default '[]',
+      packaging text,
+      fulfillment text,
+      moq integer,
+      sample_required boolean not null default true,
+      lead_time_days integer,
+      notes text,
+      status text not null default 'draft',
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists price_tiers (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      min_quantity integer not null,
+      max_quantity integer,
+      unit_cost_cents integer not null,
+      wholesale_cents integer not null,
+      srp_cents integer,
+      setup_cents integer not null default 0,
+      freight_cents integer not null default 0,
+      lead_time_days integer,
+      notes text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique(product_id,min_quantity)
+    );
+    alter table quotes add column if not exists price_tier_id uuid references price_tiers(id);
+    alter table quotes add column if not exists configuration_snapshot jsonb;
     create table if not exists production_runs (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
