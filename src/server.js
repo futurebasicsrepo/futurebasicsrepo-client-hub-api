@@ -99,7 +99,7 @@ app.post('/v1/dev/session',async(req,reply)=>{
   return {token,developmentBypass:true};
 });
 
-app.get('/admin', async (_req,reply)=>reply.type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
+app.get('/admin', async (_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
   const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id
