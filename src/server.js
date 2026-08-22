@@ -31,6 +31,7 @@ async function authenticate(req, reply) {
   if (!token) return reply.code(401).send({ error: 'Authentication required' });
   try { req.auth = (await jwtVerify(token, secret, { issuer: 'future-basics-client-hub' })).payload; }
   catch { return reply.code(401).send({ error: 'Invalid or expired session' }); }
+  if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
 }
 async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
@@ -114,8 +115,25 @@ app.post('/v1/dev/session',async(req,reply)=>{
     .setProtectedHeader({alg:'HS256'}).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
   return {token,developmentBypass:true};
 });
+app.post('/v1/preview/session/exchange',async(req,reply)=>{
+  const code=String(req.body?.code||'');if(!code)return reply.code(400).send({error:'Preview code required'});
+  const row=(await pool.query(`update preview_sessions ps set consumed_at=now() from clients c
+    where ps.code_hash=$1 and ps.client_id=c.id and ps.consumed_at is null and ps.expires_at>now()
+    returning ps.admin_user_id,ps.client_id,c.slug client_slug,c.name client_name`,[hash(code)])).rows[0];
+  if(!row)return reply.code(401).send({error:'Preview link is invalid, expired, or already used'});
+  const token=await new SignJWT({sub:row.admin_user_id,clientId:row.client_id,client:row.client_slug,role:'client',preview:true})
+    .setProtectedHeader({alg:'HS256'}).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('15m').sign(secret);
+  return {token,preview:true,readOnly:true,client:{id:row.client_id,slug:row.client_slug,name:row.client_name}};
+});
 
 app.get('/admin', async (_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
+app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const client=(await pool.query('select id,slug,name from clients where id=$1 and slug<>\'future-basics\'',[req.params.id])).rows[0];if(!client)return reply.code(404).send({error:'Client not found'});
+  const code=randomBytes(32).toString('base64url');await pool.query(`insert into preview_sessions(code_hash,admin_user_id,client_id,expires_at)
+    values($1,$2,$3,now()+interval '5 minutes')`,[hash(code),req.auth.sub,client.id]);
+  const hubUrl=process.env.CLIENT_HUB_URL||'https://thefuturebasics.com/pages/client-hub';
+  return {url:`${hubUrl}#client-preview=${encodeURIComponent(code)}`,expiresInSeconds:300,sessionMinutes:15,client};
+});
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
   const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id
