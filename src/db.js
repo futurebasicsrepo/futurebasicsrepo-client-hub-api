@@ -15,6 +15,9 @@ export async function migrate() {
       email_domains text[] not null default '{}',
       created_at timestamptz not null default now()
     );
+    alter table clients add column if not exists status text not null default 'active';
+    alter table clients add column if not exists shopify_customer_id text;
+    alter table clients add column if not exists total_spent_cents bigint not null default 0;
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
@@ -141,6 +144,13 @@ export async function migrate() {
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do update set email_domains=excluded.email_domains;
+    insert into clients(slug,name,email_domains,shopify_customer_id,total_spent_cents) values
+      ('future-basics','Future Basics',array['thefuturebasics.com'],null,0),
+      ('tools-for-humanity','Tools for Humanity',array['toolsforhumanity.com'],'gid://shopify/Customer/9213023420613',3587500),
+      ('britax','Britax Child Safety',array['britax.com'],'gid://shopify/Customer/9131845976261',100),
+      ('famehouse-umg','Famehouse / UMG',array['umusic.com'],'gid://shopify/Customer/8841857761477',100)
+      on conflict(slug) do update set name=excluded.name,email_domains=excluded.email_domains,
+        shopify_customer_id=excluded.shopify_customer_id,total_spent_cents=excluded.total_spent_cents;
     insert into products(client_id,shopify_handle,title,status,current_stage,owner,risk_level)
       select c.id, v.handle, v.title, 'in-development', v.stage, 'Future Basics', v.risk
       from clients c cross join (values
