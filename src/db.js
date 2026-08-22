@@ -75,8 +75,88 @@ export async function migrate() {
       target_date date,
       updated_at timestamptz not null default now()
     );
+    create table if not exists products (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id),
+      shopify_handle text,
+      title text not null,
+      status text not null default 'brief',
+      current_stage text not null default 'brief',
+      owner text,
+      target_date date,
+      target_quantity integer,
+      target_budget_cents integer,
+      latest_visual_url text,
+      risk_level text not null default 'on-track',
+      updated_at timestamptz not null default now(),
+      unique(client_id, shopify_handle)
+    );
+    create table if not exists milestones (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      name text not null,
+      status text not null default 'upcoming',
+      due_date date,
+      completed_at timestamptz,
+      sort_order integer not null default 0
+    );
+    create table if not exists quotes (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      version integer not null default 1,
+      currency text not null default 'USD',
+      quantity integer not null,
+      unit_cost_cents integer not null,
+      tooling_cents integer not null default 0,
+      freight_cents integer not null default 0,
+      status text not null default 'draft',
+      expires_at date,
+      created_at timestamptz not null default now(),
+      unique(product_id, version)
+    );
+    create table if not exists approvals (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      requested_by uuid references users(id),
+      decided_by uuid references users(id),
+      kind text not null,
+      version text not null,
+      title text not null,
+      status text not null default 'pending',
+      notes text,
+      requested_at timestamptz not null default now(),
+      decided_at timestamptz
+    );
+    create table if not exists activities (
+      id bigserial primary key,
+      client_id uuid not null references clients(id),
+      product_id uuid references products(id) on delete cascade,
+      actor_id uuid references users(id),
+      type text not null,
+      summary text not null,
+      metadata jsonb not null default '{}',
+      created_at timestamptz not null default now()
+    );
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do update set email_domains=excluded.email_domains;
+    insert into products(client_id,shopify_handle,title,status,current_stage,owner,risk_level)
+      select c.id, v.handle, v.title, 'in-development', v.stage, 'Future Basics', v.risk
+      from clients c cross join (values
+        ('ouster-wide-mouth-bottle','Ouster Wide-Mouth Bottle','development','on-track'),
+        ('omt-01-work-jacket','OMT-01 Work Jacket','sampling','attention'),
+        ('sensor-lineup-tee-black','Sensor Lineup Tee - Black','approval','on-track'),
+        ('sensor-lineup-tee-natural','Sensor Lineup Tee - Natural','development','on-track'),
+        ('ouster-desk-mat','Ouster Desk Mat','quoting','on-track'),
+        ('point-cloud-print-framed','Point Cloud Print - Framed','brief','on-track'),
+        ('ouster-cap-natural','Ouster Cap - Natural','sampling','on-track'),
+        ('ouster-cap-olive','Ouster Cap - Olive','sampling','on-track'),
+        ('ouster-cap-black','Ouster Cap - Black','approval','attention')
+      ) as v(handle,title,stage,risk)
+      where c.slug='ouster' on conflict(client_id,shopify_handle) do nothing;
+    insert into milestones(product_id,name,status,sort_order)
+      select p.id, m.name, case when m.n < 3 then 'complete' when m.n = 3 then 'current' else 'upcoming' end, m.n
+      from products p cross join (values (1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery')) m(n,name)
+      where not exists(select 1 from milestones x where x.product_id=p.id);
   `);
 }
