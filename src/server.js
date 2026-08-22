@@ -24,7 +24,7 @@ await app.register(multipart, {
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
-const allowedExtensions = new Set(['.pdf','.ai','.png','.jpg','.jpeg','.svg','.zip']);
+const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip']);
 
 async function authenticate(req, reply) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
@@ -52,15 +52,17 @@ async function sendCode(email, code) {
 }
 
 async function storeAssetVersion(asset,userId,part,notes){
-  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, PNG, JPG, SVG, ZIP'),{statusCode:415});
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  const client=await pool.connect();
   try{
     await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
-    const version=(await pool.query('select current_version+1 version from assets where id=$1',[asset.id])).rows[0].version;
-    const row=(await pool.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
+    await client.query('begin');
+    const version=(await client.query('update assets set current_version=current_version+1,updated_at=now() where id=$1 returning current_version',[asset.id])).rows[0].current_version;
+    const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
       values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
-    await pool.query('update assets set current_version=$1,updated_at=now() where id=$2',[version,asset.id]);return row;
-  }catch(error){await unlink(path).catch(()=>{});throw error}
+    await client.query('commit');return row;
+  }catch(error){await client.query('rollback').catch(()=>{});await unlink(path).catch(()=>{});throw error}finally{client.release()}
 }
 
 app.get('/health', async () => {
