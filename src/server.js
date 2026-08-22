@@ -191,7 +191,7 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
-  const [products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments]=await Promise.all([
+  const [products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
@@ -209,10 +209,13 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select a.* from assets a join products p on p.id=a.product_id where p.client_id=$1 order by a.updated_at desc`,[client.id]),
     pool.query(`select av.* from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id
       where p.client_id=$1 order by av.created_at desc`,[client.id]),
-    pool.query(`select co.*,u.email author_email from comments co left join users u on u.id=co.author_id where co.client_id=$1 order by co.created_at desc`,[client.id])
+    pool.query(`select co.*,u.email author_email from comments co left join users u on u.id=co.author_id where co.client_id=$1 order by co.created_at desc`,[client.id]),
+    pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
+      join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
+    pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
   ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
-    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows};
+    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,status,emailDomains}=req.body||{};return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
@@ -230,6 +233,42 @@ app.post('/v1/admin/suppliers',{preHandler:[authenticate,adminOnly]},async(req,r
     values($1,$2,$3,$4,$5,$6) on conflict(name) do update set contact_email=excluded.contact_email,contact_phone=excluded.contact_phone,
     country=excluded.country,lead_time_days=excluded.lead_time_days,notes=excluded.notes,updated_at=now() returning *`,
     [name,contactEmail||null,contactPhone||null,country||null,leadTimeDays||null,notes||null])).rows[0]);
+});
+app.put('/v1/admin/products/:id/configuration',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const product=(await pool.query('select id,client_id,title from products where id=$1',[req.params.id])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
+  const {supplierId,blankName,material,construction,decorationMethod,decorationLocations=[],artworkWidthIn,artworkHeightIn,colorways=[],sizes=[],variantPlan=[],packaging,fulfillment,moq,sampleRequired=true,leadTimeDays,notes,status='draft'}=req.body||{};
+  if(!Array.isArray(decorationLocations)||!Array.isArray(colorways)||!Array.isArray(sizes)||!Array.isArray(variantPlan))return reply.code(400).send({error:'Locations, colorways, sizes, and variant plan must be lists'});
+  const config=(await pool.query(`insert into product_configurations(product_id,supplier_id,blank_name,material,construction,decoration_method,decoration_locations,
+    artwork_width_in,artwork_height_in,colorways,sizes,variant_plan,packaging,fulfillment,moq,sample_required,lead_time_days,notes,status)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+    on conflict(product_id) do update set supplier_id=excluded.supplier_id,blank_name=excluded.blank_name,material=excluded.material,
+    construction=excluded.construction,decoration_method=excluded.decoration_method,decoration_locations=excluded.decoration_locations,
+    artwork_width_in=excluded.artwork_width_in,artwork_height_in=excluded.artwork_height_in,colorways=excluded.colorways,sizes=excluded.sizes,
+    variant_plan=excluded.variant_plan,packaging=excluded.packaging,fulfillment=excluded.fulfillment,moq=excluded.moq,
+    sample_required=excluded.sample_required,lead_time_days=excluded.lead_time_days,notes=excluded.notes,status=excluded.status,updated_at=now() returning *`,
+    [product.id,supplierId||null,blankName||null,material||null,construction||null,decorationMethod||null,decorationLocations,
+      artworkWidthIn||null,artworkHeightIn||null,colorways,sizes,JSON.stringify(variantPlan),packaging||null,fulfillment||null,moq||null,
+      sampleRequired!==false,leadTimeDays||null,notes||null,status])).rows[0];
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'configuration',`Updated production configuration · ${status}`]);
+  return config;
+});
+app.post('/v1/admin/products/:id/price-tiers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {minQuantity,maxQuantity,unitCostCents,wholesaleCents,srpCents,setupCents=0,freightCents=0,leadTimeDays,notes}=req.body||{};
+  if(!(minQuantity>0)||!(unitCostCents>=0)||!(wholesaleCents>=0)||(maxQuantity&&maxQuantity<minQuantity))return reply.code(400).send({error:'Enter a valid quantity range, unit cost, and wholesale price'});
+  return reply.code(201).send((await pool.query(`insert into price_tiers(product_id,min_quantity,max_quantity,unit_cost_cents,wholesale_cents,srp_cents,setup_cents,freight_cents,lead_time_days,notes)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) on conflict(product_id,min_quantity) do update set max_quantity=excluded.max_quantity,
+    unit_cost_cents=excluded.unit_cost_cents,wholesale_cents=excluded.wholesale_cents,srp_cents=excluded.srp_cents,setup_cents=excluded.setup_cents,
+    freight_cents=excluded.freight_cents,lead_time_days=excluded.lead_time_days,notes=excluded.notes,updated_at=now() returning *`,
+    [req.params.id,minQuantity,maxQuantity||null,unitCostCents,wholesaleCents,srpCents||null,setupCents,freightCents,leadTimeDays||null,notes||null])).rows[0]);
+});
+app.post('/v1/admin/products/:id/quotes/from-tier',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const quantity=Number(req.body?.quantity),tier=(await pool.query('select * from price_tiers where id=$1 and product_id=$2',[req.body?.priceTierId,req.params.id])).rows[0];
+  if(!tier)return reply.code(404).send({error:'Price tier not found'});if(quantity<tier.min_quantity||(tier.max_quantity&&quantity>tier.max_quantity))return reply.code(400).send({error:'Quantity is outside this price tier'});
+  const config=(await pool.query('select * from product_configurations where product_id=$1',[req.params.id])).rows[0];if(!config)return reply.code(400).send({error:'Complete the product configuration first'});
+  const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
+  const quote=(await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,notes,status,price_tier_id,configuration_snapshot)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,'issued',$10,$11) returning *`,[req.params.id,version,quantity,tier.unit_cost_cents,tier.setup_cents,tier.freight_cents,
+      tier.wholesale_cents,tier.srp_cents,req.body?.notes||tier.notes||null,tier.id,JSON.stringify(config)])).rows[0];return reply.code(201).send(quote);
 });
 app.post('/v1/admin/products/:id/production-runs',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {supplierId,poNumber,quantity,unitCostCents,status='planned',sampleStatus='not-started',exFactoryDate,etaDate,notes,internalNotes}=req.body||{};
@@ -420,10 +459,12 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
   const product=(await pool.query('select * from products where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];
   if(!product)return reply.code(404).send({error:'Product not found'});
-  const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments]=await Promise.all([
+  const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments,configuration,priceTiers]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
-    pool.query('select * from quotes where product_id=$1 order by version desc',[product.id]),
+    pool.query(`select id,product_id,version,currency,quantity,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
+      shopify_draft_order_name,shopify_draft_order_status,shopify_invoice_url,shopify_invoice_sent_at,shopify_order_id,shopify_financial_status,shopify_fulfillment_status
+      from quotes where product_id=$1 order by version desc`,[product.id]),
     pool.query(`select ap.*,av.original_name,av.version asset_version,a.name asset_name,a.kind asset_kind
       from approvals ap left join asset_versions av on av.id=ap.asset_version_id left join assets a on a.id=av.asset_id
       where ap.product_id=$1 order by ap.requested_at desc`,[product.id]),
@@ -439,11 +480,16 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
     pool.query(`select av.* from asset_versions av join assets a on a.id=av.asset_id
       where a.product_id=$1 and a.visibility='client' order by av.created_at desc`,[product.id]),
     pool.query(`select c.*,u.email author_email from comments c left join users u on u.id=c.author_id
-      where c.product_id=$1 and c.visibility='client' order by c.created_at desc`,[product.id])
+      where c.product_id=$1 and c.visibility='client' order by c.created_at desc`,[product.id]),
+    pool.query(`select product_id,blank_name,material,construction,decoration_method,decoration_locations,artwork_width_in,artwork_height_in,
+      colorways,sizes,variant_plan,packaging,fulfillment,moq,sample_required,lead_time_days,notes,status,updated_at
+      from product_configurations where product_id=$1`,[product.id]),
+    pool.query(`select id,min_quantity,max_quantity,wholesale_cents,srp_cents,setup_cents,freight_cents,lead_time_days,notes
+      from price_tiers where product_id=$1 order by min_quantity`,[product.id])
   ]);
   return {product,brief:brief.rows[0]||null,milestones:milestones.rows,quotes:quotes.rows,approvals:approvals.rows,files:files.rows,
     activity:activity.rows,productionRuns:productionRuns.rows,shipments:shipments.rows,assets:assets.rows,
-    assetVersions:assetVersions.rows,comments:comments.rows};
+    assetVersions:assetVersions.rows,comments:comments.rows,configuration:configuration.rows[0]||null,priceTiers:priceTiers.rows};
 });
 
 app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req, reply) => {
