@@ -178,6 +178,60 @@ export async function migrate() {
       metadata jsonb not null default '{}',
       created_at timestamptz not null default now()
     );
+    create table if not exists suppliers (
+      id uuid primary key default gen_random_uuid(),
+      name text unique not null,
+      contact_email text,
+      contact_phone text,
+      country text,
+      lead_time_days integer,
+      status text not null default 'active',
+      notes text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists production_runs (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      supplier_id uuid references suppliers(id),
+      po_number text unique,
+      quantity integer not null,
+      unit_cost_cents integer,
+      currency text not null default 'USD',
+      status text not null default 'planned',
+      sample_status text not null default 'not-started',
+      ex_factory_date date,
+      eta_date date,
+      notes text,
+      internal_notes text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists qc_inspections (
+      id uuid primary key default gen_random_uuid(),
+      production_run_id uuid not null references production_runs(id) on delete cascade,
+      inspector text,
+      status text not null default 'pending',
+      inspected_units integer,
+      defect_units integer,
+      checklist jsonb not null default '{}',
+      notes text,
+      created_at timestamptz not null default now()
+    );
+    create table if not exists shipments (
+      id uuid primary key default gen_random_uuid(),
+      production_run_id uuid not null references production_runs(id) on delete cascade,
+      carrier text,
+      tracking_number text,
+      tracking_url text,
+      status text not null default 'preparing',
+      destination text,
+      shipped_at timestamptz,
+      eta_date date,
+      delivered_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do update set email_domains=excluded.email_domains;
