@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, jwtVerify } from 'jose';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { createWriteStream, mkdirSync } from 'node:fs';
+import { createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
@@ -31,6 +31,7 @@ async function authenticate(req, reply) {
   try { req.auth = (await jwtVerify(token, secret, { issuer: 'future-basics-client-hub' })).payload; }
   catch { return reply.code(401).send({ error: 'Invalid or expired session' }); }
 }
+function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
 async function sendCode(email, code) {
   if (process.env.RESEND_API_KEY) {
@@ -77,13 +78,43 @@ app.post('/v1/auth/verify', async (req, reply) => {
   if (!result.rowCount) return reply.code(401).send({ error: 'Invalid or expired code' });
   const domain = email.split('@')[1];
   const client = (await pool.query('select * from clients where $1=any(email_domains)', [domain])).rows[0];
+  const role=domain==='thefuturebasics.com'?'admin':'client';
   const user = (await pool.query(
-    `insert into users(client_id,email) values($1,$2) on conflict(email)
-     do update set client_id=excluded.client_id returning *`, [client.id, email]
+    `insert into users(client_id,email,role) values($1,$2,$3) on conflict(email)
+     do update set client_id=excluded.client_id,role=excluded.role returning *`, [client.id, email, role]
   )).rows[0];
   const token = await new SignJWT({ sub: user.id, clientId: client.id, client: client.slug, role: user.role, email })
     .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
   return { token, user: { id: user.id, email, role: user.role }, client: { id: client.id, slug: client.slug, name: client.name } };
+});
+
+app.get('/admin', async (_req,reply)=>reply.type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
+app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
+  const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count
+    from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id
+    where c.slug<>'future-basics' group by c.id order by c.name`);
+  const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name
+    from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id
+    where a.status='pending' order by a.requested_at`);
+  return {clients:clients.rows,actions:actions.rows};
+});
+app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {name,slug,emailDomains=[]}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
+  return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,emailDomains])).rows[0];
+});
+app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {title,handle}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
+  const p=(await pool.query('insert into products(client_id,title,shopify_handle) values($1,$2,$3) returning *',[req.params.id,title,handle||null])).rows[0];
+  await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+    from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
+  return p;
+});
+app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {stage,riskLevel,owner,targetDate}=req.body||{};
+  const p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
+    owner=coalesce($3,owner),target_date=coalesce($4,target_date),updated_at=now() where id=$5 returning *`,
+    [stage||null,riskLevel||null,owner||null,targetDate||null,req.params.id])).rows[0];
+  if(!p)return reply.code(404).send({error:'Product not found'});return p;
 });
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
