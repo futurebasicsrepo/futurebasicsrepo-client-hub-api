@@ -8,6 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
+import { shopifyConfigured, shopifyGraphql, PRODUCT_SYNC_QUERY, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -109,6 +110,32 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     where a.status='pending' order by a.requested_at`);
   return {clients:clients.rows,actions:actions.rows};
 });
+app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>({
+  connected:shopifyConfigured(),
+  storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
+  apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',
+  requiredScopes:['read_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']
+}));
+app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const client=(await pool.query('select * from clients where id=$1',[req.body?.clientId])).rows[0];
+  if(!client)return reply.code(404).send({error:'Client not found'});
+  const query=String(req.body?.query||`tag:${client.slug}`);
+  const data=await shopifyGraphql(PRODUCT_SYNC_QUERY,{query});
+  const synced=[];
+  for(const item of data.products.nodes){
+    const variants=item.variants.nodes||[],primary=variants[0]||null;
+    const product=(await pool.query(`insert into products(client_id,shopify_product_id,shopify_variant_id,shopify_handle,title,shopify_status,shopify_inventory_total,shopify_variants,shopify_synced_at)
+      values($1,$2,$3,$4,$5,$6,$7,$8,now()) on conflict(client_id,shopify_handle) do update set shopify_product_id=excluded.shopify_product_id,
+      shopify_variant_id=excluded.shopify_variant_id,title=excluded.title,shopify_status=excluded.shopify_status,shopify_inventory_total=excluded.shopify_inventory_total,
+      shopify_variants=excluded.shopify_variants,shopify_synced_at=now(),updated_at=now() returning *`,
+      [client.id,item.id,primary?.id||null,item.handle,item.title,item.status,item.totalInventory,JSON.stringify(variants)])).rows[0];
+    await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+      from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)
+      where not exists(select 1 from milestones where product_id=$1)`,[product.id]);
+    synced.push({id:product.id,title:product.title,inventory:product.shopify_inventory_total,variants:variants.length});
+  }
+  return {query,count:synced.length,products:synced,syncedAt:new Date().toISOString()};
+});
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,slug,emailDomains=[]}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,emailDomains])).rows[0];
@@ -143,14 +170,15 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
-  const [products,requests,invoices,users]=await Promise.all([
+  const [products,requests,invoices,users,quotes]=await Promise.all([
     pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
     pool.query('select * from requests where client_id=$1 order by created_at desc',[client.id]),
     pool.query('select * from invoices where client_id=$1 order by created_at desc',[client.id]),
-    pool.query('select id,email,name,role,created_at from users where client_id=$1 order by created_at',[client.id])
-  ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows};
+    pool.query('select id,email,name,role,created_at from users where client_id=$1 order by created_at',[client.id]),
+    pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.client_id=$1 order by q.created_at desc`,[client.id])
+  ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,status,emailDomains}=req.body||{};return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
@@ -167,6 +195,50 @@ app.post('/v1/admin/products/:id/quotes',{preHandler:[authenticate,adminOnly]},a
   const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
   return reply.code(201).send((await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,expires_at,notes,status)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'issued') returning *`,[req.params.id,version,quantity,unitCostCents,toolingCents,freightCents,wholesaleCents||null,srpCents||null,expiresAt||null,notes||null])).rows[0]);
+});
+app.post('/v1/admin/products/:id/shopify-draft-order',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=(await pool.query(`select q.*,p.title product_title,p.shopify_variant_id,p.client_id,c.name client_name,c.shopify_customer_id
+    from quotes q join products p on p.id=q.product_id join clients c on c.id=p.client_id where q.id=$1 and p.id=$2`,[req.body?.quoteId,req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Quote not found'});
+  if(row.shopify_draft_order_id)return reply.code(409).send({error:'This quote already has a Shopify draft order'});
+  const unitCents=row.wholesale_cents||row.unit_cost_cents;
+  const line={quantity:row.quantity,priceOverride:{amount:(unitCents/100).toFixed(2),currencyCode:row.currency}};
+  if(row.shopify_variant_id)line.variantId=row.shopify_variant_id;else{line.title=row.product_title;line.requiresShipping=true;}
+  const input={lineItems:[line],email:req.body?.email||undefined,customerId:row.shopify_customer_id||undefined,
+    note:req.body?.note||`Future Basics client hub quote v${row.version}`,tags:['future-basics-client-hub',`client-${row.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
+  const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
+  const updated=(await pool.query(`update quotes set shopify_draft_order_id=$1,shopify_draft_order_name=$2,shopify_draft_order_status=$3,
+    shopify_invoice_url=$4,shopify_synced_at=now() where id=$5 returning *`,[draft.id,draft.name,draft.status,draft.invoiceUrl,row.id])).rows[0];
+  await pool.query(`insert into invoices(client_id,number,amount_cents,status,external_url) values($1,$2,$3,'draft',$4)
+    on conflict(client_id,number) do update set amount_cents=excluded.amount_cents,status='draft',external_url=excluded.external_url`,
+    [row.client_id,draft.name,row.quantity*unitCents,draft.invoiceUrl]);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[row.client_id,req.params.id,req.auth.sub,'commerce',`Created Shopify draft order ${draft.name}`]);
+  return updated;
+});
+app.post('/v1/admin/quotes/:id/send-shopify-invoice',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const quote=(await pool.query('select q.*,p.client_id,p.id product_id from quotes q join products p on p.id=q.product_id where q.id=$1',[req.params.id])).rows[0];
+  if(!quote?.shopify_draft_order_id)return reply.code(400).send({error:'Create a Shopify draft order first'});
+  const email=req.body?.subject||req.body?.message?{to:req.body?.to||undefined,subject:req.body?.subject||undefined,customMessage:req.body?.message||undefined}:undefined;
+  const result=requireNoUserErrors((await shopifyGraphql(DRAFT_INVOICE_SEND,{id:quote.shopify_draft_order_id,email})).draftOrderInvoiceSend),draft=result.draftOrder;
+  const updated=(await pool.query(`update quotes set shopify_draft_order_status=$1,shopify_invoice_url=$2,shopify_invoice_sent_at=now(),shopify_synced_at=now()
+    where id=$3 returning *`,[draft.status,draft.invoiceUrl,quote.id])).rows[0];
+  await pool.query(`update invoices set status='due',external_url=$1 where client_id=$2 and number=$3`,[draft.invoiceUrl,quote.client_id,draft.name]);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[quote.client_id,quote.product_id,req.auth.sub,'commerce',`Sent Shopify invoice ${draft.name}`]);
+  return updated;
+});
+app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]},async()=>{
+  const quotes=(await pool.query('select q.*,p.client_id,p.id product_id from quotes q join products p on p.id=q.product_id where q.shopify_draft_order_id is not null')).rows;
+  const synced=[];
+  for(const quote of quotes){
+    const draft=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:quote.shopify_draft_order_id})).draftOrder;if(!draft)continue;
+    const financial=draft.order?.displayFinancialStatus||null,fulfillment=draft.order?.displayFulfillmentStatus||null;
+    await pool.query(`update quotes set shopify_draft_order_status=$1,shopify_invoice_url=$2,shopify_order_id=$3,shopify_financial_status=$4,
+      shopify_fulfillment_status=$5,shopify_synced_at=now() where id=$6`,[draft.status,draft.invoiceUrl,draft.order?.id||null,financial,fulfillment,quote.id]);
+    const invoiceStatus=financial==='PAID'?'paid':draft.status==='INVOICE_SENT'?'due':draft.status==='COMPLETED'?'paid':'draft';
+    await pool.query('update invoices set status=$1,external_url=coalesce($2,external_url) where client_id=$3 and number=$4',[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name]);
+    synced.push({quoteId:quote.id,draftOrder:draft.name,status:draft.status,financialStatus:financial,fulfillmentStatus:fulfillment});
+  }
+  return {count:synced.length,quotes:synced,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/products/:id/approvals',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,kind='artwork',version='v1',notes}=req.body||{};
