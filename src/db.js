@@ -110,6 +110,10 @@ export async function migrate() {
     alter table products add column if not exists shopify_variants jsonb not null default '[]';
     alter table products add column if not exists shopify_synced_at timestamptz;
     alter table products add column if not exists source_of_truth text not null default 'shopify';
+    alter table products add column if not exists rush_mode boolean not null default false;
+    alter table products add column if not exists rush_reason text;
+    alter table products add column if not exists rush_activated_at timestamptz;
+    alter table products add column if not exists rush_activated_by uuid references users(id);
     alter table requests add column if not exists product_id uuid references products(id);
     create table if not exists product_briefs (
       product_id uuid primary key references products(id) on delete cascade,
