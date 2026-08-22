@@ -88,12 +88,47 @@ app.post('/v1/auth/verify', async (req, reply) => {
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
   const id = req.auth.clientId;
-  const [requests, invoices, projects] = await Promise.all([
+  const [requests, invoices, projects, products, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
-    pool.query('select * from projects where client_id=$1 order by updated_at desc', [id])
+    pool.query('select * from projects where client_id=$1 order by updated_at desc', [id]),
+    pool.query(`select p.*, coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
+      from products p left join milestones m on m.product_id=p.id where p.client_id=$1 group by p.id order by p.updated_at desc`, [id]),
+    pool.query(`select a.*, p.title product_title from approvals a join products p on p.id=a.product_id
+      where p.client_id=$1 and a.status='pending' order by a.requested_at`, [id]),
+    pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows };
+  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, products: products.rows,
+    approvals: approvals.rows, activities: activities.rows,
+    actions: [
+      ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+a.title,due:null})),
+      ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
+    ] };
+});
+
+app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
+  const product=(await pool.query('select * from products where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];
+  if(!product)return reply.code(404).send({error:'Product not found'});
+  const [milestones,quotes,approvals,files,activity]=await Promise.all([
+    pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
+    pool.query('select * from quotes where product_id=$1 order by version desc',[product.id]),
+    pool.query('select * from approvals where product_id=$1 order by requested_at desc',[product.id]),
+    pool.query('select * from files where request_id in(select id from requests where client_id=$2) order by created_at desc',[product.id,req.auth.clientId]),
+    pool.query('select * from activities where product_id=$1 order by created_at desc',[product.id])
+  ]);
+  return {product,milestones:milestones.rows,quotes:quotes.rows,approvals:approvals.rows,files:files.rows,activity:activity.rows};
+});
+
+app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req, reply) => {
+  const decision=String(req.body?.decision||'');
+  if(!['approved','changes-requested'].includes(decision))return reply.code(400).send({error:'decision must be approved or changes-requested'});
+  const row=(await pool.query(`update approvals a set status=$1,notes=$2,decided_by=$3,decided_at=now()
+    from products p where a.id=$4 and a.product_id=p.id and p.client_id=$5 and a.status='pending' returning a.*`,
+    [decision,req.body?.notes||null,req.auth.sub,req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Pending approval not found'});
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',
+    [req.auth.clientId,row.product_id,req.auth.sub,'approval',decision==='approved'?'Approved '+row.title:'Requested changes to '+row.title]);
+  return row;
 });
 
 app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
