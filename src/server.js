@@ -31,7 +31,7 @@ async function authenticate(req, reply) {
   try { req.auth = (await jwtVerify(token, secret, { issuer: 'future-basics-client-hub' })).payload; }
   catch { return reply.code(401).send({ error: 'Invalid or expired session' }); }
 }
-function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
+async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
 async function sendCode(email, code) {
   if (process.env.RESEND_API_KEY) {
