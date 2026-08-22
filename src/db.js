@@ -95,6 +95,11 @@ export async function migrate() {
       unique(client_id, shopify_handle)
     );
     alter table products add column if not exists shopify_product_id text;
+    alter table products add column if not exists shopify_variant_id text;
+    alter table products add column if not exists shopify_status text;
+    alter table products add column if not exists shopify_inventory_total integer;
+    alter table products add column if not exists shopify_variants jsonb not null default '[]';
+    alter table products add column if not exists shopify_synced_at timestamptz;
     alter table products add column if not exists source_of_truth text not null default 'shopify';
     alter table requests add column if not exists product_id uuid references products(id);
     create table if not exists product_briefs (
@@ -141,6 +146,15 @@ export async function migrate() {
     alter table quotes add column if not exists wholesale_cents integer;
     alter table quotes add column if not exists srp_cents integer;
     alter table quotes add column if not exists notes text;
+    alter table quotes add column if not exists shopify_draft_order_id text;
+    alter table quotes add column if not exists shopify_draft_order_name text;
+    alter table quotes add column if not exists shopify_draft_order_status text;
+    alter table quotes add column if not exists shopify_invoice_url text;
+    alter table quotes add column if not exists shopify_invoice_sent_at timestamptz;
+    alter table quotes add column if not exists shopify_order_id text;
+    alter table quotes add column if not exists shopify_financial_status text;
+    alter table quotes add column if not exists shopify_fulfillment_status text;
+    alter table quotes add column if not exists shopify_synced_at timestamptz;
     create table if not exists approvals (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
