@@ -58,7 +58,8 @@ async function storeAssetVersion(asset,userId,part,notes){
   try{
     await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
     await client.query('begin');
-    const version=(await client.query('update assets set current_version=current_version+1,updated_at=now() where id=$1 returning current_version',[asset.id])).rows[0].current_version;
+    const version=(await client.query(`update assets set current_version=current_version+1,
+      status=case when status='approved' then 'working' else status end,updated_at=now() where id=$1 returning current_version`,[asset.id])).rows[0].current_version;
     const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
       values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
     await client.query('commit');return row;
@@ -119,8 +120,9 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
-  const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name
+  const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name,av.version asset_version,ast.name asset_name
     from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id
+    left join asset_versions av on av.id=a.asset_version_id left join assets ast on ast.id=av.asset_id
     where a.status='pending' order by a.requested_at`);
   const productionAlerts=await pool.query(`select pr.id,pr.po_number,pr.status,pr.eta_date,p.title product_title,c.name client_name
     from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
@@ -376,9 +378,17 @@ app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]}
   return {count:synced.length,quotes:synced,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/products/:id/approvals',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {title,kind='artwork',version='v1',notes}=req.body||{};
-  return reply.code(201).send((await pool.query(`insert into approvals(product_id,requested_by,title,kind,version,notes)
-    values($1,$2,$3,$4,$5,$6) returning *`,[req.params.id,req.auth.sub,title,kind,version,notes||null])).rows[0]);
+  const {title,kind='artwork',version='v1',notes,assetVersionId}=req.body||{};
+  if(!title?.trim())return reply.code(400).send({error:'Approval title required'});
+  let linked=null;
+  if(assetVersionId){linked=(await pool.query(`select av.*,a.name asset_name,a.product_id from asset_versions av join assets a on a.id=av.asset_id
+    where av.id=$1 and a.product_id=$2`,[assetVersionId,req.params.id])).rows[0];if(!linked)return reply.code(400).send({error:'Select an asset version from this product'});}
+  const approval=(await pool.query(`insert into approvals(product_id,requested_by,title,kind,version,notes,asset_version_id)
+    values($1,$2,$3,$4,$5,$6,$7) returning *`,[req.params.id,req.auth.sub,title,kind,linked?`v${linked.version}`:version,notes||null,linked?.id||null])).rows[0];
+  const product=(await pool.query('select client_id,title from products where id=$1',[req.params.id])).rows[0];
+  await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[product.client_id,'approval-request',`Approval requested: ${linked?linked.asset_name+' v'+linked.version:title}`,'approval',approval.id]);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,req.params.id,req.auth.sub,'approval',`Requested approval${linked?' for '+linked.asset_name+' v'+linked.version:''}`]);
+  return reply.code(201).send(approval);
 });
 app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {number,amountCents,status='due',dueDate,externalUrl}=req.body||{};
@@ -394,14 +404,15 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
     pool.query('select * from projects where client_id=$1 order by updated_at desc', [id]),
     pool.query(`select p.*, coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
       from products p left join milestones m on m.product_id=p.id where p.client_id=$1 group by p.id order by p.updated_at desc`, [id]),
-    pool.query(`select a.*, p.title product_title from approvals a join products p on p.id=a.product_id
+    pool.query(`select a.*,p.title product_title,av.version asset_version,ast.name asset_name from approvals a
+      join products p on p.id=a.product_id left join asset_versions av on av.id=a.asset_version_id left join assets ast on ast.id=av.asset_id
       where p.client_id=$1 and a.status='pending' order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
   return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, products: products.rows,
     approvals: approvals.rows, activities: activities.rows,
     actions: [
-      ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+a.title,due:null})),
+      ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
       ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
     ] };
 });
@@ -413,7 +424,9 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
     pool.query('select * from quotes where product_id=$1 order by version desc',[product.id]),
-    pool.query('select * from approvals where product_id=$1 order by requested_at desc',[product.id]),
+    pool.query(`select ap.*,av.original_name,av.version asset_version,a.name asset_name,a.kind asset_kind
+      from approvals ap left join asset_versions av on av.id=ap.asset_version_id left join assets a on a.id=av.asset_id
+      where ap.product_id=$1 order by ap.requested_at desc`,[product.id]),
     pool.query(`select f.* from files f join requests r on r.id=f.request_id
       where r.product_id=$1 and r.client_id=$2 order by f.created_at desc`,[product.id,req.auth.clientId]),
     pool.query('select * from activities where product_id=$1 order by created_at desc',[product.id]),
@@ -436,12 +449,26 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
 app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req, reply) => {
   const decision=String(req.body?.decision||'');
   if(!['approved','changes-requested'].includes(decision))return reply.code(400).send({error:'decision must be approved or changes-requested'});
-  const row=(await pool.query(`update approvals a set status=$1,notes=$2,decided_by=$3,decided_at=now()
-    from products p where a.id=$4 and a.product_id=p.id and p.client_id=$5 and a.status='pending' returning a.*`,
+  const row=(await pool.query(`update approvals a set status=$1,notes=coalesce($2,a.notes),decided_by=$3,decided_at=now()
+    from products p where a.id=$4 and a.product_id=p.id and p.client_id=$5 and a.status='pending'
+    returning a.*,p.title product_title,p.client_id`,
     [decision,req.body?.notes||null,req.auth.sub,req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Pending approval not found'});
+  let versionLabel='';
+  if(row.asset_version_id){const linked=(await pool.query(`select av.version,a.id asset_id,a.name from asset_versions av join assets a on a.id=av.asset_id where av.id=$1`,[row.asset_version_id])).rows[0];
+    if(linked){versionLabel=` ${linked.name} v${linked.version}`;await pool.query(`update assets set status=$1,approved_version_id=case when $1='approved' then $2 else approved_version_id end,updated_at=now() where id=$3`,[decision==='approved'?'approved':'working',row.asset_version_id,linked.asset_id]);}}
+  if(decision==='approved'){
+    await pool.query(`update milestones set status='complete',completed_at=now() where product_id=$1 and lower(name)='approval'`,[row.product_id]);
+    await pool.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='production' and status<>'complete'`,[row.product_id]);
+    await pool.query(`update products set current_stage='production',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
+  }else{
+    await pool.query(`update milestones set status='blocked',completed_at=null where product_id=$1 and lower(name)='approval'`,[row.product_id]);
+    await pool.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='development' and status<>'complete'`,[row.product_id]);
+    await pool.query(`update products set current_stage='development',risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);
+  }
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',
-    [req.auth.clientId,row.product_id,req.auth.sub,'approval',decision==='approved'?'Approved '+row.title:'Requested changes to '+row.title]);
+    [req.auth.clientId,row.product_id,req.auth.sub,'approval',decision==='approved'?`Approved${versionLabel||' '+row.title}`:`Requested changes to${versionLabel||' '+row.title}`]);
+  await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[req.auth.clientId,'approval-decision',`${decision==='approved'?'Approved':'Changes requested'}: ${versionLabel.trim()||row.title}`,'approval',row.id]);
   return row;
 });
 
