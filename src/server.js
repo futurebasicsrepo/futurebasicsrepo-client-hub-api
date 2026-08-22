@@ -201,6 +201,48 @@ app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(r
     [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,req.params.id])).rows[0];
   if(!p)return reply.code(404).send({error:'Product not found'});return p;
 });
+app.post('/v1/admin/products/:id/rush',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const enabled=req.body?.enabled===true,reason=String(req.body?.reason||'').trim();
+  if(enabled&&!reason)return reply.code(400).send({error:'A rush reason is required'});
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const product=(await client.query('select * from products where id=$1 for update',[req.params.id])).rows[0];
+    if(!product){await client.query('rollback');return reply.code(404).send({error:'Product not found'})}
+    if(enabled){
+      const sample=(await client.query(`select * from milestones where product_id=$1 and lower(name)='sample' for update`,[product.id])).rows[0];
+      if(!sample){await client.query('rollback');return reply.code(409).send({error:'This workflow does not have a Sample gate'})}
+      if(sample.status==='complete'){await client.query('rollback');return reply.code(409).send({error:'Sampling is already complete and cannot be skipped'})}
+      const production=(await client.query('select id from production_runs where product_id=$1 limit 1',[product.id])).rows[0];
+      if(production){await client.query('rollback');return reply.code(409).send({error:'Production has already started'})}
+      await client.query(`update milestones set status='complete',completed_at=coalesce(completed_at,now())
+        where product_id=$1 and sort_order<(select sort_order from milestones where id=$2) and status<>'complete'`,[product.id,sample.id]);
+      await client.query(`update milestones set status='skipped',completed_at=now() where id=$1`,[sample.id]);
+      await client.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='approval' and status<>'complete'`,[product.id]);
+      await client.query(`update products set rush_mode=true,rush_reason=$2,rush_activated_at=now(),rush_activated_by=$3,
+        current_stage='approval',risk_level='attention',updated_at=now() where id=$1`,[product.id,reason,req.auth.sub]);
+      await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'rush',$4,$5)`,
+        [product.client_id,product.id,req.auth.sub,`Rush activated — Sample skipped: ${reason}`,JSON.stringify({enabled:true,reason})]);
+      await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'rush','Rush workflow activated — sampling waived','product',$2)`,[product.client_id,product.id]);
+    }else{
+      if(!product.rush_mode){await client.query('rollback');return reply.code(409).send({error:'Rush is not active for this product'})}
+      const downstream=(await client.query(`select
+        exists(select 1 from approvals where product_id=$1 and status in ('pending','approved')) approval_started,
+        exists(select 1 from production_runs where product_id=$1) production`,[product.id])).rows[0];
+      if(downstream.approval_started||downstream.production){await client.query('rollback');return reply.code(409).send({error:'Rush cannot be reversed after approval or production has begun'})}
+      await client.query(`update milestones set status='upcoming',completed_at=null where product_id=$1 and lower(name) in ('sample','approval')`,[product.id]);
+      await client.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='development'`,[product.id]);
+      await client.query(`update products set rush_mode=false,rush_reason=null,rush_activated_at=null,rush_activated_by=null,
+        current_stage='development',risk_level='on-track',updated_at=now() where id=$1`,[product.id]);
+      await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'rush',$4,$5)`,
+        [product.client_id,product.id,req.auth.sub,'Rush removed — Sample gate restored',JSON.stringify({enabled:false})]);
+      await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'rush','Rush workflow removed — sampling restored','product',$2)`,[product.client_id,product.id]);
+    }
+    const updated=(await client.query('select * from products where id=$1',[product.id])).rows[0];
+    const milestones=(await client.query('select * from milestones where product_id=$1 order by sort_order',[product.id])).rows;
+    await client.query('commit');return {product:updated,milestones};
+  }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
+});
 app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {objective,audience,targetQuantity,targetBudgetCents,deliveryDate,decoration,packaging,fulfillment,notes,status='draft'}=req.body||{};
   const product=(await pool.query('select id,client_id from products where id=$1',[req.params.id])).rows[0];
