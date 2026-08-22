@@ -94,7 +94,23 @@ export async function migrate() {
       updated_at timestamptz not null default now(),
       unique(client_id, shopify_handle)
     );
+    alter table products add column if not exists shopify_product_id text;
+    alter table products add column if not exists source_of_truth text not null default 'shopify';
     alter table requests add column if not exists product_id uuid references products(id);
+    create table if not exists product_briefs (
+      product_id uuid primary key references products(id) on delete cascade,
+      objective text,
+      audience text,
+      target_quantity integer,
+      target_budget_cents integer,
+      delivery_date date,
+      decoration text,
+      packaging text,
+      fulfillment text,
+      notes text,
+      status text not null default 'draft',
+      updated_at timestamptz not null default now()
+    );
     create table if not exists milestones (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
@@ -104,6 +120,10 @@ export async function migrate() {
       completed_at timestamptz,
       sort_order integer not null default 0
     );
+    alter table milestones add column if not exists required boolean not null default true;
+    alter table milestones add column if not exists client_visible boolean not null default true;
+    alter table milestones add column if not exists responsible_party text not null default 'future-basics';
+    alter table milestones add column if not exists notes text;
     create table if not exists quotes (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
@@ -118,6 +138,9 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       unique(product_id, version)
     );
+    alter table quotes add column if not exists wholesale_cents integer;
+    alter table quotes add column if not exists srp_cents integer;
+    alter table quotes add column if not exists notes text;
     create table if not exists approvals (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
@@ -165,6 +188,18 @@ export async function migrate() {
         ('ouster-cap-black','Ouster Cap - Black','approval','attention')
       ) as v(handle,title,stage,risk)
       where c.slug='ouster' on conflict(client_id,shopify_handle) do nothing;
+    update products p set shopify_product_id=v.shopify_id
+      from (values
+        ('ouster-wide-mouth-bottle','gid://shopify/Product/8982881468613'),
+        ('omt-01-work-jacket','gid://shopify/Product/8982881501381'),
+        ('sensor-lineup-tee-black','gid://shopify/Product/8982881534149'),
+        ('sensor-lineup-tee-natural','gid://shopify/Product/8982881599685'),
+        ('ouster-desk-mat','gid://shopify/Product/8982881632453'),
+        ('point-cloud-print-framed','gid://shopify/Product/8982881665221'),
+        ('ouster-cap-natural','gid://shopify/Product/8982881697989'),
+        ('ouster-cap-olive','gid://shopify/Product/8982881730757'),
+        ('ouster-cap-black','gid://shopify/Product/8982881763525')
+      ) v(handle,shopify_id) where p.shopify_handle=v.handle;
     insert into milestones(product_id,name,status,sort_order)
       select p.id, m.name, case when m.n < 3 then 'complete' when m.n = 3 then 'current' else 'upcoming' end, m.n
       from products p cross join (values (1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery')) m(n,name)
