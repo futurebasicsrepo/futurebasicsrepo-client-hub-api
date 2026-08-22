@@ -257,6 +257,8 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       unique(asset_id,version)
     );
+    alter table assets add column if not exists approved_version_id uuid references asset_versions(id);
+    alter table approvals add column if not exists asset_version_id uuid references asset_versions(id);
     create table if not exists comments (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id) on delete cascade,
