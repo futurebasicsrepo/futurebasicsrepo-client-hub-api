@@ -8,7 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, PRODUCT_SYNC_QUERY, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -131,11 +131,18 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     where n.read_at is null order by n.created_at desc limit 30`);
   return {clients:clients.rows,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
 });
-app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>({
-  connected:shopifyConfigured(),
-  storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
-  apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',
-  requiredScopes:['read_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']
+app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
+  const result={configured:shopifyConfigured(),connected:false,storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
+    apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',authentication:process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?'legacy-token':'client-credentials',
+    requiredScopes:['read_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']};
+  if(!result.configured)return result;
+  try{const data=await shopifyGraphql(SHOP_CONNECTION_QUERY);return {...result,connected:true,shopName:data.shop.name,myshopifyDomain:data.shop.myshopifyDomain}}
+  catch(error){return {...result,error:error.message}}
+});
+app.get('/v1/admin/resend/status',{preHandler:[authenticate,adminOnly]},async()=>({
+  configured:Boolean(process.env.RESEND_API_KEY&&process.env.AUTH_FROM_EMAIL),
+  fromEmail:process.env.AUTH_FROM_EMAIL||null,
+  message:process.env.RESEND_API_KEY&&process.env.AUTH_FROM_EMAIL?'Ready for a live sign-in test':'Add RESEND_API_KEY and AUTH_FROM_EMAIL'
 }));
 app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.body?.clientId])).rows[0];
