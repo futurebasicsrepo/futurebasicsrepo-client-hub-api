@@ -91,6 +91,7 @@ export async function migrate() {
       updated_at timestamptz not null default now(),
       unique(client_id, shopify_handle)
     );
+    alter table requests add column if not exists product_id uuid references products(id);
     create table if not exists milestones (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,
