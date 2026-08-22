@@ -87,6 +87,17 @@ app.post('/v1/auth/verify', async (req, reply) => {
     .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
   return { token, user: { id: user.id, email, role: user.role }, client: { id: client.id, slug: client.slug, name: client.name } };
 });
+app.post('/v1/dev/session',async(req,reply)=>{
+  if(process.env.DEV_BYPASS_AUTH!=='true')return reply.code(404).send({error:'Not found'});
+  const admin=req.body?.mode==='admin',slug=admin?'future-basics':'ouster';
+  const client=(await pool.query('select * from clients where slug=$1',[slug])).rows[0];
+  const email=admin?'preview@thefuturebasics.com':'preview@ouster.com',role=admin?'admin':'client';
+  const user=(await pool.query(`insert into users(client_id,email,role)values($1,$2,$3)on conflict(email)
+    do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email,role])).rows[0];
+  const token=await new SignJWT({sub:user.id,clientId:client.id,client:client.slug,role,email})
+    .setProtectedHeader({alg:'HS256'}).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
+  return {token,developmentBypass:true};
+});
 
 app.get('/admin', async (_req,reply)=>reply.type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
