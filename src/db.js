@@ -232,6 +232,54 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    create table if not exists assets (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      name text not null,
+      kind text not null default 'artwork',
+      status text not null default 'working',
+      visibility text not null default 'client',
+      current_version integer not null default 0,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique(product_id,name)
+    );
+    create table if not exists asset_versions (
+      id uuid primary key default gen_random_uuid(),
+      asset_id uuid not null references assets(id) on delete cascade,
+      uploader_id uuid references users(id),
+      version integer not null,
+      original_name text not null,
+      storage_name text unique not null,
+      mime_type text,
+      size_bytes bigint not null,
+      notes text,
+      created_at timestamptz not null default now(),
+      unique(asset_id,version)
+    );
+    create table if not exists comments (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      asset_id uuid references assets(id) on delete cascade,
+      approval_id uuid references approvals(id) on delete cascade,
+      author_id uuid references users(id),
+      author_role text not null,
+      body text not null,
+      visibility text not null default 'client',
+      created_at timestamptz not null default now()
+    );
+    create table if not exists notifications (
+      id bigserial primary key,
+      client_id uuid not null references clients(id) on delete cascade,
+      user_id uuid references users(id) on delete cascade,
+      type text not null,
+      title text not null,
+      entity_type text,
+      entity_id text,
+      read_at timestamptz,
+      created_at timestamptz not null default now()
+    );
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do update set email_domains=excluded.email_domains;
