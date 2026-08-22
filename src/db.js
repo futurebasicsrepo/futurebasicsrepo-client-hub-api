@@ -34,6 +34,15 @@ export async function migrate() {
       consumed_at timestamptz,
       created_at timestamptz not null default now()
     );
+    create table if not exists preview_sessions (
+      id uuid primary key default gen_random_uuid(),
+      code_hash text unique not null,
+      admin_user_id uuid not null references users(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      expires_at timestamptz not null,
+      consumed_at timestamptz,
+      created_at timestamptz not null default now()
+    );
     create table if not exists requests (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
