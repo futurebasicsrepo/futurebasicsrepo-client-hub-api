@@ -116,6 +116,41 @@ app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(r
     [stage||null,riskLevel||null,owner||null,targetDate||null,req.params.id])).rows[0];
   if(!p)return reply.code(404).send({error:'Product not found'});return p;
 });
+app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
+  if(!client)return reply.code(404).send({error:'Client not found'});
+  const [products,requests,invoices,users]=await Promise.all([
+    pool.query(`select p.*,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
+      from products p left join milestones m on m.product_id=p.id where p.client_id=$1 group by p.id order by p.updated_at desc`,[client.id]),
+    pool.query('select * from requests where client_id=$1 order by created_at desc',[client.id]),
+    pool.query('select * from invoices where client_id=$1 order by created_at desc',[client.id]),
+    pool.query('select id,email,name,role,created_at from users where client_id=$1 order by created_at',[client.id])
+  ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows};
+});
+app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {name,status,emailDomains}=req.body||{};return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
+    email_domains=coalesce($3,email_domains) where id=$4 returning *`,[name||null,status||null,emailDomains||null,req.params.id])).rows[0];
+});
+app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {status,dueDate}=req.body||{};return (await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
+    completed_at=case when $1='complete' then now() else completed_at end where id=$3 returning *`,[status||null,dueDate||null,req.params.id])).rows[0];
+});
+app.post('/v1/admin/products/:id/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {quantity,unitCostCents,toolingCents=0,freightCents=0,expiresAt}=req.body||{};
+  const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
+  return reply.code(201).send((await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,expires_at,status)
+    values($1,$2,$3,$4,$5,$6,$7,'issued') returning *`,[req.params.id,version,quantity,unitCostCents,toolingCents,freightCents,expiresAt||null])).rows[0]);
+});
+app.post('/v1/admin/products/:id/approvals',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {title,kind='artwork',version='v1',notes}=req.body||{};
+  return reply.code(201).send((await pool.query(`insert into approvals(product_id,requested_by,title,kind,version,notes)
+    values($1,$2,$3,$4,$5,$6) returning *`,[req.params.id,req.auth.sub,title,kind,version,notes||null])).rows[0]);
+});
+app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {number,amountCents,status='due',dueDate,externalUrl}=req.body||{};
+  return reply.code(201).send((await pool.query(`insert into invoices(client_id,number,amount_cents,status,due_date,external_url)
+    values($1,$2,$3,$4,$5,$6) returning *`,[req.params.id,number,amountCents,status,dueDate||null,externalUrl||null])).rows[0]);
+});
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
   const id = req.auth.clientId;
