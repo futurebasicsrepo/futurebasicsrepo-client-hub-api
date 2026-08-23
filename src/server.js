@@ -10,6 +10,7 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -104,37 +105,9 @@ function quoteReadiness(product,configuration,quote){
   return {ready:missing.length===0,missing};
 }
 
-function projectFinancialRollups(projects,products,quotes,invoices,{internal=false}={}){
-  const latestQuoteByProduct=new Map();
-  [...quotes].filter(q=>q.status!=='declined').sort((a,b)=>Number(b.version||0)-Number(a.version||0)).forEach(q=>{
-    if(!latestQuoteByProduct.has(q.product_id))latestQuoteByProduct.set(q.product_id,q);
-  });
-  return projects.map(project=>{
-    const projectProducts=products.filter(product=>product.project_id===project.id),productIds=new Set(projectProducts.map(product=>product.id));
-    const projectQuotes=[...latestQuoteByProduct.values()].filter(quote=>productIds.has(quote.product_id));
-    const quoteIds=new Set(projectQuotes.map(quote=>quote.id));
-    const projectInvoices=invoices.filter(invoice=>invoice.project_id===project.id||quoteIds.has(invoice.quote_id)||productIds.has(invoice.product_id));
-    let clientCostCents=0,projectedRetailCents=0,internalCostCents=0,quotedProducts=0;
-    for(const quote of projectQuotes){
-      const quantity=Number(quote.quantity||0),wholesale=Number(quote.wholesale_cents??quote.unit_cost_cents??0),unitCost=Number(quote.unit_cost_cents||0);
-      const tooling=Number(quote.tooling_cents||0),freight=Number(quote.freight_cents||0),srp=quote.srp_cents==null?null:Number(quote.srp_cents);
-      clientCostCents+=quantity*wholesale+tooling+freight;
-      internalCostCents+=quantity*unitCost+tooling+freight;
-      if(srp!=null)projectedRetailCents+=quantity*srp;
-      if(quantity>0)quotedProducts++;
-    }
-    const invoicedCents=projectInvoices.reduce((sum,invoice)=>sum+Number(invoice.amount_cents||0),0);
-    const paidCents=projectInvoices.filter(invoice=>invoice.status==='paid').reduce((sum,invoice)=>sum+Number(invoice.amount_cents||0),0);
-    const outstandingCents=projectInvoices.filter(invoice=>invoice.status==='due'||invoice.status==='draft').reduce((sum,invoice)=>sum+Number(invoice.amount_cents||0),0);
-    const base={projectId:project.id,currency:projectInvoices[0]?.currency||projectQuotes[0]?.currency||'USD',productCount:projectProducts.length,
-      quotedProducts,quotedCents:clientCostCents,projectedRetailCents,clientProfitCents:projectedRetailCents-clientCostCents,
-      clientMarginPct:projectedRetailCents>0?Number((((projectedRetailCents-clientCostCents)/projectedRetailCents)*100).toFixed(1)):null,
-      invoicedCents,paidCents,outstandingCents,invoices:projectInvoices.map(invoice=>({id:invoice.id,number:invoice.number,amount_cents:invoice.amount_cents,
-        currency:invoice.currency,status:invoice.status,due_date:invoice.due_date,external_url:invoice.external_url,created_at:invoice.created_at}))};
-    return internal?{...base,internalCostCents,internalProfitCents:clientCostCents-internalCostCents,
-      internalMarginPct:clientCostCents>0?Number((((clientCostCents-internalCostCents)/clientCostCents)*100).toFixed(1)):null}:base;
-  });
-}
+// Commercial math (productCommercials, projectFinancialRollups, clientProductTerms,
+// draftOrderLinesForProducts) lives in ./commercials.js so it can be unit-tested and
+// stays the single source of truth for the hub rollup, the PDF, and the draft invoice.
 
 const pdfEscape=value=>String(value??'').replace(/[\\()]/g,'\\$&').replace(/[^\x20-\x7E]/g,' ');
 function invoicePdf(invoice,client,project){
@@ -164,13 +137,6 @@ async function productImageBuffer(source){
     const data=Buffer.from(await response.arrayBuffer());return data.length<=10_000_000?data:null;
   }catch{return null}
 }
-function clientProductTerms(product,quotes){
-  const quote=quotes.filter(item=>item.product_id===product.id&&item.status!=='declined').sort((a,b)=>Number(b.version||0)-Number(a.version||0))[0]||null;
-  const tiers=Array.isArray(product.price_tiers)?product.price_tiers:[],tier=tiers[0]||{},configuration=product.configuration||{};
-  const units=Number(quote?.quantity??tier.min_quantity??configuration.moq??0),moq=Number(configuration.moq??tier.min_quantity??0);
-  const unitPrice=Number(quote?.wholesale_cents??tier.wholesale_cents??0),setup=Number(quote?.tooling_cents??tier.setup_cents??0),shipping=Number(quote?.freight_cents??tier.freight_cents??0);
-  return {quote,units,moq,unitPrice,setup,shipping,total:units*unitPrice+setup+shipping};
-}
 async function projectCollectionPdf(client,project,products,quotes){
   const buffers=[],doc=new PDFDocument({size:'LETTER',margin:42,info:{Title:`${project.name} — product collection`,Author:'Future Basics'}});
   doc.on('data',chunk=>buffers.push(chunk));const ended=new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject)});
@@ -180,7 +146,7 @@ async function projectCollectionPdf(client,project,products,quotes){
   let y=175,column=0,projectTotal=0,setupTotal=0,shippingTotal=0;
   for(const product of products){
     if(column===0&&y+cardHeight>doc.page.height-52){doc.addPage();drawHeader();y=100}
-    const x=42+column*(columnWidth+gap),terms=clientProductTerms(product,quotes);projectTotal+=terms.total;setupTotal+=terms.setup;shippingTotal+=terms.shipping;
+    const x=42+column*(columnWidth+gap),terms=clientProductTerms(product,quotes);if(terms.priced){projectTotal+=terms.total;setupTotal+=terms.setup;shippingTotal+=terms.shipping;}
     doc.roundedRect(x,y,columnWidth,cardHeight,16).lineWidth(1).strokeColor(line).stroke();
     const image=product.shopify_image_url?await productImageBuffer(product.shopify_image_url):null;
     if(image){try{doc.image(image,x+1,y+1,{fit:[columnWidth-2,104],align:'center',valign:'center'})}catch{doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb')}}else doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb');
@@ -764,7 +730,13 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
-    pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
+    pool.query(`select p.*,to_jsonb(b) brief,
+      (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
+      coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
+        'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
+        'setup_cents',pt.setup_cents,'freight_cents',pt.freight_cents,'lead_time_days',pt.lead_time_days) order by pt.min_quantity)
+        from price_tiers pt where pt.product_id=p.id),'[]') price_tiers,
+      coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
     pool.query('select * from requests where client_id=$1 order by created_at desc',[client.id]),
@@ -1055,6 +1027,69 @@ app.post('/v1/admin/quotes/:id/send-shopify-invoice',{preHandler:[authenticate,a
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[quote.client_id,quote.product_id,req.auth.sub,'commerce',`Sent Shopify invoice ${draft.name}`]);
   return updated;
 });
+// Project draft-invoice roll-up: preview -> create one combined Shopify draft order -> send.
+async function loadProjectInvoiceInputs(projectId,productIds){
+  const project=(await pool.query(`select pr.*,c.name client_name,c.slug client_slug,c.shopify_customer_id,c.shopify_currency
+    from projects pr join clients c on c.id=pr.client_id where pr.id=$1`,[projectId])).rows[0];
+  if(!project)return {error:'Project not found',code:404};
+  const products=(await pool.query(`select p.*,
+      (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
+      coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
+        'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
+        'setup_cents',pt.setup_cents,'freight_cents',pt.freight_cents,'lead_time_days',pt.lead_time_days) order by pt.min_quantity)
+        from price_tiers pt where pt.product_id=p.id),'[]') price_tiers
+      from products p where p.project_id=$1 and p.id=any($2::uuid[]) order by p.updated_at,p.title`,[project.id,productIds])).rows;
+  const quotes=(await pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.project_id=$1`,[project.id])).rows;
+  const currencies=[...new Set(products.map(p=>latestProductQuote(p.id,quotes)?.currency).filter(Boolean))];
+  return {project,products,quotes,currencies,currency:currencies[0]||project.shopify_currency||'USD'};
+}
+app.post('/v1/admin/projects/:id/invoice-preview',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const productIds=Array.isArray(req.body?.productIds)?req.body.productIds.filter(Boolean):[];
+  if(!productIds.length)return reply.code(400).send({error:'Select at least one product to invoice'});
+  const ctx=await loadProjectInvoiceInputs(req.params.id,productIds);
+  if(ctx.error)return reply.code(ctx.code).send({error:ctx.error});
+  if(!ctx.products.length)return reply.code(400).send({error:'None of those products belong to this project'});
+  if(ctx.currencies.length>1)return reply.code(400).send({error:`Selected products are quoted in different currencies (${ctx.currencies.join(', ')}). Invoice them separately.`});
+  const {summary,skipped,amountCents}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency);
+  return {projectId:ctx.project.id,projectName:ctx.project.name,clientName:ctx.project.client_name,
+    hasCustomer:Boolean(ctx.project.shopify_customer_id),currency:ctx.currency,amountCents,
+    productCount:summary.length,lineItems:summary,skipped,
+    estimatedCount:summary.filter(l=>l.estimated).length,noVariantCount:summary.filter(l=>!l.hasVariant).length};
+});
+app.post('/v1/admin/projects/:id/draft-invoice',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const productIds=Array.isArray(req.body?.productIds)?req.body.productIds.filter(Boolean):[];
+  if(!productIds.length)return reply.code(400).send({error:'Select at least one product to invoice'});
+  const ctx=await loadProjectInvoiceInputs(req.params.id,productIds);
+  if(ctx.error)return reply.code(ctx.code).send({error:ctx.error});
+  if(!ctx.products.length)return reply.code(400).send({error:'None of those products belong to this project'});
+  if(ctx.project.archived_at||['archive','archived'].includes(ctx.project.status))return reply.code(409).send({error:'Restore this project before invoicing it'});
+  if(ctx.currencies.length>1)return reply.code(400).send({error:`Selected products are quoted in different currencies (${ctx.currencies.join(', ')}). Invoice them separately.`});
+  const {lineItems,summary,skipped,amountCents}=draftOrderLinesForProducts(ctx.products,ctx.quotes,ctx.currency);
+  if(!lineItems.length)return reply.code(400).send({error:'None of the selected products have units and a wholesale price yet'});
+  const input={lineItems,customerId:ctx.project.shopify_customer_id||undefined,
+    note:req.body?.note||`Future Basics — ${ctx.project.name} combined invoice`,
+    tags:['future-basics-client-hub','fb-project-invoice',`client-${String(ctx.project.client_slug||ctx.project.client_name).toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
+  const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
+  const invoice=(await pool.query(`insert into invoices(client_id,project_id,number,amount_cents,currency,status,external_url,shopify_draft_order_id,shopify_draft_order_status,product_ids)
+    values($1,$2,$3,$4,$5,'draft',$6,$7,$8,$9)
+    on conflict(client_id,number) do update set project_id=excluded.project_id,amount_cents=excluded.amount_cents,currency=excluded.currency,
+      status='draft',external_url=excluded.external_url,shopify_draft_order_id=excluded.shopify_draft_order_id,
+      shopify_draft_order_status=excluded.shopify_draft_order_status,product_ids=excluded.product_ids returning *`,
+    [ctx.project.client_id,ctx.project.id,draft.name,amountCents,ctx.currency,draft.invoiceUrl,draft.id,draft.status,ctx.products.filter(p=>summary.some(s=>s.productId===p.id)).map(p=>p.id)])).rows[0];
+  await pool.query('insert into activities(client_id,actor_id,type,summary) values($1,$2,$3,$4)',[ctx.project.client_id,req.auth.sub,'commerce',`Created combined draft invoice ${draft.name} · ${summary.length} product${summary.length===1?'':'s'}`]);
+  return reply.code(201).send({invoice,draftOrder:{id:draft.id,name:draft.name,status:draft.status,invoiceUrl:draft.invoiceUrl},
+    lineItems:summary,skipped,amountCents,currency:ctx.currency});
+});
+app.post('/v1/admin/project-invoices/:invoiceId/send',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const invoice=(await pool.query('select * from invoices where id=$1',[req.params.invoiceId])).rows[0];
+  if(!invoice||!invoice.shopify_draft_order_id)return reply.code(404).send({error:'Combined draft invoice not found'});
+  const email=(req.body?.to||req.body?.subject||req.body?.message)?{to:req.body?.to||undefined,subject:req.body?.subject||undefined,customMessage:req.body?.message||undefined}:undefined;
+  const result=requireNoUserErrors((await shopifyGraphql(DRAFT_INVOICE_SEND,{id:invoice.shopify_draft_order_id,email})).draftOrderInvoiceSend),draft=result.draftOrder;
+  const updated=(await pool.query(`update invoices set status='due',external_url=coalesce($1,external_url),shopify_draft_order_status=$2,shopify_invoice_sent_at=now() where id=$3 returning *`,
+    [draft.invoiceUrl,draft.status,invoice.id])).rows[0];
+  await pool.query('insert into activities(client_id,actor_id,type,summary) values($1,$2,$3,$4)',[invoice.client_id,req.auth.sub,'commerce',`Sent combined invoice ${draft.name||invoice.number}`]);
+  return updated;
+});
 app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]},async()=>{
   const quotes=(await pool.query('select q.*,p.client_id,p.id product_id from quotes q join products p on p.id=q.product_id where q.shopify_draft_order_id is not null')).rows;
   const synced=[];
@@ -1067,7 +1102,17 @@ app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]}
     await pool.query('update invoices set status=$1,external_url=coalesce($2,external_url) where client_id=$3 and number=$4',[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name]);
     synced.push({quoteId:quote.id,draftOrder:draft.name,status:draft.status,financialStatus:financial,fulfillmentStatus:fulfillment});
   }
-  return {count:synced.length,quotes:synced,syncedAt:new Date().toISOString()};
+  const projectInvoices=(await pool.query('select * from invoices where shopify_draft_order_id is not null and quote_id is null')).rows;
+  const syncedInvoices=[];
+  for(const invoice of projectInvoices){
+    const draft=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:invoice.shopify_draft_order_id})).draftOrder;if(!draft)continue;
+    const financial=draft.order?.displayFinancialStatus||null;
+    const invoiceStatus=financial==='PAID'?'paid':draft.status==='INVOICE_SENT'?'due':draft.status==='COMPLETED'?'paid':invoice.status==='due'?'due':'draft';
+    await pool.query(`update invoices set status=$1,external_url=coalesce($2,external_url),shopify_draft_order_status=$3,
+      shopify_order_id=$4,shopify_financial_status=$5 where id=$6`,[invoiceStatus,draft.invoiceUrl,draft.status,draft.order?.id||null,financial,invoice.id]);
+    syncedInvoices.push({invoiceId:invoice.id,draftOrder:draft.name,status:draft.status,financialStatus:financial});
+  }
+  return {count:synced.length+syncedInvoices.length,quotes:synced,projectInvoices:syncedInvoices,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/products/:id/approvals',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,kind='artwork',version='v1',notes,assetVersionId}=req.body||{};
@@ -1143,6 +1188,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
       (select pt.srp_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) srp_cents,
       coalesce((select json_agg(json_build_object('id',pt.id,'product_id',pt.product_id,'min_quantity',pt.min_quantity,
         'max_quantity',pt.max_quantity,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
+        'setup_cents',pt.setup_cents,'freight_cents',pt.freight_cents,
         'lead_time_days',pt.lead_time_days,'notes',pt.notes) order by pt.min_quantity)
         from price_tiers pt where pt.product_id=p.id),'[]') price_tiers,
       coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
