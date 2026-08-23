@@ -57,6 +57,29 @@ async function authenticate(req, reply) {
 }
 async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
 
+function quoteReadiness(product,configuration,quote){
+  const missing=[];
+  if(!quote)missing.push('issued quote');
+  else{
+    if(quote.status!=='issued')missing.push('active issued quote');
+    if(!(Number(quote.quantity)>0))missing.push('quantity');
+    if(quote.wholesale_cents==null)missing.push('wholesale price');
+    if(quote.srp_cents==null)missing.push('SRP');
+  }
+  if(!configuration)missing.push('product configuration');
+  else{
+    if(!['client-review','ready'].includes(configuration.status))missing.push('client-ready configuration');
+    if(!(Number(configuration.moq)>0))missing.push('MOQ');
+    if(!(Number(configuration.lead_time_days)>0))missing.push('lead time');
+    if(!String(configuration.material||'').trim())missing.push('material');
+    if(!String(configuration.decoration_method||'').trim())missing.push('decoration');
+    if(!Array.isArray(configuration.colorways)||!configuration.colorways.length)missing.push('colorways');
+    const sizedProduct=/(shirt|tee|jacket|hoodie|sweatshirt|pant|short|hat|cap|apparel|wear)/i.test(`${product.title||''} ${product.product_type||''}`);
+    if(sizedProduct&&(!Array.isArray(configuration.sizes)||!configuration.sizes.length))missing.push('size run');
+  }
+  return {ready:missing.length===0,missing};
+}
+
 async function sendCode(email, code) {
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
@@ -721,7 +744,8 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
   const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments,configuration,priceTiers]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
-    pool.query(`select id,product_id,version,currency,quantity,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
+    pool.query(`select id,product_id,version,currency,quantity,unit_cost_cents,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
+      decided_by,decided_at,decision_notes,
       shopify_draft_order_name,shopify_draft_order_status,shopify_invoice_url,shopify_invoice_sent_at,shopify_order_id,shopify_financial_status,shopify_fulfillment_status
       from quotes where product_id=$1 order by version desc`,[product.id]),
     pool.query(`select ap.*,av.original_name,av.version asset_version,a.name asset_name,a.kind asset_kind
@@ -746,9 +770,45 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
     pool.query(`select id,min_quantity,max_quantity,wholesale_cents,srp_cents,setup_cents,freight_cents,lead_time_days,notes
       from price_tiers where product_id=$1 order by min_quantity`,[product.id])
   ]);
-  return {product,brief:brief.rows[0]||null,milestones:milestones.rows,quotes:quotes.rows,approvals:approvals.rows,files:files.rows,
+  const latestQuote=quotes.rows[0]||null,quoteDecision={...quoteReadiness(product,configuration.rows[0]||null,latestQuote),quote:latestQuote,state:latestQuote?.status||null};
+  return {product,brief:brief.rows[0]||null,milestones:milestones.rows,quotes:quotes.rows,quoteDecision,approvals:approvals.rows,files:files.rows,
     activity:activity.rows,productionRuns:productionRuns.rows,shipments:shipments.rows,assets:assets.rows,
     assetVersions:assetVersions.rows,comments:comments.rows,configuration:configuration.rows[0]||null,priceTiers:priceTiers.rows};
+});
+
+app.post('/v1/quotes/:id/decision', { preHandler: authenticate }, async (req, reply) => {
+  const decision=String(req.body?.decision||'');
+  if(!['approved','declined'].includes(decision))return reply.code(400).send({error:'decision must be approved or declined'});
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const row=(await client.query(`select q.*,p.title product_title,p.product_type,p.project_id,p.client_id,pr.name project_name,c.name client_name,
+      (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration
+      from quotes q join products p on p.id=q.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
+      where q.id=$1 and p.client_id=$2 for update of q`,[req.params.id,req.auth.clientId])).rows[0];
+    if(!row)throw Object.assign(new Error('Quote not found'),{statusCode:404});
+    const latest=(await client.query('select id from quotes where product_id=$1 order by version desc limit 1',[row.product_id])).rows[0];
+    if(latest?.id!==row.id)throw Object.assign(new Error('A newer quote is available for review'),{statusCode:409});
+    const readiness=quoteReadiness({title:row.product_title,product_type:row.product_type},row.configuration,row);
+    if(!readiness.ready)throw Object.assign(new Error(`Quote is not ready for approval: ${readiness.missing.join(', ')}`),{statusCode:409});
+    const status=decision==='approved'?'accepted':'declined',notes=String(req.body?.notes||'').trim().slice(0,2000)||null;
+    const updated=(await client.query(`update quotes set status=$1,decided_by=$2,decided_at=now(),decision_notes=$3 where id=$4 and status='issued' returning *`,
+      [status,req.auth.sub,notes,row.id])).rows[0];
+    if(!updated)throw Object.assign(new Error('This quote has already been decided'),{statusCode:409});
+    if(decision==='approved'){
+      await client.query(`update products set status='in-development',current_stage='development',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
+      await client.query(`update milestones set status='complete',completed_at=coalesce(completed_at,now()) where product_id=$1 and lower(name) in ('brief','concept')`,[row.product_id]);
+      await client.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='development' and status<>'complete'`,[row.product_id]);
+    }else await client.query(`update products set risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);
+    const action=decision==='approved'?'approved':'declined',next=decision==='approved'?' The product is ready to move into development.':'';
+    const message=`${row.client_name} ${action} quote v${row.version} for ${row.product_title}.${next}${notes?` Note: ${notes}`:''}`;
+    if(row.project_id)await client.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'client',$4)`,[row.project_id,row.client_id,req.auth.sub,message]);
+    await client.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[row.client_id,row.product_id,req.auth.sub,'quote-decision',message]);
+    await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'quote-decision',$2,'quote',$3)`,[row.client_id,message,row.id]);
+    if(row.project_id)await client.query('update projects set milestone=$1,updated_at=now() where id=$2',[decision==='approved'?'Development':'Quote declined',row.project_id]);
+    await client.query('commit');
+    return {...updated,decision,nextStage:decision==='approved'?'development':null};
+  }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
 
 app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req, reply) => {

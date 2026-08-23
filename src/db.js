@@ -188,6 +188,9 @@ export async function migrate() {
     alter table quotes add column if not exists shopify_financial_status text;
     alter table quotes add column if not exists shopify_fulfillment_status text;
     alter table quotes add column if not exists shopify_synced_at timestamptz;
+    alter table quotes add column if not exists decided_by uuid references users(id);
+    alter table quotes add column if not exists decided_at timestamptz;
+    alter table quotes add column if not exists decision_notes text;
     create table if not exists approvals (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,

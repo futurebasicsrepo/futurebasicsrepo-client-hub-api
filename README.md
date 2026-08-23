@@ -33,6 +33,8 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Re
 - `GET /v1/session` — current user and tenant, Bearer token
 - `GET /v1/dashboard` — Bearer token
 - `POST /v1/projects/:id/messages` — add a client message to a project thread, Bearer token
+- `GET /v1/products/:id` — client product details, issued quote, and quote-decision readiness, Bearer token
+- `POST /v1/quotes/:id/decision` — approve or decline a complete issued quote and notify the work console, Bearer token
 - `POST /v1/requests` — Bearer token
 - `POST /v1/requests/:id/files` — multipart field `file`, Bearer token
 
