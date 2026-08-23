@@ -10,7 +10,7 @@ import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
-const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
+const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 mkdirSync(uploadDir, { recursive: true });
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
@@ -26,7 +26,7 @@ const googleJwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2
 
 await app.register(cors, { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin) || (origin==='null' && process.env.DEV_BYPASS_AUTH==='true')), credentials: true });
 await app.register(multipart, {
-  limits: { fileSize: Number(process.env.MAX_UPLOAD_BYTES || 25_000_000), files: 1 },
+  limits: { fileSize: Number(process.env.MAX_UPLOAD_BYTES || 25_000_000), files: 5, fields: 40 },
   attachFieldsToBody: false
 });
 app.addHook('onSend', async (_req, reply, payload) => {
@@ -42,6 +42,14 @@ app.addHook('onSend', async (_req, reply, payload) => {
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
 const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx','.txt']);
+const intakeWindows = new Map();
+function publicIntakeAllowed(ip){
+  const now=Date.now(),key=String(ip||'unknown'),current=intakeWindows.get(key);
+  if(!current||now-current.startedAt>60*60*1000){intakeWindows.set(key,{startedAt:now,count:1});return true}
+  current.count+=1;return current.count<=5;
+}
+const intakeValue=(fields,name,max=2000)=>String(fields[name]||'').trim().slice(0,max);
+const intakeSlug=value=>String(value||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48)||'client';
 const domainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const normalizeDomains = values => [...new Set((Array.isArray(values) ? values : [])
   .map(value => String(value || '').trim().toLowerCase().replace(/^@/, ''))
@@ -190,6 +198,63 @@ async function storeProjectFile(project,userId,uploaderRole,part,messageId=null)
 app.get('/health', async () => {
   await pool.query('select 1');
   return { ok: true, service: 'client-hub-api' };
+});
+
+app.post('/v1/public/intakes',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const fields={},uploads=[];let intake=null,spam=false;
+  const createIntake=async()=>{
+    if(intake||spam)return intake;
+    spam=Boolean(intakeValue(fields,'companyFax',200));if(spam)return null;
+    const companyName=intakeValue(fields,'companyName',140),contactName=intakeValue(fields,'contactName',140),email=intakeValue(fields,'email',200).toLowerCase();
+    const projectName=intakeValue(fields,'projectName',160)||`${companyName} launch`,projectBrief=intakeValue(fields,'projectBrief',6000);
+    if(companyName.length<2||contactName.length<2||!/^\S+@\S+\.\S+$/.test(email)||projectBrief.length<20)
+      throw Object.assign(new Error('Company, contact, business email, and a project brief of at least 20 characters are required.'),{statusCode:400});
+    const data={companyName,contactName,email,phone:intakeValue(fields,'phone',80),websiteUrl:intakeValue(fields,'websiteUrl',300),projectName,
+      productCategory:intakeValue(fields,'productCategory',160),projectBrief,audience:intakeValue(fields,'audience',1000),targetQuantity:intakeValue(fields,'targetQuantity',120),
+      budgetRange:intakeValue(fields,'budgetRange',120),targetDate:intakeValue(fields,'targetDate',40),channels:intakeValue(fields,'channels',600),
+      services:intakeValue(fields,'services',600),shopifyStatus:intakeValue(fields,'shopifyStatus',300),inspirationLinks:intakeValue(fields,'inspirationLinks',1500),
+      referralSource:intakeValue(fields,'referralSource',300),notes:intakeValue(fields,'notes',3000),submittedAt:new Date().toISOString()};
+    const details=[`Product / category: ${data.productCategory||'Not specified'}`,`Project brief: ${data.projectBrief}`,`Audience: ${data.audience||'Not specified'}`,
+      `Target quantity: ${data.targetQuantity||'Not specified'}`,`Budget: ${data.budgetRange||'Not specified'}`,`Target launch: ${data.targetDate||'Not specified'}`,
+      `Channels: ${data.channels||'Not specified'}`,`Help requested: ${data.services||'Not specified'}`,`Shopify: ${data.shopifyStatus||'Not specified'}`,
+      `Inspiration: ${data.inspirationLinks||'Not specified'}`,`Referral: ${data.referralSource||'Not specified'}`,`Additional notes: ${data.notes||'None'}`].join('\n');
+    const db=await pool.connect();
+    try{
+      await db.query('begin');
+      let client=(await db.query(`select * from clients where status='lead' and lower(contact_email)=lower($1) order by created_at desc limit 1`,[email])).rows[0];
+      if(client){
+        client=(await db.query(`update clients set name=$1,contact_name=$2,contact_phone=coalesce(nullif($3,''),contact_phone),website_url=coalesce(nullif($4,''),website_url),
+          notes=$5 where id=$6 returning *`,[companyName,contactName,data.phone,data.websiteUrl,`Latest website intake · ${projectName}`,client.id])).rows[0];
+      }else{
+        let slug=intakeSlug(companyName),candidate=slug;
+        if((await db.query('select 1 from clients where slug=$1',[candidate])).rowCount)candidate=`${slug.slice(0,43)}-${randomBytes(2).toString('hex')}`;
+        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,contact_phone,website_url,notes)
+          values($1,$2,'lead',$3,$4,$5,$6,$7) returning *`,[candidate,companyName,contactName,email,data.phone||null,data.websiteUrl||null,`Website intake · ${projectName}`])).rows[0];
+      }
+      const project=(await db.query(`insert into projects(client_id,name,status,milestone,target_date) values($1,$2,'intake','Brief',$3)
+        on conflict(client_id,name) do update set status='intake',milestone='Brief',target_date=coalesce(excluded.target_date,projects.target_date),updated_at=now() returning *`,
+        [client.id,projectName,data.targetDate||null])).rows[0];
+      const request=(await db.query(`insert into requests(client_id,project_id,type,title,details,status,due_date,intake_data)
+        values($1,$2,'project-intake',$3,$4,'submitted',$5,$6) returning *`,[client.id,project.id,`New project intake — ${projectName}`,details,data.targetDate||null,JSON.stringify(data)])).rows[0];
+      const message=(await db.query(`insert into project_messages(project_id,client_id,author_role,body) values($1,$2,'client',$3) returning *`,
+        [project.id,client.id,`${contactName} submitted a new project brief. ${projectBrief}`.slice(0,5000)])).rows[0];
+      await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'public-intake',$2,'project',$3)`,
+        [client.id,`New project intake from ${companyName}: ${projectName}`,project.id]);
+      await db.query('commit');intake={client,project,request,message,data};return intake;
+    }catch(error){await db.query('rollback');throw error}finally{db.release()}
+  };
+  for await(const part of req.parts()){
+    if(part.type==='file'){
+      await createIntake();
+      if(spam){for await(const _chunk of part.file){};continue}
+      uploads.push(await storeProjectFile(intake.project,null,'client',part,intake.message.id));
+    }else fields[part.fieldname]=part.value;
+  }
+  await createIntake();
+  if(spam)return reply.code(202).send({ok:true});
+  return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
+    message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
 app.post('/v1/auth/code', async (req, reply) => {
