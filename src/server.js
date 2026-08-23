@@ -683,8 +683,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
       where pm.client_id=$1 order by pm.created_at`,[id]),
     pool.query(`select p.*,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
+      (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
       (select pt.srp_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) srp_cents,
+      coalesce((select json_agg(pt order by pt.min_quantity) from price_tiers pt where pt.product_id=p.id),'[]') price_tiers,
       coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
       from products p left join milestones m on m.product_id=p.id where p.client_id=$1 group by p.id order by p.updated_at desc`, [id]),
     pool.query(`select a.*,p.title product_title,av.version asset_version,ast.name asset_name from approvals a
