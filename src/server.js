@@ -7,6 +7,7 @@ import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'no
 import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
+import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
@@ -18,6 +19,7 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://thefuturebasics.
 const workHubUrl = process.env.WORK_HUB_URL || 'https://work.thefuturebasics.com';
 const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com';
 const startProjectUrl = process.env.START_PROJECT_URL || 'https://thefuturebasics.com/pages/contact';
+const intakeNotificationEmail = process.env.INTAKE_NOTIFICATION_EMAIL || 'kyle@thefuturebasics.com';
 const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${workHubUrl}/v1/auth/google/callback`;
@@ -153,6 +155,49 @@ function invoicePdf(invoice,client,project){
   return Buffer.from(output);
 }
 
+const formatMoney=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value||0)/100);
+async function productImageBuffer(source){
+  try{
+    const url=new URL(source);if(url.protocol!=='https:'||!/(^|\.)(shopify\.com|thefuturebasics\.com)$/.test(url.hostname))return null;
+    const response=await fetch(url,{signal:AbortSignal.timeout(5000)});if(!response.ok)return null;
+    const type=response.headers.get('content-type')||'';if(!/image\/(png|jpe?g)/i.test(type))return null;
+    const data=Buffer.from(await response.arrayBuffer());return data.length<=10_000_000?data:null;
+  }catch{return null}
+}
+function clientProductTerms(product,quotes){
+  const quote=quotes.filter(item=>item.product_id===product.id&&item.status!=='declined').sort((a,b)=>Number(b.version||0)-Number(a.version||0))[0]||null;
+  const tiers=Array.isArray(product.price_tiers)?product.price_tiers:[],tier=tiers[0]||{},configuration=product.configuration||{};
+  const units=Number(quote?.quantity??tier.min_quantity??configuration.moq??0),moq=Number(configuration.moq??tier.min_quantity??0);
+  const unitPrice=Number(quote?.wholesale_cents??tier.wholesale_cents??0),setup=Number(quote?.tooling_cents??tier.setup_cents??0),shipping=Number(quote?.freight_cents??tier.freight_cents??0);
+  return {quote,units,moq,unitPrice,setup,shipping,total:units*unitPrice+setup+shipping};
+}
+async function projectCollectionPdf(client,project,products,quotes){
+  const buffers=[],doc=new PDFDocument({size:'LETTER',margin:42,info:{Title:`${project.name} — product collection`,Author:'Future Basics'}});
+  doc.on('data',chunk=>buffers.push(chunk));const ended=new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject)});
+  const ink='#141416',dim='#727279',line='#d8d8d4',cue='#2edc83',pageWidth=doc.page.width-84,gap=14,columnWidth=(pageWidth-gap)/2,cardHeight=260;
+  const drawHeader=()=>{doc.fillColor(ink).font('Helvetica-Bold').fontSize(20).text('FUTURE BASICS',42,36);doc.font('Helvetica').fontSize(8).fillColor(dim).text('CLIENT PROJECT COLLECTION',42,62,{characterSpacing:1.2});doc.moveTo(42,79).lineTo(doc.page.width-42,79).lineWidth(1).strokeColor(line).stroke()};
+  drawHeader();doc.fillColor(ink).font('Helvetica-Bold').fontSize(28).text(project.name,42,101,{width:pageWidth});doc.font('Helvetica').fontSize(11).fillColor(dim).text(`${client.name} · ${products.length} product${products.length===1?'':'s'} · generated ${new Date().toLocaleDateString('en-US')}`,42,139,{width:pageWidth});
+  let y=175,column=0,projectTotal=0,setupTotal=0,shippingTotal=0;
+  for(const product of products){
+    if(column===0&&y+cardHeight>doc.page.height-52){doc.addPage();drawHeader();y=100}
+    const x=42+column*(columnWidth+gap),terms=clientProductTerms(product,quotes);projectTotal+=terms.total;setupTotal+=terms.setup;shippingTotal+=terms.shipping;
+    doc.roundedRect(x,y,columnWidth,cardHeight,16).lineWidth(1).strokeColor(line).stroke();
+    const image=product.shopify_image_url?await productImageBuffer(product.shopify_image_url):null;
+    if(image){try{doc.image(image,x+1,y+1,{fit:[columnWidth-2,104],align:'center',valign:'center'})}catch{doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb')}}else doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb');
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(12).text(product.title,x+14,y+119,{width:columnWidth-28,height:34,ellipsis:true});
+    doc.font('Helvetica').fontSize(8).fillColor(dim).text(`UNITS  ${terms.units||'TBD'}     MOQ  ${terms.moq||'TBD'}`,x+14,y+158,{width:columnWidth-28});
+    doc.text(`UNIT PRICE  ${terms.unitPrice?formatMoney(terms.unitPrice):'TBD'}`,x+14,y+177,{width:columnWidth-28});
+    doc.text(`SETUP  ${formatMoney(terms.setup)}     SHIPPING  ${formatMoney(terms.shipping)}`,x+14,y+196,{width:columnWidth-28});
+    doc.moveTo(x+14,y+220).lineTo(x+columnWidth-14,y+220).strokeColor(line).stroke();
+    doc.fillColor(ink).font('Helvetica-Bold').fontSize(11).text(`PRODUCT TOTAL  ${terms.units&&terms.unitPrice?formatMoney(terms.total):'TBD'}`,x+14,y+231,{width:columnWidth-28});
+    column=(column+1)%2;if(column===0)y+=cardHeight+gap;
+  }
+  if(column===1)y+=cardHeight+gap;if(y+104>doc.page.height-42){doc.addPage();drawHeader();y=104}
+  doc.roundedRect(42,y,pageWidth,96,16).fill(ink);doc.fillColor('#ffffff').font('Helvetica').fontSize(9).text('PROJECT TOTAL',60,y+18,{characterSpacing:1.1});doc.font('Helvetica-Bold').fontSize(26).text(formatMoney(projectTotal),60,y+38);
+  doc.font('Helvetica').fontSize(9).fillColor('#b7b7ba').text(`Product + units, including ${formatMoney(setupTotal)} setup and ${formatMoney(shippingTotal)} shipping`,260,y+43,{width:pageWidth-278,align:'right'});
+  doc.fillColor(cue).circle(doc.page.width-61,y+20,4).fill();doc.end();return ended;
+}
+
 async function sendCode(email, code) {
   if (process.env.RESEND_API_KEY) {
     const response = await fetch('https://api.resend.com/emails', {
@@ -168,6 +213,18 @@ async function sendCode(email, code) {
   } else {
     app.log.warn({ email, code }, 'RESEND_API_KEY missing; login code logged for setup testing');
   }
+}
+
+const emailEscape=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+async function sendIntakeNotification(intake,uploads){
+  if(!process.env.RESEND_API_KEY){app.log.warn({projectId:intake.project.id,to:intakeNotificationEmail},'RESEND_API_KEY missing; project intake email not sent');return false}
+  const data=intake.data,files=uploads.map(file=>file.original_name).filter(Boolean),rows=[['Company',data.companyName],['Contact',`${data.contactName} · ${data.email}${data.phone?' · '+data.phone:''}`],['Project',data.projectName],['Category',data.productCategory],['Quantity',data.targetQuantity],['Budget',data.budgetRange],['Target',data.targetDate],['Channels',data.channels],['Help requested',data.services],['Shopify',data.shopifyStatus]].filter(([,value])=>value);
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
+    from:process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>',to:[intakeNotificationEmail],reply_to:data.email,
+    subject:`New project brief — ${data.companyName} / ${data.projectName}`,
+    html:`<div style="font-family:Arial,sans-serif;color:#141416;max-width:720px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Future Basics · New project intake</p><h1>${emailEscape(data.projectName)}</h1>${rows.map(([label,value])=>`<p><strong>${emailEscape(label)}</strong><br>${emailEscape(value)}</p>`).join('')}<p><strong>Brief</strong><br>${emailEscape(data.projectBrief).replace(/\n/g,'<br>')}</p>${data.inspirationLinks?`<p><strong>Inspiration</strong><br>${emailEscape(data.inspirationLinks).replace(/\n/g,'<br>')}</p>`:''}${files.length?`<p><strong>Uploads</strong><br>${files.map(emailEscape).join('<br>')}</p>`:''}<p><a href="${workHubUrl}/clients/${intake.client.id}">Open the client room in Work</a></p></div>`
+  })});
+  if(!response.ok)throw new Error(`Project intake email delivery failed: ${response.status}`);return true;
 }
 
 async function storeAssetVersion(asset,userId,part,notes){
@@ -253,7 +310,10 @@ app.post('/v1/public/intakes',async(req,reply)=>{
   }
   await createIntake();
   if(spam)return reply.code(202).send({ok:true});
+  let notificationEmailSent=false;
+  try{notificationEmailSent=await sendIntakeNotification(intake,uploads)}catch(error){app.log.error({error,projectId:intake.project.id,to:intakeNotificationEmail},'Project intake was saved but notification email failed')}
   return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
+    notificationEmail:intakeNotificationEmail,notificationEmailSent,
     message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
@@ -707,6 +767,14 @@ app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(r
     target_date=coalesce($4,target_date),updated_at=now() where id=$5 returning *`,[name||null,status||null,milestone||null,targetDate||null,req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Project not found'});return row;
 });
+app.get('/v1/admin/projects/:id/share',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const project=(await pool.query(`select pr.id,pr.name,pr.status,pr.archived_at,c.id client_id,c.name client_name
+    from projects pr join clients c on c.id=pr.client_id where pr.id=$1`,[req.params.id])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  if(project.archived_at||['archive','archived'].includes(project.status))return reply.code(409).send({error:'Restore this project before sharing it'});
+  const filename=`${intakeSlug(project.client_name)}-${intakeSlug(project.name)}-collection.pdf`;
+  return {projectId:project.id,projectName:project.name,loginUrl:`${clientHubUrl}/projects/${project.id}`,pdfUrl:`/v1/projects/${project.id}/share.pdf`,filename};
+});
 app.post('/v1/admin/projects/:id/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query(`update projects set archived_at=now(),archive_previous_status=case when status not in ('archive','archived') then status else coalesce(archive_previous_status,'active') end,status='archived',updated_at=now()
     where id=$1 returning *`,[req.params.id])).rows[0];
@@ -970,6 +1038,26 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
   const safeNumber=String(row.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'-');
   return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`)
     .send(invoicePdf(row,{name:row.client_name},row.project_name?{name:row.project_name}:null));
+});
+
+app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=>{
+  const project=(await pool.query(`select pr.*,c.name client_name,c.status client_status,c.archived_at client_archived_at
+    from projects pr join clients c on c.id=pr.client_id where pr.id=$1`,[req.params.id])).rows[0];
+  if(!project||(req.auth.role!=='admin'&&project.client_id!==req.auth.clientId))return reply.code(404).send({error:'Project not found'});
+  if(req.auth.role!=='admin'&&(project.archived_at||project.client_archived_at||['archive','archived'].includes(project.status)||['archive','archived'].includes(project.client_status)))return reply.code(404).send({error:'Project not found'});
+  const [products,quotes]=await Promise.all([
+    pool.query(`select p.*,
+      (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
+      coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
+        'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,'setup_cents',pt.setup_cents,
+        'freight_cents',pt.freight_cents,'lead_time_days',pt.lead_time_days) order by pt.min_quantity)
+        from price_tiers pt where pt.product_id=p.id),'[]') price_tiers
+      from products p where p.project_id=$1 order by p.created_at,p.title`,[project.id]),
+    pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.project_id=$1 order by q.version desc`,[project.id])
+  ]);
+  const filename=`${intakeSlug(project.client_name)}-${intakeSlug(project.name)}-collection.pdf`;
+  const pdf=await projectCollectionPdf({id:project.client_id,name:project.client_name},project,products.rows,quotes.rows);
+  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${filename}"`).send(pdf);
 });
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {

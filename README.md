@@ -19,7 +19,7 @@ Production URLs:
 - `START_PROJECT_URL=https://thefuturebasics.com/pages/contact`
 - `ALLOWED_ORIGINS=https://thefuturebasics.com,https://work.thefuturebasics.com,https://hub.thefuturebasics.com`
 
-For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Resend, codes are written to deploy logs for setup testing.
+For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Set `INTAKE_NOTIFICATION_EMAIL` to the team inbox that should receive every new public project brief (defaults to `kyle@thefuturebasics.com`). Without Resend, codes are written to deploy logs for setup testing and intake submissions are still saved, but no notification email is sent.
 
 For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web application with the authorized redirect URI `https://work.thefuturebasics.com/v1/auth/google/callback`, then set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` is optional when using the production URL. The server verifies Google's signed identity token, verified-email status, and the `thefuturebasics.com` hosted domain before issuing an admin session.
 
@@ -38,7 +38,9 @@ For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web a
 - `GET /v1/dashboard` — Bearer token
 - `POST /v1/admin/clients/:id/archive` / `restore` — reversible staff client-room archive controls
 - `POST /v1/admin/projects/:id/archive` / `restore` — reversible project archive controls
+- `GET /v1/admin/projects/:id/share` — secure client-room link and PDF export metadata
 - `POST /v1/projects/:id/messages` — add a client message to a project thread, Bearer token
+- `GET /v1/projects/:id/share.pdf` — authenticated client-ready product collection with units, setup, shipping, and totals
 - `GET /v1/products/:id` — client product details, issued quote, and quote-decision readiness, Bearer token
 - `POST /v1/quotes/:id/decision` — approve or decline a complete issued quote and notify the work console, Bearer token
 - `POST /v1/requests` — Bearer token
