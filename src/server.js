@@ -1052,7 +1052,7 @@ app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=
         'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,'setup_cents',pt.setup_cents,
         'freight_cents',pt.freight_cents,'lead_time_days',pt.lead_time_days) order by pt.min_quantity)
         from price_tiers pt where pt.product_id=p.id),'[]') price_tiers
-      from products p where p.project_id=$1 order by p.created_at,p.title`,[project.id]),
+      from products p where p.project_id=$1 order by p.updated_at,p.title`,[project.id]),
     pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.project_id=$1 order by q.version desc`,[project.id])
   ]);
   const filename=`${intakeSlug(project.client_name)}-${intakeSlug(project.name)}-collection.pdf`;
