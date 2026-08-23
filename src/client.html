@@ -60,6 +60,7 @@
   <dialog id="requestDialog"><div class="modal-head"><h2>Start a request</h2><button onclick="requestDialog.close()" aria-label="Close">×</button></div><form id="requestForm" class="modal-body request-form"><label><span>Product</span><select id="requestProduct" required></select></label><label><span>Request type</span><select id="requestType"><option value="new-work">New work</option><option value="artwork">Artwork / graphics</option><option value="tech-pack">Tech pack</option><option value="change">Product change</option><option value="question">Question</option></select></label><label class="full"><span>Title</span><input id="requestTitle" required></label><label class="full"><span>Details</span><textarea id="requestDetails" required></textarea></label><button class="full">Submit request</button><p id="requestMessage" class="message full"></p></form></dialog>
 
   <script>
+    if(location.protocol==='file:')location.replace('https://hub.thefuturebasics.com/'+location.search+location.hash);
     const API=location.protocol==='file:'?'https://futurebasicsrepo-client-hub-api-production-9aec.up.railway.app':location.origin;
     const KEY='fb.client.token';
     let token=localStorage.getItem(KEY)||'',dashboard=null,config={startProjectUrl:'https://thefuturebasics.com/pages/contact',workHubUrl:'https://work.thefuturebasics.com'};
