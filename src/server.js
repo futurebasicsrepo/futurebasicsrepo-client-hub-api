@@ -24,6 +24,15 @@ await app.register(multipart, {
   limits: { fileSize: Number(process.env.MAX_UPLOAD_BYTES || 25_000_000), files: 1 },
   attachFieldsToBody: false
 });
+app.addHook('onSend', async (_req, reply, payload) => {
+  reply
+    .header('strict-transport-security', 'max-age=31536000')
+    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    .header('x-content-type-options', 'nosniff')
+    .header('referrer-policy', 'strict-origin-when-cross-origin')
+    .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  return payload;
+});
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
