@@ -27,6 +27,8 @@ export async function migrate() {
     alter table clients add column if not exists shopify_currency text not null default 'USD';
     alter table clients add column if not exists shopify_default_address jsonb;
     alter table clients add column if not exists shopify_synced_at timestamptz;
+    alter table clients add column if not exists archived_at timestamptz;
+    alter table clients add column if not exists archive_previous_status text;
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
@@ -96,7 +98,11 @@ export async function migrate() {
       target_date date,
       updated_at timestamptz not null default now()
     );
+    alter table projects add column if not exists archived_at timestamptz;
+    alter table projects add column if not exists archive_previous_status text;
     create unique index if not exists projects_client_name_idx on projects(client_id,name);
+    create index if not exists clients_archived_at_idx on clients(archived_at);
+    create index if not exists projects_client_archived_idx on projects(client_id,archived_at,updated_at desc);
     alter table requests add column if not exists project_id uuid references projects(id) on delete set null;
     alter table requests add column if not exists intake_data jsonb not null default '{}';
     create index if not exists requests_project_idx on requests(project_id,created_at desc);
