@@ -496,6 +496,61 @@ app.get('/v1/admin/resend/status',{preHandler:[authenticate,adminOnly]},async()=
   fromEmail:process.env.AUTH_FROM_EMAIL||null,
   message:process.env.RESEND_API_KEY&&process.env.AUTH_FROM_EMAIL?'Ready for a live sign-in test':'Add RESEND_API_KEY and AUTH_FROM_EMAIL'
 }));
+
+function normalizeShopifyProductReference(value){
+  const raw=String(value||'').trim();
+  if(!raw)return {};
+  const gid=raw.match(/^gid:\/\/shopify\/Product\/(\d+)$/i);
+  if(gid)return {id:`gid://shopify/Product/${gid[1]}`};
+  if(/^\d+$/.test(raw))return {id:`gid://shopify/Product/${raw}`};
+  const adminId=raw.match(/\/products\/(\d+)(?:[/?#]|$)/i);
+  if(adminId)return {id:`gid://shopify/Product/${adminId[1]}`};
+  try{
+    const url=new URL(raw),match=url.pathname.match(/\/products\/([^/?#]+)/i);
+    if(match)return {handle:decodeURIComponent(match[1])};
+  }catch{}
+  return {handle:raw.replace(/^\/+|\/+$/g,'')};
+}
+
+async function resolveShopifyProduct(productId,handle){
+  const primary=normalizeShopifyProductReference(productId),secondary=normalizeShopifyProductReference(handle);
+  const id=primary.id||secondary.id;
+  if(id){
+    const item=(await shopifyGraphql(PRODUCT_IDS_SYNC_QUERY,{ids:[id]})).nodes?.[0];
+    if(!item)throw Object.assign(new Error('Shopify product not found. Check the product URL or ID.'),{statusCode:404});
+    return item;
+  }
+  const candidate=secondary.handle||primary.handle;
+  if(!candidate)throw Object.assign(new Error('Paste a Shopify admin product URL, numeric product ID, GID, or storefront handle.'),{statusCode:400});
+  const normalized=candidate.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  let item=(await shopifyGraphql(PRODUCT_SYNC_QUERY,{query:`handle:${normalized}`})).products?.nodes?.[0];
+  if(!item&&candidate!==normalized)item=(await shopifyGraphql(PRODUCT_SYNC_QUERY,{query:`title:"${candidate.replace(/"/g,'\\\"')}"`})).products?.nodes?.[0];
+  if(!item)throw Object.assign(new Error('Shopify product not found. Paste its admin product URL for an exact match.'),{statusCode:404});
+  return item;
+}
+
+async function hydrateLinkedShopifyProduct(localProductId,item){
+  const variants=item.variants?.nodes||[],primary=variants[0]||null,image=item.featuredMedia?.preview?.image||null;
+  return (await pool.query(`update products set shopify_product_id=$1,shopify_variant_id=$2,shopify_handle=$3,title=$4,
+    shopify_status=$5,shopify_inventory_total=$6,shopify_variants=$7,shopify_synced_at=now(),shopify_image_url=$8,
+    shopify_image_alt=$9,shopify_updated_at=$10,description_html=$11,vendor=$12,product_type=$13,
+    shopify_publish_error=null,updated_at=now() where id=$14 returning *`,[
+    item.id,primary?.id||null,item.handle,item.title,item.status,item.totalInventory,JSON.stringify(variants),
+    image?.url||null,image?.altText||item.title,item.updatedAt,item.descriptionHtml||null,item.vendor||null,item.productType||null,
+    localProductId
+  ])).rows[0];
+}
+
+async function repairPendingShopifyLinks(){
+  if(!shopifyConfigured())return;
+  const rows=(await pool.query(`select id,shopify_product_id,shopify_handle from products
+    where shopify_product_id is not null and (shopify_synced_at is null or shopify_product_id not like 'gid://shopify/Product/%')`)).rows;
+  for(const row of rows){
+    try{await hydrateLinkedShopifyProduct(row.id,await resolveShopifyProduct(row.shopify_product_id,row.shopify_handle))}
+    catch(error){app.log.warn({productId:row.id,error:error.message},'Unable to repair Shopify product link')}
+  }
+}
+
 app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.body?.clientId])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
@@ -563,12 +618,14 @@ app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},
 });
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
-  const p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
+  let p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
     owner=coalesce($3,owner),target_date=coalesce($4,target_date),shopify_product_id=coalesce($5,shopify_product_id),
     shopify_handle=coalesce($6,shopify_handle),description_html=coalesce($7,description_html),vendor=coalesce($8,vendor),
     product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),updated_at=now() where id=$11 returning *`,
     [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null,req.params.id])).rows[0];
-  if(!p)return reply.code(404).send({error:'Product not found'});return p;
+  if(!p)return reply.code(404).send({error:'Product not found'});
+  if(shopifyProductId||shopifyHandle)p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||p.shopify_product_id,shopifyHandle||p.shopify_handle));
+  return p;
 });
 
 const moneyMetafield = cents => JSON.stringify({amount:(Number(cents)/100).toFixed(2),currency_code:'USD'});
@@ -1283,4 +1340,5 @@ app.setErrorHandler((error, req, reply) => {
 });
 
 await migrate();
+await repairPendingShopifyLinks();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });
