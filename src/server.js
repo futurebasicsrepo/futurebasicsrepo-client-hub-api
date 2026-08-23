@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import { SignJWT, jwtVerify } from 'jose';
+import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
@@ -18,6 +18,11 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://thefuturebasics.
 const workHubUrl = process.env.WORK_HUB_URL || 'https://work.thefuturebasics.com';
 const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com';
 const startProjectUrl = process.env.START_PROJECT_URL || 'https://thefuturebasics.com/pages/contact';
+const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+const googleRedirectUri = process.env.GOOGLE_REDIRECT_URI || `${workHubUrl}/v1/auth/google/callback`;
+const googleSsoEnabled = Boolean(googleClientId && googleClientSecret);
+const googleJwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 await app.register(cors, { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin) || (origin==='null' && process.env.DEV_BYPASS_AUTH==='true')), credentials: true });
 await app.register(multipart, {
@@ -163,6 +168,59 @@ app.post('/v1/auth/verify', async (req, reply) => {
     .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
   return { token, user: { id: user.id, email, role: user.role }, client: { id: client.id, slug: client.slug, name: client.name } };
 });
+app.get('/v1/auth/google/start', async (_req, reply) => {
+  if (!googleSsoEnabled) return reply.code(503).send({ error: 'Google Workspace sign-in is not configured yet' });
+  const state = await new SignJWT({ nonce: randomBytes(16).toString('hex') })
+    .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-google-oauth-state')
+    .setAudience(googleClientId).setIssuedAt().setExpirationTime('10m').sign(secret);
+  const params = new URLSearchParams({
+    client_id: googleClientId,
+    redirect_uri: googleRedirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    hd: 'thefuturebasics.com',
+    prompt: 'select_account'
+  });
+  return reply.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+app.get('/v1/auth/google/callback', async (req, reply) => {
+  const fail = message => reply.redirect(`${workHubUrl}/?sso-error=${encodeURIComponent(message)}`);
+  try {
+    if (req.query?.error) return fail('Google sign-in was cancelled');
+    const code = String(req.query?.code || '');
+    const state = String(req.query?.state || '');
+    if (!googleSsoEnabled || !code || !state) return fail('Google sign-in could not be completed');
+    await jwtVerify(state, secret, { issuer: 'future-basics-google-oauth-state', audience: googleClientId });
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: googleClientId, client_secret: googleClientSecret, redirect_uri: googleRedirectUri, grant_type: 'authorization_code' })
+    });
+    const googleTokens = await tokenResponse.json();
+    if (!tokenResponse.ok || !googleTokens.id_token) throw new Error('Google token exchange failed');
+    const { payload } = await jwtVerify(googleTokens.id_token, googleJwks, {
+      issuer: ['https://accounts.google.com', 'accounts.google.com'],
+      audience: googleClientId
+    });
+    const email = String(payload.email || '').trim().toLowerCase();
+    if (payload.email_verified !== true || payload.hd !== 'thefuturebasics.com' || !email.endsWith('@thefuturebasics.com')) {
+      return fail('Use a verified Future Basics Google Workspace account');
+    }
+    const client = (await pool.query("select * from clients where slug='future-basics' and status='active'")).rows[0];
+    if (!client) return fail('Future Basics staff access is not active');
+    const user = (await pool.query(
+      `insert into users(client_id,email,role) values($1,$2,'admin') on conflict(email)
+       do update set client_id=excluded.client_id,role='admin' returning *`, [client.id, email]
+    )).rows[0];
+    const token = await new SignJWT({ sub: user.id, clientId: client.id, client: client.slug, role: 'admin', email })
+      .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
+    return reply.redirect(`${workHubUrl}/#google-session=${encodeURIComponent(token)}`);
+  } catch (error) {
+    app.log.warn({ error }, 'Google Workspace sign-in failed');
+    return fail('Google sign-in could not be completed');
+  }
+});
 app.post('/v1/dev/session',async(req,reply)=>{
   if(process.env.DEV_BYPASS_AUTH!=='true')return reply.code(404).send({error:'Not found'});
   const admin=req.body?.mode==='admin',slug=admin?'future-basics':'ouster';
@@ -195,7 +253,7 @@ app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/hub', sendClientHub);
 app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
-app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl }));
+app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name from clients where id=$1', [req.auth.clientId])).rows[0];
   if (!client) return reply.code(404).send({ error: 'Client workspace not found' });

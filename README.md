@@ -21,6 +21,8 @@ Production URLs:
 
 For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Resend, codes are written to deploy logs for setup testing.
 
+For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web application with the authorized redirect URI `https://work.thefuturebasics.com/v1/auth/google/callback`, then set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` is optional when using the production URL. The server verifies Google's signed identity token, verified-email status, and the `thefuturebasics.com` hosted domain before issuing an admin session.
+
 ## Endpoints
 
 - `GET /health`
@@ -30,6 +32,8 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Re
 - `GET /admin` — staff UI fallback
 - `POST /v1/auth/code` — `{ "email": "name@ouster.com" }`
 - `POST /v1/auth/verify` — `{ "email": "...", "code": "123456" }`
+- `GET /v1/auth/google/start` — begin Future Basics Google Workspace SSO
+- `GET /v1/auth/google/callback` — Google OAuth callback
 - `GET /v1/session` — current user and tenant, Bearer token
 - `GET /v1/dashboard` — Bearer token
 - `POST /v1/projects/:id/messages` — add a client message to a project thread, Bearer token
