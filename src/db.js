@@ -357,7 +357,22 @@ export async function migrate() {
       body text not null,
       created_at timestamptz not null default now()
     );
+    alter table project_messages add column if not exists reply_to_id uuid references project_messages(id) on delete set null;
     create index if not exists project_messages_thread_idx on project_messages(project_id,created_at);
+    create table if not exists project_files (
+      id uuid primary key default gen_random_uuid(),
+      project_id uuid not null references projects(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      message_id uuid references project_messages(id) on delete set null,
+      uploader_id uuid references users(id) on delete set null,
+      uploader_role text not null check (uploader_role in ('admin','client')),
+      original_name text not null,
+      storage_name text unique not null,
+      mime_type text,
+      size_bytes bigint not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists project_files_project_idx on project_files(project_id,created_at desc);
     create table if not exists notifications (
       id bigserial primary key,
       client_id uuid not null references clients(id) on delete cascade,

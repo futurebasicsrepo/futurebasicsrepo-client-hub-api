@@ -41,7 +41,7 @@ app.addHook('onSend', async (_req, reply, payload) => {
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
-const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip']);
+const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx','.txt']);
 const domainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const normalizeDomains = values => [...new Set((Array.isArray(values) ? values : [])
   .map(value => String(value || '').trim().toLowerCase().replace(/^@/, ''))
@@ -124,6 +124,16 @@ async function storeAssetVersion(asset,userId,part,notes){
       values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
     await client.query('commit');return row;
   }catch(error){await client.query('rollback').catch(()=>{});await unlink(path).catch(()=>{});throw error}finally{client.release()}
+}
+
+async function storeProjectFile(project,userId,uploaderRole,part,messageId=null){
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, Word, Excel, PowerPoint, CSV, TXT'),{statusCode:415});
+  const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  try{
+    await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
+    return (await pool.query(`insert into project_files(project_id,client_id,message_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[project.id,project.client_id,messageId,userId,uploaderRole,originalName,storageName,part.mimetype,part.file.bytesRead])).rows[0];
+  }catch(error){await unlink(path).catch(()=>{});throw error}
 }
 
 app.get('/health', async () => {
@@ -490,13 +500,21 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
-  const [projects,projectMessages,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
+  const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
       (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
       from projects pr where pr.client_id=$1 order by pr.updated_at desc,pr.name`,[client.id]),
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
       where pm.client_id=$1 order by pm.created_at`,[client.id]),
+    pool.query(`select pf.*,coalesce(u.name,u.email,case when pf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
+      from project_files pf left join users u on u.id=pf.uploader_id join clients c on c.id=pf.client_id
+      where pf.client_id=$1 order by pf.created_at desc`,[client.id]),
+    pool.query(`select av.id,av.original_name,av.mime_type,av.size_bytes,av.created_at,a.name asset_name,a.kind,p.project_id,p.title product_title,
+      coalesce(u.name,u.email,c.name) uploader_name
+      from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id
+      left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
+      where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
@@ -518,7 +536,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
       join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
-  ]);return {client,projects:projects.rows,projectMessages:projectMessages.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  ]);return {client,projects:projects.rows,projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
@@ -544,14 +562,26 @@ app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(r
   if(!row)return reply.code(404).send({error:'Project not found'});return row;
 });
 app.post('/v1/admin/projects/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const body=String(req.body?.body||'').trim();if(!body)return reply.code(400).send({error:'Message required'});
+  const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query('select id,client_id,name from projects where id=$1',[req.params.id])).rows[0];
   if(!project)return reply.code(404).send({error:'Project not found'});
-  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body)
-    values($1,$2,$3,'admin',$4) returning *`,[project.id,project.client_id,req.auth.sub,body.slice(0,5000)])).rows[0];
+  if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
+    values($1,$2,$3,'admin',$4,$5) returning *`,[project.id,project.client_id,req.auth.sub,body.slice(0,5000),replyToId])).rows[0];
   await pool.query(`update projects set updated_at=now() where id=$1`,[project.id]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-message',$2,'project',$3)`,[project.client_id,`New message in ${project.name}`,project.id]);
   return reply.code(201).send(message);
+});
+app.post('/v1/admin/projects/:id/uploads',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const project=(await pool.query('select id,client_id,name from projects where id=$1',[req.params.id])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
+  const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to upload'});
+  const body=String(req.query?.body||'').trim(),replyToId=req.query?.replyToId||null;
+  if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
+    values($1,$2,$3,'admin',$4,$5) returning *`,[project.id,project.client_id,req.auth.sub,(body||`Uploaded ${cleanName(part.filename)}`).slice(0,5000),replyToId])).rows[0];
+  const file=await storeProjectFile(project,req.auth.sub,'admin',part,message.id);await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-file',$2,'project',$3)`,[project.client_id,`New file in ${project.name}: ${file.original_name}`,project.id]);
+  return reply.code(201).send({message,file});
 });
 app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {status,dueDate,responsibleParty,notes,required,clientVisible}=req.body||{};return (await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
@@ -769,7 +799,7 @@ app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
   const id = req.auth.clientId;
-  const [requests, invoices, projects, projectMessages, productComments, products, approvals, activities] = await Promise.all([
+  const [requests, invoices, projects, projectMessages, projectFiles, productComments, products, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count
@@ -777,6 +807,9 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
       where pm.client_id=$1 order by pm.created_at`,[id]),
+    pool.query(`select pf.*,coalesce(u.name,u.email,case when pf.uploader_role='admin' then 'Future Basics' else c.name end) uploader_name
+      from project_files pf left join users u on u.id=pf.uploader_id join clients c on c.id=pf.client_id
+      where pf.client_id=$1 order by pf.created_at desc`,[id]),
     pool.query(`select co.*,p.project_id,p.title product_title,
       coalesce(u.name,u.email,case when co.author_role='admin' then 'Future Basics' else c.name end) author_name
       from comments co join products p on p.id=co.product_id left join users u on u.id=co.author_id join clients c on c.id=co.client_id
@@ -797,7 +830,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
       where p.client_id=$1 and a.status='pending' order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, projectMessages: projectMessages.rows,
+  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows,
     approvals: approvals.rows, activities: activities.rows,
     actions: [
@@ -807,16 +840,35 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
 });
 
 app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=>{
-  const body=String(req.body?.body||'').trim();if(!body)return reply.code(400).send({error:'Message required'});
+  const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query('select id,client_id,name from projects where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];
   if(!project)return reply.code(404).send({error:'Project not found'});
   const role=req.auth.role==='admin'?'admin':'client';
-  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body)
-    values($1,$2,$3,$4,$5) returning *`,[project.id,project.client_id,req.auth.sub,role,body.slice(0,5000)])).rows[0];
+  if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
+    values($1,$2,$3,$4,$5,$6) returning *`,[project.id,project.client_id,req.auth.sub,role,body.slice(0,5000),replyToId])).rows[0];
   await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
   if(role==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id)
     values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
   return reply.code(201).send(message);
+});
+app.post('/v1/projects/:id/uploads',{preHandler:authenticate},async(req,reply)=>{
+  const project=(await pool.query('select id,client_id,name from projects where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
+  const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to upload'});
+  const body=String(req.query?.body||'').trim(),replyToId=req.query?.replyToId||null;
+  if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
+  const role=req.auth.role==='admin'?'admin':'client';
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
+    values($1,$2,$3,$4,$5,$6) returning *`,[project.id,project.client_id,req.auth.sub,role,(body||`Uploaded ${cleanName(part.filename)}`).slice(0,5000),replyToId])).rows[0];
+  const file=await storeProjectFile(project,req.auth.sub,role,part,message.id);await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
+  if(role==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-project-file',$2,'project',$3)`,[project.client_id,`Client uploaded ${file.original_name} in ${project.name}`,project.id]);
+  return reply.code(201).send({message,file});
+});
+
+app.get('/v1/project-files/:id/download',{preHandler:authenticate},async(req,reply)=>{
+  const row=(await pool.query('select * from project_files where id=$1',[req.params.id])).rows[0];
+  if(!row||(req.auth.role!=='admin'&&row.client_id!==req.auth.clientId))return reply.code(404).send({error:'File not found'});
+  return reply.type(row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`).send(createReadStream(join(uploadDir,row.storage_name)));
 });
 
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
