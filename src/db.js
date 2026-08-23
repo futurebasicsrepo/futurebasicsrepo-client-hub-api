@@ -389,7 +389,14 @@ export async function migrate() {
     alter table invoices add column if not exists project_id uuid references projects(id) on delete set null;
     alter table invoices add column if not exists product_id uuid references products(id) on delete set null;
     alter table invoices add column if not exists quote_id uuid references quotes(id) on delete set null;
+    alter table invoices add column if not exists shopify_draft_order_id text;
+    alter table invoices add column if not exists shopify_draft_order_status text;
+    alter table invoices add column if not exists shopify_invoice_sent_at timestamptz;
+    alter table invoices add column if not exists shopify_order_id text;
+    alter table invoices add column if not exists shopify_financial_status text;
+    alter table invoices add column if not exists product_ids uuid[] not null default '{}';
     create index if not exists invoices_project_idx on invoices(project_id,created_at desc);
+    create index if not exists invoices_draft_order_idx on invoices(shopify_draft_order_id);
     update invoices i set project_id=p.project_id,product_id=p.id,quote_id=q.id
       from quotes q join products p on p.id=q.product_id
       where i.client_id=p.client_id and i.number=q.shopify_draft_order_name
