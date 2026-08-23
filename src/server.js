@@ -382,7 +382,7 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name,status,archived_at from clients where id=$1', [req.auth.clientId])).rows[0];
-  if (!client || (req.auth.role !== 'admin' && (client.archived_at || client.status === 'archived'))) return reply.code(404).send({ error: 'Client workspace not found' });
+  if (!client || (req.auth.role !== 'admin' && (client.archived_at || ['archive','archived'].includes(client.status)))) return reply.code(404).send({ error: 'Client workspace not found' });
   return { user: { id: req.auth.sub, email: req.auth.email, role: req.auth.role, preview: req.auth.preview === true }, client, workHubUrl, clientHubUrl };
 });
 app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -395,9 +395,9 @@ app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,admin
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
   const clients=await pool.query(`select c.*,
     count(distinct p.id) filter(where not exists(select 1 from projects archived_product_project where archived_product_project.id=p.project_id
-      and (archived_product_project.archived_at is not null or archived_product_project.status='archived')))::int product_count,
+      and (archived_product_project.archived_at is not null or archived_product_project.status in ('archive','archived'))))::int product_count,
     count(distinct p.id)::int all_product_count,count(distinct r.id)::int request_count,
-    count(distinct pr.id) filter(where pr.archived_at is null and pr.status<>'archived')::int project_count,
+    count(distinct pr.id) filter(where pr.archived_at is null and pr.status not in ('archive','archived'))::int project_count,
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
     (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
@@ -406,21 +406,21 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name,av.version asset_version,ast.name asset_name
     from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id
     left join asset_versions av on av.id=a.asset_version_id left join assets ast on ast.id=av.asset_id
-    where a.status='pending' and c.archived_at is null and c.status<>'archived'
+    where a.status='pending' and c.archived_at is null and c.status not in ('archive','archived')
     and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-      and (archived_project.archived_at is not null or archived_project.status='archived'))
+      and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))
     order by a.requested_at`);
   const productionAlerts=await pool.query(`select pr.id,pr.po_number,pr.status,pr.eta_date,p.title product_title,c.name client_name
     from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
     where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date<current_date and pr.status not in ('complete','delivered')))
-    and c.archived_at is null and c.status<>'archived'
+    and c.archived_at is null and c.status not in ('archive','archived')
     and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-      and (archived_project.archived_at is not null or archived_project.status='archived'))
+      and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))
     order by pr.eta_date nulls last`);
   const collaboration=await pool.query(`select n.*,c.name client_name from notifications n join clients c on c.id=n.client_id
-    where n.read_at is null and c.archived_at is null and c.status<>'archived' order by n.created_at desc limit 30`);
-  const activeClients=clients.rows.filter(client=>!client.archived_at&&client.status!=='archived');
-  const archivedClients=clients.rows.filter(client=>client.archived_at||client.status==='archived');
+    where n.read_at is null and c.archived_at is null and c.status not in ('archive','archived') order by n.created_at desc limit 30`);
+  const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
+  const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
 });
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
@@ -490,10 +490,10 @@ app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,rep
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,projectId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
-  const client=(await pool.query(`select id from clients where id=$1 and archived_at is null and status<>'archived'`,[req.params.id])).rows[0];
+  const client=(await pool.query(`select id from clients where id=$1 and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Active client room not found'});
   const project=projectId?(await pool.query(`select id from projects where id=$1 and client_id=$2
-    and archived_at is null and status<>'archived'`,[projectId,req.params.id])).rows[0]:null;
+    and archived_at is null and status not in ('archive','archived')`,[projectId,req.params.id])).rows[0]:null;
   if(projectId&&!project)return reply.code(400).send({error:'Select a valid project'});
   const p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[req.params.id,project?.id||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
@@ -682,7 +682,7 @@ app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(re
     [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id])).rows[0];
 });
 app.post('/v1/admin/clients/:id/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const row=(await pool.query(`update clients set archived_at=now(),archive_previous_status=case when status<>'archived' then status else coalesce(archive_previous_status,'active') end,status='archived'
+  const row=(await pool.query(`update clients set archived_at=now(),archive_previous_status=case when status not in ('archive','archived') then status else coalesce(archive_previous_status,'active') end,status='archived'
     where id=$1 and slug<>'future-basics' returning *`,[req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Client not found'});
   return row;
@@ -697,7 +697,7 @@ app.post('/v1/admin/clients/:id/projects',{preHandler:[authenticate,adminOnly]},
   const {name,status='active',milestone,targetDate}=req.body||{};
   if(!name?.trim())return reply.code(400).send({error:'Project name required'});
   const row=(await pool.query(`insert into projects(client_id,name,status,milestone,target_date)
-    select id,$1,$2,$3,$4 from clients where id=$5 and archived_at is null and status<>'archived' returning *`,[name.trim(),status,milestone||null,targetDate||null,req.params.id])).rows[0];
+    select id,$1,$2,$3,$4 from clients where id=$5 and archived_at is null and status not in ('archive','archived') returning *`,[name.trim(),status,milestone||null,targetDate||null,req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Active client room not found'});
   return reply.code(201).send(row);
 });
@@ -708,7 +708,7 @@ app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(r
   if(!row)return reply.code(404).send({error:'Project not found'});return row;
 });
 app.post('/v1/admin/projects/:id/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const row=(await pool.query(`update projects set archived_at=now(),archive_previous_status=case when status<>'archived' then status else coalesce(archive_previous_status,'active') end,status='archived',updated_at=now()
+  const row=(await pool.query(`update projects set archived_at=now(),archive_previous_status=case when status not in ('archive','archived') then status else coalesce(archive_previous_status,'active') end,status='archived',updated_at=now()
     where id=$1 returning *`,[req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Project not found'});
   return row;
@@ -722,7 +722,7 @@ app.post('/v1/admin/projects/:id/restore',{preHandler:[authenticate,adminOnly]},
 app.post('/v1/admin/projects/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query(`select id,client_id,name from projects where id=$1
-    and archived_at is null and status<>'archived'`,[req.params.id])).rows[0];
+    and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rows[0];
   if(!project)return reply.code(404).send({error:'Project not found'});
   if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
   const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body,reply_to_id)
@@ -733,7 +733,7 @@ app.post('/v1/admin/projects/:id/messages',{preHandler:[authenticate,adminOnly]}
 });
 app.post('/v1/admin/projects/:id/uploads',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const project=(await pool.query(`select id,client_id,name from projects where id=$1
-    and archived_at is null and status<>'archived'`,[req.params.id])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
+    and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
   const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to upload'});
   const body=String(req.query?.body||'').trim(),replyToId=req.query?.replyToId||null;
   if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
@@ -975,12 +975,12 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
 app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   const id = req.auth.clientId;
   const workspace=(await pool.query('select status,archived_at from clients where id=$1',[id])).rows[0];
-  if(!workspace||workspace.archived_at||workspace.status==='archived')return reply.code(404).send({error:'Client workspace not found'});
+  if(!workspace||workspace.archived_at||['archive','archived'].includes(workspace.status))return reply.code(404).send({error:'Client workspace not found'});
   const [requests, invoices, projects, projectMessages, projectFiles, productComments, products, quotes, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count
-      from projects pr where client_id=$1 and pr.archived_at is null and pr.status<>'archived' order by updated_at desc`, [id]),
+      from projects pr where client_id=$1 and pr.archived_at is null and pr.status not in ('archive','archived') order by updated_at desc`, [id]),
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
       where pm.client_id=$1 order by pm.created_at`,[id]),
@@ -1003,14 +1003,14 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
       coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
       from products p left join milestones m on m.product_id=p.id where p.client_id=$1
       and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-        and (archived_project.archived_at is not null or archived_project.status='archived'))
+        and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))
       group by p.id order by p.updated_at desc`, [id]),
     pool.query(`select q.* from quotes q join products p on p.id=q.product_id where p.client_id=$1 order by q.created_at desc`,[id]),
     pool.query(`select a.*,p.title product_title,av.version asset_version,ast.name asset_name from approvals a
       join products p on p.id=a.product_id left join asset_versions av on av.id=a.asset_version_id left join assets ast on ast.id=av.asset_id
       where p.client_id=$1 and a.status='pending'
       and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-        and (archived_project.archived_at is not null or archived_project.status='archived'))
+        and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))
       order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
@@ -1026,7 +1026,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
 app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=>{
   const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query(`select id,client_id,name from projects where id=$1 and client_id=$2
-    and archived_at is null and status<>'archived'`,[req.params.id,req.auth.clientId])).rows[0];
+    and archived_at is null and status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];
   if(!project)return reply.code(404).send({error:'Project not found'});
   const role=req.auth.role==='admin'?'admin':'client';
   if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
@@ -1039,7 +1039,7 @@ app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=
 });
 app.post('/v1/projects/:id/uploads',{preHandler:authenticate},async(req,reply)=>{
   const project=(await pool.query(`select id,client_id,name from projects where id=$1 and client_id=$2
-    and archived_at is null and status<>'archived'`,[req.params.id,req.auth.clientId])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
+    and archived_at is null and status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'});
   const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to upload'});
   const body=String(req.query?.body||'').trim(),replyToId=req.query?.replyToId||null;
   if(replyToId&&!(await pool.query('select 1 from project_messages where id=$1 and project_id=$2',[replyToId,project.id])).rowCount)return reply.code(400).send({error:'Reply target is not in this project'});
@@ -1060,7 +1060,7 @@ app.get('/v1/project-files/:id/download',{preHandler:authenticate},async(req,rep
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
   const product=(await pool.query(`select p.* from products p where p.id=$1 and p.client_id=$2
     and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-      and (archived_project.archived_at is not null or archived_project.status='archived'))`,[req.params.id,req.auth.clientId])).rows[0];
+      and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!product)return reply.code(404).send({error:'Product not found'});
   const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments,configuration,priceTiers]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
