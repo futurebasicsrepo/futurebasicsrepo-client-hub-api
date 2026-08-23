@@ -36,10 +36,12 @@ For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web a
 - `GET /v1/auth/google/callback` — Google OAuth callback
 - `GET /v1/session` — current user and tenant, Bearer token
 - `GET /v1/dashboard` — Bearer token
+- `POST /v1/admin/clients/:id/archive` / `restore` — reversible staff client-room archive controls
+- `POST /v1/admin/projects/:id/archive` / `restore` — reversible project archive controls
 - `POST /v1/projects/:id/messages` — add a client message to a project thread, Bearer token
 - `GET /v1/products/:id` — client product details, issued quote, and quote-decision readiness, Bearer token
 - `POST /v1/quotes/:id/decision` — approve or decline a complete issued quote and notify the work console, Bearer token
 - `POST /v1/requests` — Bearer token
 - `POST /v1/requests/:id/files` — multipart field `file`, Bearer token
 
-Each client can have multiple approved email domains and multiple active projects. Products belong to projects, and each project has a shared staff/client message thread. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.
+Each client can have multiple approved email domains and multiple active projects. Products belong to projects, and each project has a shared staff/client message thread. Archived client rooms and projects remain recoverable to staff but are removed from active client access. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.
