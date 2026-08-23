@@ -338,13 +338,13 @@ export async function migrate() {
     );
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
-      on conflict (slug) do update set email_domains=excluded.email_domains;
+      on conflict (slug) do nothing;
     insert into clients(slug,name,email_domains,shopify_customer_id,total_spent_cents) values
       ('future-basics','Future Basics',array['thefuturebasics.com'],null,0),
       ('tools-for-humanity','Tools for Humanity',array['toolsforhumanity.com'],'gid://shopify/Customer/9213023420613',3587500),
       ('britax','Britax Child Safety',array['britax.com'],'gid://shopify/Customer/9131845976261',100),
       ('famehouse-umg','Famehouse / UMG',array['umusic.com'],'gid://shopify/Customer/8841857761477',100)
-      on conflict(slug) do update set name=excluded.name,email_domains=excluded.email_domains,
+      on conflict(slug) do update set name=excluded.name,
         shopify_customer_id=excluded.shopify_customer_id,total_spent_cents=excluded.total_spent_cents;
     insert into products(client_id,shopify_handle,title,status,current_stage,owner,risk_level)
       select c.id, v.handle, v.title, 'in-development', v.stage, 'Future Basics', v.risk
