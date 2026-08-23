@@ -10,17 +10,28 @@ Backend for the Future Basics Shopify client hub. It provides tenant-scoped emai
 
 ## Required variables
 
-`DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGINS=https://thefuturebasics.com`
+`DATABASE_URL`, `JWT_SECRET`
+
+Production URLs:
+
+- `WORK_HUB_URL=https://work.thefuturebasics.com`
+- `CLIENT_HUB_URL=https://hub.thefuturebasics.com`
+- `START_PROJECT_URL=https://thefuturebasics.com/pages/contact`
+- `ALLOWED_ORIGINS=https://thefuturebasics.com,https://work.thefuturebasics.com,https://hub.thefuturebasics.com`
 
 For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Resend, codes are written to deploy logs for setup testing.
 
 ## Endpoints
 
 - `GET /health`
+- `GET /` — client gate on `hub.thefuturebasics.com`, staff UI on `work.thefuturebasics.com`
+- `GET /hub` — client gate fallback
+- `GET /admin` — staff UI fallback
 - `POST /v1/auth/code` — `{ "email": "name@ouster.com" }`
 - `POST /v1/auth/verify` — `{ "email": "...", "code": "123456" }`
+- `GET /v1/session` — current user and tenant, Bearer token
 - `GET /v1/dashboard` — Bearer token
 - `POST /v1/requests` — Bearer token
 - `POST /v1/requests/:id/files` — multipart field `file`, Bearer token
 
-The initial client seed accepts `ouster.io` and `ouster.com`.
+Each client can have multiple approved email domains. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.
