@@ -42,6 +42,20 @@ export const PRODUCT_SYNC_QUERY = `query SyncClientProducts($query: String!) {
   }
 }`;
 
+export const PRODUCT_CREATE = `mutation PublishClientProduct($product: ProductCreateInput!) {
+  productCreate(product: $product) {
+    product { id title handle status totalInventory variants(first: 1) { nodes { id } } }
+    userErrors { field message }
+  }
+}`;
+
+export const PRODUCT_UPDATE = `mutation UpdateClientProduct($product: ProductUpdateInput!) {
+  productUpdate(product: $product) {
+    product { id title handle status totalInventory variants(first: 1) { nodes { id } } }
+    userErrors { field message }
+  }
+}`;
+
 export const DRAFT_ORDER_CREATE = `mutation CreateClientDraftOrder($input: DraftOrderInput!) {
   draftOrderCreate(input: $input) {
     draftOrder { id name invoiceUrl status totalPriceSet { shopMoney { amount currencyCode } } }
