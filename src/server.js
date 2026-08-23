@@ -8,7 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -192,7 +192,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
   const result={configured:shopifyConfigured(),connected:false,storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
     apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',authentication:process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?'legacy-token':'client-credentials',
-    requiredScopes:['read_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']};
+    requiredScopes:['read_products','write_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']};
   if(!result.configured)return result;
   try{const data=await shopifyGraphql(SHOP_CONNECTION_QUERY);return {...result,connected:true,shopName:data.shop.name,myshopifyDomain:data.shop.myshopifyDomain}}
   catch(error){return {...result,error:error.message}}
@@ -228,19 +228,80 @@ app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,rep
   return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,domains])).rows[0];
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {title,handle,shopifyProductId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
-  const p=(await pool.query('insert into products(client_id,title,shopify_handle,shopify_product_id) values($1,$2,$3,$4) returning *',[req.params.id,title,handle||null,shopifyProductId||null])).rows[0];
+  const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
+  const p=(await pool.query(`insert into products(client_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
+    values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[req.params.id,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
   await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
   return p;
 });
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle}=req.body||{};
+  const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
   const p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
     owner=coalesce($3,owner),target_date=coalesce($4,target_date),shopify_product_id=coalesce($5,shopify_product_id),
-    shopify_handle=coalesce($6,shopify_handle),updated_at=now() where id=$7 returning *`,
-    [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,req.params.id])).rows[0];
+    shopify_handle=coalesce($6,shopify_handle),description_html=coalesce($7,description_html),vendor=coalesce($8,vendor),
+    product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),updated_at=now() where id=$11 returning *`,
+    [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null,req.params.id])).rows[0];
   if(!p)return reply.code(404).send({error:'Product not found'});return p;
+});
+
+const moneyMetafield = cents => JSON.stringify({amount:(Number(cents)/100).toFixed(2),currency_code:'USD'});
+const metafield = (key,value,type) => value===null||value===undefined||value===''?null:{namespace:'product_dev',key,value:String(value),type};
+const buildProductMetafields = row => [
+  metafield('wholesale',row.wholesale_cents==null?null:moneyMetafield(row.wholesale_cents),'money'),
+  metafield('srp',row.srp_cents==null?null:moneyMetafield(row.srp_cents),'money'),
+  metafield('material',row.material,'single_line_text_field'),
+  metafield('decoration',row.decoration_method||row.brief_decoration,'single_line_text_field'),
+  metafield('moq',row.moq,'number_integer'),
+  metafield('lead_time',row.lead_time_days?`${row.lead_time_days} days`:null,'single_line_text_field'),
+  metafield('colorway',(row.colorways||[]).join(', '),'single_line_text_field'),
+  metafield('dimensions',row.artwork_width_in&&row.artwork_height_in?`${row.artwork_width_in} × ${row.artwork_height_in} in`:null,'single_line_text_field'),
+  metafield('notes',row.config_notes||row.brief_notes,'multi_line_text_field'),
+  metafield('client_name',row.client_name,'single_line_text_field'),
+  metafield('client_access_tag',row.client_slug,'single_line_text_field'),
+  metafield('development_status',row.configuration_status||row.current_stage,'single_line_text_field'),
+  metafield('construction',row.construction,'multi_line_text_field'),
+  metafield('packaging',row.config_packaging||row.brief_packaging,'multi_line_text_field'),
+  metafield('fulfillment',row.config_fulfillment||row.brief_fulfillment,'multi_line_text_field'),
+  metafield('sample_required',row.sample_required==null?null:String(row.sample_required),'boolean'),
+  metafield('target_delivery',row.delivery_date||row.target_date,'date')
+].filter(Boolean);
+
+app.post('/v1/admin/products/:id/publish-shopify',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=(await pool.query(`select p.*,c.name client_name,c.slug client_slug,
+      pc.material,pc.construction,pc.decoration_method,pc.artwork_width_in,pc.artwork_height_in,pc.colorways,
+      pc.moq,pc.sample_required,pc.lead_time_days,pc.notes config_notes,pc.status configuration_status,
+      pc.packaging config_packaging,pc.fulfillment config_fulfillment,
+      pb.decoration brief_decoration,pb.notes brief_notes,pb.packaging brief_packaging,pb.fulfillment brief_fulfillment,pb.delivery_date,
+      pt.wholesale_cents,pt.srp_cents
+    from products p join clients c on c.id=p.client_id
+    left join product_configurations pc on pc.product_id=p.id
+    left join product_briefs pb on pb.product_id=p.id
+    left join lateral (select wholesale_cents,srp_cents from price_tiers where product_id=p.id order by min_quantity limit 1) pt on true
+    where p.id=$1`,[req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Product not found'});
+  const base={title:row.title,metafields:buildProductMetafields(row)};
+  if(row.shopify_handle)base.handle=row.shopify_handle;
+  if(row.description_html)base.descriptionHtml=row.description_html;
+  if(row.vendor)base.vendor=row.vendor;
+  if(row.product_type)base.productType=row.product_type;
+  if(row.template_suffix)base.templateSuffix=row.template_suffix;
+  let payload,created=false;
+  try{
+    if(row.shopify_product_id){
+      payload=requireNoUserErrors((await shopifyGraphql(PRODUCT_UPDATE,{product:{...base,id:row.shopify_product_id,redirectNewHandle:true}})).productUpdate);
+    }else{
+      payload=requireNoUserErrors((await shopifyGraphql(PRODUCT_CREATE,{product:{...base,status:'DRAFT',tags:[row.client_slug,'client-product']}})).productCreate);created=true;
+    }
+    const product=payload.product,primary=product.variants?.nodes?.[0]||null;
+    const updated=(await pool.query(`update products set shopify_product_id=$1,shopify_variant_id=coalesce($2,shopify_variant_id),
+      shopify_handle=$3,shopify_status=$4,shopify_inventory_total=$5,shopify_synced_at=now(),shopify_published_at=now(),
+      shopify_publish_error=null,source_of_truth='shopify',updated_at=now() where id=$6 returning *`,
+      [product.id,primary?.id||null,product.handle,product.status,product.totalInventory,req.params.id])).rows[0];
+    return {created,product:updated,metafieldsWritten:base.metafields.length,shopifyAdminUrl:`https://admin.shopify.com/store/${(process.env.SHOPIFY_STORE_DOMAIN||'').split('.')[0]}/products/${product.id.split('/').pop()}`};
+  }catch(error){
+    await pool.query('update products set shopify_publish_error=$1,updated_at=now() where id=$2',[error.message,req.params.id]);throw error;
+  }
 });
 app.post('/v1/admin/products/:id/rush',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const enabled=req.body?.enabled===true,reason=String(req.body?.reason||'').trim();
