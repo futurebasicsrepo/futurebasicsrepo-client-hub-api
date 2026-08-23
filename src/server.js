@@ -305,8 +305,11 @@ app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(r
 const moneyMetafield = cents => JSON.stringify({amount:(Number(cents)/100).toFixed(2),currency_code:'USD'});
 const metafield = (key,value,type) => value===null||value===undefined||value===''?null:{namespace:'product_dev',key,value:String(value),type};
 const buildProductMetafields = row => [
+  metafield('internal_unit_cost',row.unit_cost_cents==null?null:moneyMetafield(row.unit_cost_cents),'money'),
   metafield('wholesale',row.wholesale_cents==null?null:moneyMetafield(row.wholesale_cents),'money'),
   metafield('srp',row.srp_cents==null?null:moneyMetafield(row.srp_cents),'money'),
+  metafield('pricing_tiers',Array.isArray(row.pricing_tiers)&&row.pricing_tiers.length?JSON.stringify(row.pricing_tiers.map(({unit_cost_cents,...tier})=>tier)):null,'json'),
+  metafield('internal_pricing_tiers',Array.isArray(row.pricing_tiers)&&row.pricing_tiers.length?JSON.stringify(row.pricing_tiers):null,'json'),
   metafield('material',row.material,'single_line_text_field'),
   metafield('decoration',row.decoration_method||row.brief_decoration,'single_line_text_field'),
   metafield('moq',row.moq,'number_integer'),
@@ -330,11 +333,14 @@ app.post('/v1/admin/products/:id/publish-shopify',{preHandler:[authenticate,admi
       pc.moq,pc.sample_required,pc.lead_time_days,pc.notes config_notes,pc.status configuration_status,
       pc.packaging config_packaging,pc.fulfillment config_fulfillment,
       pb.decoration brief_decoration,pb.notes brief_notes,pb.packaging brief_packaging,pb.fulfillment brief_fulfillment,pb.delivery_date,
-      pt.wholesale_cents,pt.srp_cents
+      pt.unit_cost_cents,pt.wholesale_cents,pt.srp_cents,
+      (select coalesce(jsonb_agg(jsonb_build_object('minimum_quantity',tier.min_quantity,'maximum_quantity',tier.max_quantity,
+        'unit_cost_cents',tier.unit_cost_cents,'wholesale_cents',tier.wholesale_cents,'srp_cents',tier.srp_cents,
+        'lead_time_days',tier.lead_time_days) order by tier.min_quantity),'[]'::jsonb) from price_tiers tier where tier.product_id=p.id) pricing_tiers
     from products p join clients c on c.id=p.client_id
     left join product_configurations pc on pc.product_id=p.id
     left join product_briefs pb on pb.product_id=p.id
-    left join lateral (select wholesale_cents,srp_cents from price_tiers where product_id=p.id order by min_quantity limit 1) pt on true
+    left join lateral (select unit_cost_cents,wholesale_cents,srp_cents from price_tiers where product_id=p.id order by min_quantity limit 1) pt on true
     where p.id=$1`,[req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Product not found'});
   const base={title:row.title,metafields:buildProductMetafields(row)};
@@ -709,7 +715,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
       (select pt.srp_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) srp_cents,
-      coalesce((select json_agg(pt order by pt.min_quantity) from price_tiers pt where pt.product_id=p.id),'[]') price_tiers,
+      coalesce((select json_agg(json_build_object('id',pt.id,'product_id',pt.product_id,'min_quantity',pt.min_quantity,
+        'max_quantity',pt.max_quantity,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
+        'lead_time_days',pt.lead_time_days,'notes',pt.notes) order by pt.min_quantity)
+        from price_tiers pt where pt.product_id=p.id),'[]') price_tiers,
       coalesce(json_agg(m order by m.sort_order) filter(where m.id is not null),'[]') milestones
       from products p left join milestones m on m.product_id=p.id where p.client_id=$1 group by p.id order by p.updated_at desc`, [id]),
     pool.query(`select a.*,p.title product_title,av.version asset_version,ast.name asset_name from approvals a
@@ -744,7 +753,7 @@ app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => 
   const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments,configuration,priceTiers]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
     pool.query('select * from milestones where product_id=$1 order by sort_order',[product.id]),
-    pool.query(`select id,product_id,version,currency,quantity,unit_cost_cents,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
+    pool.query(`select id,product_id,version,currency,quantity,tooling_cents,freight_cents,status,expires_at,created_at,wholesale_cents,srp_cents,notes,
       decided_by,decided_at,decision_notes,
       shopify_draft_order_name,shopify_draft_order_status,shopify_invoice_url,shopify_invoice_sent_at,shopify_order_id,shopify_financial_status,shopify_fulfillment_status
       from quotes where product_id=$1 order by version desc`,[product.id]),
