@@ -36,9 +36,20 @@ export const SHOP_CONNECTION_QUERY=`query ClientHubConnection { shop { name mysh
 export const PRODUCT_SYNC_QUERY = `query SyncClientProducts($query: String!) {
   products(first: 50, query: $query) {
     nodes {
-      id title handle status updatedAt totalInventory
+      id title handle status updatedAt totalInventory descriptionHtml vendor productType
+      featuredMedia { preview { image { url altText width height } } }
       variants(first: 100) { nodes { id title sku price inventoryQuantity } }
     }
+  }
+}`;
+
+export const CUSTOMER_SYNC_QUERY = `query SyncClientCustomer($id: ID!) {
+  customer(id: $id) {
+    id displayName firstName lastName numberOfOrders
+    defaultEmailAddress { emailAddress }
+    defaultPhoneNumber { phoneNumber }
+    amountSpent { amount currencyCode }
+    defaultAddress { address1 address2 city provinceCode zip countryCodeV2 phone }
   }
 }`;
 

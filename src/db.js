@@ -18,6 +18,15 @@ export async function migrate() {
     alter table clients add column if not exists status text not null default 'active';
     alter table clients add column if not exists shopify_customer_id text;
     alter table clients add column if not exists total_spent_cents bigint not null default 0;
+    alter table clients add column if not exists contact_name text;
+    alter table clients add column if not exists contact_email text;
+    alter table clients add column if not exists contact_phone text;
+    alter table clients add column if not exists website_url text;
+    alter table clients add column if not exists notes text;
+    alter table clients add column if not exists shopify_order_count integer not null default 0;
+    alter table clients add column if not exists shopify_currency text not null default 'USD';
+    alter table clients add column if not exists shopify_default_address jsonb;
+    alter table clients add column if not exists shopify_synced_at timestamptz;
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
@@ -87,6 +96,7 @@ export async function migrate() {
       target_date date,
       updated_at timestamptz not null default now()
     );
+    create unique index if not exists projects_client_name_idx on projects(client_id,name);
     create table if not exists products (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
@@ -120,6 +130,10 @@ export async function migrate() {
     alter table products add column if not exists template_suffix text;
     alter table products add column if not exists shopify_published_at timestamptz;
     alter table products add column if not exists shopify_publish_error text;
+    alter table products add column if not exists shopify_image_url text;
+    alter table products add column if not exists shopify_image_alt text;
+    alter table products add column if not exists shopify_updated_at timestamptz;
+    alter table products add column if not exists project_id uuid references projects(id) on delete set null;
     alter table requests add column if not exists product_id uuid references products(id);
     create table if not exists product_briefs (
       product_id uuid primary key references products(id) on delete cascade,
@@ -331,6 +345,16 @@ export async function migrate() {
       visibility text not null default 'client',
       created_at timestamptz not null default now()
     );
+    create table if not exists project_messages (
+      id uuid primary key default gen_random_uuid(),
+      project_id uuid not null references projects(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      author_id uuid references users(id) on delete set null,
+      author_role text not null check (author_role in ('admin','client')),
+      body text not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists project_messages_thread_idx on project_messages(project_id,created_at);
     create table if not exists notifications (
       id bigserial primary key,
       client_id uuid not null references clients(id) on delete cascade,
@@ -378,6 +402,11 @@ export async function migrate() {
         ('ouster-cap-olive','gid://shopify/Product/8982881730757'),
         ('ouster-cap-black','gid://shopify/Product/8982881763525')
       ) v(handle,shopify_id) where p.shopify_handle=v.handle;
+    insert into projects(client_id,name,status,milestone)
+      select c.id,'General development','active','In progress' from clients c
+      where c.slug<>'future-basics' on conflict(client_id,name) do nothing;
+    update products p set project_id=pr.id from projects pr
+      where p.project_id is null and pr.client_id=p.client_id and pr.name='General development';
     insert into milestones(product_id,name,status,sort_order)
       select p.id, m.name, case when m.n < 3 then 'complete' when m.n = 3 then 'current' else 'upcoming' end, m.n
       from products p cross join (values (1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery')) m(n,name)

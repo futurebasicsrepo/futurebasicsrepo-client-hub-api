@@ -1,6 +1,6 @@
 # Future Basics Client Hub API
 
-Backend for the Future Basics Shopify client hub. It provides tenant-scoped email-code login, requests, uploads, invoices, projects, and dashboard data.
+Backend for the Future Basics Shopify client hub. It provides tenant-scoped email-code login, client profiles, Shopify product and customer sync, multi-project workspaces, project messaging, requests, uploads, invoices, and dashboard data.
 
 ## Railway services
 
@@ -31,7 +31,8 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Re
 - `POST /v1/auth/verify` — `{ "email": "...", "code": "123456" }`
 - `GET /v1/session` — current user and tenant, Bearer token
 - `GET /v1/dashboard` — Bearer token
+- `POST /v1/projects/:id/messages` — add a client message to a project thread, Bearer token
 - `POST /v1/requests` — Bearer token
 - `POST /v1/requests/:id/files` — multipart field `file`, Bearer token
 
-Each client can have multiple approved email domains. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.
+Each client can have multiple approved email domains and multiple active projects. Products belong to projects, and each project has a shared staff/client message thread. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.

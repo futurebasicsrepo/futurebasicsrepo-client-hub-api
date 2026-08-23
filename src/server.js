@@ -8,7 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -175,8 +175,11 @@ app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,admin
   return {url:`${hubUrl}#client-preview=${encodeURIComponent(code)}`,expiresInSeconds:300,sessionMinutes:15,client};
 });
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
-  const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count
-    from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id
+  const clients=await pool.query(`select c.*,count(distinct p.id)::int product_count,count(distinct r.id)::int request_count,
+    count(distinct pr.id)::int project_count,
+    (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
+    (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
+    from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id left join projects pr on pr.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
   const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name,av.version asset_version,ast.name asset_name
     from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id
@@ -192,7 +195,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
   const result={configured:shopifyConfigured(),connected:false,storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
     apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',authentication:process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?'legacy-token':'client-credentials',
-    requiredScopes:['read_products','write_products','read_inventory','write_draft_orders','read_draft_orders','read_orders']};
+    requiredScopes:['read_products','write_products','read_inventory','read_customers','write_draft_orders','read_draft_orders','read_orders']};
   if(!result.configured)return result;
   try{const data=await shopifyGraphql(SHOP_CONNECTION_QUERY);return {...result,connected:true,shopName:data.shop.name,myshopifyDomain:data.shop.myshopifyDomain}}
   catch(error){return {...result,error:error.message}}
@@ -205,32 +208,55 @@ app.get('/v1/admin/resend/status',{preHandler:[authenticate,adminOnly]},async()=
 app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.body?.clientId])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
+  const project=(await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress')
+    on conflict(client_id,name) do update set updated_at=now() returning *`,[client.id])).rows[0];
+  let customer=null,customerError=null;
+  if(client.shopify_customer_id){
+    try{
+      customer=(await shopifyGraphql(CUSTOMER_SYNC_QUERY,{id:client.shopify_customer_id})).customer;
+      if(customer)await pool.query(`update clients set contact_name=coalesce(contact_name,$1),contact_email=coalesce(contact_email,$2),
+        contact_phone=coalesce(contact_phone,$3),total_spent_cents=$4,shopify_order_count=$5,shopify_currency=$6,
+        shopify_default_address=$7,shopify_synced_at=now() where id=$8`,[
+        customer.displayName||[customer.firstName,customer.lastName].filter(Boolean).join(' ')||null,
+        customer.defaultEmailAddress?.emailAddress||null,customer.defaultPhoneNumber?.phoneNumber||null,
+        Math.round(Number(customer.amountSpent?.amount||0)*100),Number(customer.numberOfOrders||0),customer.amountSpent?.currencyCode||'USD',
+        customer.defaultAddress?JSON.stringify(customer.defaultAddress):null,client.id]);
+    }catch(error){customerError=error.message}
+  }
   const query=String(req.body?.query||`tag:${client.slug}`);
   const data=await shopifyGraphql(PRODUCT_SYNC_QUERY,{query});
   const synced=[];
   for(const item of data.products.nodes){
     const variants=item.variants.nodes||[],primary=variants[0]||null;
-    const product=(await pool.query(`insert into products(client_id,shopify_product_id,shopify_variant_id,shopify_handle,title,shopify_status,shopify_inventory_total,shopify_variants,shopify_synced_at)
-      values($1,$2,$3,$4,$5,$6,$7,$8,now()) on conflict(client_id,shopify_handle) do update set shopify_product_id=excluded.shopify_product_id,
+    const image=item.featuredMedia?.preview?.image||null;
+    const product=(await pool.query(`insert into products(client_id,project_id,shopify_product_id,shopify_variant_id,shopify_handle,title,shopify_status,shopify_inventory_total,shopify_variants,shopify_synced_at,shopify_image_url,shopify_image_alt,shopify_updated_at,description_html,vendor,product_type)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),$10,$11,$12,$13,$14,$15) on conflict(client_id,shopify_handle) do update set shopify_product_id=excluded.shopify_product_id,
       shopify_variant_id=excluded.shopify_variant_id,title=excluded.title,shopify_status=excluded.shopify_status,shopify_inventory_total=excluded.shopify_inventory_total,
-      shopify_variants=excluded.shopify_variants,shopify_synced_at=now(),updated_at=now() returning *`,
-      [client.id,item.id,primary?.id||null,item.handle,item.title,item.status,item.totalInventory,JSON.stringify(variants)])).rows[0];
+      shopify_variants=excluded.shopify_variants,shopify_image_url=excluded.shopify_image_url,shopify_image_alt=excluded.shopify_image_alt,
+      shopify_updated_at=excluded.shopify_updated_at,description_html=excluded.description_html,vendor=excluded.vendor,product_type=excluded.product_type,
+      project_id=coalesce(products.project_id,excluded.project_id),shopify_synced_at=now(),updated_at=now() returning *`,
+      [client.id,project.id,item.id,primary?.id||null,item.handle,item.title,item.status,item.totalInventory,JSON.stringify(variants),image?.url||null,image?.altText||item.title,item.updatedAt,item.descriptionHtml||null,item.vendor||null,item.productType||null])).rows[0];
     await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
       from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)
       where not exists(select 1 from milestones where product_id=$1)`,[product.id]);
     synced.push({id:product.id,title:product.title,inventory:product.shopify_inventory_total,variants:variants.length});
   }
-  return {query,count:synced.length,products:synced,syncedAt:new Date().toISOString()};
+  return {query,count:synced.length,products:synced,customerSynced:Boolean(customer),customerError,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,slug,emailDomains=[]}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
+  const {name,slug,emailDomains=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   const domains=await validateClientDomains(emailDomains);
-  return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,domains])).rows[0];
+  const client=(await pool.query(`insert into clients(name,slug,email_domains,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[name,slug,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
+  await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
+  return client;
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
-  const p=(await pool.query(`insert into products(client_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
-    values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[req.params.id,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
+  const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,projectId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
+  const project=projectId?(await pool.query('select id from projects where id=$1 and client_id=$2',[projectId,req.params.id])).rows[0]:null;
+  if(projectId&&!project)return reply.code(400).send({error:'Select a valid project'});
+  const p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[req.params.id,project?.id||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
   await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
   return p;
@@ -360,7 +386,13 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
-  const [products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
+  const [projects,projectMessages,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
+    pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
+      (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
+      from projects pr where pr.client_id=$1 order by pr.updated_at desc,pr.name`,[client.id]),
+    pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
+      from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
+      where pm.client_id=$1 order by pm.created_at`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,coalesce(json_agg(m order by m.sort_order)filter(where m.id is not null),'[]') milestones
       from products p left join product_briefs b on b.product_id=p.id left join milestones m on m.product_id=p.id
       where p.client_id=$1 group by p.id,b.product_id order by p.updated_at desc`,[client.id]),
@@ -382,15 +414,40 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
       join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
-  ]);return {client,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  ]);return {client,projects:projects.rows,projectMessages:projectMessages.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,emailDomains}=req.body||{};
+  const {name,status,emailDomains,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
   const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
   return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
-    email_domains=coalesce($3,email_domains) where id=$4 returning *`,[name||null,status||null,domains,req.params.id])).rows[0];
+    email_domains=coalesce($3,email_domains),contact_name=coalesce($4,contact_name),contact_email=coalesce($5,contact_email),
+    contact_phone=coalesce($6,contact_phone),website_url=coalesce($7,website_url),notes=coalesce($8,notes),
+    shopify_customer_id=coalesce($9,shopify_customer_id) where id=$10 returning *`,
+    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id])).rows[0];
+});
+app.post('/v1/admin/clients/:id/projects',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {name,status='active',milestone,targetDate}=req.body||{};
+  if(!name?.trim())return reply.code(400).send({error:'Project name required'});
+  return reply.code(201).send((await pool.query(`insert into projects(client_id,name,status,milestone,target_date)
+    select id,$1,$2,$3,$4 from clients where id=$5 returning *`,[name.trim(),status,milestone||null,targetDate||null,req.params.id])).rows[0]);
+});
+app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {name,status,milestone,targetDate}=req.body||{};
+  const row=(await pool.query(`update projects set name=coalesce($1,name),status=coalesce($2,status),milestone=coalesce($3,milestone),
+    target_date=coalesce($4,target_date),updated_at=now() where id=$5 returning *`,[name||null,status||null,milestone||null,targetDate||null,req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Project not found'});return row;
+});
+app.post('/v1/admin/projects/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const body=String(req.body?.body||'').trim();if(!body)return reply.code(400).send({error:'Message required'});
+  const project=(await pool.query('select id,client_id,name from projects where id=$1',[req.params.id])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body)
+    values($1,$2,$3,'admin',$4) returning *`,[project.id,project.client_id,req.auth.sub,body.slice(0,5000)])).rows[0];
+  await pool.query(`update projects set updated_at=now() where id=$1`,[project.id]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-message',$2,'project',$3)`,[project.client_id,`New message in ${project.name}`,project.id]);
+  return reply.code(201).send(message);
 });
 app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {status,dueDate,responsibleParty,notes,required,clientVisible}=req.body||{};return (await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
@@ -608,10 +665,14 @@ app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
   const id = req.auth.clientId;
-  const [requests, invoices, projects, products, approvals, activities] = await Promise.all([
+  const [requests, invoices, projects, projectMessages, products, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
-    pool.query('select * from projects where client_id=$1 order by updated_at desc', [id]),
+    pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count
+      from projects pr where client_id=$1 order by updated_at desc`, [id]),
+    pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
+      from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
+      where pm.client_id=$1 order by pm.created_at`,[id]),
     pool.query(`select p.*,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
@@ -623,12 +684,25 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
       where p.client_id=$1 and a.status='pending' order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, products: products.rows,
+  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, projectMessages: projectMessages.rows, products: products.rows,
     approvals: approvals.rows, activities: activities.rows,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
       ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
     ] };
+});
+
+app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=>{
+  const body=String(req.body?.body||'').trim();if(!body)return reply.code(400).send({error:'Message required'});
+  const project=(await pool.query('select id,client_id,name from projects where id=$1 and client_id=$2',[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const role=req.auth.role==='admin'?'admin':'client';
+  const message=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body)
+    values($1,$2,$3,$4,$5) returning *`,[project.id,project.client_id,req.auth.sub,role,body.slice(0,5000)])).rows[0];
+  await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
+  if(role==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id)
+    values($1,'client-project-message',$2,'project',$3)`,[project.client_id,`Client replied in ${project.name}`,project.id]);
+  return reply.code(201).send(message);
 });
 
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
