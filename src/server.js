@@ -702,7 +702,7 @@ app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},
 
 app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
   const id = req.auth.clientId;
-  const [requests, invoices, projects, projectMessages, products, approvals, activities] = await Promise.all([
+  const [requests, invoices, projects, projectMessages, productComments, products, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count
@@ -710,6 +710,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
       where pm.client_id=$1 order by pm.created_at`,[id]),
+    pool.query(`select co.*,p.project_id,p.title product_title,
+      coalesce(u.name,u.email,case when co.author_role='admin' then 'Future Basics' else c.name end) author_name
+      from comments co join products p on p.id=co.product_id left join users u on u.id=co.author_id join clients c on c.id=co.client_id
+      where co.client_id=$1 and co.visibility='client' order by co.created_at`,[id]),
     pool.query(`select p.*,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
@@ -726,7 +730,8 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async req => {
       where p.client_id=$1 and a.status='pending' order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, projectMessages: projectMessages.rows, products: products.rows,
+  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows, projectMessages: projectMessages.rows,
+    productComments:productComments.rows, products: products.rows,
     approvals: approvals.rows, activities: activities.rows,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
