@@ -14,7 +14,10 @@ const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 mkdirSync(uploadDir, { recursive: true });
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://thefuturebasics.com').split(',').map(x => x.trim());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://thefuturebasics.com,https://work.thefuturebasics.com,https://hub.thefuturebasics.com').split(',').map(x => x.trim());
+const workHubUrl = process.env.WORK_HUB_URL || 'https://work.thefuturebasics.com';
+const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com';
+const startProjectUrl = process.env.START_PROJECT_URL || 'https://thefuturebasics.com/pages/contact';
 
 await app.register(cors, { origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin) || (origin==='null' && process.env.DEV_BYPASS_AUTH==='true')), credentials: true });
 await app.register(multipart, {
@@ -25,6 +28,25 @@ await app.register(multipart, {
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
 const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip']);
+const domainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const normalizeDomains = values => [...new Set((Array.isArray(values) ? values : [])
+  .map(value => String(value || '').trim().toLowerCase().replace(/^@/, ''))
+  .filter(Boolean))];
+async function validateClientDomains(values, clientId = null) {
+  const domains = normalizeDomains(values);
+  const invalid = domains.filter(domain => !domainPattern.test(domain));
+  if (invalid.length) throw Object.assign(new Error(`Invalid email domain: ${invalid.join(', ')}`), { statusCode: 400 });
+  if (domains.includes('thefuturebasics.com')) {
+    const owner = await pool.query("select id from clients where slug='future-basics'");
+    if (!clientId || owner.rows[0]?.id !== clientId) throw Object.assign(new Error('thefuturebasics.com is reserved for Future Basics staff'), { statusCode: 409 });
+  }
+  if (domains.length) {
+    const conflict = await pool.query(`select name,unnest(email_domains) domain from clients
+      where ($1::uuid is null or id<>$1) and email_domains && $2::text[] limit 1`, [clientId, domains]);
+    if (conflict.rowCount) throw Object.assign(new Error(`${conflict.rows[0].domain} already belongs to ${conflict.rows[0].name}`), { statusCode: 409 });
+  }
+  return domains;
+}
 
 async function authenticate(req, reply) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
@@ -76,8 +98,12 @@ app.post('/v1/auth/code', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const domain = email.split('@')[1];
   if (!domain) return reply.code(400).send({ error: 'Valid email required' });
-  const client = await pool.query('select * from clients where $1 = any(email_domains)', [domain]);
-  if (!client.rowCount) return reply.code(403).send({ error: 'Email domain is not assigned to a client' });
+  const client = await pool.query("select * from clients where $1 = any(email_domains) and status='active'", [domain]);
+  if (!client.rowCount) return reply.code(403).send({
+    error: "We don't currently have any work from you. Start a project here",
+    code: 'NO_CLIENT_WORK',
+    action: { label: 'Start a project', url: startProjectUrl }
+  });
   const code = String(randomInt(100000, 1000000));
   await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')', [email, hash(code)]);
   await sendCode(email, code);
@@ -94,7 +120,8 @@ app.post('/v1/auth/verify', async (req, reply) => {
   );
   if (!result.rowCount) return reply.code(401).send({ error: 'Invalid or expired code' });
   const domain = email.split('@')[1];
-  const client = (await pool.query('select * from clients where $1=any(email_domains)', [domain])).rows[0];
+  const client = (await pool.query("select * from clients where $1=any(email_domains) and status='active'", [domain])).rows[0];
+  if (!client) return reply.code(403).send({ error: 'Client access is no longer active' });
   const role=domain==='thefuturebasics.com'?'admin':'client';
   const user = (await pool.query(
     `insert into users(client_id,email,role) values($1,$2,$3) on conflict(email)
@@ -126,12 +153,25 @@ app.post('/v1/preview/session/exchange',async(req,reply)=>{
   return {token,preview:true,readOnly:true,client:{id:row.client_id,slug:row.client_slug,name:row.client_name}};
 });
 
-app.get('/admin', async (_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8')));
+const sendAdmin = (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8'));
+const sendClientHub = (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./client.html',import.meta.url),'utf8'));
+app.get('/', async (req, reply) => {
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  return host === 'work.thefuturebasics.com' ? sendAdmin(req, reply) : sendClientHub(req, reply);
+});
+app.get('/admin', sendAdmin);
+app.get('/hub', sendClientHub);
+app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl }));
+app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
+  const client = (await pool.query('select id,slug,name from clients where id=$1', [req.auth.clientId])).rows[0];
+  if (!client) return reply.code(404).send({ error: 'Client workspace not found' });
+  return { user: { id: req.auth.sub, email: req.auth.email, role: req.auth.role, preview: req.auth.preview === true }, client, workHubUrl, clientHubUrl };
+});
 app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select id,slug,name from clients where id=$1 and slug<>\'future-basics\'',[req.params.id])).rows[0];if(!client)return reply.code(404).send({error:'Client not found'});
   const code=randomBytes(32).toString('base64url');await pool.query(`insert into preview_sessions(code_hash,admin_user_id,client_id,expires_at)
     values($1,$2,$3,now()+interval '5 minutes')`,[hash(code),req.auth.sub,client.id]);
-  const hubUrl=process.env.CLIENT_HUB_URL||'https://thefuturebasics.com/pages/client-hub';
+  const hubUrl=clientHubUrl;
   return {url:`${hubUrl}#client-preview=${encodeURIComponent(code)}`,expiresInSeconds:300,sessionMinutes:15,client};
 });
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
@@ -184,7 +224,8 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
 });
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,slug,emailDomains=[]}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
-  return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,emailDomains])).rows[0];
+  const domains=await validateClientDomains(emailDomains);
+  return (await pool.query('insert into clients(name,slug,email_domains) values($1,$2,$3) returning *',[name,slug,domains])).rows[0];
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,handle,shopifyProductId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
@@ -285,8 +326,10 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,emailDomains}=req.body||{};return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
-    email_domains=coalesce($3,email_domains) where id=$4 returning *`,[name||null,status||null,emailDomains||null,req.params.id])).rows[0];
+  const {name,status,emailDomains}=req.body||{};
+  const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
+  return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
+    email_domains=coalesce($3,email_domains) where id=$4 returning *`,[name||null,status||null,domains,req.params.id])).rows[0];
 });
 app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {status,dueDate,responsibleParty,notes,required,clientVisible}=req.body||{};return (await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
