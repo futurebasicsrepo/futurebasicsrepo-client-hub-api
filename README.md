@@ -25,6 +25,7 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Without Re
 
 - `GET /health`
 - `GET /` — client gate on `hub.thefuturebasics.com`, staff UI on `work.thefuturebasics.com`
+- `GET /clients/:id` — full-page staff client workspace
 - `GET /hub` — client gate fallback
 - `GET /admin` — staff UI fallback
 - `POST /v1/auth/code` — `{ "email": "name@ouster.com" }`

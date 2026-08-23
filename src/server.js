@@ -8,7 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -160,7 +160,9 @@ app.get('/', async (req, reply) => {
   return host === 'work.thefuturebasics.com' ? sendAdmin(req, reply) : sendClientHub(req, reply);
 });
 app.get('/admin', sendAdmin);
+app.get('/clients/:id', sendAdmin);
 app.get('/hub', sendClientHub);
+app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name from clients where id=$1', [req.auth.clientId])).rows[0];
@@ -224,7 +226,13 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
     }catch(error){customerError=error.message}
   }
   const query=String(req.body?.query||`tag:${client.slug}`);
-  const data=await shopifyGraphql(PRODUCT_SYNC_QUERY,{query});
+  const linkedIds=(await pool.query('select shopify_product_id from products where client_id=$1 and shopify_product_id is not null',[client.id])).rows.map(x=>x.shopify_product_id);
+  const [searched,linked]=await Promise.all([
+    shopifyGraphql(PRODUCT_SYNC_QUERY,{query}),
+    linkedIds.length?shopifyGraphql(PRODUCT_IDS_SYNC_QUERY,{ids:linkedIds}):Promise.resolve({nodes:[]})
+  ]);
+  const items=[...(searched.products.nodes||[]),...(linked.nodes||[])].filter(Boolean);
+  const data={products:{nodes:[...new Map(items.map(item=>[item.id,item])).values()]}};
   const synced=[];
   for(const item of data.products.nodes){
     const variants=item.variants.nodes||[],primary=variants[0]||null;

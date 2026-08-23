@@ -43,6 +43,16 @@ export const PRODUCT_SYNC_QUERY = `query SyncClientProducts($query: String!) {
   }
 }`;
 
+export const PRODUCT_IDS_SYNC_QUERY = `query SyncClientProductsById($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Product {
+      id title handle status updatedAt totalInventory descriptionHtml vendor productType
+      featuredMedia { preview { image { url altText width height } } }
+      variants(first: 100) { nodes { id title sku price inventoryQuantity } }
+    }
+  }
+}`;
+
 export const CUSTOMER_SYNC_QUERY = `query SyncClientCustomer($id: ID!) {
   customer(id: $id) {
     id displayName firstName lastName numberOfOrders
