@@ -29,6 +29,8 @@ export async function migrate() {
     alter table clients add column if not exists shopify_synced_at timestamptz;
     alter table clients add column if not exists archived_at timestamptz;
     alter table clients add column if not exists archive_previous_status text;
+    update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
+      where status in ('archive','archived');
     create table if not exists users (
       id uuid primary key default gen_random_uuid(),
       client_id uuid not null references clients(id),
@@ -100,6 +102,8 @@ export async function migrate() {
     );
     alter table projects add column if not exists archived_at timestamptz;
     alter table projects add column if not exists archive_previous_status text;
+    update projects set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
+      where status in ('archive','archived');
     create unique index if not exists projects_client_name_idx on projects(client_id,name);
     create index if not exists clients_archived_at_idx on clients(archived_at);
     create index if not exists projects_client_archived_idx on projects(client_id,archived_at,updated_at desc);
