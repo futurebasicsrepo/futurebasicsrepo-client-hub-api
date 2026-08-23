@@ -1385,6 +1385,20 @@ app.setErrorHandler((error, req, reply) => {
   reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
 });
 
+// Graceful shutdown: Railway sends SIGTERM on every redeploy. Without a handler
+// Node exits non-zero (143), which Railway reports as a crash. Close cleanly and
+// exit 0 so routine redeploys stop firing crash-alert emails.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    try { await app.close(); } catch (error) { app.log.error(error); }
+    try { await pool.end(); } catch {}
+    process.exit(0);
+  });
+}
+
 await migrate();
 await repairPendingShopifyLinks();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });
