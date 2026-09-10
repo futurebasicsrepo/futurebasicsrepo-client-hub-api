@@ -416,6 +416,8 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    alter table tech_packs add column if not exists verification jsonb not null default '{}';
+    alter table tech_packs add column if not exists locked_at timestamptz;
     create table if not exists tech_pack_shares (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
