@@ -11,6 +11,7 @@ import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -405,6 +406,10 @@ app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/hub', sendClientHub);
 app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
+// Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
+const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
+app.get('/tech-packs/:productId', sendTechPack);
+app.get('/tp/:token', sendTechPack);
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name,status,archived_at from clients where id=$1', [req.auth.clientId])).rows[0];
@@ -731,6 +736,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1182,6 +1188,8 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
       from comments co join products p on p.id=co.product_id left join users u on u.id=co.author_id join clients c on c.id=co.client_id
       where co.client_id=$1 and co.visibility='client' order by co.created_at`,[id]),
     pool.query(`select p.*,
+      (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
+      (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
@@ -1378,6 +1386,146 @@ app.post('/v1/requests/:id/files', { preHandler: authenticate }, async (req, rep
     )).rows[0];
     return reply.code(201).send(row);
   } catch (error) { await unlink(path).catch(()=>{}); throw error; }
+});
+
+// ---- Tech packs: built in the work console, published to the client hub, shared with factories by link ----
+async function loadAdminTechPack(productId){
+  const product=(await pool.query(`select p.id,p.client_id,p.project_id,p.title,p.product_type,p.shopify_handle,p.description_html,p.shopify_image_url,p.shopify_image_alt,p.current_stage,
+    c.name client_name,pr.name project_name from products p join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id where p.id=$1`,[productId])).rows[0];
+  if(!product)return null;
+  const [pack,configuration,brief]=await Promise.all([
+    pool.query('select * from tech_packs where product_id=$1',[productId]),
+    pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id where pc.product_id=$1`,[productId]),
+    pool.query('select * from product_briefs where product_id=$1',[productId])]);
+  return {product,techPack:pack.rows[0]||null,configuration:configuration.rows[0]||null,brief:brief.rows[0]||null};
+}
+function techPackPayload(row){
+  if(!row)return null;
+  const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+    verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
+    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
+}
+// Applies a change to the verification chain of the CURRENT published version only; a concurrent publish makes the write a no-op.
+async function updateVerification(packId,version,mutate){
+  const row=(await pool.query('select * from tech_packs where id=$1',[packId])).rows[0];
+  if(!row||row.version!==version)return null;
+  const verification=normalizeVerification(row.verification,row.version);
+  mutate(verification);
+  const locked=Boolean(verification.brandSign&&verification.factorySign);
+  return (await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
+    [packId,version,verification,locked])).rows[0]||null;
+}
+const shareRow=s=>({id:s.id,label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
+  active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
+app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
+  const seed=seedTechPack(ctx);
+  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl};
+});
+// Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
+app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  const data=normalizeTechPack(req.body?.data);
+  const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
+    on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
+  return {techPack:techPackPayload(row),completeness:techPackCompleteness(data)};
+});
+app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
+  const note=String(req.body?.note||'').trim().slice(0,500);
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    // A new version starts a fresh acknowledgement chain: acks and both signatures reset, and the pack unlocks.
+    const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=data,published_at=now(),published_by=$2,updated_at=now(),
+      verification=$5::jsonb,locked_at=null,
+      revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text))
+      where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1))])).rows[0];
+    await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+      [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
+    await client.query('commit');
+    return {techPack:techPackPayload(row)};
+  }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
+});
+app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before signing it'});
+  const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to sign'});
+  if(normalizeVerification(ctx.techPack.verification,ctx.techPack.version).brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
+  const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics'}});
+  if(!row)return reply.code(409).send({error:'The tech pack changed while you were signing — reload and try again'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} signed by Future Basics (${name})`,{techPackId:row.id,version:row.version,locked:Boolean(row.locked_at)}]);
+  return {techPack:techPackPayload(row)};
+});
+app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before sharing it with a factory'});
+  const label=String(req.body?.label||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
+  const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
+  const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||0)));
+  const token=randomBytes(24).toString('base64url');
+  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at)
+    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days])).rows[0];
+  return reply.code(201).send({share:shareRow(row),url:`${clientHubUrl}/tp/${token}`});
+});
+app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=(await pool.query('update tech_pack_shares set revoked_at=coalesce(revoked_at,now()) where id=$1 returning *',[req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Share link not found'});
+  return {share:shareRow(row)};
+});
+app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=>{
+  const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+    from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  return publishedTechPackView(row,{audience:'client'});
+});
+// Factory link: resolves a token to the published pack, or the reason it cannot be opened.
+async function loadShareByToken(token){
+  const row=(await pool.query(`select s.id share_id,s.label share_label,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,
+    p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+    from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
+    where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
+  if(!row||!row.published_at)return {error:{code:404,message:'This tech pack link is not valid'}};
+  if(row.revoked_at)return {error:{code:410,message:'This tech pack link has been revoked'}};
+  if(row.expires_at&&new Date(row.expires_at)<new Date())return {error:{code:410,message:'This tech pack link has expired'}};
+  return {row};
+}
+app.get('/v1/tp/:token',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
+  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label});
+});
+// The factory works the acknowledgement chain through its link: tick callouts, then countersign.
+app.post('/v1/tp/:token/ack',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.locked_at)return reply.code(409).send({error:'This tech pack is signed and locked'});
+  const key=String(req.body?.key||'').slice(0,60),acknowledged=req.body?.acknowledged!==false;
+  const known=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version)).callouts.some(c=>c.key===key);
+  if(!known)return reply.code(400).send({error:'Unknown callout'});
+  const updated=await updateVerification(row.id,row.version,v=>{if(acknowledged)v.acks[key]={by:row.share_label,at:new Date().toISOString()};else delete v.acks[key]});
+  if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
+  return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
+});
+app.post('/v1/tp/:token/sign',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.locked_at)return reply.code(409).send({error:'This tech pack is already signed and locked'});
+  const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to countersign'});
+  const readiness=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version));
+  if(readiness.factorySign)return reply.code(409).send({error:`Version ${row.version} is already countersigned by ${readiness.factorySign.name}`});
+  if(readiness.pendingCalloutKeys.length)return reply.code(409).send({error:`Acknowledge every callout before countersigning (${readiness.pendingCalloutKeys.length} pending)`});
+  const updated=await updateVerification(row.id,row.version,v=>{v.factorySign={name,at:new Date().toISOString(),by:row.share_label}});
+  if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,
+    [row.client_id,row.product_id,`Tech pack v${row.version} countersigned by ${row.share_label} (${name})${updated.locked_at?' — locked for production':''}`,{techPackId:row.id,version:row.version,locked:Boolean(updated.locked_at)}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,
+    [row.client_id,`${row.share_label} countersigned tech pack v${row.version} for ${row.title}`,row.product_id]);
+  return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
 });
 
 app.setErrorHandler((error, req, reply) => {

@@ -401,6 +401,37 @@ export async function migrate() {
       from quotes q join products p on p.id=q.product_id
       where i.client_id=p.client_id and i.number=q.shopify_draft_order_name
         and (i.project_id is null or i.product_id is null or i.quote_id is null);
+    create table if not exists tech_packs (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid unique not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      version integer not null default 0,
+      status text not null default 'draft',
+      data jsonb not null default '{}',
+      published_data jsonb,
+      published_at timestamptz,
+      published_by uuid references users(id),
+      revisions jsonb not null default '[]',
+      created_by uuid references users(id),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    alter table tech_packs add column if not exists verification jsonb not null default '{}';
+    alter table tech_packs add column if not exists locked_at timestamptz;
+    create table if not exists tech_pack_shares (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      token_hash text unique not null,
+      label text not null,
+      email text,
+      created_by uuid references users(id),
+      expires_at timestamptz,
+      revoked_at timestamptz,
+      last_viewed_at timestamptz,
+      view_count integer not null default 0,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
     create table if not exists notifications (
       id bigserial primary key,
       client_id uuid not null references clients(id) on delete cascade,
