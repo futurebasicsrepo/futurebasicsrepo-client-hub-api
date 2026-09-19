@@ -70,3 +70,22 @@ Negotiation rules live in `src/consign.js` (unit tests in `test/consign.test.js`
 - `POST /v1/requests/:id/files` — multipart field `file`, Bearer token
 
 Each client can have multiple approved email domains and multiple active projects. Products belong to projects, and each project has a shared staff/client message thread. Archived client rooms and projects remain recoverable to staff but are removed from active client access. A domain can belong to only one client room. Future Basics staff authenticate with `thefuturebasics.com` and are routed to the internal operations hub. Client API reads and writes remain scoped to the `clientId` signed into the session token.
+
+## Pulling products off the live Common Ground store
+
+`scripts/pull-commonground-products.mjs` reads the public `products.json` feed of
+commonground12.com, saves every product photo, and writes a Shopify-importable
+CSV. With `--push` and an Admin API token it creates the products (images,
+options, variants, prices, stock) directly in another store.
+
+```sh
+node scripts/pull-commonground-products.mjs --limit 30 --out ./commonground-export
+# then Products -> Import -> commonground-export/products.csv in the target admin
+
+# or create them straight in the trial store (Settings -> Apps -> Develop apps -> Admin API token
+# with write_products + write_inventory):
+SHOPIFY_STORE=fkgwpw-8u SHOPIFY_ADMIN_TOKEN=shpat_... \
+  node scripts/pull-commonground-products.mjs --limit 30 --push
+```
+
+Products are created as drafts; add `--active` to publish them.
