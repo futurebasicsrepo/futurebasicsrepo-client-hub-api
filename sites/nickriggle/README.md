@@ -11,11 +11,10 @@ Static site (`index.html` plus `assets/`) for Nick Riggle: Professor of Philosop
 
 ## Content sources
 
-All copy is drawn from the August 2026 CV (`assets/Nick-Riggle-CV-August-2026.pdf`): appointments, books, every article and chapter with venue and year, awards, upcoming and recent talks, service, and graduate committees. Book jackets in `assets/` are the real covers. Public-writing links to the New York Times, Scientific American, and Philosophy Talk point at site searches; replace with the article URLs when convenient.
+All copy is drawn from the August 2026 CV (`assets/Nick-Riggle-CV-August-2026.pdf`): appointments, books, every article and chapter with venue and year, awards, upcoming and recent talks, service, and graduate committees. Book jackets and the hero portrait in `assets/` are the real images. Public-writing links to the New York Times, Scientific American, and Philosophy Talk point at site searches; replace with the article URLs when convenient.
 
 ## Still to add
 
-- A portrait photo. The `.frame` block in the About section holds a monogram placeholder; drop an `<img>` inside it.
 - Current course titles and posted office hours in the Teaching section (the CV does not list courses).
 - Pre-order links for *Understanding Aesthetic Life* once Oxford publishes the product page.
 

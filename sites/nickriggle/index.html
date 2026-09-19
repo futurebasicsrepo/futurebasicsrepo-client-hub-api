@@ -8,7 +8,7 @@
 <meta property="og:title" content="Nick Riggle">
 <meta property="og:description" content="Philosopher of beauty, author, former pro skater. University of San Diego.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="assets/this-beauty.webp">
+<meta property="og:image" content="assets/nick-riggle.webp">
 <title>Nick Riggle</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -120,7 +120,21 @@ h2 em{font-style:italic;color:var(--acc)}
 #arcs{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:.9}
 .hero-glow{position:absolute;width:70vmax;height:70vmax;left:50%;top:-10%;transform:translateX(-30%);background:radial-gradient(closest-side,rgba(184,151,90,.16),transparent 70%);filter:blur(30px);pointer-events:none;animation:breathe 12s ease-in-out infinite}
 @keyframes breathe{50%{transform:translateX(-24%) translateY(6%) scale(1.08)}}
-.hero-in{position:relative;max-width:1280px;margin:0 auto;width:100%}
+.hero-in{position:relative;max-width:1280px;margin:0 auto;width:100%;display:grid;grid-template-columns:minmax(0,1fr)}
+.hero-portrait{order:-1;position:relative;width:min(100%,72vw);aspect-ratio:4/5;margin:0 0 30px auto;overflow:hidden;background:var(--ink-3);clip-path:inset(0 0 0 0);animation:unveil 1.4s 1.2s var(--ease) both}
+.no-curtain .hero-portrait{animation-delay:.1s}
+@keyframes unveil{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
+.hero-portrait img{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block;filter:saturate(.82) contrast(1.04);transform:scale(1.06);transition:transform 1.4s var(--ease)}
+.hero-portrait:hover img{transform:scale(1.02)}
+.hero-portrait::before{content:"";position:absolute;inset:12px;border:1px solid var(--gold-dim);z-index:2;pointer-events:none}
+.hero-portrait::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(13,12,11,.72));pointer-events:none}
+.hero-portrait .frame-cap{z-index:3;color:var(--paper);opacity:.85}
+@media (min-width:900px){
+  .hero-in{grid-template-columns:minmax(0,1fr) clamp(280px,31vw,430px);grid-template-rows:auto auto auto;column-gap:clamp(36px,5vw,88px);align-items:end}
+  .hero-portrait{order:0;grid-column:2;grid-row:1/4;align-self:end;width:100%;margin:0}
+  .hero .eyebrow,.hero-name,.hero-row{grid-column:1}
+  .hero-name{font-size:clamp(66px,10.8vw,196px)}
+}
 .hero .eyebrow{margin-bottom:22px}
 .hero-name{font-family:var(--display);font-weight:300;font-size:clamp(66px,14.5vw,220px);line-height:.88;letter-spacing:-.025em;margin:0 0 .18em;display:flex;flex-wrap:wrap;column-gap:.22em}
 .hero-name .w{display:block;overflow:hidden}
@@ -129,7 +143,7 @@ h2 em{font-style:italic;color:var(--acc)}
 .no-curtain .hero-name .w i{animation-delay:.05s}
 .no-curtain .hero-name .w:nth-child(2) i{animation-delay:.15s}
 .hero-row{display:grid;gap:28px;align-items:end}
-@media (min-width:900px){.hero-row{grid-template-columns:1.2fr 1fr}}
+@media (min-width:1180px){.hero-row{grid-template-columns:1.15fr 1fr}}
 .hero-line{font-family:var(--display);font-weight:300;font-size:clamp(24px,3.4vw,44px);line-height:1.2;margin:0;text-wrap:balance}
 .rot{display:inline-block;position:relative;font-style:italic;color:var(--gold-hi);vertical-align:bottom}
 .rot b{font-weight:300;display:inline-block;transition:transform .7s var(--ease),opacity .5s;will-change:transform}
@@ -143,7 +157,7 @@ h2 em{font-style:italic;color:var(--acc)}
 .cue{position:absolute;right:var(--gutter);bottom:clamp(40px,6vw,80px);display:none;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--stone-2);writing-mode:vertical-rl;align-items:center;gap:12px}
 .cue::after{content:"";width:1px;height:56px;background:linear-gradient(var(--gold),transparent);animation:cue 2.2s ease-in-out infinite}
 @keyframes cue{50%{transform:translateY(10px);opacity:.4}}
-@media (min-width:1100px){.cue{display:flex}}
+
 
 /* ---------- marquee ---------- */
 .marquee{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;background:var(--ink);white-space:nowrap;position:relative}
@@ -155,17 +169,13 @@ h2 em{font-style:italic;color:var(--acc)}
 @keyframes slide{to{transform:translateX(-50%)}}
 .marquee:hover .marquee-track{animation-play-state:paused}
 
-/* ---------- portrait frame ---------- */
-.frame{position:relative;aspect-ratio:4/5;max-width:100%;border:1px solid var(--ln);overflow:hidden;background:var(--ink-3)}
-.frame::before{content:"";position:absolute;inset:14px;border:1px solid var(--gold-dim);pointer-events:none;z-index:2}
-.frame-art{position:absolute;inset:0;background:
-  radial-gradient(120% 80% at 80% 10%,rgba(184,151,90,.28),transparent 55%),
-  radial-gradient(90% 70% at 10% 90%,rgba(227,203,146,.14),transparent 60%),
-  linear-gradient(160deg,#1c1913,#0d0c0b 70%)}
-.frame-art::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-32deg,transparent 0 22px,rgba(239,233,220,.035) 22px 23px);animation:pan 24s linear infinite}
-@keyframes pan{to{transform:translateX(64px)}}
-.frame-mono{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:var(--display);font-size:clamp(90px,16vw,200px);font-weight:300;color:var(--paper);letter-spacing:-.06em;opacity:.9;z-index:1}
-.frame-cap{position:absolute;left:24px;bottom:22px;z-index:3;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.frame-cap{position:absolute;left:24px;bottom:22px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.glance{list-style:none;margin:0;padding:0;border-top:1px solid var(--ln)}
+.glance li{display:grid;grid-template-columns:84px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--ln);font-size:14px;align-items:baseline}
+.glance small{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);font-variant-numeric:tabular-nums}
+.glance b{font-weight:500}
+.glance span{display:block;color:var(--mute);font-size:13px}
+.glance-h{font-family:var(--display);font-size:26px;font-weight:400;margin:0 0 16px}
 
 /* ---------- start here (students) ---------- */
 .start-grid{display:grid;gap:14px}
@@ -320,6 +330,7 @@ footer button:hover{color:var(--paper)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .curtain{display:none}
   .hero-name .w i{transform:none}
+  .hero-portrait{animation:none;clip-path:none}
   .js .rv,.js .rv-lines .ln span{opacity:1;transform:none}
   .js .rv-words .wd{opacity:1}
   .cursor{display:none}
@@ -357,6 +368,10 @@ footer button:hover{color:var(--paper)}
   <canvas id="arcs" aria-hidden="true"></canvas>
   <div class="hero-glow" aria-hidden="true"></div>
   <div class="hero-in">
+    <figure class="hero-portrait">
+      <img src="assets/nick-riggle.webp" alt="Nick Riggle" fetchpriority="high">
+      <figcaption class="frame-cap">Nick Riggle &middot; San Diego</figcaption>
+    </figure>
     <p class="eyebrow">Philosopher &middot; Author &middot; Former pro skater</p>
     <h1 class="hero-name"><span class="w"><i>Nick</i></span><span class="w"><i>Riggle</i></span></h1>
     <div class="hero-row">
@@ -371,7 +386,6 @@ footer button:hover{color:var(--paper)}
       </div>
     </div>
   </div>
-  <div class="cue" aria-hidden="true">Scroll</div>
 </header>
 
 <div class="marquee" aria-hidden="true">
@@ -421,12 +435,19 @@ footer button:hover{color:var(--paper)}
 <section class="plate plate--paper" id="about" data-student="5" data-colleague="1">
   <div class="wrap split">
     <div>
-      <div class="sticky">
-        <div class="frame rv">
-          <div class="frame-art"></div>
-          <div class="frame-mono">NR</div>
-          <div class="frame-cap">Portrait &middot; San Diego</div>
-        </div>
+      <div class="sticky rv">
+        <p class="glance-h">At a glance</p>
+        <ul class="glance">
+          <li><small>2026&ndash;</small><div><b>Professor of Philosophy</b><span>University of San Diego</span></div></li>
+          <li><small>2021&ndash;26</small><div><b>Associate Professor</b><span>University of San Diego</span></div></li>
+          <li><small>2015&ndash;21</small><div><b>Assistant Professor</b><span>University of San Diego</span></div></li>
+          <li><small>2019</small><div><b>Resident, Centre for Aesthetics</b><span>University of Leeds</span></div></li>
+          <li><small>2014&ndash;15</small><div><b>Visiting Assistant Professor</b><span>Lafayette College</span></div></li>
+          <li><small>2013&ndash;14</small><div><b>Lecturer</b><span>New York University</span></div></li>
+          <li><small>2013</small><div><b>PhD, Philosophy</b><span>New York University</span></div></li>
+          <li><small>2006</small><div><b>BA, Philosophy, Highest Honors</b><span>University of California, Berkeley</span></div></li>
+          <li><small>1998&ndash;2000</small><div><b>ESPN X Games, three times</b><span>Professional rollerblader</span></div></li>
+        </ul>
       </div>
     </div>
     <div>
@@ -994,6 +1015,7 @@ footer button:hover{color:var(--paper)}
     gsap.registerPlugin(ScrollTrigger);
     gsap.to('.hero-name',{yPercent:18,opacity:.35,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
     gsap.to('.hero-glow',{yPercent:-30,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+    gsap.to('.hero-portrait',{yPercent:12,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
     $$('.plate--paper').forEach(function(p){
       var h=p.querySelector('h2');if(!h)return;
       gsap.fromTo(h,{xPercent:-2},{xPercent:2,ease:'none',scrollTrigger:{trigger:p,start:'top bottom',end:'bottom top',scrub:true}});
