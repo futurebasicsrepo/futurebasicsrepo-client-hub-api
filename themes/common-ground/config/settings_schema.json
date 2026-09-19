@@ -10,13 +10,13 @@
   {
     "name": "Colors",
     "settings": [
-      { "type": "color", "id": "color_bg", "label": "Background", "default": "#F4EFE4" },
-      { "type": "color", "id": "color_paper", "label": "Card / paper", "default": "#FFFFFF" },
-      { "type": "color", "id": "color_ink", "label": "Ink (text)", "default": "#111111" },
-      { "type": "color", "id": "color_accent_1", "label": "Accent 1 — Hot", "default": "#FF2D95" },
-      { "type": "color", "id": "color_accent_2", "label": "Accent 2 — Volt", "default": "#1F3BFF" },
-      { "type": "color", "id": "color_accent_3", "label": "Accent 3 — Acid", "default": "#C8FF00" },
-      { "type": "color", "id": "color_accent_4", "label": "Accent 4 — Tangerine", "default": "#FF6A00" }
+      { "type": "color", "id": "color_bg", "label": "Background (VHS-label cream)", "default": "#EDE6D3" },
+      { "type": "color", "id": "color_paper", "label": "Card / paper", "default": "#FAF6EC" },
+      { "type": "color", "id": "color_ink", "label": "Ink (CRT black)", "default": "#141414" },
+      { "type": "color", "id": "color_accent_1", "label": "Accent 1 — REC red", "default": "#E0322B" },
+      { "type": "color", "id": "color_accent_2", "label": "Accent 2 — Turf green", "default": "#1E7A3C" },
+      { "type": "color", "id": "color_accent_3", "label": "Accent 3 — Simpsons yellow", "default": "#F5C518" },
+      { "type": "color", "id": "color_accent_4", "label": "Accent 4 — Track-jacket blue", "default": "#2457C5" }
     ]
   },
   {
@@ -35,7 +35,8 @@
         "default": "full"
       },
       { "type": "checkbox", "id": "enable_cursor", "label": "Sticker cursor trail (desktop)", "default": true },
-      { "type": "checkbox", "id": "enable_scanlines", "label": "CRT scanline overlay", "default": true },
+      { "type": "checkbox", "id": "enable_scanlines", "label": "Film grain + CRT scanline overlay", "default": true },
+      { "type": "checkbox", "id": "enable_osd", "label": "VCR on-screen display (▶ PLAY on hover, REC timecode on hero)", "default": true },
       { "type": "checkbox", "id": "enable_hover_swap", "label": "Swap to second image on product hover", "default": true },
       { "type": "checkbox", "id": "enable_view_transitions", "label": "Page transitions (View Transitions API)", "default": true }
     ]

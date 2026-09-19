@@ -22,9 +22,23 @@ instantly scannable.
 4. **Consignment cues.** "Only one — it's consignment" on single-unit items; sold-out stays visible (struck
    through) so the catalogue feels alive; NEW stickers for the last 14 days.
 
+## The photo
+The shop-window shot is the whole brief: three stacked CRTs (Sylvania, Toshiba, Magnavox) on black milk crates,
+VHS sleeves (Simpsons, Terminator, WWF SummerSlam, Arthur), a Panasonic camcorder, a green Perrier bottle, a
+Supreme deck, astroturf, film grain, and the black "Come in We're OPEN" sign with a Murakami flower.
+
 ## Visual language
-- **Paper + ink + hot accents.** Cream paper with dot-grid, 3px black borders, hard offset shadows (no blur).
-- **Stickers** — hand-cut star badges, slightly rotated, used for NEW / SALE / SOLD OUT and hero call-outs.
+- **VHS cream + CRT black + REC red + turf green + sleeve yellow.** Film grain on the page, 3px black borders,
+  hard offset shadows (no blur), scanlines and a vignette over everything.
+- **Every product on a TV.** Product images sit inside a dark CRT bezel with a curved screen; hover shows a
+  green VCR "▶ PLAY" on-screen display; sold-out shows "NO SIGNAL" static. The hero carries a blinking REC
+  timecode.
+- **Milk crates.** Collection tiles are black / red / green / blue / yellow crates with a lattice overlay and a
+  stamped title.
+- **Stickers** — VHS labels (rounded rectangles) for NEW / SALE / SOLD OUT; the starburst survives only on the
+  hero call-out.
+- **The sign.** Announcement ticker is the OPEN sign: black, white caps, rainbow-flower separators, "Come in,
+  we're open" first.
 - **Chrome** — Win98 bevel buttons for utility actions (filter toggle, secondary CTAs).
 - **Marquees** — huge outlined brand ticker between hero and tiles; announcement ticker above the header.
 - **CRT** — faint scanline overlay across the whole page, toggleable.
@@ -36,12 +50,12 @@ Home → Shop all → Collection (Shop all X) → Product → Cart drawer → Ch
 Search (with facets) · Collections index · Pages (Sell / About / Contact) · Blog · Account.
 
 ## Hero
-Full-bleed storefront photo from the current site (the client's own asset — drop it into *Hero → Image*),
-darkened 35%, with the wordmark rising word-by-word, a rotating "EST. 2012" sticker and two CTAs:
-**Shop all** (primary) and **New arrivals**.
+The storefront photo, full-bleed (portrait crop centred on the TVs), darkened 30% toward the bottom, with the
+wordmark rising word-by-word in VHS cream with a red + blue double shadow, REC timecode top-left, a rotating
+"EST. 2012" sticker and two CTAs: **Shop all** (primary) and **New arrivals**.
 
 ## Open items for the client
-- Supply the landing-page photo and a logo file (or keep the wordmark).
+- Supply a logo file (or keep the wordmark).
 - Confirm collection names / order for the mega menu.
 - Confirm which product attributes are consistently filled (Vendor, Type, Size) so filters are populated.
 - Decide on shipping threshold copy for the announcement ticker.

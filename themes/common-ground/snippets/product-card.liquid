@@ -46,7 +46,7 @@
   assign t_on_sale = 'products.product.on_sale' | t
   assign t_new = 'products.product.new' | t
 -%}
-<article class="product-card reveal" data-tilt data-product-id="{{ product.id }}" {% if index %}style="--i: {{ index }}"{% endif %}>
+<article class="product-card reveal{% unless product.available %} product-card--soldout{% endunless %}" data-tilt data-product-id="{{ product.id }}" {% if index %}style="--i: {{ index }}"{% endif %}>
   <a class="product-card__media" href="{{ product.url }}" aria-label="{{ product.title | escape }}">
     {%- if product.featured_media -%}
       <img
@@ -63,6 +63,7 @@
     {%- else -%}
       <div class="product-card__placeholder">{{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}</div>
     {%- endif -%}
+    {%- if settings.enable_osd -%}<span class="osd osd--card" aria-hidden="true"><span class="osd__play">▶ PLAY</span></span>{%- endif -%}
     <div class="product-card__stickers">
       {%- if product.available == false -%}
         {% render 'sticker', text: t_sold_out, color: 'ink', size: 'sm' %}

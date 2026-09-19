@@ -2,7 +2,7 @@
   "sections": {
     "hero": { "type": "hero", "settings": {
       "heading": "COMMON GROUND",
-      "subheading": "Philly's sneaker &amp; streetwear consignment since way back. Kicks, tees, hats, collectibles — authenticated, in person, one of one.",
+      "subheading": "Kicks, tees, hats, tapes and toys. Philly's consignment spot since 2012 — authenticated in person, one of one, shipped anywhere.",
       "button_label": "Shop all",
       "button_link": "shopify://collections/all",
       "button_label_2": "New arrivals",
@@ -21,7 +21,7 @@
     "collection_list": { "type": "collection-list", "settings": { "heading": "Pick a lane", "show_all": true } },
     "featured_new": { "type": "featured-collection", "settings": { "heading": "Just walked in", "collection": "all", "sort": "created-descending", "limit": 8, "show_view_all": true } },
     "image_with_text": { "type": "image-with-text", "settings": {
-      "heading": "Walnut St. energy, worldwide shipping.",
+      "heading": "Come in. We're open.",
       "text": "<p>Every pair and piece is checked in person by our team before it hits the floor. Buy, sell, trade — we've been the neighborhood's plug since 2012.</p>",
       "button_label": "Visit the shop",
       "button_link": "shopify://pages/contact",

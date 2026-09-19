@@ -151,11 +151,24 @@
     });
   }
 
+  /* ---- VCR timecode on the hero OSD ---- */
+  function initTimecode() {
+    var els = $('[data-timecode]');
+    if (!els.length || !ANY) return;
+    var start = Date.now();
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    setInterval(function () {
+      var s = Math.floor((Date.now() - start) / 1000);
+      var t = pad(Math.floor(s / 3600)) + ':' + pad(Math.floor(s / 60) % 60) + ':' + pad(s % 60);
+      els.forEach(function (e) { e.textContent = t; });
+    }, 1000);
+  }
+
   /* ---- Public re-init hook for AJAX-rendered content ---- */
   window.themeMotion = { init: function (root) { initReveal(root); initMarquee(root); initTilt(root); initQty(root); } };
 
   document.addEventListener('DOMContentLoaded', function () {
-    initReveal(); initMarquee(); initTilt(); initCursor(); initHeader(); initParallax(); initViewTransitions(); initQty();
+    initReveal(); initMarquee(); initTilt(); initCursor(); initHeader(); initParallax(); initViewTransitions(); initQty(); initTimecode();
   });
   // Theme editor: re-run when sections load/reorder
   document.addEventListener('shopify:section:load', function (e) { window.themeMotion.init(e.target); });

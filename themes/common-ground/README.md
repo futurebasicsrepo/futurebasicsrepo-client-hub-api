@@ -14,22 +14,24 @@ filters that actually work.
 | **Search** | Full search page with the same facets, plus idle-state collection chips. |
 | **Product** | Sticky gallery with thumbs, click-to-zoom and arrow-key navigation, sold-out swatches struck through, variant-aware price/SKU/media, AJAX add-to-bag, "Only one — it's consignment" nudge for single-unit stock, accordions, related products. |
 | **Cart** | Slide-out drawer with quantity steppers and remove, re-rendered from the server after every change. Full cart page as a fallback. |
-| **Home** | Hero with word-by-word rise-in and glitch-on-hover heading, rotating sticker, parallax photo; brand marquee; colour-blocked collection tiles (auto-populates from every non-empty collection); "Just walked in" and "Grails" product rails; image-with-text; newsletter. |
-| **Motion** | Reveal-on-scroll, 3D card tilt, sticker cursor trail, glitch text, marquees, CRT scanline overlay, cross-document View Transitions, cart-count bump. Theme setting `Motion level` (Full / Medium / Off) and every effect obeys `prefers-reduced-motion`. |
+| **Home** | Hero on the storefront photo with word-by-word rise-in, glitch-on-hover heading, REC timecode, rotating sticker and parallax; brand marquee; milk-crate collection tiles (auto-populates from every non-empty collection); "Just walked in" and "Grails" product rails; image-with-text; newsletter. |
+| **Motion** | Reveal-on-scroll, 3D card tilt, sticker cursor trail, glitch text, marquees, film-grain + CRT scanline overlay, VCR on-screen display (blinking REC timecode on the hero, "▶ PLAY" on product hover, "NO SIGNAL" static on sold-out), cross-document View Transitions, cart-count bump. Theme setting `Motion level` (Full / Medium / Off) and every effect obeys `prefers-reduced-motion`. |
 | **Everything else** | Blog, article, pages, contact form, 404, password page, gift card, and all customer account templates. |
 
 ## Design system
 
-Defined once as CSS custom properties in `layout/theme.liquid` and editable in **Theme settings → Colors**.
+Derived from the shop-window photo (stacked CRT TVs, milk crates, VHS sleeves, a camcorder, astroturf, the
+"Come in We're OPEN" sign). That photo ships in `assets/hero-storefront.jpg` and is the hero until you pick another.
+Tokens are CSS custom properties in `layout/theme.liquid`, editable in **Theme settings → Colors**.
 
 | Token | Default | Role |
 | --- | --- | --- |
-| `--c-bg` | `#F4EFE4` | Paper background with a subtle dot grid |
-| `--c-ink` | `#111111` | Text, 3px borders, hard offset shadows |
-| `--c-hot` | `#FF2D95` | Primary CTA, sale stickers, hover shadow |
-| `--c-volt` | `#1F3BFF` | Links, kickers, newsletter band |
-| `--c-acid` | `#C8FF00` | Hover fills, "NEW" stickers, marquee |
-| `--c-tang` | `#FF6A00` | Sale stickers, tile accents |
+| `--c-bg` | `#EDE6D3` | VHS-label cream with film grain |
+| `--c-ink` | `#141414` | CRT black: text, 3px borders, hard shadows, TV bezels |
+| `--c-hot` | `#E0322B` | REC red: primary CTA, sale stickers, hover shadow |
+| `--c-volt` | `#1E7A3C` | Astroturf green: kickers, newsletter band, footer, hover states |
+| `--c-acid` | `#F5C518` | Simpsons-sleeve yellow: hover fills, NEW stickers, brand marquee |
+| `--c-tang` | `#2457C5` | Track-jacket blue: crate tiles, second text shadow |
 | chrome greys | `#C0C0C0` etc. | Win98-style bevel buttons |
 
 Type: **Archivo Black** (display, all caps), **Space Grotesk** (body), **VT323** (pixel accents: kickers, counts, breadcrumbs). Loaded from Google Fonts; swap to Shopify-hosted fonts via `font_face` if you want to silence the theme-check `RemoteAsset` warnings.
@@ -37,7 +39,7 @@ Type: **Archivo Black** (display, all caps), **Space Grotesk** (body), **VT323**
 ## Setup checklist (in Shopify admin)
 
 1. **Online Store → Themes → Add theme → Upload zip** (or `shopify theme push`, below). Do **not** publish until content is ready.
-2. **Customize → Hero → Image**: drop the storefront / landing-page photo from the current commonground12.com home page. 2400×1400 or larger. Set *Image darken* to taste.
+2. **Customize → Hero → Image**: optional. The storefront photo is bundled and used by default; pick a different one here if you want. Set *Image darken* to taste.
 3. **Navigation**: keep `main-menu` for pages (Sell, About, Contact). Optional: create a `shop-menu` and select it under *Header → Shop dropdown menu* to control the order of collections; otherwise the mega menu lists every collection automatically.
 4. **Apps → Search & Discovery → Filters**: turn on **Vendor (Brand)**, **Product type**, **Size** (the variant option), **Price**, **Availability**, and **Color** / tags if used. This is what makes the filter sidebar populate. Nothing else is required.
 5. Make sure every product has **Vendor** (brand), **Product type** (Sneakers / Tees / Hats / Collectibles…) and a **Size** option set, because those are what people filter on.
