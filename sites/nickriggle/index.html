@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Nick Riggle is Associate Professor of Philosophy at the University of San Diego and the author of This Beauty, On Being Awesome, and Aesthetic Life and Why It Matters.">
+<meta name="description" content="Nick Riggle is Professor of Philosophy at the University of San Diego and the author of This Beauty, On Being Awesome, Aesthetic Life and Why It Matters, and Understanding Aesthetic Life.">
 <meta name="theme-color" content="#0d0c0b">
 <meta property="og:title" content="Nick Riggle">
 <meta property="og:description" content="Philosopher of beauty, author, former pro skater. University of San Diego.">
 <meta property="og:type" content="website">
+<meta property="og:image" content="assets/this-beauty.webp">
 <title>Nick Riggle</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -188,19 +189,11 @@ h2 em{font-style:italic;color:var(--acc)}
 .book{flex:0 0 min(82vw,520px);scroll-snap-align:start;display:grid;gap:26px;align-content:start}
 @media (min-width:900px){.book{flex-basis:min(44vw,560px);grid-template-columns:200px 1fr;gap:32px}}
 .cover{aspect-ratio:2/3;width:min(52vw,200px);position:relative;transform-style:preserve-3d;transition:transform .7s var(--ease);will-change:transform}
-.cover-face{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:18px 16px;box-shadow:24px 30px 60px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.08) inset;overflow:hidden}
+.cover-face{position:absolute;inset:0;box-shadow:24px 30px 60px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.08) inset;overflow:hidden;background:var(--ink-3)}
+.cover-face img{width:100%;height:100%;object-fit:cover;display:block}
+.cover-tag{position:absolute;top:10px;right:-6px;background:var(--gold);color:var(--ink);font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:6px 10px;box-shadow:0 6px 16px rgba(0,0,0,.35);z-index:2}
 .cover-face::after{content:"";position:absolute;left:0;top:0;bottom:0;width:9px;background:linear-gradient(90deg,rgba(0,0,0,.35),rgba(255,255,255,.12) 40%,rgba(0,0,0,.2))}
 .cover-spine{position:absolute;left:0;top:0;bottom:0;width:22px;transform:rotateY(-90deg);transform-origin:left;background:#000;opacity:.6}
-.cv-t{font-family:var(--display);font-weight:400;line-height:1;font-size:26px;margin:0;text-wrap:balance}
-.cv-s{font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.75;margin:0}
-.cv-a{font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin:0}
-.cv-awesome{background:#f3c53a;color:#111}
-.cv-awesome .cv-t{font-family:var(--sans);font-weight:600;font-size:30px;letter-spacing:-.03em;text-transform:uppercase;line-height:.92}
-.cv-beauty{background:radial-gradient(90% 60% at 30% 20%,#d7a4a4,transparent 60%),radial-gradient(80% 60% at 80% 80%,#7c9a7e,transparent 60%),#213a33;color:#f6efe4}
-.cv-beauty .cv-t{font-size:34px;font-weight:300;font-style:italic}
-.cv-life{background:#ece4d2;color:#1a1a1a;border:1px solid rgba(0,0,0,.08)}
-.cv-life::before{content:"";position:absolute;left:16px;right:16px;top:64px;height:1px;background:#8a2b2b}
-.cv-life .cv-t{font-size:24px;padding-top:12px}
 .book-t{font-family:var(--display);font-size:clamp(28px,3vw,40px);line-height:1.05;font-weight:300;margin:0 0 6px;text-wrap:balance}
 .book-m{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);margin:0 0 16px}
 .book-d{color:var(--mute);margin:0 0 20px;font-size:15px;max-width:40ch}
@@ -212,6 +205,26 @@ h2 em{font-style:italic;color:var(--acc)}
 .rail-hint{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);padding:18px var(--gutter) 0;display:flex;justify-content:space-between}
 
 @media (min-width:1024px){.rail{scroll-snap-type:none}#books{padding-block:56px 40px}#books .lede{margin-bottom:32px!important}#books h2{font-size:clamp(38px,4.6vw,64px)}}
+
+.awards{list-style:none;margin:36px 0 0;padding:0;display:grid;gap:14px;border-top:1px solid var(--ln)}
+@media (min-width:640px){.awards{grid-template-columns:1fr 1fr;gap:18px 32px}}
+.awards li{display:grid;gap:3px;padding-top:16px}
+.awards b{font-family:var(--display);font-size:22px;font-weight:400;line-height:1.1}
+.awards small{font-size:12px;color:var(--mute);letter-spacing:.02em}
+.next{margin:40px 0 0;padding:28px 0 0;border-top:1px solid var(--ln);color:var(--mute);font-size:15px;max-width:70ch}
+.next em{color:var(--fg)}
+.next .eyebrow{display:flex}
+.wip{margin-top:56px;padding-top:36px;border-top:1px solid var(--ln)}
+.wip ul{list-style:none;margin:0;padding:0;display:grid;gap:10px 40px}
+@media (min-width:800px){.wip ul{grid-template-columns:1fr 1fr}}
+.wip li{display:flex;justify-content:space-between;gap:16px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--ln)}
+.wip b{font-weight:500}
+.wip span{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);flex:none}
+.star{font-style:normal;color:var(--acc)}
+.tl-group{margin:0 0 12px;display:inline-block}
+.tl-t em{font-style:italic}
+.addr{font-style:normal;margin-top:28px;color:var(--mute);line-height:1.7;font-size:14px}
+.addr a{border-bottom:1px solid var(--ln)}
 
 /* ---------- research ---------- */
 .ideas{border-top:1px solid var(--ln)}
@@ -349,7 +362,7 @@ footer button:hover{color:var(--paper)}
     <div class="hero-row">
       <p class="hero-line rv">On <span class="rot" aria-live="off"><b id="rot">beauty</b></span> and why it matters.</p>
       <div class="hero-side rv">
-        <p>Associate Professor of Philosophy at the University of San Diego. Author of <em>This Beauty</em>, <em>On Being Awesome</em>, and <em>Aesthetic Life and Why It Matters</em>.</p>
+        <p>Professor of Philosophy at the University of San Diego. Author of <em>This Beauty</em>, <em>On Being Awesome</em>, <em>Aesthetic Life and Why It Matters</em>, and the forthcoming <em>Understanding Aesthetic Life</em>.</p>
         <div class="who" id="who">
           <span class="who-hint" style="flex-basis:100%">I&rsquo;m here as a</span>
           <button type="button" class="btn btn--ghost" data-mode="student"><span>Student</span><span class="arrow"></span></button>
@@ -363,7 +376,7 @@ footer button:hover{color:var(--paper)}
 
 <div class="marquee" aria-hidden="true">
   <div class="marquee-track" id="marquee">
-    <span>The Philosophical Review</span><i>&#9670;</i><span>Mind</span><i>&#9670;</i><span>Philosophy and Phenomenological Research</span><i>&#9670;</i><span>Philosophers&rsquo; Imprint</span><i>&#9670;</i><span>The Philosophical Quarterly</span><i>&#9670;</i><span>British Journal of Aesthetics</span><i>&#9670;</i><span>Journal of Aesthetics and Art Criticism</span><i>&#9670;</i><span>Oxford University Press</span><i>&#9670;</i><span>Basic Books</span><i>&#9670;</i><span>Penguin</span><i>&#9670;</i><span>Aeon</span><i>&#9670;</i><span>Psyche</span><i>&#9670;</i>
+    <span>The Philosophical Review</span><i>&#9670;</i><span>Mind</span><i>&#9670;</i><span>Philosophy and Phenomenological Research</span><i>&#9670;</i><span>Philosophers&rsquo; Imprint</span><i>&#9670;</i><span>The Philosophical Quarterly</span><i>&#9670;</i><span>British Journal of Aesthetics</span><i>&#9670;</i><span>Journal of Aesthetics and Art Criticism</span><i>&#9670;</i><span>Analysis</span><i>&#9670;</i><span>Ergo</span><i>&#9670;</i><span>Oxford University Press</span><i>&#9670;</i><span>Basic Books</span><i>&#9670;</i><span>Penguin</span><i>&#9670;</i><span>The New York Times</span><i>&#9670;</i><span>Aeon</span><i>&#9670;</i><span>Psyche</span><i>&#9670;</i>
   </div>
 </div>
 
@@ -397,7 +410,7 @@ footer button:hover{color:var(--paper)}
       <button type="button" class="tile rv" id="cite-btn-top">
         <span class="tile-k">Writing a paper?</span>
         <h3 class="tile-t">Copy a citation</h3>
-        <p class="tile-d">A ready-to-paste reference for the Philosophical Review article on aesthetic value.</p>
+        <p class="tile-d">A ready-to-paste reference for the prize-winning Philosophical Review article on aesthetic value.</p>
         <span class="tile-a">Copy citation <span class="arrow"></span></span>
       </button>
     </div>
@@ -421,12 +434,18 @@ footer button:hover{color:var(--paper)}
       <h2 class="rv">A philosopher of <em>beauty</em> who learned to fall first.</h2>
       <p class="lede rv-words" style="margin-bottom:36px">Nick Riggle left high school to skate professionally, touring the world in demos, shows, and competitions, including three ESPN X Games. Then he went to Berkeley, then NYU, and came out the other side asking what beauty, style, and awesomeness actually demand of us.</p>
       <div class="copy rv">
-        <p>He is Associate Professor of Philosophy at the University of San Diego, where his research centers on aesthetic value: what it is, why it matters, and how a life shaped by it might be more free. He received his PhD from New York University and his BA from the University of California, Berkeley.</p>
-        <p>His academic writing appears in <em>The Philosophical Review</em>, <em>Mind</em>, <em>Philosophy and Phenomenological Research</em>, <em>Philosophers&rsquo; Imprint</em>, <em>The Philosophical Quarterly</em>, and the <em>British Journal of Aesthetics</em>. His essays for general readers appear in Aeon, Psyche, McSweeney&rsquo;s, and elsewhere.</p>
-        <p>He co-organized the first major academic conference on the philosophy of street art and graffiti, and keeps one foot in the culture he came from.</p>
+        <p>He is Professor of Philosophy at the University of San Diego, where his research centers on aesthetic value: what it is, why it matters, and how a life shaped by it might be more free. He works in aesthetics, value theory, philosophy of language, social philosophy, and Kant and post-Kantian philosophy. He received his PhD from New York University in 2013 and his BA, with highest honors, from the University of California, Berkeley.</p>
+        <p>His academic writing appears in <em>The Philosophical Review</em>, <em>Mind</em>, <em>Philosophy and Phenomenological Research</em>, <em>Philosophers&rsquo; Imprint</em>, <em>The Philosophical Quarterly</em>, the <em>British Journal of Aesthetics</em>, and the <em>Journal of Aesthetics and Art Criticism</em>. His essays for general readers appear in <em>The New York Times</em>, Aeon, and Psyche.</p>
+        <p>He founded and directs the Southern California Aesthetics Forum, co-founded the Food Studies Minor at USD, and co-organized the first major academic conference on the philosophy of street art.</p>
       </div>
+      <ul class="awards rv">
+        <li><b>Arthur Danto Prize</b><small>American Philosophical Association, for &ldquo;Aesthetic Value and the Practice of Aesthetic Valuing&rdquo;</small></li>
+        <li><b>The Philosopher&rsquo;s Annual</b><small>Selected among the ten best essays of 2024</small></li>
+        <li><b>Experience Project Fellow</b><small>Non-residential fellowship, 2016</small></li>
+        <li><b>Mellon Dissertation Fellow</b><small>New York University, 2012&ndash;2013</small></li>
+      </ul>
       <div class="rv" style="margin-top:36px;display:flex;flex-wrap:wrap;gap:12px">
-        <a class="btn" href="https://nickriggle.squarespace.com/s/Nick-Riggle-CV-Summer-2025.pdf" target="_blank" rel="noopener"><span>Curriculum vitae</span><span class="arrow"></span></a>
+        <a class="btn" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Curriculum vitae</span><span class="arrow"></span></a>
         <a class="btn btn--ghost" href="#research"><span>Research</span><span class="arrow"></span></a>
       </div>
     </div>
@@ -437,7 +456,7 @@ footer button:hover{color:var(--paper)}
 <section class="plate books" id="books" data-student="2" data-colleague="3">
   <div class="wrap">
     <p class="eyebrow rv">Books</p>
-    <h2 class="rv">Three books. <em>One</em> question.</h2>
+    <h2 class="rv">Four books. <em>One</em> question.</h2>
     <p class="lede rv" style="margin-bottom:56px">What does it mean to live a life shaped by what you find beautiful?</p>
   </div>
   <div class="rail-wrap">
@@ -445,16 +464,28 @@ footer button:hover{color:var(--paper)}
       <article class="book rv">
         <div class="cover" data-tilt>
           <div class="cover-spine"></div>
-          <div class="cover-face cv-beauty">
-            <p class="cv-s">Basic Books</p>
-            <h3 class="cv-t">This Beauty</h3>
-            <p class="cv-a">Nick Riggle</p>
+          <div class="cover-face"><img src="assets/understanding-aesthetic-life.webp" alt="Cover of Understanding Aesthetic Life: Essays" loading="lazy"></div>
+          <span class="cover-tag">Forthcoming</span>
+        </div>
+        <div>
+          <h3 class="book-t">Understanding Aesthetic Life: Essays</h3>
+          <p class="book-m">Oxford University Press &middot; November 2026</p>
+          <p class="book-d">The essays behind aesthetic communitarianism, collected. Why valuing beauty is something we do together, and what follows for taste, style, discourse, and freedom.</p>
+          <div class="book-links">
+            <a href="https://global.oup.com/academic/search?q=Understanding+Aesthetic+Life+Riggle" target="_blank" rel="noopener">Oxford</a>
+            <a href="https://bookshop.org/search?keywords=Understanding+Aesthetic+Life+Nick+Riggle" target="_blank" rel="noopener">Bookshop</a>
           </div>
+        </div>
+      </article>
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/this-beauty.webp" alt="Cover of This Beauty: A Philosophy of Being Alive" loading="lazy"></div>
         </div>
         <div>
           <h3 class="book-t">This Beauty: A Philosophy of Being Alive</h3>
           <p class="book-m">Basic Books &middot; 2022</p>
-          <p class="book-d">You did not choose to exist. Loving beauty, Riggle argues, is how an unchosen life becomes one worth embracing. A book about attention, generosity, and the strange invitation beauty extends.</p>
+          <p class="book-d">You did not choose to exist. Loving beauty, Riggle argues, is how an unchosen life becomes one worth embracing. The subject of an author-meets-critics session at the 2025 APA Eastern.</p>
           <div class="book-links">
             <a href="https://bookshop.org/p/books/this-beauty-a-philosophy-of-being-alive-nick-riggle/78b09fd20e8b13ad" target="_blank" rel="noopener">Bookshop</a>
             <a href="https://www.barnesandnoble.com/w/this-beauty-nick-riggle/1141319371" target="_blank" rel="noopener">Barnes &amp; Noble</a>
@@ -465,15 +496,26 @@ footer button:hover{color:var(--paper)}
       <article class="book rv">
         <div class="cover" data-tilt>
           <div class="cover-spine"></div>
-          <div class="cover-face cv-awesome">
-            <p class="cv-s">Penguin</p>
-            <h3 class="cv-t">On Being Awesome</h3>
-            <p class="cv-a">Nick Riggle</p>
+          <div class="cover-face"><img src="assets/aesthetic-life.webp" alt="Cover of Aesthetic Life and Why It Matters" loading="lazy"></div>
+        </div>
+        <div>
+          <h3 class="book-t">Aesthetic Life and Why It Matters: Three Views</h3>
+          <p class="book-m">Oxford University Press &middot; 2022 &middot; with Dominic McIver Lopes and Bence Nanay</p>
+          <p class="book-d">Three philosophers, three answers to the same question. Riggle&rsquo;s view: aesthetic life matters because of the community and freedom it makes possible.</p>
+          <div class="book-links">
+            <a href="https://global.oup.com/academic/search?q=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Oxford</a>
+            <a href="https://bookshop.org/search?keywords=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Bookshop</a>
           </div>
+        </div>
+      </article>
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/on-being-awesome.webp" alt="Cover of On Being Awesome: A Unified Theory of How Not to Suck" loading="lazy"></div>
         </div>
         <div>
           <h3 class="book-t">On Being Awesome: A Unified Theory of How Not to Suck</h3>
-          <p class="book-m">Penguin &middot; 2017</p>
+          <p class="book-m">Penguin Books &middot; 2017</p>
           <p class="book-d">A pro-skater-turned-philosopher builds a serious theory of awesomeness and its opposite. High fives, open doors, and the social freedom we create for one another.</p>
           <div class="book-links">
             <a href="https://www.penguinrandomhouse.com/authors/2144680/nick-riggle/" target="_blank" rel="noopener">Penguin Random House</a>
@@ -481,28 +523,12 @@ footer button:hover{color:var(--paper)}
           </div>
         </div>
       </article>
-      <article class="book rv">
-        <div class="cover" data-tilt>
-          <div class="cover-spine"></div>
-          <div class="cover-face cv-life">
-            <p class="cv-s">Oxford University Press</p>
-            <h3 class="cv-t">Aesthetic Life and Why It Matters</h3>
-            <p class="cv-a">Lopes &middot; Nanay &middot; Riggle</p>
-          </div>
-        </div>
-        <div>
-          <h3 class="book-t">Aesthetic Life and Why It Matters</h3>
-          <p class="book-m">Oxford University Press &middot; 2022 &middot; with Dominic McIver Lopes and Bence Nanay</p>
-          <p class="book-d">Three philosophers, three answers to the same question. Riggle&rsquo;s contribution argues that aesthetic life matters because of the community and freedom it makes possible.</p>
-          <div class="book-links">
-            <a href="https://bookshop.org/search?keywords=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Bookshop</a>
-            <a href="https://global.oup.com/academic/search?q=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Oxford</a>
-          </div>
-        </div>
-      </article>
     </div>
     <div class="rail-bar" aria-hidden="true"><i id="railbar"></i></div>
-    <div class="rail-hint" aria-hidden="true"><span>Drag or scroll</span><span id="railcount">1 / 3</span></div>
+    <div class="rail-hint" aria-hidden="true"><span>Drag or scroll</span><span id="railcount">1 / 4</span></div>
+  </div>
+  <div class="wrap">
+    <p class="next rv"><span class="eyebrow" style="margin:0 0 10px">Next</span><em>This is Aesthetics</em>, with C. Thi Nguyen (Wiley-Blackwell, in progress) &middot; <em>Art Beyond the Individual</em> &middot; <em>List Life: Reclaiming Taste in the Era of Content</em></p>
   </div>
 </section>
 
@@ -512,9 +538,9 @@ footer button:hover{color:var(--paper)}
     <div class="split" style="margin-bottom:56px">
       <div>
         <p class="eyebrow rv">Research</p>
-        <h2 class="rv">Five ideas, <em>argued</em> across fifteen years.</h2>
+        <h2 class="rv">Five threads, <em>argued</em> across fifteen years.</h2>
       </div>
-      <p class="lede rv" style="align-self:end">Open any thread to see the papers behind it. Full list on the CV.</p>
+      <p class="lede rv" style="align-self:end">Open any thread to see the papers behind it. Every paper is available as a talk.</p>
     </div>
     <div class="ideas" id="ideas">
 
@@ -525,11 +551,14 @@ footer button:hover{color:var(--paper)}
           <span class="idea-x"></span>
         </button>
         <div class="idea-b" id="i1"><div><div class="idea-in">
-          <p class="idea-p">Against the picture of taste as private pleasure, Riggle argues that aesthetic value lives in a practice: valuing beauty is a way of sharing attention, building community, and expressing individuality at once.</p>
+          <p class="idea-p">Against the picture of taste as private pleasure, Riggle argues that aesthetic value lives in a practice: valuing beauty is a way of sharing attention, building community, and expressing individuality at once. He calls the view aesthetic communitarianism.</p>
           <ul class="pubs">
-            <li><b>Aesthetic Value and the Practice of Aesthetic Valuing</b><small>The Philosophical Review 133(2) &middot; 2024</small></li>
-            <li><b>Toward a Communitarian Theory of Aesthetic Value</b><small>Journal of Aesthetics and Art Criticism &middot; 2022</small></li>
-            <li><b>Convergence, Community, and Force in Aesthetic Discourse</b><small>Ergo &middot; 2022</small></li>
+            <li><b>Aesthetic Value and the Practice of Aesthetic Valuing</b><small>The Philosophical Review 133:2 &middot; 2024 &middot; <i class="star">Arthur Danto Prize &middot; Philosopher&rsquo;s Annual</i></small></li>
+            <li><b>Autonomy and Aesthetic Valuing</b><small>Philosophy and Phenomenological Research 109:1 &middot; 2024</small></li>
+            <li><b>Aesthetic Acquaintance in Practice</b><small>The Philosophical Quarterly &middot; forthcoming</small></li>
+            <li><b>Toward a Communitarian Theory of Aesthetic Value</b><small>Journal of Aesthetics and Art Criticism 80:1 &middot; 2022</small></li>
+            <li><b>Community and Conflict in Aesthetic Life: A Reply to Song</b><small>Journal of Aesthetics and Art Criticism 83:2 &middot; 2025</small></li>
+            <li><b>Convergence, Community, and Force in Aesthetic Discourse</b><small>Ergo 8:47 &middot; 2022</small></li>
           </ul>
         </div></div></div>
       </div>
@@ -541,11 +570,13 @@ footer button:hover{color:var(--paper)}
           <span class="idea-x"></span>
         </button>
         <div class="idea-b" id="i2"><div><div class="idea-in">
-          <p class="idea-p">Reading Schiller with Samantha Matherne, and Kant against the grain, Riggle develops the thought that the interest we take in beauty is an interest in a distinctive kind of freedom.</p>
+          <p class="idea-p">Reading Schiller with Samantha Matherne, and Kant against the grain, Riggle develops the thought that our interest in beauty is an interest in a distinctive kind of freedom, and that beauty is bound up with love and happiness.</p>
           <ul class="pubs">
-            <li><b>Schiller on Freedom and Aesthetic Value, Part I</b><small>with Samantha Matherne &middot; British Journal of Aesthetics 60(4) &middot; 2020</small></li>
-            <li><b>Schiller on Freedom and Aesthetic Value, Part II</b><small>with Samantha Matherne &middot; British Journal of Aesthetics 61(1) &middot; 2021</small></li>
-            <li><b>On the Interest in Beauty and Disinterest</b><small>Philosophers&rsquo; Imprint &middot; 2016</small></li>
+            <li><b>Schiller on Freedom and Aesthetic Value, Parts I &amp; II</b><small>with Samantha Matherne &middot; British Journal of Aesthetics 60:4 and 61:1 &middot; 2020, 2021 &middot; <i class="star">Oxford&rsquo;s Best of 2020 in Philosophy</i></small></li>
+            <li><b>Connecting Beauty and Love</b><small>in Art and Philosophy: New Essays at the Intersection, ed. Alex King &middot; Oxford University Press &middot; 2025</small></li>
+            <li><b>Beauty and Happiness</b><small>in Reasons and Relevance, ed. Steven Hales &middot; Hackett &middot; forthcoming</small></li>
+            <li><b>On the Interest in Beauty and Disinterest</b><small>Philosophers&rsquo; Imprint 16:9 &middot; 2016</small></li>
+            <li><b>On the Aesthetic Ideal</b><small>British Journal of Aesthetics 55:4 &middot; 2015</small></li>
           </ul>
         </div></div></div>
       </div>
@@ -557,11 +588,13 @@ footer button:hover{color:var(--paper)}
           <span class="idea-x"></span>
         </button>
         <div class="idea-b" id="i3"><div><div class="idea-in">
-          <p class="idea-p">Having style, personal or artistic, is a matter of expressing the ideals you hold for yourself or your work. The same thought powers the theory of awesomeness.</p>
+          <p class="idea-p">Having style, personal or artistic, is a matter of expressing the ideals you hold for yourself or your work. The same thought powers the theory of awesomeness, and a view of how we become new people.</p>
           <ul class="pubs">
-            <li><b>Personal Ideals as Metaphors</b><small>Journal of the American Philosophical Association &middot; 2018</small></li>
-            <li><b>Personal Style and Artistic Style</b><small>The Philosophical Quarterly &middot; 2015</small></li>
-            <li><b>On Being Awesome</b><small>Penguin &middot; 2017</small></li>
+            <li><b>Artistic Style as the Expression of Ideals</b><small>with Robert Hopkins &middot; Philosophers&rsquo; Imprint 21:8 &middot; 2021</small></li>
+            <li><b>Personal Ideals as Metaphors</b><small>Journal of the American Philosophical Association 3:3 &middot; 2018 &middot; <i class="star">Author-meets-critics, Pacific APA 2019</i></small></li>
+            <li><b>Transformative Expression</b><small>in Becoming Someone New, eds. Schwenkler &amp; Lambert &middot; Oxford University Press &middot; 2020</small></li>
+            <li><b>Personal Style and Artistic Style</b><small>The Philosophical Quarterly 65:261 &middot; 2015</small></li>
+            <li><b>Practice, Play, and Style in Alva No&euml;&rsquo;s The Entanglement</b><small>Analysis &middot; forthcoming</small></li>
           </ul>
         </div></div></div>
       </div>
@@ -573,9 +606,11 @@ footer button:hover{color:var(--paper)}
           <span class="idea-x"></span>
         </button>
         <div class="idea-b" id="i4"><div><div class="idea-in">
-          <p class="idea-p">Street art uses the street as an artistic resource, not just a location. Riggle&rsquo;s early paper set the terms of the philosophical debate, and he co-organized the first major conference on the subject.</p>
+          <p class="idea-p">Street art uses the street as an artistic resource, not just a location. Riggle&rsquo;s 2010 paper set the terms of the philosophical debate. He co-organized the first major conference on the subject in 2015 and returned to it as a keynote in 2025.</p>
           <ul class="pubs">
-            <li><b>Street Art: The Transfiguration of the Commonplaces</b><small>Journal of Aesthetics and Art Criticism 68(3) &middot; 2010</small></li>
+            <li><b>Street Art: The Transfiguration of the Commonplaces</b><small>Journal of Aesthetics and Art Criticism 68:3 &middot; 2010</small></li>
+            <li><b>Using the Street for Art: A Reply to Baldini</b><small>Journal of Aesthetics and Art Criticism 74:2 &middot; 2016</small></li>
+            <li><b>Street Art and Graffiti</b><small>Oxford Encyclopedia of Aesthetics, ed. Michael Kelly &middot; 2014</small></li>
             <li><b>Street Art as Aesthetic Practice: Community, Conflict, Critique</b><small>Keynote &middot; Painting the Town, Georgia State University &middot; 2025</small></li>
           </ul>
         </div></div></div>
@@ -584,20 +619,35 @@ footer button:hover{color:var(--paper)}
       <div class="idea rv">
         <button type="button" class="idea-h" aria-expanded="false" aria-controls="i5">
           <span class="idea-n">V</span>
-          <h3 class="idea-t">Ranking, taste, and the limits of scores</h3>
+          <h3 class="idea-t">Hype, rankings, and the culture of the list</h3>
           <span class="idea-x"></span>
         </button>
         <div class="idea-b" id="i5"><div><div class="idea-in">
-          <p class="idea-p">What are we doing when we give a wine 94 points or an album a 7.3? A look at aesthetic ranking, from tomatoes to Pitchfork, and what it reveals about evaluation.</p>
+          <p class="idea-p">What are we doing when we give a wine 94 points, hype a record, or rank the canon? Recent work on aesthetic discourse, ranking, and snobbery, heading toward a trade book on taste in the era of content.</p>
           <ul class="pubs">
-            <li><b>Aesthetic Ranking: Tomatoes, Parker Points, and Pitchforks</b><small>Philosophical Topics 52(1) &middot; 2024</small></li>
+            <li><b>Can&rsquo;t Kill the Vibe: Against Hope in Aesthetic Discourse</b><small>Mind 135:1 &middot; 2026</small></li>
+            <li><b>Aesthetic Ranking: Tomatoes, Parker Points, and Pitchforks</b><small>Philosophical Topics 52:1 &middot; 2024</small></li>
+            <li><b>The Canonical Snob</b><small>in progress</small></li>
+            <li><b>The Hype is Real</b><small>talk &middot; ASA Annual Meeting, November 2026</small></li>
           </ul>
         </div></div></div>
       </div>
 
     </div>
+
+    <div class="wip rv">
+      <p class="eyebrow">In progress</p>
+      <ul>
+        <li><b>Aesthetic Value as the Highest Good: The Very Idea(s)</b><span>with Clinton Tolley</span></li>
+        <li><b>Aesthetic Attention: No Such Thing (Sort Of)</b><span>paper</span></li>
+        <li><b>The Eras Tour Through Life</b><span>paper</span></li>
+        <li><b>Art Beyond the Individual</b><span>book</span></li>
+        <li><b>List Life: Reclaiming Taste in the Era of Content</b><span>trade book</span></li>
+      </ul>
+    </div>
+
     <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
-      <a class="btn" href="https://nickriggle.squarespace.com/s/Nick-Riggle-CV-Summer-2025.pdf" target="_blank" rel="noopener"><span>Full CV</span><span class="arrow"></span></a>
+      <a class="btn" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Full CV</span><span class="arrow"></span></a>
       <a class="btn btn--ghost" href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener"><span>PhilPeople</span><span class="arrow"></span></a>
       <a class="btn btn--ghost" href="https://scholar.google.com/citations?user=IKYxdxIAAAAJ&amp;hl=en" target="_blank" rel="noopener"><span>Google Scholar</span><span class="arrow"></span></a>
     </div>
@@ -611,8 +661,8 @@ footer button:hover{color:var(--paper)}
     <h2 class="skate-big rv-lines"><span class="ln"><span>Dropped out to skate.</span></span><span class="ln"><span>Three X Games.</span></span><span class="ln"><span>Then <em>Berkeley</em>, then <em>NYU</em>.</span></span></h2>
     <div class="stats rv">
       <div class="stat"><div class="stat-n" data-count="3">0</div><div class="stat-l">ESPN X Games, 1998&ndash;2000</div></div>
-      <div class="stat"><div class="stat-n" data-count="3">0</div><div class="stat-l">Books</div></div>
-      <div class="stat"><div class="stat-n" data-count="12">0<sup>+</sup></div><div class="stat-l">Academic articles</div></div>
+      <div class="stat"><div class="stat-n" data-count="4">0</div><div class="stat-l">Books</div></div>
+      <div class="stat"><div class="stat-n" data-count="20">0<sup>+</sup></div><div class="stat-l">Articles and chapters</div></div>
     </div>
   </div>
   <div class="skate-track" aria-hidden="true">
@@ -626,30 +676,37 @@ footer button:hover{color:var(--paper)}
     <div class="split" style="margin-bottom:48px">
       <div>
         <p class="eyebrow rv">Talks &amp; events</p>
-        <h2 class="rv">Recent and <em>upcoming</em>.</h2>
+        <h2 class="rv">Upcoming and <em>recent</em>.</h2>
       </div>
-      <p class="lede rv" style="align-self:end">Colloquia, keynotes, and public conversations about beauty, style, and living well.</p>
+      <p class="lede rv" style="align-self:end">Colloquia, keynotes, and public conversations about beauty, style, and living well. From San Diego to Beijing.</p>
     </div>
+
+    <p class="tl-k tl-group rv">Upcoming</p>
     <ol class="tl rv">
-      <li>
-        <span class="tl-d">Apr 2026</span>
-        <div><h3 class="tl-t">Philosophy Colloquium</h3><span class="tl-w">Indiana University Bloomington</span></div>
-        <span class="tl-k">Colloquium</span>
-      </li>
-      <li>
-        <span class="tl-d">Feb 2026</span>
-        <div><h3 class="tl-t">Philosophy Colloquium</h3><span class="tl-w">Oberlin College</span></div>
-        <span class="tl-k">Colloquium</span>
-      </li>
-      <li>
-        <span class="tl-d">Oct 2025</span>
-        <div><h3 class="tl-t">Street Art as Aesthetic Practice: Community, Conflict, Critique</h3><span class="tl-w">Keynote &middot; Painting the Town: A Conference on the Philosophy of Street Art &middot; Georgia State University, Atlanta</span></div>
-        <span class="tl-k">Keynote</span>
-      </li>
+      <li><span class="tl-d">Sep 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Rutgers University</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Duke Kunshan University</h3><span class="tl-w">Kunshan, China</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Peking University</h3><span class="tl-w">Beijing, China</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC San Diego</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">American Society for Aesthetics Annual Meeting &middot; Salt Lake City</span></div><span class="tl-k">Refereed</span></li>
+      <li><span class="tl-d">Feb 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">MIT</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Mar 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Harvard University</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Apr 2027</span><div><h3 class="tl-t">Comments on Kenneth Walden&rsquo;s <em>The Imperative of Genius</em></h3><span class="tl-w">ASA Eastern Division Meeting &middot; Philadelphia</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">May 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC Riverside</span></div><span class="tl-k">Invited</span></li>
     </ol>
+
+    <p class="tl-k tl-group rv" style="margin-top:48px">Recent</p>
+    <ol class="tl rv">
+      <li><span class="tl-d">May 2026</span><div><h3 class="tl-t">Aesthetic Attention: No Such Thing (Sort Of)</h3><span class="tl-w">Workshop on Imagination, Beauty, and Attention &middot; Canterbury, England</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Feb 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">Oberlin College Philosophy Colloquium</span></div><span class="tl-k">Invited</span></li>
+      <li><span class="tl-d">Jan 2026</span><div><h3 class="tl-t">Response to Robbie Kubala and Kenneth Walden</h3><span class="tl-w">Danto Prize author-meets-critics session &middot; APA Eastern, Baltimore</span></div><span class="tl-k">Prize session</span></li>
+      <li><span class="tl-d">Oct 2025</span><div><h3 class="tl-t">Street Art as Aesthetic Practice: Community, Conflict, Critique</h3><span class="tl-w">Keynote &middot; Painting the Town &middot; Georgia State University, Atlanta</span></div><span class="tl-k">Keynote</span></li>
+      <li><span class="tl-d">Jan 2025</span><div><h3 class="tl-t">Author-meets-critics for <em>This Beauty</em></h3><span class="tl-w">with James Ryerson and Jonathan Fine &middot; APA Eastern, New York City</span></div><span class="tl-k">Book session</span></li>
+    </ol>
+
     <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
       <a class="btn" href="mailto:nriggle@sandiego.edu?subject=Speaking%20invitation"><span>Invite Nick to speak</span><span class="arrow"></span></a>
       <a class="btn btn--ghost" href="https://www.brightsightspeakers.com/speakers-a-z/nick-riggle" target="_blank" rel="noopener"><span>Speaker bureau</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>All talks, on the CV</span><span class="arrow"></span></a>
     </div>
   </div>
 </section>
@@ -663,6 +720,7 @@ footer button:hover{color:var(--paper)}
       <div class="copy rv">
         <p>At the University of San Diego, Nick teaches courses in aesthetics, ethics, and the philosophy of art. The seminar room works the way a skate session does: everyone is trying something hard, in public, and getting better because of who is watching.</p>
         <p>Expect close reading, real argument, and writing that gets rewritten. Expect, too, to leave with a sharper sense of what you find beautiful and why that is not a small thing.</p>
+        <p>He also directs and co-founded the USD Food Studies Minor, an interdisciplinary program on how we grow, cook, share, and judge what we eat.</p>
         <p class="cite" id="cite">Riggle, N. (2024). <i>Aesthetic Value and the Practice of Aesthetic Valuing.</i> The Philosophical Review, 133(2), 113&ndash;149.</p>
       </div>
       <div style="display:grid;gap:16px;align-content:start">
@@ -670,6 +728,11 @@ footer button:hover{color:var(--paper)}
           <h3>Office hours</h3>
           <p>Drop-in times are posted in each course syllabus. Outside of them, email to arrange a meeting, in person or online.</p>
           <a class="btn" href="mailto:nriggle@sandiego.edu?subject=Office%20hours"><span>Email to book</span><span class="arrow"></span></a>
+        </div>
+        <div class="card rv">
+          <h3>Graduate students</h3>
+          <p>USD has no graduate program in philosophy, but Nick serves on dissertation committees elsewhere, most recently at UC San Diego, UC Santa Cruz, CU Boulder, and UC Davis. If your project is in aesthetics or value theory, reach out.</p>
+          <a class="btn btn--ghost" href="mailto:nriggle@sandiego.edu?subject=Dissertation%20committee"><span>Get in touch</span><span class="arrow"></span></a>
         </div>
         <div class="card rv">
           <h3>For your bibliography</h3>
@@ -687,35 +750,50 @@ footer button:hover{color:var(--paper)}
     <p class="eyebrow rv">Public writing &amp; media</p>
     <h2 class="rv">Ideas that <em>leave</em> the journal.</h2>
     <div class="press rv" style="margin-top:40px">
+      <a href="https://www.nytimes.com/search?query=Nick+Riggle+Matisse" target="_blank" rel="noopener">
+        <span class="press-o">The New York Times &middot; 2022</span>
+        <span class="press-t">How Matisse and I Got a Beautiful Body</span>
+        <span class="press-d">An essay on beauty, the body, and paying attention.</span>
+      </a>
+      <a href="https://psyche.co/authors/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">Psyche &middot; 2022</span>
+        <span class="press-t">Beauty Is Not an Ornament to the Good Life</span>
+        <span class="press-d">Why aesthetic life is central, not decorative.</span>
+      </a>
+      <a href="https://aeon.co/users/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">Aeon &middot; 2016</span>
+        <span class="press-t">High Five! Awesomeness as the Imperative of Our Time</span>
+        <span class="press-d">The essay that became <em>On Being Awesome</em>.</span>
+      </a>
       <a href="https://sandiegomagazine.com/features/its-a-beautiful-life/" target="_blank" rel="noopener">
         <span class="press-o">San Diego Magazine</span>
         <span class="press-t">It&rsquo;s a Beautiful Life</span>
         <span class="press-d">A profile of the skater who became a philosopher of beauty.</span>
       </a>
-      <a href="https://aeon.co/users/nick-riggle" target="_blank" rel="noopener">
-        <span class="press-o">Aeon</span>
-        <span class="press-t">Essays on beauty and freedom</span>
-        <span class="press-d">Long-form philosophy for a general audience.</span>
+      <a href="https://www.scientificamerican.com/search/?q=Nick+Riggle+awesome" target="_blank" rel="noopener">
+        <span class="press-o">Scientific American &middot; 2017</span>
+        <span class="press-t">How to Be Awesome</span>
+        <span class="press-d">An interview on the theory of awesomeness and suckiness.</span>
       </a>
-      <a href="https://psyche.co/authors/nick-riggle" target="_blank" rel="noopener">
-        <span class="press-o">Psyche</span>
-        <span class="press-t">On living an aesthetic life</span>
-        <span class="press-d">Practical philosophy, one idea at a time.</span>
+      <a href="https://www.philosophytalk.org/search?keys=awesomeness" target="_blank" rel="noopener">
+        <span class="press-o">Philosophy Talk &middot; 2021</span>
+        <span class="press-t">The Ethics of Awesomeness</span>
+        <span class="press-d">On the radio with the Philosophy Talk hosts.</span>
       </a>
-      <a href="https://nextbigideaclub.com/magazine/nick-riggle/" target="_blank" rel="noopener">
-        <span class="press-o">Next Big Idea Club</span>
-        <span class="press-t">The big ideas in <em>This Beauty</em></span>
-        <span class="press-d">The book, distilled to its key insights.</span>
+      <a href="https://hiphination.org/" target="_blank" rel="noopener">
+        <span class="press-o">Hi-Phi Nation (Slate)</span>
+        <span class="press-t">YOLO Apologetics &middot; Freedom and Hostile Design</span>
+        <span class="press-d">Contributor to two episodes of the philosophy documentary podcast.</span>
+      </a>
+      <a href="https://www.hereinjournal.org/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">HereIn Journal &middot; 2021</span>
+        <span class="press-t">The Shaping of a Place</span>
+        <span class="press-d">On the painter Eva Struble.</span>
       </a>
       <a href="https://podcasts.apple.com/au/podcast/riggles-picks/id1716838324" target="_blank" rel="noopener">
         <span class="press-o">Podcast</span>
         <span class="press-t">Riggle&rsquo;s Picks</span>
         <span class="press-d">Conversations about what is worth your attention. Also on YouTube.</span>
-      </a>
-      <a href="https://www.brightsightspeakers.com/speakers-a-z/nick-riggle" target="_blank" rel="noopener">
-        <span class="press-o">Speaking</span>
-        <span class="press-t">Bright Sight Speakers</span>
-        <span class="press-d">Keynotes on awesomeness, beauty, and the culture of getting better.</span>
       </a>
     </div>
   </div>
@@ -727,6 +805,7 @@ footer button:hover{color:var(--paper)}
     <p class="eyebrow rv">Contact</p>
     <h2 class="rv">Say <em>hello</em>.</h2>
     <a class="mail rv" href="mailto:nriggle@sandiego.edu">nriggle@sandiego.edu</a>
+    <address class="addr rv">Department of Philosophy &middot; University of San Diego<br>5998 Alcal&aacute; Park, San Diego, CA 92110 &middot; <a href="tel:+16192606873">(619) 260-6873</a></address>
     <div class="links rv">
       <a href="https://www.sandiego.edu/directory/biography.php?profile_id=828" target="_blank" rel="noopener">USD Directory</a>
       <a href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener">PhilPeople</a>

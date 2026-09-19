@@ -1,6 +1,6 @@
 # nickriggle.com redesign
 
-Single-file static site (`index.html`) for Nick Riggle: philosopher at the University of San Diego, author of *This Beauty*, *On Being Awesome*, and *Aesthetic Life and Why It Matters*.
+Static site (`index.html` plus `assets/`) for Nick Riggle: Professor of Philosophy at the University of San Diego, author of *This Beauty*, *On Being Awesome*, *Aesthetic Life and Why It Matters*, and the forthcoming *Understanding Aesthetic Life: Essays*.
 
 ## Design
 
@@ -9,16 +9,15 @@ Single-file static site (`index.html`) for Nick Riggle: philosopher at the Unive
 - **Motion**: name-reveal curtain on first visit, drifting gold arcs on a canvas behind the hero with pointer parallax, rotating hero word, scroll-linked word-by-word intro, line-mask reveals, journal marquee, 3D tilting book covers, pinned horizontal book rail on desktop (native snap rail on mobile), expanding research threads, count-up stats with a traced skate arc, custom cursor on pointer devices. Everything honours `prefers-reduced-motion`.
 - **Libraries**: GSAP 3.12.5 + ScrollTrigger from cdnjs, used only for parallax and the desktop pinned rail. The page works fully without them.
 
-## Content to confirm before launch
+## Content sources
 
-All copy was assembled from public sources (USD, PhilPeople, publisher pages, press). Confirm against Nick's current CV and the live Squarespace site:
+All copy is drawn from the August 2026 CV (`assets/Nick-Riggle-CV-August-2026.pdf`): appointments, books, every article and chapter with venue and year, awards, upcoming and recent talks, service, and graduate committees. Book jackets in `assets/` are the real covers. Public-writing links to the New York Times, Scientific American, and Philosophy Talk point at site searches; replace with the article URLs when convenient.
 
-- Publication venues and years in the Research section.
-- Talks list (Georgia State keynote Oct 2025, Oberlin Feb 2026, Indiana Apr 2026) and any newer dates.
-- Teaching copy is intentionally general; add current course titles and posted office hours.
-- Book covers are CSS placeholders. Swap in real jacket art inside each `.cover-face`.
-- Portrait frame (`.frame`) is a placeholder monogram. Drop a photo in as an `<img>` inside the frame.
-- Outbound links (Bookshop, Penguin Random House, Aeon, Psyche, podcast, speaker bureau) were taken from search results and should be clicked through once.
+## Still to add
+
+- A portrait photo. The `.frame` block in the About section holds a monogram placeholder; drop an `<img>` inside it.
+- Current course titles and posted office hours in the Teaching section (the CV does not list courses).
+- Pre-order links for *Understanding Aesthetic Life* once Oxford publishes the product page.
 
 ## Deploy
 
