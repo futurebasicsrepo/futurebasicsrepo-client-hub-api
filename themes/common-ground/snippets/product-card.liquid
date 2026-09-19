@@ -45,6 +45,14 @@
   assign t_sold_out = 'products.product.sold_out' | t
   assign t_on_sale = 'products.product.on_sale' | t
   assign t_new = 'products.product.new' | t
+  assign on_whatnot = false
+  for tag in product.tags
+    assign tl = tag | downcase
+    if tl == 'whatnot' or tl == 'live'
+      assign on_whatnot = true
+      break
+    endif
+  endfor
 -%}
 <article class="product-card reveal{% unless product.available %} product-card--soldout{% endunless %}" data-tilt data-product-id="{{ product.id }}" {% if index %}style="--i: {{ index }}"{% endif %}>
   <a class="product-card__media" href="{{ product.url }}" aria-label="{{ product.title | escape }}">
@@ -67,6 +75,8 @@
     <div class="product-card__stickers">
       {%- if product.available == false -%}
         {% render 'sticker', text: t_sold_out, color: 'ink', size: 'sm' %}
+      {%- elsif on_whatnot -%}
+        {% render 'sticker', text: 'LIVE ●', color: 'tang', size: 'sm' %}
       {%- elsif on_sale -%}
         {% render 'sticker', text: t_on_sale, color: 'tang', size: 'sm' %}
       {%- elsif is_new -%}

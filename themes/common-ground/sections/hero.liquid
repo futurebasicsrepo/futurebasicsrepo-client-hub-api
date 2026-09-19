@@ -39,7 +39,7 @@
     <div class="osd hero__osd" aria-hidden="true"><span class="osd__rec">● REC</span><span data-timecode>00:00:00</span><span>SP</span></div>
   {%- endif -%}
   {%- if section.settings.sticker_text != blank -%}
-    <div class="hero__sticker" data-spin>{% render 'sticker', text: section.settings.sticker_text, color: section.settings.sticker_color, size: 'lg' %}</div>
+    <div class="hero__seal" data-spin>{% render 'seal', center: section.settings.sticker_text, big: section.settings.seal_year, foot: section.settings.seal_foot, ring: section.settings.seal_ring, uid: section.id %}</div>
   {%- endif -%}
   {%- if section.settings.show_scroll_cue -%}
     <a class="hero__cue" href="#MainContent-next" aria-hidden="true">↓</a>
@@ -60,10 +60,11 @@
     { "type": "url", "id": "button_link", "label": "Button 1 link" },
     { "type": "text", "id": "button_label_2", "label": "Button 2 label", "default": "New arrivals" },
     { "type": "url", "id": "button_link_2", "label": "Button 2 link" },
-    { "type": "text", "id": "sticker_text", "label": "Sticker text", "default": "EST. 2012" },
-    { "type": "select", "id": "sticker_color", "label": "Sticker color", "options": [
-      { "value": "hot", "label": "Hot" }, { "value": "volt", "label": "Volt" }, { "value": "acid", "label": "Acid" }, { "value": "tang", "label": "Tangerine" }
-    ], "default": "acid" },
+    { "type": "header", "content": "Gold seal" },
+    { "type": "text", "id": "sticker_text", "label": "Seal top line", "default": "EST." },
+    { "type": "text", "id": "seal_year", "label": "Seal big text", "default": "2012" },
+    { "type": "text", "id": "seal_foot", "label": "Seal bottom line", "default": "SEAL OF QUALITY" },
+    { "type": "text", "id": "seal_ring", "label": "Seal ring text", "default": "COMMON GROUND · AUTHENTICATED CONSIGNMENT ·" },
     { "type": "select", "id": "height", "label": "Height", "options": [
       { "value": "full", "label": "Full screen" }, { "value": "tall", "label": "Tall" }, { "value": "medium", "label": "Medium" }
     ], "default": "full" },

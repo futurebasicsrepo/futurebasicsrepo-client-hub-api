@@ -60,6 +60,24 @@
     ]
   },
   {
+    "name": "Whatnot live",
+    "settings": [
+      { "type": "paragraph", "content": "Install the Whatnot sales channel from the Shopify App Store to sync products, inventory and orders. These settings drive the Channel 12 section, the ON AIR badge and LIVE stickers on products tagged 'whatnot'." },
+      { "type": "text", "id": "whatnot_url", "label": "Whatnot channel URL", "default": "https://www.whatnot.com/user/commonground12" },
+      { "type": "checkbox", "id": "whatnot_live", "label": "We're live right now", "info": "Turns on the site-wide ON AIR badge and switches Channel 12 to the live screen.", "default": false },
+      { "type": "text", "id": "whatnot_next", "label": "Next show (ISO date-time)", "info": "e.g. 2026-09-26T19:00:00-04:00. Drives the countdown." },
+      { "type": "text", "id": "whatnot_next_title", "label": "Next show title", "default": "Friday Night Heat: Jordans, Dunks & Vintage" },
+      { "type": "checkbox", "id": "whatnot_badge", "label": "Show floating ON AIR badge when live", "default": true }
+    ]
+  },
+  {
+    "name": "Consignment (Sell to us)",
+    "settings": [
+      { "type": "paragraph", "content": "The Sell page (template page.sell) posts submissions with photos to the Future Basics hub API, which runs the offer / counter / accept flow and emails both sides. Add the storefront domain to the API's ALLOWED_ORIGINS." },
+      { "type": "text", "id": "consign_api_url", "label": "Hub API URL", "default": "https://hub.thefuturebasics.com" }
+    ]
+  },
+  {
     "name": "Favicon",
     "settings": [
       { "type": "image_picker", "id": "favicon", "label": "Favicon (64×64px)" }

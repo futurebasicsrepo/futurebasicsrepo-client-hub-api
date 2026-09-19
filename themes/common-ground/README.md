@@ -36,6 +36,14 @@ Tokens are CSS custom properties in `layout/theme.liquid`, editable in **Theme s
 
 Type: **Archivo Black** (display, all caps), **Space Grotesk** (body), **VT323** (pixel accents: kickers, counts, breadcrumbs). Loaded from Google Fonts; swap to Shopify-hosted fonts via `font_face` if you want to silence the theme-check `RemoteAsset` warnings.
 
+## Sell to us, Whatnot, logo, seal
+
+- **Sell page** — create a page with template `page.sell`, add it to the main menu as "Sell". Submissions (with photos) post to the hub API set in Theme settings → Consignment; sellers get a ticket link to accept / counter offers. Staff work them at work.thefuturebasics.com/consign.
+- **Channel 12 (Whatnot)** — install the Whatnot sales channel from the Shopify App Store to sync products and orders. Theme settings → Whatnot live holds the channel URL, the live toggle (site-wide ON AIR badge) and next-show date (countdown). Tag products `whatnot` for a LIVE sticker.
+- **Logo** — `snippets/logo.liquid` / `assets/logo.svg` is an outlined SVG recreation of the striped-chrome wordmark. Upload the original artwork via Header → Logo to use the exact file.
+- **Seal** — the hero's gold "seal of quality" is `snippets/seal.liquid`; ring, top, big and bottom text are Hero settings.
+- **Shoebox cart** — the cart icon is a shoebox; the lid pops and the count jumps out on add-to-cart, and stays ajar while the bag has items.
+
 ## Setup checklist (in Shopify admin)
 
 1. **Online Store → Themes → Add theme → Upload zip** (or `shopify theme push`, below). Do **not** publish until content is ready.

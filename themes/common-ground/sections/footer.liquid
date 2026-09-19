@@ -1,7 +1,7 @@
 <footer class="footer" data-footer>
   <div class="footer__top page-width">
     <div class="footer__brand">
-      <p class="footer__wordmark" data-glitch data-text="{{ shop.name | escape }}">{{ shop.name }}</p>
+      <p class="footer__wordmark">{% render 'logo', class: 'footer__logo-svg', uid: 'ftr' %}</p>
       {%- if section.settings.tagline != blank -%}<p class="footer__tagline">{{ section.settings.tagline }}</p>{%- endif -%}
       <div class="footer__social">
         {%- if settings.social_instagram != blank -%}<a class="icon-btn" href="{{ settings.social_instagram }}" target="_blank" rel="noopener" aria-label="Instagram">{% render 'icon', name: 'instagram' %}</a>{%- endif -%}

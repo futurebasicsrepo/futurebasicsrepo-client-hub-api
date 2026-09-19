@@ -11,6 +11,7 @@ import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
+import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -409,6 +410,9 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 // Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 app.get('/tech-packs/:productId', sendTechPack);
+const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./consign.html',import.meta.url),'utf8'));
+app.get('/consign', sendConsign);
+app.get('/consign/:id', sendConsign);
 app.get('/tp/:token', sendTechPack);
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
@@ -1526,6 +1530,159 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,
     [row.client_id,`${row.share_label} countersigned tech pack v${row.version} for ${row.title}`,row.product_id]);
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
+});
+
+
+// ---- Consignment / sell-to-us: public submissions with photos, then an offer → counter → accept negotiation ----
+const consignNotificationEmail=process.env.CONSIGN_NOTIFICATION_EMAIL||intakeNotificationEmail;
+const consignTicketUrl=(process.env.CONSIGN_TICKET_URL||'').replace(/\/$/,'');
+const consignFromEmail=process.env.CONSIGN_FROM_EMAIL||process.env.AUTH_FROM_EMAIL||'Common Ground <hub@thefuturebasics.com>';
+const imageExtensions=new Set(['.png','.jpg','.jpeg','.webp','.heic','.heif','.gif']);
+const consignTicketLink=token=>consignTicketUrl?`${consignTicketUrl}?t=${encodeURIComponent(token)}`:null;
+const consignImageUrl=req=>image=>`${req.protocol}://${req.headers.host}/v1/public/consignment-images/${image.id}`;
+async function sendConsignEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; consignment email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:consignFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
+  if(!response.ok)throw new Error(`Consignment email delivery failed: ${response.status}`);return true;
+}
+const consignEmailShell=(title,body)=>`<div style="font-family:Arial,sans-serif;color:#141414;max-width:640px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Common Ground · Trade-in counter</p><h1 style="font-size:22px">${emailEscape(title)}</h1>${body}</div>`;
+async function loadConsignment(where,value){
+  const row=(await pool.query(`select * from consignments where ${where}=$1`,[value])).rows[0];if(!row)return null;
+  const [images,offers]=await Promise.all([
+    pool.query('select * from consignment_images where consignment_id=$1 order by created_at',[row.id]),
+    pool.query('select * from consignment_offers where consignment_id=$1 order by created_at',[row.id])]);
+  return {row,images:images.rows,offers:offers.rows};
+}
+async function applyConsignmentMove(row,offers,move){
+  const next=nextOfferState(row,offers,move);
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    if(next.closeOpen)await db.query('update consignment_offers set status=$2 where id=$1',[next.closeOpen.id,next.closeOpen.status]);
+    await db.query('insert into consignment_offers(consignment_id,by,kind,amount_cents,note,status) values($1,$2,$3,$4,$5,$6)',[row.id,next.offer.by,next.offer.kind,next.offer.amount_cents,next.offer.note,next.offer.status]);
+    await db.query('update consignments set status=$2,agreed_cents=$3,updated_at=now() where id=$1',[row.id,next.patch.status,next.patch.agreed_cents]);
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+  return next;
+}
+async function notifyConsignmentMove(row,next,move){
+  const link=consignTicketLink(row.token),amount=next.offer.amount_cents?formatCents(next.offer.amount_cents):'';
+  try{
+    if(move.by==='store'){
+      const verb={offer:`made you an offer of ${amount}`,counter:`countered at ${amount}`,accept:`accepted your counter of ${amount}`,decline:'passed on this one'}[move.action];
+      await sendConsignEmail({to:row.seller_email,subject:`${row.item_title} — Common Ground ${move.action==='offer'?'offer':move.action==='counter'?'counter-offer':move.action==='accept'?'deal':'update'}`,
+        html:consignEmailShell(row.item_title,`<p>Common Ground ${emailEscape(verb)}.${next.offer.note?' <em>'+emailEscape(next.offer.note)+'</em>':''}</p>${move.action==='accept'?'<p>We\'ll follow up with drop-off or shipping details.</p>':''}${link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Open your trade-in ticket</a></p>`:''}`)});
+    }else{
+      const verb={counter:`countered at ${amount}`,accept:`accepted your offer of ${amount}`,decline:'declined your offer'}[move.action];
+      await sendConsignEmail({to:consignNotificationEmail,replyTo:row.seller_email,subject:`Trade-in: ${row.seller_name} ${move.action==='accept'?'accepted':move.action==='counter'?'countered':'declined'} — ${row.item_title}`,
+        html:consignEmailShell(row.item_title,`<p><strong>${emailEscape(row.seller_name)}</strong> ${emailEscape(verb)}.${next.offer.note?' <em>'+emailEscape(next.offer.note)+'</em>':''}</p><p><a href="${workHubUrl}/consign/${row.id}">Open in Work</a></p>`)});
+    }
+  }catch(error){app.log.error({error,consignmentId:row.id},'Consignment notification email failed')}
+}
+async function storeConsignmentImage(consignmentId,part){
+  const originalName=cleanName(part.filename||'photo.jpg');if(!imageExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Photos must be JPG, PNG, WEBP or HEIC'),{statusCode:415});
+  const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  try{
+    await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
+    return (await pool.query('insert into consignment_images(consignment_id,original_name,storage_name,mime_type,size_bytes) values($1,$2,$3,$4,$5) returning *',[consignmentId,originalName,storageName,part.mimetype,part.file.bytesRead])).rows[0];
+  }catch(error){await unlink(path).catch(()=>{});throw error}
+}
+
+app.post('/v1/public/consignments',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const fields={},images=[];let row=null,spam=false;
+  const create=async()=>{
+    if(row||spam)return row;
+    spam=Boolean(String(fields.company_fax||'').trim());if(spam)return null;
+    const data=normalizeSubmission(fields),token=randomBytes(24).toString('base64url');
+    row=(await pool.query(`insert into consignments(token,seller_name,seller_email,seller_phone,item_title,brand,size,condition,deal_type,asking_cents,details)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[token,data.seller_name,data.seller_email,data.seller_phone,data.item_title,data.brand,data.size,data.condition,data.deal_type,data.asking_cents,data.details])).rows[0];
+    return row;
+  };
+  for await(const part of req.parts()){
+    if(part.type==='file'){
+      await create();
+      if(spam||images.length>=5){for await(const _chunk of part.file){};continue}
+      images.push(await storeConsignmentImage(row.id,part));
+    }else fields[part.fieldname]=part.value;
+  }
+  await create();
+  if(spam)return reply.code(202).send({ok:true});
+  const link=consignTicketLink(row.token),imgUrl=consignImageUrl(req);
+  try{
+    await sendConsignEmail({to:consignNotificationEmail,replyTo:row.seller_email,subject:`New trade-in: ${row.item_title}${row.asking_cents?' · asking '+formatCents(row.asking_cents):''}`,
+      html:consignEmailShell(row.item_title,`<p><strong>${emailEscape(row.seller_name)}</strong> · ${emailEscape(row.seller_email)}${row.seller_phone?' · '+emailEscape(row.seller_phone):''}</p><p>${emailEscape([row.brand,row.size?'Size '+row.size:null,row.condition,row.deal_type].filter(Boolean).join(' · '))}</p>${row.details?'<p>'+emailEscape(row.details).replace(/\n/g,'<br>')+'</p>':''}<p>${images.map(i=>`<a href="${imgUrl(i)}"><img src="${imgUrl(i)}" width="120" style="margin:4px;border:2px solid #141414"></a>`).join('')}</p><p><a href="${workHubUrl}/consign/${row.id}">Review and make an offer in Work</a></p>`)});
+    await sendConsignEmail({to:row.seller_email,subject:`We got it — ${row.item_title}`,
+      html:consignEmailShell('Ticket received',`<p>Thanks ${emailEscape(row.seller_name)}. We'll look over <strong>${emailEscape(row.item_title)}</strong> and send an offer, usually within 48 hours.</p>${link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Track your trade-in ticket</a></p><p style="color:#666;font-size:12px">Keep this link: it's how you'll see and answer offers.</p>`:''}`)});
+  }catch(error){app.log.error({error,consignmentId:row.id},'Consignment saved but notification email failed')}
+  return reply.code(201).send({ok:true,id:row.id,token:row.token,ticket_url:link,images:images.length});
+});
+
+app.get('/v1/public/consignments/:token',async(req,reply)=>{
+  const loaded=await loadConsignment('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Ticket not found'});
+  return {consignment:consignmentView(loaded.row,loaded.images,loaded.offers,consignImageUrl(req))};
+});
+
+app.post('/v1/public/consignments/:token/respond',async(req,reply)=>{
+  const loaded=await loadConsignment('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Ticket not found'});
+  const body=req.body||{},move={by:'seller',action:String(body.action||''),amountCents:body.amount_cents,note:body.note};
+  if(!['counter','accept','decline'].includes(move.action))return reply.code(400).send({error:'Action must be counter, accept or decline.'});
+  const next=await applyConsignmentMove(loaded.row,loaded.offers,move);
+  await notifyConsignmentMove(loaded.row,next,move);
+  const fresh=await loadConsignment('id',loaded.row.id);
+  return {ok:true,consignment:consignmentView(fresh.row,fresh.images,fresh.offers,consignImageUrl(req))};
+});
+
+app.get('/v1/public/consignment-images/:id',async(req,reply)=>{
+  const image=(await pool.query('select * from consignment_images where id=$1',[String(req.params.id||'').slice(0,64)])).rows[0];
+  if(!image)return reply.code(404).send({error:'Not found'});
+  return reply.header('cache-control','public, max-age=86400').type(image.mime_type||'application/octet-stream').send(createReadStream(join(uploadDir,image.storage_name)));
+});
+
+app.get('/v1/admin/consignments',{preHandler:[authenticate,adminOnly]},async req=>{
+  const status=String(req.query.status||'open');
+  const where=status==='open'?`status in ('submitted','reviewing','offered','countered')`:status==='all'?'true':'status=$1';
+  const params=status==='open'||status==='all'?[]:[status];
+  const rows=(await pool.query(`select c.*,(select storage_name from consignment_images i where i.consignment_id=c.id order by created_at limit 1) cover,
+    (select id from consignment_images i where i.consignment_id=c.id order by created_at limit 1) cover_id,
+    (select count(*) from consignment_offers o where o.consignment_id=c.id) offer_count,
+    (select amount_cents from consignment_offers o where o.consignment_id=c.id and o.status='open' order by created_at desc limit 1) open_amount_cents,
+    (select by from consignment_offers o where o.consignment_id=c.id and o.status='open' order by created_at desc limit 1) open_by
+    from consignments c where ${where} order by c.updated_at desc limit 200`,params)).rows;
+  const counts=(await pool.query('select status,count(*)::int n from consignments group by status')).rows;
+  const imgUrl=consignImageUrl(req);
+  return {consignments:rows.map(r=>({id:r.id,item_title:r.item_title,brand:r.brand,size:r.size,condition:r.condition,deal_type:r.deal_type,asking_cents:r.asking_cents,status:r.status,agreed_cents:r.agreed_cents,
+    seller_name:r.seller_name,seller_email:r.seller_email,created_at:r.created_at,updated_at:r.updated_at,offer_count:Number(r.offer_count),open_amount_cents:r.open_amount_cents,open_by:r.open_by,
+    cover_url:r.cover_id?imgUrl({id:r.cover_id}):null,waiting_on:r.status==='countered'||r.status==='submitted'||r.status==='reviewing'?'store':r.status==='offered'?'seller':null})),counts};
+});
+app.get('/v1/admin/consignments/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadConsignment('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  return {consignment:consignmentView(loaded.row,loaded.images,loaded.offers,consignImageUrl(req),{audience:'staff'}),ticket_url:consignTicketLink(loaded.row.token)};
+});
+app.post('/v1/admin/consignments/:id/offers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadConsignment('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  const body=req.body||{},move={by:'store',action:String(body.action||''),amountCents:body.amount_cents,note:body.note};
+  if(!['offer','counter','accept','decline'].includes(move.action))return reply.code(400).send({error:'Action must be offer, counter, accept or decline.'});
+  const next=await applyConsignmentMove(loaded.row,loaded.offers,move);
+  await notifyConsignmentMove(loaded.row,next,move);
+  const fresh=await loadConsignment('id',loaded.row.id);
+  return {ok:true,consignment:consignmentView(fresh.row,fresh.images,fresh.offers,consignImageUrl(req),{audience:'staff'})};
+});
+app.patch('/v1/admin/consignments/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const body=req.body||{},id=String(req.params.id||'').slice(0,64);
+  const row=(await pool.query('select * from consignments where id=$1',[id])).rows[0];if(!row)return reply.code(404).send({error:'Not found'});
+  const status=body.status?String(body.status):row.status;
+  const allowed={submitted:['reviewing','withdrawn'],reviewing:['submitted','withdrawn'],offered:['withdrawn'],countered:['withdrawn'],accepted:['paid','withdrawn'],paid:[],declined:['submitted'],withdrawn:['submitted']};
+  if(status!==row.status&&!(allowed[row.status]||[]).includes(status))return reply.code(409).send({error:`Can't move a ${row.status} ticket to ${status}`});
+  const notes=body.staff_notes!==undefined?String(body.staff_notes).slice(0,4000):row.staff_notes;
+  const updated=(await pool.query('update consignments set status=$2,staff_notes=$3,updated_at=now() where id=$1 returning *',[id,status,notes])).rows[0];
+  const fresh=await loadConsignment('id',id);
+  return {ok:true,consignment:consignmentView(updated,fresh.images,fresh.offers,consignImageUrl(req),{audience:'staff'})};
 });
 
 app.setErrorHandler((error, req, reply) => {

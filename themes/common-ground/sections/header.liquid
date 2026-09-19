@@ -9,11 +9,11 @@
       {% render 'icon', name: 'menu' %}
     </button>
 
-    <a class="header__logo" href="{{ routes.root_url }}" data-glitch>
+    <a class="header__logo" href="{{ routes.root_url }}">
       {%- if section.settings.logo != blank -%}
         <img src="{{ section.settings.logo | image_url: width: 400 }}" width="{{ section.settings.logo.width }}" height="{{ section.settings.logo.height }}" alt="{{ shop.name | escape }}" style="max-width: {{ section.settings.logo_width }}px" loading="eager">
       {%- else -%}
-        <span class="header__wordmark" data-text="{{ shop.name | escape }}">{{ shop.name }}</span>
+        {% render 'logo', class: 'header__logo-svg', uid: 'hdr' %}
       {%- endif -%}
     </a>
 
@@ -90,7 +90,7 @@
       {%- if shop.customer_accounts_enabled -%}
         <a class="icon-btn header__account" href="{{ routes.account_url }}" aria-label="{{ 'sections.header.account' | t }}">{% render 'icon', name: 'account' %}</a>
       {%- endif -%}
-      <button class="icon-btn header__cart" type="button" data-cart-open aria-label="{{ 'accessibility.open_cart' | t }}">
+      <button class="icon-btn header__cart{% if cart.item_count > 0 %} has-items{% endif %}" type="button" data-cart-open aria-label="{{ 'accessibility.open_cart' | t }}">
         {% render 'icon', name: 'cart' %}
         <span class="header__cart-count{% if cart.item_count == 0 %} is-empty{% endif %}" data-cart-count>{{ cart.item_count }}</span>
       </button>

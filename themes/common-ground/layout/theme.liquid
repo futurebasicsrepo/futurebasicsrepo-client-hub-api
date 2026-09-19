@@ -68,6 +68,14 @@
 
   {% section 'cart-drawer' %}
 
+  {%- if settings.whatnot_live and settings.whatnot_badge and settings.whatnot_url != blank -%}
+    <a class="onair" href="{{ settings.whatnot_url }}" target="_blank" rel="noopener" aria-label="We're live on Whatnot right now">
+      <span class="onair__dot" aria-hidden="true"></span>
+      <span class="onair__text">ON AIR</span>
+      <span class="onair__sub">Live on Whatnot →</span>
+    </a>
+  {%- endif -%}
+
   <ul hidden>
     <li id="a11y-refresh-page-message">{{ 'accessibility.refresh_page' | t }}</li>
   </ul>

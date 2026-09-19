@@ -25,15 +25,19 @@
     document.body.classList.remove('is-locked');
   }
 
-  function bumpCount(count) {
+  function bumpCount(count, added) {
     $$('[data-cart-count]').forEach(function (el) {
       el.textContent = count; el.classList.toggle('is-empty', count === 0);
       el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
     });
+    $$('.header__cart').forEach(function (btn) {
+      btn.classList.toggle('has-items', count > 0);
+      if (added) { btn.classList.remove('is-opening'); void btn.offsetWidth; btn.classList.add('is-opening'); setTimeout(function () { btn.classList.remove('is-opening'); }, 1600); }
+    });
   }
 
   /* Re-render the drawer from the Section Rendering API */
-  function refresh(openAfter) {
+  function refresh(openAfter, added) {
     return fetch(window.location.pathname + '?sections=cart-drawer', { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -45,7 +49,7 @@
           drawer.innerHTML = fresh.innerHTML;
           if (window.themeMotion) window.themeMotion.init(drawer);
         }
-        return fetch(routes.cart + '.js').then(function (r) { return r.json(); }).then(function (cart) { bumpCount(cart.item_count); if (openAfter) open(); });
+        return fetch(routes.cart + '.js').then(function (r) { return r.json(); }).then(function (cart) { bumpCount(cart.item_count, added); if (openAfter) open(); });
       });
   }
 
@@ -57,7 +61,7 @@
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); })
       .then(function () {
         if (button) { button.classList.add('is-added'); if (text) text.textContent = strings.added || 'Added ✓'; else button.textContent = strings.added || 'Added ✓'; }
-        return refresh(true);
+        return refresh(true, true);
       })
       .catch(function (err) {
         var msg = (err && (err.description || err.message)) || 'Could not add to bag.';

@@ -23,6 +23,29 @@ For live email codes also set `RESEND_API_KEY` and `AUTH_FROM_EMAIL`. Set `INTAK
 
 For Future Basics staff Google Workspace SSO, configure a Google OAuth 2.0 Web application with the authorized redirect URI `https://work.thefuturebasics.com/v1/auth/google/callback`, then set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `GOOGLE_REDIRECT_URI` is optional when using the production URL. The server verifies Google's signed identity token, verified-email status, and the `thefuturebasics.com` hosted domain before issuing an admin session.
 
+## Consignment / trade-in counter (Common Ground)
+
+The Common Ground storefront's **Sell** page (`themes/common-ground`, template `page.sell`) posts items with photos to this API. Staff review them at `work.thefuturebasics.com/consign`, make an offer, and the seller accepts, counters or declines from a tokenised ticket link. Every move emails the other side.
+
+Variables:
+
+- `ALLOWED_ORIGINS` must include the storefront origin(s), e.g. `https://commonground12.com,https://fkgwpw-8u.myshopify.com`
+- `CONSIGN_TICKET_URL` — the storefront Sell page, e.g. `https://commonground12.com/pages/sell` (the seller's ticket link is `<url>?t=<token>`)
+- `CONSIGN_NOTIFICATION_EMAIL` — inbox for new submissions and seller responses (defaults to `INTAKE_NOTIFICATION_EMAIL`)
+- `CONSIGN_FROM_EMAIL` — sender for seller emails (defaults to `AUTH_FROM_EMAIL`)
+
+Endpoints:
+
+- `POST /v1/public/consignments` — multipart: `seller_name`, `seller_email`, `seller_phone`, `item_title`, `brand`, `size`, `condition` (deadstock|like_new|used_good|used_fair), `deal_type` (either|cash|consign|trade), `asking_cents`, `details`, up to 5 `images`. Rate limited per IP; honeypot field `company_fax`.
+- `GET /v1/public/consignments/:token` — the seller's ticket: item, photos, offer thread, status
+- `POST /v1/public/consignments/:token/respond` — `{ action: counter|accept|decline, amount_cents?, note? }`
+- `GET /v1/public/consignment-images/:id`
+- `GET /v1/admin/consignments?status=open|accepted|paid|declined|all`, `GET /v1/admin/consignments/:id`
+- `POST /v1/admin/consignments/:id/offers` — `{ action: offer|counter|accept|decline, amount_cents?, note? }`
+- `PATCH /v1/admin/consignments/:id` — `{ status?, staff_notes? }` (reviewing, paid, withdrawn…)
+
+Negotiation rules live in `src/consign.js` (unit tests in `test/consign.test.js`): the shop opens with an offer; only the side that does not hold the open offer can counter, accept or decline; accepting locks `agreed_cents` and closes the ticket.
+
 ## Endpoints
 
 - `GET /health`

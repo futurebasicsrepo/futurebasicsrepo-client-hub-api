@@ -1,0 +1,11 @@
+{
+  "sections": {
+    "main": { "type": "sell-form", "blocks": {
+      "s1": { "type": "step", "settings": { "title": "Send photos + details", "text": "Two minutes, no account needed." } },
+      "s2": { "type": "step", "settings": { "title": "We make an offer", "text": "Usually within 48 hours. Cash, consignment split, or store credit." } },
+      "s3": { "type": "step", "settings": { "title": "Accept or counter", "text": "Haggle on your ticket link. Nothing moves until you say yes." } },
+      "s4": { "type": "step", "settings": { "title": "Drop off or ship", "text": "Bring it to 134 S 11th St or we send a label. Paid after authentication." } }
+    }, "block_order": ["s1", "s2", "s3", "s4"], "settings": {} }
+  },
+  "order": ["main"]
+}

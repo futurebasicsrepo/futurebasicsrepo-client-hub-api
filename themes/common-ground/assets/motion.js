@@ -153,7 +153,7 @@
 
   /* ---- VCR timecode on the hero OSD ---- */
   function initTimecode() {
-    var els = $('[data-timecode]');
+    var els = $$('[data-timecode]');
     if (!els.length || !ANY) return;
     var start = Date.now();
     function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -164,11 +164,31 @@
     }, 1000);
   }
 
+  /* ---- Whatnot "Channel 12": countdown to next show ---- */
+  function initCountdown(root) {
+    $$('[data-countdown]', root).forEach(function (el) {
+      if (el.__cd) return; el.__cd = true;
+      var target = Date.parse(el.getAttribute('data-countdown'));
+      if (isNaN(target)) { el.textContent = el.getAttribute('data-fallback') || ''; return; }
+      var d = $('[data-cd-d]', el), h = $('[data-cd-h]', el), mi = $('[data-cd-m]', el), s = $('[data-cd-s]', el);
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      function tick() {
+        var diff = Math.max(0, target - Date.now()) / 1000;
+        if (d) d.textContent = pad(Math.floor(diff / 86400));
+        if (h) h.textContent = pad(Math.floor(diff / 3600) % 24);
+        if (mi) mi.textContent = pad(Math.floor(diff / 60) % 60);
+        if (s) s.textContent = pad(Math.floor(diff) % 60);
+        if (diff <= 0) el.classList.add('is-due');
+      }
+      tick(); setInterval(tick, 1000);
+    });
+  }
+
   /* ---- Public re-init hook for AJAX-rendered content ---- */
-  window.themeMotion = { init: function (root) { initReveal(root); initMarquee(root); initTilt(root); initQty(root); } };
+  window.themeMotion = { init: function (root) { initReveal(root); initMarquee(root); initTilt(root); initQty(root); initCountdown(root); } };
 
   document.addEventListener('DOMContentLoaded', function () {
-    initReveal(); initMarquee(); initTilt(); initCursor(); initHeader(); initParallax(); initViewTransitions(); initQty(); initTimecode();
+    initReveal(); initMarquee(); initTilt(); initCursor(); initHeader(); initParallax(); initViewTransitions(); initQty(); initTimecode(); initCountdown();
   });
   // Theme editor: re-run when sections load/reorder
   document.addEventListener('shopify:section:load', function (e) { window.themeMotion.init(e.target); });
