@@ -116,13 +116,13 @@ h2 em{font-style:italic;color:var(--acc)}
 .btn:hover .arrow::before{transform:scaleX(1.3);transform-origin:left}
 
 /* ---------- hero ---------- */
-.hero{position:relative;display:flex;flex-direction:column;justify-content:flex-start;padding:calc(96px + env(safe-area-inset-top,0px)) var(--gutter) clamp(40px,6vw,80px);overflow:hidden;background:var(--ink)}
+.hero{position:relative;display:flex;flex-direction:column;justify-content:flex-start;padding:calc(84px + env(safe-area-inset-top,0px)) var(--gutter) clamp(40px,6vw,80px);overflow:hidden;background:var(--ink)}
 @media (min-width:900px){.hero{min-height:min(92svh,980px);justify-content:flex-end;padding-top:calc(120px + env(safe-area-inset-top,0px))}}
 #arcs{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:.9}
 .hero-glow{position:absolute;width:70vmax;height:70vmax;left:50%;top:-10%;transform:translateX(-30%);background:radial-gradient(closest-side,rgba(184,151,90,.16),transparent 70%);filter:blur(30px);pointer-events:none;animation:breathe 12s ease-in-out infinite}
 @keyframes breathe{50%{transform:translateX(-24%) translateY(6%) scale(1.08)}}
 .hero-in{position:relative;max-width:1280px;margin:0 auto;width:100%;display:grid;grid-template-columns:minmax(0,1fr)}
-.hero-portrait{order:-1;position:relative;width:min(64vw,300px);aspect-ratio:4/5;margin:6px 4vw 34px auto;clip-path:inset(0 0 0 0);animation:unveil 1.4s 1.2s var(--ease) both}
+.hero-portrait{order:-1;position:relative;width:min(66vw,300px);aspect-ratio:4/5;margin:0 4vw 30px auto;clip-path:inset(0 0 0 0);animation:unveil 1.4s 1.2s var(--ease) both}
 .no-curtain .hero-portrait{animation-delay:.1s}
 @keyframes unveil{from{clip-path:inset(0 0 100% 0);opacity:0}to{clip-path:inset(0 0 0 0);opacity:1}}
 .hero-portrait .oval{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:var(--ink-3);box-shadow:0 30px 80px rgba(0,0,0,.55)}
@@ -162,12 +162,12 @@ h2 em{font-style:italic;color:var(--acc)}
 
 
 /* ---------- marquee ---------- */
-.marquee{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;background:var(--ink);white-space:nowrap;position:relative}
-.marquee::before,.marquee::after{content:"";position:absolute;top:0;bottom:0;width:16vw;z-index:2;pointer-events:none}
-.marquee::before{left:0;background:linear-gradient(90deg,var(--ink),transparent)}
-.marquee::after{right:0;background:linear-gradient(-90deg,var(--ink),transparent)}
-.marquee-track{display:inline-flex;gap:56px;animation:slide 46s linear infinite;font-family:var(--display);font-size:clamp(18px,2vw,26px);font-weight:300;color:var(--stone)}
-.marquee-track i{font-style:normal;color:var(--gold);font-size:.6em;vertical-align:middle}
+.marquee{display:flex;align-items:stretch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--ink);overflow:hidden}
+.marquee-label{flex:none;display:flex;align-items:center;padding:0 clamp(14px,2.4vw,28px) 0 var(--gutter);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);border-right:1px solid var(--line);white-space:nowrap}
+.marquee-view{flex:1;min-width:0;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent)}
+.marquee-track{display:flex;width:max-content;animation:slide 70s linear infinite;padding:16px 0}
+.marquee-track span{display:flex;align-items:center;white-space:nowrap;padding:0 clamp(18px,2.6vw,34px);font-family:var(--display);font-size:clamp(17px,1.7vw,23px);font-weight:300;color:var(--stone);line-height:1}
+.marquee-track span::after{content:"";width:5px;height:5px;background:var(--gold);transform:rotate(45deg);margin-left:clamp(18px,2.6vw,34px);flex:none;opacity:.8}
 @keyframes slide{to{transform:translateX(-50%)}}
 .marquee:hover .marquee-track{animation-play-state:paused}
 
@@ -388,9 +388,8 @@ footer button:hover{color:var(--paper)}
 </header>
 
 <div class="marquee" aria-hidden="true">
-  <div class="marquee-track" id="marquee">
-    <span>The Philosophical Review</span><i>&#9670;</i><span>Mind</span><i>&#9670;</i><span>Philosophy and Phenomenological Research</span><i>&#9670;</i><span>Philosophers&rsquo; Imprint</span><i>&#9670;</i><span>The Philosophical Quarterly</span><i>&#9670;</i><span>British Journal of Aesthetics</span><i>&#9670;</i><span>Journal of Aesthetics and Art Criticism</span><i>&#9670;</i><span>Analysis</span><i>&#9670;</i><span>Ergo</span><i>&#9670;</i><span>Oxford University Press</span><i>&#9670;</i><span>Basic Books</span><i>&#9670;</i><span>Penguin</span><i>&#9670;</i><span>The New York Times</span><i>&#9670;</i><span>Aeon</span><i>&#9670;</i><span>Psyche</span><i>&#9670;</i>
-  </div>
+  <div class="marquee-label">Published in</div>
+  <div class="marquee-view"><div class="marquee-track" id="marquee"><span>The Philosophical Review</span><span>Mind</span><span>Philosophy and Phenomenological Research</span><span>Philosophers&rsquo; Imprint</span><span>The Philosophical Quarterly</span><span>British Journal of Aesthetics</span><span>Journal of Aesthetics and Art Criticism</span><span>Analysis</span><span>Ergo</span><span>Oxford University Press</span><span>Basic Books</span><span>Penguin</span><span>The New York Times</span><span>Aeon</span><span>Psyche</span></div></div>
 </div>
 
 <main id="main">
@@ -1012,14 +1011,16 @@ footer button:hover{color:var(--paper)}
   /* ---- GSAP: pinned horizontal books on desktop, parallax name ---- */
   if(window.gsap&&window.ScrollTrigger&&!reduce){
     gsap.registerPlugin(ScrollTrigger);
-    gsap.to('.hero-name',{yPercent:18,opacity:.35,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
     gsap.to('.hero-glow',{yPercent:-30,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
-    gsap.to('.hero-portrait',{yPercent:12,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
     $$('.plate--paper').forEach(function(p){
       var h=p.querySelector('h2');if(!h)return;
       gsap.fromTo(h,{xPercent:-2},{xPercent:2,ease:'none',scrollTrigger:{trigger:p,start:'top bottom',end:'bottom top',scrub:true}});
     });
     ScrollTrigger.matchMedia({
+      '(min-width: 900px)':function(){
+        gsap.to('.hero-name',{yPercent:8,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+        gsap.to('.hero-portrait',{yPercent:10,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+      },
       '(min-width: 1024px)':function(){
         var total=function(){return rail.scrollWidth-rail.clientWidth};
         if(total()<=0||$('#books').offsetHeight>window.innerHeight-40)return;
