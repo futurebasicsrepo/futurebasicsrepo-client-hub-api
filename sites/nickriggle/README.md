@@ -18,6 +18,10 @@ All copy is drawn from the August 2026 CV (`assets/Nick-Riggle-CV-August-2026.pd
 - Current course titles and posted office hours in the Teaching section (the CV does not list courses).
 - Pre-order links for *Understanding Aesthetic Life* once Oxford publishes the product page.
 
+## Sharing
+
+`index.html` carries Open Graph and Twitter card tags pointing at `assets/og.jpg` (1200x630) with absolute URLs. They currently point at `https://nickriggle.vercel.app`; when the site moves to nickriggle.com, replace that base URL in the `<head>` (canonical, og:url, og:image, twitter:image, apple-touch-icon).
+
 ## Deploy
 
 Static: point any host (Vercel, Netlify, Railway static, or Squarespace code injection for a full-page override) at this folder. No build step.
