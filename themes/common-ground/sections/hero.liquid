@@ -1,0 +1,77 @@
+{%- liquid
+  assign img = section.settings.image
+  assign h = section.settings.height
+-%}
+<section class="hero hero--{{ h }} hero--align-{{ section.settings.align }}" data-hero style="--overlay: {{ section.settings.overlay }}%">
+  <div class="hero__media" data-parallax>
+    {%- if img != blank -%}
+      <img
+        src="{{ img | image_url: width: 1800 }}"
+        srcset="{{ img | image_url: width: 800 }} 800w, {{ img | image_url: width: 1200 }} 1200w, {{ img | image_url: width: 1800 }} 1800w, {{ img | image_url: width: 2400 }} 2400w"
+        sizes="100vw" width="{{ img.width }}" height="{{ img.height }}"
+        alt="{{ img.alt | default: shop.name | escape }}" loading="eager" fetchpriority="high">
+    {%- else -%}
+      <div class="hero__placeholder">
+        <div class="hero__checker" aria-hidden="true"></div>
+        <p class="hero__placeholder-note">Drop the storefront / landing photo here (Theme editor → Hero → Image). Best at 2400×1400.</p>
+      </div>
+    {%- endif -%}
+    {%- if section.settings.mobile_image != blank -%}
+      <img class="hero__img--mobile" src="{{ section.settings.mobile_image | image_url: width: 1000 }}" width="{{ section.settings.mobile_image.width }}" height="{{ section.settings.mobile_image.height }}" alt="" loading="eager">
+    {%- endif -%}
+  </div>
+  <div class="hero__overlay" aria-hidden="true"></div>
+
+  <div class="hero__content page-width">
+    {%- if section.settings.kicker != blank -%}<p class="hero__kicker reveal">{{ section.settings.kicker }}</p>{%- endif -%}
+    {%- if section.settings.heading != blank -%}
+      <h1 class="hero__heading" data-split>
+        {%- assign words = section.settings.heading | split: ' ' -%}
+        {%- for w in words -%}<span class="hero__word" style="--i:{{ forloop.index0 }}"><span class="hero__word-inner" data-glitch data-text="{{ w | escape }}">{{ w }}</span></span>{% unless forloop.last %} {% endunless %}{%- endfor -%}
+      </h1>
+    {%- endif -%}
+    {%- if section.settings.subheading != blank -%}<p class="hero__sub reveal" style="--i: 3">{{ section.settings.subheading }}</p>{%- endif -%}
+    <div class="hero__actions reveal" style="--i: 4">
+      {%- if section.settings.button_label != blank -%}<a class="btn btn--primary btn--lg" href="{{ section.settings.button_link }}">{{ section.settings.button_label }} {% render 'icon', name: 'arrow' %}</a>{%- endif -%}
+      {%- if section.settings.button_label_2 != blank -%}<a class="btn btn--chrome btn--lg" href="{{ section.settings.button_link_2 }}">{{ section.settings.button_label_2 }}</a>{%- endif -%}
+    </div>
+  </div>
+
+  {%- if section.settings.sticker_text != blank -%}
+    <div class="hero__sticker" data-spin>{% render 'sticker', text: section.settings.sticker_text, color: section.settings.sticker_color, size: 'lg' %}</div>
+  {%- endif -%}
+  {%- if section.settings.show_scroll_cue -%}
+    <a class="hero__cue" href="#MainContent-next" aria-hidden="true">↓</a>
+  {%- endif -%}
+</section>
+<div id="MainContent-next"></div>
+{% schema %}
+{
+  "name": "Hero",
+  "class": "section-hero",
+  "settings": [
+    { "type": "image_picker", "id": "image", "label": "Image", "info": "Use the landing-page storefront photo from commonground12.com as the base." },
+    { "type": "image_picker", "id": "mobile_image", "label": "Mobile image (optional)" },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "PHILADELPHIA · SINCE 2012" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "COMMON GROUND" },
+    { "type": "textarea", "id": "subheading", "label": "Subheading", "default": "Sneakers, streetwear and collectibles. Authenticated consignment out of Center City." },
+    { "type": "text", "id": "button_label", "label": "Button 1 label", "default": "Shop all" },
+    { "type": "url", "id": "button_link", "label": "Button 1 link" },
+    { "type": "text", "id": "button_label_2", "label": "Button 2 label", "default": "New arrivals" },
+    { "type": "url", "id": "button_link_2", "label": "Button 2 link" },
+    { "type": "text", "id": "sticker_text", "label": "Sticker text", "default": "EST. 2012" },
+    { "type": "select", "id": "sticker_color", "label": "Sticker color", "options": [
+      { "value": "hot", "label": "Hot" }, { "value": "volt", "label": "Volt" }, { "value": "acid", "label": "Acid" }, { "value": "tang", "label": "Tangerine" }
+    ], "default": "acid" },
+    { "type": "select", "id": "height", "label": "Height", "options": [
+      { "value": "full", "label": "Full screen" }, { "value": "tall", "label": "Tall" }, { "value": "medium", "label": "Medium" }
+    ], "default": "full" },
+    { "type": "select", "id": "align", "label": "Content alignment", "options": [
+      { "value": "left", "label": "Left" }, { "value": "center", "label": "Center" }
+    ], "default": "left" },
+    { "type": "range", "id": "overlay", "label": "Image darken", "min": 0, "max": 80, "step": 5, "unit": "%", "default": 35 },
+    { "type": "checkbox", "id": "show_scroll_cue", "label": "Show scroll cue", "default": true }
+  ],
+  "presets": [{ "name": "Hero" }]
+}
+{% endschema %}

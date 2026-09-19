@@ -1,0 +1,29 @@
+{
+  "current": {
+    "color_bg": "#F4EFE4",
+    "color_paper": "#FFFFFF",
+    "color_ink": "#111111",
+    "color_accent_1": "#FF2D95",
+    "color_accent_2": "#1F3BFF",
+    "color_accent_3": "#C8FF00",
+    "color_accent_4": "#FF6A00",
+    "motion_level": "full",
+    "enable_cursor": true,
+    "enable_scanlines": true,
+    "enable_hover_swap": true,
+    "enable_view_transitions": true,
+    "corner_radius": 4,
+    "grid_density": "4",
+    "card_show_vendor": true,
+    "card_show_size": true,
+    "card_quick_add": true,
+    "badge_new_days": "14",
+    "social_instagram": "https://www.instagram.com/commonground12/",
+    "social_facebook": "https://www.facebook.com/CommonGroundWalnut/",
+    "sections": {
+      "announcement-bar": { "type": "announcement-bar", "settings": {} },
+      "header": { "type": "header", "settings": {} },
+      "footer": { "type": "footer", "settings": {} }
+    }
+  }
+}

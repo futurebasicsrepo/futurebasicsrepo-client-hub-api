@@ -1,0 +1,14 @@
+{
+  "type": "header",
+  "name": "Header group",
+  "sections": {
+    "announcement-bar": { "type": "announcement-bar", "blocks": {
+      "t1": { "type": "text", "settings": { "text": "FREE SHIPPING OVER $150" } },
+      "t2": { "type": "text", "settings": { "text": "NEW DROPS EVERY WEEK" } },
+      "t3": { "type": "text", "settings": { "text": "134 S 11TH ST · PHILLY" } },
+      "t4": { "type": "text", "settings": { "text": "AUTHENTICATED CONSIGNMENT" } }
+    }, "block_order": ["t1","t2","t3","t4"], "settings": {} },
+    "header": { "type": "header", "settings": {} }
+  },
+  "order": ["announcement-bar", "header"]
+}

@@ -1,0 +1,17 @@
+<section class="contact section page-width page--narrow">
+  <h2 class="h2">{{ section.settings.heading }}</h2>
+  {%- form 'contact', class: 'form' -%}
+    {%- if form.posted_successfully? -%}<p class="form__success">{{ 'contact.form.post_success' | t }}</p>{%- endif -%}
+    {%- if form.errors -%}<div class="form__error"><p>{{ 'contact.form.error_heading' | t }}</p><ul>{%- for field in form.errors -%}<li>{{ form.errors.messages[field] }}</li>{%- endfor -%}</ul></div>{%- endif -%}
+    <div class="form__grid">
+      <label>{{ 'contact.form.name' | t }}<input type="text" name="contact[name]" value="{{ form.name }}" required></label>
+      <label>{{ 'contact.form.email' | t }}<input type="email" name="contact[email]" value="{{ form.email }}" required></label>
+      <label>{{ 'contact.form.phone' | t }}<input type="tel" name="contact[phone]" value="{{ form.phone }}"></label>
+      <label class="form__full">{{ 'contact.form.comment' | t }}<textarea name="contact[body]" rows="6" required>{{ form.body }}</textarea></label>
+    </div>
+    <button type="submit" class="btn btn--primary">{{ 'contact.form.send' | t }} {% render 'icon', name: 'arrow' %}</button>
+  {%- endform -%}
+</section>
+{% schema %}
+{ "name": "Contact form", "settings": [ { "type": "text", "id": "heading", "label": "Heading", "default": "Hit us up" } ], "presets": [{ "name": "Contact form" }] }
+{% endschema %}

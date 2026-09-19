@@ -1,0 +1,10 @@
+<article class="section page-width page--narrow">
+  <a class="small" href="{{ blog.url }}">← {{ 'blogs.article.back' | t }}</a>
+  <h1 class="h1">{{ article.title }}</h1>
+  <p class="small">{{ 'blogs.article.posted_on' | t }} {{ article.published_at | date: '%b %d, %Y' }} {{ 'blogs.article.by' | t }} {{ article.author }}</p>
+  {%- if article.image -%}<img src="{{ article.image | image_url: width: 1400 }}" width="{{ article.image.width }}" height="{{ article.image.height }}" alt="{{ article.image.alt | escape }}" loading="eager">{%- endif -%}
+  <div class="rte">{{ article.content }}</div>
+</article>
+{% schema %}
+{ "name": "Article", "settings": [] }
+{% endschema %}

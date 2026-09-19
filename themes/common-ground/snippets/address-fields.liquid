@@ -1,0 +1,17 @@
+<div class="form__grid">
+  <label>{{ 'customer.addresses.first_name' | t }}<input type="text" name="address[first_name]" value="{{ form.first_name }}" autocomplete="given-name"></label>
+  <label>{{ 'customer.addresses.last_name' | t }}<input type="text" name="address[last_name]" value="{{ form.last_name }}" autocomplete="family-name"></label>
+  <label class="form__full">{{ 'customer.addresses.company' | t }}<input type="text" name="address[company]" value="{{ form.company }}" autocomplete="organization"></label>
+  <label class="form__full">{{ 'customer.addresses.address1' | t }}<input type="text" name="address[address1]" value="{{ form.address1 }}" autocomplete="address-line1"></label>
+  <label class="form__full">{{ 'customer.addresses.address2' | t }}<input type="text" name="address[address2]" value="{{ form.address2 }}" autocomplete="address-line2"></label>
+  <label>{{ 'customer.addresses.city' | t }}<input type="text" name="address[city]" value="{{ form.city }}" autocomplete="address-level2"></label>
+  <label>{{ 'customer.addresses.zip' | t }}<input type="text" name="address[zip]" value="{{ form.zip }}" autocomplete="postal-code"></label>
+  <label>{{ 'customer.addresses.country' | t }}
+    <select name="address[country]" id="AddressCountry_{{ id }}" data-address-country-select data-default="{{ form.country }}" data-address-id="{{ id }}" autocomplete="country">{{ all_country_option_tags }}</select>
+  </label>
+  <label id="AddressProvinceContainer_{{ id }}">{{ 'customer.addresses.province' | t }}
+    <select name="address[province]" id="AddressProvince_{{ id }}" data-default="{{ form.province }}" autocomplete="address-level1"></select>
+  </label>
+  <label class="form__full">{{ 'customer.addresses.phone' | t }}<input type="tel" name="address[phone]" value="{{ form.phone }}" autocomplete="tel"></label>
+  <label class="form__full form__check"><input type="checkbox" name="address[default]" {% if form.default %}checked{% endif %}> {{ 'customer.addresses.set_default' | t }}</label>
+</div>

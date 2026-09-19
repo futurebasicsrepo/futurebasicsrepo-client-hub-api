@@ -1,0 +1,32 @@
+<section class="iwt section page-width iwt--{{ section.settings.layout }}">
+  <div class="iwt__media reveal" data-tilt data-tilt-max="4">
+    {%- if section.settings.image != blank -%}
+      <img src="{{ section.settings.image | image_url: width: 1200 }}" width="{{ section.settings.image.width }}" height="{{ section.settings.image.height }}" alt="{{ section.settings.image.alt | escape }}" loading="lazy">
+    {%- else -%}
+      <div class="iwt__placeholder">{{ 'lifestyle-1' | placeholder_svg_tag: 'placeholder-svg' }}</div>
+    {%- endif -%}
+    {%- if section.settings.sticker_text != blank -%}<div class="iwt__sticker" data-spin>{% render 'sticker', text: section.settings.sticker_text, color: 'hot', size: 'md' %}</div>{%- endif -%}
+  </div>
+  <div class="iwt__body">
+    {%- if section.settings.kicker != blank -%}<p class="kicker reveal">{{ section.settings.kicker }}</p>{%- endif -%}
+    <h2 class="h2 reveal" style="--i:1">{{ section.settings.heading }}</h2>
+    <div class="rte reveal" style="--i:2">{{ section.settings.text }}</div>
+    {%- if section.settings.button_label != blank -%}<a class="btn btn--primary reveal" style="--i:3" href="{{ section.settings.button_link }}">{{ section.settings.button_label }} {% render 'icon', name: 'arrow' %}</a>{%- endif -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Image with text",
+  "settings": [
+    { "type": "image_picker", "id": "image", "label": "Image" },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "THE SHOP" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Walnut St. energy, worldwide shipping." },
+    { "type": "richtext", "id": "text", "label": "Text", "default": "<p>Every pair and piece is checked in person before it hits the floor.</p>" },
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Visit the shop" },
+    { "type": "url", "id": "button_link", "label": "Button link" },
+    { "type": "text", "id": "sticker_text", "label": "Sticker text", "default": "IRL" },
+    { "type": "select", "id": "layout", "label": "Image position", "options": [ { "value": "left", "label": "Left" }, { "value": "right", "label": "Right" } ], "default": "left" }
+  ],
+  "presets": [{ "name": "Image with text" }]
+}
+{% endschema %}

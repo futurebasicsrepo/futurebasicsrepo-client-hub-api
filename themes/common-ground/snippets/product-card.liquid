@@ -1,0 +1,98 @@
+{%- comment -%}
+  Usage: {% render 'product-card', product: product, lazy: true, index: forloop.index %}
+{%- endcomment -%}
+{%- liquid
+  assign new_days = settings.badge_new_days | default: '14' | plus: 0
+  assign now_s = 'now' | date: '%s' | plus: 0
+  assign created_s = product.created_at | date: '%s' | plus: 0
+  assign age_days = now_s | minus: created_s | divided_by: 86400
+  assign is_new = false
+  if age_days <= new_days
+    assign is_new = true
+  endif
+  assign on_sale = false
+  if product.compare_at_price > product.price
+    assign on_sale = true
+  endif
+  assign hover_img = product.media[1]
+
+  comment
+    First available size: find the option whose name contains "size", then read
+    that option from the first in-stock variant.
+  endcomment
+  assign size_idx = -1
+  for opt in product.options_with_values
+    assign oname = opt.name | downcase
+    if oname contains 'size'
+      assign size_idx = forloop.index0
+      break
+    endif
+  endfor
+  assign size_label = blank
+  if size_idx > -1
+    for v in product.variants
+      if v.available
+        assign size_label = v.options[size_idx]
+        break
+      endif
+    endfor
+  endif
+
+  assign loading = 'lazy'
+  if lazy == false
+    assign loading = 'eager'
+  endif
+  assign t_sold_out = 'products.product.sold_out' | t
+  assign t_on_sale = 'products.product.on_sale' | t
+  assign t_new = 'products.product.new' | t
+-%}
+<article class="product-card reveal" data-tilt data-product-id="{{ product.id }}" {% if index %}style="--i: {{ index }}"{% endif %}>
+  <a class="product-card__media" href="{{ product.url }}" aria-label="{{ product.title | escape }}">
+    {%- if product.featured_media -%}
+      <img
+        class="product-card__img product-card__img--primary"
+        src="{{ product.featured_media | image_url: width: 600 }}"
+        srcset="{{ product.featured_media | image_url: width: 300 }} 300w, {{ product.featured_media | image_url: width: 600 }} 600w, {{ product.featured_media | image_url: width: 900 }} 900w"
+        sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+        width="{{ product.featured_media.width }}" height="{{ product.featured_media.height }}"
+        alt="{{ product.featured_media.alt | default: product.title | escape }}"
+        loading="{{ loading }}">
+      {%- if settings.enable_hover_swap and hover_img -%}
+        <img class="product-card__img product-card__img--hover" src="{{ hover_img | image_url: width: 600 }}" width="{{ hover_img.width }}" height="{{ hover_img.height }}" alt="" loading="lazy" aria-hidden="true">
+      {%- endif -%}
+    {%- else -%}
+      <div class="product-card__placeholder">{{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}</div>
+    {%- endif -%}
+    <div class="product-card__stickers">
+      {%- if product.available == false -%}
+        {% render 'sticker', text: t_sold_out, color: 'ink', size: 'sm' %}
+      {%- elsif on_sale -%}
+        {% render 'sticker', text: t_on_sale, color: 'tang', size: 'sm' %}
+      {%- elsif is_new -%}
+        {% render 'sticker', text: t_new, color: 'acid', size: 'sm' %}
+      {%- endif -%}
+    </div>
+  </a>
+  <div class="product-card__info">
+    {%- if settings.card_show_vendor and product.vendor != blank -%}
+      <p class="product-card__vendor">{{ product.vendor }}</p>
+    {%- endif -%}
+    <h3 class="product-card__title"><a href="{{ product.url }}">{{ product.title }}</a></h3>
+    <div class="product-card__row">
+      {% render 'price', product: product %}
+      {%- if settings.card_show_size and size_label != blank -%}
+        <span class="chip chip--size">{{ size_label }}</span>
+      {%- endif -%}
+    </div>
+    {%- if settings.card_quick_add and product.available -%}
+      {%- if product.variants.size == 1 -%}
+        <form method="post" action="{{ routes.cart_add_url }}" class="product-card__quick" data-quick-add>
+          <input type="hidden" name="id" value="{{ product.selected_or_first_available_variant.id }}">
+          <button type="submit" class="btn btn--sm btn--ghost" aria-label="{{ 'products.product.quick_add' | t }} — {{ product.title | escape }}">{{ 'products.product.quick_add' | t }} {% render 'icon', name: 'plus' %}</button>
+        </form>
+      {%- else -%}
+        <a href="{{ product.url }}" class="btn btn--sm btn--ghost product-card__quick">{{ 'products.product.choose_options' | t }} {% render 'icon', name: 'arrow' %}</a>
+      {%- endif -%}
+    {%- endif -%}
+  </div>
+</article>
