@@ -42,6 +42,8 @@
   --ease:cubic-bezier(.16,1,.3,1);
   --gutter:clamp(16px,5vw,72px);
   --fg:var(--paper);--bg:var(--ink);--mute:var(--stone);--ln:var(--line);--acc:var(--gold-hi);
+  --glass-fill:rgba(255,255,255,.07);--glass-fill-hi:rgba(255,255,255,.14);--glass-line:rgba(255,255,255,.16);--glass-rim:rgba(255,255,255,.55);--glass-spec:rgba(255,255,255,.28);--glass-shadow:0 14px 40px -14px rgba(0,0,0,.6);
+  --spring:cubic-bezier(.3,1.4,.5,1);
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -75,25 +77,32 @@ body::before{content:"";position:fixed;inset:-50%;width:200%;height:200%;pointer
 .cursor.big{width:56px;height:56px;background:var(--paper)}
 @media (pointer:coarse){.cursor{display:none}}
 
-/* ---------- nav ---------- */
-.nav{position:fixed;top:0;left:0;right:0;z-index:70;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(14px + env(safe-area-inset-top,0px)) var(--gutter) 14px;mix-blend-mode:difference;color:#fff;transition:transform .5s var(--ease)}
-.nav.hide{transform:translateY(-110%)}
-.nav-logo{font-family:var(--display);font-size:22px;letter-spacing:.06em;font-weight:400}
-.nav-links{display:none;gap:28px;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
-.nav-links a{position:relative;padding:4px 0}
+/* ---------- nav (liquid glass capsule) ---------- */
+.nav{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:0;right:0;z-index:70;display:flex;justify-content:center;padding:0 var(--gutter);pointer-events:none}
+.nav-bar{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;gap:16px;width:min(100%,1180px);padding:8px 8px 8px 22px;color:var(--paper);transition:transform .6s var(--ease),padding .5s var(--ease),color .4s}
+.nav.hide .nav-bar{transform:translateY(-150%)}
+.nav.tight .nav-bar{padding:5px 5px 5px 18px}
+.nav.light .nav-bar{color:var(--ink);--glass-fill:rgba(255,255,255,.42);--glass-fill-hi:rgba(255,255,255,.6);--glass-line:rgba(13,12,11,.12);--glass-rim:rgba(255,255,255,.9);--glass-spec:rgba(255,255,255,.75);--glass-shadow:0 14px 34px -16px rgba(13,12,11,.35)}
+.nav-logo{font-family:var(--display);font-size:22px;letter-spacing:.06em;font-weight:400;position:relative;z-index:1}
+.nav-links{display:none;gap:26px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;position:relative;z-index:1}
+.nav-links a{position:relative;padding:4px 0;opacity:.75;transition:opacity .3s}
+.nav-links a:hover,.nav-links a[aria-current="true"]{opacity:1}
 .nav-links a::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:currentColor;transform:scaleX(0);transform-origin:right;transition:transform .5s var(--ease)}
 .nav-links a:hover::after,.nav-links a[aria-current="true"]::after{transform:scaleX(1);transform-origin:left}
 @media (min-width:1024px){.nav-links{display:flex}}
-.mode{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;border:1px solid currentColor;border-radius:999px;padding:3px}
-.mode button{padding:7px 12px;border-radius:999px;opacity:.55;transition:opacity .3s,background .3s,color .3s}
-.mode button[aria-pressed="true"]{opacity:1;background:#fff;color:#000}
+.mode{position:relative;z-index:1;display:flex;align-items:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;border-radius:999px;padding:3px;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px var(--glass-line)}
+.nav.light .mode{background:rgba(13,12,11,.05)}
+.mode-blob{position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:999px;background:var(--glass-fill-hi);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.12),0 6px 16px -6px rgba(0,0,0,.45);transition:transform .65s var(--spring),width .65s var(--spring);pointer-events:none}
+.mode-blob::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,var(--glass-spec),transparent 55%);opacity:.6}
+.mode button{position:relative;z-index:1;padding:7px 12px;border-radius:999px;opacity:.55;transition:opacity .3s,color .3s}
+.mode button[aria-pressed="true"]{opacity:1}
 .progress{position:fixed;left:0;top:0;height:2px;width:100%;z-index:71;background:transparent;transform-origin:left;pointer-events:none}
 .progress i{display:block;height:100%;background:var(--gold);transform:scaleX(0);transform-origin:left}
 
 /* ---------- layout ---------- */
 main{display:flex;flex-direction:column}
 .plate{position:relative;padding:clamp(80px,12vw,160px) var(--gutter);--fg:var(--paper);--bg:var(--ink);--mute:var(--stone);--ln:var(--line);--acc:var(--gold-hi);background:var(--bg);color:var(--fg)}
-.plate--paper{--fg:var(--ink);--bg:var(--paper);--mute:var(--stone-2);--ln:var(--line-paper);--acc:var(--gold)}
+.plate--paper{--fg:var(--ink);--bg:var(--paper);--mute:var(--stone-2);--ln:var(--line-paper);--acc:var(--gold);--glass-fill:rgba(255,255,255,.32);--glass-fill-hi:rgba(255,255,255,.55);--glass-line:rgba(13,12,11,.12);--glass-rim:rgba(255,255,255,.9);--glass-spec:rgba(255,255,255,.7);--glass-shadow:0 14px 34px -16px rgba(13,12,11,.35)}
 .plate--deep{--bg:var(--ink-2)}
 .wrap{max-width:1280px;margin:0 auto}
 .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--acc);display:flex;align-items:center;gap:14px;margin:0 0 28px}
@@ -119,14 +128,14 @@ h2 em{font-style:italic;color:var(--acc)}
 .js .rv-words .wd{opacity:.18;transition:opacity .6s}
 .js .rv-words .wd.on{opacity:1}
 
-/* ---------- buttons ---------- */
-.btn{display:inline-flex;align-items:center;gap:12px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;padding:16px 26px;border:1px solid var(--acc);color:var(--fg);border-radius:999px;position:relative;overflow:hidden;transition:color .5s var(--ease)}
-.btn::before{content:"";position:absolute;inset:0;background:var(--acc);transform:translateY(101%);transition:transform .6s var(--ease);border-radius:inherit}
-.btn span{position:relative}
-.btn:hover{color:var(--ink)}
-.btn:hover::before{transform:none}
-.btn--ghost{border-color:var(--ln)}
-.btn--ghost:hover{border-color:var(--acc)}
+/* ---------- buttons (liquid glass) ---------- */
+.btn{display:inline-flex;align-items:center;gap:12px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;padding:16px 26px;color:var(--fg);border-radius:999px;position:relative;isolation:isolate;transition:color .4s,box-shadow .5s var(--ease),background-color .4s;will-change:transform}
+.btn span{position:relative;z-index:2}
+.btn--ghost{--glass-fill:rgba(255,255,255,.035)}
+.plate--paper .btn--ghost{--glass-fill:rgba(255,255,255,.18)}
+.btn:hover{--glass-fill:var(--glass-fill-hi)}
+.btn:hover .arrow::before{transform:scaleX(1.3);transform-origin:left}
+.btn:active{transition-duration:.1s}
 .arrow{width:16px;height:16px;position:relative;flex:none}
 .arrow::before{content:"";position:absolute;left:0;top:50%;width:14px;height:1px;background:currentColor;transition:transform .5s var(--ease)}
 .arrow::after{content:"";position:absolute;right:1px;top:50%;width:6px;height:6px;border-top:1px solid currentColor;border-right:1px solid currentColor;transform:translateY(-50%) rotate(45deg)}
@@ -195,6 +204,41 @@ h2 em{font-style:italic;color:var(--acc)}
 .glance b{font-weight:500}
 .glance span{display:block;color:var(--mute);font-size:13px}
 .glance-h{font-family:var(--display);font-size:26px;font-weight:400;margin:0 0 16px}
+
+/* ---------- liquid glass core ---------- */
+.glass{position:relative;isolation:isolate;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.14),inset 0 0 0 1px var(--glass-line),var(--glass-shadow);-webkit-backdrop-filter:blur(22px) saturate(175%) brightness(1.04);backdrop-filter:blur(22px) saturate(175%) brightness(1.04);border-radius:999px;transition:background-color .4s,box-shadow .5s var(--ease)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+  background:radial-gradient(140px 80px at var(--mx,28%) var(--my,-10%),var(--glass-spec),transparent 62%),linear-gradient(180deg,rgba(255,255,255,.12),transparent 46%,rgba(255,255,255,.035));
+  opacity:.9;transition:opacity .4s}
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;padding:1.2px;
+  background:linear-gradient(135deg,var(--glass-rim),rgba(255,255,255,.08) 38%,rgba(255,255,255,.02) 62%,rgba(255,255,255,.4));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;opacity:.75}
+.glass>*{position:relative;z-index:2}
+.glass--panel{border-radius:22px}
+.glass--lite{-webkit-backdrop-filter:none;backdrop-filter:none}
+.nav-bar::before{background:radial-gradient(160px 90px at var(--mx,28%) var(--my,-10%),var(--glass-spec),transparent 62%),linear-gradient(180deg,rgba(255,255,255,.12),transparent 46%,rgba(255,255,255,.035)),linear-gradient(100deg,transparent 30%,rgba(255,255,255,.08) 50%,transparent 70%);background-size:auto,auto,240% 100%;animation:sweep 9s ease-in-out infinite}
+@keyframes sweep{0%,20%{background-position:0 0,0 0,140% 0}70%,100%{background-position:0 0,0 0,-40% 0}}
+.chip{display:inline-flex;align-items:center;gap:10px;padding:7px 12px;border-radius:999px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line);color:var(--mute)}
+.eyebrow{display:inline-flex;align-items:center;gap:12px;padding:8px 16px 8px 14px;border-radius:999px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.1),inset 0 0 0 1px var(--glass-line);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);position:relative;overflow:hidden}
+.eyebrow::before{width:22px;flex:none}
+.eyebrow::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,var(--glass-spec),transparent 55%);opacity:.35;pointer-events:none}
+.tile,.card{border:0;border-radius:22px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.14),inset 0 0 0 1px var(--glass-line),var(--glass-shadow);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%)}
+.tile{transition:background-color .5s,transform .7s var(--ease),box-shadow .5s}
+.tile:hover{background:var(--glass-fill-hi);transform:translateY(-6px)}
+.tile::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.1),transparent 40%);pointer-events:none}
+.tile::after{border-radius:50%}
+.card{background:var(--glass-fill)}
+.book-links a,.tl-k,.cover-tag,.toast{background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line)}
+.book-links a{border:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.book-links a:hover{background:var(--glass-fill-hi);color:var(--fg)}
+.tl-k{border:0}
+.cover-tag{right:8px;border-radius:999px;background:rgba(184,151,90,.85);color:var(--ink);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.toast{background:rgba(184,151,90,.85);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 14px 40px -12px rgba(0,0,0,.6)}
+.rail-hint span:last-child{padding:6px 12px;border-radius:999px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-transparency:reduce){.glass,.tile,.card,.eyebrow,.book-links a{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}}
+
+@media (max-width:899px){.hero-line{min-height:2.4em}}
+@media (max-width:600px){.eyebrow{font-size:10px;letter-spacing:.15em;gap:9px;padding:7px 12px 7px 11px;border-radius:16px;line-height:1.5}.eyebrow::before{width:14px}}
 
 /* ---------- start here (students) ---------- */
 .start-grid{display:grid;gap:14px}
@@ -376,6 +420,7 @@ footer button:hover{color:var(--paper)}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .curtain{display:none}
+  .nav-bar::before{animation:none}
   .hero-name .w i{transform:none}
   .hero-portrait{animation:none;clip-path:none;opacity:1}
   .js .rv,.js .rv-lines .ln span{opacity:1;transform:none}
@@ -397,6 +442,7 @@ footer button:hover{color:var(--paper)}
 <div class="progress" aria-hidden="true"><i id="prog"></i></div>
 
 <nav class="nav" id="nav" aria-label="Site">
+ <div class="nav-bar glass" id="navbar">
   <a class="nav-logo" href="#top">N. Riggle</a>
   <div class="nav-links" id="navlinks">
     <a href="#about">About</a>
@@ -407,9 +453,11 @@ footer button:hover{color:var(--paper)}
     <a href="#contact">Contact</a>
   </div>
   <div class="mode" role="group" aria-label="Choose how you read this site">
+    <span class="mode-blob" id="modeblob" aria-hidden="true"></span>
     <button type="button" id="mode-student" data-mode="student" aria-pressed="false">Student</button>
     <button type="button" id="mode-colleague" data-mode="colleague" aria-pressed="true">Colleague</button>
   </div>
+ </div>
 </nav>
 
 <header class="hero" id="top">
@@ -425,8 +473,8 @@ footer button:hover{color:var(--paper)}
         <p>Professor of Philosophy at the University of San Diego. Author of <em>This Beauty</em>, <em>On Being Awesome</em>, <em>Aesthetic Life and Why It Matters</em>, and the forthcoming <em>Understanding Aesthetic Life</em>.</p>
         <div class="who" id="who">
           <span class="who-hint" style="flex-basis:100%">I&rsquo;m here as a</span>
-          <button type="button" class="btn btn--ghost" data-mode="student"><span>Student</span><span class="arrow"></span></button>
-          <button type="button" class="btn btn--ghost" data-mode="colleague"><span>Colleague</span><span class="arrow"></span></button>
+          <button type="button" class="btn btn--ghost glass" data-mode="student"><span>Student</span><span class="arrow"></span></button>
+          <button type="button" class="btn btn--ghost glass" data-mode="colleague"><span>Colleague</span><span class="arrow"></span></button>
         </div>
       </div>
     </div>
@@ -510,8 +558,8 @@ footer button:hover{color:var(--paper)}
         <li class="rv"><b>Mellon Dissertation Fellow</b><small>New York University, 2012&ndash;2013</small></li>
       </ul>
       <div class="rv" style="margin-top:36px;display:flex;flex-wrap:wrap;gap:12px">
-        <a class="btn" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Curriculum vitae</span><span class="arrow"></span></a>
-        <a class="btn btn--ghost" href="#research"><span>Research</span><span class="arrow"></span></a>
+        <a class="btn glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Curriculum vitae</span><span class="arrow"></span></a>
+        <a class="btn btn--ghost glass" href="#research"><span>Research</span><span class="arrow"></span></a>
       </div>
     </div>
   </div>
@@ -712,9 +760,9 @@ footer button:hover{color:var(--paper)}
     </div>
 
     <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
-      <a class="btn" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Full CV</span><span class="arrow"></span></a>
-      <a class="btn btn--ghost" href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener"><span>PhilPeople</span><span class="arrow"></span></a>
-      <a class="btn btn--ghost" href="https://scholar.google.com/citations?user=IKYxdxIAAAAJ&amp;hl=en" target="_blank" rel="noopener"><span>Google Scholar</span><span class="arrow"></span></a>
+      <a class="btn glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Full CV</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener"><span>PhilPeople</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://scholar.google.com/citations?user=IKYxdxIAAAAJ&amp;hl=en" target="_blank" rel="noopener"><span>Google Scholar</span><span class="arrow"></span></a>
     </div>
   </div>
 </section>
@@ -746,32 +794,32 @@ footer button:hover{color:var(--paper)}
       <p class="lede rv" style="align-self:end">Colloquia, keynotes, and public conversations about beauty, style, and living well. From San Diego to Beijing.</p>
     </div>
 
-    <p class="tl-k tl-group rv">Upcoming</p>
+    <p class="tl-k chip tl-group rv">Upcoming</p>
     <ol class="tl">
-      <li class="rv"><span class="tl-d">Sep 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Rutgers University</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Duke Kunshan University</h3><span class="tl-w">Kunshan, China</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Peking University</h3><span class="tl-w">Beijing, China</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC San Diego</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">American Society for Aesthetics Annual Meeting &middot; Salt Lake City</span></div><span class="tl-k">Refereed</span></li>
-      <li class="rv"><span class="tl-d">Feb 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">MIT</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Mar 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Harvard University</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Apr 2027</span><div><h3 class="tl-t">Comments on Kenneth Walden&rsquo;s <em>The Imperative of Genius</em></h3><span class="tl-w">ASA Eastern Division Meeting &middot; Philadelphia</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">May 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC Riverside</span></div><span class="tl-k">Invited</span></li>
+      <li class="rv"><span class="tl-d">Sep 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Rutgers University</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Duke Kunshan University</h3><span class="tl-w">Kunshan, China</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Peking University</h3><span class="tl-w">Beijing, China</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC San Diego</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">American Society for Aesthetics Annual Meeting &middot; Salt Lake City</span></div><span class="tl-k chip">Refereed</span></li>
+      <li class="rv"><span class="tl-d">Feb 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">MIT</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Mar 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Harvard University</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Apr 2027</span><div><h3 class="tl-t">Comments on Kenneth Walden&rsquo;s <em>The Imperative of Genius</em></h3><span class="tl-w">ASA Eastern Division Meeting &middot; Philadelphia</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">May 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC Riverside</span></div><span class="tl-k chip">Invited</span></li>
     </ol>
 
-    <p class="tl-k tl-group rv" style="margin-top:48px">Recent</p>
+    <p class="tl-k chip tl-group rv" style="margin-top:48px">Recent</p>
     <ol class="tl">
-      <li class="rv"><span class="tl-d">May 2026</span><div><h3 class="tl-t">Aesthetic Attention: No Such Thing (Sort Of)</h3><span class="tl-w">Workshop on Imagination, Beauty, and Attention &middot; Canterbury, England</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Feb 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">Oberlin College Philosophy Colloquium</span></div><span class="tl-k">Invited</span></li>
-      <li class="rv"><span class="tl-d">Jan 2026</span><div><h3 class="tl-t">Response to Robbie Kubala and Kenneth Walden</h3><span class="tl-w">Danto Prize author-meets-critics session &middot; APA Eastern, Baltimore</span></div><span class="tl-k">Prize session</span></li>
-      <li class="rv"><span class="tl-d">Oct 2025</span><div><h3 class="tl-t">Street Art as Aesthetic Practice: Community, Conflict, Critique</h3><span class="tl-w">Keynote &middot; Painting the Town &middot; Georgia State University, Atlanta</span></div><span class="tl-k">Keynote</span></li>
-      <li class="rv"><span class="tl-d">Jan 2025</span><div><h3 class="tl-t">Author-meets-critics for <em>This Beauty</em></h3><span class="tl-w">with James Ryerson and Jonathan Fine &middot; APA Eastern, New York City</span></div><span class="tl-k">Book session</span></li>
+      <li class="rv"><span class="tl-d">May 2026</span><div><h3 class="tl-t">Aesthetic Attention: No Such Thing (Sort Of)</h3><span class="tl-w">Workshop on Imagination, Beauty, and Attention &middot; Canterbury, England</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Feb 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">Oberlin College Philosophy Colloquium</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Jan 2026</span><div><h3 class="tl-t">Response to Robbie Kubala and Kenneth Walden</h3><span class="tl-w">Danto Prize author-meets-critics session &middot; APA Eastern, Baltimore</span></div><span class="tl-k chip">Prize session</span></li>
+      <li class="rv"><span class="tl-d">Oct 2025</span><div><h3 class="tl-t">Street Art as Aesthetic Practice: Community, Conflict, Critique</h3><span class="tl-w">Keynote &middot; Painting the Town &middot; Georgia State University, Atlanta</span></div><span class="tl-k chip">Keynote</span></li>
+      <li class="rv"><span class="tl-d">Jan 2025</span><div><h3 class="tl-t">Author-meets-critics for <em>This Beauty</em></h3><span class="tl-w">with James Ryerson and Jonathan Fine &middot; APA Eastern, New York City</span></div><span class="tl-k chip">Book session</span></li>
     </ol>
 
     <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
-      <a class="btn" href="mailto:nriggle@sandiego.edu?subject=Speaking%20invitation"><span>Invite Nick to speak</span><span class="arrow"></span></a>
-      <a class="btn btn--ghost" href="https://www.brightsightspeakers.com/speakers-a-z/nick-riggle" target="_blank" rel="noopener"><span>Speaker bureau</span><span class="arrow"></span></a>
-      <a class="btn btn--ghost" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>All talks, on the CV</span><span class="arrow"></span></a>
+      <a class="btn glass" href="mailto:nriggle@sandiego.edu?subject=Speaking%20invitation"><span>Invite Nick to speak</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://www.brightsightspeakers.com/speakers-a-z/nick-riggle" target="_blank" rel="noopener"><span>Speaker bureau</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>All talks, on the CV</span><span class="arrow"></span></a>
     </div>
   </div>
 </section>
@@ -792,17 +840,17 @@ footer button:hover{color:var(--paper)}
         <div class="card rv">
           <h3>Office hours</h3>
           <p>Drop-in times are posted in each course syllabus. Outside of them, email to arrange a meeting, in person or online.</p>
-          <a class="btn" href="mailto:nriggle@sandiego.edu?subject=Office%20hours"><span>Email to book</span><span class="arrow"></span></a>
+          <a class="btn glass" href="mailto:nriggle@sandiego.edu?subject=Office%20hours"><span>Email to book</span><span class="arrow"></span></a>
         </div>
         <div class="card rv">
           <h3>Graduate students</h3>
           <p>USD has no graduate program in philosophy, but Nick serves on dissertation committees elsewhere, most recently at UC San Diego, UC Santa Cruz, CU Boulder, and UC Davis. If your project is in aesthetics or value theory, reach out.</p>
-          <a class="btn btn--ghost" href="mailto:nriggle@sandiego.edu?subject=Dissertation%20committee"><span>Get in touch</span><span class="arrow"></span></a>
+          <a class="btn btn--ghost glass" href="mailto:nriggle@sandiego.edu?subject=Dissertation%20committee"><span>Get in touch</span><span class="arrow"></span></a>
         </div>
         <div class="card rv">
           <h3>For your bibliography</h3>
           <p>Copy a formatted citation for the Philosophical Review article, or find the rest on PhilPeople.</p>
-          <button type="button" class="btn btn--ghost" id="cite-btn"><span>Copy citation</span><span class="arrow"></span></button>
+          <button type="button" class="btn btn--ghost glass" id="cite-btn"><span>Copy citation</span><span class="arrow"></span></button>
         </div>
       </div>
     </div>
@@ -951,6 +999,7 @@ footer button:hover{color:var(--paper)}
     $$('[data-mode]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-mode')===mode))});
     root.setAttribute('data-mode',mode);
     if(save)store.set('nr-mode',mode);
+    if(typeof placeBlob==='function')placeBlob();
     if(G)ScrollTrigger.refresh();
   }
   var saved=store.get('nr-mode');
@@ -1012,18 +1061,36 @@ footer button:hover{color:var(--paper)}
   /* ---- marquee ---- */
   var mq=$('#marquee');mq.innerHTML+=mq.innerHTML;
 
+  /* ---- liquid glass: specular tracking, nav tint, segmented blob ---- */
+  if(fine){
+    $$('.glass,.eyebrow,.tile,.card').forEach(function(g){
+      g.addEventListener('pointermove',function(e){var r=g.getBoundingClientRect();g.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');g.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%')});
+      g.addEventListener('pointerleave',function(){g.style.removeProperty('--mx');g.style.removeProperty('--my')});
+    });
+  }
+  var navEl=$('#nav'),navBar=$('#navbar'),blob=$('#modeblob');
+  function placeBlob(){var b=$('.mode button[aria-pressed="true"]');if(!b||!blob)return;var m=b.parentNode.getBoundingClientRect(),r=b.getBoundingClientRect();blob.style.width=r.width+'px';blob.style.transform='translateX('+(r.left-m.left-3)+'px)'}
+  function navTint(){
+    var n=navEl.getBoundingClientRect(),bh=navBar.offsetHeight;var els=document.elementsFromPoint?document.elementsFromPoint(Math.min(window.innerWidth-1,n.left+n.width*.5),Math.min(window.innerHeight-1,n.top+bh+3)):[];var el=null;for(var i=0;i<els.length;i++){if(!navEl.contains(els[i])){el=els[i];break}}
+    var light=!!(el&&el.closest&&el.closest('.plate--paper'));navEl.classList.toggle('light',light);
+  }
+  window.addEventListener('resize',placeBlob);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(placeBlob);setTimeout(placeBlob,50);setTimeout(placeBlob,900);
+
   /* ---- nav + progress ---- */
-  var nav=$('#nav'),lastY=0,prog=$('#prog');
+  var nav=$('#nav'),lastY=0,prog=$('#prog'),tintQueued=false;
   var navlinks=$$('#navlinks a');
   window.addEventListener('scroll',function(){
     var y=window.scrollY;
-    nav.classList.toggle('hide',y>lastY+4&&y>200);lastY=y;
+    var wasHidden=nav.classList.contains('hide');nav.classList.toggle('hide',y>lastY+4&&y>200);nav.classList.toggle('tight',y>80);lastY=y;
+    if(wasHidden&&!nav.classList.contains('hide')){setTimeout(navTint,80);setTimeout(navTint,700)}
+    if(!tintQueued){tintQueued=true;requestAnimationFrame(function(){tintQueued=false;navTint()})}
     var h=document.documentElement.scrollHeight-window.innerHeight;
     prog.style.transform='scaleX('+(h>0?y/h:0)+')';
   },{passive:true});
   var secIO=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){var id='#'+e.target.id;navlinks.forEach(function(a){a.setAttribute('aria-current',String(a.getAttribute('href')===id))})}})},{rootMargin:'-40% 0px -55% 0px'});
   sections.forEach(function(s){secIO.observe(s)});
   $('#yr').textContent=new Date().getFullYear();
+  setTimeout(navTint,100);
 
   /* ---- ideas accordion ---- */
   $$('.idea-b .pubs li').forEach(function(li,i){li.style.setProperty('--i',String(i%8))});
@@ -1099,7 +1166,10 @@ footer button:hover{color:var(--paper)}
     $$('.btn').forEach(function(b){
       var xTo=gsap.quickTo(b,'x',{duration:.6,ease:'power3'}),yTo=gsap.quickTo(b,'y',{duration:.6,ease:'power3'});
       b.addEventListener('pointermove',function(e){var r=b.getBoundingClientRect();xTo((e.clientX-(r.left+r.width/2))*.28);yTo((e.clientY-(r.top+r.height/2))*.35)});
-      b.addEventListener('pointerleave',function(){xTo(0);yTo(0)});
+      b.addEventListener('pointerenter',function(){gsap.to(b,{scale:1.045,duration:.6,ease:'elastic.out(1,.55)'})});
+      b.addEventListener('pointerleave',function(){xTo(0);yTo(0);gsap.to(b,{scale:1,duration:.5,ease:'power3.out'})});
+      b.addEventListener('pointerdown',function(){gsap.to(b,{scale:.96,duration:.15,ease:'power2.out'})});
+      b.addEventListener('pointerup',function(){gsap.to(b,{scale:1.045,duration:.6,ease:'elastic.out(1,.55)'})});
     });
   }
 
