@@ -386,7 +386,7 @@ body.is-locked { overflow: hidden; }
 .swatch--soldout span { opacity: .45; background-image: linear-gradient(to top right, transparent 47%, var(--c-ink) 48%, var(--c-ink) 52%, transparent 53%); }
 .product__buy { display: flex; gap: 10px; }
 .product__buy .qty { flex: 0 0 auto; }
-.product__atc { flex: 1; }
+.product__atc { flex: 1; min-width: 0; }
 .product__atc.is-added { background: var(--c-acid); color: var(--c-ink); }
 .shopify-payment-button__button--unbranded { border: 3px solid var(--c-ink) !important; box-shadow: 4px 4px 0 var(--c-ink) !important; border-radius: var(--radius) !important; font-weight: 700 !important; text-transform: uppercase; background: var(--c-paper) !important; color: var(--c-ink) !important; min-height: 56px; }
 .product__meta { display: flex; gap: 16px; flex-wrap: wrap; opacity: .8; }
@@ -401,10 +401,10 @@ body.is-locked { overflow: hidden; }
 .qty { display: inline-flex; border: 2px solid var(--c-ink); background: var(--c-paper); height: 56px; }
 .qty__btn { width: 44px; display: grid; place-items: center; }
 .qty__btn:hover { background: var(--c-acid); }
-.qty__input { width: 52px; text-align: center; border: 0; box-shadow: none; min-height: 0; padding: 0; -moz-appearance: textfield; }
+.qty__input { flex: 0 0 52px; min-width: 0; text-align: center; border: 0; box-shadow: none; min-height: 0; padding: 0; -moz-appearance: textfield; }
 .qty__input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.qty__input--solo { width: 72px; border: 2px solid var(--c-ink); }
-.cart-drawer .qty { height: 40px; } .cart-drawer .qty__btn { width: 34px; } .cart-drawer .qty__input { width: 40px; }
+.qty__input--solo { flex-basis: 72px; min-width: 0; border: 2px solid var(--c-ink); }
+.cart-drawer .qty { height: 40px; } .cart-drawer .qty__btn { width: 34px; } .cart-drawer .qty__input { flex-basis: 40px; min-width: 0; }
 
 /* ---- Cart drawer + page ------------------------------------------------ */
 .cart-drawer { position: fixed; inset: 0 0 0 auto; width: min(92vw, 440px); background: var(--c-bg); border-left: 3px solid var(--c-ink); z-index: 300; transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column; }
@@ -550,6 +550,23 @@ html[data-motion="off"] .reveal { opacity: 1; transform: none; transition: none;
   .section__head .btn { width: 100%; }
   .cart-line { grid-template-columns: 72px 1fr; }
   .footer__bottom { flex-direction: column; }
+  .product.section { padding-top: clamp(28px, 8vw, 48px); }
+  .product .breadcrumbs { margin-bottom: 14px; }
+  .product__layout { gap: 24px; }
+  .product__gallery { gap: 12px; }
+  .product__info { gap: 14px; }
+  .product__thumbs { gap: 6px; }
+  .product__thumb { flex-basis: 60px; width: 60px; height: 60px; }
+  .swatches { gap: 6px; }
+  .swatch span { min-width: 44px; height: 40px; padding: 0 10px; font-size: 13px; }
+  .accordion details summary { padding: 12px 0; }
+}
+@media (max-width: 480px) {
+  /* Prevent "Add to cart" from forcing horizontal scroll: stack it under
+     the quantity stepper instead of shrinking it below its text width
+     (buttons keep white-space: nowrap so they never wrap awkwardly). */
+  .product__buy { flex-wrap: wrap; }
+  .product__atc { flex-basis: 100%; }
 }
 
 /* ==========================================================================
