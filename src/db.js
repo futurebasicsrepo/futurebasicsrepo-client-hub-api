@@ -485,6 +485,46 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists consignment_offers_idx on consignment_offers(consignment_id,created_at);
+    create table if not exists product_offers (
+      id uuid primary key default gen_random_uuid(),
+      token text unique not null,
+      shopify_product_id text not null,
+      shopify_variant_id text not null,
+      product_title text not null,
+      variant_title text,
+      image_url text,
+      buyer_name text not null,
+      buyer_email text not null,
+      buyer_phone text,
+      quantity integer not null default 1,
+      list_price_cents integer not null,
+      current_amount_cents integer not null,
+      agreed_cents integer,
+      status text not null default 'awaiting_payment' check (status in ('awaiting_payment','pending_review','countered','accepted','declined','expired','cancelled')),
+      awaiting_counter_payment boolean not null default false,
+      respond_by timestamptz,
+      payment_due_by timestamptz,
+      shopify_draft_order_id text,
+      shopify_draft_order_invoice_url text,
+      shopify_order_id text,
+      shopify_order_name text,
+      staff_notes text,
+      source text not null default 'storefront',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists product_offers_status_idx on product_offers(status,created_at desc);
+    create index if not exists product_offers_email_idx on product_offers(buyer_email);
+    create table if not exists product_offer_moves (
+      id uuid primary key default gen_random_uuid(),
+      offer_id uuid not null references product_offers(id) on delete cascade,
+      by text not null check (by in ('buyer','store','system')),
+      kind text not null check (kind in ('offer','paid','counter','accept','decline','expire','cancel')),
+      amount_cents integer,
+      note text,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists product_offer_moves_idx on product_offer_moves(offer_id,created_at);
     insert into clients(slug,name,email_domains)
       values ('ouster','Ouster',array['ouster.io','ouster.com'])
       on conflict (slug) do nothing;

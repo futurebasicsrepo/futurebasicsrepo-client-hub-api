@@ -1,0 +1,42 @@
+{%- comment -%}
+  Make an Offer — button + modal for the PDP. Only renders when the merchant has turned it on
+  for this product via the custom.accepts_offers metafield (Metafields → Products in Shopify admin,
+  set up once by scripts/setup-offer-metafields.mjs). Talks to the hub API's /v1/public/offers.
+  Usage: {% render 'make-offer', product: product, current: current %}
+{%- endcomment -%}
+{%- liquid
+  assign accepts_offers = product.metafields.custom.accepts_offers
+  assign min_percent = product.metafields.custom.offer_min_percent | default: 50
+  assign api = settings.consign_api_url | strip | replace: ' ', ''
+  if api == blank
+    assign api = 'https://hub.thefuturebasics.com'
+  endif
+-%}
+{%- if accepts_offers -%}
+  <div data-make-offer data-api="{{ api }}" data-variant-id="{{ current.id }}" data-product-title="{{ product.title | escape }}" data-min-percent="{{ min_percent }}" data-list-price="{{ current.price }}">
+    <button type="button" class="btn btn--ghost product__offer-btn" data-offer-open {% unless current.available %}disabled{% endunless %}>Make an offer</button>
+    <dialog data-offer-dialog aria-label="Make an offer on {{ product.title | escape }}">
+      <div class="offer-modal__head">
+        <h2 class="h4">Make an offer</h2>
+        <button type="button" class="offer-modal__close" data-offer-close aria-label="Close">&times;</button>
+      </div>
+      <p class="offer-modal__hint">On <strong>{{ product.title | escape }}</strong> (list {{ current.price | money }}). You'll complete checkout for your offer amount, then we respond within 24 hours. If we decline or miss the window, it's automatically refunded.</p>
+      <form class="form" data-offer-form novalidate>
+        <label class="offer-modal__amount">Your offer (USD)
+          <input type="number" name="amount" inputmode="decimal" min="1" step="1" required placeholder="e.g. 85" data-offer-amount>
+        </label>
+        <p class="small" data-offer-floor-hint></p>
+        <label>Name<input type="text" name="buyer_name" required maxlength="120" autocomplete="name"></label>
+        <label>Email<input type="email" name="buyer_email" required maxlength="200" autocomplete="email"></label>
+        <label>Phone (optional)<input type="tel" name="buyer_phone" maxlength="40" autocomplete="tel"></label>
+        <label>Note to the shop (optional)<textarea name="note" maxlength="600" rows="2" placeholder="Any details that help your case"></textarea></label>
+        <input type="text" name="company_fax" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+        <div data-offer-error hidden></div>
+        <div class="offer-modal__actions">
+          <button type="submit" class="btn btn--primary" data-offer-submit>Send offer &amp; continue to checkout</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+  <script src="{{ 'make-offer.js' | asset_url }}" defer="defer"></script>
+{%- endif -%}

@@ -9,9 +9,10 @@ import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
+import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -1685,6 +1686,230 @@ app.patch('/v1/admin/consignments/:id',{preHandler:[authenticate,adminOnly]},asy
   return {ok:true,consignment:consignmentView(updated,fresh.images,fresh.offers,consignImageUrl(req),{audience:'staff'})};
 });
 
+// ---- Make an offer: buyer opens with a paid checkout (card capture), store has 24h to accept/counter/decline ----
+const offerNotificationEmail=process.env.OFFER_NOTIFICATION_EMAIL||consignNotificationEmail;
+const offerTicketUrl=(process.env.OFFER_TICKET_URL||'').replace(/\/$/,'');
+const offerFromEmail=process.env.OFFER_FROM_EMAIL||consignFromEmail;
+const offerTicketLink=token=>offerTicketUrl?`${offerTicketUrl}?t=${encodeURIComponent(token)}`:null;
+async function sendOfferEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; offer email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:offerFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
+  if(!response.ok)throw new Error(`Offer email delivery failed: ${response.status}`);return true;
+}
+const offerEmailShell=(title,body)=>`<div style="font-family:Arial,sans-serif;color:#141414;max-width:640px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Common Ground · Make an offer</p><h1 style="font-size:22px">${emailEscape(title)}</h1>${body}</div>`;
+
+const asMoney=cents=>(cents/100).toFixed(2);
+const toVariantGid=id=>/^gid:\/\//.test(String(id))?String(id):`gid://shopify/ProductVariant/${String(id).replace(/\D/g,'')}`;
+
+async function fetchOfferContext(variantGid){
+  const data=await shopifyGraphql(OFFER_CONTEXT_QUERY,{variantId:variantGid});
+  const variant=data?.productVariant;
+  if(!variant)throw Object.assign(new Error('That item could not be found.'),{statusCode:404});
+  if(variant.product?.status!=='ACTIVE'||!variant.availableForSale)throw Object.assign(new Error('That item is not currently available for offers.'),{statusCode:409});
+  if(String(variant.product?.accepts?.value).toLowerCase()!=='true')throw Object.assign(new Error('This item does not accept offers.'),{statusCode:409});
+  const minPercent=Number(variant.product?.minPercent?.value)||50;
+  return {
+    productId:variant.product.id, productTitle:variant.product.title, variantTitle:variant.title,
+    imageUrl:variant.image?.url||null, listPriceCents:Math.round(Number(variant.price)*100), minPercent
+  };
+}
+async function createOfferDraftOrder({variantGid,quantity,amountCents,buyer,offerId,note}){
+  const data=await shopifyGraphql(DRAFT_ORDER_CREATE,{input:{
+    lineItems:[{variantId:variantGid,quantity,priceOverride:{amount:asMoney(amountCents),currencyCode:'USD'}}],
+    email:buyer.email,phone:buyer.phone||undefined,tags:['make-an-offer'],note:note||`Make an Offer — ${offerId}`
+  }});
+  const payload=requireNoUserErrors(data.draftOrderCreate);
+  return payload.draftOrder;
+}
+async function pollDraftOrderPaid(draftOrderId){
+  const data=await shopifyGraphql(DRAFT_ORDER_STATUS,{id:draftOrderId});
+  return data?.draftOrder?.order||null;
+}
+async function captureOfferOrder(orderGid,amountCents){
+  const data=await shopifyGraphql(ORDER_TRANSACTIONS_QUERY,{id:orderGid});
+  const transactions=data?.order?.transactions||[];
+  if(transactions.some(t=>['SALE','CAPTURE'].includes(t.kind)&&t.status==='SUCCESS'))return;
+  const auth=transactions.find(t=>t.kind==='AUTHORIZATION'&&t.status==='SUCCESS');
+  if(!auth)throw Object.assign(new Error('No authorized payment found to capture on this order.'),{statusCode:409});
+  const currency=auth.amountSet?.shopMoney?.currencyCode||'USD';
+  const captured=await shopifyGraphql(ORDER_CAPTURE,{input:{id:orderGid,parentTransactionId:auth.id,amount:asMoney(amountCents),currency}});
+  requireNoUserErrors(captured.orderCapture);
+}
+async function releaseOfferOrder(orderGid,{reason='CUSTOMER',staffNote}={}){
+  const cancelled=await shopifyGraphql(ORDER_CANCEL,{orderId:orderGid,refund:true,reason,staffNote:staffNote||'Make an Offer — released'});
+  requireNoOrderCancelErrors(cancelled.orderCancel);
+}
+
+async function loadOffer(where,value){
+  const row=(await pool.query(`select * from product_offers where ${where}=$1`,[value])).rows[0];if(!row)return null;
+  const moves=(await pool.query('select * from product_offer_moves where offer_id=$1 order by created_at',[row.id])).rows;
+  return {row,moves};
+}
+async function applyOfferMove(row,move){
+  const next=nextOfferMove(row,move);
+  const db=await pool.connect();
+  let updated;
+  try{
+    await db.query('begin');
+    await db.query('insert into product_offer_moves(offer_id,by,kind,amount_cents,note) values($1,$2,$3,$4,$5)',[row.id,next.move.by,next.move.kind,next.move.amount_cents,next.move.note]);
+    const patch={...next.patch};
+    updated=(await db.query(
+      `update product_offers set
+         status=coalesce($2,status), current_amount_cents=coalesce($3,current_amount_cents), agreed_cents=coalesce($4,agreed_cents),
+         respond_by=coalesce($5,respond_by), payment_due_by=coalesce($6,payment_due_by),
+         awaiting_counter_payment=coalesce($7,awaiting_counter_payment), updated_at=now()
+       where id=$1 returning *`,
+      [row.id,patch.status??null,patch.current_amount_cents??null,patch.agreed_cents??null,patch.respond_by??null,patch.payment_due_by??null,
+       patch.awaiting_counter_payment===undefined?null:patch.awaiting_counter_payment])).rows[0];
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+
+  let checkoutUrl=null,settlementError=null;
+  try{
+    if(next.settlement==='capture'){
+      await captureOfferOrder(updated.shopify_order_id,updated.agreed_cents??updated.current_amount_cents);
+    }else if(next.settlement==='release_hold'){
+      if(updated.shopify_order_id)await releaseOfferOrder(updated.shopify_order_id,{reason:move.by==='store'?'STAFF':'CUSTOMER'});
+    }else if(next.settlement==='create_counter_checkout'){
+      const draft=await createOfferDraftOrder({variantGid:toVariantGid(updated.shopify_variant_id),quantity:updated.quantity,amountCents:updated.current_amount_cents,
+        buyer:{email:updated.buyer_email,phone:updated.buyer_phone},offerId:updated.id,note:`Make an Offer (counter accepted) — ${updated.id}`});
+      updated=(await pool.query('update product_offers set shopify_draft_order_id=$2,shopify_draft_order_invoice_url=$3,shopify_order_id=null,shopify_order_name=null,updated_at=now() where id=$1 returning *',
+        [updated.id,draft.id,draft.invoiceUrl])).rows[0];
+      checkoutUrl=draft.invoiceUrl;
+    }
+  }catch(error){
+    settlementError=error;
+    app.log.error({error,offerId:updated.id,settlement:next.settlement},'Offer settlement with Shopify failed');
+    await pool.query('update product_offers set staff_notes=coalesce(staff_notes,\'\')||$2,updated_at=now() where id=$1',
+      [updated.id,`\n[${new Date().toISOString()}] Shopify ${next.settlement} failed: ${error.message}`]);
+  }
+  return {row:updated,move:next.move,settlementError,checkoutUrl};
+}
+async function notifyOfferMove({row,move,checkoutUrl}){
+  const link=offerTicketLink(row.token),amount=move.amount_cents?formatCents(move.amount_cents):'';
+  try{
+    if(move.by==='store'){
+      const verb={counter:`countered your offer at ${amount}`,accept:`accepted your offer of ${amount}`,decline:'passed on your offer'}[move.kind];
+      if(!verb)return;
+      await sendOfferEmail({to:row.buyer_email,subject:`${row.product_title} — ${move.kind==='counter'?'counter-offer':move.kind==='accept'?'offer accepted':'update on your offer'}`,
+        html:offerEmailShell(row.product_title,`<p>Common Ground ${emailEscape(verb)}.${move.note?' <em>'+emailEscape(move.note)+'</em>':''}</p>${move.kind==='counter'&&link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Review the counter-offer</a></p>`:''}${move.kind==='accept'?'<p>Your order is confirmed — we\'ll email tracking once it ships.</p>':''}`)});
+    }else if(move.by==='buyer'&&['accept','decline'].includes(move.kind)){
+      const verb={accept:`accepted the counter-offer of ${amount}`,decline:'declined the counter-offer'}[move.kind];
+      await sendOfferEmail({to:offerNotificationEmail,replyTo:row.buyer_email,subject:`Offer: ${row.buyer_name} ${move.kind==='accept'?'accepted':'declined'} — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong> ${emailEscape(verb)}.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+      if(move.kind==='accept'&&checkoutUrl)await sendOfferEmail({to:row.buyer_email,subject:`Pay to confirm — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p>One step left: complete checkout at your agreed price of ${amount} to confirm the order.</p><p><a href="${checkoutUrl}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Pay ${amount}</a></p>`)});
+    }else if(move.by==='system'&&move.kind==='expire'){
+      await sendOfferEmail({to:row.buyer_email,subject:`Offer expired — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p>The 24-hour response window closed, so this offer has expired.${row.status==='expired'?' Any card hold has been released.':''}</p>`)});
+      await sendOfferEmail({to:offerNotificationEmail,subject:`Offer expired (missed 24h window) — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong>'s offer on <strong>${emailEscape(row.product_title)}</strong> expired unanswered.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+    }
+  }catch(error){app.log.error({error,offerId:row.id},'Offer notification email failed')}
+}
+
+app.post('/v1/public/offers',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const body=req.body||{};
+  if(String(body.company_fax||'').trim())return reply.code(202).send({ok:true});
+  const buyer=normalizeOfferSubmission(body);
+  const variantGid=toVariantGid(body.variant_id);
+  const context=await fetchOfferContext(variantGid);
+  const quantity=buyer.quantity;
+  const amountCents=normalizeOfferAmount(body.amount_cents??Math.round(Number(body.amount)*100),{listPriceCents:context.listPriceCents,minPercent:context.minPercent});
+  const token=randomBytes(24).toString('base64url');
+  const draft=await createOfferDraftOrder({variantGid,quantity,amountCents,buyer,offerId:token});
+  const row=(await pool.query(
+    `insert into product_offers(token,shopify_product_id,shopify_variant_id,product_title,variant_title,image_url,buyer_name,buyer_email,buyer_phone,
+       quantity,list_price_cents,current_amount_cents,shopify_draft_order_id,shopify_draft_order_invoice_url,payment_due_by)
+     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *`,
+    [token,context.productId,String(body.variant_id),context.productTitle,context.variantTitle,context.imageUrl,buyer.buyer_name,buyer.buyer_email,buyer.buyer_phone,
+     quantity,context.listPriceCents,amountCents,draft.id,draft.invoiceUrl,new Date(Date.now()+2*3600*1000)])).rows[0];
+  await pool.query('insert into product_offer_moves(offer_id,by,kind,amount_cents,note) values($1,$2,$3,$4,$5)',[row.id,'buyer','offer',amountCents,buyer.note]);
+  const link=offerTicketLink(row.token);
+  try{
+    await sendOfferEmail({to:offerNotificationEmail,replyTo:row.buyer_email,subject:`New offer: ${formatCents(amountCents)} on ${row.product_title}`,
+      html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong> · ${emailEscape(row.buyer_email)}${row.buyer_phone?' · '+emailEscape(row.buyer_phone):''}</p><p>Offered ${formatCents(amountCents)} on ${emailEscape(row.product_title)}${row.variant_title?' ('+emailEscape(row.variant_title)+')':''}, list ${formatCents(row.list_price_cents)}.</p><p>Card capture is pending checkout — you'll get a 24-hour clock once it clears.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+    await sendOfferEmail({to:row.buyer_email,subject:`Complete your offer — ${row.product_title}`,
+      html:offerEmailShell(row.product_title,`<p>Thanks ${emailEscape(row.buyer_name)}. One step left: complete checkout for your offer of ${formatCents(amountCents)} to place it. We'll respond within 24 hours — if we decline or don't respond in time, it's automatically refunded (or the hold released, depending on your card).</p><p><a href="${draft.invoiceUrl}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Complete checkout</a></p>${link?`<p style="color:#666;font-size:12px">Track this offer: <a href="${link}">${link}</a></p>`:''}`)});
+  }catch(error){app.log.error({error,offerId:row.id},'Offer saved but notification email failed')}
+  return reply.code(201).send({ok:true,token:row.token,ticket_url:link,checkout_url:draft.invoiceUrl,offer:offerView(row,[])});
+});
+
+app.get('/v1/public/offers/:token',async(req,reply)=>{
+  const loaded=await loadOffer('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Offer not found'});
+  return {offer:offerView(loaded.row,loaded.moves)};
+});
+
+app.post('/v1/public/offers/:token/respond',async(req,reply)=>{
+  const loaded=await loadOffer('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Offer not found'});
+  const body=req.body||{},action=String(body.action||'');
+  if(!['accept','decline'].includes(action))return reply.code(400).send({error:'Action must be accept or decline.'});
+  const result=await applyOfferMove(loaded.row,{by:'buyer',action,note:body.note});
+  await notifyOfferMove(result);
+  const fresh=await loadOffer('id',result.row.id);
+  return {ok:true,checkout_url:result.checkoutUrl,offer:offerView(fresh.row,fresh.moves)};
+});
+
+app.get('/v1/admin/offers',{preHandler:[authenticate,adminOnly]},async req=>{
+  const status=String(req.query.status||'open');
+  const where=status==='open'?`status in ('awaiting_payment','pending_review','countered')`:status==='all'?'true':'status=$1';
+  const params=status==='open'||status==='all'?[]:[status];
+  const rows=(await pool.query(`select * from product_offers where ${where} order by updated_at desc limit 200`,params)).rows;
+  const counts=(await pool.query('select status,count(*)::int n from product_offers group by status')).rows;
+  return {offers:rows.map(r=>({...offerView(r,[],{audience:'staff'}),
+    waiting_on:r.status==='pending_review'?'store':r.status==='countered'||r.status==='awaiting_payment'?'buyer':null})),counts};
+});
+app.get('/v1/admin/offers/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadOffer('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  return {offer:offerView(loaded.row,loaded.moves,{audience:'staff'}),ticket_url:offerTicketLink(loaded.row.token)};
+});
+app.post('/v1/admin/offers/:id/respond',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadOffer('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  const body=req.body||{},action=String(body.action||'');
+  if(!['counter','accept','decline'].includes(action))return reply.code(400).send({error:'Action must be counter, accept or decline.'});
+  const result=await applyOfferMove(loaded.row,{by:'store',action,amountCents:body.amount_cents,note:body.note,bounds:{listPriceCents:loaded.row.list_price_cents}});
+  await notifyOfferMove(result);
+  const fresh=await loadOffer('id',result.row.id);
+  return {ok:true,warning:result.settlementError?result.settlementError.message:undefined,offer:offerView(fresh.row,fresh.moves,{audience:'staff'})};
+});
+app.patch('/v1/admin/offers/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const id=String(req.params.id||'').slice(0,64),body=req.body||{};
+  const row=(await pool.query('update product_offers set staff_notes=$2,updated_at=now() where id=$1 returning *',[id,body.staff_notes!==undefined?String(body.staff_notes).slice(0,4000):null])).rows[0];
+  if(!row)return reply.code(404).send({error:'Not found'});
+  const fresh=await loadOffer('id',id);
+  return {ok:true,offer:offerView(fresh.row,fresh.moves,{audience:'staff'})};
+});
+
+async function runOfferSweep(){
+  const pending=(await pool.query(`select * from product_offers where status='awaiting_payment' and shopify_draft_order_id is not null`)).rows;
+  for(const row of pending){
+    try{
+      const order=await pollDraftOrderPaid(row.shopify_draft_order_id);
+      if(order){
+        const withOrder=(await pool.query('update product_offers set shopify_order_id=$2,shopify_order_name=$3,updated_at=now() where id=$1 returning *',[row.id,order.id,order.name])).rows[0];
+        const result=await applyOfferMove(withOrder,{by:'system',action:'paid'});
+        await notifyOfferMove(result);
+      }else if(row.payment_due_by&&new Date(row.payment_due_by)<new Date()){
+        const result=await applyOfferMove(row,{by:'system',action:'cancel'});
+        await notifyOfferMove(result);
+      }
+    }catch(error){app.log.error({error,offerId:row.id},'Offer payment-poll sweep failed for this offer')}
+  }
+  const overdue=(await pool.query(`select * from product_offers where status in ('pending_review','countered') and respond_by<now()`)).rows;
+  for(const row of overdue){
+    try{
+      const result=await applyOfferMove(row,{by:'system',action:'expire'});
+      await notifyOfferMove(result);
+    }catch(error){app.log.error({error,offerId:row.id},'Offer expiry sweep failed for this offer')}
+  }
+}
+
 app.setErrorHandler((error, req, reply) => {
   req.log.error(error);
   reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
@@ -1706,4 +1931,6 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 
 await migrate();
 await repairPendingShopifyLinks();
+setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
+runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

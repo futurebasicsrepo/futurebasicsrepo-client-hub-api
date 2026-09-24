@@ -102,3 +102,47 @@ export function requireNoUserErrors(payload) {
   if (payload?.userErrors?.length) throw Object.assign(new Error(payload.userErrors.map(x => x.message).join('; ')), { statusCode: 422 });
   return payload;
 }
+
+export function requireNoOrderCancelErrors(payload) {
+  if (payload?.orderCancelUserErrors?.length) throw Object.assign(new Error(payload.orderCancelUserErrors.map(x => x.message).join('; ')), { statusCode: 422 });
+  return payload;
+}
+
+// --- Make-an-offer: product context, draft-order checkout, capture/release ---
+
+export const OFFER_CONTEXT_QUERY = `query OfferContext($variantId: ID!) {
+  productVariant(id: $variantId) {
+    id title price availableForSale
+    image { url }
+    product {
+      id title handle status
+      accepts: metafield(namespace: "custom", key: "accepts_offers") { value }
+      minPercent: metafield(namespace: "custom", key: "offer_min_percent") { value }
+    }
+  }
+}`;
+
+export const ORDER_TRANSACTIONS_QUERY = `query OfferOrderTransactions($id: ID!) {
+  order(id: $id) {
+    id name displayFinancialStatus
+    transactions(first: 10) {
+      id kind status gateway
+      amountSet { shopMoney { amount currencyCode } }
+      parentTransaction { id }
+    }
+  }
+}`;
+
+export const ORDER_CAPTURE = `mutation CaptureOffer($input: OrderCaptureInput!) {
+  orderCapture(input: $input) {
+    transaction { id kind status }
+    userErrors { field message }
+  }
+}`;
+
+export const ORDER_CANCEL = `mutation CancelOfferOrder($orderId: ID!, $refund: Boolean!, $reason: OrderCancelReason!, $staffNote: String) {
+  orderCancel(orderId: $orderId, restock: true, reason: $reason, refundMethod: { originalPaymentMethodsRefund: $refund }, notifyCustomer: false, staffNote: $staffNote) {
+    job { id done }
+    orderCancelUserErrors { field message }
+  }
+}`;

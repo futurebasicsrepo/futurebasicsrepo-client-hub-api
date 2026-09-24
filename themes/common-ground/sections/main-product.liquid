@@ -92,6 +92,7 @@
         </div>
         {%- if section.settings.show_dynamic_checkout -%}{{ form | payment_button }}{%- endif -%}
       {%- endform -%}
+      {%- render 'make-offer', product: product, current: current -%}
 
       <div class="product__meta small">
         {%- if current.sku != blank -%}<span>{{ 'products.product.sku' | t }}: <span data-sku>{{ current.sku }}</span></span>{%- endif -%}

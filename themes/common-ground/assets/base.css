@@ -833,3 +833,15 @@ body { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.
 .ticket__counter { display: grid; gap: 8px; grid-template-columns: 1fr; padding: 12px; border: 2px solid var(--c-ink); background: var(--c-bg); }
 @media (min-width: 640px) { .ticket__counter { grid-template-columns: 1fr 1.4fr auto; align-items: end; } }
 .ticket__counter label { margin: 0; }
+
+/* ---- Make an offer ----------------------------------------------------- */
+.product__offer-btn { margin-top: 10px; width: 100%; }
+dialog[data-offer-dialog] { border: 3px solid var(--c-ink); border-radius: var(--radius); box-shadow: 10px 10px 0 var(--c-ink); background: var(--c-paper); color: var(--c-ink); padding: 24px; width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
+dialog[data-offer-dialog]::backdrop { background: rgba(20,20,20,.6); }
+.offer-modal__head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.offer-modal__close { border: 2px solid var(--c-ink); background: var(--c-paper); width: 32px; height: 32px; border-radius: 50%; font-weight: 700; line-height: 1; cursor: pointer; }
+.offer-modal__hint { font-size: 13px; color: #555; margin: 4px 0 16px; }
+.offer-modal__amount { font-family: var(--font-display); font-size: 15px; }
+.offer-modal__amount input { font-size: 20px; font-weight: 700; }
+.offer-modal__actions { margin-top: 8px; }
+.offer-modal__actions .btn { width: 100%; }
