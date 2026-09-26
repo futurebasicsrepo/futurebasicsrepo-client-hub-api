@@ -104,6 +104,18 @@ export default function MatchView({ id }: { id: string }) {
     }
   }
 
+  async function resume() {
+    setBusy(true);
+    setError('');
+    try {
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/resume`, { method: 'POST' }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function undo(eventId: number) {
     if (!window.confirm('Remove this from the match?')) return;
     try {
@@ -200,6 +212,12 @@ export default function MatchView({ id }: { id: string }) {
             <div className="spacer" />
             {clock && <span className="mono">{clock.label}</span>}
           </div>
+          {match.autoEnded && (
+            <div className="keeper-auto">
+              <p>We called full time because the scoreboard went quiet. Still playing?</p>
+              <button className="btn btn-sm" disabled={busy} onClick={resume}>Resume match</button>
+            </div>
+          )}
           {next && (
             <div className="row" style={{ gap: 8 }}>
               <button className="btn btn-primary" style={{ flex: 1 }} disabled={busy} onClick={() => send({ type: next[0] })}>{next[1]}</button>

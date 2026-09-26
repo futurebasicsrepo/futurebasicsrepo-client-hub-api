@@ -1,5 +1,5 @@
 // Match centre: teams, live matches, scorekeeper events, and a Server-Sent Events stream.
-import { applyEvent, matchStatus, normalizeMatchInput } from './match.js';
+import { AUTO_END, applyEvent, autoFullTime, matchStatus, normalizeMatchInput } from './match.js';
 import { createLimiter, randomId, slugify, POST_ID_RE } from './lib.js';
 
 const MATCH_SELECT = `
@@ -31,6 +31,7 @@ export const matchRow = row => ({
   liveStreams: row.live_streams ?? 0,
   reelStatus: row.reel_status ?? null,
   reelPostId: row.reel_post_id ?? null,
+  autoEnded: Boolean(row.auto_ended_from),
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
@@ -44,7 +45,7 @@ const MAX_CO_KEEPERS = 3;
 // The match's creator and anyone they've added can run the scoreboard.
 export const canKeep = (row, user) => Boolean(user && (Number(row.created_by) === user.id || (row.keeper_ids || []).includes(String(user.id))));
 
-export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, hooks = {} }) {
+export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, hooks = {}, sweepMs = 60_000 }) {
   const matchLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
   const subscribers = new Map(); // matchId -> Set<{ raw, req }>
 
@@ -276,6 +277,64 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     });
   });
 
+  // Undo an automatic full time (the match was still going, just quietly). Scorekeepers, for a couple of hours.
+  app.post('/v1/matches/:id/resume', { preHandler: requireUser }, async (req, reply) => {
+    const row = await loadMatch(req.params.id);
+    if (!row || !canKeep(row, req.user)) return fail(reply, 404, 'Match not found.');
+    if (row.period !== 'ft' || !row.auto_ended_from) return fail(reply, 400, 'Only a match that ended automatically can be resumed.');
+    const { rows: [ended] } = await pool.query(`
+      select id, created_at from match_events where match_id = $1 and type = 'fulltime' and created_by is null
+      order by created_at desc limit 1`, [row.id]);
+    if (ended && Date.now() - new Date(ended.created_at).getTime() > AUTO_END.undoHours * 3600_000) {
+      return fail(reply, 400, 'This match ended too long ago to resume.');
+    }
+    const { rowCount } = await pool.query(
+      `update matches set period = auto_ended_from, auto_ended_from = null, resumed_at = now(), updated_at = now() where id = $1 and period = 'ft' and auto_ended_from is not null`, [row.id]);
+    if (!rowCount) return fail(reply, 409, 'The match changed. Try again.');
+    if (ended) await pool.query(`delete from match_events where id = $1`, [ended.id]);
+    notify(row.id).catch(err => req.log.error(err));
+    return snapshot(req, await loadMatch(row.id));
+  });
+
+  // Calls full time on matches left running after the final whistle (see autoFullTime).
+  async function sweepStaleMatches(now = Date.now()) {
+    const { rows } = await pool.query(`
+      select m.id, m.period, m.period_started_at, m.half_length, m.resumed_at,
+        (select max(e.created_at) from match_events e where e.match_id = m.id and e.type = 'halftime') as halftime_at,
+        (select max(e.created_at) from match_events e where e.match_id = m.id) as last_activity_at
+      from matches m where m.period in ('1h','ht','2h') and m.period_started_at < $1`,
+    [new Date(now - AUTO_END.secondHalf.past * 60_000)]);
+    const ended = [];
+    for (const row of rows) {
+      const clock = autoFullTime({ period: row.period, periodStartedAt: row.period_started_at, halfLength: row.half_length,
+        halftimeAt: row.halftime_at, lastActivityAt: row.last_activity_at, resumedAt: row.resumed_at }, now);
+      if (!clock) continue;
+      // Only if nobody touched the match since we looked (a scorekeeper may be pressing Full time right now).
+      const { rowCount } = await pool.query(`
+        with ended as (update matches set period = 'ft', auto_ended_from = period, updated_at = now() where id = $1 and period = $2 returning id)
+        insert into match_events (match_id, type, minute, stoppage) select id, 'fulltime', $3, $4 from ended`,
+      [row.id, row.period, clock.minute, clock.stoppage]);
+      if (!rowCount) continue;
+      const event = { type: 'fulltime', side: null, player: '', minute: clock.minute, stoppage: clock.stoppage };
+      ended.push(row.id);
+      notify(row.id).catch(err => app.log.error(err));
+      const updated = await loadMatch(row.id);
+      notifier?.matchEvent(updated, event, null).catch(err => app.log.error(err));
+      await Promise.resolve(hooks.fulltime?.(row.id)).catch(err => app.log.error(err));
+    }
+    if (ended.length) app.log.info({ matches: ended }, 'called full time on quiet matches');
+    return ended;
+  }
+
+  let sweeper = null;
+  app.addHook('onReady', async () => {
+    if (!sweepMs) return;
+    const tick = () => sweepStaleMatches().catch(err => app.log.error({ err }, 'match sweep failed'));
+    tick();
+    sweeper = setInterval(tick, sweepMs);
+    sweeper.unref();
+  });
+
   app.get('/v1/teams/:slug', async (req, reply) => {
     const { rows: [team] } = await pool.query(`select * from teams where slug = $1`, [slugify(req.params.slug)]);
     if (!team) return fail(reply, 404, 'Team not found.');
@@ -297,9 +356,10 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
   });
 
   app.addHook('onClose', async () => {
+    clearInterval(sweeper);
     for (const set of subscribers.values()) for (const { raw } of set) raw.end();
     subscribers.clear();
   });
 
-  return { loadMatch, notify };
+  return { loadMatch, notify, sweepStaleMatches };
 }

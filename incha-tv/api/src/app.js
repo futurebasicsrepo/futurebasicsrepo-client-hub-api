@@ -165,6 +165,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   });
   hooks.fulltime = matchId => reels.enqueue(matchId);
   app.decorate('reels', reels);
+  app.decorate('sweepStaleMatches', matchCentre.sweepStaleMatches);
   live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });
   registerAlerts(app, { pool, fail, requireUser, notifier, loadMatch: matchCentre.loadMatch });
   const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
