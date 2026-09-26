@@ -78,6 +78,9 @@ export default function PostView({ id }: { id: string }) {
             </Link>
           )}
           <h1 className="display post-title">{post.title}</h1>
+          {post.clippedFrom && (
+            <p className="clip-credit">✂️ Clipped from <Link href={`/u/${post.clippedFrom.handle}`}>@{post.clippedFrom.handle}</Link>’s live stream</p>
+          )}
           <div className="creator-line">
             <Link href={`/u/${post.creator.handle}`} className="row">
               <Avatar name={post.creator.displayName} />

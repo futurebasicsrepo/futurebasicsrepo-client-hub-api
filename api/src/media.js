@@ -91,5 +91,29 @@ export const posterFrame = (src, dst, at) => run(FFMPEG, [
   '-frames:v', '1', '-vf', `scale=w='if(gte(iw,ih),min(1280,iw),-2)':h='if(gte(iw,ih),-2,min(1280,ih))'`, '-q:v', '4', dst
 ], { timeoutMs: 60_000 });
 
+// Live HLS: 2-second segments; "Clip that" takes the last 30 seconds.
+export const SEGMENT_SECONDS = 2;
+export const CLIP_SECONDS = 30;
+
+/**
+ * The segments for a clip of the last `seconds`, newest last. Counts back from the newest segment the playlist
+ * lists (so it's complete); older ones stay on disk ~60s past the playlist window (hls_delete_threshold).
+ */
+export function clipSegmentNames(playlist, seconds = CLIP_SECONDS) {
+  const numbers = [...String(playlist).matchAll(/^seg(\d{5})\.ts$/gm)].map(m => Number(m[1]));
+  if (!numbers.length) return [];
+  const last = Math.max(...numbers);
+  const count = Math.ceil(seconds / SEGMENT_SECONDS);
+  const names = [];
+  for (let n = Math.max(0, last - count + 1); n <= last; n++) names.push(`seg${String(n).padStart(5, '0')}.ts`);
+  return names;
+}
+
+// Joins live HLS segments (each starts on a keyframe) into one fast-start MP4 without re-encoding.
+export const joinSegments = (paths, dst) => run(FFMPEG, [
+  '-hide_banner', '-loglevel', 'error', '-y', '-i', `concat:${paths.join('|')}`,
+  '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', '-f', 'mp4', dst
+], { timeoutMs: 60_000 });
+
 // Rewrites a finished recording so it starts playing before it has fully downloaded.
 export const faststart = (src, dst) => run(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', dst]);

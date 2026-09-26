@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planTranscode, summarizeProbe } from '../src/media.js';
+import { clipSegmentNames, planTranscode, summarizeProbe } from '../src/media.js';
 import { uploadMime } from '../src/lib.js';
 
 test('planTranscode remuxes web-safe files and re-encodes the rest', () => {
@@ -32,6 +32,16 @@ test('summarizeProbe reports display size after rotation', () => {
   });
   assert.deepEqual(info.video, { codec: 'hevc', pixFmt: 'yuv420p', width: 1080, height: 1920 });
   assert.equal(info.duration, 12.5);
+});
+
+test('clipSegmentNames counts back 30s from the newest finished segment', () => {
+  const playlist = '#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:40\n#EXTINF:2.000000,\nseg00040.ts\n#EXTINF:2.000000,\nseg00047.ts\n';
+  const names = clipSegmentNames(playlist);
+  assert.equal(names.length, 15);
+  assert.equal(names[0], 'seg00033.ts', 'reaches past the playlist window into kept segments');
+  assert.equal(names.at(-1), 'seg00047.ts');
+  assert.deepEqual(clipSegmentNames('#EXTM3U\nseg00002.ts\n'), ['seg00000.ts', 'seg00001.ts', 'seg00002.ts'], 'early in a stream');
+  assert.deepEqual(clipSegmentNames('#EXTM3U\n'), []);
 });
 
 test('uploadMime falls back to the file extension for generic types', () => {
@@ -164,6 +174,27 @@ test('video conversion and go-live flow', { skip: (!dbUrl && 'set TEST_DATABASE_
   assert.equal(res.headers['content-type'], 'video/mp2t');
   assert.equal((await call('GET', `/live/${stream.id}/..%2Frec.mp4`)).statusCode, 404);
 
+  // "Clip that": a viewer cuts the last 30s; it's published to the match, credited to the streamer.
+  assert.equal((await call('POST', `/v1/streams/${stream.id}/clip`)).statusCode, 401);
+  res = await call('POST', `/v1/streams/${stream.id}/clip`, other);
+  assert.equal(res.statusCode, 201, res.body);
+  const clip = json(res).post;
+  assert.ok(clip.duration > 3 && clip.duration <= 31, `clip duration ${clip.duration}`);
+  assert.equal(clip.visibility, 'public');
+  assert.equal((await call('POST', `/v1/streams/${stream.id}/clip`, other)).statusCode, 429, 'one clip every few seconds');
+  const clipPost = json(await call('GET', `/v1/posts/${clip.id}`)).post;
+  assert.equal(clipPost.status, 'published');
+  assert.equal(clipPost.mediaStatus, 'ready');
+  assert.deepEqual(clipPost.clippedFrom, { handle: 'cam_op' });
+  assert.equal(clipPost.match.id, matchId);
+  assert.equal(clipPost.creator.handle, 'fan');
+  assert.match(clipPost.title, /^Clip · Kensington FC vs Fishtown United/);
+  assert.ok(clipPost.coverUrl);
+  assert.ok(json(await call('GET', `/v1/matches/${matchId}`)).clips.some(c => c.id === clip.id), 'on the match timeline');
+  res = await call('POST', `/v1/streams/${stream.id}/clip`, token);
+  assert.equal(res.statusCode, 201, 'the streamer can clip too');
+  assert.equal(json(await call('GET', `/v1/posts/${json(res).post.id}`)).post.clippedFrom, null, 'no self-credit');
+
   assert.equal((await call('POST', `/v1/streams/${stream.id}/end`, other)).statusCode, 404);
   res = await call('POST', `/v1/streams/${stream.id}/end`, token);
   assert.equal(res.statusCode, 200);
@@ -171,6 +202,7 @@ test('video conversion and go-live flow', { skip: (!dbUrl && 'set TEST_DATABASE_
   assert.equal(json(res).stream.status, 'ended');
   assert.ok(replayPostId, 'recording saved');
   assert.equal((await send(chunks.length, chunks[0])).statusCode, 404, 'no chunks after the end');
+  assert.equal((await call('POST', `/v1/streams/${stream.id}/clip`, other)).statusCode, 410, 'clips come from live streams');
 
   const replay = json(await call('GET', `/v1/posts/${replayPostId}`, token)).post;
   assert.equal(replay.status, 'draft');

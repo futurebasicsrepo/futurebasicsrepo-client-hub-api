@@ -10,6 +10,7 @@ import { Thumb } from './PostCard';
 import { StatusPill } from './MatchCard';
 import LivePlayer from './LivePlayer';
 import FollowButton from './FollowButton';
+import ClipButton from './ClipButton';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -161,6 +162,7 @@ export default function MatchView({ id }: { id: string }) {
               <button key={s.id} className="chip" aria-pressed={s.id === onAir.id} onClick={() => setAngle(s.id)}>📹 Cam {i + 1} · @{s.streamer.handle}</button>
             )) : <span className="muted" style={{ fontSize: 13 }}>📹 Streaming from the sideline by @{onAir.streamer.handle}</span>}
           </div>
+          <ClipButton streamId={onAir.id} />
         </section>
       )}
       <section className="scoreboard">

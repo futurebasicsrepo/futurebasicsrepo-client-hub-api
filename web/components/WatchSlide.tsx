@@ -145,6 +145,7 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
 
       <div className="watch-caption">
         <Link href={`/u/${post.creator.handle}`} className="watch-handle">@{post.creator.handle}</Link>
+        {post.clippedFrom && <span className="watch-credit">✂️ from @{post.clippedFrom.handle}’s stream</span>}
         <Link href={`/p/${post.id}`} className="watch-title">{post.title}</Link>
         <div className="watch-tags">
           {post.match && <Link href={`/m/${post.match.id}`} className="watch-tag flare">⚽ {post.match.home} {post.match.homeScore}–{post.match.awayScore} {post.match.away}{post.matchMinute != null ? ` · ${post.matchMinute}'` : ''}</Link>}

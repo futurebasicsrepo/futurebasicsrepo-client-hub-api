@@ -641,3 +641,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .profile-tabs { top: calc(56px + env(safe-area-inset-top)); margin: 4px calc(-1 * var(--gutter)) 16px; padding: 0 var(--gutter); }
   .profile-tabs button { flex: 1; }
 }
+
+/* ================= clip that ================= */
+.clip-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.clip-btn { border-color: color-mix(in srgb, var(--flare) 55%, var(--line)); font-weight: 700; }
+.clip-done { font-size: 13px; color: var(--paper-dim); }
+.clip-done a { color: var(--paper); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.clip-error { font-size: 13px; color: var(--flare); }
+.clip-wrap.compact { margin: 0; justify-content: center; }
+.golive .clip-btn { background: rgba(0,0,0,.55); color: #fff; }
+.golive .clip-done, .golive .clip-done a { color: #fff; }
+.clip-credit { margin: -4px 0 8px; font-size: 14px; color: var(--paper-dim); }
+.clip-credit a { color: var(--paper); font-weight: 600; }
+.watch-credit { display: block; font-size: 13px; color: rgba(255,255,255,.75); margin-top: -2px; }

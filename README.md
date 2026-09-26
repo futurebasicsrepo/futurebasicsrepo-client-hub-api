@@ -158,6 +158,16 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
+## Clip that
+
+While a match is streaming, anyone watching can tap **✂️ Clip that** under the live player, and the streamer can tap it on their camera screen.
+- The last 30 seconds become a clip straight away, in about a second.
+- It's **published to the match timeline** at the current minute, titled "Clip · Home 1–0 Away · 67'", and **credited to the streamer** ("✂️ Clipped from @streamer's live stream").
+- The clip belongs to the person who tapped. They can retitle, trim or unpublish it in Studio.
+- Clips from unlisted matches stay unlisted. Youth matches can't be streamed, so they can't be clipped.
+- How it works: the live encoder keeps about the last minute of 2-second segments on disk (`hls_delete_threshold`), and the clip joins the last 15 of them without re-encoding.
+- Limits: one clip per person every 15 seconds, 40 an hour. `POST /v1/streams/:id/clip` returns `{ post }`, or 410 once the stream has ended.
+
 ## Your profile is your home base
 
 Tap your avatar to open your profile. It has three tabs:
@@ -184,7 +194,7 @@ Other people's profiles show their Posts and the public matches they kept score 
 
 ## Next steps (not in v1)
 
-- "Clip that" instant replay from a live stream, and auto highlight reels per match.
+- Auto highlight reels per match.
 
 - **Transcoding at scale.** Conversion and live encoding run inside the API process, which is fine for one instance. Past that, move them to a separate worker service, and move media to object storage.
 - **Object storage.** Move media to S3/R2 or Railway Buckets with a CDN in front. `api/src/storage.js` is the only file that changes.

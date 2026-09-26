@@ -118,6 +118,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
       viewerHasVoted: Boolean(row.viewer_voted),
       match: row.match_json || null,
       matchMinute: row.match_minute ?? null,
+      clippedFrom: row.clipped_from_handle ? { handle: row.clipped_from_handle } : null,
       isOwner: Boolean(req.user && Number(row.user_id) === req.user.id)
     };
   };
@@ -125,6 +126,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   const POST_SELECT = `
     select p.*, u.handle, u.display_name, f.slug as fandom_slug, f.name as fandom_name,
       exists(select 1 from votes v where v.post_id = p.id and v.user_id = $1::bigint) as viewer_voted,
+      (select cu.handle from users cu where cu.id = p.clipped_from) as clipped_from_handle,
       (select json_build_object('id', m.id, 'home', ht.name, 'away', aw.name, 'homeScore', m.home_score,
           'awayScore', m.away_score, 'period', m.period, 'youth', m.youth)
         from matches m join teams ht on ht.id = m.home_team_id join teams aw on aw.id = m.away_team_id
