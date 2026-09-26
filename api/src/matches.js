@@ -4,7 +4,8 @@ import { createLimiter, randomId, slugify, POST_ID_RE } from './lib.js';
 
 const MATCH_SELECT = `
   select m.*, ht.name as home_name, ht.slug as home_slug, aw.name as away_name, aw.slug as away_slug,
-    u.handle as keeper_handle, u.display_name as keeper_name
+    u.handle as keeper_handle, u.display_name as keeper_name,
+    (select count(*)::int from streams s where s.match_id = m.id and s.status = 'live') as live_streams
   from matches m
   join teams ht on ht.id = m.home_team_id
   join teams aw on aw.id = m.away_team_id
@@ -26,6 +27,7 @@ export const matchRow = row => ({
   youth: row.youth,
   visibility: row.visibility,
   scorekeeper: { handle: row.keeper_handle, displayName: row.keeper_name },
+  liveStreams: row.live_streams ?? 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
@@ -34,7 +36,7 @@ const eventView = row => ({
   id: Number(row.id), type: row.type, side: row.side, minute: row.minute, stoppage: row.stoppage, player: row.player, createdAt: row.created_at
 });
 
-export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT }) {
+export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView }) {
   const matchLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
   const subscribers = new Map(); // matchId -> Set<{ raw, req }>
 
@@ -52,15 +54,18 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
   }
 
   async function snapshot(req, row) {
-    const [{ rows: events }, { rows: clips }] = await Promise.all([
+    const [{ rows: events }, { rows: clips }, { rows: streams }] = await Promise.all([
       pool.query(`select * from match_events where match_id = $1 order by created_at asc`, [row.id]),
-      pool.query(`${POST_SELECT} where p.match_id = $2 and p.status = 'published' and p.visibility <> 'private'
-        order by p.match_minute asc nulls last, p.published_at asc limit 200`, [req.user?.id ?? null, row.id])
+      pool.query(`${POST_SELECT} where p.match_id = $2 and p.status = 'published' and p.visibility <> 'private' and p.media_status = 'ready'
+        order by p.match_minute asc nulls last, p.published_at asc limit 200`, [req.user?.id ?? null, row.id]),
+      pool.query(`select s.*, u.handle, u.display_name from streams s join users u on u.id = s.user_id
+        where s.match_id = $1 and s.status = 'live' order by s.started_at asc`, [row.id])
     ]);
     return {
       match: { ...matchRow(row), canScore: Boolean(req.user && Number(row.created_by) === req.user.id) },
       events: events.map(eventView),
       clips: clips.map(clip => postView(req, clip)),
+      streams: streams.map(stream => streamView(req, stream)),
       serverTime: new Date().toISOString()
     };
   }

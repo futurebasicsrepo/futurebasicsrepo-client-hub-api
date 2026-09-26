@@ -20,6 +20,11 @@ export interface Post {
   mediaMime: string;
   coverUrl: string | null;
   duration: number | null;
+  width: number | null;
+  height: number | null;
+  /** Videos are converted to web-safe MP4 after upload. */
+  mediaStatus: 'processing' | 'ready' | 'failed';
+  mediaError: string | null;
   trimStart: number | null;
   trimEnd: number | null;
   filter: FilterName;
@@ -58,7 +63,19 @@ export interface Match {
   youth: boolean;
   visibility: 'public' | 'unlisted';
   scorekeeper: { handle: string; displayName: string };
+  liveStreams?: number;
   canScore?: boolean;
+}
+export interface LiveStream {
+  id: string;
+  matchId: string;
+  status: 'live' | 'ended';
+  startedAt: string;
+  endedAt: string | null;
+  streamer: { handle: string; displayName: string };
+  hlsUrl: string;
+  replayPostId: string | null;
+  isOwner: boolean;
 }
 export interface MatchEvent {
   id: number;
@@ -69,7 +86,7 @@ export interface MatchEvent {
   player: string;
   createdAt: string;
 }
-export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; serverTime: string }
+export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string }
 
 export interface Comment {
   id: number;
@@ -115,6 +132,19 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status);
   return data as T;
+}
+
+// Raw binary POST (live video chunks). Returns the parsed JSON body along with the status so callers can resync.
+export async function postBinary<T>(path: string, body: Blob, signal?: AbortSignal): Promise<{ status: number; data: T & { error?: string } }> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body,
+    signal,
+    cache: 'no-store'
+  });
+  return { status: res.status, data: await res.json().catch(() => ({})) };
 }
 
 // Multipart upload with progress, which fetch() can't report.

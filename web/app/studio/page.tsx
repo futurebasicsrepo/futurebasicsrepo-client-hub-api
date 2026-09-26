@@ -31,7 +31,7 @@ export default function StudioPage() {
           <div key={post.id} className="list-row">
             <Link href={`/studio/${post.id}`} className="thumb"><Thumb post={post} /></Link>
             <div className="stack" style={{ gap: 4, minWidth: 0 }}>
-              <div className="row"><VisibilityBadge post={post} />{post.fandom && <span className="muted">{post.fandom.name}</span>}</div>
+              <div className="row"><VisibilityBadge post={post} />{post.mediaStatus === 'processing' && <span className="badge sky">Converting…</span>}{post.mediaStatus === 'failed' && <span className="badge">Failed</span>}{post.fandom && <span className="muted">{post.fandom.name}</span>}</div>
               <Link href={`/studio/${post.id}`}><strong>{post.title || 'Untitled'}</strong></Link>
               <span className="muted" style={{ fontSize: 13 }}>
                 ▲ {compact(post.score)} · {compact(post.viewCount)} views · {compact(post.commentCount)} comments · {post.publishedAt ? `published ${timeAgo(post.publishedAt)}` : `uploaded ${timeAgo(post.createdAt)}`}

@@ -58,7 +58,12 @@ export default function PostView({ id }: { id: string }) {
     <div className="wrap">
       <div className="post-layout">
         <div className="post-main">
-          <MediaPlayer
+          {post.mediaStatus !== 'ready' ? (
+            <div className="player media-pending">
+              {post.coverUrl && <img src={post.coverUrl} alt="" />}
+              <p>{post.mediaStatus === 'processing' ? <><span className="spinner" aria-hidden="true" />This video is still being prepared. Check back in a minute.</> : 'This video couldn’t be processed.'}</p>
+            </div>
+          ) : <MediaPlayer
             kind={post.kind}
             src={post.mediaUrl}
             poster={post.coverUrl}
@@ -66,7 +71,7 @@ export default function PostView({ id }: { id: string }) {
             trimStart={post.trimStart}
             trimEnd={post.trimEnd}
             title={post.title}
-          />
+          />}
           {post.match && (
             <Link href={`/m/${post.match.id}`} className="match-chip">
               ⚽ {post.match.home} {post.match.homeScore}–{post.match.awayScore} {post.match.away}{post.matchMinute != null ? ` · ${post.matchMinute}'` : ''}

@@ -8,6 +8,7 @@ import { matchClock, scoreline } from '@/lib/clock';
 import { useNow } from '@/lib/useNow';
 import { Thumb } from './PostCard';
 import { StatusPill } from './MatchCard';
+import LivePlayer from './LivePlayer';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -30,6 +31,7 @@ export default function MatchView({ id }: { id: string }) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [connected, setConnected] = useState(true);
+  const [angle, setAngle] = useState<string | null>(null);
   const canScore = useRef(false);
   const skew = useRef(0);
 
@@ -114,9 +116,23 @@ export default function MatchView({ id }: { id: string }) {
 
   const next = { pre: ['kickoff', 'Kick off'], '1h': ['halftime', 'Half time'], ht: ['second_half', 'Start 2nd half'], '2h': ['fulltime', 'Full time'], ft: null }[match.period] as [string, string] | null;
   const clipHref = user ? `/upload?match=${match.id}${clock ? `&minute=${clock.minute}` : ''}` : `/login?next=/m/${match.id}`;
+  const canStream = !match.youth && match.period !== 'ft';
+  const liveHref = user ? `/m/${match.id}/live` : `/login?next=/m/${match.id}/live`;
+  const streams = snap.streams ?? [];
+  const onAir = streams.find(s => s.id === angle) ?? streams[0];
 
   return (
     <div className="wrap match-page">
+      {onAir && (
+        <section className="live-section">
+          <LivePlayer key={onAir.id} src={onAir.hlsUrl} label={`Live from @${onAir.streamer.handle}`} />
+          <div className="row live-angles">
+            {streams.length > 1 ? streams.map((s, i) => (
+              <button key={s.id} className="chip" aria-pressed={s.id === onAir.id} onClick={() => setAngle(s.id)}>📹 Cam {i + 1} · @{s.streamer.handle}</button>
+            )) : <span className="muted" style={{ fontSize: 13 }}>📹 Streaming from the sideline by @{onAir.streamer.handle}</span>}
+          </div>
+        </section>
+      )}
       <section className="scoreboard">
         <div className="scoreboard-meta">
           <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>
@@ -134,6 +150,7 @@ export default function MatchView({ id }: { id: string }) {
         <div className="row scoreboard-actions">
           <button className="btn btn-sm" onClick={share}>↗ Share</button>
           <Link href={clipHref} className="btn btn-sm btn-primary">+ Add a clip</Link>
+          {canStream && <Link href={liveHref} className="btn btn-sm golive-link"><i />Go live</Link>}
           {!connected && <span className="muted" style={{ fontSize: 12 }}>Reconnecting…</span>}
         </div>
       </section>

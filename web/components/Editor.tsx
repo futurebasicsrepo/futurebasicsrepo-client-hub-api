@@ -62,6 +62,8 @@ export default function Editor({ id }: { id: string }) {
       .then(({ post }) => {
         if (!post.isOwner) { router.replace(`/p/${id}`); return; }
         setPost(post);
+        // The server knows the length of converted videos, so trimming works before the browser loads the file.
+        if (post.duration && post.mediaStatus === 'ready') setDuration(post.duration);
         const initial = draftFrom(post);
         const fromLink = params.get('match');
         if (post.match) setMatch(post.match);
@@ -78,6 +80,20 @@ export default function Editor({ id }: { id: string }) {
       .catch(err => setError(err.message));
     api<{ fandoms: Fandom[] }>('/v1/fandoms').then(d => setFandoms(d.fandoms)).catch(() => {});
   }, [id, user, router]);
+
+  // While the server converts the upload, check back and swap in the web-safe file when it's done.
+  const processing = post?.mediaStatus === 'processing';
+  useEffect(() => {
+    if (!processing) return;
+    const timer = setInterval(async () => {
+      const fresh = await api<{ post: Post }>(`/v1/posts/${id}`).then(r => r.post, () => null);
+      if (!fresh || fresh.mediaStatus === 'processing') return;
+      setPost(fresh);
+      if (fresh.duration) setDraft(d => (d && d.trimEnd !== null && d.trimEnd > fresh.duration! ? { ...d, trimEnd: null } : d));
+      if (fresh.mediaStatus === 'ready') { setNotice('Video ready'); if (fresh.duration) setDuration(fresh.duration); }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [processing, id]);
 
   useEffect(() => {
     if (!notice) return;
@@ -212,6 +228,10 @@ export default function Editor({ id }: { id: string }) {
             onLoadedMetadata={onLoadedMetadata}
             onTimeUpdate={setTime}
           />
+          {post.mediaStatus === 'processing' && (
+            <p className="media-note"><span className="spinner" aria-hidden="true" />Converting your video so it plays on every phone. Keep editing; you can publish now and it goes live in feeds once it’s ready.</p>
+          )}
+          {post.mediaStatus === 'failed' && <p className="media-note error" role="alert">{post.mediaError || 'We couldn’t convert this video.'}</p>}
 
           {isVideo && (
             <section className="panel">
@@ -238,7 +258,7 @@ export default function Editor({ id }: { id: string }) {
                   </div>
                   <p className="hint">Viewers only see the part between the handles. Your original upload is kept, so you can change this anytime.</p>
                 </>
-              ) : <p className="muted">Loading clip…</p>}
+              ) : <p className="muted">{post.mediaStatus === 'processing' ? 'Trim unlocks once the video is ready. It takes a moment.' : 'Loading clip…'}</p>}
             </section>
           )}
 

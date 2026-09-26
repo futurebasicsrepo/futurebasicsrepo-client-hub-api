@@ -10,7 +10,8 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const current = (href: string) => (pathname === href ? 'page' : undefined);
-  if (pathname?.startsWith('/watch')) return null; // the swipe feed is full-screen
+  // The swipe feed and the go-live camera are full-screen.
+  if (pathname?.startsWith('/watch') || /^\/m\/[^/]+\/live/.test(pathname || '')) return null;
 
   return (
     <header className="site-header">

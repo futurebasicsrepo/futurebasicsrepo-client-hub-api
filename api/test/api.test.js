@@ -11,9 +11,10 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   process.env.DATABASE_URL = dbUrl;
   process.env.MEDIA_DIR = mkdtempSync(join(tmpdir(), 'incha-media-'));
   process.env.JWT_SECRET = 'test-jwt-secret';
+  process.env.TRANSCODE = 'off'; // fake media bytes here; real conversion is covered in media.test.js
   const { migrate, pool } = await import('../src/db.js');
   const { buildApp } = await import('../src/app.js');
-  await pool.query('drop table if exists match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
+  await pool.query('drop table if exists streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
   await migrate();
   const app = await buildApp({ logger: false });
   t.after(async () => { await app.close(); await pool.end(); });

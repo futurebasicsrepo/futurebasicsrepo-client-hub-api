@@ -5,7 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { uploadFile, type Post } from '@/lib/api';
 import { useRequireUser } from '@/lib/useRequireUser';
 
-const ACCEPT = 'video/mp4,video/webm,video/quicktime,image/jpeg,image/png,image/gif,image/webp';
+const ACCEPT = 'video/*,.mov,.mkv,.3gp,.m4v,image/jpeg,image/png,image/gif,image/webp';
+const OK_EXT = /\.(mp4|m4v|mov|webm|mkv|3gp|jpe?g|png|gif|webp)$/i;
+// Browsers report phone video inconsistently (HEVC .mov can come through blank), so fall back to the extension.
+const accepted = (file: File) => /^video\//.test(file.type) || ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type) || OK_EXT.test(file.name);
 const MAX_BYTES = 500_000_000;
 
 export default function UploadPage() {
@@ -26,7 +29,7 @@ function Upload() {
   async function start(file: File | undefined) {
     if (!file) return;
     setError('');
-    if (!ACCEPT.split(',').includes(file.type)) { setError('Upload an MP4, WebM, MOV, JPG, PNG, GIF, or WebP file.'); return; }
+    if (!accepted(file)) { setError('Upload a video (MP4, MOV, WebM, MKV, 3GP) or a JPG, PNG, GIF, or WebP image.'); return; }
     if (file.size > MAX_BYTES) { setError('Files must be under 500 MB.'); return; }
     setFileName(file.name);
     setProgress(0);
@@ -61,7 +64,7 @@ function Upload() {
           onDrop={e => { e.preventDefault(); setOver(false); start(e.dataTransfer.files[0]); }}
         >
           <div className="display">Drop it here</div>
-          <p className="muted">or click to choose a file · MP4, MOV, WebM, JPG, PNG, GIF, WebP · up to 500 MB</p>
+          <p className="muted">or click to choose a file · any phone video (incl. iPhone HEVC), JPG, PNG, GIF, WebP · up to 500 MB</p>
           <input ref={input} type="file" accept={ACCEPT} hidden onChange={e => start(e.target.files?.[0])} />
         </div>
       ) : (

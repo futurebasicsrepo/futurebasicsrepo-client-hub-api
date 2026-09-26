@@ -11,13 +11,25 @@ export const MEDIA_TYPES = {
   'video/mp4': { kind: 'video', ext: '.mp4' },
   'video/webm': { kind: 'video', ext: '.webm' },
   'video/quicktime': { kind: 'video', ext: '.mov' },
+  'video/x-m4v': { kind: 'video', ext: '.m4v' },
+  'video/x-matroska': { kind: 'video', ext: '.mkv' },
+  'video/3gpp': { kind: 'video', ext: '.3gp' },
   'image/jpeg': { kind: 'image', ext: '.jpg' },
   'image/png': { kind: 'image', ext: '.png' },
   'image/gif': { kind: 'image', ext: '.gif' },
   'image/webp': { kind: 'image', ext: '.webp' }
 };
 export const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-export const MEDIA_KEY_RE = /^[A-Za-z0-9]{16,40}\.(mp4|webm|mov|jpg|png|gif|webp)$/;
+export const MEDIA_KEY_RE = /^[A-Za-z0-9]{16,40}\.(mp4|webm|mov|m4v|mkv|3gp|jpg|png|gif|webp)$/;
+
+// Some browsers send a blank or generic type for phone video (.mov/.mkv/.3gp); fall back to the extension.
+const EXT_MIME = { mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', '3gp': 'video/3gpp',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+export function uploadMime(mimetype, filename) {
+  if (MEDIA_TYPES[mimetype]) return mimetype;
+  if (mimetype && !/^(application\/octet-stream|binary\/octet-stream)$/.test(mimetype)) return null;
+  return EXT_MIME[/\.([a-z0-9]+)$/i.exec(String(filename || ''))?.[1]?.toLowerCase()] || null;
+}
 export const HANDLE_RE = /^[a-z0-9_]{3,24}$/;
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const POST_ID_RE = /^[A-Za-z0-9]{10}$/;
