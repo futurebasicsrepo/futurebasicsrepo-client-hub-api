@@ -15,6 +15,7 @@ import ReelCard from './ReelCard';
 import FlipNumber from './FlipNumber';
 import GoalBurst, { teamColour } from './GoalBurst';
 import { takeMatch } from '@/lib/handoff';
+import Crowd, { type CrowdHandle } from './Crowd';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -39,6 +40,8 @@ export default function MatchView({ id }: { id: string }) {
   const [connected, setConnected] = useState(true);
   const [angle, setAngle] = useState<string | null>(null);
   const [keeperHandle, setKeeperHandle] = useState('');
+  const [watching, setWatching] = useState(0);
+  const crowd = useRef<CrowdHandle>(null);
   // What only this viewer's own requests know (scorekeeper rights, following); the live stream is anonymous.
   const viewer = useRef<Pick<Match, 'canScore' | 'isOwner' | 'following'>>({});
   const skew = useRef(0);
@@ -61,6 +64,8 @@ export default function MatchView({ id }: { id: string }) {
       setSnap({ ...data, match: { ...data.match, ...viewer.current } });
       setConnected(true);
     });
+    source.addEventListener('crowd', event => setWatching(JSON.parse((event as MessageEvent).data).watching));
+    source.addEventListener('cheer', event => crowd.current?.receive(JSON.parse((event as MessageEvent).data).counts));
     source.onerror = () => setConnected(false);
     return () => source.close();
   }, [id]);
@@ -247,6 +252,7 @@ export default function MatchView({ id }: { id: string }) {
           <button className="btn btn-sm" onClick={share}>↗ Share</button>
           <Link href={clipHref} className="btn btn-sm btn-primary">+ Add a clip</Link>
           {canStream && <Link href={liveHref} className="btn btn-sm golive-link"><i />Go live</Link>}
+          {live && watching > 1 && <span className="watching-pill"><i aria-hidden="true" />{watching} watching</span>}
           {!connected && <span className="muted" style={{ fontSize: 12 }}>Reconnecting…</span>}
         </div>
       </section>
@@ -348,6 +354,7 @@ export default function MatchView({ id }: { id: string }) {
       </section>
       <p className="hint" style={{ paddingBottom: 48 }}>Scorekeeper: @{match.scorekeeper.handle}{match.keepers?.length ? ` with ${match.keepers.map(k => `@${k.handle}`).join(', ')}` : ''}. Scores are kept by fans at the game, not an official source.</p>
       {toast && <div className="toast" role="status">{toast}</div>}
+      <Crowd ref={crowd} matchId={id} live={live} />
     </div>
   );
 }
