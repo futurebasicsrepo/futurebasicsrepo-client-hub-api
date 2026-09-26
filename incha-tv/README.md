@@ -166,4 +166,4 @@ Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals 
 - **Email.** Verification and password reset via Resend.
 - **Moderation.** Report button, admin queue, rate limits backed by Redis once there's more than one API instance.
 - **Growth.** Follows, notifications, and a "for you" feed.
-- **Product.** Merch links to the INCHA shop on creator and fandom pages.
+- **Product.** Merch links to the INCHA shop on creator and fandom pages. (The Shop tab and header link already go to inchastudios.com.)
