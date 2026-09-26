@@ -11,42 +11,28 @@ import Avatar from './Avatar';
 interface Props {
   post: Post;
   active: boolean;
-  /** Whether a <video> should exist at all (only the active slide and its neighbours). */
+  /** Whether this slide is near the screen (only then does it load its poster). */
   mounted: boolean;
+  /** The feed's shared player is showing this clip, so the slide lets it show through. */
+  playing: boolean;
+  paused: boolean;
   muted: boolean;
+  onTogglePlay: () => void;
   onToggleMute: () => void;
   onOpenComments: (post: Post) => void;
   onVote: (id: string, score: number, voted: boolean) => void;
 }
 
-function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments, onVote }: Props) {
+// A slide is the poster, caption and action rail. Video plays in the feed's one shared <video>
+// underneath (see WatchFeed): iOS only lets an element autoplay once a tap has started it, so
+// reusing one element keeps every later clip playing on its own.
+function WatchSlide({ post, active, mounted, playing, paused, muted, onTogglePlay, onToggleMute, onOpenComments, onVote }: Props) {
   const { user } = useAuth();
   const router = useRouter();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [paused, setPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [burst, setBurst] = useState(0);
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const counted = useRef(false);
-
-  const start = post.trimStart ?? 0;
-  const end = post.trimEnd ?? post.duration ?? null;
-
-  // Play only while this slide owns the screen; rewind when it leaves.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (active) {
-      if (video.currentTime < start || (end && video.currentTime >= end)) video.currentTime = start;
-      video.play().then(() => setPaused(false)).catch(() => setPaused(true));
-    } else {
-      video.pause();
-      if (video.readyState > 0) video.currentTime = start;
-    }
-  }, [active, start, end, mounted]);
-
-  useEffect(() => { if (videoRef.current) videoRef.current.muted = muted; }, [muted]);
 
   // Count a view after two seconds on screen.
   useEffect(() => {
@@ -54,13 +40,6 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
     const timer = setTimeout(() => { counted.current = true; api(`/v1/posts/${post.id}/view`, { method: 'POST' }).catch(() => {}); }, 2000);
     return () => clearTimeout(timer);
   }, [active, post.id]);
-
-  function onTimeUpdate() {
-    const video = videoRef.current!;
-    const stop = end ?? video.duration;
-    if (stop && video.currentTime >= stop - 0.05) video.currentTime = start; // loop inside the trim window
-    if (stop) setProgress(Math.min(1, Math.max(0, (video.currentTime - start) / (stop - start))));
-  }
 
   async function vote(forceUp = false) {
     if (!user) { router.push(`/login?next=/watch?start=${post.id}`); return; }
@@ -86,11 +65,7 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
       return;
     }
     lastTap.current = now;
-    tapTimer.current = setTimeout(() => {
-      const video = videoRef.current;
-      if (!video) return;
-      if (video.paused) { video.play().catch(() => {}); setPaused(false); } else { video.pause(); setPaused(true); }
-    }, 280);
+    tapTimer.current = setTimeout(() => { if (active && post.kind === 'video') onTogglePlay(); }, 280);
   }
 
   async function share() {
@@ -101,27 +76,18 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
 
   const style = { filter: filterCss(post.filter) };
   const poster = post.coverUrl || (post.kind === 'image' ? post.mediaUrl : undefined);
+  const seeThrough = playing && post.kind === 'video';
 
   return (
-    <section className="watch-slide" aria-label={post.title}>
-      {poster && <div className="watch-backdrop" style={{ backgroundImage: `url("${poster}")` }} aria-hidden="true" />}
+    <section className={`watch-slide${seeThrough ? ' see-through' : ''}`} aria-label={post.title}>
+      {poster && !seeThrough && <div className="watch-backdrop" style={{ backgroundImage: `url("${poster}")` }} aria-hidden="true" />}
       <div className="watch-stage" onClick={onTap}>
         {post.kind === 'image' ? (
           <img src={post.mediaUrl} alt={post.title} style={style} />
-        ) : mounted ? (
-          <video
-            ref={videoRef}
-            src={`${post.mediaUrl}#t=${start}`}
-            poster={poster}
-            muted={muted}
-            playsInline
-            preload={active ? 'auto' : 'metadata'}
-            style={style}
-            onTimeUpdate={onTimeUpdate}
-            onEnded={() => { const v = videoRef.current; if (v && active) { v.currentTime = start; v.play().catch(() => {}); } }}
-          />
-        ) : poster ? <img src={poster} alt="" style={style} /> : null}
-        {paused && active && post.kind === 'video' && <span className="watch-paused" aria-hidden="true">▶</span>}
+        ) : !seeThrough && mounted && poster ? <img src={poster} alt="" style={style} /> : null}
+        {paused && active && post.kind === 'video' && (
+          <svg className="watch-paused" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5Z" fill="currentColor" /></svg>
+        )}
         {burst > 0 && <span key={burst} className="watch-burst" aria-hidden="true">▲</span>}
       </div>
 
@@ -152,7 +118,6 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
           {post.fandom && <Link href={`/f/${post.fandom.slug}`} className="watch-tag">{post.fandom.name}</Link>}
         </div>
       </div>
-      {post.kind === 'video' && <div className="watch-progress"><div style={{ transform: `scaleX(${progress})` }} /></div>}
     </section>
   );
 }

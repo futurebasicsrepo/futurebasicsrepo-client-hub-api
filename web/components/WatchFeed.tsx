@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type Post, type Sort } from '@/lib/api';
+import { filterCss } from '@/lib/format';
 import Comments from './Comments';
 import WatchSlide from './WatchSlide';
 
@@ -106,6 +107,56 @@ export default function WatchFeed() {
     setPosts(list => list.map(p => (p.id === id ? { ...p, score, viewerHasVoted: voted } : p)));
   }, []);
   const onToggleMute = useCallback(() => setMuted(m => !m), []);
+
+  // ---- the shared player ----
+  // One <video> plays every clip. Browsers (iOS in Low Power Mode especially) may refuse to start
+  // a video without a tap; once a tap has started this element, it keeps playing each new clip.
+  const player = useRef<HTMLVideoElement>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null); // clip whose frames are on screen
+  const [paused, setPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const current = posts[active];
+  const clip = current?.kind === 'video' && !sheet ? current : null;
+  const clipStart = clip?.trimStart ?? 0;
+  const clipEnd = clip?.trimEnd ?? clip?.duration ?? null;
+
+  const play = useCallback(() => {
+    const video = player.current;
+    if (!video) return;
+    video.play().then(() => setPaused(false)).catch(() => setPaused(true));
+  }, []);
+
+  useEffect(() => {
+    const video = player.current;
+    if (!video) return;
+    setPlayingId(null);
+    setProgress(0);
+    if (!clip) { video.pause(); return; }
+    const src = `${clip.mediaUrl}#t=${clipStart}`;
+    if (video.dataset.post !== clip.id) {
+      video.dataset.post = clip.id;
+      video.src = src;
+    } else {
+      video.currentTime = clipStart;
+    }
+    play();
+  }, [clip?.id, clip?.mediaUrl, clipStart, play]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (player.current) player.current.muted = muted; }, [muted]);
+
+  const onTogglePlay = useCallback(() => {
+    const video = player.current;
+    if (!video) return;
+    if (video.paused) play(); else { video.pause(); setPaused(true); }
+  }, [play]);
+
+  function onTimeUpdate() {
+    const video = player.current;
+    if (!video || !clip) return;
+    const stop = clipEnd ?? video.duration;
+    if (stop && video.currentTime >= stop - 0.05) video.currentTime = clipStart; // loop inside the trim window
+    if (stop) setProgress(Math.min(1, Math.max(0, (video.currentTime - clipStart) / (stop - clipStart))));
+  }
   const onOpenComments = useCallback((post: Post) => setSheet(post), []);
   const sheetId = sheet?.id;
   const setCommentCount = useCallback((count: number) => {
@@ -124,14 +175,33 @@ export default function WatchFeed() {
         <Link href="/upload" className="watch-back" aria-label="Upload">＋</Link>
       </header>
 
+      <div className="watch-player" aria-hidden="true">
+        {clip?.coverUrl && <div className="watch-backdrop" style={{ backgroundImage: `url("${clip.coverUrl}")` }} />}
+        <video
+          ref={player}
+          muted={muted}
+          playsInline
+          autoPlay
+          preload="auto"
+          style={{ filter: filterCss(clip?.filter) }}
+          onPlaying={() => { if (clip) { setPlayingId(clip.id); setPaused(false); } }}
+          onTimeUpdate={onTimeUpdate}
+          onEnded={() => { const v = player.current; if (v && clip) { v.currentTime = clipStart; play(); } }}
+        />
+      </div>
+      {clip && <div className="watch-progress"><div style={{ transform: `scaleX(${progress})` }} /></div>}
+
       <div className="watch-scroller" ref={scroller}>
         {posts.map((post, index) => (
           <div key={post.id} data-index={index} className="watch-cell">
             <WatchSlide
               post={post}
               active={index === active && !sheet}
-              mounted={Math.abs(index - active) <= 1}
+              mounted={Math.abs(index - active) <= 2}
+              playing={post.id === playingId && index === active}
+              paused={paused}
               muted={muted}
+              onTogglePlay={onTogglePlay}
               onToggleMute={onToggleMute}
               onOpenComments={onOpenComments}
               onVote={onVote}
