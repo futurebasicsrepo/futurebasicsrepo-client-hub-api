@@ -89,6 +89,9 @@ function Tile({ post, lead, href }: { post: Post; lead: boolean; href: string })
   const end = post.trimEnd ?? post.duration ?? null;
   const cover = post.coverUrl || (post.kind === 'image' ? post.mediaUrl : null);
   const length = post.kind === 'video' ? runtime(post) : null;
+  // Landscape media (highlight reels, sideways phone clips) is shown whole over a blurred copy,
+  // instead of being cropped to the portrait tile.
+  const wide = Boolean(post.width && post.height && post.width > post.height * 1.1);
 
   // Only the lead tile moves, and only for people who haven't asked for reduced motion.
   useEffect(() => {
@@ -96,7 +99,8 @@ function Tile({ post, lead, href }: { post: Post; lead: boolean; href: string })
   }, [lead, post.kind]);
 
   return (
-    <Link href={href} className={`tile${lead ? ' lead' : ''}`}>
+    <Link href={href} className={`tile${lead ? ' lead' : ''}${wide ? ' wide' : ''}`}>
+      {wide && cover && <img className="tile-backdrop" src={cover} alt="" aria-hidden="true" loading="lazy" />}
       {motion ? (
         <video
           ref={videoRef}
