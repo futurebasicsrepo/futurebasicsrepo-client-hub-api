@@ -25,7 +25,7 @@ export default function Header() {
           <Link href="/scores" aria-current={current('/scores')}>Scores</Link>
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
           <a href={SHOP_URL} target="_blank" rel="noopener">Shop ↗</a>
-          {user && <Link href="/studio" aria-current={current('/studio')} className="hide-sm">Studio</Link>}
+          {user && <Link href={`/u/${user.handle}?tab=studio`} className="hide-sm">Studio</Link>}
         </nav>
         <form
           className="search"

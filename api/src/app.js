@@ -273,11 +273,13 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   app.get('/v1/users/:handle', async (req, reply) => {
     const { rows } = await pool.query(`
       select u.*, (select count(*)::int from posts p where p.user_id = u.id and p.status = 'published' and p.visibility = 'public') as post_count,
-        (select coalesce(sum(score), 0)::int from posts p where p.user_id = u.id and p.status = 'published' and p.visibility = 'public') as total_score
+        (select coalesce(sum(score), 0)::int from posts p where p.user_id = u.id and p.status = 'published' and p.visibility = 'public') as total_score,
+        (select count(*)::int from matches m where m.visibility = 'public' and not m.youth
+          and (m.created_by = u.id or exists(select 1 from match_keepers k where k.match_id = m.id and k.user_id = u.id))) as match_count
       from users u where u.handle = $1`, [normalizeHandle(req.params.handle)]);
     if (!rows[0]) return fail(reply, 404, 'Creator not found.');
     const { id, ...profile } = userView(rows[0]);
-    return { user: { ...profile, postCount: rows[0].post_count, totalScore: rows[0].total_score } };
+    return { user: { ...profile, postCount: rows[0].post_count, totalScore: rows[0].total_score, matchCount: rows[0].match_count } };
   });
 
   app.get('/v1/posts', async req => {

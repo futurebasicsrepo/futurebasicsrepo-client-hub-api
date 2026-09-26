@@ -113,10 +113,33 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     return { matches: rows.map(matchRow), serverTime: new Date().toISOString() };
   });
 
+  // Everything tying you to matches, for your profile: games you run or co-keep, and games you follow.
   app.get('/v1/me/matches', { preHandler: requireUser }, async req => {
+    const [{ rows: running }, { rows: following }] = await Promise.all([
+      pool.query(`${MATCH_SELECT}
+        where m.created_by = $1 or exists(select 1 from match_keepers k where k.match_id = m.id and k.user_id = $1)
+        order by m.kickoff_at desc limit 100`, [req.user.id]),
+      pool.query(`${MATCH_SELECT}
+        join match_follows f on f.match_id = m.id and f.user_id = $1
+        where m.created_by <> $1 and not exists(select 1 from match_keepers k where k.match_id = m.id and k.user_id = $1)
+        order by m.kickoff_at desc limit 100`, [req.user.id])
+    ]);
+    const role = row => (Number(row.created_by) === req.user.id ? 'scorekeeper' : 'co-keeper');
+    return {
+      matches: running.map(row => ({ ...matchRow(row), role: role(row) })),
+      following: following.map(matchRow),
+      serverTime: new Date().toISOString()
+    };
+  });
+
+  // A person's public record: matches they kept score for (never youth or unlisted ones).
+  app.get('/v1/users/:handle/matches', async (req, reply) => {
+    const { rows: [user] } = await pool.query(`select id from users where handle = $1`, [String(req.params.handle).toLowerCase().replace(/^@/, '')]);
+    if (!user) return fail(reply, 404, 'Creator not found.');
     const { rows } = await pool.query(`${MATCH_SELECT}
-      where m.created_by = $1 or exists(select 1 from match_keepers k where k.match_id = m.id and k.user_id = $1)
-      order by m.kickoff_at desc limit 100`, [req.user.id]);
+      where m.visibility = 'public' and not m.youth
+        and (m.created_by = $1 or exists(select 1 from match_keepers k where k.match_id = m.id and k.user_id = $1))
+      order by m.kickoff_at desc limit 50`, [user.id]);
     return { matches: rows.map(matchRow), serverTime: new Date().toISOString() };
   });
 

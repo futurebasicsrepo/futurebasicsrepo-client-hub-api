@@ -128,6 +128,8 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
 | POST/DELETE | `/v1/matches/:id/follow`, `/v1/teams/:slug/follow` | ✓ | follow / unfollow |
 | GET | `/v1/me/follows` | ✓ | followed teams and match ids |
+| GET | `/v1/me/matches` | ✓ | `matches` you run (with `role`) + `following` matches |
+| GET | `/v1/users/:handle/matches` | – | public matches that person kept score for |
 | GET | `/v1/push/key` | – | VAPID public key (null when alerts are off) |
 | POST/DELETE | `/v1/push/subscriptions` | ✓ | register / remove this device's push subscription (`PushSubscription.toJSON()`) |
 | POST | `/v1/matches/:id/keepers` | creator | `{ handle }` add a co-scorekeeper (max 3) |
@@ -155,6 +157,15 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 - If the API restarts mid-stream, the stream is closed and what was recorded so far is saved.
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
+
+## Your profile is your home base
+
+Tap your avatar to open your profile. It has three tabs:
+- **Posts:** your public posts, the same view everyone else sees.
+- **Studio:** only you see this. Every upload, including drafts, converting and private ones. `/studio` now redirects here.
+- **Matches:** games you keep score for (marked "You keep score" or "Co-keeper"), then the teams and matches you follow, plus the match-alerts switch.
+
+Other people's profiles show their Posts and the public matches they kept score for, never youth or unlisted ones. The header shows Posts, Matches and Upvotes counts.
 
 ## Follows, alerts and co-scorekeepers
 

@@ -113,6 +113,21 @@ test('follows, push alerts and co-scorekeepers', { skip: !dbUrl && 'set TEST_DAT
   await flush();
   assert.deepEqual(drain(), ['match_fan'], 'youth alerts only reach people who followed the match itself');
 
+  // Profile hub: your matches by role, what you follow, and a public record that hides youth games.
+  let mine = json(await call('GET', '/v1/me/matches', keeper));
+  assert.deepEqual(mine.matches.map(m => [m.id, m.role]), [[youth.id, 'scorekeeper'], [match.id, 'scorekeeper']]);
+  await call('POST', `/v1/matches/${match.id}/keepers`, keeper, { handle: 'stranger' });
+  mine = json(await call('GET', '/v1/me/matches', stranger));
+  assert.deepEqual(mine.matches.map(m => m.role), ['co-keeper']);
+  mine = json(await call('GET', '/v1/me/matches', matchFan));
+  assert.deepEqual(mine.matches, []);
+  assert.deepEqual(mine.following.map(m => m.id), [youth.id], 'unfollowed earlier; still follows the youth match');
+  const record = json(await call('GET', '/v1/users/keeper/matches'));
+  assert.deepEqual(record.matches.map(m => m.id), [match.id], 'public record hides the youth match');
+  assert.equal(json(await call('GET', '/v1/users/stranger/matches')).matches.length, 1, 'co-kept matches count too');
+  assert.equal(json(await call('GET', '/v1/users/keeper')).user.matchCount, 1);
+  assert.equal((await call('GET', '/v1/users/nobody/matches')).statusCode, 404);
+
   const follows = json(await call('GET', '/v1/me/follows', teamFan));
   assert.deepEqual(follows.teams.map(t => t.slug).sort(), ['fishtown-united', 'u10-blues']);
 });

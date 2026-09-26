@@ -26,8 +26,9 @@ export default function MatchCard({ match }: { match: Match }) {
           {showScore && <strong>{side === 'home' ? match.homeScore : match.awayScore}</strong>}
         </div>
       ))}
-      {(match.venue || !!match.liveStreams) && (
+      {(match.venue || !!match.liveStreams || match.role) && (
         <div className="row" style={{ gap: 8 }}>
+          {match.role && <span className="badge sky">{match.role === 'scorekeeper' ? 'You keep score' : 'Co-keeper'}</span>}
           {!!match.liveStreams && <span className="badge flare">📹 Live video</span>}
           {match.venue && <span className="muted" style={{ fontSize: 13 }}>{match.venue}</span>}
         </div>
