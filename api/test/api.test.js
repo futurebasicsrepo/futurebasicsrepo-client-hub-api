@@ -99,6 +99,12 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   assert.equal(json(res).posts.length, 1);
   res = await call('GET', '/v1/posts?q=winner');
   assert.equal(json(res).posts.length, 1);
+  res = await call('GET', '/v1/fandoms');
+  const union = json(res).fandoms.find(f => f.slug === 'philadelphia-union');
+  assert.equal(union.postCount, 1);
+  assert.ok(union.latestAt, 'fandom knows when it last posted');
+  assert.equal(union.coverUrl, post.coverUrl, 'fandom ring uses the newest public cover');
+  assert.equal(json(res).fandoms.find(f => f.slug === 'argentina').coverUrl, null);
   res = await app.inject({ method: 'GET', url: mediaPath, headers: { range: 'bytes=0-99' } });
   assert.equal(res.statusCode, 206);
   assert.equal(res.headers['content-range'], 'bytes 0-99/4096');

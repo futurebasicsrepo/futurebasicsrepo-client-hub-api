@@ -17,7 +17,7 @@ export default function Header() {
     <header className="site-header">
       <div className="wrap">
         <Link href="/" className="logo" aria-label="incha.tv home">INCHA<span className="tv">.TV</span></Link>
-        <nav className="nav">
+        <nav className="nav hide-sm">
           <Link href="/" aria-current={current('/')} className="hide-sm">Feed</Link>
           <Link href="/watch" aria-current={current('/watch')}>Watch</Link>
           <Link href="/matches" aria-current={current('/matches')}>Matches</Link>
@@ -36,15 +36,19 @@ export default function Header() {
           <input name="q" type="search" placeholder="Search clips, goals, tifos…" aria-label="Search" />
         </form>
         <div className="spacer" />
+        {/* On phones the tab bar carries navigation, upload and profile; the header keeps search. */}
+        <Link href="/search" className="icon-btn show-sm" aria-label="Search">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        </Link>
         {ready && (user ? (
-          <div className="row header-actions">
-            <Link href="/upload" className="btn btn-primary btn-sm" aria-label="Upload">+<span className="hide-sm"> Upload</span></Link>
+          <div className="row header-actions hide-sm">
+            <Link href="/upload" className="btn btn-primary btn-sm" aria-label="Upload">+ Upload</Link>
             <Link href={`/u/${user.handle}`} aria-label="Your profile"><Avatar name={user.displayName} size="sm" /></Link>
             <button className="linkish hide-sm" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>
         ) : (
           <div className="row header-actions">
-            <Link href="/login" className="btn btn-ghost btn-sm">Sign in</Link>
+            <Link href="/login" className="btn btn-ghost btn-sm hide-sm">Sign in</Link>
             <Link href="/signup" className="btn btn-primary btn-sm">Join</Link>
           </div>
         ))}

@@ -9,7 +9,7 @@ export type Sort = 'hot' | 'new' | 'top';
 
 export interface User { id: number; handle: string; displayName: string; bio: string; createdAt: string }
 export interface Profile extends Omit<User, 'id'> { postCount: number; totalScore: number }
-export interface Fandom { slug: string; name: string; postCount?: number }
+export interface Fandom { slug: string; name: string; postCount?: number; latestAt?: string | null; coverUrl?: string | null }
 
 export interface Post {
   id: string;
