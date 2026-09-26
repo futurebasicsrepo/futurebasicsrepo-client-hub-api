@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import Avatar from './Avatar';
+import { SHOP_URL } from './TabBar';
 
 export default function Header() {
   const { user, ready, signOut } = useAuth();
@@ -23,6 +24,7 @@ export default function Header() {
           <Link href="/matches" aria-current={current('/matches')}>Matches</Link>
           <Link href="/scores" aria-current={current('/scores')}>Scores</Link>
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
+          <a href={SHOP_URL} target="_blank" rel="noopener">Shop ↗</a>
           {user && <Link href="/studio" aria-current={current('/studio')} className="hide-sm">Studio</Link>}
         </nav>
         <form
@@ -37,13 +39,13 @@ export default function Header() {
           <input name="q" type="search" placeholder="Search clips, goals, tifos…" aria-label="Search" />
         </form>
         <div className="spacer" />
-        {/* On phones the tab bar carries navigation, upload and profile; the header keeps search. */}
+        {/* On phones the tab bar carries navigation, posting and the shop; the header keeps search and your profile. */}
         <Link href="/search" className="icon-btn show-sm" aria-label="Search">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
         </Link>
         {ready && (user ? (
-          <div className="row header-actions hide-sm">
-            <Link href="/upload" className="btn btn-primary btn-sm" aria-label="Upload">+ Upload</Link>
+          <div className="row header-actions">
+            <Link href="/upload" className="btn btn-primary btn-sm hide-sm" aria-label="Upload">+ Upload</Link>
             <Link href={`/u/${user.handle}`} aria-label="Your profile"><Avatar name={user.displayName} size="sm" /></Link>
             <button className="linkish hide-sm" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>

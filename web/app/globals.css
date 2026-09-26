@@ -615,3 +615,5 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .world-search { max-width: none; flex-basis: 100%; }
   .world-league, .world-strip { border-radius: 12px; }
 }
+.section-head .linkish { white-space: nowrap; flex-shrink: 0; }
+.section-head h2 { flex-wrap: wrap; }
