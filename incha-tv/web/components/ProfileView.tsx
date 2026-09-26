@@ -56,6 +56,7 @@ export default function ProfileView({ handle }: { handle: string }) {
         </div>
         {isMe && !editing && (
           <div className="row">
+            <Link href="/studio" className="btn btn-sm btn-primary">Studio</Link>
             <button className="btn btn-sm" onClick={() => { setDraft({ displayName: profile.displayName, bio: profile.bio }); setEditing(true); }}>Edit profile</button>
             <button className="btn btn-sm btn-ghost" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>

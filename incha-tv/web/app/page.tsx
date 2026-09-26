@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Feed from '@/components/Feed';
 import FandomChips from '@/components/FandomChips';
+import LiveStrip from '@/components/LiveStrip';
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -17,6 +18,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           </div>
         </section>
       )}
+      {!q && <LiveStrip />}
       {!q && <FandomChips />}
       <Feed q={q} />
     </div>

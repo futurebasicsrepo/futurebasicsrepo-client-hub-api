@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { uploadFile, type Post } from '@/lib/api';
 import { useRequireUser } from '@/lib/useRequireUser';
 
@@ -9,8 +9,14 @@ const ACCEPT = 'video/mp4,video/webm,video/quicktime,image/jpeg,image/png,image/
 const MAX_BYTES = 500_000_000;
 
 export default function UploadPage() {
+  return <Suspense><Upload /></Suspense>;
+}
+
+function Upload() {
   const user = useRequireUser();
   const router = useRouter();
+  const params = useSearchParams();
+  const matchId = params.get('match');
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
@@ -26,7 +32,10 @@ export default function UploadPage() {
     setProgress(0);
     try {
       const { post } = await uploadFile<{ post: Post }>('/v1/posts', file, file.name, setProgress);
-      router.push(`/studio/${post.id}`);
+      const forward = new URLSearchParams();
+      if (matchId) forward.set('match', matchId);
+      if (params.get('minute')) forward.set('minute', params.get('minute')!);
+      router.push(`/studio/${post.id}${forward.size ? `?${forward}` : ''}`);
     } catch (err) {
       setError((err as Error).message);
       setProgress(null);
@@ -38,6 +47,7 @@ export default function UploadPage() {
     <div className="wrap" style={{ maxWidth: 860 }}>
       <h1 className="display page-title">Upload</h1>
       <p className="muted">Drop a clip or photo. You’ll trim it, pick a cover, and choose who sees it before anything goes live.</p>
+      {matchId && <p className="badge flare" style={{ marginTop: 8 }}>This clip will be added to the match</p>}
       {progress === null ? (
         <div
           className={`dropzone${over ? ' over' : ''}`}

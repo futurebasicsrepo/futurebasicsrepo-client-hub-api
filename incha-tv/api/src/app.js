@@ -5,6 +5,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import * as storage from './storage.js';
+import { registerMatches } from './matches.js';
 import {
   COVER_TYPES, EMAIL_RE, HANDLE_RE, MEDIA_KEY_RE, MEDIA_TYPES, POST_ID_RE, SORTS,
   createLimiter, hashPassword, normalizeEmail, normalizeHandle, normalizePostEdit,
@@ -106,13 +107,19 @@ export async function buildApp({ logger = true } = {}) {
       fandom: row.fandom_slug ? { slug: row.fandom_slug, name: row.fandom_name } : null,
       creator: { handle: row.handle, displayName: row.display_name },
       viewerHasVoted: Boolean(row.viewer_voted),
+      match: row.match_json || null,
+      matchMinute: row.match_minute ?? null,
       isOwner: Boolean(req.user && Number(row.user_id) === req.user.id)
     };
   };
 
   const POST_SELECT = `
     select p.*, u.handle, u.display_name, f.slug as fandom_slug, f.name as fandom_name,
-      exists(select 1 from votes v where v.post_id = p.id and v.user_id = $1::bigint) as viewer_voted
+      exists(select 1 from votes v where v.post_id = p.id and v.user_id = $1::bigint) as viewer_voted,
+      (select json_build_object('id', m.id, 'home', ht.name, 'away', aw.name, 'homeScore', m.home_score,
+          'awayScore', m.away_score, 'period', m.period, 'youth', m.youth)
+        from matches m join teams ht on ht.id = m.home_team_id join teams aw on aw.id = m.away_team_id
+        where m.id = p.match_id) as match_json
     from posts p join users u on u.id = p.user_id left join fandoms f on f.id = p.fandom_id`;
 
   async function loadPost(req, id) {
@@ -132,6 +139,8 @@ export async function buildApp({ logger = true } = {}) {
     if (!row || Number(row.user_id) !== req.user.id) { fail(reply, 404, 'Post not found.'); return null; }
     return row;
   }
+
+  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT });
 
   async function fandomId(name) {
     if (!name) return null;
@@ -287,9 +296,25 @@ export async function buildApp({ logger = true } = {}) {
     if (errors.length) return fail(reply, 400, errors.join(' '));
     if (row.media_kind === 'image') { delete values.trimStart; delete values.trimEnd; delete values.duration; }
     if (row.status === 'published' && 'title' in values && !values.title) return fail(reply, 400, 'Published posts need a title.');
+    const body = req.body || {};
+    let matchId = row.match_id;
+    if ('matchId' in body) {
+      matchId = body.matchId ? String(body.matchId) : null;
+      if (matchId && !(await matchCentre.loadMatch(matchId))) return fail(reply, 400, 'That match doesn’t exist.');
+      values.matchId = matchId;
+    }
+    if ('matchMinute' in body) {
+      const minute = body.matchMinute === null || body.matchMinute === '' ? null : Number(body.matchMinute);
+      if (minute !== null && !(Number.isInteger(minute) && minute >= 0 && minute <= 200)) return fail(reply, 400, 'Match minute must be a whole number.');
+      values.matchMinute = minute;
+    }
+    // Clips from youth matches never go public.
+    if (matchId && (values.visibility ?? row.visibility) === 'public' && row.status === 'published' && (await matchCentre.loadMatch(matchId))?.youth) {
+      return fail(reply, 400, 'Clips from youth matches can be unlisted or private, not public.');
+    }
     const columns = {
       title: 'title', description: 'description', filter: 'filter', visibility: 'visibility',
-      duration: 'duration', trimStart: 'trim_start', trimEnd: 'trim_end'
+      duration: 'duration', trimStart: 'trim_start', trimEnd: 'trim_end', matchId: 'match_id', matchMinute: 'match_minute'
     };
     const sets = [];
     const params = [row.id];
@@ -298,6 +323,7 @@ export async function buildApp({ logger = true } = {}) {
     }
     if ('fandom' in values) { params.push(await fandomId(values.fandom)); sets.push(`fandom_id = $${params.length}`); }
     if (sets.length) await pool.query(`update posts set ${sets.join(', ')}, updated_at = now() where id = $1`, params);
+    if (row.status === 'published') for (const id of new Set([row.match_id, matchId])) matchCentre.notify(id).catch(() => {});
     return { post: postView(req, await loadPost(req, row.id)) };
   });
 
@@ -322,9 +348,13 @@ export async function buildApp({ logger = true } = {}) {
     const { errors } = normalizePostEdit({ visibility });
     if (errors.length) return fail(reply, 400, errors.join(' '));
     if (!row.title.trim()) return fail(reply, 400, 'Add a title before publishing.');
+    if (visibility === 'public' && row.match_id && (await matchCentre.loadMatch(row.match_id))?.youth) {
+      return fail(reply, 400, 'Clips from youth matches can be unlisted or private, not public.');
+    }
     await pool.query(
       `update posts set status = 'published', visibility = $2, published_at = coalesce(published_at, now()), updated_at = now() where id = $1`,
       [row.id, visibility]);
+    matchCentre.notify(row.match_id).catch(() => {});
     return { post: postView(req, await loadPost(req, row.id)) };
   });
 
@@ -332,6 +362,7 @@ export async function buildApp({ logger = true } = {}) {
     const row = await loadOwnPost(req, reply, req.params.id);
     if (!row) return;
     await pool.query(`update posts set status = 'draft', updated_at = now() where id = $1`, [row.id]);
+    matchCentre.notify(row.match_id).catch(() => {});
     return { post: postView(req, await loadPost(req, row.id)) };
   });
 
@@ -339,6 +370,7 @@ export async function buildApp({ logger = true } = {}) {
     const row = await loadOwnPost(req, reply, req.params.id);
     if (!row) return;
     await pool.query(`delete from posts where id = $1`, [row.id]);
+    matchCentre.notify(row.match_id).catch(() => {});
     await Promise.all([storage.remove(row.media_key), storage.remove(row.cover_key)]);
     return reply.code(204).send();
   });
