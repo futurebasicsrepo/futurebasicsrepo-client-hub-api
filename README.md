@@ -64,6 +64,16 @@ cd ../web && npm run typecheck && npm run build
 
 ## Deploying
 
+### Current environments
+
+| | Where | URL |
+| --- | --- | --- |
+| Web | Vercel, **Future Basics** team, project `incha-tv` | https://incha-tv-future-basics.vercel.app |
+| API | Railway project `incha-tv` → service `incha-api` (root `/incha-tv/api`, volume `/data`) | https://incha-api-production.up.railway.app |
+| DB | Railway project `incha-tv` → `Postgres` (referenced as `${{Postgres.DATABASE_URL}}`) | private network only |
+
+Config-as-code (`railway.json`) is deprecated on Railway, so the service's build and deploy settings live on the service itself. The file here is kept as documentation. The API service deploys from the PR branch until it merges; point it at `main` after that.
+
 ### Railway (API + Postgres + media volume)
 
 1. Create a new Railway project with a **PostgreSQL** database.
