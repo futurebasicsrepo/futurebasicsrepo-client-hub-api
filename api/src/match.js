@@ -83,3 +83,42 @@ export function applyEvent(match, body = {}, now = Date.now()) {
   const patch = type === 'goal' ? { [side === 'home' ? 'homeScore' : 'awayScore']: (side === 'home' ? match.homeScore : match.awayScore) + 1 } : {};
   return { event: { type, side, player, minute, stoppage }, patch };
 }
+
+// Scorekeepers forget to press "Full time" (the phone goes back in a pocket), which leaves a match
+// "live" with the clock running to 45+38'. A match is called automatically once it's well past where
+// it should have ended AND the scoreboard has gone quiet; a hard cap covers boards that never go quiet.
+export const AUTO_END = {
+  secondHalf: { past: 30, idle: 20, cap: 90 }, // minutes after the 2nd half's regulation time
+  firstHalf: { past: 40, idle: 20, cap: 150 }, // "half time" and "2nd half" were never pressed
+  halfTime: { past: 40, idle: 20, cap: 120 }, // "start 2nd half" was never pressed
+  undoHours: 2 // how long scorekeepers can resume an automatically ended match
+};
+
+const MIN = 60_000;
+
+/**
+ * Whether a live match should be called full time. `halftimeAt` is when half time was logged,
+ * `lastActivityAt` the latest scorekeeper event, `resumedAt` when a scorekeeper undid an automatic
+ * full time. Returns null, or { minute, stoppage } for the
+ * full-time event: the clock when play most plausibly stopped.
+ */
+export function autoFullTime({ period, periodStartedAt, halfLength, halftimeAt, lastActivityAt, resumedAt }, now = Date.now()) {
+  if (!LIVE_PERIODS.includes(period) || !periodStartedAt) return null;
+  const hl = halfLength * MIN;
+  const start = new Date(periodStartedAt).getTime();
+  const since = period === 'ht' ? new Date(halftimeAt ?? periodStartedAt).getTime() : start;
+  const last = Math.max(since, ...[lastActivityAt, resumedAt].map(t => (t ? new Date(t).getTime() : 0)));
+  const idle = now - last;
+  // When the period should have ended: 2nd half after one half; a never-split "first half" after two
+  // halves and a break; half time after the break and the whole second half.
+  const rule = { '2h': AUTO_END.secondHalf, '1h': AUTO_END.firstHalf, ht: AUTO_END.halfTime }[period];
+  const due = since + (period === '2h' ? hl : period === '1h' ? 2 * hl + 15 * MIN : hl + 15 * MIN);
+  const overdue = now - due;
+  // A scorekeeper who resumed a match knows it's still going, so only the quiet rule applies after that.
+  const capped = !resumedAt && overdue > rule.cap * MIN;
+  if (!(capped || (overdue > rule.past * MIN && idle > rule.idle * MIN))) return null;
+  if (period !== '2h') return { minute: 2 * halfLength, stoppage: 0 };
+  // Play stopped at the last thing logged, but not before regulation time and never in the future.
+  const clock = matchClock({ period, periodStartedAt, halfLength }, Math.min(now, Math.max(last, start + hl - 1)));
+  return { minute: clock.minute, stoppage: clock.stoppage };
+}

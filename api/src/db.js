@@ -187,6 +187,11 @@ export async function migrate() {
     alter table posts add column if not exists is_reel boolean not null default false;
     alter table matches add column if not exists reel_status text check (reel_status in ('building','ready','none','failed'));
     alter table matches add column if not exists reel_post_id text references posts(id) on delete set null;
+
+    -- Matches the server called full time on because the scoreboard went quiet (the period it was in, for resuming).
+    alter table matches add column if not exists auto_ended_from text check (auto_ended_from in ('1h','ht','2h'));
+    alter table matches add column if not exists resumed_at timestamptz;
+    create index if not exists matches_live on matches (period_started_at) where period in ('1h','ht','2h');
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());

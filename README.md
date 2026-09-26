@@ -125,6 +125,7 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | GET | `/v1/matches/:id/stream` | – | Server-Sent Events: `update` with the full snapshot on every change |
 | POST | `/v1/matches/:id/events` | scorekeeper or co-keeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
+| POST | `/v1/matches/:id/resume` | scorekeeper or co-keeper | undo an automatic full time (within 2 hours) |
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
 | POST/DELETE | `/v1/matches/:id/follow`, `/v1/teams/:slug/follow` | ✓ | follow / unfollow |
 | GET | `/v1/me/follows` | ✓ | followed teams and match ids |
@@ -157,6 +158,18 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 - If the API restarts mid-stream, the stream is closed and what was recorded so far is saved.
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
+
+### Automatic full time
+
+Scorekeepers forget to press Full time, which used to leave a match "live" with the clock running to 45+38'. Once a minute the API calls full time on a match that is well past where it should have ended **and** whose scoreboard has gone quiet (`autoFullTime` in `api/src/match.js`):
+
+| Stuck in | Ends when (minutes past regulation) | Hard cap |
+| --- | --- | --- |
+| Second half | 30+ past the second half, nothing logged for 20 | 90 past |
+| First half (half time never pressed) | 40+ past two halves and a break, quiet for 20 | 150 past |
+| Half time (second half never started) | 40+ past a break and a half, quiet for 20 | 120 past |
+
+The full-time event gets the clock at the last thing logged (never before regulation time). Followers get the normal full-time alert, the highlight reel starts, and the match shows `autoEnded: true`. If the match was actually still going, a scorekeeper taps **Resume match** (within 2 hours). After a resume only the "quiet" rule applies, so a long cup tie with extra time isn't cut off again.
 
 ## Highlight reels
 

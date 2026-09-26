@@ -293,6 +293,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .keeper { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; border-color: color-mix(in srgb, var(--flare) 40%, var(--line)); }
 .keeper-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .keeper-team { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.keeper-auto { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--flare) 12%, transparent); font-size: 14px; }
+.keeper-auto p { margin: 0; flex: 1 1 200px; }
 .goal-btn { padding: 16px; font-size: 17px; }
 
 .timeline h2 { font-size: 28px; margin: 16px 0 8px; }

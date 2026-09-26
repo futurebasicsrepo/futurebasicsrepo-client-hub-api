@@ -130,4 +130,40 @@ test('follows, push alerts and co-scorekeepers', { skip: !dbUrl && 'set TEST_DAT
 
   const follows = json(await call('GET', '/v1/me/follows', teamFan));
   assert.deepEqual(follows.teams.map(t => t.slug).sort(), ['fishtown-united', 'u10-blues']);
+
+  // Nobody pressed Full time: the server calls it, followers hear about it, and the keeper can resume.
+  const quiet = json(await call('POST', '/v1/matches', keeper, { home: 'Quiet FC', away: 'Forgetful Rovers', halfLength: 30 })).match;
+  await call('POST', `/v1/matches/${quiet.id}/follow`, matchFan);
+  await call('POST', `/v1/matches/${quiet.id}/events`, keeper, { type: 'kickoff' });
+  await call('POST', `/v1/matches/${quiet.id}/events`, keeper, { type: 'halftime' });
+  await call('POST', `/v1/matches/${quiet.id}/events`, keeper, { type: 'second_half' });
+  await call('POST', `/v1/matches/${quiet.id}/events`, keeper, { type: 'goal', side: 'away' });
+  await flush();
+  drain();
+  // Pretend the second half started 75 minutes ago and the goal went in 50 minutes ago.
+  await pool.query(`update matches set period_started_at = now() - interval '75 minutes' where id = $1`, [quiet.id]);
+  await pool.query(`update match_events set created_at = now() - interval '50 minutes' where match_id = $1`, [quiet.id]);
+  const busy = json(await call('POST', '/v1/matches', keeper, { home: 'Busy FC', away: 'Tapping Town' })).match;
+  await call('POST', `/v1/matches/${busy.id}/events`, keeper, { type: 'kickoff' });
+  assert.deepEqual(await app.sweepStaleMatches(), [quiet.id], 'only the quiet, overdue match ends');
+  assert.deepEqual(await app.sweepStaleMatches(), [], 'and only once');
+  await flush();
+  assert.deepEqual(drain(), ['keeper', 'match_fan'], 'full-time alert goes to followers, the keeper included');
+  let snap = json(await call('GET', `/v1/matches/${quiet.id}`, keeper));
+  assert.equal(snap.match.period, 'ft');
+  assert.equal(snap.match.autoEnded, true);
+  assert.equal(snap.match.awayScore, 1);
+  const whistle = snap.events.at(-1);
+  assert.deepEqual([whistle.type, whistle.minute, whistle.stoppage], ['fulltime', 60, 0], 'the clock stops at regulation time');
+  assert.equal(json(await call('GET', `/v1/matches/${busy.id}`)).match.period, '1h');
+
+  assert.equal((await call('POST', `/v1/matches/${quiet.id}/resume`, stranger)).statusCode, 404);
+  snap = json(await call('POST', `/v1/matches/${quiet.id}/resume`, keeper));
+  assert.equal(snap.match.period, '2h', 'back where it was');
+  assert.equal(snap.match.autoEnded, false);
+  assert.ok(!snap.events.some(e => e.type === 'fulltime'), 'the automatic whistle is gone');
+  assert.equal((await call('POST', `/v1/matches/${quiet.id}/resume`, keeper)).statusCode, 400, 'nothing to resume');
+  assert.deepEqual(await app.sweepStaleMatches(), [], 'a resumed match isn\u2019t ended again straight away');
+  await call('POST', `/v1/matches/${quiet.id}/events`, keeper, { type: 'fulltime' });
+  assert.equal((await call('POST', `/v1/matches/${quiet.id}/resume`, keeper)).statusCode, 400, 'a full time someone pressed stays');
 });
