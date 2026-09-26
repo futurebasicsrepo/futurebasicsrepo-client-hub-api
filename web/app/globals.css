@@ -107,11 +107,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px;
   border: 1px solid var(--line); color: var(--paper-dim); font-weight: 500; font-size: 14px; cursor: pointer; background: transparent;
+  flex-shrink: 0; white-space: nowrap;
 }
 .chip:hover { color: var(--paper); border-color: var(--paper-dim); }
 .chip[aria-pressed='true'], .chip.active { background: var(--paper); color: var(--ink); border-color: var(--paper); }
-.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .chips::-webkit-scrollbar { display: none; }
+/* On phones, let the chip row scroll edge to edge so it reads as swipeable. */
+@media (max-width: 760px) { .chips { margin: 0 calc(-1 * var(--gutter)); padding-left: var(--gutter); padding-right: var(--gutter); scroll-padding-inline: var(--gutter); } }
 
 .badge { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 4px; background: var(--ink-3); color: var(--paper-dim); }
 .badge.flare { background: var(--flare); color: var(--flare-ink); }
