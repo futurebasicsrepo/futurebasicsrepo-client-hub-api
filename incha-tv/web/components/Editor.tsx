@@ -186,7 +186,7 @@ export default function Editor({ id }: { id: string }) {
     if (!window.confirm('Delete this post for good? This can’t be undone.')) return;
     run('delete', async () => {
       await api(`/v1/posts/${id}`, { method: 'DELETE' });
-      router.push('/studio');
+      router.push(`/u/${user!.handle}?tab=studio`);
     });
   };
 
@@ -209,7 +209,7 @@ export default function Editor({ id }: { id: string }) {
   return (
     <div className="wrap">
       <div className="row" style={{ marginTop: 24 }}>
-        <Link href="/studio" className="linkish">← Studio</Link>
+        <Link href={`/u/${user.handle}?tab=studio`} className="linkish">← Studio</Link>
         <VisibilityBadge post={post} />
         <div className="spacer" />
         {published && <Link href={`/p/${post.id}`} className="btn btn-sm btn-ghost">View post</Link>}

@@ -2,17 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { api, getToken, type Profile, type User } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { compact } from '@/lib/format';
 import Avatar from './Avatar';
-import AlertsToggle from './AlertsToggle';
 import Feed from './Feed';
+import StudioList from './StudioList';
+import ProfileMatches from './ProfileMatches';
 
+type Tab = 'posts' | 'studio' | 'matches';
+const LABELS: Record<Tab, string> = { posts: 'Posts', studio: 'Studio', matches: 'Matches' };
+
+/** A person's page. On your own it's your home base: public posts, every upload (Studio), your matches and settings. */
 export default function ProfileView({ handle }: { handle: string }) {
-  const { user, signIn, signOut } = useAuth();
+  const { user, ready, signIn, signOut } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [missing, setMissing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -24,6 +31,10 @@ export default function ProfileView({ handle }: { handle: string }) {
   }, [handle]);
 
   const isMe = user?.handle === handle.toLowerCase().replace(/^@/, '');
+  const tabs: Tab[] = isMe ? ['posts', 'studio', 'matches'] : ['posts', 'matches'];
+  const requested = params.get('tab') as Tab | null;
+  const tab: Tab = requested && tabs.includes(requested) ? requested : 'posts';
+  const openTab = (next: Tab) => router.replace(next === 'posts' ? pathname : `${pathname}?tab=${next}`, { scroll: false });
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -40,30 +51,31 @@ export default function ProfileView({ handle }: { handle: string }) {
   }
 
   if (missing) return <div className="wrap"><div className="empty" style={{ marginTop: 48 }}><div className="display">Creator not found</div><Link href="/" className="btn">Back to the feed</Link></div></div>;
-  if (!profile) return <div className="wrap"><div className="skeleton" style={{ height: 140, marginTop: 40 }} /></div>;
+  // Wait for auth too, so your own Studio/Matches tabs don't flash in after the page renders.
+  if (!profile || !ready) return <div className="wrap"><div className="skeleton" style={{ height: 140, marginTop: 40 }} /></div>;
 
   return (
-    <div className="wrap">
+    <div className="wrap profile">
       <section className="profile-head">
         <Avatar name={profile.displayName} size="lg" />
-        <div className="stack" style={{ gap: 4, flex: 1, minWidth: 240 }}>
+        <div className="stack" style={{ gap: 4, flex: 1, minWidth: 220 }}>
           <h1 className="display">{profile.displayName}</h1>
           <span className="muted">@{profile.handle}</span>
           {profile.bio && <p style={{ margin: '8px 0 0', maxWidth: 560 }}>{profile.bio}</p>}
         </div>
         <div className="stats">
           <div><strong>{compact(profile.postCount)}</strong><span className="mono muted">Posts</span></div>
+          <div><strong>{compact(profile.matchCount ?? 0)}</strong><span className="mono muted">Matches</span></div>
           <div><strong>{compact(profile.totalScore)}</strong><span className="mono muted">Upvotes</span></div>
         </div>
         {isMe && !editing && (
           <div className="row">
-            <Link href="/studio" className="btn btn-sm btn-primary">Studio</Link>
             <button className="btn btn-sm" onClick={() => { setDraft({ displayName: profile.displayName, bio: profile.bio }); setEditing(true); }}>Edit profile</button>
             <button className="btn btn-sm btn-ghost" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>
         )}
       </section>
-      {isMe && !editing && <AlertsToggle />}
+
       {editing && (
         <form className="panel stack" onSubmit={save} style={{ maxWidth: 560, marginBottom: 24 }}>
           <div className="field"><label htmlFor="dn">Display name</label><input id="dn" className="input" value={draft.displayName} maxLength={60} onChange={e => setDraft({ ...draft, displayName: e.target.value })} /></div>
@@ -72,7 +84,20 @@ export default function ProfileView({ handle }: { handle: string }) {
           <div className="row"><button className="btn btn-primary btn-sm">Save</button><button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button></div>
         </form>
       )}
-      <Feed creator={profile.handle} emptyTitle="No public posts yet" emptyBody={isMe ? 'Your published public posts show up here.' : 'Check back after the next match.'} />
+
+      <nav className="profile-tabs" aria-label="Profile sections">
+        {tabs.map(t => (
+          <button key={t} aria-current={tab === t ? 'page' : undefined} onClick={() => openTab(t)}>{LABELS[t]}</button>
+        ))}
+      </nav>
+
+      <div className="profile-panel">
+        {tab === 'posts' && (
+          <Feed creator={profile.handle} emptyTitle="No public posts yet" emptyBody={isMe ? 'Your published public posts show up here. Drafts live in Studio.' : 'Check back after the next match.'} />
+        )}
+        {tab === 'studio' && isMe && <StudioList />}
+        {tab === 'matches' && <ProfileMatches handle={profile.handle} isMe={isMe} />}
+      </div>
     </div>
   );
 }

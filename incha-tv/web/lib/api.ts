@@ -8,7 +8,7 @@ export type FilterName = 'none' | 'terrace' | 'matchday' | 'floodlight' | 'vinta
 export type Sort = 'hot' | 'new' | 'top';
 
 export interface User { id: number; handle: string; displayName: string; bio: string; createdAt: string }
-export interface Profile extends Omit<User, 'id'> { postCount: number; totalScore: number }
+export interface Profile extends Omit<User, 'id'> { postCount: number; totalScore: number; matchCount?: number }
 export interface Fandom { slug: string; name: string; postCount?: number; latestAt?: string | null; coverUrl?: string | null }
 
 export interface Post {
@@ -69,6 +69,8 @@ export interface Match {
   isOwner?: boolean;
   following?: boolean;
   keepers?: { handle: string; displayName: string }[];
+  /** Your part in the match, on your own match list. */
+  role?: 'scorekeeper' | 'co-keeper';
 }
 export interface LiveStream {
   id: string;
