@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api, type Post, type Sort } from '@/lib/api';
 import PostCard from './PostCard';
+import { useIsPhone } from '@/lib/useIsPhone';
 
 interface Props {
   fandom?: string;
@@ -19,6 +20,8 @@ export default function Feed({ fandom, creator, q, emptyTitle = 'Nothing here ye
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
+  const phone = useIsPhone();
+  const watchQuery = (start?: string) => `/watch?${new URLSearchParams({ sort, ...(fandom ? { fandom } : {}), ...(start ? { start } : {}) })}`;
 
   const query = useCallback((offset: number) => {
     const params = new URLSearchParams({ sort, offset: String(offset) });
@@ -62,6 +65,7 @@ export default function Feed({ fandom, creator, q, emptyTitle = 'Nothing here ye
             </button>
           ))}
         </div>
+        {!q && !creator && <Link href={watchQuery()} className="btn btn-sm watch-cta">▶ Watch</Link>}
         {q && <span className="muted">Results for “{q}” · <Link href="/" className="linkish">clear</Link></span>}
       </div>
       {error && <p className="error">{error}</p>}
@@ -77,7 +81,7 @@ export default function Feed({ fandom, creator, q, emptyTitle = 'Nothing here ye
       )}
       {posts && posts.length > 0 && (
         <>
-          <div className="grid">{posts.map(post => <PostCard key={post.id} post={post} />)}</div>
+          <div className="grid">{posts.map(post => <PostCard key={post.id} post={post} href={phone && !q && !creator ? watchQuery(post.id) : undefined} />)}</div>
           {nextOffset !== null && (
             <div style={{ textAlign: 'center', paddingBottom: 48 }}>
               <button className="btn" onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button>

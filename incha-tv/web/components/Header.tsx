@@ -10,6 +10,7 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const current = (href: string) => (pathname === href ? 'page' : undefined);
+  if (pathname?.startsWith('/watch')) return null; // the swipe feed is full-screen
 
   return (
     <header className="site-header">
@@ -17,6 +18,7 @@ export default function Header() {
         <Link href="/" className="logo" aria-label="incha.tv home">INCHA<span className="tv">.TV</span></Link>
         <nav className="nav">
           <Link href="/" aria-current={current('/')} className="hide-sm">Feed</Link>
+          <Link href="/watch" aria-current={current('/watch')}>Watch</Link>
           <Link href="/matches" aria-current={current('/matches')}>Matches</Link>
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
           {user && <Link href="/studio" aria-current={current('/studio')} className="hide-sm">Studio</Link>}
@@ -35,7 +37,7 @@ export default function Header() {
         <div className="spacer" />
         {ready && (user ? (
           <div className="row header-actions">
-            <Link href="/upload" className="btn btn-primary btn-sm">+ Upload</Link>
+            <Link href="/upload" className="btn btn-primary btn-sm" aria-label="Upload">+<span className="hide-sm"> Upload</span></Link>
             <Link href={`/u/${user.handle}`} aria-label="Your profile"><Avatar name={user.displayName} size="sm" /></Link>
             <button className="linkish hide-sm" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>
