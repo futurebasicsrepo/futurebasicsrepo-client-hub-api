@@ -13,8 +13,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
           <h1 className="display">For the fans.<br /><span className="flare">By the fans.</span></h1>
           <p>Goals from the stands, tifos, away days, pickup games, and the madness in between. Upload your moments, trim them, and share them with your fandom.</p>
           <div className="row">
-            <Link href="/upload" className="btn btn-primary">Upload a moment</Link>
-            <Link href="/fandoms" className="btn">Find your fandom</Link>
+            <Link href="/watch" className="btn btn-primary watch-cta">▶ Start watching</Link>
+            <Link href="/upload" className="btn">Upload a moment</Link>
           </div>
         </section>
       )}

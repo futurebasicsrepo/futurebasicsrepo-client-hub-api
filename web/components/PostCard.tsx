@@ -12,11 +12,11 @@ export function Thumb({ post }: { post: Post }) {
   return <video src={`${post.mediaUrl}#t=${start}`} preload="metadata" muted playsInline style={style} />;
 }
 
-export default function PostCard({ post }: { post: Post }) {
+export default function PostCard({ post, href }: { post: Post; href?: string }) {
   const length = post.kind === 'video' ? runtime(post) : null;
   return (
     <article className="card">
-      <Link href={`/p/${post.id}`} className="thumb">
+      <Link href={href ?? `/p/${post.id}`} className="thumb">
         <Thumb post={post} />
         <span className="overlay">
           {length && <span className="badge">{length}</span>}
