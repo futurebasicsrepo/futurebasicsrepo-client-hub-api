@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken, type User } from './api';
+import { linkPush, unlinkPush } from './push';
 
 interface AuthState {
   user: User | null;
@@ -25,7 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = useCallback((token: string, next: User) => { setToken(token); setUser(next); }, []);
-  const signOut = useCallback(() => { setToken(null); setUser(null); }, []);
+  const signOut = useCallback(() => { unlinkPush(getToken()); setToken(null); setUser(null); }, []);
+
+  // A device that already allowed alerts keeps getting them for whoever is signed in.
+  useEffect(() => { if (user) linkPush().catch(() => {}); }, [user]);
 
   return <AuthContext.Provider value={{ user, ready, signIn, signOut }}>{children}</AuthContext.Provider>;
 }

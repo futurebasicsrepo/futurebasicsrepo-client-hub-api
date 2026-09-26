@@ -123,9 +123,15 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | GET | `/v1/me/matches` | ✓ | matches you keep score for |
 | GET | `/v1/matches/:id` | – | match + events + clips (`canScore` for the scorekeeper) |
 | GET | `/v1/matches/:id/stream` | – | Server-Sent Events: `update` with the full snapshot on every change |
-| POST | `/v1/matches/:id/events` | scorekeeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
+| POST | `/v1/matches/:id/events` | scorekeeper or co-keeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
+| POST/DELETE | `/v1/matches/:id/follow`, `/v1/teams/:slug/follow` | ✓ | follow / unfollow |
+| GET | `/v1/me/follows` | ✓ | followed teams and match ids |
+| GET | `/v1/push/key` | – | VAPID public key (null when alerts are off) |
+| POST/DELETE | `/v1/push/subscriptions` | ✓ | register / remove this device's push subscription (`PushSubscription.toJSON()`) |
+| POST | `/v1/matches/:id/keepers` | creator | `{ handle }` add a co-scorekeeper (max 3) |
+| DELETE | `/v1/matches/:id/keepers/:handle` | creator or that keeper | remove / step down |
 | GET | `/v1/world/scores` | – | pro & international scores grouped by league; `date=YYYY-MM-DD` (±7 days) |
 | POST | `/v1/matches/:id/streams` | ✓ | go live on a match (not youth, not finished) → `{ stream }` with `hlsUrl` |
 | POST | `/v1/streams/:id/chunks?seq=n` | streamer | `application/octet-stream` MediaRecorder chunk (≤ 8 MB); returns `{ next }`, 409 with `next` when out of order |
@@ -150,6 +156,14 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
+## Follows, alerts and co-scorekeepers
+
+- **Follow** a team (from its page) or a match (🔔 on the match page). Whoever starts a match, and anyone they add as a co-scorekeeper, follows it automatically.
+- **Push alerts** go to followers' phones for kick-off, goals, red cards, half time, full time, and when a fan goes live. They skip whoever tapped the button. Web Push works on Android and desktop, and on iPhone once incha.tv is added to the Home Screen (iOS 16.4+). Tapping an alert opens the match. Your profile has a "Match alerts on this device" switch. Signing out unlinks the device.
+- **Privacy:** team followers only hear about public matches. Youth and unlisted matches alert only people who followed that match from its link. Expired phone subscriptions are cleaned up automatically.
+- **Co-scorekeepers:** the match creator can add up to 3 people by handle to run the scoreboard with them. Handy when the scorekeeper is also filming. Co-keepers can step down themselves.
+- Setup: set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` on the API (generate them with `npx web-push generate-vapid-keys`). Without them, follows still work and alerts are simply off.
+
 ## World scores
 
 `/scores` shows pro and international football from around the world: every league on ESPN's public soccer scoreboard, usually 40+ competitions and 300+ games on a Saturday. It has Yesterday, Today and Tomorrow views, a live-only filter, team and league search, and leagues you can follow, which pin to the top on that device. The home screen gets an "Around the world" strip, and the score ticker adds live pro games after the grassroots ones.
@@ -159,7 +173,7 @@ Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals 
 
 ## Next steps (not in v1)
 
-- Push notifications for goals, co-scorekeepers, "clip that" instant replay, and auto highlight reels per match.
+- "Clip that" instant replay from a live stream, and auto highlight reels per match.
 
 - **Transcoding at scale.** Conversion and live encoding run inside the API process, which is fine for one instance. Past that, move them to a separate worker service, and move media to object storage.
 - **Object storage.** Move media to S3/R2 or Railway Buckets with a CDN in front. `api/src/storage.js` is the only file that changes.

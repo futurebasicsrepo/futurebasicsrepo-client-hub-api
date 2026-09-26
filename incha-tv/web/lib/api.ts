@@ -65,6 +65,10 @@ export interface Match {
   scorekeeper: { handle: string; displayName: string };
   liveStreams?: number;
   canScore?: boolean;
+  /** Viewer-specific (missing on the anonymous live stream). */
+  isOwner?: boolean;
+  following?: boolean;
+  keepers?: { handle: string; displayName: string }[];
 }
 export interface LiveStream {
   id: string;

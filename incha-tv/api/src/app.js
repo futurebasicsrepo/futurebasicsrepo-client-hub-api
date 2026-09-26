@@ -10,6 +10,7 @@ import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
 import { createWorldScores } from './worldscores.js';
+import { createNotifier, registerAlerts } from './alerts.js';
 import {
   COVER_TYPES, EMAIL_RE, HANDLE_RE, MEDIA_KEY_RE, MEDIA_TYPES, POST_ID_RE, SORTS,
   createLimiter, hashPassword, normalizeEmail, normalizeHandle, normalizePostEdit,
@@ -30,7 +31,7 @@ function originAllowed(origin, allowed) {
   });
 }
 
-export async function buildApp({ logger = true, worldScores } = {}) {
+export async function buildApp({ logger = true, worldScores, pushSender } = {}) {
   const app = Fastify({ logger, bodyLimit: 1_000_000, trustProxy: true });
   const jwtSecret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
   const mediaSecret = process.env.MEDIA_SECRET || process.env.JWT_SECRET || randomBytes(32).toString('hex');
@@ -149,8 +150,10 @@ export async function buildApp({ logger = true, worldScores } = {}) {
   }
 
   let live;
-  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row) });
-  live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log });
+  const notifier = createNotifier({ pool, log: app.log, send: pushSender });
+  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row), notifier });
+  live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });
+  registerAlerts(app, { pool, fail, requireUser, notifier, loadMatch: matchCentre.loadMatch });
   const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
   app.decorate('transcoder', transcoder);
   // Pick up work a previous process didn't finish: queued conversions and streams cut off by a restart.
