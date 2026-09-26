@@ -4,10 +4,10 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createReadStream, mkdirSync } from 'node:fs';
-import { rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import * as storage from './storage.js';
-import { FFMPEG, faststart, ffmpegAvailable, posterFrame, probe } from './media.js';
+import { CLIP_SECONDS, FFMPEG, SEGMENT_SECONDS, clipSegmentNames, faststart, ffmpegAvailable, joinSegments, posterFrame, probe } from './media.js';
 import { matchClock } from './match.js';
 import { createLimiter, randomId, POST_ID_RE } from './lib.js';
 
@@ -17,12 +17,13 @@ const MAX_SECONDS = Number(process.env.MAX_LIVE_SECONDS) || 3 * 60 * 60;
 const IDLE_MS = Number(process.env.LIVE_IDLE_MS) || 30_000;
 const MAX_CHUNK = 8 * 1024 * 1024;
 const LIVE_FILE_RE = /^(index\.m3u8|seg\d{5}\.ts)$/;
+
 const SCALE_720 = `scale=w='if(gte(iw,ih),trunc(min(1280,iw)/2)*2,-2)':h='if(gte(iw,ih),-2,trunc(min(1280,ih)/2)*2)'`;
 
 mkdirSync(LIVE_DIR, { recursive: true });
 
 export function liveArgs(dir) {
-  const hls = `[f=hls:hls_time=2:hls_list_size=8:hls_flags=delete_segments+independent_segments:hls_segment_filename=${dir}/seg%05d.ts]${dir}/index.m3u8`;
+  const hls = `[f=hls:hls_time=2:hls_list_size=8:hls_flags=delete_segments+independent_segments:hls_delete_threshold=30:hls_segment_filename=${dir}/seg%05d.ts]${dir}/index.m3u8`;
   const recording = `[f=mp4:movflags=frag_keyframe+empty_moov+default_base_moof]${dir}/rec.mp4`;
   return [
     '-hide_banner', '-loglevel', 'error', '-fflags', '+genpts', '-i', 'pipe:0',
@@ -38,6 +39,8 @@ export function liveArgs(dir) {
 export function registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log, notifier }) {
   const sessions = new Map(); // streamId -> { proc, dir, nextSeq, lastChunkAt, startedAt, closing }
   const startLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
+  const clipBurst = createLimiter({ windowMs: 15_000, max: 1 });
+  const clipHourly = createLimiter({ windowMs: 60 * 60 * 1000, max: 40 });
   const finishing = new Map(); // streamId -> Promise of the finalize result
 
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_CHUNK }, (_req, body, done) => done(null, body));
@@ -190,6 +193,57 @@ export function registerLive(app, { pool, fail, requireUser, matchCentre, baseUr
     if (!stream || Number(stream.user_id) !== req.user.id) return fail(reply, 404, 'Stream not found.');
     const postId = await finish(stream.id);
     return { stream: streamView(req, await loadStream(stream.id)), replayPostId: postId };
+  });
+
+  // "Clip that": the last 30 seconds of a live stream become a published clip on the match timeline,
+  // owned by whoever tapped and credited to the streamer. Segments are joined without re-encoding (~1s).
+  app.post('/v1/streams/:id/clip', { preHandler: requireUser }, async (req, reply) => {
+    const session = sessions.get(req.params.id);
+    const stream = session && !session.closing ? await loadStream(req.params.id) : null;
+    if (!stream || stream.status !== 'live') return fail(reply, 410, 'This stream has ended. Clips are cut from live streams.');
+    if (!clipBurst(`clip:${req.user.id}`) || !clipHourly(`cliph:${req.user.id}`)) return fail(reply, 429, 'Easy, you just clipped. Try again in a few seconds.');
+    const match = await matchCentre.loadMatch(stream.match_id);
+    if (!match || match.youth) return fail(reply, 404, 'Stream not found.');
+
+    const playlist = await readFile(join(session.dir, 'index.m3u8'), 'utf8').catch(() => '');
+    const names = [];
+    for (const name of clipSegmentNames(playlist)) {
+      if (await stat(join(session.dir, name)).then(() => true, () => false)) names.push(name);
+    }
+    if (names.length * SEGMENT_SECONDS < 4) return fail(reply, 409, 'The stream is just getting started. Try again in a few seconds.');
+
+    const key = `${randomId(24)}.mp4`;
+    let info;
+    try {
+      await joinSegments(names.map(name => join(session.dir, name)), storage.pathFor(key));
+      info = await probe(storage.pathFor(key));
+      if (!info.video || !info.duration) throw new Error('empty clip');
+    } catch (error) {
+      await storage.remove(key);
+      req.log.error({ err: error, stream: stream.id }, 'clip failed');
+      return fail(reply, 500, 'Couldn’t cut that clip. Try again.');
+    }
+    const coverKey = `${randomId(24)}.jpg`;
+    const cover = await posterFrame(storage.pathFor(key), storage.pathFor(coverKey), Math.max(0, info.duration - 3)).then(() => coverKey, () => null);
+    const bytes = (await stat(storage.pathFor(key))).size;
+    const clock = matchClock({ period: match.period, periodStartedAt: match.period_started_at, halfLength: match.half_length });
+    const score = match.period === 'pre' ? 'vs' : `${match.home_score}–${match.away_score}`;
+    const title = `Clip · ${match.home_name ?? stream.home_name} ${score} ${match.away_name ?? stream.away_name}${clock ? ` · ${clock.label}` : ''}`.slice(0, 120);
+    const visibility = match.visibility === 'public' ? 'public' : 'unlisted';
+    const postId = randomId(10);
+    try {
+      await pool.query(`
+        insert into posts (id, user_id, title, media_kind, media_key, media_mime, media_bytes, cover_key, cover_mime,
+          duration, width, height, media_status, match_id, match_minute, status, visibility, published_at, clipped_from)
+        values ($1, $2, $3, 'video', $4, 'video/mp4', $5, $6, $7, $8, $9, $10, 'ready', $11, $12, 'published', $13, now(), $14)`,
+        [postId, req.user.id, title, key, bytes, cover, cover ? 'image/jpeg' : null, info.duration, info.video.width, info.video.height,
+          match.id, clock?.minute ?? null, visibility, Number(stream.user_id) === req.user.id ? null : stream.user_id]);
+    } catch (error) {
+      await Promise.all([storage.remove(key), storage.remove(cover)]);
+      throw error;
+    }
+    matchCentre.notify(match.id).catch(() => {});
+    return reply.code(201).send({ post: { id: postId, title, duration: info.duration, visibility } });
   });
 
   app.get('/v1/streams/:id', async (req, reply) => {

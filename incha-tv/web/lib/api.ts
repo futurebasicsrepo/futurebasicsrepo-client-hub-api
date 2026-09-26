@@ -41,6 +41,8 @@ export interface Post {
   viewerHasVoted: boolean;
   match: MatchSummary | null;
   matchMinute: number | null;
+  /** Set when the clip was cut from someone else's live stream. */
+  clippedFrom?: { handle: string } | null;
   isOwner: boolean;
 }
 

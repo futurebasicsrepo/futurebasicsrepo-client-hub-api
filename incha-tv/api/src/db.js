@@ -179,6 +179,9 @@ export async function migrate() {
       primary key (match_id, user_id)
     );
     create index if not exists match_keepers_user on match_keepers (user_id);
+
+    -- "Clip that": clips cut from someone else's live stream credit the streamer.
+    alter table posts add column if not exists clipped_from bigint references users(id) on delete set null;
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());
