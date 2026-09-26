@@ -6,10 +6,13 @@ import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import * as storage from './storage.js';
 import { registerMatches } from './matches.js';
+import { registerLive } from './live.js';
+import { createTranscoder } from './transcoder.js';
+import { ffmpegAvailable } from './media.js';
 import {
   COVER_TYPES, EMAIL_RE, HANDLE_RE, MEDIA_KEY_RE, MEDIA_TYPES, POST_ID_RE, SORTS,
   createLimiter, hashPassword, normalizeEmail, normalizeHandle, normalizePostEdit,
-  parseRange, randomId, signMedia, slugify, verifyMediaSig, verifyPassword
+  parseRange, randomId, signMedia, slugify, uploadMime, verifyMediaSig, verifyPassword
 } from './lib.js';
 
 const MAX_MEDIA_BYTES = Number(process.env.MAX_MEDIA_BYTES || 500_000_000);
@@ -93,6 +96,10 @@ export async function buildApp({ logger = true } = {}) {
       mediaMime: row.media_mime,
       coverUrl: mediaUrl(req, row.cover_key, open),
       duration: row.duration,
+      width: row.width ?? null,
+      height: row.height ?? null,
+      mediaStatus: row.media_status,
+      mediaError: req.user && Number(row.user_id) === req.user.id ? row.media_error : null,
       trimStart: row.trim_start,
       trimEnd: row.trim_end,
       filter: row.filter,
@@ -140,7 +147,16 @@ export async function buildApp({ logger = true } = {}) {
     return row;
   }
 
-  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT });
+  let live;
+  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row) });
+  live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log });
+  const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
+  app.decorate('transcoder', transcoder);
+  // Pick up work a previous process didn't finish: queued conversions and streams cut off by a restart.
+  app.addHook('onReady', async () => {
+    const [videos, streams] = await Promise.all([transcoder.resume(), live.recover()]);
+    if (videos || streams) app.log.info({ videos, streams }, 'resumed unfinished media work');
+  });
 
   async function fandomId(name) {
     if (!name) return null;
@@ -236,7 +252,7 @@ export async function buildApp({ logger = true } = {}) {
     const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
     const params = [req.user?.id ?? null];
-    const where = [`p.status = 'published'`, `p.visibility = 'public'`];
+    const where = [`p.status = 'published'`, `p.visibility = 'public'`, `p.media_status = 'ready'`];
     if (req.query.fandom) { params.push(String(req.query.fandom)); where.push(`f.slug = $${params.length}`); }
     if (req.query.creator) { params.push(normalizeHandle(req.query.creator)); where.push(`u.handle = $${params.length}`); }
     if (req.query.q) {
@@ -265,10 +281,11 @@ export async function buildApp({ logger = true } = {}) {
     if (!uploadLimiter(`upload:${req.user.id}`)) return fail(reply, 429, 'Upload limit reached. Try again later.');
     const file = await req.file();
     if (!file) return fail(reply, 400, 'Attach a video or image.');
-    const type = MEDIA_TYPES[file.mimetype];
+    const mime = uploadMime(file.mimetype, file.filename);
+    const type = MEDIA_TYPES[mime];
     if (!type) {
       file.file.resume();
-      return fail(reply, 415, 'Upload an MP4, WebM, MOV, JPG, PNG, GIF, or WebP file.');
+      return fail(reply, 415, 'Upload a video (MP4, MOV, WebM, MKV, 3GP) or a JPG, PNG, GIF, or WebP image.');
     }
     const key = `${randomId(24)}${type.ext}`;
     const bytes = await storage.save(key, file.file);
@@ -278,14 +295,17 @@ export async function buildApp({ logger = true } = {}) {
     }
     const title = String(file.filename || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 120);
     const id = randomId(10);
+    // Every video is converted to H.264/AAC MP4 so it plays on every phone and browser (iPhone HEVC included).
+    const convert = type.kind === 'video' && await ffmpegAvailable();
     try {
       await pool.query(
-        `insert into posts (id, user_id, title, media_kind, media_key, media_mime, media_bytes) values ($1, $2, $3, $4, $5, $6, $7)`,
-        [id, req.user.id, title, type.kind, key, file.mimetype, bytes]);
+        `insert into posts (id, user_id, title, media_kind, media_key, media_mime, media_bytes, media_status) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, req.user.id, title, type.kind, key, mime, bytes, convert ? 'processing' : 'ready']);
     } catch (error) {
       await storage.remove(key);
       throw error;
     }
+    if (convert) transcoder.enqueue(id);
     return reply.code(201).send({ post: postView(req, await loadPost(req, id)) });
   });
 

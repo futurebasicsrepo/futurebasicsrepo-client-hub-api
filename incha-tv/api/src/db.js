@@ -126,6 +126,26 @@ export async function migrate() {
     alter table posts add column if not exists match_id text references matches(id) on delete set null;
     alter table posts add column if not exists match_minute integer;
     create index if not exists posts_match on posts (match_id);
+
+    -- Uploaded videos are converted to H.264/AAC MP4 in the background; existing rows are already playable.
+    alter table posts add column if not exists media_status text not null default 'ready' check (media_status in ('processing','ready','failed'));
+    alter table posts add column if not exists media_error text;
+    alter table posts add column if not exists width integer;
+    alter table posts add column if not exists height integer;
+    create index if not exists posts_processing on posts (created_at) where media_status = 'processing';
+
+    create table if not exists streams (
+      id text primary key,
+      match_id text not null references matches(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      status text not null default 'live' check (status in ('live','ended')),
+      match_minute integer,
+      started_at timestamptz not null default now(),
+      ended_at timestamptz,
+      post_id text references posts(id) on delete set null
+    );
+    create index if not exists streams_live on streams (match_id) where status = 'live';
+    create index if not exists streams_user on streams (user_id, started_at desc);
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());
