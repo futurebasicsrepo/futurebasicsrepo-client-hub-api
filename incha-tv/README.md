@@ -126,6 +126,7 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | POST | `/v1/matches/:id/events` | scorekeeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
+| GET | `/v1/world/scores` | – | pro & international scores grouped by league; `date=YYYY-MM-DD` (±7 days) |
 | POST | `/v1/matches/:id/streams` | ✓ | go live on a match (not youth, not finished) → `{ stream }` with `hlsUrl` |
 | POST | `/v1/streams/:id/chunks?seq=n` | streamer | `application/octet-stream` MediaRecorder chunk (≤ 8 MB); returns `{ next }`, 409 with `next` when out of order |
 | POST | `/v1/streams/:id/end` | streamer | stop and save the recording → `{ stream, replayPostId }` |
@@ -149,6 +150,13 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
+## World scores
+
+`/scores` shows pro and international football from around the world: every league on ESPN's public soccer scoreboard, usually 40+ competitions and 300+ games on a Saturday. It has Yesterday, Today and Tomorrow views, a live-only filter, team and league search, and leagues you can follow, which pin to the top on that device. The home screen gets an "Around the world" strip, and the score ticker adds live pro games after the grassroots ones.
+
+- The API fetches the feed once for everyone (`GET /v1/world/scores?date=YYYY-MM-DD`). It caches for 20 seconds while games are live and 2 minutes otherwise. League names are looked up once a day. If the feed fails, the API keeps serving the last good scores, flagged as `stale`.
+- **Licensing:** the ESPN feed is public but unofficial, with no SLA, and it may change. It's fine for a v1, but move to a licensed provider (for example API-Football or Sportradar) before relying on it commercially. Everything provider-specific lives in `api/src/worldscores.js`, so a new provider only needs to return the same shape. Team crests aren't shown, to stay clear of trademark issues.
+
 ## Next steps (not in v1)
 
 - Push notifications for goals, co-scorekeepers, "clip that" instant replay, and auto highlight reels per match.
@@ -158,4 +166,4 @@ Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals 
 - **Email.** Verification and password reset via Resend.
 - **Moderation.** Report button, admin queue, rate limits backed by Redis once there's more than one API instance.
 - **Growth.** Follows, notifications, and a "for you" feed.
-- **Product.** Merch links to the INCHA shop on creator and fandom pages.
+- **Product.** Merch links to the INCHA shop on creator and fandom pages. (The Shop tab and header link already go to inchastudios.com.)

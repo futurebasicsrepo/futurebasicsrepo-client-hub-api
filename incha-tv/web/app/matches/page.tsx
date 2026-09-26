@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api, type Match } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import MatchCard from '@/components/MatchCard';
+import MatchesSwitch from '@/components/MatchesSwitch';
 
 type Tab = 'live' | 'upcoming' | 'recent' | 'mine';
 const LABELS: Record<Tab, string> = { live: 'Live', upcoming: 'Upcoming', recent: 'Results', mine: 'My matches' };
@@ -28,6 +29,7 @@ export default function MatchesPage() {
         <div className="spacer" />
         <Link href={user ? '/matches/new' : '/login?next=/matches/new'} className="btn btn-primary" style={{ marginBottom: 12 }}>+ Start a match</Link>
       </div>
+      <MatchesSwitch active="grassroots" />
       <p className="muted">Sunday league, youth tournaments, pickup, street football. If you’re at the game, you can run the scoreboard.</p>
       <div className="tabs" role="group" aria-label="Filter" style={{ margin: '20px 0' }}>
         {tabs.map(t => <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>{LABELS[t]}</button>)}
