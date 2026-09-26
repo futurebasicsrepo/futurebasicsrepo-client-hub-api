@@ -5,8 +5,9 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, type Match } from '@/lib/api';
 import MatchCard from '@/components/MatchCard';
+import FollowButton from '@/components/FollowButton';
 
-interface TeamPage { team: { name: string; slug: string }; record: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }; matches: Match[] }
+interface TeamPage { team: { name: string; slug: string }; following: boolean; record: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }; matches: Match[] }
 
 export default function TeamPageView() {
   const { slug } = useParams<{ slug: string }>();
@@ -22,6 +23,9 @@ export default function TeamPageView() {
       <section className="hero">
         <span className="mono muted">Team</span>
         <h1 className="display">{team.name}</h1>
+        <div style={{ marginTop: 12 }}>
+          <FollowButton path={`/v1/teams/${team.slug}/follow`} following={data.following} onChange={following => setData(d => (d ? { ...d, following } : d))} label="Follow team" />
+        </div>
         <div className="stats" style={{ marginTop: 16 }}>
           {([['P', record.played], ['W', record.won], ['D', record.drawn], ['L', record.lost], ['GD', record.goalsFor - record.goalsAgainst]] as const).map(([k, v]) => (
             <div key={k}><strong>{k === 'GD' && v > 0 ? `+${v}` : v}</strong><span className="mono muted">{k}</span></div>
