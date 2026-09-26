@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, API_URL, postBinary, type LiveStream, type MatchSnapshot } from '@/lib/api';
 import { useRequireUser } from '@/lib/useRequireUser';
+import ClipButton from './ClipButton';
 
 type Phase = 'setup' | 'starting' | 'live' | 'ending' | 'done';
 
@@ -40,6 +41,8 @@ export default function GoLive({ matchId }: { matchId: string }) {
   const [backlog, setBacklog] = useState(0);
   const [replayId, setReplayId] = useState<string | null>(null);
   const [hasAudio, setHasAudio] = useState(true);
+  // Go live stays disabled until the camera is actually streaming into the preview.
+  const [cameraReady, setCameraReady] = useState(false);
 
   // Match header, kept current over the same live feed viewers use.
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function GoLive({ matchId }: { matchId: string }) {
     let cancelled = false;
     (async () => {
       setCameraError('');
+      setCameraReady(false);
       mediaRef.current?.getTracks().forEach(track => track.stop());
       const video = { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
       let media: MediaStream;
@@ -72,6 +76,7 @@ export default function GoLive({ matchId }: { matchId: string }) {
       }
       if (cancelled) { media.getTracks().forEach(track => track.stop()); return; }
       mediaRef.current = media;
+      setCameraReady(true);
       if (previewRef.current) { previewRef.current.srcObject = media; previewRef.current.play().catch(() => {}); }
     })();
     return () => { cancelled = true; };
@@ -232,13 +237,16 @@ export default function GoLive({ matchId }: { matchId: string }) {
             <p className="golive-hint">Viewers see you about 10 seconds behind. Keep this screen open while you’re live.</p>
             <div className="row" style={{ justifyContent: 'center', gap: 12 }}>
               <button className="btn" onClick={() => setFacing(f => (f === 'environment' ? 'user' : 'environment'))} disabled={phase !== 'setup'} aria-label="Flip camera">⟲ Flip</button>
-              <button className="btn btn-primary golive-go" onClick={goLive} disabled={phase !== 'setup' || !!cameraError || !!blocked || !match}>
-                {phase === 'starting' ? 'Starting…' : '● Go live'}
+              <button className="btn btn-primary golive-go" onClick={goLive} disabled={phase !== 'setup' || !cameraReady || !!cameraError || !!blocked || !match}>
+                {phase === 'starting' ? 'Starting…' : cameraReady ? '● Go live' : 'Starting camera…'}
               </button>
             </div>
           </>
         ) : (
-          <button className="btn golive-end" onClick={endStream} disabled={phase === 'ending'}>{phase === 'ending' ? 'Saving your stream…' : '■ End stream'}</button>
+          <>
+            {live && streamRef.current && <ClipButton streamId={streamRef.current.id} compact />}
+            <button className="btn golive-end" onClick={endStream} disabled={phase === 'ending'}>{phase === 'ending' ? 'Saving your stream…' : '■ End stream'}</button>
+          </>
         )}
       </div>
     </div>
