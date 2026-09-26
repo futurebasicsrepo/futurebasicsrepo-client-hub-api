@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { api, type Post, type Sort } from '@/lib/api';
 import { compact, filterCss, runtime } from '@/lib/format';
 import { useIsPhone } from '@/lib/useIsPhone';
+import { useAuth } from '@/lib/auth';
 
-const SORTS: { value: Sort; label: string }[] = [{ value: 'hot', label: 'Hot' }, { value: 'new', label: 'New' }, { value: 'top', label: 'Top' }];
+type Mode = Sort | 'following';
+const SORTS: { value: Mode; label: string }[] = [{ value: 'hot', label: 'Hot' }, { value: 'new', label: 'New' }, { value: 'top', label: 'Top' }];
 
 /** Portrait "explore" grid. The lead moment plays silently; everything opens into the swipe feed on phones. */
 export default function MomentGrid() {
-  const [sort, setSort] = useState<Sort>('hot');
+  const { user } = useAuth();
+  const [sort, setSort] = useState<Mode>('hot');
+  const modes = user ? [...SORTS, { value: 'following' as const, label: 'Following' }] : SORTS;
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [next, setNext] = useState<number | null>(null);
   const [error, setError] = useState('');
@@ -22,7 +26,9 @@ export default function MomentGrid() {
     if (loading.current) return;
     loading.current = true;
     try {
-      const data = await api<{ posts: Post[]; nextOffset: number | null }>(`/v1/posts?sort=${sort}&offset=${offset}&limit=24`);
+      // "Following": clips from matches and teams you follow.
+      const path = sort === 'following' ? `/v1/feed/following?offset=${offset}&limit=24` : `/v1/posts?sort=${sort}&offset=${offset}&limit=24`;
+      const data = await api<{ posts: Post[]; nextOffset: number | null }>(path);
       setPosts(current => (offset ? [...(current ?? []), ...data.posts] : data.posts));
       setNext(data.nextOffset);
     } catch (err) {
@@ -43,14 +49,14 @@ export default function MomentGrid() {
     return () => observer.disconnect();
   }, [next, load]);
 
-  const hrefFor = (post: Post) => (phone ? `/watch?sort=${sort}&start=${post.id}` : `/p/${post.id}`);
+  const hrefFor = (post: Post) => (phone ? `/watch?sort=${sort === 'following' ? 'new' : sort}&start=${post.id}` : `/p/${post.id}`);
 
   return (
     <section className="home-section">
       <div className="section-head">
         <h2 className="display">Moments</h2>
         <div className="segmented" role="group" aria-label="Sort moments">
-          {SORTS.map(s => <button key={s.value} aria-pressed={sort === s.value} onClick={() => setSort(s.value)}>{s.label}</button>)}
+          {modes.map(s => <button key={s.value} aria-pressed={sort === s.value} onClick={() => setSort(s.value)}>{s.label}</button>)}
         </div>
       </div>
       {error && <p className="error">{error}</p>}
@@ -58,13 +64,19 @@ export default function MomentGrid() {
         {posts === null && Array.from({ length: 9 }, (_, i) => <div key={i} className={`tile skeleton${i === 0 ? ' lead' : ''}`} />)}
         {posts?.map((post, i) => <Tile key={post.id} post={post} lead={i === 0} href={hrefFor(post)} />)}
       </div>
-      {posts?.length === 0 && (
+      {posts?.length === 0 && (sort === 'following' ? (
+        <div className="empty">
+          <div className="display">Nothing followed yet</div>
+          <p>Follow teams and matches with 🔔 and their clips and highlight reels land here.</p>
+          <Link href="/matches" className="btn btn-primary">Find matches</Link>
+        </div>
+      ) : (
         <div className="empty">
           <div className="display">Nothing here yet</div>
           <p>Be the first to post a moment.</p>
           <Link href="/upload" className="btn btn-primary">Post a moment</Link>
         </div>
-      )}
+      ))}
       <div ref={sentinel} style={{ height: 1 }} />
     </section>
   );

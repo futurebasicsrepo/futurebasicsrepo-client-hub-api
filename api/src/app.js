@@ -11,6 +11,7 @@ import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
 import { createWorldScores } from './worldscores.js';
 import { createNotifier, registerAlerts } from './alerts.js';
+import { createReelBuilder } from './reels.js';
 import {
   COVER_TYPES, EMAIL_RE, HANDLE_RE, MEDIA_KEY_RE, MEDIA_TYPES, POST_ID_RE, SORTS,
   createLimiter, hashPassword, normalizeEmail, normalizeHandle, normalizePostEdit,
@@ -153,15 +154,25 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
 
   let live;
   const notifier = createNotifier({ pool, log: app.log, send: pushSender });
-  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row), notifier });
+  const hooks = {};
+  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row), notifier, hooks });
+  const reels = createReelBuilder({
+    pool, log: app.log, loadMatch: matchCentre.loadMatch,
+    onReady: (match, postId) => {
+      matchCentre.notify(match.id).catch(() => {});
+      notifier.reelReady(match, postId).catch(err => app.log.error(err));
+    }
+  });
+  hooks.fulltime = matchId => reels.enqueue(matchId);
+  app.decorate('reels', reels);
   live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });
   registerAlerts(app, { pool, fail, requireUser, notifier, loadMatch: matchCentre.loadMatch });
   const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
   app.decorate('transcoder', transcoder);
   // Pick up work a previous process didn't finish: queued conversions and streams cut off by a restart.
   app.addHook('onReady', async () => {
-    const [videos, streams] = await Promise.all([transcoder.resume(), live.recover()]);
-    if (videos || streams) app.log.info({ videos, streams }, 'resumed unfinished media work');
+    const [videos, streams, reelJobs] = await Promise.all([transcoder.resume(), live.recover(), reels.resume()]);
+    if (videos || streams || reelJobs) app.log.info({ videos, streams, reels: reelJobs }, 'resumed unfinished media work');
   });
 
   async function fandomId(name) {
@@ -305,6 +316,21 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     params.push(limit + 1, offset);
     const { rows } = await pool.query(
       `${POST_SELECT} where ${where.join(' and ')} order by ${order} limit $${params.length - 1} offset $${params.length}`, params);
+    return { posts: rows.slice(0, limit).map(row => postView(req, row)), nextOffset: rows.length > limit ? offset + limit : null };
+  });
+
+  // Following: clips from matches you follow, and public clips from matches involving teams you follow
+  // (never unlisted or youth matches via a team follow). Newest first.
+  app.get('/v1/feed/following', { preHandler: requireUser }, async req => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 48);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const { rows } = await pool.query(`${POST_SELECT}
+      where p.status = 'published' and p.media_status = 'ready' and p.visibility <> 'private' and p.match_id is not null and (
+        exists(select 1 from match_follows mf where mf.user_id = $1 and mf.match_id = p.match_id)
+        or (p.visibility = 'public' and exists(
+          select 1 from matches fm join team_follows tf on tf.team_id in (fm.home_team_id, fm.away_team_id)
+          where fm.id = p.match_id and tf.user_id = $1 and fm.visibility = 'public' and not fm.youth)))
+      order by p.published_at desc limit $2 offset $3`, [req.user.id, limit + 1, offset]);
     return { posts: rows.slice(0, limit).map(row => postView(req, row)), nextOffset: rows.length > limit ? offset + limit : null };
   });
 

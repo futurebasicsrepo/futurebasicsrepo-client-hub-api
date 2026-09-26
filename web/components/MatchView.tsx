@@ -11,6 +11,7 @@ import { StatusPill } from './MatchCard';
 import LivePlayer from './LivePlayer';
 import FollowButton from './FollowButton';
 import ClipButton from './ClipButton';
+import ReelCard from './ReelCard';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -165,6 +166,10 @@ export default function MatchView({ id }: { id: string }) {
           <ClipButton streamId={onAir.id} />
         </section>
       )}
+      <ReelCard match={match} onRebuild={async () => {
+        await api(`/v1/matches/${id}/reel`, { method: 'POST' });
+        setSnap(s => (s ? { ...s, match: { ...s.match, reelStatus: 'building' } } : s));
+      }} />
       <section className="scoreboard">
         <div className="scoreboard-meta">
           <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>
