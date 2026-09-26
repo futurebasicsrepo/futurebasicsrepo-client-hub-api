@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, ViewTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, SITE_URL, type Post } from '@/lib/api';
@@ -10,6 +10,8 @@ import Avatar from './Avatar';
 
 interface Props {
   post: Post;
+  /** The clip whose tile was tapped: it morphs from the tile into this slide. */
+  morph?: boolean;
   active: boolean;
   /** Whether this slide is near the screen (only then does it load its poster). */
   mounted: boolean;
@@ -26,7 +28,7 @@ interface Props {
 // A slide is the poster, caption and action rail. Video plays in the feed's one shared <video>
 // underneath (see WatchFeed): iOS only lets an element autoplay once a tap has started it, so
 // reusing one element keeps every later clip playing on its own.
-function WatchSlide({ post, active, mounted, playing, paused, muted, onTogglePlay, onToggleMute, onOpenComments, onVote }: Props) {
+function WatchSlide({ post, morph, active, mounted, playing, paused, muted, onTogglePlay, onToggleMute, onOpenComments, onVote }: Props) {
   const { user } = useAuth();
   const router = useRouter();
   const [burst, setBurst] = useState(0);
@@ -79,6 +81,7 @@ function WatchSlide({ post, active, mounted, playing, paused, muted, onTogglePla
   const seeThrough = playing && post.kind === 'video';
 
   return (
+    <ViewTransition name={morph ? `moment-${post.id}` : undefined} share={morph ? 'morph' : undefined} default="none">
     <section className={`watch-slide${seeThrough ? ' see-through' : ''}`} aria-label={post.title}>
       {poster && !seeThrough && <div className="watch-backdrop" style={{ backgroundImage: `url("${poster}")` }} aria-hidden="true" />}
       <div className="watch-stage" onClick={onTap}>
@@ -119,6 +122,7 @@ function WatchSlide({ post, active, mounted, playing, paused, muted, onTogglePla
         </div>
       </div>
     </section>
+    </ViewTransition>
   );
 }
 
