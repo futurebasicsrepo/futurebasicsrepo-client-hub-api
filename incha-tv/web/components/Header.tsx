@@ -16,7 +16,7 @@ export default function Header() {
       <div className="wrap">
         <Link href="/" className="logo" aria-label="incha.tv home">INCHA<span className="tv">.TV</span></Link>
         <nav className="nav">
-          <Link href="/" aria-current={current('/')}>Feed</Link>
+          <Link href="/" aria-current={current('/')} className="hide-sm">Feed</Link>
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
           {user && <Link href="/studio" aria-current={current('/studio')}>Studio</Link>}
         </nav>
@@ -33,13 +33,13 @@ export default function Header() {
         </form>
         <div className="spacer" />
         {ready && (user ? (
-          <div className="row">
+          <div className="row header-actions">
             <Link href="/upload" className="btn btn-primary btn-sm">+ Upload</Link>
             <Link href={`/u/${user.handle}`} aria-label="Your profile"><Avatar name={user.displayName} size="sm" /></Link>
             <button className="linkish hide-sm" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>
         ) : (
-          <div className="row">
+          <div className="row header-actions">
             <Link href="/login" className="btn btn-ghost btn-sm">Sign in</Link>
             <Link href="/signup" className="btn btn-primary btn-sm">Join</Link>
           </div>

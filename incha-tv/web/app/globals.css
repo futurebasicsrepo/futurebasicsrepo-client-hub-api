@@ -71,9 +71,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .nav a:hover, .nav a[aria-current='page'] { color: var(--paper); background: var(--ink-3); }
 .search { flex: 1; max-width: 360px; }
 .search input { width: 100%; background: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; }
+.header-actions { flex-wrap: nowrap; flex-shrink: 0; }
 @media (max-width: 760px) {
   .search, .hide-sm { display: none !important; }
-  .site-header .wrap { gap: 10px; }
+  .site-header .wrap { gap: 8px; height: 56px; }
+  .logo { font-size: 24px; }
+  .nav a { padding: 6px 10px; }
+  .header-actions { gap: 8px; }
 }
 
 /* ---------- buttons & forms ---------- */
