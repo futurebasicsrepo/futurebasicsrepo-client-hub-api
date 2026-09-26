@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { api, API_URL, SITE_URL, type MatchEvent, type MatchSnapshot, type Post } from '@/lib/api';
+import { api, API_URL, SITE_URL, type Match, type MatchEvent, type MatchSnapshot, type Post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { matchClock, scoreline } from '@/lib/clock';
 import { useNow } from '@/lib/useNow';
 import { Thumb } from './PostCard';
 import { StatusPill } from './MatchCard';
 import LivePlayer from './LivePlayer';
+import FollowButton from './FollowButton';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -32,15 +33,19 @@ export default function MatchView({ id }: { id: string }) {
   const [toast, setToast] = useState('');
   const [connected, setConnected] = useState(true);
   const [angle, setAngle] = useState<string | null>(null);
-  const canScore = useRef(false);
+  const [keeperHandle, setKeeperHandle] = useState('');
+  // What only this viewer's own requests know (scorekeeper rights, following); the live stream is anonymous.
+  const viewer = useRef<Pick<Match, 'canScore' | 'isOwner' | 'following'>>({});
   const skew = useRef(0);
+  const adopt = (data: MatchSnapshot) => {
+    viewer.current = { canScore: data.match.canScore, isOwner: data.match.isOwner, following: data.match.following };
+    skew.current = Date.parse(data.serverTime) - Date.now();
+    setSnap(data);
+  };
 
-  // Initial load carries the viewer's identity (scorekeeper rights); the stream is anonymous.
   useEffect(() => {
     if (!ready) return;
-    api<MatchSnapshot>(`/v1/matches/${id}`)
-      .then(data => { canScore.current = Boolean(data.match.canScore); skew.current = Date.parse(data.serverTime) - Date.now(); setSnap(data); })
-      .catch(() => setMissing(true));
+    api<MatchSnapshot>(`/v1/matches/${id}`).then(adopt).catch(() => setMissing(true));
   }, [id, ready, user]);
 
   useEffect(() => {
@@ -48,7 +53,7 @@ export default function MatchView({ id }: { id: string }) {
     source.addEventListener('update', event => {
       const data = JSON.parse((event as MessageEvent).data) as MatchSnapshot;
       skew.current = Date.parse(data.serverTime) - Date.now();
-      setSnap({ ...data, match: { ...data.match, canScore: canScore.current } });
+      setSnap({ ...data, match: { ...data.match, ...viewer.current } });
       setConnected(true);
     });
     source.onerror = () => setConnected(false);
@@ -87,8 +92,7 @@ export default function MatchView({ id }: { id: string }) {
     setBusy(true);
     setError('');
     try {
-      const data = await api<MatchSnapshot>(`/v1/matches/${id}/events`, { method: 'POST', body: { ...body, player: player || undefined } });
-      setSnap({ ...data, match: { ...data.match, canScore: true } });
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/events`, { method: 'POST', body: { ...body, player: player || undefined } }));
       setPlayer('');
       if (navigator.vibrate) navigator.vibrate(30);
     } catch (err) {
@@ -101,12 +105,38 @@ export default function MatchView({ id }: { id: string }) {
   async function undo(eventId: number) {
     if (!window.confirm('Remove this from the match?')) return;
     try {
-      const data = await api<MatchSnapshot>(`/v1/matches/${id}/events/${eventId}`, { method: 'DELETE' });
-      setSnap({ ...data, match: { ...data.match, canScore: true } });
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/events/${eventId}`, { method: 'DELETE' }));
     } catch (err) {
       setError((err as Error).message);
     }
   }
+
+  async function addKeeper(event: React.FormEvent) {
+    event.preventDefault();
+    if (!keeperHandle.trim()) return;
+    setError('');
+    try {
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/keepers`, { method: 'POST', body: { handle: keeperHandle } }));
+      setKeeperHandle('');
+      setToast('Co-scorekeeper added');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function removeKeeper(handle: string, self: boolean) {
+    if (!window.confirm(self ? 'Stop keeping score for this match?' : `Remove @${handle} as a co-scorekeeper?`)) return;
+    try {
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/keepers/${handle}`, { method: 'DELETE' }));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  const setFollowing = (following: boolean) => {
+    viewer.current = { ...viewer.current, following };
+    setSnap(s => (s ? { ...s, match: { ...s.match, following } } : s));
+  };
 
   async function share() {
     const text = `${scoreline({ home: match.home.name, away: match.away.name, homeScore: match.homeScore, awayScore: match.awayScore })}${live ? ' · LIVE' : ''} on incha.tv`;
@@ -148,6 +178,7 @@ export default function MatchView({ id }: { id: string }) {
           <Link href={`/t/${match.away.slug}`} className="scoreboard-team away">{match.away.name}</Link>
         </div>
         <div className="row scoreboard-actions">
+          <FollowButton path={`/v1/matches/${match.id}/follow`} following={Boolean(match.following)} onChange={setFollowing} />
           <button className="btn btn-sm" onClick={share}>↗ Share</button>
           <Link href={clipHref} className="btn btn-sm btn-primary">+ Add a clip</Link>
           {canStream && <Link href={liveHref} className="btn btn-sm golive-link"><i />Go live</Link>}
@@ -186,6 +217,28 @@ export default function MatchView({ id }: { id: string }) {
               <button className="linkish" disabled={busy || !player.trim()} onClick={() => send({ type: 'note' })}>Post as a note instead</button>
             </>
           )}
+          <div className="keepers">
+            <span className="mono muted">Co-scorekeepers</span>
+            {(match.keepers ?? []).length > 0 && (
+              <ul>
+                {match.keepers!.map(k => (
+                  <li key={k.handle}>
+                    <span>@{k.handle}</span>
+                    {(match.isOwner || k.handle === user?.handle) && (
+                      <button className="linkish" onClick={() => removeKeeper(k.handle, k.handle === user?.handle)}>{k.handle === user?.handle ? 'Step down' : 'Remove'}</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {match.isOwner && (match.keepers ?? []).length < 3 && (
+              <form className="row" style={{ gap: 8, flexWrap: 'nowrap' }} onSubmit={addKeeper}>
+                <input className="input" value={keeperHandle} onChange={e => setKeeperHandle(e.target.value)} maxLength={25} placeholder="@handle of a friend at the game" aria-label="Co-scorekeeper handle" autoCapitalize="none" autoCorrect="off" />
+                <button className="btn btn-sm" disabled={!keeperHandle.trim()}>Add</button>
+              </form>
+            )}
+            {match.isOwner && <span className="hint">Up to 3 people can help run the scoreboard, handy when you’re also filming.</span>}
+          </div>
           {error && <p className="error" role="alert">{error}</p>}
         </section>
       )}
@@ -221,7 +274,7 @@ export default function MatchView({ id }: { id: string }) {
           </div>
         ))}
       </section>
-      <p className="hint" style={{ paddingBottom: 48 }}>Scorekeeper: @{match.scorekeeper.handle}. Scores are kept by fans at the game, not an official source.</p>
+      <p className="hint" style={{ paddingBottom: 48 }}>Scorekeeper: @{match.scorekeeper.handle}{match.keepers?.length ? ` with ${match.keepers.map(k => `@${k.handle}`).join(', ')}` : ''}. Scores are kept by fans at the game, not an official source.</p>
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );

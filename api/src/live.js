@@ -35,7 +35,7 @@ export function liveArgs(dir) {
   ];
 }
 
-export function registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log }) {
+export function registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log, notifier }) {
   const sessions = new Map(); // streamId -> { proc, dir, nextSeq, lastChunkAt, startedAt, closing }
   const startLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
   const finishing = new Map(); // streamId -> Promise of the finalize result
@@ -161,6 +161,7 @@ export function registerLive(app, { pool, fail, requireUser, matchCentre, baseUr
       [id, match.id, req.user.id, clock?.minute ?? null]);
     spawnEncoder(id, req.user.id);
     matchCentre.notify(match.id).catch(() => {});
+    notifier?.streamStarted(match, req.user.handle, req.user.id).catch(err => log.error(err));
     return reply.code(201).send({ stream: streamView(req, await loadStream(id)) });
   });
 

@@ -146,6 +146,39 @@ export async function migrate() {
     );
     create index if not exists streams_live on streams (match_id) where status = 'live';
     create index if not exists streams_user on streams (user_id, started_at desc);
+
+    -- Follows + push alerts, and co-scorekeepers.
+    create table if not exists team_follows (
+      user_id bigint not null references users(id) on delete cascade,
+      team_id bigint not null references teams(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (user_id, team_id)
+    );
+    create index if not exists team_follows_team on team_follows (team_id);
+    create table if not exists match_follows (
+      user_id bigint not null references users(id) on delete cascade,
+      match_id text not null references matches(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (user_id, match_id)
+    );
+    create index if not exists match_follows_match on match_follows (match_id);
+    create table if not exists push_subscriptions (
+      id bigserial primary key,
+      user_id bigint not null references users(id) on delete cascade,
+      endpoint text unique not null,
+      p256dh text not null,
+      auth text not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists push_subscriptions_user on push_subscriptions (user_id);
+    create table if not exists match_keepers (
+      match_id text not null references matches(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      added_by bigint references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      primary key (match_id, user_id)
+    );
+    create index if not exists match_keepers_user on match_keepers (user_id);
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());

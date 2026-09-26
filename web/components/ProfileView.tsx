@@ -7,6 +7,7 @@ import { api, getToken, type Profile, type User } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { compact } from '@/lib/format';
 import Avatar from './Avatar';
+import AlertsToggle from './AlertsToggle';
 import Feed from './Feed';
 
 export default function ProfileView({ handle }: { handle: string }) {
@@ -62,6 +63,7 @@ export default function ProfileView({ handle }: { handle: string }) {
           </div>
         )}
       </section>
+      {isMe && !editing && <AlertsToggle />}
       {editing && (
         <form className="panel stack" onSubmit={save} style={{ maxWidth: 560, marginBottom: 24 }}>
           <div className="field"><label htmlFor="dn">Display name</label><input id="dn" className="input" value={draft.displayName} maxLength={60} onChange={e => setDraft({ ...draft, displayName: e.target.value })} /></div>
