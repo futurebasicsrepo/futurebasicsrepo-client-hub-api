@@ -122,10 +122,11 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | GET | `/v1/matches` | – | `filter=live\|upcoming\|recent`, `team`; public, non-youth only |
 | GET | `/v1/me/matches` | ✓ | matches you keep score for |
 | GET | `/v1/matches/:id` | – | match + events + clips (`canScore` for the scorekeeper) |
-| GET | `/v1/matches/:id/stream` | – | Server-Sent Events: `update` with the full snapshot on every change |
+| GET | `/v1/matches/:id/stream` | – | Server-Sent Events: `update` (full snapshot on every change), `crowd` (`{ watching }`, at most every 2 s) and `cheer` (`{ counts }`) |
 | POST | `/v1/matches/:id/events` | scorekeeper or co-keeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
 | POST | `/v1/matches/:id/resume` | scorekeeper or co-keeper | undo an automatic full time (within 2 hours) |
+| POST | `/v1/matches/:id/cheer` | – | `{ kind: flare\|clap\|wow }` while live; pooled every 400 ms and sent to the stream as `event: cheer` (25 per viewer per 10 s) |
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
 | POST/DELETE | `/v1/matches/:id/follow`, `/v1/teams/:slug/follow` | ✓ | follow / unfollow |
 | GET | `/v1/me/follows` | ✓ | followed teams and match ids |
