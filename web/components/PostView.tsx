@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { api, ApiError, type Post } from '@/lib/api';
+import { api, ApiError, SITE_URL, type Post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { compact, timeAgo } from '@/lib/format';
 import Avatar from './Avatar';
@@ -46,12 +46,18 @@ export default function PostView({ id }: { id: string }) {
   if (!post) return <div className="wrap"><div className="skeleton" style={{ aspectRatio: '16 / 9', marginTop: 24 }} /></div>;
 
   const live = post.status === 'published';
+  // On phones, open the OS share sheet directly; elsewhere jump to the share panel.
+  const nativeShare = (event: React.MouseEvent) => {
+    if (typeof navigator === 'undefined' || !('share' in navigator) || !window.matchMedia('(max-width: 1000px)').matches) return;
+    event.preventDefault();
+    navigator.share({ title: post.title, text: `${post.title} — on incha.tv`, url: `${SITE_URL}/p/${post.id}` }).catch(() => {});
+  };
   const shareable = live && post.visibility !== 'private';
 
   return (
     <div className="wrap">
       <div className="post-layout">
-        <div>
+        <div className="post-main">
           <MediaPlayer
             kind={post.kind}
             src={post.mediaUrl}
@@ -74,16 +80,16 @@ export default function PostView({ id }: { id: string }) {
           <div className="actions">
             <UpvoteButton key={`${post.id}:${post.viewerHasVoted}`} postId={post.id} score={post.score} voted={post.viewerHasVoted} disabled={!live} />
             <a href="#comments" className="btn">💬 {compact(post.commentCount)}</a>
-            {shareable && <a href="#share" className="btn">↗ Share</a>}
+            {shareable && <a href="#share" className="btn" onClick={nativeShare}>↗ Share</a>}
             {post.isOwner && <Link href={`/studio/${post.id}`} className="btn">Edit</Link>}
             {post.isOwner && <VisibilityBadge post={post} />}
           </div>
           {post.description && <p className="description">{post.description}</p>}
-          <div id="comments" style={{ marginTop: 32 }}>
-            <Comments postId={post.id} open={live} onCount={setCommentCount} />
-          </div>
         </div>
-        <aside className="stack" style={{ gap: 20 }}>
+        <div id="comments" className="post-comments">
+          <Comments postId={post.id} open={live} onCount={setCommentCount} />
+        </div>
+        <aside className="post-aside stack" style={{ gap: 20 }}>
           {shareable ? (
             <div className="panel" id="share"><ShareBar postId={post.id} title={post.title} /></div>
           ) : (

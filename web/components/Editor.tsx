@@ -286,14 +286,16 @@ export default function Editor({ id }: { id: string }) {
 
           {error && <p className="error" role="alert">{error}</p>}
           <div className="stack" style={{ gap: 8 }}>
-            {published ? (
-              <button className="btn btn-primary" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : 'Save changes'}</button>
-            ) : (
-              <>
-                <button className="btn btn-primary" onClick={publish} disabled={!!busy}>{busy === 'publish' ? 'Publishing…' : `Publish ${draft.visibility}`}</button>
-                <button className="btn" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : 'Save draft'}</button>
-              </>
-            )}
+            <div className="editor-actions">
+              {published ? (
+                <button className="btn btn-primary" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : 'Save changes'}</button>
+              ) : (
+                <>
+                  <button className="btn btn-primary" onClick={publish} disabled={!!busy}>{busy === 'publish' ? 'Publishing…' : `Publish ${draft.visibility}`}</button>
+                  <button className="btn" onClick={save} disabled={!!busy}>{busy === 'save' ? 'Saving…' : 'Save draft'}</button>
+                </>
+              )}
+            </div>
             <div className="row">
               {published && <button className="btn btn-sm btn-ghost" onClick={unpublish} disabled={!!busy}>Unpublish</button>}
               <div className="spacer" />
