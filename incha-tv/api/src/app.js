@@ -220,12 +220,21 @@ export async function buildApp({ logger = true } = {}) {
   });
 
   // ---------- discovery ----------
-  app.get('/v1/fandoms', async () => {
+  // Each fandom carries its newest public cover and post time, for the story-style rings on the home screen.
+  app.get('/v1/fandoms', async req => {
     const { rows } = await pool.query(`
-      select f.slug, f.name, count(p.id)::int as post_count
-      from fandoms f left join posts p on p.fandom_id = f.id and p.status = 'published' and p.visibility = 'public'
+      select f.slug, f.name, count(p.id)::int as post_count, max(p.published_at) as latest_at,
+        (select coalesce(c.cover_key, case when c.media_kind = 'image' then c.media_key end) from posts c
+          where c.fandom_id = f.id and c.status = 'published' and c.visibility = 'public' and c.media_status = 'ready'
+            and (c.cover_key is not null or c.media_kind = 'image')
+          order by c.published_at desc limit 1) as cover_key
+      from fandoms f left join posts p on p.fandom_id = f.id and p.status = 'published' and p.visibility = 'public' and p.media_status = 'ready'
       group by f.id order by post_count desc, f.name asc limit 100`);
-    return { fandoms: rows.map(r => ({ slug: r.slug, name: r.name, postCount: r.post_count })) };
+    return {
+      fandoms: rows.map(r => ({
+        slug: r.slug, name: r.name, postCount: r.post_count, latestAt: r.latest_at, coverUrl: mediaUrl(req, r.cover_key, true)
+      }))
+    };
   });
 
   app.get('/v1/fandoms/:slug', async (req, reply) => {
