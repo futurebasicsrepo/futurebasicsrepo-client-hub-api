@@ -128,17 +128,17 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
       <div className="watch-rail">
         <Link href={`/u/${post.creator.handle}`} className="watch-avatar" aria-label={`@${post.creator.handle}`}><Avatar name={post.creator.displayName} /></Link>
         <button className={`watch-action${post.viewerHasVoted ? ' on' : ''}`} onClick={() => vote()} aria-pressed={post.viewerHasVoted} aria-label="Upvote">
-          <span className="watch-icon">▲</span><span>{compact(post.score)}</span>
+          <Icon name="up" /><span>{compact(post.score)}</span>
         </button>
         <button className="watch-action" onClick={() => onOpenComments(post)} aria-label="Comments">
-          <span className="watch-icon">💬</span><span>{compact(post.commentCount)}</span>
+          <Icon name="comment" /><span>{compact(post.commentCount)}</span>
         </button>
         <button className="watch-action" onClick={share} aria-label="Share">
-          <span className="watch-icon">↗</span><span>Share</span>
+          <Icon name="share" /><span>Share</span>
         </button>
         {post.kind === 'video' && (
           <button className="watch-action" onClick={onToggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
-            <span className="watch-icon">{muted ? '🔇' : '🔊'}</span>
+            <Icon name={muted ? 'muted' : 'sound'} />
           </button>
         )}
       </div>
@@ -154,6 +154,23 @@ function WatchSlide({ post, active, mounted, muted, onToggleMute, onOpenComments
       </div>
       {post.kind === 'video' && <div className="watch-progress"><div style={{ transform: `scaleX(${progress})` }} /></div>}
     </section>
+  );
+}
+
+// Line icons for the action rail: white, no backgrounds, shadowed so they read on any video.
+const ICONS: Record<string, React.ReactNode> = {
+  up: <path d="M12 4 20 14h-5v6H9v-6H4Z" />,
+  comment: <path d="M20 12a8 8 0 0 1-11.7 7.1L4 20l1-4.1A8 8 0 1 1 20 12Z" />,
+  share: <><path d="M14 5h5v5" /><path d="M19 5 10 14" /><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4" /></>,
+  sound: <><path d="M4 9v6h4l5 4V5L8 9Z" /><path d="M16.5 8.5a5 5 0 0 1 0 7" /><path d="M19 6a8.5 8.5 0 0 1 0 12" /></>,
+  muted: <><path d="M4 9v6h4l5 4V5L8 9Z" /><path d="m17 9 5 6" /><path d="m22 9-5 6" /></>
+};
+
+function Icon({ name }: { name: string }) {
+  return (
+    <svg className="watch-icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
   );
 }
 

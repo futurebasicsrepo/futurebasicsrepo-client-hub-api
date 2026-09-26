@@ -151,10 +151,6 @@ export default function WatchFeed() {
         )}
       </div>
 
-      {muted && posts.length > 0 && !sheet && (
-        <button className="watch-unmute" onClick={() => setMuted(false)}>🔇 Tap for sound</button>
-      )}
-
       {sheet && (
         <div className="sheet-backdrop" onClick={() => setSheet(null)}>
           <div className="sheet" role="dialog" aria-label="Comments" onClick={e => e.stopPropagation()}>
