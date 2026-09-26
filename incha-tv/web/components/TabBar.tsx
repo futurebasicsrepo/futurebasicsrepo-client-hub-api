@@ -17,7 +17,7 @@ export default function TabBar() {
   return (
     <nav className="tabbar" aria-label="Main">
       <Link href="/" aria-current={on(pathname === '/')}><Icon d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z" /><span>Home</span></Link>
-      <Link href="/matches" aria-current={on(pathname.startsWith('/matches') || pathname.startsWith('/m/') || pathname.startsWith('/t/'))}>
+      <Link href="/matches" aria-current={on(pathname.startsWith('/matches') || pathname.startsWith('/scores') || pathname.startsWith('/m/') || pathname.startsWith('/t/'))}>
         <Icon d="M3 6h18v12H3zM12 6v12M7.5 10v4M16.5 10v4" />
         <span>Matches</span>
       </Link>
