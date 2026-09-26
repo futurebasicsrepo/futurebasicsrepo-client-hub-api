@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, ViewTransition } from 'react';
 import Link from 'next/link';
 import { api, API_URL, SITE_URL, type Match, type MatchEvent, type MatchSnapshot, type Post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -12,6 +12,9 @@ import LivePlayer from './LivePlayer';
 import FollowButton from './FollowButton';
 import ClipButton from './ClipButton';
 import ReelCard from './ReelCard';
+import FlipNumber from './FlipNumber';
+import GoalBurst, { teamColour } from './GoalBurst';
+import { takeMatch } from '@/lib/handoff';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -68,6 +71,23 @@ export default function MatchView({ id }: { id: string }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // The goal moment: when the score goes up while you're watching (not on first load, not on an undo).
+  const [goal, setGoal] = useState<{ side: 'home' | 'away'; key: number } | null>(null);
+  const lastScore = useRef<{ home: number; away: number } | null>(null);
+  const homeScore = snap?.match.homeScore;
+  const awayScore = snap?.match.awayScore;
+  useEffect(() => {
+    if (homeScore == null || awayScore == null) return;
+    const before = lastScore.current;
+    lastScore.current = { home: homeScore, away: awayScore };
+    if (!before) return;
+    const side = homeScore > before.home ? 'home' : awayScore > before.away ? 'away' : null;
+    if (!side) return;
+    setGoal({ side, key: Date.now() });
+    if (typeof navigator.vibrate === 'function') navigator.vibrate([90, 50, 180]);
+  }, [homeScore, awayScore]);
+  const endGoal = useCallback(() => setGoal(null), []);
+
   const live = snap?.match.status === 'live';
   const now = useNow(live) + skew.current;
 
@@ -84,7 +104,31 @@ export default function MatchView({ id }: { id: string }) {
   if (missing) {
     return <div className="wrap"><div className="empty" style={{ marginTop: 48 }}><div className="display">No such match</div><Link href="/matches" className="btn">Browse matches</Link></div></div>;
   }
-  if (!snap) return <div className="wrap"><div className="skeleton" style={{ height: 220, marginTop: 24 }} /></div>;
+  if (!snap) {
+    // Opened from a match card: draw its scoreboard straight away so the card can morph into it.
+    const handed = takeMatch(id);
+    if (!handed) return <div className="wrap"><div className="skeleton" style={{ height: 220, marginTop: 24 }} /></div>;
+    return (
+      <div className="wrap match-page">
+        <ViewTransition name={`match-${id}`} share="morph" default="none">
+          <section className="scoreboard">
+            <div className="scoreboard-meta"><span className="mono">{handed.competition || 'Friendly'}{handed.venue ? ` · ${handed.venue}` : ''}</span></div>
+            <div className="scoreboard-main">
+              <span className="scoreboard-team">{handed.home.name}</span>
+              <div className="scoreboard-score">
+                {handed.period === 'pre' ? <span className="display vs">vs</span>
+                  : <span className="display">{handed.homeScore}<span className="dash">–</span>{handed.awayScore}</span>}
+                <StatusPill match={handed} now={now} />
+              </div>
+              <span className="scoreboard-team away">{handed.away.name}</span>
+            </div>
+            <div className="row scoreboard-actions" style={{ minHeight: 34 }} />
+          </section>
+        </ViewTransition>
+        <div className="skeleton" style={{ height: 160, marginTop: 16 }} />
+      </div>
+    );
+  }
 
   const { match } = snap;
   const clock = matchClock(match, now);
@@ -182,7 +226,9 @@ export default function MatchView({ id }: { id: string }) {
         await api(`/v1/matches/${id}/reel`, { method: 'POST' });
         setSnap(s => (s ? { ...s, match: { ...s.match, reelStatus: 'building' } } : s));
       }} />
-      <section className="scoreboard">
+      {goal && <GoalBurst key={goal.key} team={match[goal.side].name} colour={teamColour(match[goal.side].slug)} onDone={endGoal} />}
+      <ViewTransition name={`match-${id}`} share="morph" default="none">
+      <section className={`scoreboard${goal ? ' shake' : ''}`}>
         <div className="scoreboard-meta">
           <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>
           {match.youth && <span className="badge sky">Youth · unlisted</span>}
@@ -191,7 +237,7 @@ export default function MatchView({ id }: { id: string }) {
           <Link href={`/t/${match.home.slug}`} className="scoreboard-team">{match.home.name}</Link>
           <div className="scoreboard-score">
             {match.period === 'pre' ? <span className="display vs">vs</span>
-              : <span className="display">{match.homeScore}<span className="dash">–</span>{match.awayScore}</span>}
+              : <span className="display"><FlipNumber value={match.homeScore} /><span className="dash">–</span><FlipNumber value={match.awayScore} /></span>}
             <StatusPill match={match} now={now} />
           </div>
           <Link href={`/t/${match.away.slug}`} className="scoreboard-team away">{match.away.name}</Link>
@@ -204,6 +250,7 @@ export default function MatchView({ id }: { id: string }) {
           {!connected && <span className="muted" style={{ fontSize: 12 }}>Reconnecting…</span>}
         </div>
       </section>
+      </ViewTransition>
 
       {match.canScore && (
         <section className="panel keeper">

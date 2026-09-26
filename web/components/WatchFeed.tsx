@@ -2,22 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { api, type Post, type Sort } from '@/lib/api';
 import { filterCss } from '@/lib/format';
 import Comments from './Comments';
 import WatchSlide from './WatchSlide';
+import { takePost } from '@/lib/handoff';
 
 const SORTS: Sort[] = ['hot', 'new', 'top'];
 
-export default function WatchFeed() {
-  const params = useSearchParams();
+// The page passes the query in (rather than useSearchParams, which defers rendering to the client),
+// so the tapped clip is on screen in the navigation's first frame and its tile can morph into it.
+export default function WatchFeed({ sort: requested, fandom = null, startId = null }: { sort?: string; fandom?: string | null; startId?: string | null }) {
   const router = useRouter();
-  const sort = (SORTS.includes(params.get('sort') as Sort) ? params.get('sort') : 'hot') as Sort;
-  const fandom = params.get('fandom');
-  const startId = params.get('start');
+  const sort = (SORTS.includes(requested as Sort) ? requested : 'hot') as Sort;
 
-  const [posts, setPosts] = useState<Post[]>([]);
+  // Opened from a moment tile: start with that clip already on screen, so the tile can morph into it.
+  const [posts, setPosts] = useState<Post[]>(() => { const handed = takePost(startId); return handed ? [handed] : []; });
   const [nextOffset, setNextOffset] = useState<number | null>(0);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
@@ -51,12 +52,12 @@ export default function WatchFeed() {
   // (Re)start the feed: optionally lead with a specific clip, then the ranked list.
   useEffect(() => {
     let cancelled = false;
-    setPosts([]); setActive(0); setDone(false); setNextOffset(0);
+    setPosts(current => current.filter(p => p.id === startId)); setActive(0); setDone(false); setNextOffset(0);
     scroller.current?.scrollTo({ top: 0 });
     (async () => {
       if (startId) {
         const first = await api<{ post: Post }>(`/v1/posts/${startId}`).catch(() => null);
-        if (!cancelled && first) setPosts([first.post]);
+        if (!cancelled && first) setPosts(current => [first.post, ...current.filter(p => p.id !== startId)]);
       }
       if (!cancelled) await loadMore(0, true);
     })();
@@ -196,6 +197,7 @@ export default function WatchFeed() {
           <div key={post.id} data-index={index} className="watch-cell">
             <WatchSlide
               post={post}
+              morph={post.id === startId}
               active={index === active && !sheet}
               mounted={Math.abs(index - active) <= 2}
               playing={post.id === playingId && index === active}

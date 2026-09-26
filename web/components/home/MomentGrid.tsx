@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, ViewTransition } from 'react';
 import Link from 'next/link';
+import { handOffPost } from '@/lib/handoff';
 import { api, type Post, type Sort } from '@/lib/api';
 import { compact, filterCss, runtime } from '@/lib/format';
 import { useIsPhone } from '@/lib/useIsPhone';
@@ -99,7 +100,8 @@ function Tile({ post, lead, href }: { post: Post; lead: boolean; href: string })
   }, [lead, post.kind]);
 
   return (
-    <Link href={href} className={`tile${lead ? ' lead' : ''}${wide ? ' wide' : ''}`}>
+    <ViewTransition name={`moment-${post.id}`} share="morph" default="none">
+    <Link href={href} className={`tile${lead ? ' lead' : ''}${wide ? ' wide' : ''}`} onClick={() => handOffPost(post)}>
       {wide && cover && <img className="tile-backdrop" src={cover} alt="" aria-hidden="true" loading="lazy" />}
       {motion ? (
         <video
@@ -125,5 +127,6 @@ function Tile({ post, lead, href }: { post: Post; lead: boolean; href: string })
         <span className="tile-meta">@{post.creator.handle} · ▲ {compact(post.score)}</span>
       </div>
     </Link>
+    </ViewTransition>
   );
 }

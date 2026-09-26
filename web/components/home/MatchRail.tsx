@@ -1,6 +1,9 @@
 'use client';
 
+import { ViewTransition } from 'react';
 import Link from 'next/link';
+import FlipNumber from '../FlipNumber';
+import { handOffMatch } from '@/lib/handoff';
 import type { Match } from '@/lib/api';
 import { useNow } from '@/lib/useNow';
 import { StatusPill } from '../MatchCard';
@@ -20,7 +23,8 @@ export default function MatchRail({ live, upcoming }: { live: Match[] | null; up
         {cards.map(m => {
           const lead = m.homeScore === m.awayScore ? null : m.homeScore > m.awayScore ? 'home' : 'away';
           return (
-            <Link key={m.id} href={`/m/${m.id}`} className={`mcard ${m.status}`}>
+            <ViewTransition key={m.id} name={`match-${m.id}`} share="morph" default="none">
+            <Link href={`/m/${m.id}`} className={`mcard ${m.status}`} onClick={() => handOffMatch(m)}>
               <div className="mcard-top">
                 <span className="mono">{m.competition || 'Friendly'}</span>
                 <StatusPill match={m} now={now} />
@@ -29,7 +33,7 @@ export default function MatchRail({ live, upcoming }: { live: Match[] | null; up
                 {(['home', 'away'] as const).map(side => (
                   <div key={side} className={`mcard-team${lead && lead !== side ? ' dim' : ''}`}>
                     <span>{m[side].name}</span>
-                    {m.period !== 'pre' && <strong>{side === 'home' ? m.homeScore : m.awayScore}</strong>}
+                    {m.period !== 'pre' && <strong><FlipNumber value={side === 'home' ? m.homeScore : m.awayScore} /></strong>}
                   </div>
                 ))}
               </div>
@@ -38,6 +42,7 @@ export default function MatchRail({ live, upcoming }: { live: Match[] | null; up
                   : <span className="muted">{m.venue || (m.status === 'live' ? 'Live score from the sideline' : 'Follow along live')}</span>}
               </div>
             </Link>
+            </ViewTransition>
           );
         })}
         {live !== null && (

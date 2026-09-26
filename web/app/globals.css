@@ -682,3 +682,47 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .reel-head { flex-wrap: nowrap; }
 .reel-head .linkish { white-space: nowrap; }
+
+/* ---------- motion: flip digits, the goal moment, morphs ---------- */
+/* Stadium-board digits: a changed digit's card drops down from the hinge. */
+.flip { display: inline-flex; perspective: 400px; }
+.flip-d { display: inline-block; transform-origin: 50% 0; backface-visibility: hidden; }
+.flip-d.flipping { animation: flap .55s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes flap {
+  0% { transform: rotateX(-95deg); filter: brightness(1.8); opacity: .4; }
+  55% { transform: rotateX(12deg); opacity: 1; }
+  100% { transform: rotateX(0); filter: none; }
+}
+
+/* The goal moment: flare smoke + a GOAL slam over the whole screen, and the scoreboard shakes. */
+.goal-burst { position: fixed; inset: 0; z-index: 90; pointer-events: none; display: grid; place-items: center; }
+.goal-burst canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.goal-burst::before { content: ''; position: absolute; inset: 0; background: radial-gradient(75% 50% at 50% 50%, rgba(0, 0, 0, .88), rgba(0, 0, 0, .35) 70%, transparent); animation: goal-dim 2.3s ease both; }
+@keyframes goal-dim { 0% { opacity: 0; } 12%, 75% { opacity: 1; } 100% { opacity: 0; } }
+.goal-word { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; animation: goal-slam 2.3s cubic-bezier(.2, 1.3, .4, 1) both; }
+.goal-word .display { font-size: clamp(88px, 26vw, 220px); line-height: .85; color: #fff; letter-spacing: .02em;
+  text-shadow: 0 0 28px var(--team), 0 6px 0 rgba(0, 0, 0, .35), 0 12px 40px rgba(0, 0, 0, .5); }
+.goal-team { font-weight: 800; text-transform: uppercase; letter-spacing: .14em; font-size: 14px; padding: 5px 12px; border-radius: 999px; background: var(--team); color: #0c0c0d; }
+@keyframes goal-slam {
+  0% { transform: scale(2.4); opacity: 0; filter: blur(6px); }
+  14% { transform: scale(.94); opacity: 1; filter: none; }
+  22% { transform: scale(1.03); }
+  30%, 78% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.08) translateY(-24px); opacity: 0; }
+}
+.scoreboard.shake { animation: terrace-shake .6s cubic-bezier(.36, .07, .19, .97) both; }
+@keyframes terrace-shake {
+  10%, 90% { transform: translate3d(-1px, 0, 0); }
+  20%, 80% { transform: translate3d(3px, -1px, 0); }
+  30%, 50%, 70% { transform: translate3d(-6px, 1px, 0) rotate(-.4deg); }
+  40%, 60% { transform: translate3d(6px, -1px, 0) rotate(.4deg); }
+}
+
+/* A tapped card or tile grows into the page it opens (React <ViewTransition share="morph">). */
+::view-transition-group(.morph) { animation-duration: 420ms; animation-timing-function: cubic-bezier(.2, .9, .25, 1); }
+::view-transition-image-pair(.morph) { animation-name: morph-blur; }
+@keyframes morph-blur { 35% { filter: blur(2px); } }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}

@@ -5,6 +5,7 @@ import type { Match, WorldMatch } from '@/lib/api';
 import { statusLabel } from '@/lib/clock';
 import { useNow } from '@/lib/useNow';
 import { worldStatus } from '../WorldMatchRow';
+import FlipNumber from '../FlipNumber';
 
 const MOTTO = ['En las buenas y en las malas', 'For the fans, by the fans', 'Hinchas'];
 
@@ -19,7 +20,7 @@ export default function ScoreTicker({ matches, world = [] }: { matches: Match[];
       ...matches.map(m => (
         <Link key={m.id} href={`/m/${m.id}`} className={`ticker-item${m.status === 'live' ? ' live' : ''}`}>
           {m.status === 'live' && <i aria-hidden="true" />}
-          <b>{statusLabel(m, now)}</b> {m.home.name} <strong>{m.homeScore}–{m.awayScore}</strong> {m.away.name}
+          <b>{statusLabel(m, now)}</b> {m.home.name} <strong><FlipNumber value={m.homeScore} />–<FlipNumber value={m.awayScore} /></strong> {m.away.name}
         </Link>
       )),
       ...world.map(m => (
