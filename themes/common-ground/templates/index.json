@@ -1,0 +1,192 @@
+{
+  "sections": {
+    "hero": {
+      "type": "hero",
+      "settings": {
+        "heading": "COMMON GROUND",
+        "subheading": "Kicks, tees, hats, tapes and toys. Philly's consignment spot since 2012 — authenticated in person, one of one, shipped anywhere.",
+        "button_label": "Shop all",
+        "button_link": "shopify://collections/all",
+        "button_label_2": "New arrivals",
+        "button_link_2": "shopify://collections/all?sort_by=created-descending",
+        "sticker_text": "EST.",
+        "seal_year": "2012",
+        "seal_foot": "SEAL OF QUALITY",
+        "seal_ring": "COMMON GROUND · AUTHENTICATED CONSIGNMENT ·"
+      }
+    },
+    "marquee": {
+      "type": "marquee",
+      "blocks": {
+        "m1": {
+          "type": "item",
+          "settings": {
+            "text": "NIKE"
+          }
+        },
+        "m2": {
+          "type": "item",
+          "settings": {
+            "text": "ADIDAS"
+          }
+        },
+        "m3": {
+          "type": "item",
+          "settings": {
+            "text": "SUPREME"
+          }
+        },
+        "m4": {
+          "type": "item",
+          "settings": {
+            "text": "ASICS"
+          }
+        },
+        "m5": {
+          "type": "item",
+          "settings": {
+            "text": "NEW BALANCE"
+          }
+        },
+        "m6": {
+          "type": "item",
+          "settings": {
+            "text": "VINTAGE"
+          }
+        },
+        "m7": {
+          "type": "item",
+          "settings": {
+            "text": "COLLECTIBLES"
+          }
+        }
+      },
+      "block_order": [
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+        "m7"
+      ],
+      "settings": {
+        "speed": 40,
+        "color_scheme": "acid"
+      }
+    },
+    "collection_list": {
+      "type": "collection-list",
+      "settings": {
+        "heading": "Pick a lane",
+        "show_all": true
+      }
+    },
+    "featured_new": {
+      "type": "featured-collection",
+      "settings": {
+        "heading": "Just walked in",
+        "collection": "all",
+        "sort": "created-descending",
+        "limit": 8,
+        "show_view_all": true
+      }
+    },
+    "image_with_text": {
+      "type": "image-with-text",
+      "settings": {
+        "heading": "Come in. We're open.",
+        "text": "<p>Every pair and piece is checked in person by our team before it hits the floor. Buy, sell, trade — we've been the neighborhood's plug since 2012.</p>",
+        "button_label": "Visit the shop",
+        "button_link": "shopify://pages/contact",
+        "sticker_text": "IRL"
+      }
+    },
+    "featured_grails": {
+      "type": "featured-collection",
+      "settings": {
+        "heading": "Grails",
+        "collection": "all",
+        "sort": "price-descending",
+        "limit": 4,
+        "show_view_all": true
+      }
+    },
+    "newsletter": {
+      "type": "newsletter",
+      "settings": {}
+    },
+    "whatnot": {
+      "type": "whatnot-live",
+      "blocks": {
+        "s1": {
+          "type": "show",
+          "settings": {
+            "day": "FRI",
+            "time": "7:00 PM",
+            "title": "Friday Night Heat",
+            "category": "Jordans · Dunks · Vintage"
+          }
+        },
+        "s2": {
+          "type": "show",
+          "settings": {
+            "day": "SAT",
+            "time": "2:00 PM",
+            "title": "Toy Box",
+            "category": "Collectibles · Bearbricks · Cards"
+          }
+        },
+        "s3": {
+          "type": "show",
+          "settings": {
+            "day": "SUN",
+            "time": "6:00 PM",
+            "title": "Sunday Steals",
+            "category": "Under $100 · Tees · Hats"
+          }
+        },
+        "r1": {
+          "type": "rerun",
+          "settings": {
+            "title": "Vintage Tee Tapes Vol. 1",
+            "date": "SEP 12"
+          }
+        },
+        "r2": {
+          "type": "rerun",
+          "settings": {
+            "title": "Grail Night: Chicago 1s",
+            "date": "SEP 5"
+          }
+        },
+        "r3": {
+          "type": "rerun",
+          "settings": {
+            "title": "Back to School Dunks",
+            "date": "AUG 29"
+          }
+        }
+      },
+      "block_order": [
+        "s1",
+        "s2",
+        "s3",
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "settings": {}
+    }
+  },
+  "order": [
+    "hero",
+    "marquee",
+    "collection_list",
+    "whatnot",
+    "featured_new",
+    "image_with_text",
+    "featured_grails",
+    "newsletter"
+  ]
+}

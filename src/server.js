@@ -9,8 +9,10 @@ import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
+import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
+import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -409,6 +411,9 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 // Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 app.get('/tech-packs/:productId', sendTechPack);
+const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./consign.html',import.meta.url),'utf8'));
+app.get('/consign', sendConsign);
+app.get('/consign/:id', sendConsign);
 app.get('/tp/:token', sendTechPack);
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
@@ -1528,6 +1533,383 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
 });
 
+
+// ---- Consignment / sell-to-us: public submissions with photos, then an offer → counter → accept negotiation ----
+const consignNotificationEmail=process.env.CONSIGN_NOTIFICATION_EMAIL||intakeNotificationEmail;
+const consignTicketUrl=(process.env.CONSIGN_TICKET_URL||'').replace(/\/$/,'');
+const consignFromEmail=process.env.CONSIGN_FROM_EMAIL||process.env.AUTH_FROM_EMAIL||'Common Ground <hub@thefuturebasics.com>';
+const imageExtensions=new Set(['.png','.jpg','.jpeg','.webp','.heic','.heif','.gif']);
+const consignTicketLink=token=>consignTicketUrl?`${consignTicketUrl}?t=${encodeURIComponent(token)}`:null;
+const consignImageUrl=req=>image=>`${req.protocol}://${req.headers.host}/v1/public/consignment-images/${image.id}`;
+async function sendConsignEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; consignment email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:consignFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
+  if(!response.ok)throw new Error(`Consignment email delivery failed: ${response.status}`);return true;
+}
+const consignEmailShell=(title,body)=>`<div style="font-family:Arial,sans-serif;color:#141414;max-width:640px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Common Ground · Trade-in counter</p><h1 style="font-size:22px">${emailEscape(title)}</h1>${body}</div>`;
+async function loadConsignment(where,value){
+  const row=(await pool.query(`select * from consignments where ${where}=$1`,[value])).rows[0];if(!row)return null;
+  const [images,offers]=await Promise.all([
+    pool.query('select * from consignment_images where consignment_id=$1 order by created_at',[row.id]),
+    pool.query('select * from consignment_offers where consignment_id=$1 order by created_at',[row.id])]);
+  return {row,images:images.rows,offers:offers.rows};
+}
+async function applyConsignmentMove(row,offers,move){
+  const next=nextOfferState(row,offers,move);
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    if(next.closeOpen)await db.query('update consignment_offers set status=$2 where id=$1',[next.closeOpen.id,next.closeOpen.status]);
+    await db.query('insert into consignment_offers(consignment_id,by,kind,amount_cents,note,status) values($1,$2,$3,$4,$5,$6)',[row.id,next.offer.by,next.offer.kind,next.offer.amount_cents,next.offer.note,next.offer.status]);
+    await db.query('update consignments set status=$2,agreed_cents=$3,updated_at=now() where id=$1',[row.id,next.patch.status,next.patch.agreed_cents]);
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+  return next;
+}
+async function notifyConsignmentMove(row,next,move){
+  const link=consignTicketLink(row.token),amount=next.offer.amount_cents?formatCents(next.offer.amount_cents):'';
+  try{
+    if(move.by==='store'){
+      const verb={offer:`made you an offer of ${amount}`,counter:`countered at ${amount}`,accept:`accepted your counter of ${amount}`,decline:'passed on this one'}[move.action];
+      await sendConsignEmail({to:row.seller_email,subject:`${row.item_title} — Common Ground ${move.action==='offer'?'offer':move.action==='counter'?'counter-offer':move.action==='accept'?'deal':'update'}`,
+        html:consignEmailShell(row.item_title,`<p>Common Ground ${emailEscape(verb)}.${next.offer.note?' <em>'+emailEscape(next.offer.note)+'</em>':''}</p>${move.action==='accept'?'<p>We\'ll follow up with drop-off or shipping details.</p>':''}${link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Open your trade-in ticket</a></p>`:''}`)});
+    }else{
+      const verb={counter:`countered at ${amount}`,accept:`accepted your offer of ${amount}`,decline:'declined your offer'}[move.action];
+      await sendConsignEmail({to:consignNotificationEmail,replyTo:row.seller_email,subject:`Trade-in: ${row.seller_name} ${move.action==='accept'?'accepted':move.action==='counter'?'countered':'declined'} — ${row.item_title}`,
+        html:consignEmailShell(row.item_title,`<p><strong>${emailEscape(row.seller_name)}</strong> ${emailEscape(verb)}.${next.offer.note?' <em>'+emailEscape(next.offer.note)+'</em>':''}</p><p><a href="${workHubUrl}/consign/${row.id}">Open in Work</a></p>`)});
+    }
+  }catch(error){app.log.error({error,consignmentId:row.id},'Consignment notification email failed')}
+}
+async function storeConsignmentImage(consignmentId,part){
+  const originalName=cleanName(part.filename||'photo.jpg');if(!imageExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Photos must be JPG, PNG, WEBP or HEIC'),{statusCode:415});
+  const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  try{
+    await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
+    return (await pool.query('insert into consignment_images(consignment_id,original_name,storage_name,mime_type,size_bytes) values($1,$2,$3,$4,$5) returning *',[consignmentId,originalName,storageName,part.mimetype,part.file.bytesRead])).rows[0];
+  }catch(error){await unlink(path).catch(()=>{});throw error}
+}
+
+app.post('/v1/public/consignments',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const fields={},images=[];let row=null,spam=false;
+  const create=async()=>{
+    if(row||spam)return row;
+    spam=Boolean(String(fields.company_fax||'').trim());if(spam)return null;
+    const data=normalizeSubmission(fields),token=randomBytes(24).toString('base64url');
+    row=(await pool.query(`insert into consignments(token,seller_name,seller_email,seller_phone,item_title,brand,size,condition,deal_type,asking_cents,details)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[token,data.seller_name,data.seller_email,data.seller_phone,data.item_title,data.brand,data.size,data.condition,data.deal_type,data.asking_cents,data.details])).rows[0];
+    return row;
+  };
+  for await(const part of req.parts()){
+    if(part.type==='file'){
+      await create();
+      if(spam||images.length>=5){for await(const _chunk of part.file){};continue}
+      images.push(await storeConsignmentImage(row.id,part));
+    }else fields[part.fieldname]=part.value;
+  }
+  await create();
+  if(spam)return reply.code(202).send({ok:true});
+  const link=consignTicketLink(row.token),imgUrl=consignImageUrl(req);
+  try{
+    await sendConsignEmail({to:consignNotificationEmail,replyTo:row.seller_email,subject:`New trade-in: ${row.item_title}${row.asking_cents?' · asking '+formatCents(row.asking_cents):''}`,
+      html:consignEmailShell(row.item_title,`<p><strong>${emailEscape(row.seller_name)}</strong> · ${emailEscape(row.seller_email)}${row.seller_phone?' · '+emailEscape(row.seller_phone):''}</p><p>${emailEscape([row.brand,row.size?'Size '+row.size:null,row.condition,row.deal_type].filter(Boolean).join(' · '))}</p>${row.details?'<p>'+emailEscape(row.details).replace(/\n/g,'<br>')+'</p>':''}<p>${images.map(i=>`<a href="${imgUrl(i)}"><img src="${imgUrl(i)}" width="120" style="margin:4px;border:2px solid #141414"></a>`).join('')}</p><p><a href="${workHubUrl}/consign/${row.id}">Review and make an offer in Work</a></p>`)});
+    await sendConsignEmail({to:row.seller_email,subject:`We got it — ${row.item_title}`,
+      html:consignEmailShell('Ticket received',`<p>Thanks ${emailEscape(row.seller_name)}. We'll look over <strong>${emailEscape(row.item_title)}</strong> and send an offer, usually within 48 hours.</p>${link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Track your trade-in ticket</a></p><p style="color:#666;font-size:12px">Keep this link: it's how you'll see and answer offers.</p>`:''}`)});
+  }catch(error){app.log.error({error,consignmentId:row.id},'Consignment saved but notification email failed')}
+  return reply.code(201).send({ok:true,id:row.id,token:row.token,ticket_url:link,images:images.length});
+});
+
+app.get('/v1/public/consignments/:token',async(req,reply)=>{
+  const loaded=await loadConsignment('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Ticket not found'});
+  return {consignment:consignmentView(loaded.row,loaded.images,loaded.offers,consignImageUrl(req))};
+});
+
+app.post('/v1/public/consignments/:token/respond',async(req,reply)=>{
+  const loaded=await loadConsignment('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Ticket not found'});
+  const body=req.body||{},move={by:'seller',action:String(body.action||''),amountCents:body.amount_cents,note:body.note};
+  if(!['counter','accept','decline'].includes(move.action))return reply.code(400).send({error:'Action must be counter, accept or decline.'});
+  const next=await applyConsignmentMove(loaded.row,loaded.offers,move);
+  await notifyConsignmentMove(loaded.row,next,move);
+  const fresh=await loadConsignment('id',loaded.row.id);
+  return {ok:true,consignment:consignmentView(fresh.row,fresh.images,fresh.offers,consignImageUrl(req))};
+});
+
+app.get('/v1/public/consignment-images/:id',async(req,reply)=>{
+  const image=(await pool.query('select * from consignment_images where id=$1',[String(req.params.id||'').slice(0,64)])).rows[0];
+  if(!image)return reply.code(404).send({error:'Not found'});
+  return reply.header('cache-control','public, max-age=86400').type(image.mime_type||'application/octet-stream').send(createReadStream(join(uploadDir,image.storage_name)));
+});
+
+app.get('/v1/admin/consignments',{preHandler:[authenticate,adminOnly]},async req=>{
+  const status=String(req.query.status||'open');
+  const where=status==='open'?`status in ('submitted','reviewing','offered','countered')`:status==='all'?'true':'status=$1';
+  const params=status==='open'||status==='all'?[]:[status];
+  const rows=(await pool.query(`select c.*,(select storage_name from consignment_images i where i.consignment_id=c.id order by created_at limit 1) cover,
+    (select id from consignment_images i where i.consignment_id=c.id order by created_at limit 1) cover_id,
+    (select count(*) from consignment_offers o where o.consignment_id=c.id) offer_count,
+    (select amount_cents from consignment_offers o where o.consignment_id=c.id and o.status='open' order by created_at desc limit 1) open_amount_cents,
+    (select by from consignment_offers o where o.consignment_id=c.id and o.status='open' order by created_at desc limit 1) open_by
+    from consignments c where ${where} order by c.updated_at desc limit 200`,params)).rows;
+  const counts=(await pool.query('select status,count(*)::int n from consignments group by status')).rows;
+  const imgUrl=consignImageUrl(req);
+  return {consignments:rows.map(r=>({id:r.id,item_title:r.item_title,brand:r.brand,size:r.size,condition:r.condition,deal_type:r.deal_type,asking_cents:r.asking_cents,status:r.status,agreed_cents:r.agreed_cents,
+    seller_name:r.seller_name,seller_email:r.seller_email,created_at:r.created_at,updated_at:r.updated_at,offer_count:Number(r.offer_count),open_amount_cents:r.open_amount_cents,open_by:r.open_by,
+    cover_url:r.cover_id?imgUrl({id:r.cover_id}):null,waiting_on:r.status==='countered'||r.status==='submitted'||r.status==='reviewing'?'store':r.status==='offered'?'seller':null})),counts};
+});
+app.get('/v1/admin/consignments/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadConsignment('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  return {consignment:consignmentView(loaded.row,loaded.images,loaded.offers,consignImageUrl(req),{audience:'staff'}),ticket_url:consignTicketLink(loaded.row.token)};
+});
+app.post('/v1/admin/consignments/:id/offers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadConsignment('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  const body=req.body||{},move={by:'store',action:String(body.action||''),amountCents:body.amount_cents,note:body.note};
+  if(!['offer','counter','accept','decline'].includes(move.action))return reply.code(400).send({error:'Action must be offer, counter, accept or decline.'});
+  const next=await applyConsignmentMove(loaded.row,loaded.offers,move);
+  await notifyConsignmentMove(loaded.row,next,move);
+  const fresh=await loadConsignment('id',loaded.row.id);
+  return {ok:true,consignment:consignmentView(fresh.row,fresh.images,fresh.offers,consignImageUrl(req),{audience:'staff'})};
+});
+app.patch('/v1/admin/consignments/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const body=req.body||{},id=String(req.params.id||'').slice(0,64);
+  const row=(await pool.query('select * from consignments where id=$1',[id])).rows[0];if(!row)return reply.code(404).send({error:'Not found'});
+  const status=body.status?String(body.status):row.status;
+  const allowed={submitted:['reviewing','withdrawn'],reviewing:['submitted','withdrawn'],offered:['withdrawn'],countered:['withdrawn'],accepted:['paid','withdrawn'],paid:[],declined:['submitted'],withdrawn:['submitted']};
+  if(status!==row.status&&!(allowed[row.status]||[]).includes(status))return reply.code(409).send({error:`Can't move a ${row.status} ticket to ${status}`});
+  const notes=body.staff_notes!==undefined?String(body.staff_notes).slice(0,4000):row.staff_notes;
+  const updated=(await pool.query('update consignments set status=$2,staff_notes=$3,updated_at=now() where id=$1 returning *',[id,status,notes])).rows[0];
+  const fresh=await loadConsignment('id',id);
+  return {ok:true,consignment:consignmentView(updated,fresh.images,fresh.offers,consignImageUrl(req),{audience:'staff'})};
+});
+
+// ---- Make an offer: buyer opens with a paid checkout (card capture), store has 24h to accept/counter/decline ----
+const offerNotificationEmail=process.env.OFFER_NOTIFICATION_EMAIL||consignNotificationEmail;
+const offerTicketUrl=(process.env.OFFER_TICKET_URL||'').replace(/\/$/,'');
+const offerFromEmail=process.env.OFFER_FROM_EMAIL||consignFromEmail;
+const offerTicketLink=token=>offerTicketUrl?`${offerTicketUrl}?t=${encodeURIComponent(token)}`:null;
+async function sendOfferEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; offer email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:offerFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
+  if(!response.ok)throw new Error(`Offer email delivery failed: ${response.status}`);return true;
+}
+const offerEmailShell=(title,body)=>`<div style="font-family:Arial,sans-serif;color:#141414;max-width:640px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Common Ground · Make an offer</p><h1 style="font-size:22px">${emailEscape(title)}</h1>${body}</div>`;
+
+const asMoney=cents=>(cents/100).toFixed(2);
+const toVariantGid=id=>/^gid:\/\//.test(String(id))?String(id):`gid://shopify/ProductVariant/${String(id).replace(/\D/g,'')}`;
+
+async function fetchOfferContext(variantGid){
+  const data=await shopifyGraphql(OFFER_CONTEXT_QUERY,{variantId:variantGid});
+  const variant=data?.productVariant;
+  if(!variant)throw Object.assign(new Error('That item could not be found.'),{statusCode:404});
+  if(variant.product?.status!=='ACTIVE'||!variant.availableForSale)throw Object.assign(new Error('That item is not currently available for offers.'),{statusCode:409});
+  if(String(variant.product?.accepts?.value).toLowerCase()!=='true')throw Object.assign(new Error('This item does not accept offers.'),{statusCode:409});
+  const minPercent=Number(variant.product?.minPercent?.value)||50;
+  return {
+    productId:variant.product.id, productTitle:variant.product.title, variantTitle:variant.title,
+    imageUrl:variant.image?.url||null, listPriceCents:Math.round(Number(variant.price)*100), minPercent
+  };
+}
+async function createOfferDraftOrder({variantGid,quantity,amountCents,buyer,offerId,note}){
+  const data=await shopifyGraphql(DRAFT_ORDER_CREATE,{input:{
+    lineItems:[{variantId:variantGid,quantity,priceOverride:{amount:asMoney(amountCents),currencyCode:'USD'}}],
+    email:buyer.email,phone:buyer.phone||undefined,tags:['make-an-offer'],note:note||`Make an Offer — ${offerId}`
+  }});
+  const payload=requireNoUserErrors(data.draftOrderCreate);
+  return payload.draftOrder;
+}
+async function pollDraftOrderPaid(draftOrderId){
+  const data=await shopifyGraphql(DRAFT_ORDER_STATUS,{id:draftOrderId});
+  return data?.draftOrder?.order||null;
+}
+async function captureOfferOrder(orderGid,amountCents){
+  const data=await shopifyGraphql(ORDER_TRANSACTIONS_QUERY,{id:orderGid});
+  const transactions=data?.order?.transactions||[];
+  if(transactions.some(t=>['SALE','CAPTURE'].includes(t.kind)&&t.status==='SUCCESS'))return;
+  const auth=transactions.find(t=>t.kind==='AUTHORIZATION'&&t.status==='SUCCESS');
+  if(!auth)throw Object.assign(new Error('No authorized payment found to capture on this order.'),{statusCode:409});
+  const currency=auth.amountSet?.shopMoney?.currencyCode||'USD';
+  const captured=await shopifyGraphql(ORDER_CAPTURE,{input:{id:orderGid,parentTransactionId:auth.id,amount:asMoney(amountCents),currency}});
+  requireNoUserErrors(captured.orderCapture);
+}
+async function releaseOfferOrder(orderGid,{reason='CUSTOMER',staffNote}={}){
+  const cancelled=await shopifyGraphql(ORDER_CANCEL,{orderId:orderGid,refund:true,reason,staffNote:staffNote||'Make an Offer — released'});
+  requireNoOrderCancelErrors(cancelled.orderCancel);
+}
+
+async function loadOffer(where,value){
+  const row=(await pool.query(`select * from product_offers where ${where}=$1`,[value])).rows[0];if(!row)return null;
+  const moves=(await pool.query('select * from product_offer_moves where offer_id=$1 order by created_at',[row.id])).rows;
+  return {row,moves};
+}
+async function applyOfferMove(row,move){
+  const next=nextOfferMove(row,move);
+  const db=await pool.connect();
+  let updated;
+  try{
+    await db.query('begin');
+    await db.query('insert into product_offer_moves(offer_id,by,kind,amount_cents,note) values($1,$2,$3,$4,$5)',[row.id,next.move.by,next.move.kind,next.move.amount_cents,next.move.note]);
+    const patch={...next.patch};
+    updated=(await db.query(
+      `update product_offers set
+         status=coalesce($2,status), current_amount_cents=coalesce($3,current_amount_cents), agreed_cents=coalesce($4,agreed_cents),
+         respond_by=coalesce($5,respond_by), payment_due_by=coalesce($6,payment_due_by),
+         awaiting_counter_payment=coalesce($7,awaiting_counter_payment), updated_at=now()
+       where id=$1 returning *`,
+      [row.id,patch.status??null,patch.current_amount_cents??null,patch.agreed_cents??null,patch.respond_by??null,patch.payment_due_by??null,
+       patch.awaiting_counter_payment===undefined?null:patch.awaiting_counter_payment])).rows[0];
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+
+  let checkoutUrl=null,settlementError=null;
+  try{
+    if(next.settlement==='capture'){
+      await captureOfferOrder(updated.shopify_order_id,updated.agreed_cents??updated.current_amount_cents);
+    }else if(next.settlement==='release_hold'){
+      if(updated.shopify_order_id)await releaseOfferOrder(updated.shopify_order_id,{reason:move.by==='store'?'STAFF':'CUSTOMER'});
+    }else if(next.settlement==='create_counter_checkout'){
+      const draft=await createOfferDraftOrder({variantGid:toVariantGid(updated.shopify_variant_id),quantity:updated.quantity,amountCents:updated.current_amount_cents,
+        buyer:{email:updated.buyer_email,phone:updated.buyer_phone},offerId:updated.id,note:`Make an Offer (counter accepted) — ${updated.id}`});
+      updated=(await pool.query('update product_offers set shopify_draft_order_id=$2,shopify_draft_order_invoice_url=$3,shopify_order_id=null,shopify_order_name=null,updated_at=now() where id=$1 returning *',
+        [updated.id,draft.id,draft.invoiceUrl])).rows[0];
+      checkoutUrl=draft.invoiceUrl;
+    }
+  }catch(error){
+    settlementError=error;
+    app.log.error({error,offerId:updated.id,settlement:next.settlement},'Offer settlement with Shopify failed');
+    await pool.query('update product_offers set staff_notes=coalesce(staff_notes,\'\')||$2,updated_at=now() where id=$1',
+      [updated.id,`\n[${new Date().toISOString()}] Shopify ${next.settlement} failed: ${error.message}`]);
+  }
+  return {row:updated,move:next.move,settlementError,checkoutUrl};
+}
+async function notifyOfferMove({row,move,checkoutUrl}){
+  const link=offerTicketLink(row.token),amount=move.amount_cents?formatCents(move.amount_cents):'';
+  try{
+    if(move.by==='store'){
+      const verb={counter:`countered your offer at ${amount}`,accept:`accepted your offer of ${amount}`,decline:'passed on your offer'}[move.kind];
+      if(!verb)return;
+      await sendOfferEmail({to:row.buyer_email,subject:`${row.product_title} — ${move.kind==='counter'?'counter-offer':move.kind==='accept'?'offer accepted':'update on your offer'}`,
+        html:offerEmailShell(row.product_title,`<p>Common Ground ${emailEscape(verb)}.${move.note?' <em>'+emailEscape(move.note)+'</em>':''}</p>${move.kind==='counter'&&link?`<p><a href="${link}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Review the counter-offer</a></p>`:''}${move.kind==='accept'?'<p>Your order is confirmed — we\'ll email tracking once it ships.</p>':''}`)});
+    }else if(move.by==='buyer'&&['accept','decline'].includes(move.kind)){
+      const verb={accept:`accepted the counter-offer of ${amount}`,decline:'declined the counter-offer'}[move.kind];
+      await sendOfferEmail({to:offerNotificationEmail,replyTo:row.buyer_email,subject:`Offer: ${row.buyer_name} ${move.kind==='accept'?'accepted':'declined'} — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong> ${emailEscape(verb)}.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+      if(move.kind==='accept'&&checkoutUrl)await sendOfferEmail({to:row.buyer_email,subject:`Pay to confirm — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p>One step left: complete checkout at your agreed price of ${amount} to confirm the order.</p><p><a href="${checkoutUrl}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Pay ${amount}</a></p>`)});
+    }else if(move.by==='system'&&move.kind==='expire'){
+      await sendOfferEmail({to:row.buyer_email,subject:`Offer expired — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p>The 24-hour response window closed, so this offer has expired.${row.status==='expired'?' Any card hold has been released.':''}</p>`)});
+      await sendOfferEmail({to:offerNotificationEmail,subject:`Offer expired (missed 24h window) — ${row.product_title}`,
+        html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong>'s offer on <strong>${emailEscape(row.product_title)}</strong> expired unanswered.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+    }
+  }catch(error){app.log.error({error,offerId:row.id},'Offer notification email failed')}
+}
+
+app.post('/v1/public/offers',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const body=req.body||{};
+  if(String(body.company_fax||'').trim())return reply.code(202).send({ok:true});
+  const buyer=normalizeOfferSubmission(body);
+  const variantGid=toVariantGid(body.variant_id);
+  const context=await fetchOfferContext(variantGid);
+  const quantity=buyer.quantity;
+  const amountCents=normalizeOfferAmount(body.amount_cents??Math.round(Number(body.amount)*100),{listPriceCents:context.listPriceCents,minPercent:context.minPercent});
+  const token=randomBytes(24).toString('base64url');
+  const draft=await createOfferDraftOrder({variantGid,quantity,amountCents,buyer,offerId:token});
+  const row=(await pool.query(
+    `insert into product_offers(token,shopify_product_id,shopify_variant_id,product_title,variant_title,image_url,buyer_name,buyer_email,buyer_phone,
+       quantity,list_price_cents,current_amount_cents,shopify_draft_order_id,shopify_draft_order_invoice_url,payment_due_by)
+     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning *`,
+    [token,context.productId,String(body.variant_id),context.productTitle,context.variantTitle,context.imageUrl,buyer.buyer_name,buyer.buyer_email,buyer.buyer_phone,
+     quantity,context.listPriceCents,amountCents,draft.id,draft.invoiceUrl,new Date(Date.now()+2*3600*1000)])).rows[0];
+  await pool.query('insert into product_offer_moves(offer_id,by,kind,amount_cents,note) values($1,$2,$3,$4,$5)',[row.id,'buyer','offer',amountCents,buyer.note]);
+  const link=offerTicketLink(row.token);
+  try{
+    await sendOfferEmail({to:offerNotificationEmail,replyTo:row.buyer_email,subject:`New offer: ${formatCents(amountCents)} on ${row.product_title}`,
+      html:offerEmailShell(row.product_title,`<p><strong>${emailEscape(row.buyer_name)}</strong> · ${emailEscape(row.buyer_email)}${row.buyer_phone?' · '+emailEscape(row.buyer_phone):''}</p><p>Offered ${formatCents(amountCents)} on ${emailEscape(row.product_title)}${row.variant_title?' ('+emailEscape(row.variant_title)+')':''}, list ${formatCents(row.list_price_cents)}.</p><p>Card capture is pending checkout — you'll get a 24-hour clock once it clears.</p><p><a href="${workHubUrl}/offers/${row.id}">Open in Work</a></p>`)});
+    await sendOfferEmail({to:row.buyer_email,subject:`Complete your offer — ${row.product_title}`,
+      html:offerEmailShell(row.product_title,`<p>Thanks ${emailEscape(row.buyer_name)}. One step left: complete checkout for your offer of ${formatCents(amountCents)} to place it. We'll respond within 24 hours — if we decline or don't respond in time, it's automatically refunded (or the hold released, depending on your card).</p><p><a href="${draft.invoiceUrl}" style="display:inline-block;background:#E0322B;color:#fff;padding:12px 18px;text-decoration:none;font-weight:700">Complete checkout</a></p>${link?`<p style="color:#666;font-size:12px">Track this offer: <a href="${link}">${link}</a></p>`:''}`)});
+  }catch(error){app.log.error({error,offerId:row.id},'Offer saved but notification email failed')}
+  return reply.code(201).send({ok:true,token:row.token,ticket_url:link,checkout_url:draft.invoiceUrl,offer:offerView(row,[])});
+});
+
+app.get('/v1/public/offers/:token',async(req,reply)=>{
+  const loaded=await loadOffer('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Offer not found'});
+  return {offer:offerView(loaded.row,loaded.moves)};
+});
+
+app.post('/v1/public/offers/:token/respond',async(req,reply)=>{
+  const loaded=await loadOffer('token',String(req.params.token||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Offer not found'});
+  const body=req.body||{},action=String(body.action||'');
+  if(!['accept','decline'].includes(action))return reply.code(400).send({error:'Action must be accept or decline.'});
+  const result=await applyOfferMove(loaded.row,{by:'buyer',action,note:body.note});
+  await notifyOfferMove(result);
+  const fresh=await loadOffer('id',result.row.id);
+  return {ok:true,checkout_url:result.checkoutUrl,offer:offerView(fresh.row,fresh.moves)};
+});
+
+app.get('/v1/admin/offers',{preHandler:[authenticate,adminOnly]},async req=>{
+  const status=String(req.query.status||'open');
+  const where=status==='open'?`status in ('awaiting_payment','pending_review','countered')`:status==='all'?'true':'status=$1';
+  const params=status==='open'||status==='all'?[]:[status];
+  const rows=(await pool.query(`select * from product_offers where ${where} order by updated_at desc limit 200`,params)).rows;
+  const counts=(await pool.query('select status,count(*)::int n from product_offers group by status')).rows;
+  return {offers:rows.map(r=>({...offerView(r,[],{audience:'staff'}),
+    waiting_on:r.status==='pending_review'?'store':r.status==='countered'||r.status==='awaiting_payment'?'buyer':null})),counts};
+});
+app.get('/v1/admin/offers/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadOffer('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  return {offer:offerView(loaded.row,loaded.moves,{audience:'staff'}),ticket_url:offerTicketLink(loaded.row.token)};
+});
+app.post('/v1/admin/offers/:id/respond',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const loaded=await loadOffer('id',String(req.params.id||'').slice(0,64));
+  if(!loaded)return reply.code(404).send({error:'Not found'});
+  const body=req.body||{},action=String(body.action||'');
+  if(!['counter','accept','decline'].includes(action))return reply.code(400).send({error:'Action must be counter, accept or decline.'});
+  const result=await applyOfferMove(loaded.row,{by:'store',action,amountCents:body.amount_cents,note:body.note,bounds:{listPriceCents:loaded.row.list_price_cents}});
+  await notifyOfferMove(result);
+  const fresh=await loadOffer('id',result.row.id);
+  return {ok:true,warning:result.settlementError?result.settlementError.message:undefined,offer:offerView(fresh.row,fresh.moves,{audience:'staff'})};
+});
+app.patch('/v1/admin/offers/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const id=String(req.params.id||'').slice(0,64),body=req.body||{};
+  const row=(await pool.query('update product_offers set staff_notes=$2,updated_at=now() where id=$1 returning *',[id,body.staff_notes!==undefined?String(body.staff_notes).slice(0,4000):null])).rows[0];
+  if(!row)return reply.code(404).send({error:'Not found'});
+  const fresh=await loadOffer('id',id);
+  return {ok:true,offer:offerView(fresh.row,fresh.moves,{audience:'staff'})};
+});
+
+async function runOfferSweep(){
+  const pending=(await pool.query(`select * from product_offers where status='awaiting_payment' and shopify_draft_order_id is not null`)).rows;
+  for(const row of pending){
+    try{
+      const order=await pollDraftOrderPaid(row.shopify_draft_order_id);
+      if(order){
+        const withOrder=(await pool.query('update product_offers set shopify_order_id=$2,shopify_order_name=$3,updated_at=now() where id=$1 returning *',[row.id,order.id,order.name])).rows[0];
+        const result=await applyOfferMove(withOrder,{by:'system',action:'paid'});
+        await notifyOfferMove(result);
+      }else if(row.payment_due_by&&new Date(row.payment_due_by)<new Date()){
+        const result=await applyOfferMove(row,{by:'system',action:'cancel'});
+        await notifyOfferMove(result);
+      }
+    }catch(error){app.log.error({error,offerId:row.id},'Offer payment-poll sweep failed for this offer')}
+  }
+  const overdue=(await pool.query(`select * from product_offers where status in ('pending_review','countered') and respond_by<now()`)).rows;
+  for(const row of overdue){
+    try{
+      const result=await applyOfferMove(row,{by:'system',action:'expire'});
+      await notifyOfferMove(result);
+    }catch(error){app.log.error({error,offerId:row.id},'Offer expiry sweep failed for this offer')}
+  }
+}
+
 app.setErrorHandler((error, req, reply) => {
   req.log.error(error);
   reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
@@ -1549,4 +1931,6 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 
 await migrate();
 await repairPendingShopifyLinks();
+setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
+runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

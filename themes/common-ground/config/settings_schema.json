@@ -1,0 +1,94 @@
+[
+  {
+    "name": "theme_info",
+    "theme_name": "commonground trial",
+    "theme_version": "1.0.0",
+    "theme_author": "Future Basics",
+    "theme_documentation_url": "https://thefuturebasics.com",
+    "theme_support_url": "https://thefuturebasics.com/pages/contact"
+  },
+  {
+    "name": "Colors",
+    "settings": [
+      { "type": "color", "id": "color_bg", "label": "Background (VHS-label cream)", "default": "#EDE6D3" },
+      { "type": "color", "id": "color_paper", "label": "Card / paper", "default": "#FAF6EC" },
+      { "type": "color", "id": "color_ink", "label": "Ink (CRT black)", "default": "#141414" },
+      { "type": "color", "id": "color_accent_1", "label": "Accent 1 — REC red", "default": "#E0322B" },
+      { "type": "color", "id": "color_accent_2", "label": "Accent 2 — Turf green", "default": "#1E7A3C" },
+      { "type": "color", "id": "color_accent_3", "label": "Accent 3 — Simpsons yellow", "default": "#F5C518" },
+      { "type": "color", "id": "color_accent_4", "label": "Accent 4 — Track-jacket blue", "default": "#2457C5" }
+    ]
+  },
+  {
+    "name": "Motion",
+    "settings": [
+      {
+        "type": "select",
+        "id": "motion_level",
+        "label": "Motion level",
+        "info": "Visitors with reduced-motion enabled always get the calm version.",
+        "options": [
+          { "value": "full", "label": "Full send (tilt, glitch, stickers, transitions)" },
+          { "value": "medium", "label": "Medium (reveal + marquee only)" },
+          { "value": "off", "label": "Off" }
+        ],
+        "default": "full"
+      },
+      { "type": "checkbox", "id": "enable_cursor", "label": "Sticker cursor trail (desktop)", "default": true },
+      { "type": "checkbox", "id": "enable_scanlines", "label": "Film grain + CRT scanline overlay", "default": true },
+      { "type": "checkbox", "id": "enable_osd", "label": "VCR on-screen display (▶ PLAY on hover, REC timecode on hero)", "default": true },
+      { "type": "checkbox", "id": "enable_hover_swap", "label": "Swap to second image on product hover", "default": true },
+      { "type": "checkbox", "id": "enable_view_transitions", "label": "Page transitions (View Transitions API)", "default": true }
+    ]
+  },
+  {
+    "name": "Layout",
+    "settings": [
+      { "type": "range", "id": "corner_radius", "label": "Corner radius", "min": 0, "max": 24, "step": 2, "unit": "px", "default": 4 },
+      { "type": "select", "id": "grid_density", "label": "Product grid density", "options": [
+        { "value": "3", "label": "3 per row" }, { "value": "4", "label": "4 per row" }, { "value": "5", "label": "5 per row" }
+      ], "default": "4" }
+    ]
+  },
+  {
+    "name": "Product cards",
+    "settings": [
+      { "type": "checkbox", "id": "card_show_vendor", "label": "Show brand", "default": true },
+      { "type": "checkbox", "id": "card_show_size", "label": "Show size chip (first available size)", "default": true },
+      { "type": "checkbox", "id": "card_quick_add", "label": "Quick add for single-variant products", "default": true },
+      { "type": "text", "id": "badge_new_days", "label": "Show NEW sticker on products created within N days", "default": "14" }
+    ]
+  },
+  {
+    "name": "Whatnot live",
+    "settings": [
+      { "type": "paragraph", "content": "Install the Whatnot sales channel from the Shopify App Store to sync products, inventory and orders. These settings drive the Channel 12 section, the ON AIR badge and LIVE stickers on products tagged 'whatnot'." },
+      { "type": "text", "id": "whatnot_url", "label": "Whatnot channel URL", "default": "https://www.whatnot.com/user/commonground12" },
+      { "type": "checkbox", "id": "whatnot_live", "label": "We're live right now", "info": "Turns on the site-wide ON AIR badge and switches Channel 12 to the live screen.", "default": false },
+      { "type": "text", "id": "whatnot_next", "label": "Next show (ISO date-time)", "info": "e.g. 2026-09-26T19:00:00-04:00. Drives the countdown." },
+      { "type": "text", "id": "whatnot_next_title", "label": "Next show title", "default": "Friday Night Heat: Jordans, Dunks & Vintage" },
+      { "type": "checkbox", "id": "whatnot_badge", "label": "Show floating ON AIR badge when live", "default": true }
+    ]
+  },
+  {
+    "name": "Consignment (Sell to us)",
+    "settings": [
+      { "type": "paragraph", "content": "The Sell page (template page.sell) posts submissions with photos to the Future Basics hub API, which runs the offer / counter / accept flow and emails both sides. Add the storefront domain to the API's ALLOWED_ORIGINS." },
+      { "type": "text", "id": "consign_api_url", "label": "Hub API URL", "default": "https://hub.thefuturebasics.com" }
+    ]
+  },
+  {
+    "name": "Favicon",
+    "settings": [
+      { "type": "image_picker", "id": "favicon", "label": "Favicon (64×64px)" }
+    ]
+  },
+  {
+    "name": "Social",
+    "settings": [
+      { "type": "text", "id": "social_instagram", "label": "Instagram URL", "default": "https://www.instagram.com/commonground12/" },
+      { "type": "text", "id": "social_facebook", "label": "Facebook URL", "default": "https://www.facebook.com/CommonGroundWalnut/" },
+      { "type": "text", "id": "social_tiktok", "label": "TikTok URL" }
+    ]
+  }
+]

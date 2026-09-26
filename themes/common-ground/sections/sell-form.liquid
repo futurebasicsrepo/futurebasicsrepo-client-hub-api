@@ -1,0 +1,161 @@
+{%- liquid
+  assign api = settings.consign_api_url | strip | replace: ' ', ''
+  if api == blank
+    assign api = 'https://hub.thefuturebasics.com'
+  endif
+-%}
+<section class="sell section page-width" data-sell data-api="{{ api }}" data-max-images="{{ section.settings.max_images }}">
+  <div class="section__head">
+    <div>
+      <p class="kicker reveal">{{ section.settings.kicker }}</p>
+      <h1 class="h1 reveal" style="--i:1" data-glitch data-text="{{ section.settings.heading | escape }}">{{ section.settings.heading }}</h1>
+    </div>
+  </div>
+
+  {%- comment -%} ---------- Status / offer thread (shown when ?t=token is present) ---------- {%- endcomment -%}
+  <div class="sell__status" data-sell-status hidden>
+    <div class="ticket" data-ticket>
+      <div class="ticket__head">
+        <span class="ticket__kicker">TRADE-IN TICKET</span>
+        <span class="ticket__id" data-ticket-id></span>
+        <span class="ticket__state chip" data-ticket-state></span>
+      </div>
+      <div class="ticket__item">
+        <div class="ticket__gallery" data-ticket-images></div>
+        <div class="ticket__info">
+          <p class="product-card__vendor" data-ticket-brand></p>
+          <h2 class="h3" data-ticket-title></h2>
+          <p class="small" data-ticket-meta></p>
+          <p class="ticket__asking">Asking <b data-ticket-asking></b></p>
+        </div>
+      </div>
+      <div class="ticket__thread" data-ticket-offers></div>
+      <form class="ticket__respond form" data-ticket-respond hidden>
+        <p class="ticket__respond-title">Their offer is on the table. Your move:</p>
+        <div class="ticket__actions">
+          <button type="button" class="btn btn--primary" data-respond="accept">Accept <span data-ticket-latest></span></button>
+          <button type="button" class="btn btn--ghost" data-respond="counter-toggle">Counter</button>
+          <button type="button" class="btn btn--ghost" data-respond="decline">Decline</button>
+        </div>
+        <div class="ticket__counter" data-counter-box hidden>
+          <label>Your counter (USD)<input type="number" min="1" step="1" name="counter_amount" inputmode="numeric" placeholder="e.g. 260"></label>
+          <label>Note (optional)<input type="text" name="counter_note" maxlength="300" placeholder="Deadstock, receipt included"></label>
+          <button type="button" class="btn btn--primary" data-respond="counter">Send counter</button>
+        </div>
+      </form>
+      <p class="ticket__foot small" data-ticket-foot></p>
+    </div>
+    <p class="small"><a href="{{ page.url }}">Submit another item →</a></p>
+  </div>
+
+  {%- comment -%} ---------- Submission form ---------- {%- endcomment -%}
+  <div class="sell__layout" data-sell-form-wrap>
+    <form class="sell__form form" data-sell-form novalidate>
+      <fieldset class="sell__step">
+        <legend class="sell__legend"><span class="sell__num">01</span> The item</legend>
+        <div class="form__grid">
+          <label class="form__full">Item title<input type="text" name="item_title" required maxlength="140" placeholder="Air Jordan 1 Retro High OG 'Chicago'"></label>
+          <label>Brand<input type="text" name="brand" required maxlength="80" placeholder="Nike"></label>
+          <label>Size<input type="text" name="size" maxlength="40" placeholder="10.5 / L / One size"></label>
+          <label>Condition
+            <span class="select"><select name="condition" required>
+              <option value="">Pick one</option>
+              <option value="deadstock">Deadstock / new</option>
+              <option value="like_new">Like new (worn 1-2x)</option>
+              <option value="used_good">Used, good</option>
+              <option value="used_fair">Used, fair</option>
+            </select>{% render 'icon', name: 'chevron' %}</span>
+          </label>
+          <label>Asking price (USD)<input type="number" name="asking" min="1" step="1" inputmode="numeric" placeholder="300"></label>
+          <label class="form__full">Details<textarea name="details" rows="4" maxlength="3000" placeholder="Colorway, year, box / receipt / tags, flaws, why you're moving it."></textarea></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="sell__step">
+        <legend class="sell__legend"><span class="sell__num">02</span> Photos</legend>
+        <p class="small">{{ section.settings.photo_hint }}</p>
+        <label class="dropzone" data-dropzone>
+          <input type="file" name="images" accept="image/jpeg,image/png,image/webp,image/heic" multiple data-file-input>
+          <span class="dropzone__tape" aria-hidden="true"><span class="dropzone__reel"></span><span class="dropzone__reel"></span></span>
+          <span class="dropzone__text"><b>Drop photos here</b> or tap to insert<br><span class="small">Up to {{ section.settings.max_images }} · JPG, PNG, WEBP, HEIC · 25MB each</span></span>
+        </label>
+        <ul class="dropzone__previews" data-previews></ul>
+      </fieldset>
+
+      <fieldset class="sell__step">
+        <legend class="sell__legend"><span class="sell__num">03</span> You</legend>
+        <div class="form__grid">
+          <label>Name<input type="text" name="seller_name" required maxlength="120" autocomplete="name"></label>
+          <label>Email<input type="email" name="seller_email" required maxlength="200" autocomplete="email"></label>
+          <label>Phone (optional)<input type="tel" name="seller_phone" maxlength="40" autocomplete="tel"></label>
+          <label>Deal type
+            <span class="select"><select name="deal_type">
+              <option value="either">Cash or consignment, whichever's better</option>
+              <option value="cash">Cash offer</option>
+              <option value="consign">Consignment (we sell it, you get paid when it sells)</option>
+              <option value="trade">Store credit / trade</option>
+            </select>{% render 'icon', name: 'chevron' %}</span>
+          </label>
+          <input type="text" name="company_fax" tabindex="-1" autocomplete="off" class="visually-hidden" aria-hidden="true">
+        </div>
+      </fieldset>
+
+      <div class="sell__submit">
+        <p class="small">{{ section.settings.terms }}</p>
+        <button type="submit" class="btn btn--primary btn--lg" data-sell-submit>{{ section.settings.submit_label }} {% render 'icon', name: 'arrow' %}</button>
+        <p class="form__error" data-sell-error hidden></p>
+      </div>
+    </form>
+
+    <aside class="sell__aside">
+      <div class="sell__how">
+        <p class="kicker">How it works</p>
+        <ol class="sell__steps">
+          {%- for block in section.blocks -%}
+            <li {{ block.shopify_attributes }}><b>{{ block.settings.title }}</b><span>{{ block.settings.text }}</span></li>
+          {%- endfor -%}
+        </ol>
+      </div>
+      <div class="sell__wants">
+        <p class="kicker">Always buying</p>
+        <div class="search__chips">{%- assign wants = section.settings.wants | split: ',' -%}{%- for w in wants -%}<span class="chip chip--sm">{{ w | strip }}</span>{%- endfor -%}</div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="sell__done" data-sell-done hidden>
+    <div class="ticket ticket--stub">
+      <p class="ticket__kicker">TRADE-IN TICKET</p>
+      <p class="h2">You're in.</p>
+      <p>We'll look it over and send an offer to <b data-done-email></b>. Track it any time here:</p>
+      <p><a class="btn btn--primary" data-done-link href="#">Open your ticket {% render 'icon', name: 'arrow' %}</a></p>
+      <p class="small">Bookmark that link. It's the only way to see and answer offers.</p>
+    </div>
+  </div>
+</section>
+<script src="{{ 'consign.js' | asset_url }}" defer="defer"></script>
+{% schema %}
+{
+  "name": "Sell to us (consignment)",
+  "settings": [
+    { "type": "paragraph", "content": "Submissions post to the Future Basics hub API (Theme settings → Consignment → API URL). Offers, counters and accepts happen on the seller's ticket link and in the Work console." },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "TRADE-IN COUNTER" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Sell us your heat" },
+    { "type": "text", "id": "photo_hint", "label": "Photo hint", "default": "Front, back, soles, box label, tags, and any flaws. Natural light beats flash." },
+    { "type": "range", "id": "max_images", "label": "Max photos", "min": 1, "max": 5, "step": 1, "default": 5 },
+    { "type": "text", "id": "submit_label", "label": "Submit button", "default": "Send it in" },
+    { "type": "text", "id": "terms", "label": "Terms line", "default": "Offers are good for 7 days. Items must be authentic; we verify everything in store before paying out." },
+    { "type": "text", "id": "wants", "label": "Always buying (comma separated)", "default": "Jordan 1-4, Dunks, Yeezy, New Balance, Supreme, Vintage tees, Starter jackets, Bearbricks, Pokémon" }
+  ],
+  "blocks": [ { "type": "step", "name": "Step", "settings": [
+    { "type": "text", "id": "title", "label": "Title", "default": "Send photos" },
+    { "type": "text", "id": "text", "label": "Text", "default": "Takes two minutes." }
+  ] } ],
+  "presets": [ { "name": "Sell to us (consignment)", "blocks": [
+    { "type": "step", "settings": { "title": "Send photos + details", "text": "Two minutes, no account needed." } },
+    { "type": "step", "settings": { "title": "We make an offer", "text": "Usually within 48 hours. Cash, consignment split, or store credit." } },
+    { "type": "step", "settings": { "title": "Accept or counter", "text": "Haggle on your ticket link. Nothing moves until you say yes." } },
+    { "type": "step", "settings": { "title": "Drop off or ship", "text": "Bring it to 134 S 11th St or we send a label. Paid after authentication." } }
+  ] } ]
+}
+{% endschema %}

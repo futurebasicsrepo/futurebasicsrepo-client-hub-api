@@ -1,0 +1,55 @@
+{%- liquid
+  assign c = section.settings.collection
+  if c == blank
+    assign c = collections['all']
+  endif
+  assign sort = section.settings.sort
+  assign limit = section.settings.limit
+-%}
+<section class="featured section page-width" data-density="{{ settings.grid_density }}">
+  <div class="section__head">
+    <h2 class="h2 section__title reveal">{{ section.settings.heading | default: c.title }}</h2>
+    {%- if section.settings.show_view_all -%}
+      <a class="btn btn--ghost" href="{{ c.url }}{% if sort != 'default' %}?sort_by={{ sort }}{% endif %}">{{ 'sections.collection.shop_all_in' | t: collection: c.title }} {% render 'icon', name: 'arrow' %}</a>
+    {%- endif -%}
+  </div>
+  <div class="product-grid product-grid--{{ settings.grid_density }}{% if section.settings.layout == 'scroll' %} product-grid--scroll{% endif %}">
+    {%- liquid
+      assign shown = 0
+      if sort == 'created-descending'
+        assign products = c.products | sort: 'created_at' | reverse
+      elsif sort == 'price-descending'
+        assign products = c.products | sort: 'price' | reverse
+      elsif sort == 'price-ascending'
+        assign products = c.products | sort: 'price'
+      else
+        assign products = c.products
+      endif
+    -%}
+    {%- for product in products -%}
+      {%- if shown >= limit -%}{%- break -%}{%- endif -%}
+      {%- if section.settings.hide_sold_out and product.available == false -%}{%- continue -%}{%- endif -%}
+      {% render 'product-card', product: product, index: forloop.index %}
+      {%- assign shown = shown | plus: 1 -%}
+    {%- else -%}
+      <p class="empty">{{ 'sections.collection.empty' | t }}</p>
+    {%- endfor -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Featured collection",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Just walked in" },
+    { "type": "collection", "id": "collection", "label": "Collection", "info": "Leave empty for all products." },
+    { "type": "select", "id": "sort", "label": "Sort", "options": [
+      { "value": "default", "label": "Collection order" }, { "value": "created-descending", "label": "Newest first" }, { "value": "price-descending", "label": "Price high → low" }, { "value": "price-ascending", "label": "Price low → high" }
+    ], "default": "created-descending" },
+    { "type": "range", "id": "limit", "label": "Products", "min": 2, "max": 12, "step": 1, "default": 8 },
+    { "type": "select", "id": "layout", "label": "Layout", "options": [ { "value": "grid", "label": "Grid" }, { "value": "scroll", "label": "Horizontal scroll" } ], "default": "grid" },
+    { "type": "checkbox", "id": "hide_sold_out", "label": "Hide sold out", "default": true },
+    { "type": "checkbox", "id": "show_view_all", "label": "Show 'Shop all' link", "default": true }
+  ],
+  "presets": [{ "name": "Featured collection" }]
+}
+{% endschema %}

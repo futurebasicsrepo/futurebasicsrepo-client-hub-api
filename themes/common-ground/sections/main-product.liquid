@@ -1,0 +1,153 @@
+{%- liquid
+  assign current = product.selected_or_first_available_variant
+  assign back_collection = collection | default: collections['all']
+  assign t_sold_out = 'products.product.sold_out' | t
+  assign t_on_sale = 'products.product.on_sale' | t
+-%}
+<section class="product section page-width" data-product data-section-id="{{ section.id }}">
+  <nav class="breadcrumbs small" aria-label="Breadcrumbs">
+    <a href="{{ routes.root_url }}">Home</a> <span aria-hidden="true">/</span>
+    <a href="{{ back_collection.url }}">{{ back_collection.title }}</a> <span aria-hidden="true">/</span>
+    <span aria-current="page">{{ product.title }}</span>
+  </nav>
+  <div class="product__layout">
+    <div class="product__gallery" data-gallery>
+      <div class="product__stage">
+        {%- for media in product.media -%}
+          <div class="product__slide{% if forloop.first %} is-active{% endif %}" data-media-id="{{ media.id }}" {% unless forloop.first %}hidden{% endunless %}>
+            {%- case media.media_type -%}
+              {%- when 'image' -%}
+                <img src="{{ media | image_url: width: 1400 }}" srcset="{{ media | image_url: width: 700 }} 700w, {{ media | image_url: width: 1400 }} 1400w" sizes="(min-width: 1024px) 55vw, 100vw" width="{{ media.width }}" height="{{ media.height }}" alt="{{ media.alt | default: product.title | escape }}" loading="{% if forloop.first %}eager{% else %}lazy{% endif %}" data-zoom>
+              {%- when 'video' -%}
+                {{ media | video_tag: controls: true, muted: true, loop: true, playsinline: true }}
+              {%- when 'external_video' -%}
+                {{ media | external_video_tag }}
+              {%- when 'model' -%}
+                {{ media | model_viewer_tag }}
+            {%- endcase -%}
+          </div>
+        {%- else -%}
+          <div class="product__slide is-active">{{ 'product-1' | placeholder_svg_tag: 'placeholder-svg' }}</div>
+        {%- endfor -%}
+        <div class="product__stickers">
+          {%- if product.available == false -%}{% render 'sticker', text: t_sold_out, color: 'ink' %}
+          {%- elsif current.compare_at_price > current.price -%}{% render 'sticker', text: t_on_sale, color: 'tang' %}{%- endif -%}
+        </div>
+      </div>
+      {%- if product.media.size > 1 -%}
+        <div class="product__thumbs" role="tablist">
+          {%- for media in product.media -%}
+            <button type="button" class="product__thumb{% if forloop.first %} is-active{% endif %}" data-thumb data-media-id="{{ media.id }}" role="tab" aria-selected="{{ forloop.first }}" aria-label="{{ 'products.product.media_alt' | t }} {{ forloop.index }}">
+              <img src="{{ media | image_url: width: 160 }}" width="80" height="80" alt="" loading="lazy">
+            </button>
+          {%- endfor -%}
+        </div>
+      {%- endif -%}
+    </div>
+
+    <div class="product__info">
+      {%- if product.vendor != blank -%}<a class="product__vendor kicker" href="{{ routes.all_products_collection_url }}?filter.p.vendor={{ product.vendor | url_encode }}">{{ product.vendor }}</a>{%- endif -%}
+      <h1 class="h2 product__title">{{ product.title }}</h1>
+      <div class="product__price" data-price>{% render 'price', product: product, use_variant: true %}</div>
+      {%- if product.variants.size == 1 and current.inventory_management and current.inventory_quantity == 1 -%}
+        <p class="product__one-left small">{{ 'products.product.one_left' | t }}</p>
+      {%- endif -%}
+
+      {%- form 'product', product, id: 'ProductForm', class: 'product__form', data-product-form: '' -%}
+        <input type="hidden" name="id" value="{{ current.id }}" data-variant-id>
+        {%- unless product.has_only_default_variant -%}
+          {%- for option in product.options_with_values -%}
+            <fieldset class="product__option" data-option-index="{{ forloop.index0 }}">
+              <legend class="product__option-name">{{ option.name }}{% if option.name == 'Size' or option.name contains 'Size' %} <a class="small product__size-guide" href="{{ section.settings.size_guide_url | default: '#' }}">{{ 'products.product.size_guide' | t }}</a>{% endif %}</legend>
+              <div class="swatches">
+                {%- for value in option.values -%}
+                  {%- liquid
+                    assign avail = false
+                    for v in product.variants
+                      if v.options[forloop.parentloop.index0] == value and v.available
+                        assign avail = true
+                        break
+                      endif
+                    endfor
+                  -%}
+                  <label class="swatch{% unless avail %} swatch--soldout{% endunless %}">
+                    <input type="radio" name="option-{{ forloop.parentloop.index0 }}" value="{{ value | escape }}" {% if option.selected_value == value %}checked{% endif %} data-option>
+                    <span>{{ value }}</span>
+                  </label>
+                {%- endfor -%}
+              </div>
+            </fieldset>
+          {%- endfor -%}
+        {%- endunless -%}
+
+        <div class="product__buy">
+          <div class="qty" data-qty>
+            <button type="button" class="qty__btn" data-qty-minus aria-label="-">{% render 'icon', name: 'minus' %}</button>
+            <input class="qty__input" type="number" name="quantity" value="1" min="1" data-qty-input aria-label="{{ 'products.product.quantity' | t }}">
+            <button type="button" class="qty__btn" data-qty-plus aria-label="+">{% render 'icon', name: 'plus' %}</button>
+          </div>
+          <button type="submit" name="add" class="btn btn--primary btn--lg product__atc" data-atc {% unless current.available %}disabled{% endunless %}>
+            <span data-atc-text>{% if current.available %}{{ 'products.product.add_to_cart' | t }}{% else %}{{ 'products.product.sold_out' | t }}{% endif %}</span>
+          </button>
+        </div>
+        {%- if section.settings.show_dynamic_checkout -%}{{ form | payment_button }}{%- endif -%}
+      {%- endform -%}
+      {%- render 'make-offer', product: product, current: current -%}
+
+      <div class="product__meta small">
+        {%- if current.sku != blank -%}<span>{{ 'products.product.sku' | t }}: <span data-sku>{{ current.sku }}</span></span>{%- endif -%}
+        {%- if product.type != blank -%}<a href="{{ routes.all_products_collection_url }}?filter.p.product_type={{ product.type | url_encode }}">{{ product.type }}</a>{%- endif -%}
+      </div>
+
+      <div class="accordion">
+        {%- if product.description != blank -%}
+          <details open><summary>{{ 'products.product.description' | t }} {% render 'icon', name: 'chevron' %}</summary><div class="rte">{{ product.description }}</div></details>
+        {%- endif -%}
+        {%- for block in section.blocks -%}
+          <details {{ block.shopify_attributes }}><summary>{{ block.settings.heading }} {% render 'icon', name: 'chevron' %}</summary><div class="rte">{{ block.settings.content }}</div></details>
+        {%- endfor -%}
+      </div>
+      {%- if product.tags.size > 0 -%}
+        <div class="product__tags">
+          {%- for tag in product.tags limit: 8 -%}<a class="chip chip--sm" href="{{ routes.all_products_collection_url }}/{{ tag | handle }}">{{ tag }}</a>{%- endfor -%}
+        </div>
+      {%- endif -%}
+    </div>
+  </div>
+  <script type="application/json" data-variants>{{ product.variants | json }}</script>
+  <script type="application/json" data-media-map>{ {% for v in product.variants %}"{{ v.id }}": {{ v.featured_media.id | default: 0 | json }}{% unless forloop.last %},{% endunless %}{% endfor %} }</script>
+</section>
+<script src="{{ 'product.js' | asset_url }}" defer="defer"></script>
+<script type="application/ld+json">
+{
+  "@context": "http://schema.org/",
+  "@type": "Product",
+  "name": {{ product.title | json }},
+  "url": {{ request.origin | append: product.url | json }},
+  {% if product.featured_media %}"image": [{{ product.featured_media | image_url: width: 1024 | prepend: "https:" | json }}],{% endif %}
+  "description": {{ product.description | strip_html | json }},
+  {% if current.sku != blank %}"sku": {{ current.sku | json }},{% endif %}
+  "brand": { "@type": "Brand", "name": {{ product.vendor | json }} },
+  "offers": [{% for variant in product.variants %}{
+    "@type": "Offer",
+    "availability": "http://schema.org/{% if variant.available %}InStock{% else %}OutOfStock{% endif %}",
+    "price": {{ variant.price | divided_by: 100.00 | json }},
+    "priceCurrency": {{ cart.currency.iso_code | json }},
+    "url": {{ request.origin | append: variant.url | json }}
+  }{% unless forloop.last %},{% endunless %}{% endfor %}]
+}
+</script>
+{% schema %}
+{
+  "name": "Product",
+  "settings": [
+    { "type": "checkbox", "id": "show_dynamic_checkout", "label": "Show dynamic checkout button", "default": true },
+    { "type": "url", "id": "size_guide_url", "label": "Size guide link" }
+  ],
+  "blocks": [ { "type": "accordion", "name": "Accordion", "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Shipping & returns" },
+    { "type": "richtext", "id": "content", "label": "Content", "default": "<p>Ships within 2 business days. All consignment sales are final.</p>" }
+  ] } ],
+  "default": { "blocks": [ { "type": "accordion", "settings": { "heading": "Condition & authenticity", "content": "<p>Every item is inspected and authenticated in-store before listing. Condition notes are in the description.</p>" } }, { "type": "accordion" } ] }
+}
+{% endschema %}
