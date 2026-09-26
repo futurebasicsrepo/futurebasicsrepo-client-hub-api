@@ -29,6 +29,8 @@ export const matchRow = row => ({
   visibility: row.visibility,
   scorekeeper: { handle: row.keeper_handle, displayName: row.keeper_name },
   liveStreams: row.live_streams ?? 0,
+  reelStatus: row.reel_status ?? null,
+  reelPostId: row.reel_post_id ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
@@ -42,7 +44,7 @@ const MAX_CO_KEEPERS = 3;
 // The match's creator and anyone they've added can run the scoreboard.
 export const canKeep = (row, user) => Boolean(user && (Number(row.created_by) === user.id || (row.keeper_ids || []).includes(String(user.id))));
 
-export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier }) {
+export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, hooks = {} }) {
   const matchLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
   const subscribers = new Map(); // matchId -> Set<{ raw, req }>
 
@@ -62,7 +64,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
   async function snapshot(req, row) {
     const [{ rows: events }, { rows: clips }, { rows: streams }, { rows: keepers }, { rows: follow }] = await Promise.all([
       pool.query(`select * from match_events where match_id = $1 order by created_at asc`, [row.id]),
-      pool.query(`${POST_SELECT} where p.match_id = $2 and p.status = 'published' and p.visibility <> 'private' and p.media_status = 'ready'
+      pool.query(`${POST_SELECT} where p.match_id = $2 and p.status = 'published' and p.visibility <> 'private' and p.media_status = 'ready' and not p.is_reel
         order by p.match_minute asc nulls last, p.published_at asc limit 200`, [req.user?.id ?? null, row.id]),
       pool.query(`select s.*, u.handle, u.display_name from streams s join users u on u.id = s.user_id
         where s.match_id = $1 and s.status = 'live' order by s.started_at asc`, [row.id]),
@@ -194,6 +196,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     notify(row.id).catch(err => req.log.error(err));
     const updated = await loadMatch(row.id);
     notifier?.matchEvent(updated, event, req.user.id).catch(err => req.log.error(err));
+    if (event.type === 'fulltime') Promise.resolve(hooks.fulltime?.(row.id)).catch(err => req.log.error(err));
     return reply.code(201).send(await snapshot(req, updated));
   });
 
@@ -210,6 +213,17 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     }
     notify(row.id).catch(err => req.log.error(err));
     return snapshot(req, await loadMatch(row.id));
+  });
+
+  // Rebuild the highlight reel (e.g. after more clips were posted). Scorekeepers only, after full time.
+  app.post('/v1/matches/:id/reel', { preHandler: requireUser }, async (req, reply) => {
+    const row = await loadMatch(req.params.id);
+    if (!row || !canKeep(row, req.user)) return fail(reply, 404, 'Match not found.');
+    if (row.period !== 'ft') return fail(reply, 400, 'Highlights are made at full time.');
+    if (row.reel_status === 'building') return reply.code(202).send({ reelStatus: 'building' });
+    await hooks.fulltime?.(row.id);
+    notify(row.id).catch(() => {});
+    return reply.code(202).send({ reelStatus: 'building' });
   });
 
   // Co-scorekeepers: only the match's creator adds or removes them.

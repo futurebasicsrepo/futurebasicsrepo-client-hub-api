@@ -69,6 +69,11 @@ export function createNotifier({ pool, log, send } = {}) {
     enabled,
     publicKey,
     matchEvent: (match, event, actorId) => push(match, alertFor(match, event), actorId),
+    reelReady: (match, postId) => push(match, {
+      url: `/p/${postId}`, tag: `reel-${match.id}`,
+      title: `🎬 Highlights · ${match.home_name} ${match.home_score}–${match.away_score} ${match.away_name}`,
+      body: 'The fans’ best clips from the match, in one reel'
+    }, null),
     streamStarted: (match, handle, actorId) => push(match, {
       url: `/m/${match.id}`, tag: `live-${match.id}`,
       title: `📹 @${handle} is live`, body: `${match.home_name} vs ${match.away_name} · watch from the sideline`

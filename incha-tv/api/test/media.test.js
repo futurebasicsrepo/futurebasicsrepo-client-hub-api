@@ -204,6 +204,53 @@ test('video conversion and go-live flow', { skip: (!dbUrl && 'set TEST_DATABASE_
   assert.equal((await send(chunks.length, chunks[0])).statusCode, 404, 'no chunks after the end');
   assert.equal((await call('POST', `/v1/streams/${stream.id}/clip`, other)).statusCode, 410, 'clips come from live streams');
 
+  // --- highlight reel at full time + following feed ---
+  res = await call('POST', '/v1/matches', token, { home: 'La Barra Brava', away: 'Port Richmond', competition: 'Liga Latina' });
+  const final = json(res).match;
+  await call('PATCH', `/v1/posts/${webm.id}`, token, { matchId: final.id, matchMinute: 78 });
+  await call('PATCH', `/v1/posts/${mov.id}`, token, { matchId: final.id, matchMinute: 12, title: 'Early header' });
+  await call('POST', `/v1/posts/${mov.id}/publish`, token, { visibility: 'public' });
+  await call('POST', `/v1/matches/${final.id}/events`, token, { type: 'kickoff' });
+  await call('POST', `/v1/matches/${final.id}/events`, token, { type: 'goal', side: 'home' });
+  assert.equal((await call('POST', `/v1/matches/${final.id}/reel`, token)).statusCode, 400, 'reels are made at full time');
+  await call('POST', `/v1/matches/${final.id}/events`, token, { type: 'fulltime' });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  await app.reels.drain();
+  snap = json(await call('GET', `/v1/matches/${final.id}`));
+  assert.equal(snap.match.reelStatus, 'ready');
+  assert.ok(!snap.clips.some(c => c.id === snap.match.reelPostId), 'the reel is not one of its own clips');
+  const reel = json(await call('GET', `/v1/posts/${snap.match.reelPostId}`)).post;
+  assert.equal(reel.title, 'Highlights · La Barra Brava 1–0 Port Richmond');
+  assert.equal(reel.status, 'published');
+  assert.equal(reel.visibility, 'public');
+  assert.equal(reel.creator.handle, 'cam_op');
+  assert.deepEqual([reel.width, reel.height], [1280, 720]);
+  assert.ok(reel.duration > 3 + 5 && reel.duration < 3 + 6 + 3 + 1.5, `reel duration ${reel.duration}`);
+  assert.ok(reel.coverUrl);
+  const reelFile = await call('GET', new URL(reel.mediaUrl).pathname);
+  writeFileSync(join(scratch, 'reel.mp4'), reelFile.rawPayload);
+  const reelStreams = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', join(scratch, 'reel.mp4')])).streams;
+  assert.deepEqual(reelStreams.map(s => s.codec_name).sort(), ['aac', 'h264']);
+  assert.equal((await call('POST', `/v1/matches/${final.id}/reel`, other)).statusCode, 404, 'only scorekeepers rebuild');
+  assert.equal((await call('POST', `/v1/matches/${final.id}/reel`, token)).statusCode, 202);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  await app.reels.drain();
+  const rebuilt = json(await call('GET', `/v1/matches/${final.id}`)).match;
+  assert.notEqual(rebuilt.reelPostId, reel.id, 'rebuild replaces the reel');
+  assert.equal((await call('GET', `/v1/posts/${reel.id}`, token)).statusCode, 404, 'old reel removed');
+
+  // Following feed: follow the match (or a team in a public match) and its clips + reel show up.
+  assert.equal((await call('GET', '/v1/feed/following')).statusCode, 401);
+  assert.deepEqual(json(await call('GET', '/v1/feed/following', other)).posts, []);
+  await call('POST', `/v1/teams/port-richmond/follow`, other);
+  let feed = json(await call('GET', '/v1/feed/following', other)).posts;
+  assert.deepEqual(feed.map(p => p.id).sort(), [webm.id, mov.id, rebuilt.reelPostId].sort());
+  assert.equal(feed[0].id, rebuilt.reelPostId, 'newest first');
+  await call('DELETE', `/v1/teams/port-richmond/follow`, other);
+  await call('POST', `/v1/matches/${final.id}/follow`, other);
+  feed = json(await call('GET', '/v1/feed/following', other)).posts;
+  assert.equal(feed.length, 3);
+
   const replay = json(await call('GET', `/v1/posts/${replayPostId}`, token)).post;
   assert.equal(replay.status, 'draft');
   assert.equal(replay.mediaStatus, 'ready');
