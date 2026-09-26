@@ -115,8 +115,24 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | DELETE | `/v1/comments/:id` | author / post owner | |
 | GET | `/v1/fandoms`, `/v1/fandoms/:slug`, `/v1/users/:handle` | – | |
 | GET | `/media/:key` | public, or signed `?exp&sig` | Range requests supported |
+| POST | `/v1/matches` | ✓ | `{ home, away, competition?, venue?, kickoffAt?, halfLength?, youth?, visibility? }` — creator is the scorekeeper |
+| GET | `/v1/matches` | – | `filter=live\|upcoming\|recent`, `team`; public, non-youth only |
+| GET | `/v1/me/matches` | ✓ | matches you keep score for |
+| GET | `/v1/matches/:id` | – | match + events + clips (`canScore` for the scorekeeper) |
+| GET | `/v1/matches/:id/stream` | – | Server-Sent Events: `update` with the full snapshot on every change |
+| POST | `/v1/matches/:id/events` | scorekeeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
+| DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
+| GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
+
+Clips join a match via `PATCH /v1/posts/:id { matchId, matchMinute }`. Youth matches are always unlisted, never appear in lists, and their clips can't be published publicly.
+
+## Match centre
+
+Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
 ## Next steps (not in v1)
+
+- Push notifications for goals, co-scorekeepers, "clip that" instant replay, and auto highlight reels per match.
 
 - **Server-side transcoding** (ffmpeg worker → HLS + H.264 MP4) so iPhone HEVC `.mov` files play everywhere. Trims would then be baked in.
 - **Object storage.** Move media to S3/R2 or Railway Buckets with a CDN in front. `api/src/storage.js` is the only file that changes.

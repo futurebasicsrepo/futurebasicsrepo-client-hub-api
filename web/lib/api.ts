@@ -34,8 +34,42 @@ export interface Post {
   fandom: Fandom | null;
   creator: { handle: string; displayName: string };
   viewerHasVoted: boolean;
+  match: MatchSummary | null;
+  matchMinute: number | null;
   isOwner: boolean;
 }
+
+export interface MatchSummary { id: string; home: string; away: string; homeScore: number; awayScore: number; period: Period; youth: boolean }
+export type Period = 'pre' | '1h' | 'ht' | '2h' | 'ft';
+export interface Team { name: string; slug: string }
+export interface Match {
+  id: string;
+  home: Team;
+  away: Team;
+  homeScore: number;
+  awayScore: number;
+  period: Period;
+  status: 'upcoming' | 'live' | 'finished';
+  periodStartedAt: string | null;
+  halfLength: number;
+  kickoffAt: string;
+  venue: string;
+  competition: string;
+  youth: boolean;
+  visibility: 'public' | 'unlisted';
+  scorekeeper: { handle: string; displayName: string };
+  canScore?: boolean;
+}
+export interface MatchEvent {
+  id: number;
+  type: 'goal' | 'yellow' | 'red' | 'note' | 'kickoff' | 'halftime' | 'second_half' | 'fulltime';
+  side: 'home' | 'away' | null;
+  minute: number | null;
+  stoppage: number;
+  player: string;
+  createdAt: string;
+}
+export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; serverTime: string }
 
 export interface Comment {
   id: number;
@@ -102,6 +136,15 @@ export function uploadFile<T>(path: string, file: Blob, filename: string, onProg
     form.append('file', file, filename);
     xhr.send(form);
   });
+}
+
+export async function fetchPublicMatch(id: string): Promise<MatchSnapshot | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/matches/${encodeURIComponent(id)}`, { next: { revalidate: 15 } });
+    return res.ok ? ((await res.json()) as MatchSnapshot) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Server-side fetch for metadata; returns null on any failure.

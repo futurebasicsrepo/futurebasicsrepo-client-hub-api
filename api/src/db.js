@@ -83,6 +83,49 @@ export async function migrate() {
       deleted_at timestamptz
     );
     create index if not exists comments_post on comments (post_id, created_at);
+
+    create table if not exists teams (
+      id bigserial primary key,
+      slug text unique not null,
+      name text not null,
+      created_by bigint references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create table if not exists matches (
+      id text primary key,
+      home_team_id bigint not null references teams(id),
+      away_team_id bigint not null references teams(id),
+      home_score integer not null default 0,
+      away_score integer not null default 0,
+      period text not null default 'pre' check (period in ('pre','1h','ht','2h','ft')),
+      period_started_at timestamptz,
+      half_length integer not null default 45 check (half_length between 5 and 60),
+      kickoff_at timestamptz not null default now(),
+      venue text not null default '',
+      competition text not null default '',
+      youth boolean not null default false,
+      visibility text not null default 'public' check (visibility in ('public','unlisted')),
+      created_by bigint not null references users(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists matches_kickoff on matches (kickoff_at desc);
+    create index if not exists matches_teams on matches (home_team_id, away_team_id);
+    create table if not exists match_events (
+      id bigserial primary key,
+      match_id text not null references matches(id) on delete cascade,
+      type text not null check (type in ('goal','yellow','red','note','kickoff','halftime','second_half','fulltime')),
+      side text check (side in ('home','away')),
+      minute integer,
+      stoppage integer not null default 0,
+      player text not null default '',
+      created_by bigint references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists match_events_match on match_events (match_id, created_at);
+    alter table posts add column if not exists match_id text references matches(id) on delete set null;
+    alter table posts add column if not exists match_minute integer;
+    create index if not exists posts_match on posts (match_id);
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());

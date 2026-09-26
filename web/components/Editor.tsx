@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { api, uploadFile, type Fandom, type FilterName, type Post, type Visibility } from '@/lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { api, uploadFile, type Fandom, type FilterName, type MatchSnapshot, type MatchSummary, type Post, type Visibility } from '@/lib/api';
 import { useRequireUser } from '@/lib/useRequireUser';
 import { FILTERS, clock } from '@/lib/format';
 import MediaPlayer from './MediaPlayer';
@@ -17,6 +17,8 @@ interface Draft {
   visibility: Visibility;
   trimStart: number;
   trimEnd: number | null;
+  matchId: string | null;
+  matchMinute: string;
 }
 
 const VISIBILITY_OPTIONS: { value: Visibility; label: string; help: string }[] = [
@@ -32,12 +34,16 @@ const draftFrom = (post: Post): Draft => ({
   filter: post.filter,
   visibility: post.status === 'draft' && post.visibility === 'private' ? 'public' : post.visibility,
   trimStart: post.trimStart ?? 0,
-  trimEnd: post.trimEnd
+  trimEnd: post.trimEnd,
+  matchId: post.match?.id ?? null,
+  matchMinute: post.matchMinute == null ? '' : String(post.matchMinute)
 });
 
 export default function Editor({ id }: { id: string }) {
   const user = useRequireUser();
   const router = useRouter();
+  const params = useSearchParams();
+  const [match, setMatch] = useState<MatchSummary | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const coverInput = useRef<HTMLInputElement>(null);
   const [post, setPost] = useState<Post | null>(null);
@@ -56,7 +62,18 @@ export default function Editor({ id }: { id: string }) {
       .then(({ post }) => {
         if (!post.isOwner) { router.replace(`/p/${id}`); return; }
         setPost(post);
-        setDraft(draftFrom(post));
+        const initial = draftFrom(post);
+        const fromLink = params.get('match');
+        if (post.match) setMatch(post.match);
+        else if (fromLink) {
+          initial.matchId = fromLink;
+          initial.matchMinute = params.get('minute') ?? '';
+          api<MatchSnapshot>(`/v1/matches/${fromLink}`).then(({ match: m }) => {
+            setMatch({ id: m.id, home: m.home.name, away: m.away.name, homeScore: m.homeScore, awayScore: m.awayScore, period: m.period, youth: m.youth });
+            if (m.youth) setDraft(d => (d && d.visibility === 'public' ? { ...d, visibility: 'unlisted' } : d));
+          }).catch(() => setDraft(d => (d ? { ...d, matchId: null } : d)));
+        }
+        setDraft(initial);
       })
       .catch(err => setError(err.message));
     api<{ fandoms: Fandom[] }>('/v1/fandoms').then(d => setFandoms(d.fandoms)).catch(() => {});
@@ -119,6 +136,8 @@ export default function Editor({ id }: { id: string }) {
       body.trimEnd = d.trimEnd;
     }
     if (post?.status === 'published') body.visibility = d.visibility;
+    body.matchId = d.matchId;
+    body.matchMinute = d.matchId && d.matchMinute !== '' ? Number(d.matchMinute) : null;
     return body;
   }
 
@@ -138,7 +157,7 @@ export default function Editor({ id }: { id: string }) {
     if (!draft!.title.trim()) throw new Error('Add a title before publishing.');
     await api(`/v1/posts/${id}`, { method: 'PATCH', body: payload(draft!) });
     await api(`/v1/posts/${id}/publish`, { method: 'POST', body: { visibility: draft!.visibility } });
-    router.push(`/p/${id}`);
+    router.push(draft!.matchId ? `/m/${draft!.matchId}` : `/p/${id}`);
   });
 
   const unpublish = () => run('unpublish', async () => {
@@ -272,10 +291,26 @@ export default function Editor({ id }: { id: string }) {
             </div>
           </section>
 
+          {draft.matchId && match && (
+            <section className="panel stack">
+              <div className="row">
+                <span className="mono muted">Match clip</span>
+                <div className="spacer" />
+                <button className="linkish" onClick={() => { update({ matchId: null, matchMinute: '' }); setMatch(null); }}>Remove</button>
+              </div>
+              <Link href={`/m/${match.id}`}><strong>{match.home} {match.homeScore}–{match.awayScore} {match.away}</strong></Link>
+              <div className="field">
+                <label htmlFor="matchMinute">Minute</label>
+                <input id="matchMinute" className="input" inputMode="numeric" value={draft.matchMinute} onChange={e => update({ matchMinute: e.target.value.replace(/\D/g, '').slice(0, 3) })} placeholder="34" style={{ maxWidth: 120 }} />
+              </div>
+              {match.youth && <p className="hint">Youth match: this clip can be unlisted or private, not public.</p>}
+            </section>
+          )}
+
           <section className="panel stack">
             <span className="mono muted">Who can watch</span>
             <div className="vis-options">
-              {VISIBILITY_OPTIONS.map(option => (
+              {VISIBILITY_OPTIONS.filter(option => !(match?.youth && draft.matchId && option.value === 'public')).map(option => (
                 <label key={option.value}>
                   <input type="radio" name="visibility" value={option.value} checked={draft.visibility === option.value} onChange={() => update({ visibility: option.value })} />
                   <div><strong>{option.label}</strong><span>{option.help}</span></div>

@@ -17,8 +17,9 @@ export default function Header() {
         <Link href="/" className="logo" aria-label="incha.tv home">INCHA<span className="tv">.TV</span></Link>
         <nav className="nav">
           <Link href="/" aria-current={current('/')} className="hide-sm">Feed</Link>
+          <Link href="/matches" aria-current={current('/matches')}>Matches</Link>
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
-          {user && <Link href="/studio" aria-current={current('/studio')}>Studio</Link>}
+          {user && <Link href="/studio" aria-current={current('/studio')} className="hide-sm">Studio</Link>}
         </nav>
         <form
           className="search"

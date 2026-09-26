@@ -13,7 +13,7 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   process.env.JWT_SECRET = 'test-jwt-secret';
   const { migrate, pool } = await import('../src/db.js');
   const { buildApp } = await import('../src/app.js');
-  await pool.query('drop table if exists comments, votes, posts, fandoms, users cascade');
+  await pool.query('drop table if exists match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
   await migrate();
   const app = await buildApp({ logger: false });
   t.after(async () => { await app.close(); await pool.end(); });
@@ -161,6 +161,80 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   assert.equal(json(res).user.id, undefined, 'profile hides internal id');
   res = await call('GET', '/v1/fandoms');
   assert.ok(json(res).fandoms.some(f => f.slug === 'argentina'));
+
+  // Match centre: create, score live, stream updates, attach clips
+  res = await call('POST', '/v1/matches', creator, { home: 'Rangers FC', away: 'Rangers FC' });
+  assert.equal(res.statusCode, 400);
+  res = await call('POST', '/v1/matches', creator, { home: 'Rangers FC', away: 'Kensington United', competition: 'Philly Sunday League', venue: 'Field 3', halfLength: 40 });
+  assert.equal(res.statusCode, 201);
+  const match = json(res).match;
+  assert.equal(match.status, 'upcoming');
+  assert.equal(match.canScore, true);
+  assert.equal(json(await call('GET', `/v1/matches/${match.id}`, fan)).match.canScore, false);
+  assert.equal((await call('POST', `/v1/matches/${match.id}/events`, fan, { type: 'kickoff' })).statusCode, 404, 'only the scorekeeper can score');
+  assert.equal((await call('POST', `/v1/matches/${match.id}/events`, creator, { type: 'goal', side: 'home' })).statusCode, 400);
+  res = await call('POST', `/v1/matches/${match.id}/events`, creator, { type: 'kickoff' });
+  assert.equal(json(res).match.status, 'live');
+  assert.equal(json(await call('GET', '/v1/matches?filter=live')).matches.length, 1);
+
+  // Live stream over a real socket
+  await app.listen({ port: 0, host: '127.0.0.1' });
+  const base = `http://127.0.0.1:${app.server.address().port}`;
+  const stream = await fetch(`${base}/v1/matches/${match.id}/stream`, { headers: { origin: 'http://localhost:3000' } });
+  assert.equal(stream.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+  assert.equal(stream.headers.get('access-control-allow-origin'), 'http://localhost:3000');
+  const reader = stream.body.getReader();
+  const nextUpdate = async () => {
+    let buffer = '';
+    while (!buffer.includes('\n\n')) buffer += new TextDecoder().decode((await reader.read()).value);
+    return JSON.parse(/data: (.*)/.exec(buffer)[1]);
+  };
+  assert.equal((await nextUpdate()).match.homeScore, 0);
+  res = await call('POST', `/v1/matches/${match.id}/events`, creator, { type: 'goal', side: 'home', player: 'Marcus' });
+  assert.equal(res.statusCode, 201);
+  const live = await nextUpdate();
+  assert.equal(live.match.homeScore, 1);
+  assert.equal(live.events.at(-1).player, 'Marcus');
+  assert.equal(live.events.at(-1).minute, 1);
+  await reader.cancel();
+
+  const goalId = json(res).events.at(-1).id;
+  res = await call('DELETE', `/v1/matches/${match.id}/events/${goalId}`, creator);
+  assert.equal(json(res).match.homeScore, 0, 'undoing a goal takes it off the board');
+  await call('POST', `/v1/matches/${match.id}/events`, creator, { type: 'goal', side: 'away', minute: 34 });
+
+  // Attach a clip at a minute
+  res = await upload('/v1/posts', fan, { name: 'screamer.mp4', type: 'video/mp4', bytes: Buffer.alloc(2048, 3) });
+  const clip = json(res).post;
+  res = await call('PATCH', `/v1/posts/${clip.id}`, fan, { matchId: 'nope123456', title: 'x' });
+  assert.equal(res.statusCode, 400);
+  res = await call('PATCH', `/v1/posts/${clip.id}`, fan, { matchId: match.id, matchMinute: 34, title: 'Top bins from the halfway line' });
+  assert.equal(json(res).post.match.id, match.id);
+  assert.equal(json(res).post.matchMinute, 34);
+  assert.equal(json(await call('GET', `/v1/matches/${match.id}`)).clips.length, 0, 'drafts stay off the match page');
+  await call('POST', `/v1/posts/${clip.id}/publish`, fan, { visibility: 'public' });
+  res = await call('GET', `/v1/matches/${match.id}`);
+  assert.deepEqual(json(res).clips.map(c => [c.id, c.matchMinute]), [[clip.id, 34]]);
+  assert.equal(json(res).match.awayScore, 1);
+
+  for (const type of ['halftime', 'second_half', 'fulltime']) {
+    assert.equal((await call('POST', `/v1/matches/${match.id}/events`, creator, { type })).statusCode, 201, type);
+  }
+  assert.equal(json(await call('GET', '/v1/matches?filter=recent')).matches[0].id, match.id);
+  res = await call('GET', '/v1/teams/kensington-united');
+  assert.deepEqual(json(res).record, { played: 1, won: 1, drawn: 0, lost: 0, goalsFor: 1, goalsAgainst: 0 });
+
+  // Youth matches are never listed and their clips can't go public
+  res = await call('POST', '/v1/matches', creator, { home: 'U12 Lions', away: 'U12 Tigers', youth: true });
+  const youth = json(res).match;
+  assert.equal(youth.visibility, 'unlisted');
+  await call('POST', `/v1/matches/${youth.id}/events`, creator, { type: 'kickoff' });
+  assert.ok(!json(await call('GET', '/v1/matches?filter=live')).matches.some(m => m.id === youth.id));
+  res = await upload('/v1/posts', fan, { name: 'kid.mp4', type: 'video/mp4', bytes: Buffer.alloc(1024, 4) });
+  const kidClip = json(res).post;
+  await call('PATCH', `/v1/posts/${kidClip.id}`, fan, { matchId: youth.id, title: 'Great save' });
+  assert.equal((await call('POST', `/v1/posts/${kidClip.id}/publish`, fan, { visibility: 'public' })).statusCode, 400);
+  assert.equal((await call('POST', `/v1/posts/${kidClip.id}/publish`, fan, { visibility: 'unlisted' })).statusCode, 200);
 
   // Delete removes post and media
   assert.equal((await call('DELETE', `/v1/posts/${post.id}`, fan)).statusCode, 404);

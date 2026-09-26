@@ -67,6 +67,11 @@ export default function PostView({ id }: { id: string }) {
             trimEnd={post.trimEnd}
             title={post.title}
           />
+          {post.match && (
+            <Link href={`/m/${post.match.id}`} className="match-chip">
+              ⚽ {post.match.home} {post.match.homeScore}–{post.match.awayScore} {post.match.away}{post.matchMinute != null ? ` · ${post.matchMinute}'` : ''}
+            </Link>
+          )}
           <h1 className="display post-title">{post.title}</h1>
           <div className="creator-line">
             <Link href={`/u/${post.creator.handle}`} className="row">
