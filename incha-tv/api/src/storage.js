@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 const root = process.env.MEDIA_DIR || './media';
 mkdirSync(root, { recursive: true });
 
-const pathFor = key => join(root, key);
+export const pathFor = key => join(root, key);
 
 export async function save(key, stream) {
   await pipeline(stream, createWriteStream(pathFor(key), { flags: 'wx' }));

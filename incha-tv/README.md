@@ -11,7 +11,8 @@ incha-tv/
 ## What v1 does
 
 - **Accounts.** Email/handle + password sign-up and sign-in (scrypt hashes, 30-day JWT). Profiles have a display name and bio.
-- **Upload.** Drag-and-drop MP4/MOV/WebM video or JPG/PNG/GIF/WebP images up to 500 MB, with a progress bar. Every upload starts as a private draft.
+- **Upload.** Drag-and-drop any phone video (MP4, MOV including iPhone HEVC, WebM, MKV, 3GP) or JPG/PNG/GIF/WebP images up to 500 MB, with a progress bar. Every upload starts as a private draft.
+- **Media conversion.** Every uploaded video is converted in the background (ffmpeg) to H.264/AAC MP4 with fast-start, at most 1080p, so it plays in every browser and phone. Files that are already H.264/AAC are only remuxed, which takes seconds. A poster frame is grabbed automatically if the creator hasn't set a cover. Studio shows "Converting…" and swaps in the new file when it's done. Creators can publish straight away; the post shows up in feeds once it's playable. Conversions resume after a restart.
 - **Light editing (Studio).**
   - Trim with start/end handles or "start/end at playhead". The original file is kept; the trim window is applied at playback, so it can be changed later.
   - Cover frame: grab the current video frame, or upload an image.
@@ -85,6 +86,8 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
    - `MEDIA_SECRET`: optional. Another long random string for signing media URLs.
    - `ALLOWED_ORIGINS`: `https://incha.tv,https://www.incha.tv,https://*.vercel.app`
    - `PUBLIC_API_URL`: for example `https://api.incha.tv`.
+   - Optional: `MAX_LIVE_STREAMS` (default 3), `TRANSCODE_CONCURRENCY` (default 1), `TRANSCODE=off` to skip conversion.
+   - The Docker image installs ffmpeg. Live segments and recordings live in `/data/live` on the same volume.
 5. Add the custom domain `api.incha.tv`. The health check is `/health`. Tables and starter fandoms are created automatically on boot.
 
 ### Vercel (web)
@@ -123,10 +126,26 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | POST | `/v1/matches/:id/events` | scorekeeper | `{ type: kickoff\|halftime\|second_half\|fulltime\|goal\|yellow\|red\|note, side?, player?, minute? }` |
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
 | GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
+| POST | `/v1/matches/:id/streams` | ✓ | go live on a match (not youth, not finished) → `{ stream }` with `hlsUrl` |
+| POST | `/v1/streams/:id/chunks?seq=n` | streamer | `application/octet-stream` MediaRecorder chunk (≤ 8 MB); returns `{ next }`, 409 with `next` when out of order |
+| POST | `/v1/streams/:id/end` | streamer | stop and save the recording → `{ stream, replayPostId }` |
+| GET | `/v1/streams/:id` | – | stream status |
+| GET | `/live/:id/index.m3u8`, `/live/:id/segNNNNN.ts` | – | HLS for viewers |
 
 Clips join a match via `PATCH /v1/posts/:id { matchId, matchMinute }`. Youth matches are always unlisted, never appear in lists, and their clips can't be published publicly.
 
 ## Match centre
+
+### Go live
+
+Anyone signed in can stream a match from their phone's browser. There's no app to install and no stream key.
+
+- The phone records with `MediaRecorder` (WebM on Chrome/Android, fragmented MP4 on iPhone Safari) and posts one-second chunks to `POST /v1/streams/:id/chunks?seq=n`. Chunks are sent in order, retried through signal drops, and deduplicated by sequence number.
+- For each stream, the API runs one ffmpeg process that encodes 720p H.264/AAC into a rolling HLS playlist at `/live/:id/index.m3u8` (2-second segments). Viewers watch it about 10 seconds behind, with native HLS on Safari and hls.js elsewhere. At the same time it writes a recording.
+- When the streamer stops, or the phone goes quiet for 30 seconds, the recording becomes a **private draft clip** in their Studio, attached to the match at the minute the stream started. From there they can trim the goal and post it.
+- Several fans can stream the same match. Viewers switch between "cams" on the match page, and match cards show a "Live video" badge.
+- Limits: one stream per person, `MAX_LIVE_STREAMS` at once across the server (default 3, since each stream uses about 1–2 vCPU), and 3 hours per stream. **Youth matches can't be streamed.**
+- If the API restarts mid-stream, the stream is closed and what was recorded so far is saved.
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
@@ -134,7 +153,7 @@ Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals 
 
 - Push notifications for goals, co-scorekeepers, "clip that" instant replay, and auto highlight reels per match.
 
-- **Server-side transcoding** (ffmpeg worker → HLS + H.264 MP4) so iPhone HEVC `.mov` files play everywhere. Trims would then be baked in.
+- **Transcoding at scale.** Conversion and live encoding run inside the API process, which is fine for one instance. Past that, move them to a separate worker service, and move media to object storage.
 - **Object storage.** Move media to S3/R2 or Railway Buckets with a CDN in front. `api/src/storage.js` is the only file that changes.
 - **Email.** Verification and password reset via Resend.
 - **Moderation.** Report button, admin queue, rate limits backed by Redis once there's more than one API instance.

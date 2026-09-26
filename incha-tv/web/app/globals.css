@@ -411,3 +411,39 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .trim input[type='range']::-moz-range-thumb { width: 20px; height: 38px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- media conversion ---------- */
+.media-note { display: flex; gap: 10px; align-items: center; margin: 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--ink-2); border: 1px solid var(--line); color: var(--paper-dim); font-size: 14px; }
+.media-note.error { color: var(--flare); border-color: color-mix(in srgb, var(--flare) 40%, transparent); }
+.spinner { width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--flare); animation: spin .8s linear infinite; display: inline-block; vertical-align: -2px; margin-right: 8px; }
+.media-note .spinner { margin-right: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.media-pending { aspect-ratio: 16 / 9; display: grid; place-items: center; }
+.media-pending img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .35; filter: blur(6px); }
+.media-pending p { position: relative; margin: 0; padding: 16px; text-align: center; color: var(--paper); }
+
+/* ---------- live video (viewers) ---------- */
+.live-section { margin-top: 20px; }
+.live-player { aspect-ratio: 16 / 9; }
+.live-player video { width: 100%; height: 100%; object-fit: contain; max-height: none; }
+.live-tag { position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px; border-radius: 999px; background: var(--flare); color: var(--flare-ink); }
+.live-tag i, .golive-link i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+.live-tag.static { position: static; }
+.live-overlay { position: absolute; inset: 0; display: grid; place-items: center; color: var(--paper-dim); font-size: 14px; background: rgba(0,0,0,.5); }
+.live-unmute { position: absolute; bottom: 12px; left: 12px; border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(0,0,0,.6); color: #fff; font-weight: 600; cursor: pointer; }
+.live-angles { margin-top: 10px; gap: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.golive-link { display: inline-flex; align-items: center; gap: 8px; color: var(--flare); border-color: color-mix(in srgb, var(--flare) 50%, transparent); }
+
+/* ---------- go live (broadcaster) ---------- */
+.golive { position: fixed; inset: 0; z-index: 60; background: #000; color: #fff; overflow: hidden; }
+.golive-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.golive-preview.mirror { transform: scaleX(-1); }
+.golive-top { position: absolute; top: 0; left: 0; right: 0; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: calc(env(safe-area-inset-top) + 12px) 16px 24px; background: linear-gradient(rgba(0,0,0,.6), transparent); }
+.golive-score { font-family: var(--font-display); text-transform: uppercase; font-size: 20px; line-height: 1.05; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golive-msg { position: absolute; left: 16px; right: 16px; top: 40%; text-align: center; padding: 16px; border-radius: var(--radius); background: rgba(0,0,0,.7); font-size: 15px; }
+.golive-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; padding: 40px 16px calc(env(safe-area-inset-bottom) + 20px); background: linear-gradient(transparent, rgba(0,0,0,.7)); }
+.golive-hint { margin: 0; font-size: 13px; color: rgba(255,255,255,.75); max-width: 340px; }
+.golive-warn { margin: 0; font-size: 13px; font-weight: 600; color: #ffd166; }
+.golive-go { font-size: 18px; padding: 14px 28px; }
+.golive-end { font-size: 16px; padding: 14px 28px; background: #fff; color: #000; border-color: #fff; }
+.golive-done { text-align: center; padding-top: 80px; padding-bottom: 80px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
