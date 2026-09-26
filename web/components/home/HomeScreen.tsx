@@ -8,6 +8,8 @@ import ScoreTicker from './ScoreTicker';
 import FandomRings from './FandomRings';
 import MatchRail from './MatchRail';
 import MomentGrid from './MomentGrid';
+import WorldStrip from './WorldStrip';
+import { useWorldScores } from '@/lib/useWorldScores';
 
 type MatchList = { matches: Match[] };
 
@@ -16,6 +18,9 @@ export default function HomeScreen() {
   const [live, setLive] = useState<Match[] | null>(null);
   const [upcoming, setUpcoming] = useState<Match[]>([]);
   const [recent, setRecent] = useState<Match[]>([]);
+  const { data: world } = useWorldScores();
+  // Marquee live games from the world feed (leagues arrive priority-ordered).
+  const worldLive = (world?.leagues ?? []).flatMap(l => l.matches.filter(m => m.state === 'in')).slice(0, 12);
 
   useEffect(() => {
     const load = () => Promise.all([
@@ -30,7 +35,7 @@ export default function HomeScreen() {
 
   return (
     <>
-      <ScoreTicker matches={[...(live ?? []), ...recent]} />
+      <ScoreTicker matches={[...(live ?? []), ...recent]} world={worldLive} />
       <div className="wrap home">
         <FandomRings />
         {ready && !user && (
@@ -46,6 +51,7 @@ export default function HomeScreen() {
           </section>
         )}
         <MatchRail live={live} upcoming={upcoming} />
+        <WorldStrip scores={world} />
         <MomentGrid />
       </div>
     </>

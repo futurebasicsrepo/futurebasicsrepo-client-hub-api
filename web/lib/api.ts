@@ -88,6 +88,21 @@ export interface MatchEvent {
 }
 export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string }
 
+// Pro & international football (see api/src/worldscores.js).
+export interface WorldSide { name: string; short: string; abbr: string; score: number | null; winner: boolean }
+export interface WorldMatch {
+  id: string;
+  league: { slug: string; name: string };
+  state: 'pre' | 'in' | 'post' | 'off';
+  detail: string | null;
+  kickoffAt: string;
+  home: WorldSide;
+  away: WorldSide;
+  venue: string | null;
+}
+export interface WorldLeague { slug: string; name: string; live: number; matches: WorldMatch[] }
+export interface WorldScores { updatedAt: string; live: number; total: number; leagues: WorldLeague[]; stale?: boolean }
+
 export interface Comment {
   id: number;
   parentId: number | null;

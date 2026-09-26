@@ -9,6 +9,7 @@ import { registerMatches } from './matches.js';
 import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
+import { createWorldScores } from './worldscores.js';
 import {
   COVER_TYPES, EMAIL_RE, HANDLE_RE, MEDIA_KEY_RE, MEDIA_TYPES, POST_ID_RE, SORTS,
   createLimiter, hashPassword, normalizeEmail, normalizeHandle, normalizePostEdit,
@@ -29,7 +30,7 @@ function originAllowed(origin, allowed) {
   });
 }
 
-export async function buildApp({ logger = true } = {}) {
+export async function buildApp({ logger = true, worldScores } = {}) {
   const app = Fastify({ logger, bodyLimit: 1_000_000, trustProxy: true });
   const jwtSecret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
   const mediaSecret = process.env.MEDIA_SECRET || process.env.JWT_SECRET || randomBytes(32).toString('hex');
@@ -166,6 +167,26 @@ export async function buildApp({ logger = true } = {}) {
       [slug, name]);
     return rows[0].id;
   }
+
+  // ---------- world scores (pro & international football) ----------
+  const world = worldScores ?? createWorldScores({ log: app.log });
+  app.get('/v1/world/scores', async (req, reply) => {
+    const date = req.query.date ? String(req.query.date) : undefined;
+    if (date) {
+      const day = Date.parse(`${date}T12:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(day) || Math.abs(day - Date.now()) > 8 * 86400_000) {
+        return fail(reply, 400, 'Pick a date within a week of today.');
+      }
+    }
+    try {
+      const data = await world.scores(date);
+      reply.header('cache-control', 'public, max-age=15');
+      return data;
+    } catch (error) {
+      req.log.warn({ err: error }, 'world scores unavailable');
+      return fail(reply, 502, 'World scores are unavailable right now.');
+    }
+  });
 
   // ---------- health ----------
   app.get('/health', async () => {

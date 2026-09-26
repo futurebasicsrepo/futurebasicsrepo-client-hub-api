@@ -570,3 +570,48 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .tile { border-radius: 0; }
   .tile.lead { grid-row: span 2; }
 }
+
+/* ================= world scores ================= */
+.matches-switch { margin: 4px 0 12px; }
+.segmented a { padding: 6px 16px; border-radius: 999px; font-weight: 600; font-size: 13px; color: var(--muted); }
+.segmented a[aria-current='page'] { background: var(--paper); color: var(--ink); }
+.world { padding-top: 20px; padding-bottom: 40px; }
+.world-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.world-head h1 { margin: 0; font-size: clamp(40px, 7vw, 64px); }
+.world-head .matches-switch { margin: 0; }
+.world-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 18px 0; }
+.world-search { flex: 1; min-width: 180px; max-width: 320px; border-radius: 999px; padding: 8px 14px; }
+.live-chip { display: inline-flex; align-items: center; gap: 8px; }
+.live-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--flare); animation: pulse 1.4s ease-in-out infinite; }
+.live-chip.active i { background: var(--ink); }
+.world-leagues { display: flex; flex-direction: column; gap: 12px; }
+.world-league { border: 1px solid var(--line); border-radius: var(--radius); background: var(--ink-2); overflow: hidden; }
+.world-league header { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.world-league header:last-child { border-bottom: 0; }
+.world-league-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 0; background: transparent; cursor: pointer; text-align: left; font-weight: 700; }
+.world-league-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-caret { color: var(--muted); width: 12px; }
+.world-live-count { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-family: var(--font-mono); font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--flare); }
+.world-live-count i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+.world-count { margin-left: auto; font-size: 13px; }
+.world-star { border: 0; background: transparent; color: var(--muted); font-size: 20px; padding: 8px 14px; cursor: pointer; }
+.world-star.on { color: #ffb21c; }
+.world-matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.wm-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); margin-top: -1px; }
+.wm-status { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+.wm-row.in .wm-status { color: var(--flare); }
+.wm-row.in .wm-status i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+.wm-row.off .wm-status { color: var(--danger); }
+.wm-teams { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wm-team { display: flex; justify-content: space-between; gap: 10px; font-size: 14.5px; }
+.wm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-score { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 1.2em; text-align: right; }
+.wm-team.win { font-weight: 700; }
+.wm-team.lose { color: var(--muted); }
+.wm-league { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); border: 1px solid var(--line); border-radius: var(--radius); background: var(--ink-2); overflow: hidden; }
+.world-credit { margin-top: 20px; }
+@media (max-width: 760px) {
+  .world-search { max-width: none; flex-basis: 100%; }
+  .world-league, .world-strip { border-radius: 12px; }
+}
