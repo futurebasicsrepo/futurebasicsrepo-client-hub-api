@@ -654,3 +654,21 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .clip-credit { margin: -4px 0 8px; font-size: 14px; color: var(--paper-dim); }
 .clip-credit a { color: var(--paper); font-weight: 600; }
 .watch-credit { display: block; font-size: 13px; color: rgba(255,255,255,.75); margin-top: -2px; }
+
+/* ================= highlight reels ================= */
+.reel-card { margin-top: 20px; }
+.reel-card.panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 14px 16px; }
+.reel-card .media-note { background: transparent; border: 0; padding: 0; }
+.reel-head { margin-bottom: 10px; }
+.reel-head h2 { font-size: 28px; margin: 0; }
+/* Section heads with a switcher: stack on narrow screens so four options never push the page sideways. */
+.section-head { flex-wrap: wrap; }
+.section-head .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.section-head .segmented button { white-space: nowrap; }
+@media (max-width: 420px) {
+  .section-head:has(.segmented) { flex-direction: column; align-items: stretch; }
+  .section-head .segmented { display: flex; }
+  .section-head .segmented button { flex: 1; padding: 6px 8px; }
+}
+.reel-head { flex-wrap: nowrap; }
+.reel-head .linkish { white-space: nowrap; }

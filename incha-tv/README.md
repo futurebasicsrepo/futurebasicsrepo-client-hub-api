@@ -158,6 +158,25 @@ Anyone signed in can stream a match from their phone's browser. There's no app t
 
 Anyone signed in can start a match and becomes its scorekeeper: kick-off, goals (with scorer), cards, half time and full time are tapped in from the sideline and pushed to every viewer over Server-Sent Events. Fans at the game attach clips at a minute, and the match page reads like a live blog. The live-update fan-out is in-process, so the API should stay on one instance until it moves to Redis/Postgres `LISTEN/NOTIFY`.
 
+## Highlight reels
+
+When the scorekeeper blows **full time**, incha.tv cuts a highlight reel from the match's fan clips automatically:
+- It opens with a **"FULL TIME · Home 2–1 Away"** title card.
+- Then come the best-voted clips (up to 12), back in match order. Each plays its creator's trim window, up to 20 s.
+- Each clip carries a **67' @fan** caption and an INCHA.TV watermark. Portrait phone clips sit over a blurred copy of themselves so the reel is a clean 16:9.
+- The reel is published at the top of the match page and in the feeds, owned by the scorekeeper and credited "Made from N fan clips". Followers get a 🎬 push alert.
+- Scorekeepers can **Rebuild with new clips** after more come in (`POST /v1/matches/:id/reel`). A rebuild replaces the old reel.
+- Visibility follows the match: public matches get public reels; youth and unlisted matches get unlisted ones.
+- Rendering uses ffmpeg with the DejaVu font (`font-dejavu` in the image, or set `REEL_FONT`). Jobs run one at a time and resume after a restart. A two-clip reel takes about 6 s.
+
+## Following feed
+
+Home → Moments → **Following** (when signed in) shows, newest first:
+- clips and reels from matches you follow;
+- public clips from matches involving teams you follow. Team follows never surface youth or unlisted matches.
+
+This is `GET /v1/feed/following`.
+
 ## Clip that
 
 While a match is streaming, anyone watching can tap **✂️ Clip that** under the live player, and the streamer can tap it on their camera screen.
@@ -194,7 +213,6 @@ Other people's profiles show their Posts and the public matches they kept score 
 
 ## Next steps (not in v1)
 
-- Auto highlight reels per match.
 
 - **Transcoding at scale.** Conversion and live encoding run inside the API process, which is fine for one instance. Past that, move them to a separate worker service, and move media to object storage.
 - **Object storage.** Move media to S3/R2 or Railway Buckets with a CDN in front. `api/src/storage.js` is the only file that changes.

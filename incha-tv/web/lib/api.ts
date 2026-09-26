@@ -66,6 +66,9 @@ export interface Match {
   visibility: 'public' | 'unlisted';
   scorekeeper: { handle: string; displayName: string };
   liveStreams?: number;
+  /** Highlight reel made at full time. */
+  reelStatus?: 'building' | 'ready' | 'none' | 'failed' | null;
+  reelPostId?: string | null;
   canScore?: boolean;
   /** Viewer-specific (missing on the anonymous live stream). */
   isOwner?: boolean;
