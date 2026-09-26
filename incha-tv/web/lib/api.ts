@@ -69,6 +69,8 @@ export interface Match {
   /** Highlight reel made at full time. */
   reelStatus?: 'building' | 'ready' | 'none' | 'failed' | null;
   reelPostId?: string | null;
+  /** The server called full time because the scoreboard went quiet. */
+  autoEnded?: boolean;
   canScore?: boolean;
   /** Viewer-specific (missing on the anonymous live stream). */
   isOwner?: boolean;

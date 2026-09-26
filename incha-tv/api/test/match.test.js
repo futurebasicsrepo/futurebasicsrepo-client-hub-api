@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, matchClock, normalizeMatchInput } from '../src/match.js';
+import { applyEvent, autoFullTime, matchClock, normalizeMatchInput } from '../src/match.js';
 
 const T0 = Date.parse('2026-09-26T15:00:00Z');
 const min = n => T0 + n * 60_000;
@@ -44,4 +44,29 @@ test('applyEvent enforces the period flow and scores goals', () => {
   assert.equal(applyEvent(match, { type: 'fulltime' }, min(50)).patch.period, 'ft');
   assert.ok(applyEvent({ ...match, period: 'ft' }, { type: 'fulltime' }).error);
   assert.ok(applyEvent(match, { type: 'penalty' }).error);
+});
+
+test('autoFullTime calls quiet matches that ran well past full time', () => {
+  const T0 = Date.parse('2026-09-26T15:00:00Z');
+  const at = m => new Date(T0 + m * 60_000);
+  const second = { period: '2h', periodStartedAt: at(0), halfLength: 45 };
+  assert.equal(autoFullTime({ ...second, lastActivityAt: at(40) }, +at(70)), null, 'still in stoppage-ish time');
+  assert.equal(autoFullTime({ ...second, lastActivityAt: at(60) }, +at(78)), null, 'past time but the board is still busy');
+  assert.deepEqual(autoFullTime({ ...second, lastActivityAt: at(47) }, +at(80)), { minute: 90, stoppage: 3 }, 'ends at the last thing logged');
+  assert.deepEqual(autoFullTime({ ...second, lastActivityAt: at(10) }, +at(80)), { minute: 90, stoppage: 0 }, 'never before regulation time');
+  assert.deepEqual(autoFullTime({ ...second, lastActivityAt: at(134) }, +at(136)), { minute: 90, stoppage: 90 }, 'hard cap even when busy (extra time and penalties, logged)');
+
+  const first = { period: '1h', periodStartedAt: at(0), halfLength: 45 };
+  assert.equal(autoFullTime({ ...first, lastActivityAt: at(20) }, +at(120)), null, 'might be a long first half with no half time pressed');
+  assert.deepEqual(autoFullTime({ ...first, lastActivityAt: at(20) }, +at(146)), { minute: 90, stoppage: 0 });
+
+  const ht = { period: 'ht', periodStartedAt: at(0), halfLength: 30, halftimeAt: at(33) };
+  assert.equal(autoFullTime({ ...ht, lastActivityAt: at(33) }, +at(110)), null);
+  assert.deepEqual(autoFullTime({ ...ht, lastActivityAt: at(33) }, +at(120)), { minute: 60, stoppage: 0 });
+
+  const resumed = { ...second, lastActivityAt: at(47), resumedAt: at(150) };
+  assert.equal(autoFullTime(resumed, +at(160)), null, 'resuming counts as activity and lifts the hard cap');
+  assert.deepEqual(autoFullTime(resumed, +at(171)), { minute: 90, stoppage: 106 }, 'but a resumed match that goes quiet again still ends');
+  assert.equal(autoFullTime({ ...second, period: 'ft' }, +at(500)), null);
+  assert.equal(autoFullTime({ ...second, period: 'pre' }, +at(500)), null);
 });
