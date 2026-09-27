@@ -726,3 +726,26 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* ---------- the crowd: watching count, cheer bar, flares ---------- */
+.watching-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.watching-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--flare); box-shadow: 0 0 0 0 var(--flare); animation: pulse-dot 1.6s ease-out infinite; }
+@keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--flare) 60%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+.crowd-sky { position: fixed; right: 8px; bottom: calc(196px + env(safe-area-inset-bottom)); width: 96px; height: 70vh; z-index: 70; pointer-events: none; overflow: visible; }
+.crowd-flare { position: absolute; bottom: 0; line-height: 1; will-change: transform, opacity; animation: crowd-rise 2.4s cubic-bezier(.2, .6, .35, 1) forwards; filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .45)); }
+.crowd-flare.mine { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--flare) 70%, transparent)); }
+@keyframes crowd-rise {
+  0% { transform: translate(0, 0) scale(.3); opacity: 0; }
+  10% { transform: translate(calc(var(--drift) * .1), -20px) scale(1.15); opacity: 1; }
+  60% { opacity: .95; }
+  100% { transform: translate(var(--drift), -62vh) scale(.85) rotate(calc(var(--drift) * .25deg)); opacity: 0; }
+}
+.cheer-bar { position: fixed; right: 12px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 71; display: flex; flex-direction: column; gap: 8px; padding: 6px;
+  border-radius: 999px; background: color-mix(in srgb, var(--ink-2) 80%, transparent); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
+.cheer-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .12s ease; -webkit-tap-highlight-color: transparent; }
+.cheer-btn:hover { background: color-mix(in srgb, var(--paper) 8%, transparent); }
+.cheer-btn:active { transform: scale(.82); }
+@media (max-width: 760px) {
+  .cheer-bar { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .crowd-sky { bottom: calc(248px + env(safe-area-inset-bottom)); }
+}

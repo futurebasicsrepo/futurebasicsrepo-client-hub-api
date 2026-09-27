@@ -41,6 +41,7 @@ const eventView = row => ({
 });
 
 const MAX_CO_KEEPERS = 3;
+export const CHEERS = ['flare', 'clap', 'wow'];
 
 // The match's creator and anyone they've added can run the scoreboard.
 export const canKeep = (row, user) => Boolean(user && (Number(row.created_by) === user.id || (row.keeper_ids || []).includes(String(user.id))));
@@ -88,6 +89,26 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       serverTime: new Date().toISOString()
     };
   }
+
+  // ---- the crowd: who's watching, and cheers that float up everyone's screen ----
+  const send = (matchId, event, data) => {
+    const watchers = subscribers.get(matchId);
+    if (!watchers?.size) return;
+    const line = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const { raw } of watchers) raw.write(line);
+  };
+  // Watcher counts go out at most every 2s per match, so a busy match doesn't spam every join/leave.
+  const crowdTimers = new Map();
+  const announceCrowd = matchId => {
+    if (crowdTimers.has(matchId)) return;
+    crowdTimers.set(matchId, setTimeout(() => {
+      crowdTimers.delete(matchId);
+      send(matchId, 'crowd', { watching: subscribers.get(matchId)?.size ?? 0 });
+    }, 2000));
+  };
+  // Cheers are pooled for 400ms and sent as counts, so a thousand taps are one small message.
+  const cheerPools = new Map(); // matchId -> { counts, from: Set<cid>, timer }
+  const cheerLimiter = createLimiter({ windowMs: 10_000, max: 25 });
 
   // Push the latest state to everyone watching a match. Stream viewers are anonymous.
   async function notify(matchId) {
@@ -252,6 +273,30 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     return snapshot(req, await loadMatch(row.id));
   });
 
+  // A cheer from anyone watching a live match (no account needed; rate-limited per viewer).
+  app.post('/v1/matches/:id/cheer', async (req, reply) => {
+    const kind = String(req.body?.kind || '');
+    if (!CHEERS.includes(kind)) return fail(reply, 400, 'Unknown cheer.');
+    const row = await loadMatch(req.params.id);
+    if (!row) return fail(reply, 404, 'Match not found.');
+    if (!['1h', 'ht', '2h'].includes(row.period)) return fail(reply, 409, 'Cheers are for live matches.');
+    if (!cheerLimiter(`cheer:${row.id}:${req.user?.id ?? req.ip}`)) return fail(reply, 429, 'Easy, ultra. Too many cheers.');
+    let pool = cheerPools.get(row.id);
+    if (!pool) {
+      pool = { counts: {}, from: new Set(), timer: null };
+      cheerPools.set(row.id, pool);
+      pool.timer = setTimeout(() => {
+        cheerPools.delete(row.id);
+        send(row.id, 'cheer', { counts: pool.counts, from: [...pool.from] });
+      }, 400);
+    }
+    pool.counts[kind] = (pool.counts[kind] || 0) + 1;
+    // The sender's tab id, so it can skip its own cheers (it already launched them).
+    const cid = String(req.body?.cid || '').slice(0, 24);
+    if (cid) pool.from.add(cid);
+    return reply.code(202).send({ ok: true });
+  });
+
   app.get('/v1/matches/:id/stream', async (req, reply) => {
     const row = await loadMatch(req.params.id);
     if (!row) return fail(reply, 404, 'Match not found.');
@@ -268,12 +313,15 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     const watcher = { raw: reply.raw, req };
     if (!subscribers.has(row.id)) subscribers.set(row.id, new Set());
     subscribers.get(row.id).add(watcher);
+    reply.raw.write(`event: crowd\ndata: ${JSON.stringify({ watching: subscribers.get(row.id).size })}\n\n`);
+    announceCrowd(row.id);
     const heartbeat = setInterval(() => reply.raw.write(`: ping\n\n`), 25_000);
     req.raw.on('close', () => {
       clearInterval(heartbeat);
       const set = subscribers.get(row.id);
       set?.delete(watcher);
       if (set && !set.size) subscribers.delete(row.id);
+      announceCrowd(row.id);
     });
   });
 
@@ -357,6 +405,8 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
 
   app.addHook('onClose', async () => {
     clearInterval(sweeper);
+    for (const timer of crowdTimers.values()) clearTimeout(timer);
+    for (const pool of cheerPools.values()) clearTimeout(pool.timer);
     for (const set of subscribers.values()) for (const { raw } of set) raw.end();
     subscribers.clear();
   });
