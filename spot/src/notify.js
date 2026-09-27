@@ -5,6 +5,10 @@
 //
 // Without credentials a channel reports "not_configured" and the caller
 // still has the link to hand over itself; nothing throws.
+//
+// Texts follow US carrier rules (A2P 10DLC): they start with the brand,
+// say how to opt out, and are never sent to a number that replied STOP
+// (optouts, fed by the Twilio inbound webhook in server.js).
 import { usd } from './cart.js';
 
 export function normalizePhone(raw) {
@@ -21,18 +25,20 @@ export function finishMessage(cart, link) {
     const trip = cart.items[0]?.title || 'your flight';
     return {
       subject: `Your flight is ready: ${trip}`,
-      text: `Your flight is ready ✈️ ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a bit. Finish on your phone: ${link}`,
+      text: `Spot: Your flight is ready ✈️ ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a bit. Finish on your phone: ${link}`,
     };
   }
   const first = cart.items[0]?.title || 'your cart';
   const more = cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : '';
   return {
     subject: `Your cart is ready: ${first}${more}`,
-    text: `Your cart is ready 🛒 ${first}${more} from ${cart.merchant.name}, ${usd(cart.total_cents)}. Finish on your phone: ${link}`,
+    text: `Spot: Your cart is ready 🛒 ${first}${more} from ${cart.merchant.name}, ${usd(cart.total_cents)}. Finish on your phone: ${link}`,
   };
 }
 
-export function createNotifier({ env = process.env, fetchImpl = fetch, log = console } = {}) {
+export const SMS_FOOTER = ' Reply STOP to opt out.';
+
+export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null } = {}) {
   async function email(to, { subject, text, html }) {
     if (!env.RESEND_API_KEY) return 'not_configured';
     const res = await fetchImpl('https://api.resend.com/emails', {
@@ -50,6 +56,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
   async function sms(to, body) {
     const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = env;
     if (!sid || !token || !from) return 'not_configured';
+    if (optouts?.has(to)) return 'opted_out';
     const res = await fetchImpl(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
       method: 'POST',
       headers: { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'content-type': 'application/x-www-form-urlencoded' },
@@ -77,7 +84,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
       }
       if (phone) {
         const e164 = normalizePhone(phone);
-        out.text = e164 ? await sms(e164, msg.text).catch(() => 'failed') : 'bad_number';
+        out.text = e164 ? await sms(e164, msg.text + SMS_FOOTER).catch(() => 'failed') : 'bad_number';
       }
       return out;
     },

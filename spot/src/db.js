@@ -47,6 +47,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       PRIMARY KEY (email, kind)
     );
     INSERT OR IGNORE INTO signups (email, kind, at) SELECT email, kind, at FROM waitlist;
+    -- Numbers that replied STOP to a Spot text.
+    CREATE TABLE IF NOT EXISTS sms_optouts (
+      phone  TEXT PRIMARY KEY,
+      at     INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -72,6 +77,9 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     events: db.prepare('SELECT kind, detail, at FROM cart_events WHERE cart_id = ? ORDER BY id'),
     join: db.prepare('INSERT OR IGNORE INTO signups (email, kind, at) VALUES (?, ?, ?)'),
     waitlist: db.prepare('SELECT email, kind, at FROM signups ORDER BY at DESC, email, kind'),
+    optOut: db.prepare('INSERT OR REPLACE INTO sms_optouts (phone, at) VALUES (?, ?)'),
+    optIn: db.prepare('DELETE FROM sms_optouts WHERE phone = ?'),
+    optedOut: db.prepare('SELECT 1 FROM sms_optouts WHERE phone = ?'),
     addKey: db.prepare('INSERT INTO api_keys (hash, name, email, created_at) VALUES (?, ?, ?, ?)'),
     keyByHash: db.prepare('SELECT name, email, revoked FROM api_keys WHERE hash = ?'),
   };
@@ -117,6 +125,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     events: (cartId) => q.events.all(cartId).map((e) => ({ ...e, detail: e.detail ? JSON.parse(e.detail) : null })),
     joinWaitlist: (email, kind) => q.join.run(email, kind, Date.now()),
     waitlist: () => q.waitlist.all(),
+    optouts: {
+      add: (phone) => q.optOut.run(phone, Date.now()),
+      remove: (phone) => q.optIn.run(phone),
+      has: (phone) => Boolean(q.optedOut.get(phone)),
+    },
     addKey: (hash, name, email) => q.addKey.run(hash, name, email, Date.now()),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
     close: () => db.close(),

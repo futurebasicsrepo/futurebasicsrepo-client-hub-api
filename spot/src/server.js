@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -9,12 +10,13 @@ import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { sitePage } from './site.js';
+import { privacyPage, termsPage } from './legal.js';
 import { COMING_SOON, integrationsPage } from './integrations.js';
 import { extensionZip, EXTENSION_VERSION } from './extension.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
-import { createNotifier } from './notify.js';
+import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { platformProfile } from './fulfill/ucp.js';
 
@@ -50,8 +52,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, ...(fulfill.ucp || {}) } });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   app.addHook('onClose', async () => fulfiller.close());
-  const notifier = createNotifier({ env, log: app.log, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
-  const baseUrl = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  const baseUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const captureUrl = capture.fromUrl || captureFromUrl;
   const captureShot = capture.fromScreenshot || captureFromScreenshot;
@@ -66,6 +68,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     } catch {
       done(new CartError('Invalid JSON'), undefined);
     }
+  });
+
+  // Twilio posts inbound texts form-encoded.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (req, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(body)));
   });
 
   app.setErrorHandler((err, req, reply) => {
@@ -115,6 +122,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('text/plain').send(env.MCP_REGISTRY_AUTH);
   });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
+  app.get('/terms', async (req, reply) => html(reply, termsPage({ origin: urlFor(req, ''), env })));
+  app.get('/privacy', async (req, reply) => html(reply, privacyPage({ origin: urlFor(req, ''), env })));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
 
   // The browser extension, built for this server's address.
@@ -328,6 +337,35 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
+  // ─── Inbound texts (Twilio) ───────────────────────────────────────────────
+  // Point the Twilio number's "A message comes in" webhook here. STOP-type
+  // replies add the number to Spot's opt-out list and START removes it.
+  // Twilio itself answers STOP/START/HELP (set the wording under Advanced
+  // Opt-Out), so Spot replies with nothing to avoid a second text.
+  // Requests must carry a valid X-Twilio-Signature.
+  const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'OPTOUT', 'REVOKE'];
+  const START_WORDS = ['START', 'UNSTOP', 'YES'];
+  function twilioSigned(req) {
+    const sig = String(req.headers['x-twilio-signature'] || '');
+    if (!sig || !env.TWILIO_AUTH_TOKEN) return false;
+    const params = Object.keys(req.body || {}).sort().map((k) => k + req.body[k]).join('');
+    const urls = new Set([urlFor(req, req.url), `https://${req.headers.host}${req.url}`]);
+    for (const url of urls) {
+      const want = createHmac('sha1', env.TWILIO_AUTH_TOKEN).update(url + params).digest('base64');
+      if (want.length === sig.length && timingSafeEqual(Buffer.from(want), Buffer.from(sig))) return true;
+    }
+    return false;
+  }
+  app.post('/v1/webhooks/twilio', async (req, reply) => {
+    if (!env.TWILIO_AUTH_TOKEN) return reply.code(404).send('not configured');
+    if (!twilioSigned(req)) return reply.code(403).send('bad signature');
+    const from = normalizePhone(req.body?.From);
+    const word = String(req.body?.Body || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+    if (from && STOP_WORDS.includes(word)) db.optouts.add(from);
+    else if (from && START_WORDS.includes(word)) db.optouts.remove(from);
+    return reply.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  });
+
   app.post('/v1/webhooks/stripe', async (req, reply) => {
     if (provider.name !== 'stripe') throw new CartError('Not available', 404);
     let event;

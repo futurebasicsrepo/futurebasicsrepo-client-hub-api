@@ -45,7 +45,7 @@ test('an agent finds a flight, texts the link, and the traveler books it on thei
   assert.equal(ask.for, 'self');
   assert.equal(ask.cart_cents, offer.total_cents);
   assert.equal(ask.delivered.text, 'sent');
-  assert.match(new URLSearchParams(sent[0].body).get('Body'), /^Your flight is ready ✈️ AUS ⇄ SFO/);
+  assert.match(new URLSearchParams(sent[0].body).get('Body'), /^Spot: Your flight is ready ✈️ AUS ⇄ SFO.* Reply STOP to opt out\.$/);
   assert.ok(Date.parse(ask.expires_at) <= Date.parse(offer.expires_at), 'link dies with the fare');
   assert.match(ask.next_step, /add who's flying/);
 

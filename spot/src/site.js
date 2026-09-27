@@ -247,7 +247,7 @@ export function siteNav(active = '') {
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
