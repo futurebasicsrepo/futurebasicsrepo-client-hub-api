@@ -1,6 +1,10 @@
 // Fulfilment: after the cart is paid and its one-time card exists, place
 // the order at the store for the requester.
 //
+//   UCP store      → the store's checkout API (ucp.dev): no browser, no
+//                    AI, runs even with the agent off; pays with the card
+//                    through the store's tokenizer, or hands over its
+//                    prefilled checkout (continue_url)
 //   Shopify store  → cart + checkout built from the store's own product
 //                    data (no AI), then the agent does the payment step
 //   any other store → the agent starts from the product page
@@ -12,6 +16,8 @@
 // the requester can start again.
 import { runCheckoutAgent } from './agent.js';
 import { checkoutUrl, resolveShopifyCart } from './shopify.js';
+import { discover, runUcpCheckout } from './ucp.js';
+import { authLimitCents } from '../cart.js';
 
 const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
@@ -33,7 +39,7 @@ export function validateShipping(s) {
   return out;
 }
 
-export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {} }) {
+export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {}, ucp = {} }) {
   const pending = new Map(); // cartId → { resolve, timer }
   const shots = new Map(); // cartId → png Buffer
   const browsers = new Set();
@@ -60,6 +66,31 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     });
   }
 
+  // Waits (up to 10 minutes) for the requester to tap Place order.
+  function askConfirm(cartId, { total_cents, summary, screenshot }) {
+    return new Promise((resolve) => {
+      if (screenshot) shots.set(cartId, screenshot);
+      const timer = setTimeout(() => {
+        pending.delete(cartId);
+        resolve(false);
+      }, CONFIRM_TIMEOUT_MS);
+      timer.unref?.();
+      pending.set(cartId, { resolve, timer });
+      update(cartId, { state: 'awaiting_confirm', total_cents, summary, has_shot: Boolean(screenshot) }, 'order_awaiting_confirm');
+    });
+  }
+
+  function finish(cartId, outcome) {
+    if (outcome.status === 'placed') update(cartId, { state: 'placed', order_number: outcome.order_number, order_url: outcome.order_url || null, placed_at: Date.now() }, 'order_placed');
+    else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
+    else update(cartId, { state: 'needs_you', reason: outcome.reason, ...(outcome.manual_url ? { manual_url: outcome.manual_url } : {}) }, 'order_needs_you');
+  }
+
+  const ucpStore = (cart) => {
+    const url = cart.merchant.url || cart.items.find((i) => i.url)?.url;
+    return url ? discover(url, { fetchImpl: ucp.fetchImpl, allowPrivate: ucp.allowPrivate }) : null;
+  };
+
   async function plan(cart, ship) {
     const resolved = await resolveShopifyCart(cart, shopify).catch(() => null);
     if (resolved?.lines) {
@@ -80,6 +111,13 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       if (f?.state === 'placed') throw Object.assign(new Error('Already ordered'), { status: 409 });
       const ship = validateShipping(shippingInput);
       spot.patch(cart.id, (c) => ({ ...c, requester: { ...c.requester, shipping: ship } }));
+      const store = await ucpStore(cart);
+      if (store) {
+        const started = update(cart.id, { state: 'working', method: 'ucp', manual_url: null, reason: null, steps: [{ text: `${cart.merchant.name} supports agent checkout (UCP)`, at: Date.now() }], started_at: Date.now() }, 'order_started');
+        running++;
+        this._runUcp(cart.id, store, ship).finally(() => running--);
+        return started;
+      }
       const p = await plan(cart, ship);
 
       if (!p.start_url) return update(cart.id, { state: 'needs_you', method: p.method, reason: 'No store link to start from', manual_url: null, steps: [] }, 'order_needs_you');
@@ -94,6 +132,44 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       running++;
       this._run(cart.id, p, ship).finally(() => running--);
       return started;
+    },
+
+    // UCP first; if the store's catalog doesn't know the items, fall back to
+    // the Shopify / browser routes as if UCP weren't there.
+    async _runUcp(cartId, store, ship) {
+      try {
+        const cart = spot.byId(cartId);
+        const card = await provider.revealCard(cart);
+        const outcome = await runUcpCheckout({
+          discovery: store,
+          cart,
+          shipping: ship,
+          card,
+          profileUrl: typeof ucp.profileUrl === 'function' ? ucp.profileUrl() : ucp.profileUrl || `${env.PUBLIC_URL || 'http://localhost:3000'}/.well-known/ucp`,
+          limit: authLimitCents(cart.cart_cents),
+          fetchImpl: ucp.fetchImpl,
+          allowPrivate: ucp.allowPrivate,
+          progress: (t) => step(cartId, t),
+          confirm: (c) => askConfirm(cartId, c),
+        });
+        if (outcome) return finish(cartId, outcome);
+        const p = await plan(cart, ship);
+        if (!agentOn() || !p.start_url) {
+          return update(cartId, { state: 'needs_you', method: p.method, reason: p.start_url ? 'Automatic checkout is off, so check out with your card below' : 'No store link to start from', manual_url: p.manual_url }, 'order_needs_you');
+        }
+        step(cartId, 'Ordering through the store page instead');
+        update(cartId, { method: p.method, manual_url: p.manual_url });
+        return await this._run(cartId, p, ship);
+      } catch (err) {
+        log.error?.({ err, cart: cartId }, 'ucp checkout failed');
+        update(cartId, { state: 'needs_you', reason: 'Automatic checkout hit a problem, so check out with your card below' }, 'order_needs_you');
+      } finally {
+        const w = pending.get(cartId);
+        if (w) {
+          clearTimeout(w.timer);
+          pending.delete(cartId);
+        }
+      }
     },
 
     async _run(cartId, p, ship) {
@@ -115,21 +191,9 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           startUrl: p.start_url,
           client,
           progress: (t) => step(cartId, t),
-          confirm: ({ total_cents, summary, screenshot }) =>
-            new Promise((resolve) => {
-              if (screenshot) shots.set(cartId, screenshot);
-              const timer = setTimeout(() => {
-                pending.delete(cartId);
-                resolve(false);
-              }, CONFIRM_TIMEOUT_MS);
-              timer.unref?.();
-              pending.set(cartId, { resolve, timer });
-              update(cartId, { state: 'awaiting_confirm', total_cents, summary, has_shot: Boolean(screenshot) }, 'order_awaiting_confirm');
-            }),
+          confirm: (c) => askConfirm(cartId, c),
         });
-        if (outcome.status === 'placed') update(cartId, { state: 'placed', order_number: outcome.order_number, placed_at: Date.now() }, 'order_placed');
-        else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
-        else update(cartId, { state: 'needs_you', reason: outcome.reason }, 'order_needs_you');
+        finish(cartId, outcome);
       } catch (err) {
         log.error?.({ err, cart: cartId }, 'checkout agent failed');
         update(cartId, { state: 'needs_you', reason: 'Automatic checkout hit a problem, so check out with your card below' }, 'order_needs_you');

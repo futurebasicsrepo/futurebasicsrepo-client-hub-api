@@ -51,6 +51,15 @@ Cart states: `open → paid → card_issued → completed`, plus `canceled`, `ex
 
 Once a cart is paid and its card exists, the requester can have Spot place the order.
 
+- **UCP stores (no browser, no AI):** stores that publish a [Universal Commerce Protocol](https://ucp.dev) profile at `/.well-known/ucp` get their order through the store's own checkout API (`src/fulfill/ucp.js`), and this works even with `SPOT_AGENT` off. Spot acts as a UCP *platform*: its profile is at `/.well-known/ucp`, and every request names it in the `UCP-Agent` header.
+  1. `POST /catalog/lookup` with each item's product URL, then pick the variant that matches the captured size or colour.
+  2. `POST /checkout-sessions` with the items and the buyer.
+  3. `PUT` the shipping address, then `PUT` again choosing the cheapest option for each package.
+  4. The requester confirms the store's own total.
+  5. The one-time card goes only to the store's card tokenizer (the shared UCP Tokenization API, bound to that checkout).
+  6. `POST …/complete` places the order, and the store returns its order id and link.
+
+  If the store wants a person (`requires_escalation`, a 3-D Secure challenge, or no card tokenizer Spot can use), the requester gets the store's `continue_url`: its checkout with the cart and address already filled in. If the store's catalog doesn't know an item, Spot falls back to the routes below. UCP is still a draft spec, and this targets version `2026-08-25`.
 - **Shopify stores (no AI):** `src/fulfill/shopify.js` reads the store's `/products/<handle>.js`, picks the variant that matches the captured size or colour, and builds a cart permalink with contact and shipping prefilled. Shopify doesn't let anyone pay on a store they don't own without a person or a browser on the payment step, so the agent (or the requester) does that part.
 - **Checkout agent:** `src/fulfill/agent.js` runs Claude against a real Chromium page through a small tool set (`navigate`, `click`, `type`, `select`, `fill_payment`, `wait`, `ready_to_place_order`, `order_placed`, `need_human`). The page is described as text, with a ref for every interactive element, across iframes. Guardrails are enforced in code:
   - The model never sees the card. `fill_payment` types it server-side, page snapshots mask payment fields and card-like numbers, and `type` refuses payment fields.

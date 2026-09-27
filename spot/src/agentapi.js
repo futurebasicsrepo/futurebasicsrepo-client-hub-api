@@ -96,7 +96,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       total_cents: pub.total_cents,
       payer_name: pub.payer_name,
       flight: fl ? { ...fl, error: undefined } : undefined,
-      order: f ? { state: f.state, method: f.method, order_number: f.order_number || null, reason: f.reason || null, total_cents: f.total_cents ?? null } : null,
+      order: f ? { state: f.state, method: f.method, order_number: f.order_number || null, order_url: f.order_url || null, reason: f.reason || null, total_cents: f.total_cents ?? null } : null,
       next_step: next,
       ...extra,
     };
