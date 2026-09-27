@@ -107,7 +107,7 @@ On the finish page you add who's flying (names as on your ID, date of birth), pl
 
 Without `DUFFEL_ACCESS_TOKEN`, a demo airline ("Spot Air") returns made-up fares so you can try the flow. With a `duffel_test_…` token you get Duffel's test airline, and a `duffel_live_…` token books real tickets.
 
-MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories, see [docs/mcp-listing.md](docs/mcp-listing.md) and `server.json`. Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
+MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories, see [docs/mcp-listing.md](docs/mcp-listing.md) and `server.json`. Going live step by step: [docs/go-live.md](docs/go-live.md). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
 
