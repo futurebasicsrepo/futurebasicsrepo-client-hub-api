@@ -268,14 +268,16 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   assert.match(home.body, /Your cart, anywhere\./);
   assert.match(home.body, /href="\/new"/);
   assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
-  assert.match(home.body, /<span class="s">"http:\/\/localhost(:80)?\/mcp"/);
+  assert.match(home.body, /id="agentlog"/, 'agent demo');
+  assert.match(home.body, /class="marquee"/, 'examples strip');
+  assert.match(home.body, /href="\/integrations"/);
   for (const f of ['bricolage-400.woff2', 'bricolage-800.woff2']) {
     const r = await app.inject({ method: 'GET', url: `/fonts/${f}` });
     assert.equal(r.statusCode, 200);
     assert.equal(r.headers['content-type'], 'font/woff2');
   }
   assert.equal((await app.inject({ method: 'GET', url: '/fonts/../../package.json' })).statusCode, 404);
-  for (const f of ['card-open.png', 'card-covered.png']) {
+  for (const f of ['card-open.png', 'card-covered.png', 'card-agent.png']) {
     const r = await app.inject({ method: 'GET', url: `/site/${f}` });
     assert.equal(r.statusCode, 200);
     assert.equal(r.rawPayload.readUInt32BE(16), 1200);
@@ -285,5 +287,50 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   assert.equal((await join({ email: 'Kyle@Example.com', kind: 'agent' })).statusCode, 200);
   assert.equal((await join({ email: 'kyle@example.com', kind: 'creator' })).statusCode, 200);
   assert.equal((await join({ email: 'bot@example.com', company_fax: 'x' })).statusCode, 200);
-  assert.deepEqual(db.waitlist().map((w) => [w.email, w.kind]), [['kyle@example.com', 'creator']]);
+  assert.equal((await join({ email: 'kyle@example.com', kind: 'notify:shopify-app' })).statusCode, 200);
+  assert.equal((await join({ email: 'kyle@example.com', kind: 'notify:not-a-thing' })).statusCode, 200, 'unknown kinds fall back');
+  assert.deepEqual(db.waitlist().map((w) => `${w.email} ${w.kind}`).sort(), ['kyle@example.com agent', 'kyle@example.com asker', 'kyle@example.com creator', 'kyle@example.com notify:shopify-app']);
+});
+
+test('integrations page and the downloadable browser extension', async (t) => {
+  const { zip, extensionFiles } = await import('../src/extension.js');
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false });
+  t.after(() => app.close());
+  const page = await app.inject({ method: 'GET', url: '/integrations' });
+  assert.equal(page.statusCode, 200);
+  for (const id of ['extension', 'mcp', 'api', 'shopify', 'website', 'bookmarklet', 'soon']) assert.match(page.body, new RegExp(`id="${id}"`));
+  assert.match(page.body, /url_encode \}\}/, 'shopify liquid snippet present');
+  assert.match(page.body, /data-notify="marketplace"/);
+  assert.match(page.body, /&quot;url&quot;: &quot;http:\/\/localhost(:80)?\/mcp&quot;/, 'MCP config shows this server');
+
+  const r = await app.inject({ method: 'GET', url: '/downloads/spot-extension.zip' });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.headers['content-type'], 'application/zip');
+  assert.match(r.headers['content-disposition'], /spot-extension-\d+\.\d+\.\d+\.zip/);
+  // Read the zip's central directory and check every file is there, intact.
+  const buf = r.rawPayload;
+  const end = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const count = buf.readUInt16LE(end + 10);
+  let p = buf.readUInt32LE(end + 16);
+  const names = [];
+  const { crc32 } = await import('node:zlib');
+  for (let i = 0; i < count; i++) {
+    const n = buf.readUInt16LE(p + 28);
+    const name = buf.subarray(p + 46, p + 46 + n).toString();
+    const local = buf.readUInt32LE(p + 42);
+    const size = buf.readUInt32LE(p + 20);
+    const data = buf.subarray(local + 30 + buf.readUInt16LE(local + 26), local + 30 + buf.readUInt16LE(local + 26) + size);
+    assert.equal(crc32(data), buf.readUInt32LE(p + 16), `crc ${name}`);
+    names.push(name);
+    if (name === 'manifest.json') {
+      const m = JSON.parse(data);
+      assert.equal(m.manifest_version, 3);
+      assert.deepEqual(m.permissions.sort(), ['activeTab', 'contextMenus'], 'no host permissions');
+    }
+    if (name === 'background.js') assert.match(data.toString(), /const SPOT = "http:\/\/localhost(:80)?";/, 'server address baked in');
+    p += 46 + n;
+  }
+  assert.deepEqual(names.sort(), ['README.txt', 'background.js', 'icons/icon128.png', 'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'manifest.json']);
+  new Function(extensionFiles('https://x.test')['background.js']); // parses
+  assert.equal(zip({ 'a.txt': 'hi' }).readUInt32LE(0), 0x04034b50);
 });

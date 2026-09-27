@@ -5,7 +5,7 @@ import { buddySvg } from './pages.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-const CSS = `
+export const SITE_CSS = `
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-400.woff2) format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-600.woff2) format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-800.woff2) format('woff2');font-weight:800;font-display:swap}
@@ -35,7 +35,7 @@ nav .wrap{display:flex;align-items:center;gap:22px;height:66px}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none}
 .logo span{width:22px;height:22px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent)}
 nav .links{display:flex;gap:22px;margin-left:auto;font-weight:600;font-size:15px}
-nav .links a{text-decoration:none;color:var(--muted)}nav .links a:hover{color:var(--ink)}
+nav .links a{text-decoration:none;color:var(--muted)}nav .links a:hover,nav .links a[aria-current]{color:var(--ink)}
 nav .btn{padding:10px 18px;font-size:15px}
 @media (max-width:760px){nav .links{display:none}nav .btn{margin-left:auto}}
 
@@ -145,6 +145,53 @@ details p{color:var(--muted);margin-top:12px}
 .join .msg{margin-top:14px;font-weight:600;min-height:1.5em}
 .hp{position:absolute;left:-9999px}
 
+/* hero stage: floating callouts + tilt */
+.stage{position:relative;perspective:1200px}
+.stage .phone{transition:transform .25s ease-out;will-change:transform}
+.float{position:absolute;z-index:2;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 14px;font-weight:600;font-size:14px;box-shadow:0 14px 34px rgba(27,23,18,.14);display:flex;gap:8px;align-items:center;animation:drift 6s ease-in-out infinite;white-space:nowrap}
+.float b{color:var(--spot)}
+.float.f1{left:-4%;top:14%}.float.f2{right:-6%;top:46%;animation-delay:-2s}.float.f3{left:2%;bottom:8%;animation-delay:-4s}
+@keyframes drift{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-12px) rotate(1deg)}}
+@media (max-width:900px){.float{display:none}}
+
+/* marquee */
+.marquee{padding:34px 0 8px;overflow:hidden;display:flex;flex-direction:column;gap:14px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.mrow{display:flex;gap:14px;width:max-content;animation:slide 48s linear infinite}
+.mrow.rev{animation-direction:reverse;animation-duration:56s}
+.marquee:hover .mrow{animation-play-state:paused}
+@keyframes slide{to{transform:translateX(-50%)}}
+.ask{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px 16px 12px 12px;min-width:270px}
+.ask .em{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:24px;background:var(--bg2);flex:none}
+.ask b{display:block;font-size:15px;line-height:1.2}.ask small{color:var(--muted);font-size:13px}
+.ask .amt{margin-left:auto;font-weight:800;font-size:15px}
+.ask .tag{font-size:12px;font-weight:700;color:#fff;background:var(--ok);padding:3px 8px;border-radius:99px;margin-left:8px}
+@media (prefers-reduced-motion:reduce){.mrow{animation:none;flex-wrap:wrap;width:auto;justify-content:center}.mrow.rev{display:none}.float{animation:none}}
+
+/* staggered steps */
+.steps .step:nth-child(2){transition-delay:.12s}.steps .step:nth-child(3){transition-delay:.24s}
+.feats .feat:nth-child(2),.uses .use:nth-child(2),.safe div:nth-child(2){transition-delay:.1s}
+.feats .feat:nth-child(3),.uses .use:nth-child(3),.safe div:nth-child(3){transition-delay:.2s}
+.feats .feat:nth-child(4),.safe div:nth-child(4){transition-delay:.3s}
+.step,.feat,.use{transition:opacity .6s,transform .6s,box-shadow .25s,translate .25s}
+.step:hover,.feat:hover{translate:0 -4px;box-shadow:0 18px 40px rgba(27,23,18,.08)}
+
+/* agent demo */
+.agentwin{background:var(--night2);border:1px solid #2e2821;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.35)}
+.agentwin .bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #2e2821;color:#9a8f82;font-size:13px}
+.agentwin .bar i{width:10px;height:10px;border-radius:50%;background:#3a332b}
+.agentwin .bar span{margin-left:8px}
+.agentlog{padding:18px;display:flex;flex-direction:column;gap:10px;min-height:430px;font-size:15px}
+.al{opacity:0;transform:translateY(6px);transition:all .35s}.al.on{opacity:1;transform:none}
+.al.user{align-self:flex-end;background:var(--spot);color:#fff;border-radius:16px 16px 4px 16px;padding:9px 13px;max-width:82%}
+.al.bot{align-self:flex-start;color:#eee6da;max-width:90%}
+.al.call{align-self:flex-start;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--spot2);background:#2a241d;border:1px solid #3a322a;border-radius:10px;padding:6px 10px}
+.al.call em{font-style:normal;color:#8fd6a8}
+.al.event{align-self:center;font-size:13px;font-weight:700;color:#8fd6a8;background:rgba(29,138,82,.15);border-radius:99px;padding:5px 12px}
+.al.card{align-self:flex-start;width:70%;border-radius:14px;overflow:hidden;border:1px solid #3a322a}
+.caret{display:inline-block;width:8px;height:1.1em;background:#eee6da;vertical-align:-2px;margin-left:2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.agents .more{margin-top:18px;color:#b9afa3;font-size:15px}.agents .more a{color:#fff}
+
 footer{padding:40px 0 60px;color:var(--muted);font-size:15px}
 footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 footer a{text-decoration:none}footer .sp{margin-left:auto}
@@ -155,30 +202,46 @@ footer a{text-decoration:none}footer .sp{margin-left:auto}
 const check = '<span class="y">✓</span>';
 const cross = '<span class="n">—</span>';
 
-export function sitePage({ origin, provider }) {
-  const mcp = `{
-  <span class="k">"mcpServers"</span>: {
-    <span class="k">"spot"</span>: {
-      <span class="k">"url"</span>: <span class="s">"${esc(origin)}/mcp"</span>,
-      <span class="k">"headers"</span>: { <span class="k">"Authorization"</span>: <span class="s">"Bearer YOUR_SPOT_KEY"</span> }
-    }
-  }
-}`;
-  const title = 'Spot: your cart, anywhere. Someone else’s tap.';
-  const desc = 'Turn any cart into a link. They tap Apple Pay, and it gets ordered on a one-time card that only works at that store.';
+export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><meta name="theme-color" content="#ff5a36">
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:url" content="${esc(origin)}/"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
+<meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">
 <link rel="preload" href="/fonts/bricolage-800.woff2" as="font" type="font/woff2" crossorigin>
-<style>${CSS}</style></head><body>
+<style>${SITE_CSS}${extraCss}</style></head><body>`;
+}
 
-<nav id="nav"><div class="wrap">
+export function siteNav(active = '') {
+  const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links"><a href="#how">How it works</a><a href="#why">Why Spot</a><a href="#agents">For AI agents</a><a href="#faq">FAQ</a></div>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}</div>
   <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
-</div></nav>
+</div></nav>`;
+}
+
+export function siteFooter() {
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a><span>Your cart, anywhere.</span><span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a></div></footer>`;
+}
+
+// Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
+export const SITE_JS = `
+  const nav=document.getElementById('nav');
+  addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>8),{passive:true});
+  try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  async function joinList(body){const r=await fetch('/v1/waitlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Something went wrong')}
+`;
+
+export function sitePage({ origin, provider }) {
+  const title = 'Spot: your cart, anywhere. Someone else’s tap.';
+  const desc = 'Turn any cart into a link. They tap Apple Pay, and it gets ordered on a one-time card that only works at that store.';
+  return `${siteHead({ title, desc, origin, path: '/' })}
+
+${siteNav()}
 
 <header class="hero"><div class="wrap">
   <div class="buddy" aria-hidden="true">${buddySvg(false)}</div>
@@ -190,6 +253,10 @@ export function sitePage({ origin, provider }) {
       <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="#how">See how it works</a></div>
       <p class="fine">Nothing to download. The person paying doesn’t need an account.</p>
     </div>
+    <div class="stage" id="stage">
+    <div class="float f1" aria-hidden="true">🔒 Locked to <b>Kiln &amp; Co.</b></div>
+    <div class="float f2" aria-hidden="true">🎉 Mom spotted you</div>
+    <div class="float f3" aria-hidden="true">📦 Ordered · arrives Thu</div>
     <div class="phone" aria-label="A Spot link being sent in a text message and getting paid">
       <div class="screen">
         <div class="top"><div class="avatar">M</div><div class="who">Mom</div></div>
@@ -202,8 +269,14 @@ export function sitePage({ origin, provider }) {
         </div>
       </div>
     </div>
+    </div>
   </div>
 </div></header>
+
+<section class="marquee" aria-label="Examples of things people ask for with Spot">
+  <div class="mrow"><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div></div>
+  <div class="mrow rev" aria-hidden="true"><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div></div>
+</section>
 
 <section class="sec alt" id="how"><div class="wrap">
   <p class="kicker reveal">How it works</p>
@@ -259,10 +332,23 @@ export function sitePage({ origin, provider }) {
       <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered</span></div>
       <div class="tool"><code>order_spot_ask</code><span>once paid, place the order at the store</span></div>
     </div>
-    <div class="cta" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="#join" data-kind="agent">Get an API key</a></div>
+    <div class="cta" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="#join" data-kind="agent">Get an API key</a><a class="btn ghost" href="/integrations#mcp">Set up MCP →</a></div>
+    <p class="more reveal">Works with Claude and any app that speaks MCP. <a href="/integrations">See all integrations</a></p>
   </div>
-  <pre class="reveal" aria-label="MCP configuration"><span class="c">// Add Spot to any MCP client</span>
-${mcp}</pre>
+  <div class="agentwin reveal" aria-label="Demo: an AI assistant uses Spot to ask someone to pay and then orders">
+    <div class="bar"><i></i><i></i><i></i><span>Your AI assistant · with Spot</span></div>
+    <div class="agentlog" id="agentlog">
+      <div class="al user">find black trail runners in 10.5 and ask mom to get them for my birthday 🎂</div>
+      <div class="al bot" data-type="Found the Trailhead Supply XT runners in black, size 10.5, for $200."></div>
+      <div class="al call">→ create_spot_ask <em>{ items: 1, merchant: "Trailhead Supply" }</em></div>
+      <div class="al bot" data-type="Here’s the Spot for Mom. I sent it to her with your note 👇"></div>
+      <div class="al card"><img src="/site/card-agent.png" alt="Spot share card: psst… can you spot Kyle? Trail runners, $208" width="1200" height="630" loading="lazy"></div>
+      <div class="al event">💸 Mom spotted you · $208.00</div>
+      <div class="al call">→ order_spot_ask <em>{ ship_to: "home" }</em></div>
+      <div class="al bot" data-type="Checkout is filled in. Tap Place order on your Spot page and they’re yours."></div>
+      <div class="al event">📦 Ordered #2231 · arrives Thursday</div>
+    </div>
+  </div>
 </div></div></section>
 
 <section class="sec"><div class="wrap">
@@ -302,19 +388,12 @@ ${mcp}</pre>
   <p style="margin-top:26px"><a class="btn ghost" href="/new">Or try it now →</a></p>
 </div></section>
 
-<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a><span>Your cart, anywhere.</span><span class="sp"></span><a href="/new">Make a Spot</a><a href="#agents">For agents</a><a href="#faq">FAQ</a></div></footer>
+${siteFooter()}
 
 <script>
 (()=>{
-  const nav=document.getElementById('nav');
-  addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>8),{passive:true});
-  // Returning users go straight to their Spots.
-  try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
-  // Reveal on scroll.
-  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
-  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+${SITE_JS}
   // Hero conversation: plays, flips the card to "covered", loops.
-  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const bubbles=[...document.querySelectorAll('#thread .b')],lc=document.getElementById('lc');
   if(reduce){bubbles.forEach(b=>b.classList.add('shown'));lc.classList.add('flip')}
   else{
@@ -325,17 +404,34 @@ ${mcp}</pre>
       setTimeout(play,10500)};
     play();
   }
+  // Phone tilts toward the pointer.
+  const stage=document.getElementById('stage'),phone=stage&&stage.querySelector('.phone');
+  if(phone&&!reduce)stage.addEventListener('pointermove',e=>{const r=stage.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;phone.style.transform='rotateY('+(x*14).toFixed(1)+'deg) rotateX('+(-y*10).toFixed(1)+'deg) rotate(2deg)'});
+  stage&&stage.addEventListener('pointerleave',()=>{phone.style.transform=''});
   // Mascot watches the pointer.
   const svg=document.querySelector('.buddy svg'),pupils=svg&&svg.querySelector('.pupils');
   addEventListener('pointermove',e=>{if(!pupils)return;const r=svg.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy)||1,k=Math.min(7,d/30);pupils.setAttribute('transform','translate('+(dx/d*k).toFixed(1)+' '+(dy/d*k).toFixed(1)+')')},{passive:true});
+  // Agent demo: plays when scrolled into view, types the assistant's lines, loops.
+  const log=document.getElementById('agentlog');
+  if(log){
+    const lines=[...log.children];
+    const type=(el)=>new Promise(res=>{const full=el.dataset.type;if(!full||reduce){if(full)el.textContent=full;return res()}
+      el.innerHTML='<span></span><i class="caret"></i>';const span=el.firstChild;let i=0;
+      const tick=()=>{span.textContent=full.slice(0,++i);i<full.length?setTimeout(tick,18):(el.querySelector('.caret').remove(),res())};tick()});
+    const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+    let running=false;
+    const run=async()=>{if(running)return;running=true;
+      for(;;){lines.forEach(l=>{l.classList.remove('on');if(l.dataset.type)l.textContent=''});await wait(500);
+        for(const l of lines){l.classList.add('on');await type(l);await wait(l.classList.contains('event')?1100:l.classList.contains('call')?700:500)}
+        if(reduce)break;await wait(4200)}};
+    if(reduce)lines.forEach(l=>{l.classList.add('on');if(l.dataset.type)l.textContent=l.dataset.type});
+    else new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){run();o.disconnect()}},{threshold:.35}).observe(log);
+  }
   // "Get an API key" preselects the agent option.
   document.querySelectorAll('[data-kind]').forEach(a=>a.addEventListener('click',()=>{document.querySelector('#joinForm [name=kind]').value=a.dataset.kind}));
-  // Early access form.
   const f=document.getElementById('joinForm'),msg=document.getElementById('joinMsg');
   f.addEventListener('submit',async e=>{e.preventDefault();const b=f.querySelector('button');b.disabled=true;
-    try{const r=await fetch('/v1/waitlist',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(f)))});const j=await r.json().catch(()=>({}));
-      if(!r.ok)throw new Error(j.error||'Something went wrong');msg.textContent='You’re on the list 🧡';f.reset()}
-    catch(err){msg.textContent=err.message}finally{b.disabled=false}});
+    try{await joinList(Object.fromEntries(new FormData(f)));msg.textContent='You’re on the list 🧡';f.reset()}catch(err){msg.textContent=err.message}finally{b.disabled=false}});
 })();
 </script>
 </body></html>`;

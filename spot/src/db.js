@@ -38,6 +38,15 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       kind   TEXT NOT NULL,
       at     INTEGER NOT NULL
     );
+    -- One row per email per interest (early access, agent key, notify-me for
+    -- each integration). Supersedes waitlist, which kept one row per email.
+    CREATE TABLE IF NOT EXISTS signups (
+      email  TEXT NOT NULL,
+      kind   TEXT NOT NULL,
+      at     INTEGER NOT NULL,
+      PRIMARY KEY (email, kind)
+    );
+    INSERT OR IGNORE INTO signups (email, kind, at) SELECT email, kind, at FROM waitlist;
   `);
 
   const q = {
@@ -53,8 +62,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     expire: db.prepare(`SELECT id FROM carts WHERE status = 'open' AND expires_at < ?`),
     event: db.prepare('INSERT INTO cart_events (cart_id, kind, detail, at) VALUES (?, ?, ?, ?)'),
     events: db.prepare('SELECT kind, detail, at FROM cart_events WHERE cart_id = ? ORDER BY id'),
-    join: db.prepare('INSERT INTO waitlist (email, kind, at) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET kind = excluded.kind'),
-    waitlist: db.prepare('SELECT email, kind, at FROM waitlist ORDER BY at DESC'),
+    join: db.prepare('INSERT OR IGNORE INTO signups (email, kind, at) VALUES (?, ?, ?)'),
+    waitlist: db.prepare('SELECT email, kind, at FROM signups ORDER BY at DESC, email, kind'),
   };
 
   const hydrate = (row) =>

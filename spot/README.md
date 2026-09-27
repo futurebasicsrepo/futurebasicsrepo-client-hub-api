@@ -14,6 +14,8 @@ spot/
   src/spot.js       service layer: every state change goes through here
   src/server.js     Fastify routes + Stripe webhooks
   src/site.js       the public website at /  (the app is at /new)
+  src/integrations.js  /integrations: extension, MCP, API, store buttons, coming soon
+  src/extension.js  the "Spot this" Chrome extension, zipped at /downloads/spot-extension.zip
   src/pages.js      the three pages: composer (/new), pay, requester
   src/client/home.js  the composer's behaviour (capture → check → send)
   src/sharecard.js  link-preview image + the mascot (satori → resvg)
