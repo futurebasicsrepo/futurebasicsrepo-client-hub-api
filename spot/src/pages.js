@@ -356,18 +356,27 @@ export function managePage({ token, provider }) {
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
 let reveal=null;
+const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! setting up your card…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
 let tick=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
-function finishPanel(c){
-  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},saved(),c.requester.shipping||{});
+function finishPanel(c,notice){
+  const fl=c.kind==='flight';
+  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},saved(),c.requester.shipping||{},c.contact||{});
   const left=c.expires_at-Date.now(),held=left<24*3600e3;
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
-  let h='<h1 style="font-size:32px;margin-top:22px">Your cart is ready 🛒</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · put together for you'+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
-  if(held)h+='<div class="pill warn" style="margin-top:12px" id="hold">⏳ price held for <span id="left"></span></div>';
-  h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
+  let h='<h1 style="font-size:32px;margin-top:22px">'+(fl?'Your flight is ready ✈️':'Your cart is ready 🛒')+'</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · '+(fl?'found for you':'put together for you')+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
+  if(held)h+='<div class="pill warn" style="margin-top:12px" id="hold">⏳ '+(fl?'fare':'price')+' held for <span id="left"></span></div>';
+  if(notice)h+='<p class="small" style="color:var(--warn);margin:12px 0 0">'+esc(notice)+'</p>';
+  if(fl)h+='<section class="card">'+itinerary(c.flight)+totals(c)+'</section>';
+  else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
     +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
-  h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
+  const payLabel=(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents));
+  if(fl)h+='<section class="card"><h2>Who’s flying</h2><form id="finish">'+travelersForm(c,s)
+    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+payLabel+'</button><div class="err" id="finErr"></div></form>'
+    +'<p class="small muted">Spot re-checks the fare with '+esc(c.merchant.name)+' before you pay, then books it the moment you do. You’ll get the confirmation code right here.</p></section>'
+    +'<button class="btn ghost" id="cancel">Not now</button>';
+  else h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
@@ -380,9 +389,11 @@ function finishPanel(c){
   on('cancel',async()=>{if(confirm('Drop this cart?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
   let stripeReady=null;
   $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
-    const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
+    const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
     try{
-      if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
+      if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i]})),contact:{email:v.email,phone:v.phone}});
+        if(r.price_changed)return finishPanel(r.cart,'Heads up: '+c.merchant.name+' changed the fare. The new total is '+usd(r.price_changed.to_cents)+'. Tap pay again if it still works for you.');v.name=v.g0||''}
+      else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
       if(MODE==='sandbox'){b.textContent='paying…';await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:v.name.split(' ')[0]});return draw()}
       if(!stripeReady){const p=await api('/v1/carts/'+TOKEN+'/pay',{});const stripe=Stripe(p.publishable_key);
         const elements=stripe.elements({clientSecret:p.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
@@ -396,6 +407,27 @@ function finishPanel(c){
 }
 
 const saved=()=>{try{return JSON.parse(localStorage.getItem('spot:ship'))||{}}catch{return {}}};
+// Flights: Duffel times are local to each airport, so show them as written.
+const dday=(t)=>new Date(t.slice(0,10)+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'});
+const dtime=(t)=>{const h=+t.slice(11,13),m=t.slice(14,16);return (h%12||12)+':'+m+(h<12?' am':' pm')};
+function itinerary(f){
+  return f.slices.map((sl,i)=>'<div class="leg"><div class="small muted">'+(f.slices.length>1?(i?'Return':'Out')+' · ':'')+dday(sl.departing_at)+'</div>'
+    +'<div class="route"><div><b>'+dtime(sl.departing_at)+'</b><span>'+esc(sl.from)+'</span></div><div class="line"><i></i><em>'+(sl.stops?sl.stops+' stop'+(sl.stops>1?'s':'')+' · '+esc(sl.segments.slice(0,-1).map(g=>g.to).join(', ')):'nonstop')+'</em></div><div style="text-align:right"><b>'+dtime(sl.arriving_at)+(sl.arriving_at.slice(0,10)!==sl.departing_at.slice(0,10)?'<sup>+1</sup>':'')+'</b><span>'+esc(sl.to)+'</span></div></div>'
+    +'<div class="small muted">'+esc([f.airline.name,sl.segments.map(g=>g.flight).join(' · '),f.cabin&&f.cabin!=='economy'?f.cabin.replace('_',' '):''].filter(Boolean).join(' · '))+'</div></div>').join('')
+    +'<div class="small muted" style="margin-top:8px">'+(f.conditions.refundable?'✓ refundable':'Non-refundable')+(f.conditions.changeable?' · changes allowed':'')+(f.passengers>1?' · '+f.passengers+' travelers':'')+'</div>';
+}
+const totals=(c)=>'<div style="margin-top:8px"><div class="sum"><span>Fare</span><span>'+usd(c.cart_cents)+'</span></div>'+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div>';
+function travelersForm(c,s){
+  const t=c.travelers||[];const n=c.flight.passengers;c.flight.passengers_list=Array.from({length:n});
+  const inp=(nm,ph,val,extra)=>'<input name="'+nm+'" placeholder="'+ph+'" value="'+esc(val||'')+'" '+(extra||'')+'>';
+  const first=(s.name||'').split(' ');
+  return c.flight.passengers_list.map((_,i)=>{const p=t[i]||(i===0&&!t.length?{given_name:first[0],family_name:first.slice(1).join(' ')}:{});
+    return (n>1?'<div class="small muted" style="margin:'+(i?'14px':'0')+' 0 6px">Traveler '+(i+1)+'</div>':'')
+      +'<div class="row">'+inp('g'+i,'First name',p.given_name,'required autocomplete="'+(i?'off':'given-name')+'"')+inp('f'+i,'Last name',p.family_name,'required autocomplete="'+(i?'off':'family-name')+'"')+'</div>'
+      +'<div class="row trav" style="margin-top:6px;align-items:flex-end"><label class="dob"><span>Date of birth</span>'+inp('b'+i,'',p.born_on,'type="date" required max="'+new Date().toISOString().slice(0,10)+'"')+'</label><select name="x'+i+'" required aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f"'+(p.gender==='f'?' selected':'')+'>Female</option><option value="m"'+(p.gender==='m'?' selected':'')+'>Male</option></select></div>'}).join('')
+    +'<p class="small muted" style="margin:8px 0 12px">Names exactly as on the ID you’ll travel with.</p>'
+    +inp('email','Email for the e-ticket',s.email,'type="email" required autocomplete="email"')+'<div style="height:6px"></div>'+inp('phone','Mobile, for gate changes',s.phone,'type="tel" required autocomplete="tel"');
+}
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
   if(st==='placed')return '<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>';
@@ -417,9 +449,14 @@ async function draw(){
   clearInterval(tick);
   const self=c.for==='self';
   if(self&&c.status==='open')return finishPanel(c);
-  const [label,tone]=(self?SELF_STATUS:STATUS)[c.status]||[c.status,''];
-  let h='<h1 style="font-size:28px">'+(self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
-  if(self&&c.status==='expired')h+='<section class="card"><h2>This one timed out ⏳</h2><p class="muted" style="margin:0">The price was only held for a little while. Ask your assistant to find it again.</p></section>';
+  const fl=c.kind==='flight'?c.flight:null;
+  const [label,tone]=(fl?FLIGHT_STATUS:self?SELF_STATUS:STATUS)[c.status]||[c.status,''];
+  let h='<h1 style="font-size:28px">'+(fl?'Your trip':self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
+  if(self&&c.status==='expired')h+='<section class="card"><h2>This one timed out ⏳</h2><p class="muted" style="margin:0">'+(fl?'Airlines only hold a fare for a little while.':'The price was only held for a little while.')+' Ask your assistant to find it again.</p></section>';
+  if(fl&&c.status==='paid')h+='<section class="card"><h2><span class="spin"></span> Booking with '+esc(c.merchant.name)+'…</h2><p class="muted" style="margin:0">Paid. This usually takes a few seconds.</p></section>';
+  if(fl&&c.status==='completed')h+='<section class="card booked"><div class="small muted">Confirmation code</div><div class="pnr">'+esc(fl.booking_reference)+'</div><h2 style="margin-top:6px">✈️ You’re booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' will email your e-ticket to '+esc(c.contact?.email||'you')+'. Use the code to check in.</p></section>';
+  if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
+  if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
   if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(r.needs_billing){
     h+='<section class="card"><h2>'+(c.status==='paid'?'🎉 '+esc(c.payer_name||'Someone')+' spotted you!':'One thing for your card')+'</h2><p class="small muted" style="margin-top:0">'+(c.status==='paid'?'Add your billing address and your card is ready right away.':'Add your billing address now so your card is ready the moment someone pays.')+'</p><form id="bill"><input id="b1" placeholder="Street" autocomplete="address-line1" required><div class="row" style="margin-top:6px"><input id="b2" placeholder="City" autocomplete="address-level2" required><input id="b3" placeholder="State" autocomplete="address-level1" required><input id="b4" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" required></div><button class="btn">'+(c.status==='paid'?'Get my card':'Save')+'</button><div class="err" id="billErr"></div></form></section>';
@@ -433,7 +470,7 @@ async function draw(){
     h+='<button class="btn dark" id="rev">Show card number</button><p class="small muted">Works once, only at '+esc(c.merchant.name)+', up to '+usd(c.cart_cents)+' plus a little for tax changes.</p></section>';
     if(MODE==='sandbox')h+='<section class="card"><h2>Test checkout</h2><p class="small muted" style="margin-top:0">Simulate the store charging your card.</p><label>Merchant name as the card network sees it</label><input id="sm" value="'+esc(c.merchant.name.toUpperCase())+'"><label>Amount</label><input id="sa" inputmode="decimal" value="'+(c.cart_cents/100).toFixed(2)+'"><button class="btn" id="sim">Run test charge</button><div id="simOut" class="err"></div></section>';
   }
-  if(c.status==='completed'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">'+(c.spent_cents?'Card used at '+esc(c.spent_merchant)+' for '+usd(c.spent_cents)+'.':'Marked as received.')+'</p></section>'}
+  if(c.status==='completed'&&!fl){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">'+(c.spent_cents?'Card used at '+esc(c.spent_merchant)+' for '+usd(c.spent_cents)+'.':'Marked as received.')+'</p></section>'}
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
   if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
   if(c.status==='card_issued')h+='<button class="btn ghost" id="refund">Refund the payer</button>';
@@ -456,7 +493,14 @@ async function draw(){
   if(['open','paid'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
-  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}</style>` });
+  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
+.route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}
+.route .line{position:relative;text-align:center;min-width:0}.route .line i{display:block;height:2px;background:var(--line);margin:0 4px;position:relative}.route .line i::after{content:'✈';position:absolute;right:-4px;top:-10px;font-style:normal;font-size:14px;color:var(--accent,#ff5a36)}
+.route .line em{font-style:normal;font-size:12px;color:var(--muted);display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dob{flex:1;display:flex;flex-direction:column;font-size:12px;color:var(--muted);min-width:0}.dob input{margin-top:2px}
+.trav input,.trav select{height:48px}
+.booked .pnr{font:800 44px/1 ui-monospace,monospace;letter-spacing:.12em;margin-top:4px}</style>` });
 }
 
 export function notFoundPage() {

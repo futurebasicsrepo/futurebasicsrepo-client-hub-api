@@ -9,6 +9,9 @@
 //   get_spot_ask      status: waiting, paid, ordering, ordered…
 //   order_spot_ask    once paid, place the order at the store (the
 //                     requester still confirms the final tap on their page)
+//   search_flights    real fares from Duffel (or demo fares without a key)
+//   create_flight_ask hold one fare and hand it to the user to finish on
+//                     their phone: who's flying, pay, booked
 //
 // Auth: SPOT_API_KEYS="agentname:secret,other:secret2". Each ask remembers
 // which agent made it, and only that agent can read or order it.
@@ -28,7 +31,7 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, capture }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture }) {
   const keys = apiKeys(env);
 
   function agentFor(req) {
@@ -52,7 +55,17 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, 
     const own = ownerCart(cart);
     const link = urlFor(req, `/c/${cart.token}`);
     const f = own.fulfillment;
-    const next = {
+    const fl = pub.flight;
+    const next = fl ? {
+      open: cart.flight.travelers
+        ? 'Traveler details are in. Waiting for your user to pay on their phone.'
+        : "Waiting for your user to open the link, add who's flying and pay.",
+      paid: 'Paid. Booking with the airline now.',
+      completed: `Booked. Confirmation code ${fl.booking_reference}. The airline emails the e-ticket to ${own.contact?.email || 'the traveler'}.`,
+      expired: 'The fare expired before it was paid. Search again and send a fresh link.',
+      canceled: 'Your user passed on this one.',
+      refunded: `Not booked, and your user was refunded. ${fl.error || ''}`.trim(),
+    }[cart.status] : {
       open: cart.for === 'self'
         ? 'Waiting for the requester to finish on their phone: confirm shipping, pay, then tap Place order.'
         : `Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`,
@@ -82,6 +95,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, 
       cart_cents: pub.cart_cents,
       total_cents: pub.total_cents,
       payer_name: pub.payer_name,
+      flight: fl ? { ...fl, error: undefined } : undefined,
       order: f ? { state: f.state, method: f.method, order_number: f.order_number || null, reason: f.reason || null, total_cents: f.total_cents ?? null } : null,
       next_step: next,
       ...extra,
@@ -125,8 +139,44 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, 
     return view(req, spot.byId(cart.id), extra);
   }
 
+  async function searchFlights(input) {
+    if (!flights) throw new CartError('Flights are not enabled on this server', 404);
+    const offers = await flights.search(input);
+    if (!offers.length) throw new CartError('No fares found for that search (Spot takes USD fares only for now)', 404);
+    return {
+      mode: flights.mode,
+      offers: offers.map((o) => ({
+        offer_id: o.id,
+        airline: o.airline.name,
+        total_cents: o.total_cents,
+        price: usd(o.total_cents),
+        expires_at: o.expires_at,
+        refundable: o.conditions.refundable,
+        slices: o.slices.map((sl) => ({ from: sl.from, to: sl.to, departing_at: sl.departing_at, arriving_at: sl.arriving_at, stops: sl.stops, flights: sl.segments.map((g) => g.flight).join(', ') })),
+      })),
+      next_step: 'Show your user the options. When they pick one, call create_flight_ask with its offer_id to hold it and send them a link to finish on their phone. Fares only hold for a short while.',
+    };
+  }
+
+  async function createFlightAsk(req, agent, b = {}) {
+    if (!flights) throw new CartError('Flights are not enabled on this server', 404);
+    if (!b.offer_id) throw new CartError('offer_id is required (from search_flights)');
+    const offer = await flights.offer(String(b.offer_id));
+    const { cart, manageKey } = spot.createFlight(
+      offer,
+      { requester: b.requester, note: b.note, expires_minutes: b.expires_minutes, travelers: b.travelers, contact: b.contact },
+      { ip: req.ip },
+    );
+    spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
+    const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
+    const extra = { finish_link: privateLink, finish_link_note: "Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it." };
+    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+    return view(req, spot.byId(cart.id), extra);
+  }
+
   async function orderAsk(req, agent, askId, shipping) {
     const cart = owned(agent, askId);
+    if (cart.kind === 'flight') throw new CartError('Flights are booked automatically once paid', 409);
     await fulfiller.start(cart, shipping);
     return view(req, spot.byId(cart.id));
   }
@@ -144,6 +194,15 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, 
     }
   });
   app.get('/v1/agent/asks/:id', async (req) => view(req, owned(agentFor(req), req.params.id)));
+  app.post('/v1/agent/flights/search', async (req) => {
+    agentFor(req);
+    return searchFlights(req.body);
+  });
+  app.post('/v1/agent/flights/asks', async (req, reply) => {
+    const out = await createFlightAsk(req, agentFor(req), req.body);
+    reply.code(201);
+    return out;
+  });
   app.post('/v1/agent/asks/:id/order', async (req) => orderAsk(req, agentFor(req), req.params.id, req.body?.shipping));
 
   // ─── MCP (streamable HTTP, stateless) ─────────────────────────────────────
@@ -240,6 +299,72 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, 
       async ({ ask_id, shipping }) => {
         try {
           return reply(await orderAsk(req, agent, ask_id, shipping));
+        } catch (e) {
+          return fail(e);
+        }
+      },
+    );
+    const traveler = z.object({
+      given_name: z.string(),
+      family_name: z.string(),
+      born_on: z.string().describe('YYYY-MM-DD'),
+      gender: z.enum(['m', 'f']).describe('As shown on their ID'),
+    });
+
+    server.registerTool(
+      'search_flights',
+      {
+        title: 'Search flights',
+        description:
+          'Search real flight fares (via Duffel). Returns a few options, cheapest first plus the best nonstop, each with an offer_id. Airport or city codes (AUS, SFO, NYC, LON). Fares hold for a short time, so hand the chosen one to create_flight_ask promptly.',
+        inputSchema: {
+          origin: z.string().length(3).describe('IATA airport or city code'),
+          destination: z.string().length(3),
+          departure_date: z.string().describe('YYYY-MM-DD'),
+          return_date: z.string().optional().describe('YYYY-MM-DD, for a round trip'),
+          adults: z.number().int().min(1).max(6).optional(),
+          cabin_class: z.enum(['economy', 'premium_economy', 'business', 'first']).optional(),
+          max_connections: z.number().int().min(0).max(2).optional().describe('0 for nonstop only'),
+        },
+      },
+      async (a) => {
+        try {
+          return reply(await searchFlights(a));
+        } catch (e) {
+          return fail(e);
+        }
+      },
+    );
+
+    server.registerTool(
+      'create_flight_ask',
+      {
+        title: 'Send your user a flight to finish on their phone',
+        description:
+          "Hold a fare from search_flights and get a private link for your user to finish on their phone: they check the itinerary, add who's flying (names as on ID, date of birth), pay with Apple Pay or card, and Spot books it with the airline and shows the confirmation code. Spot can text or email the link. Check progress with get_spot_ask.",
+        inputSchema: {
+          offer_id: z.string(),
+          requester_name: z.string().describe("Your user's first name"),
+          send_to_phone: z.string().optional().describe('Text the finish link to this number'),
+          send_to_email: z.string().optional().describe('Email the finish link here'),
+          note: z.string().max(280).optional().describe('Shown on the finish page, e.g. why you picked this one'),
+          travelers: z.array(traveler).max(6).optional().describe("Prefill who's flying, if you know it (one per passenger, in order)"),
+          contact_email: z.string().optional(),
+          contact_phone: z.string().optional(),
+        },
+      },
+      async (a) => {
+        try {
+          return reply(
+            await createFlightAsk(req, agent, {
+              offer_id: a.offer_id,
+              requester: { name: a.requester_name, email: a.contact_email },
+              note: a.note,
+              travelers: a.travelers,
+              contact: a.contact_email || a.contact_phone ? { email: a.contact_email, phone: a.contact_phone } : undefined,
+              notify: { email: a.send_to_email, phone: a.send_to_phone },
+            }),
+          );
         } catch (e) {
           return fail(e);
         }

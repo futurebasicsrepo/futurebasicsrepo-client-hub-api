@@ -80,6 +80,24 @@ An agent can also build a cart for its own user ("find me these flights") and ha
 
 The user opens the link, checks the address, and pays with Apple Pay, Google Pay or a card. The merchant-locked card issues, and if `SPOT_AGENT=on` the checkout agent starts the order by itself. The user still confirms the last tap.
 
+### Flights (Duffel)
+
+"Find me a flight to SFO on the 17th". The agent searches real fares, you pick one, and it sends you a link to finish on your phone.
+
+| MCP tool | REST | |
+|---|---|---|
+| `search_flights` | `POST /v1/agent/flights/search` | origin, destination, dates, adults, cabin → a few offers (cheapest first plus the best nonstop), each with an `offer_id` |
+| `create_flight_ask` | `POST /v1/agent/flights/asks` | holds one offer and returns a `finish_link`, which Spot can text or email |
+
+On the finish page you add who's flying (names as on your ID, date of birth), plus an email and phone for the airline. Spot re-checks the fare. If the price moved, the page shows the new total before you're charged. Then you pay, and Spot books through Duffel and shows the confirmation code.
+
+- **No one-time card:** Spot pays the airline from its Duffel balance, so keep the balance topped up in the Duffel dashboard.
+- **If the airline refuses the booking,** you're refunded straight away.
+- **The link only lives as long as the fare is held,** usually about 20–30 minutes.
+- **Fares are USD only for now.**
+
+Without `DUFFEL_ACCESS_TOKEN`, a demo airline ("Spot Air") returns made-up fares so you can try the flow. With a `duffel_test_…` token you get Duffel's test airline, and a `duffel_live_…` token books real tickets.
+
 MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
@@ -102,6 +120,8 @@ MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bea
 | `RESEND_API_KEY` | | Emails finish links |
 | `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links |
+| `DUFFEL_ACCESS_TOKEN` | | Turns on real flight search and booking (`duffel_test_…` or `duffel_live_…`) |
+| `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

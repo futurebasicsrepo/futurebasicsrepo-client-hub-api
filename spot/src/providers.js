@@ -76,7 +76,11 @@ export function stripeProvider(env = process.env) {
     async createPayment(cart) {
       // Reuse the intent if the payer reloads the page.
       if (cart.payment_ref) {
-        const existing = await stripe.paymentIntents.retrieve(cart.payment_ref);
+        let existing = await stripe.paymentIntents.retrieve(cart.payment_ref);
+        // A flight fare can move after the intent was made; follow it until paid.
+        if (existing.amount !== cart.total_cents && ['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existing.status)) {
+          existing = await stripe.paymentIntents.update(existing.id, { amount: cart.total_cents });
+        }
         if (existing.status !== 'canceled') return { ref: existing.id, client: clientFor(existing, env) };
       }
       const pi = await stripe.paymentIntents.create(

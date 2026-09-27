@@ -72,7 +72,13 @@ test('MCP: tools are listed and callable over streamable HTTP', async (t) => {
 
   const c = await connect('s3cret-a');
   const { tools } = await c.listTools();
-  assert.deepEqual(tools.map((x) => x.name).sort(), ['create_spot_ask', 'get_spot_ask', 'order_spot_ask']);
+  assert.deepEqual(tools.map((x) => x.name).sort(), ['create_flight_ask', 'create_spot_ask', 'get_spot_ask', 'order_spot_ask', 'search_flights']);
+  const day = new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10);
+  const fares = await c.callTool({ name: 'search_flights', arguments: { origin: 'AUS', destination: 'JFK', departure_date: day } });
+  assert.ok(!fares.isError, JSON.stringify(fares.content));
+  const trip = await c.callTool({ name: 'create_flight_ask', arguments: { offer_id: fares.structuredContent.offers[0].offer_id, requester_name: 'Kyle' } });
+  assert.ok(!trip.isError, JSON.stringify(trip.content));
+  assert.match(trip.structuredContent.finish_link, /\/manage\?k=/);
   assert.ok(tools.find((x) => x.name === 'order_spot_ask').inputSchema.properties.shipping);
 
   const created = await c.callTool({ name: 'create_spot_ask', arguments: { requester_name: 'Kyle', merchant_name: 'Nike', merchant_url: 'https://www.nike.com', items, note: 'birthday 🎂' } });
