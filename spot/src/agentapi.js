@@ -275,7 +275,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   });
 
   function mcpServer(req, agent) {
-    const server = new McpServer({ name: 'spot', title: 'Spot', version: '0.2.0', websiteUrl: 'https://spot-production-7896.up.railway.app' });
+    const server = new McpServer({ name: 'spot', title: 'Spot', version: '0.2.0', websiteUrl: 'https://spotmeplease.com' });
     const reply = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }], structuredContent: obj });
     const fail = (e) => ({ content: [{ type: 'text', text: e.draft ? `${e.message}\nDraft: ${JSON.stringify(e.draft)}` : e.message }], isError: true });
 

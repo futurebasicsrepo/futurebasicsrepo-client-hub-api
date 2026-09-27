@@ -114,7 +114,8 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | Variable | Default | |
 |---|---|---|
 | `PORT` | `3000` | |
-| `PUBLIC_URL` | request host | Base for share links, e.g. `https://spot.example` |
+| `PUBLIC_URL` | request host | Base for share links, e.g. `https://spotmeplease.com`. When set, page views on `www.` or the Railway domain redirect to it; API, MCP, webhook and `/health` requests are never redirected |
+| `MCP_REGISTRY_AUTH` | | `v=MCPv1; k=ed25519; p=…`, served at `/.well-known/mcp-registry-auth` so the MCP Registry can verify the domain (see docs/mcp-listing.md) |
 | `SPOT_DB` | `./data/spot.db` | SQLite file; put it on a volume |
 | `SPOT_FEE_BPS` | `400` | Payer fee, basis points |
 | `SPOT_FEE_FIXED_CENTS` | `0` | |

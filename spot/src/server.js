@@ -23,6 +23,25 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const spot = createSpot({ db, provider, flights, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
+  // One public address: pages opened on www. or the Railway domain move to
+  // PUBLIC_URL. Only page views (GET/HEAD) — API calls, webhooks, MCP and
+  // the health check answer on any host, so existing integrations keep working.
+  const canonical = (() => {
+    try {
+      return env.PUBLIC_URL ? new URL(env.PUBLIC_URL) : null;
+    } catch {
+      return null;
+    }
+  })();
+  if (canonical) {
+    app.addHook('onRequest', async (req, reply) => {
+      const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+      if (!['GET', 'HEAD'].includes(req.method) || host === canonical.hostname) return;
+      if (host !== `www.${canonical.hostname}` && !host.endsWith('.up.railway.app')) return;
+      if (/^\/(v1\/|mcp|health|\.well-known\/)/.test(req.url)) return;
+      return reply.redirect(`${canonical.origin}${req.url}`, 301);
+    });
+  }
   let seenOrigin = null;
   app.addHook('onRequest', async (req) => {
     if (!seenOrigin && req.headers.host) seenOrigin = `${req.protocol}://${req.headers.host}`;
@@ -89,6 +108,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Website ──────────────────────────────────────────────────────────────
   app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
 
+  // MCP Registry domain check for the com.spotmeplease/* namespace:
+  // MCP_REGISTRY_AUTH="v=MCPv1; k=ed25519; p=<public key>" (public, not a secret).
+  app.get('/.well-known/mcp-registry-auth', async (req, reply) => {
+    if (!env.MCP_REGISTRY_AUTH) return reply.code(404).send('not configured');
+    return reply.type('text/plain').send(env.MCP_REGISTRY_AUTH);
+  });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
 

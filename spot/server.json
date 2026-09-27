@@ -1,10 +1,10 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.futurebasicsrepo/spot",
+  "name": "com.spotmeplease/spot",
   "title": "Spot",
   "description": "Let AI agents ask someone else to pay for a cart, or text you a cart or flight to finish in a tap.",
   "version": "0.2.0",
-  "websiteUrl": "https://spot-production-7896.up.railway.app/integrations#mcp",
+  "websiteUrl": "https://spotmeplease.com/integrations#mcp",
   "repository": {
     "url": "https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api",
     "source": "github",
@@ -13,11 +13,11 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://spot-production-7896.up.railway.app/mcp",
+      "url": "https://spotmeplease.com/mcp",
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer <your Spot API key>. Get one free at https://spot-production-7896.up.railway.app/integrations#mcp",
+          "description": "Bearer <your Spot API key>. Get one free at https://spotmeplease.com/integrations#mcp",
           "isRequired": true,
           "isSecret": true
         }

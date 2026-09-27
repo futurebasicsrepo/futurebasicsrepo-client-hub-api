@@ -192,3 +192,20 @@ test('self-serve keys: minted once, work over REST, and have daily quotas', asyn
   const off = app(t, { env: { ...env, SPOT_OPEN_KEYS: 'off' } });
   assert.equal((await off.inject({ method: 'POST', url: '/v1/agent/keys', payload: { email: 'dev@example.com' } })).statusCode, 404);
 });
+
+test('custom domain: page views move to PUBLIC_URL, APIs and webhooks do not', async (t) => {
+  const a = app(t, { env: { ...env, PUBLIC_URL: 'https://spotmeplease.com', MCP_REGISTRY_AUTH: 'v=MCPv1; k=ed25519; p=abc' } });
+  const get = (host, url, method = 'GET') => a.inject({ method, url, headers: { host } });
+  let r = await get('www.spotmeplease.com', '/new?x=1');
+  assert.equal(r.statusCode, 301);
+  assert.equal(r.headers.location, 'https://spotmeplease.com/new?x=1');
+  r = await get('spot-production-7896.up.railway.app', '/c/abc');
+  assert.equal(r.headers.location, 'https://spotmeplease.com/c/abc');
+  assert.notEqual((await get('spotmeplease.com', '/')).statusCode, 301);
+  assert.equal((await get('spot-production-7896.up.railway.app', '/health')).statusCode, 200);
+  assert.notEqual((await get('www.spotmeplease.com', '/v1/carts/abc')).statusCode, 301);
+  assert.notEqual((await get('spot-production-7896.up.railway.app', '/v1/webhooks/stripe', 'POST')).statusCode, 301);
+  assert.notEqual((await get('other.example', '/')).statusCode, 301);
+  r = await get('spotmeplease.com', '/.well-known/mcp-registry-auth');
+  assert.equal(r.body, 'v=MCPv1; k=ed25519; p=abc');
+});
