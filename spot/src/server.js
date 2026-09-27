@@ -91,9 +91,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   const require = createRequire(import.meta.url);
-  const fonts = Object.fromEntries(
-    [400, 600, 800].map((w) => [`bricolage-${w}.woff2`, readFileSync(require.resolve(`@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-${w}-normal.woff2`))]),
-  );
+  const fonts = Object.fromEntries([
+    ...[400, 600, 800].map((w) => [`bricolage-${w}.woff2`, readFileSync(require.resolve(`@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-${w}-normal.woff2`))]),
+    ['caveat-700.woff2', readFileSync(require.resolve('@fontsource/caveat/files/caveat-latin-700-normal.woff2'))],
+  ]);
   app.get('/fonts/:file', async (req, reply) => {
     const f = fonts[req.params.file];
     if (!f) return reply.code(404).send();
