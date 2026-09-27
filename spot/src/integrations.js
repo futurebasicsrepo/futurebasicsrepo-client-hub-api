@@ -20,6 +20,8 @@ const CSS = `
 .jump{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
 .jump a{padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);text-decoration:none;font-weight:600;font-size:14px}
 .igrid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:30px}
+.keyform{display:flex;gap:8px;flex-wrap:wrap}.keyform input{font:inherit;font-size:15px;padding:11px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);flex:1 1 180px;min-width:0}.keyform[hidden]{display:none}
+.keyout{margin:0;font-weight:600;color:var(--spot);font-size:15px}.keyout:empty{display:none}
 .icard{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:90px}
 .icard.wide{grid-column:1/-1}
 .icard .top{display:flex;align-items:center;gap:12px}
@@ -88,9 +90,11 @@ export function integrationsPage({ origin }) {
 
   <div class="icard reveal" id="mcp">
     <div class="top"><div class="ic">🤖</div><h3>AI assistants (MCP)</h3><span class="badge live">Available</span></div>
-    <p>Give Claude, or any app that speaks MCP, three tools: <code>create_spot_ask</code>, <code>get_spot_ask</code> and <code>order_spot_ask</code>. Your assistant finds it, asks someone to pay, and orders it once they do.</p>
+    <p>Give Claude, or any app that speaks MCP, Spot’s tools. Your assistant can ask someone else to pay (<code>create_spot_ask</code>), text you a cart or a flight to finish on your phone (<code>for_me</code>, <code>search_flights</code>, <code>create_flight_ask</code>), and order once it’s paid (<code>order_spot_ask</code>).</p>
+    <form class="keyform" id="keyForm"><input type="email" name="email" required placeholder="you@email.com" aria-label="Email" autocomplete="email"><input name="agent_name" placeholder="Agent name (optional)" aria-label="Agent name" maxlength="24"><button class="btn primary">Get a free key</button></form>
+    <p class="keyout" id="keyOut" aria-live="polite"></p>
     ${code('mcpcfg', mcp)}
-    <div class="row2"><a class="btn ghost" href="/#join" data-kind="agent">Get an API key</a></div>
+    <p style="font-size:14px">Free keys cover 100 asks and 20 texts or emails a day. Your key is shown once, so paste it somewhere safe.</p>
   </div>
 
   <div class="icard reveal" id="api">
@@ -134,6 +138,12 @@ ${siteFooter()}
 <script>
 (()=>{
 ${SITE_JS}
+  const kf=document.getElementById('keyForm'),ko=document.getElementById('keyOut');
+  kf&&kf.addEventListener('submit',async e=>{e.preventDefault();const b=kf.querySelector('button');b.disabled=true;ko.textContent='';
+    try{const r=await fetch('/v1/agent/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(kf)))});const d=await r.json();if(!r.ok)throw new Error(d.error||'Try again');
+      const pre=document.getElementById('mcpcfg');pre.textContent=pre.textContent.replace(/Bearer [^"]+/,'Bearer '+d.api_key);
+      ko.innerHTML='Your key is in the config below. It’s shown once, so copy it now 🧡';kf.hidden=true}
+    catch(err){ko.textContent=err.message;b.disabled=false}});
   document.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{
     try{await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent);b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy',1600)}catch{}
   }));

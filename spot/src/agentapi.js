@@ -13,9 +13,11 @@
 //   create_flight_ask hold one fare and hand it to the user to finish on
 //                     their phone: who's flying, pay, booked
 //
-// Auth: SPOT_API_KEYS="agentname:secret,other:secret2". Each ask remembers
+// Auth: SPOT_API_KEYS="agentname:secret,other:secret2" for partners, plus
+// self-serve keys from POST /v1/agent/keys (stored hashed, with daily
+// quotas so a free key can't be used to spam texts). Each ask remembers
 // which agent made it, and only that agent can read or order it.
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -31,18 +33,34 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db }) {
   const keys = apiKeys(env);
+  const selfServe = env.SPOT_OPEN_KEYS !== 'off';
 
   function agentFor(req) {
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
-    if (!keys.length) throw new CartError('The agent API is not enabled on this server', 401);
-    if (!m) throw new CartError('Missing API key (Authorization: Bearer …)', 401);
+    if (!keys.length && !selfServe) throw new CartError('The agent API is not enabled on this server', 401);
+    if (!m) throw new CartError('Missing API key (Authorization: Bearer …). Get one free at /integrations#mcp', 401);
     const h = createHash('sha256').update(m[1].trim()).digest();
     const hit = keys.find((k) => timingSafeEqual(k.hash, h));
-    if (!hit) throw new CartError('Bad API key', 401);
-    return hit.name;
+    if (hit) return hit.name;
+    const row = selfServe && db?.keyByHash(h.toString('hex'));
+    if (!row || row.revoked) throw new CartError('Bad API key', 401);
+    return `key:${row.name}`;
   }
+
+  // Daily quotas for self-serve keys (partners in SPOT_API_KEYS have none).
+  const used = new Map();
+  function quota(agent, what, max) {
+    if (!agent.startsWith('key:')) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const k = `${day}:${agent}:${what}`;
+    const n = (used.get(k) || 0) + 1;
+    if (n > max) throw new CartError(`Daily limit reached for this key (${max} ${what}). Email us for a higher limit.`, 429);
+    used.set(k, n);
+    if (used.size > 10_000) for (const key of used.keys()) if (!key.startsWith(day)) used.delete(key);
+  }
+  const QUOTA = { asks: Number(env.SPOT_KEY_ASKS_PER_DAY || 100), messages: Number(env.SPOT_KEY_MESSAGES_PER_DAY || 20), searches: Number(env.SPOT_KEY_SEARCHES_PER_DAY || 200) };
 
   function owned(agent, askId) {
     const cart = spot.load(askId);
@@ -105,6 +123,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   // ─── Core verbs (shared by REST and MCP) ──────────────────────────────────
   async function createAsk(req, agent, input) {
     const b = input || {};
+    quota(agent, 'asks', QUOTA.asks);
+    if (b.for === 'self' && (b.notify?.email || b.notify?.phone)) quota(agent, 'messages', QUOTA.messages);
     let merchant = b.merchant;
     let items = b.items;
     let extras = b.extras_cents || 0;
@@ -159,6 +179,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   }
 
   async function createFlightAsk(req, agent, b = {}) {
+    quota(agent, 'asks', QUOTA.asks);
+    if (b.notify?.email || b.notify?.phone) quota(agent, 'messages', QUOTA.messages);
     if (!flights) throw new CartError('Flights are not enabled on this server', 404);
     if (!b.offer_id) throw new CartError('offer_id is required (from search_flights)');
     const offer = await flights.offer(String(b.offer_id));
@@ -181,6 +203,33 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     return view(req, spot.byId(cart.id));
   }
 
+  // ─── Self-serve keys ──────────────────────────────────────────────────────
+  // Shown once; only the hash is stored. A few per IP per hour.
+  const minted = new Map();
+  app.post('/v1/agent/keys', async (req, reply) => {
+    if (!selfServe || !db) throw new CartError('Self-serve keys are off on this server. Email us for one.', 404);
+    const hour = Math.floor(Date.now() / 3600_000);
+    const k = `${hour}:${req.ip}`;
+    if ((minted.get(k) || 0) >= 5) throw new CartError('Too many keys from here, try again later', 429);
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
+    const slug = String(req.body?.agent_name || 'agent').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'agent';
+    const name = `${slug}-${randomBytes(3).toString('hex')}`;
+    const key = `spot_${randomBytes(24).toString('base64url')}`;
+    db.addKey(createHash('sha256').update(key).digest('hex'), name, email);
+    db.joinWaitlist?.(email, 'agent');
+    minted.set(k, (minted.get(k) || 0) + 1);
+    if (minted.size > 5000) for (const x of minted.keys()) if (!x.startsWith(`${hour}:`)) minted.delete(x);
+    reply.code(201);
+    return {
+      api_key: key,
+      name,
+      note: 'Save this now; Spot only keeps a hash. Send it as "Authorization: Bearer <key>".',
+      mcp_url: urlFor(req, '/mcp'),
+      limits_per_day: { asks: QUOTA.asks, messages: QUOTA.messages, flight_searches: QUOTA.searches },
+    };
+  });
+
   // ─── REST ─────────────────────────────────────────────────────────────────
   app.post('/v1/agent/asks', async (req, reply) => {
     const agent = agentFor(req);
@@ -195,7 +244,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   });
   app.get('/v1/agent/asks/:id', async (req) => view(req, owned(agentFor(req), req.params.id)));
   app.post('/v1/agent/flights/search', async (req) => {
-    agentFor(req);
+    quota(agentFor(req), 'searches', QUOTA.searches);
     return searchFlights(req.body);
   });
   app.post('/v1/agent/flights/asks', async (req, reply) => {
@@ -226,7 +275,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   });
 
   function mcpServer(req, agent) {
-    const server = new McpServer({ name: 'spot', version: '0.1.0' });
+    const server = new McpServer({ name: 'spot', title: 'Spot', version: '0.2.0', websiteUrl: 'https://spot-production-7896.up.railway.app' });
     const reply = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }], structuredContent: obj });
     const fail = (e) => ({ content: [{ type: 'text', text: e.draft ? `${e.message}\nDraft: ${JSON.stringify(e.draft)}` : e.message }], isError: true });
 
@@ -329,6 +378,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       },
       async (a) => {
         try {
+          quota(agent, 'searches', QUOTA.searches);
           return reply(await searchFlights(a));
         } catch (e) {
           return fail(e);

@@ -47,6 +47,14 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       PRIMARY KEY (email, kind)
     );
     INSERT OR IGNORE INTO signups (email, kind, at) SELECT email, kind, at FROM waitlist;
+    -- Self-serve agent API keys (only the SHA-256 is kept).
+    CREATE TABLE IF NOT EXISTS api_keys (
+      hash        TEXT PRIMARY KEY,
+      name        TEXT NOT NULL UNIQUE,
+      email       TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      revoked     INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   const q = {
@@ -64,6 +72,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     events: db.prepare('SELECT kind, detail, at FROM cart_events WHERE cart_id = ? ORDER BY id'),
     join: db.prepare('INSERT OR IGNORE INTO signups (email, kind, at) VALUES (?, ?, ?)'),
     waitlist: db.prepare('SELECT email, kind, at FROM signups ORDER BY at DESC, email, kind'),
+    addKey: db.prepare('INSERT INTO api_keys (hash, name, email, created_at) VALUES (?, ?, ?, ?)'),
+    keyByHash: db.prepare('SELECT name, email, revoked FROM api_keys WHERE hash = ?'),
   };
 
   const hydrate = (row) =>
@@ -107,6 +117,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     events: (cartId) => q.events.all(cartId).map((e) => ({ ...e, detail: e.detail ? JSON.parse(e.detail) : null })),
     joinWaitlist: (email, kind) => q.join.run(email, kind, Date.now()),
     waitlist: () => q.waitlist.all(),
+    addKey: (hash, name, email) => q.addKey.run(hash, name, email, Date.now()),
+    keyByHash: (hash) => q.keyByHash.get(hash) || null,
     close: () => db.close(),
   };
 }

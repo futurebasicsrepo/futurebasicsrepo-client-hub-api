@@ -162,3 +162,33 @@ test('for_me: validation, missing channels, and a timed-out hold', async (t) => 
   const page = await a.inject({ method: 'GET', url: `/c/${r.ask_id}/manage?k=${k}` });
   assert.equal(page.statusCode, 200);
 });
+
+test('self-serve keys: minted once, work over REST, and have daily quotas', async (t) => {
+  const a = app(t, { env: { ...env, SPOT_KEY_ASKS_PER_DAY: '2', SPOT_KEY_MESSAGES_PER_DAY: '1' } });
+  assert.equal((await a.inject({ method: 'POST', url: '/v1/agent/keys', payload: { email: 'nope' } })).statusCode, 400);
+  const r = await a.inject({ method: 'POST', url: '/v1/agent/keys', payload: { email: 'Dev@Example.com', agent_name: 'Trip Bot!' } });
+  assert.equal(r.statusCode, 201);
+  const { api_key, name, mcp_url } = r.json();
+  assert.match(api_key, /^spot_[\w-]{32}$/);
+  assert.match(name, /^trip-bot-[0-9a-f]{6}$/);
+  assert.match(mcp_url, /\/mcp$/);
+
+  const ask = (payload) => a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth(api_key), payload });
+  const base = { requester: { name: 'Kyle' }, merchant: { name: 'Nike' }, items: [{ title: 'Dunk', price_cents: 11500 }] };
+  const first = await ask({ ...base, for: 'self', notify: { email: 'kyle@example.com' } });
+  assert.equal(first.statusCode, 201, first.body);
+  assert.equal(first.json().delivered.email, 'not_configured');
+  // Messages quota (1) is spent; asks quota (2) is not.
+  assert.equal((await ask({ ...base, for: 'self', notify: { email: 'kyle@example.com' } })).statusCode, 429);
+  assert.equal((await ask(base)).statusCode, 429, 'the refused ask above still counted');
+  const mine = await a.inject({ method: 'GET', url: '/v1/agent/asks/none', headers: auth(api_key) });
+  assert.equal(mine.statusCode, 404);
+  // Partner keys from SPOT_API_KEYS have no quota, and keys are per agent.
+  assert.equal((await a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: base })).statusCode, 201);
+  const id = first.json().ask_id;
+  assert.equal((await a.inject({ method: 'GET', url: `/v1/agent/asks/${id}`, headers: auth('s3cret-a') })).statusCode, 404);
+  assert.equal((await a.inject({ method: 'GET', url: `/v1/agent/asks/${id}`, headers: auth(api_key) })).statusCode, 200);
+
+  const off = app(t, { env: { ...env, SPOT_OPEN_KEYS: 'off' } });
+  assert.equal((await off.inject({ method: 'POST', url: '/v1/agent/keys', payload: { email: 'dev@example.com' } })).statusCode, 404);
+});
