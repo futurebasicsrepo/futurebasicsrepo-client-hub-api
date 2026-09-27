@@ -9,6 +9,8 @@ import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { sitePage } from './site.js';
+import { COMING_SOON, integrationsPage } from './integrations.js';
+import { extensionZip, EXTENSION_VERSION } from './extension.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
@@ -74,6 +76,20 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Website ──────────────────────────────────────────────────────────────
   app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
 
+  app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
+
+  // The browser extension, built for this server's address.
+  const zips = new Map();
+  app.get('/downloads/spot-extension.zip', async (req, reply) => {
+    const origin = urlFor(req, '');
+    if (!zips.has(origin)) zips.set(origin, extensionZip(origin));
+    return reply
+      .type('application/zip')
+      .header('content-disposition', `attachment; filename="spot-extension-${EXTENSION_VERSION}.zip"`)
+      .header('cache-control', 'public, max-age=3600')
+      .send(zips.get(origin));
+  });
+
   const require = createRequire(import.meta.url);
   const fonts = Object.fromEntries(
     [400, 600, 800].map((w) => [`bricolage-${w}.woff2`, readFileSync(require.resolve(`@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-${w}-normal.woff2`))]),
@@ -95,9 +111,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   };
   const demoCards = {};
   app.get('/site/:file', async (req, reply) => {
-    const which = { 'card-open.png': 'open', 'card-covered.png': 'covered' }[req.params.file];
+    const which = { 'card-open.png': 'open', 'card-covered.png': 'covered', 'card-agent.png': 'agent' }[req.params.file];
     if (!which) return reply.code(404).send();
-    demoCards[which] ||= await renderShareCard(which === 'open' ? demo : { ...demo, status: 'card_issued', payer_name: 'Mom' });
+    const cart = {
+      open: demo,
+      covered: { ...demo, status: 'card_issued', payer_name: 'Mom' },
+      agent: { ...demo, merchant: { name: 'Trailhead Supply' }, items: [{ title: 'XT trail runners, black 10.5', quantity: 1, price_cents: 20000 }], cart_cents: 20800 },
+    }[which];
+    demoCards[which] ||= await renderShareCard(cart);
     return reply.type('image/png').header('cache-control', 'public, max-age=86400').send(demoCards[which]);
   });
 
@@ -107,7 +128,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (b.company_fax) return { ok: true }; // bot
     const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    const kind = ['asker', 'agent', 'creator'].includes(b.kind) ? b.kind : 'asker';
+    const kinds = ['asker', 'agent', 'creator', ...COMING_SOON.map((c) => `notify:${c.slug}`)];
+    const kind = kinds.includes(b.kind) ? b.kind : 'asker';
     db.joinWaitlist(email, kind);
     return { ok: true };
   });
