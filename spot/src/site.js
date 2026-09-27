@@ -2,6 +2,9 @@
 // Visuals are the real product: the share card is rendered by sharecard.js
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
 import { buddySvg } from './pages.js';
+import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, heroNotes, noteSection, storySection } from './sitefx.js';
+
+const buddyNoId = (happy) => buddySvg(happy).replace(' id="buddy"', '');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -146,13 +149,13 @@ details p{color:var(--muted);margin-top:12px}
 .hp{position:absolute;left:-9999px}
 
 /* hero stage: floating callouts + tilt */
-.stage{position:relative;perspective:1200px}
+.stage{position:relative;perspective:1200px;width:min(360px,100%);margin:0 auto}
 .stage .phone{transition:transform .25s ease-out;will-change:transform}
 .float{position:absolute;z-index:2;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 14px;font-weight:600;font-size:14px;box-shadow:0 14px 34px rgba(27,23,18,.14);display:flex;gap:8px;align-items:center;animation:drift 6s ease-in-out infinite;white-space:nowrap}
 .float b{color:var(--spot)}
-.float.f1{left:-4%;top:14%}.float.f2{right:-6%;top:46%;animation-delay:-2s}.float.f3{left:2%;bottom:8%;animation-delay:-4s}
+.float.f1{left:-4%;top:14%}.float.f2{left:calc(100% - 96px);top:52%;animation-delay:-2s}.float.f3{left:calc(100% - 120px);bottom:10%;animation-delay:-4s}
 @keyframes drift{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-12px) rotate(1deg)}}
-@media (max-width:900px){.float{display:none}}
+@media (max-width:1180px){.float{display:none}}
 
 /* marquee */
 .marquee{padding:34px 0 8px;overflow:hidden;display:flex;flex-direction:column;gap:14px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
@@ -209,7 +212,7 @@ export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
 <meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">
 <link rel="preload" href="/fonts/bricolage-800.woff2" as="font" type="font/woff2" crossorigin>
-<style>${SITE_CSS}${extraCss}</style></head><body>`;
+<style>${SITE_CSS}${FX_CSS}${extraCss}</style></head><body>`;
 }
 
 export function siteNav(active = '') {
@@ -222,7 +225,7 @@ export function siteNav(active = '') {
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a><span>Your cart, anywhere.</span><span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
@@ -244,17 +247,16 @@ export function sitePage({ origin, provider }) {
 ${siteNav()}
 
 <header class="hero"><div class="wrap">
-  <div class="buddy" aria-hidden="true">${buddySvg(false)}</div>
+  <div class="buddy" title="hi!">${buddySvg(false)}</div><div class="hi" aria-hidden="true">hi! <span>👋</span></div>
   <div class="grid">
     <div>
       <span class="pill"><i></i>Early access${provider === 'sandbox' ? ' · test mode' : ''}</span>
-      <h1 style="margin-top:22px">Your cart, anywhere. <em>Someone else’s tap.</em></h1>
+      <h1 style="margin-top:22px">Your cart, anywhere. <em class="circled">Someone else’s tap.${circleMark}</em></h1>
       <p class="lead">Turn any cart into a link. They tap Apple Pay, and it gets ordered, on a one-time card that only works at that store.</p>
       <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="#how">See how it works</a></div>
       <p class="fine">Nothing to download. The person paying doesn’t need an account.</p>
     </div>
-    <div class="stage" id="stage">
-    <div class="float f1" aria-hidden="true">🔒 Locked to <b>Kiln &amp; Co.</b></div>
+    <div class="stage" id="stage">${heroNotes()}
     <div class="float f2" aria-hidden="true">🎉 Mom spotted you</div>
     <div class="float f3" aria-hidden="true">📦 Ordered · arrives Thu</div>
     <div class="phone" aria-label="A Spot link being sent in a text message and getting paid">
@@ -278,18 +280,7 @@ ${siteNav()}
   <div class="mrow rev" aria-hidden="true"><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div></div>
 </section>
 
-<section class="sec alt" id="how"><div class="wrap">
-  <p class="kicker reveal">How it works</p>
-  <h2 class="reveal">Three taps between<br>“I want this” and “it’s coming.”</h2>
-  <div class="steps">
-    <div class="step reveal"><div class="n">1</div><h3>Spot it</h3><p class="muted">Paste a link, drop a screenshot, or just say what you want. Spot finds the item, the size and the price.</p>
-      <div class="vis"><div class="fake-input"><b>black salomon xt-6, size 10.5</b></div><div class="fake-btn">Spot it</div></div></div>
-    <div class="step reveal"><div class="n">2</div><h3>Send it</h3><p class="muted">One tap sends a card to Mom, your partner or the group chat, in iMessage, WhatsApp, anywhere.</p>
-      <div class="vis" style="padding:0;overflow:hidden"><img src="/site/card-open.png" alt="The Spot share card" loading="lazy" width="1200" height="630"></div></div>
-    <div class="step reveal"><div class="n">3</div><h3>They tap. It ships.</h3><p class="muted">They pay with Apple Pay. Spot fills in the store’s checkout with a one-time card, and you tap Place order.</p>
-      <div class="vis"><div class="ordered"><i>📦</i><span>Ordered! #1042</span></div><span class="muted" style="font-size:14px">Tracking is on its way to your inbox.</span></div></div>
-  </div>
-</div></section>
+${storySection()}
 
 <section class="sec" id="why"><div class="wrap">
   <p class="kicker reveal">Why Spot</p>
@@ -311,6 +302,8 @@ ${siteNav()}
     </tbody>
   </table></div>
 </div></section>
+
+${chatWallSection()}
 
 <section class="sec alt"><div class="wrap">
   <p class="kicker reveal">Made for</p>
@@ -362,6 +355,8 @@ ${siteNav()}
   </div>
 </div></section>
 
+${noteSection(buddyNoId(true))}
+
 <section class="sec alt" id="faq"><div class="wrap">
   <p class="kicker reveal" style="text-align:center">FAQ</p>
   <h2 class="reveal" style="text-align:center">Questions</h2>
@@ -393,6 +388,7 @@ ${siteFooter()}
 <script>
 (()=>{
 ${SITE_JS}
+${FX_JS}
   // Hero conversation: plays, flips the card to "covered", loops.
   const bubbles=[...document.querySelectorAll('#thread .b')],lc=document.getElementById('lc');
   if(reduce){bubbles.forEach(b=>b.classList.add('shown'));lc.classList.add('flip')}
@@ -400,7 +396,7 @@ ${SITE_JS}
     const play=()=>{bubbles.forEach(b=>b.classList.remove('shown'));lc.classList.remove('flip');
       const t=[400,1300,3000,4300,4700,5600];
       bubbles.forEach((b,i)=>setTimeout(()=>b.classList.add('shown'),t[i]));
-      setTimeout(()=>lc.classList.add('flip'),t[3]);
+      setTimeout(()=>{lc.classList.add('flip');spotConfetti(stage,'62%','34%')},t[3]);
       setTimeout(play,10500)};
     play();
   }
