@@ -161,3 +161,26 @@ test('a store total above the card limit stops before bothering the requester', 
   assert.match(done.cart.fulfillment.reason, /\$999\.00, above the card limit of \$275\.63/);
   assert.equal(store.orders.length, 0);
 });
+
+test('for_me cart: pay on the phone and the checkout agent starts by itself', { timeout: 90_000 }, async (t) => {
+  const store = await startFakeStore();
+  const m = scriptedModel({ misbehave: false });
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: 'on' }, fulfill: { client: m.client, shopify: { allowPrivate: true } } });
+  t.after(async () => { await app.close(); await store.close(); });
+  const c = (await app.inject({ method: 'POST', url: '/v1/carts', payload: {
+    for: 'self', requester: { name: 'Kyle' }, merchant: { name: 'Aritzia', url: store.origin },
+    items: [{ title: 'Super Puff Shorty', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/super-puff` }], extras_cents: 1250,
+  } })).json();
+  assert.equal(c.cart.for, 'self');
+  await app.inject({ method: 'POST', url: `/v1/carts/${c.cart.token}/manage/prepare`, payload: { k: c.manage_key, shipping } });
+  await app.inject({ method: 'POST', url: `/v1/carts/${c.cart.token}/sandbox-pay`, payload: {} });
+  const end = Date.now() + 45_000;
+  let f;
+  for (;;) {
+    f = (await app.inject({ method: 'GET', url: `/v1/carts/${c.cart.token}/manage?k=${c.manage_key}` })).json().cart.fulfillment;
+    if (f?.state === 'awaiting_confirm' || f?.state === 'needs_you' || Date.now() > end) break;
+    await new Promise((z) => setTimeout(z, 250));
+  }
+  assert.equal(f.state, 'awaiting_confirm', f?.reason);
+  assert.equal(f.method, 'shopify');
+});

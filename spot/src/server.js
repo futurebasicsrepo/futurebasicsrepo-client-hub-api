@@ -14,11 +14,15 @@ import { extensionZip, EXTENSION_VERSION } from './extension.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
+import { createNotifier } from './notify.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const spot = createSpot({ db, provider, cfg, log: app.log });
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill });
+  spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
+  app.addHook('onClose', async () => fulfiller.close());
+  const notifier = createNotifier({ env, log: app.log, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
   const baseUrl = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const captureUrl = capture.fromUrl || captureFromUrl;
@@ -247,6 +251,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return spot.revealCard(cart);
   });
 
+  app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
   app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
   app.post('/v1/carts/:token/manage/billing', async (req) => ({ cart: ownerCart(await spot.addBilling(req.params.token, keyOf(req), req.body?.billing)) }));
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
@@ -270,7 +275,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  registerAgentApi(app, { spot, fulfiller, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
+  registerAgentApi(app, { spot, fulfiller, notifier, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
 
   app.post('/v1/sandbox/authorize', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);

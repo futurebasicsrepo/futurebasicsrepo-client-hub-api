@@ -70,6 +70,16 @@ Shopping agents can build carts but can't make someone else pay. Spot gives them
 | `get_spot_ask` | `GET /v1/agent/asks/:id` | status and the next step |
 | `order_spot_ask` | `POST /v1/agent/asks/:id/order` | once paid, place the order at the store (the requester still confirms the final tap) |
 
+### Finish on your phone
+
+An agent can also build a cart for its own user ("find me these flights") and hand it over to pay. Pass `for: "self"` (MCP: `for_me: true`) and you get back a private `finish_link`. Options:
+
+- `ship_to`: prefill the shipping address
+- `expires_minutes` (5–4320): how long the price is held; the page shows a countdown
+- `notify: {email, phone}` (MCP: `send_to_email`, `send_to_phone`): Spot texts or emails the link. `delivered` reports `sent`, `failed`, `not_configured` or `bad_number` for each channel
+
+The user opens the link, checks the address, and pays with Apple Pay, Google Pay or a card. The merchant-locked card issues, and if `SPOT_AGENT=on` the checkout agent starts the order by itself. The user still confirms the last tap.
+
 MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
@@ -89,6 +99,9 @@ MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bea
 | `SPOT_AGENT_MODEL` | `claude-opus-5` | |
 | `SPOT_AGENT_MAX` | `2` | Checkouts running at once |
 | `SPOT_API_KEYS` | | `name:secret,name2:secret2` for the agent API / MCP |
+| `RESEND_API_KEY` | | Emails finish links |
+| `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

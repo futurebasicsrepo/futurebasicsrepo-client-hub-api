@@ -95,3 +95,64 @@ test('MCP: tools are listed and callable over streamable HTTP', async (t) => {
   const r = await fetch(`${base}/mcp`, { headers: auth('s3cret-a') });
   assert.equal(r.status, 405);
 });
+
+test('for_me: agent hands the cart to its user to finish on their phone', async (t) => {
+  const sent = [];
+  const notifyFetch = async (url, init) => {
+    sent.push({ url: String(url), init });
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const a = buildApp({
+    db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, notifyFetch,
+    env: { ...env, RESEND_API_KEY: 're_test', SPOT_FROM_EMAIL: 'Spot <hi@spot.test>', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15550000000' },
+  });
+  t.after(() => a.close());
+
+  const r = await a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: {
+    for: 'self', requester: { name: 'Kyle' }, merchant: { name: 'Nike', url: 'https://www.nike.com' }, items,
+    ship_to: shipping, expires_minutes: 30, notify: { email: 'kyle@example.com', phone: '(512) 555-0100' },
+  } });
+  assert.equal(r.statusCode, 201, r.body);
+  const ask = r.json();
+  assert.equal(ask.for, 'self');
+  assert.match(ask.finish_link, /\/manage\?k=/);
+  assert.equal(ask.requester_page, undefined);
+  assert.deepEqual(ask.delivered, { email: 'sent', text: 'sent' });
+  assert.match(ask.next_step, /finish on their phone/);
+  const minutes = (Date.parse(ask.expires_at) - Date.now()) / 60000;
+  assert.ok(minutes > 29 && minutes <= 30, 'expires in 30 minutes');
+
+  // What went out: an email via Resend and a text via Twilio, both carrying the finish link.
+  const mail = sent.find((s) => s.url === 'https://api.resend.com/emails');
+  assert.equal(mail.init.headers.authorization, 'Bearer re_test');
+  const mailBody = JSON.parse(mail.init.body);
+  assert.deepEqual(mailBody.to, ['kyle@example.com']);
+  assert.ok(mailBody.text.includes(ask.finish_link));
+  const text = sent.find((s) => s.url.includes('api.twilio.com'));
+  const form = new URLSearchParams(text.init.body);
+  assert.equal(form.get('To'), '+15125550100');
+  assert.ok(form.get('Body').includes(ask.finish_link));
+
+  // The user opens it: shipping is prefilled from the agent, they pay, the card issues,
+  // and ordering starts without another tap (checkout agent off here → a ready checkout link).
+  const k = new URL(ask.finish_link).searchParams.get('k');
+  const m1 = (await a.inject({ method: 'GET', url: `/v1/carts/${ask.ask_id}/manage?k=${k}` })).json();
+  assert.equal(m1.cart.requester.shipping.postal_code, '78701');
+  await a.inject({ method: 'POST', url: `/v1/carts/${ask.ask_id}/sandbox-pay`, payload: { payer_name: 'Kyle' } });
+  const m2 = (await a.inject({ method: 'GET', url: `/v1/carts/${ask.ask_id}/manage?k=${k}` })).json();
+  assert.equal(m2.cart.status, 'card_issued');
+  assert.equal(m2.cart.fulfillment.state, 'needs_you');
+  assert.ok(m2.events.some((e) => e.kind === 'order_needs_you'), 'ordering started automatically');
+});
+
+test('for_me: validation, missing channels, and a timed-out hold', async (t) => {
+  const a = app(t);
+  const post = (payload) => a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: { requester: { name: 'Kyle' }, merchant: { name: 'Nike' }, items, ...payload } });
+  assert.equal((await post({ for: 'self', expires_minutes: 1 })).statusCode, 400);
+  const r = (await post({ for: 'self', notify: { email: 'k@example.com', phone: '12' } })).json();
+  assert.deepEqual(r.delivered, { email: 'not_configured', text: 'bad_number' }, 'no Resend key here; bad phone is flagged');
+  const k = new URL(r.finish_link).searchParams.get('k');
+  assert.equal((await a.inject({ method: 'POST', url: `/v1/carts/${r.ask_id}/manage/prepare`, payload: { k, shipping: { name: 'K' } } })).statusCode, 400);
+  const page = await a.inject({ method: 'GET', url: `/c/${r.ask_id}/manage?k=${k}` });
+  assert.equal(page.statusCode, 200);
+});

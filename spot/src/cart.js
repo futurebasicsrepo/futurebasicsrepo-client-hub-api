@@ -92,6 +92,15 @@ export function validateCart(input, cfg = config()) {
   if (extras === null) throw new CartError('Shipping and tax estimate must be a dollar amount');
 
   const settle = SETTLE_MODES.includes(b.settle) ? b.settle : 'card';
+  // 'self': the requester pays their own cart (an agent built it and handed
+  // it over to finish on their phone). 'other' (default): someone else pays.
+  const forWhom = b.for === 'self' ? 'self' : 'other';
+  if (forWhom === 'self' && settle !== 'card') throw new CartError('Your own carts are paid by card');
+  let expiresMinutes = null;
+  if (b.expires_minutes != null) {
+    expiresMinutes = Number.parseInt(b.expires_minutes, 10);
+    if (!Number.isInteger(expiresMinutes) || expiresMinutes < 5 || expiresMinutes > 72 * 60) throw new CartError('expires_minutes must be between 5 and 4320');
+  }
   const venmo = str(requester.venmo, 31).replace(/^@/, '');
   const cashtag = str(requester.cashtag, 31).replace(/^\$/, '');
   if (venmo && !HANDLE.test(venmo)) throw new CartError('Venmo handle looks wrong');
@@ -107,6 +116,8 @@ export function validateCart(input, cfg = config()) {
     requester: { name, email: email || null, venmo: venmo || null, cashtag: cashtag || null },
     merchant: { name: merchant, url: merchantUrl },
     note: str(b.note, 280) || null,
+    for: forWhom,
+    expires_minutes: expiresMinutes,
     items,
     settle,
     ...totals,
