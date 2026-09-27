@@ -1,6 +1,7 @@
 import type { Post } from '@/lib/api';
 
 export default function VisibilityBadge({ post }: { post: Pick<Post, 'status' | 'visibility'> }) {
+  if (post.status === 'removed') return <span className="badge removed">Removed by moderators</span>;
   if (post.status === 'draft') return <span className="badge">Draft</span>;
   if (post.visibility === 'public') return <span className="badge flare">Public</span>;
   if (post.visibility === 'unlisted') return <span className="badge sky">Unlisted</span>;

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api, API_URL, type Channel, type ChatMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import Avatar from '../Avatar';
+import ReportButton from '../ReportButton';
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 // Consecutive messages from one person within 5 minutes are grouped under one name, like Discord.
@@ -19,6 +20,7 @@ export default function ChatRoom({ slug, channel }: { slug: string; channel: Cha
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(true);
+  const [picked, setPicked] = useState<number | null>(null); // tap a message to report it
   const list = useRef<HTMLDivElement>(null);
   const pinned = useRef(true); // stick to the bottom unless the reader scrolled up
   const base = `/v1/fandoms/${encodeURIComponent(slug)}/chat/${channel.slug}`;
@@ -39,6 +41,10 @@ export default function ChatRoom({ slug, channel }: { slug: string; channel: Cha
       setMessages(current => (current?.some(m => m.id === message.id) ? current : [...(current ?? []), message]));
     });
     source.addEventListener('online', event => setOnline(JSON.parse((event as MessageEvent).data).online));
+    source.addEventListener('remove', event => {
+      const { id } = JSON.parse((event as MessageEvent).data) as { id: number };
+      setMessages(current => current?.filter(m => m.id !== id) ?? current);
+    });
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     return () => { cancelled = true; source.close(); };
@@ -80,17 +86,23 @@ export default function ChatRoom({ slug, channel }: { slug: string; channel: Cha
       }} role="log" aria-live="polite">
         {messages === null && <div className="skeleton" style={{ height: 120 }} />}
         {messages?.length === 0 && <p className="muted chat-empty">No messages yet. Kick it off.</p>}
-        {messages?.map((m, i) => grouped(messages[i - 1], m) ? (
-          <div key={m.id} className="chat-msg cont"><p>{m.body}</p></div>
-        ) : (
-          <div key={m.id} className="chat-msg">
-            <Avatar name={m.author.displayName} size="sm" />
-            <div>
-              <div className="chat-who"><Link href={`/u/${m.author.handle}`}><strong>{m.author.displayName}</strong></Link> <span className="muted">{time(m.createdAt)}</span></div>
-              <p>{m.body}</p>
+        {messages?.map((m, i) => {
+          const tools = picked === m.id && user && m.author.handle !== user.handle
+            ? <div className="chat-tools"><ReportButton type="chat" id={m.id} label="Report message" /></div> : null;
+          const pick = () => setPicked(picked === m.id ? null : m.id);
+          return grouped(messages[i - 1], m) ? (
+            <div key={m.id} className="chat-msg cont" onClick={pick}><div><p>{m.body}</p>{tools}</div></div>
+          ) : (
+            <div key={m.id} className="chat-msg" onClick={pick}>
+              <Avatar name={m.author.displayName} size="sm" />
+              <div>
+                <div className="chat-who"><Link href={`/u/${m.author.handle}`}><strong>{m.author.displayName}</strong></Link> <span className="muted">{time(m.createdAt)}</span></div>
+                <p>{m.body}</p>
+                {tools}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {error && <p className="error">{error}</p>}
       {user ? (

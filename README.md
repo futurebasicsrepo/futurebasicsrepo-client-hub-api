@@ -241,6 +241,15 @@ A fandom (`/f/:slug`) is a community: part Discord server, part subreddit.
 | GET/POST | `/v1/fandoms/:slug/chat/:channel` | –/✓ | last 60 messages (`before` to page back) / send `{ body }` |
 | GET | `/v1/fandoms/:slug/chat/:channel/stream` | – | SSE: `message`, `online` |
 
+## Moderation
+
+Anyone signed in can **report** a clip, comment, thread, reply, chat message, match or profile (Report links, the ⋯ on Watch, tap a chat message). Reasons: spam, harassment, hate, violence, sexual content, child safety, copyright/broadcast rights, other, plus an optional note.
+
+- **Auto-hide:** 3 different reporters (`REPORT_AUTOHIDE`) hide the item until a moderator reviews it; a child-safety report hides it at once. Hidden items drop out of feeds, lists and chat (open chats remove the message live) and show as removed where replies hang off them.
+- **Mod queue** (`/mod`, moderators and admins): one card per reported item, child-safety first, then by reporter count, with a snapshot of the content at report time, reasons, notes and a link to it in context. **Remove** (clips become `removed` and can't be republished by their owner; matches become unlisted), **Dismiss** (restores anything auto-hidden), **Restore** a removal later, **Ban author**.
+- **Bans** sign the account out everywhere (tokens are checked against a ban list on every request) and block sign-in.
+- **Roles:** `ADMIN_HANDLES` (comma-separated, env) are admins; admins make moderators from the Team tab. Moderators can't ban admins or moderators. Every action lands in `mod_actions` (the Team & log tab).
+
 ## World scores
 
 `/scores` shows pro and international football from around the world: every league on ESPN's public soccer scoreboard, usually 40+ competitions and 300+ games on a Saturday. It has Yesterday, Today and Tomorrow views, a live-only filter, team and league search, and leagues you can follow, which pin to the top on that device. The home screen gets an "Around the world" strip, and the score ticker adds live pro games after the grassroots ones.

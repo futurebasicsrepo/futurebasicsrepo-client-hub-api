@@ -9,6 +9,7 @@ import Avatar from './Avatar';
 import Comments from './Comments';
 import MediaPlayer from './MediaPlayer';
 import ShareBar from './ShareBar';
+import ReportButton from './ReportButton';
 import UpvoteButton from './UpvoteButton';
 import VisibilityBadge from './VisibilityBadge';
 
@@ -104,7 +105,10 @@ export default function PostView({ id }: { id: string }) {
         </div>
         <aside className="post-aside stack" style={{ gap: 20 }}>
           {shareable ? (
-            <div className="panel" id="share"><ShareBar postId={post.id} title={post.title} /></div>
+            <div className="panel" id="share">
+              <ShareBar postId={post.id} title={post.title} />
+              {user?.handle !== post.creator.handle && <div style={{ marginTop: 12 }}><ReportButton type="post" id={post.id} label="Report this clip" /></div>}
+            </div>
           ) : (
             <div className="panel">
               <p className="mono muted" style={{ marginTop: 0 }}>Only you can see this</p>

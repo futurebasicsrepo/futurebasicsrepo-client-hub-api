@@ -246,6 +246,45 @@ export async function migrate() {
       deleted_at timestamptz
     );
     create index if not exists chat_channel on chat_messages (fandom_id, channel, id desc);
+
+    -- Trust & safety: roles, bans, reports, hidden content and an audit log of moderator actions.
+    alter table users add column if not exists role text not null default 'user' check (role in ('user','moderator','admin'));
+    alter table users add column if not exists banned_at timestamptz;
+    alter table posts drop constraint if exists posts_status_check;
+    alter table posts add constraint posts_status_check check (status in ('draft','published','removed'));
+    alter table comments add column if not exists hidden_at timestamptz;
+    alter table threads add column if not exists hidden_at timestamptz;
+    alter table replies add column if not exists hidden_at timestamptz;
+    alter table chat_messages add column if not exists hidden_at timestamptz;
+    alter table matches add column if not exists hidden_at timestamptz;
+    create table if not exists reports (
+      id bigserial primary key,
+      target_type text not null check (target_type in ('post','comment','thread','reply','chat','match','user')),
+      target_id text not null,
+      reporter_id bigint not null references users(id) on delete cascade,
+      author_id bigint references users(id) on delete set null,
+      reason text not null,
+      note text not null default '',
+      snapshot jsonb,
+      link text,
+      auto_hidden boolean not null default false,
+      status text not null default 'open' check (status in ('open','actioned','dismissed')),
+      resolution text,
+      resolved_by bigint references users(id) on delete set null,
+      resolved_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create unique index if not exists reports_open_unique on reports (target_type, target_id, reporter_id) where status = 'open';
+    create index if not exists reports_open on reports (created_at) where status = 'open';
+    create table if not exists mod_actions (
+      id bigserial primary key,
+      moderator_id bigint not null references users(id) on delete cascade,
+      action text not null,
+      target_type text not null,
+      target_id text not null,
+      note text not null default '',
+      created_at timestamptz not null default now()
+    );
     create index if not exists matches_live on matches (period_started_at) where period in ('1h','ht','2h');
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');

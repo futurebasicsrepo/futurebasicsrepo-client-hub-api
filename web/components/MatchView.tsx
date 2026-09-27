@@ -16,6 +16,7 @@ import FlipNumber from './FlipNumber';
 import GoalBurst, { teamColour } from './GoalBurst';
 import { takeMatch } from '@/lib/handoff';
 import Crowd, { type CrowdHandle } from './Crowd';
+import ReportButton from './ReportButton';
 
 const EVENT_ICON: Record<MatchEvent['type'], string> = {
   goal: '⚽', yellow: '🟨', red: '🟥', note: '📝', kickoff: '⏱', halftime: '⏸', second_half: '▶', fulltime: '🏁'
@@ -352,7 +353,7 @@ export default function MatchView({ id }: { id: string }) {
           </div>
         ))}
       </section>
-      <p className="hint" style={{ paddingBottom: 48 }}>Scorekeeper: @{match.scorekeeper.handle}{match.keepers?.length ? ` with ${match.keepers.map(k => `@${k.handle}`).join(', ')}` : ''}. Scores are kept by fans at the game, not an official source.</p>
+      <p className="hint" style={{ paddingBottom: 48 }}>Scorekeeper: @{match.scorekeeper.handle}{match.keepers?.length ? ` with ${match.keepers.map(k => `@${k.handle}`).join(', ')}` : ''}. Scores are kept by fans at the game, not an official source.{!match.canScore && <> <ReportButton type="match" id={match.id} label="Report this match" /></>}</p>
       {toast && <div className="toast" role="status">{toast}</div>}
       <Crowd ref={crowd} matchId={id} live={live} />
     </div>

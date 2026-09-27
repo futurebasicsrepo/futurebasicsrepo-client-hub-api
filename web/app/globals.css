@@ -818,3 +818,25 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .chat-log { height: calc(100dvh - 380px); min-height: 260px; }
   .thread-row { padding: 12px; }
 }
+
+/* ---------- moderation ---------- */
+.report-sheet { max-width: 520px; }
+.report-reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.report-reason { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; font-size: 14px; }
+.report-reason input { accent-color: var(--flare); }
+.report-reason.on { border-color: var(--flare); background: color-mix(in srgb, var(--flare) 10%, transparent); }
+.badge.removed { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.chat-tools { margin-top: 4px; font-size: 13px; }
+.chat-msg { cursor: default; }
+.mod-page { padding-bottom: 48px; }
+.mod-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.mod-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--ink-2); }
+.mod-card.urgent { border-color: var(--flare); box-shadow: 0 0 0 1px var(--flare) inset; }
+.mod-snapshot { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: var(--radius-sm); background: var(--ink); }
+.mod-snapshot img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; flex: none; }
+.mod-snapshot strong { display: block; overflow-wrap: anywhere; }
+.mod-snapshot p { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--paper-dim); }
+.mod-notes { margin: 0; padding-left: 18px; color: var(--paper-dim); font-size: 14px; }
+.mod-log { font-size: 14px; overflow-wrap: anywhere; }
+.btn-remove { background: var(--danger); color: #1a0000; border-color: var(--danger); }
+@media (max-width: 760px) { .report-reasons { grid-template-columns: 1fr; } }
