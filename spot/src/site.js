@@ -46,6 +46,7 @@ nav .btn{padding:10px 18px;font-size:15px}
 .hero{padding:64px 0 90px;position:relative}
 .hero .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
 .hero h1 em{font-style:normal;color:var(--spot)}
+.hero .grid>*{min-width:0}@media (max-width:520px){.hero h1{font-size:clamp(30px,9.6vw,44px)}}
 .hero .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
 .hero .fine{margin-top:16px;font-size:14px;color:var(--muted)}
 .hero .buddy{position:absolute;right:max(2vw,8px);top:14px;width:84px;height:84px;animation:bob 3.2s ease-in-out infinite}
@@ -153,6 +154,27 @@ details p{color:var(--muted);margin-top:12px}
 .stage .phone{transition:transform .25s ease-out;will-change:transform}
 .float{position:absolute;z-index:2;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 14px;font-weight:600;font-size:14px;box-shadow:0 14px 34px rgba(27,23,18,.14);display:flex;gap:8px;align-items:center;animation:drift 6s ease-in-out infinite;white-space:nowrap}
 .float b{color:var(--spot)}
+.float.f4{left:-12%;top:18%;animation-delay:-1s}.float.f5{left:calc(100% - 96px);bottom:1%;animation-delay:-3s}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0 4px;max-width:560px}
+.mode{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:18px;background:var(--card);border:1.5px solid var(--line);text-decoration:none;color:var(--ink);transition:transform .2s,border-color .2s,box-shadow .2s}
+.mode:hover{transform:translateY(-2px) rotate(-.5deg);border-color:var(--spot);box-shadow:0 12px 26px rgba(27,23,18,.1)}
+.mode .mi{font-size:26px;line-height:1}.mode b{display:block;font-size:17px}.mode small{display:block;color:var(--muted);font-size:14px;line-height:1.35;margin-top:2px}
+@media (max-width:520px){.modes{grid-template-columns:1fr}}
+.handoff .grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+@media (max-width:900px){.handoff .grid{grid-template-columns:1fr}}
+.handoff .phone{transform:rotate(-2deg)}
+.ticks{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px}
+.ticks li{position:relative;padding-left:34px;color:var(--muted)}.ticks li b{color:var(--ink)}
+.ticks li::before{content:'✓';position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--spot) 14%,transparent);color:var(--spot);font-weight:800;font-size:13px;display:grid;place-items:center}
+.screen .avatar.ai{background:linear-gradient(135deg,#ff5a36,#ffb347);font-size:20px}
+.b.tripcard{padding:0;width:84%;max-width:84%;background:#fff;border:1px solid #e3e3e6;box-shadow:0 6px 18px rgba(0,0,0,.08)}
+.tc{padding:12px 13px 10px;position:relative}
+.tr{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center}.tr b{display:block;font-size:17px}.tr span{font-size:11px;color:#777;font-weight:700;letter-spacing:.05em}
+.tl{text-align:center}.tl i{display:block;height:2px;background:#ddd;position:relative;margin:0 2px}.tl i::after{content:'✈';position:absolute;right:-5px;top:-9px;font-style:normal;font-size:12px;color:#ff5a36}.tl em{font-style:normal;font-size:10px;color:#888}
+.tm{display:flex;justify-content:space-between;font-size:12px;color:#666;margin-top:8px}.tm .tp{font-weight:800;color:#111;font-size:14px}
+.tb,.tdone{margin-top:9px;border-radius:10px;padding:8px;text-align:center;font-weight:700;font-size:13px;transition:opacity .4s,transform .4s}
+.tb{background:#ff5a36;color:#fff}.tdone{background:#e7f6ee;color:#1d8a52;position:absolute;left:13px;right:13px;bottom:10px;opacity:0;transform:scale(.9)}
+.tripcard.done .tb{opacity:0}.tripcard.done .tdone{opacity:1;transform:none}
 .float.f1{left:-4%;top:14%}.float.f2{left:calc(100% - 96px);top:52%;animation-delay:-2s}.float.f3{left:calc(100% - 120px);bottom:10%;animation-delay:-4s}
 @keyframes drift{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-12px) rotate(1deg)}}
 @media (max-width:1180px){.float{display:none}}
@@ -219,7 +241,7 @@ export function siteNav(active = '') {
   const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}</div>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#for-you', 'AI handoff', 'for-you')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}</div>
   <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
 </div></nav>`;
 }
@@ -241,7 +263,7 @@ export const SITE_JS = `
 
 export function sitePage({ origin, provider }) {
   const title = 'Spot: your cart, anywhere. Someone else’s tap.';
-  const desc = 'Turn any cart into a link. They tap Apple Pay, and it gets ordered on a one-time card that only works at that store.';
+  const desc = 'Turn any cart into a link. Someone else taps Apple Pay, or your AI shops and texts it to you to finish. Either way, one tap and it’s ordered.';
   return `${siteHead({ title, desc, origin, path: '/' })}
 
 ${siteNav()}
@@ -252,8 +274,12 @@ ${siteNav()}
     <div>
       <span class="pill"><i></i>Early access${provider === 'sandbox' ? ' · test mode' : ''}</span>
       <h1 style="margin-top:22px">Your cart, anywhere. <em class="circled">Someone else’s tap.${circleMark}</em></h1>
-      <p class="lead">Turn any cart into a link. They tap Apple Pay, and it gets ordered, on a one-time card that only works at that store.</p>
-      <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="#how">See how it works</a></div>
+      <p class="lead">Turn any cart into a link. Send it to whoever’s paying, or let your AI shop and send it to you. One tap, and it’s ordered.</p>
+      <div class="modes">
+        <a class="mode" href="#how"><span class="mi">💸</span><span><b>Spot me</b><small>Someone else pays. Their money can only buy that cart.</small></span></a>
+        <a class="mode" href="#for-you"><span class="mi">🤖</span><span><b>Finish for me</b><small>Your AI finds it, you tap Apple Pay. Even flights.</small></span></a>
+      </div>
+      <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="#for-you">See the AI handoff</a></div>
       <p class="fine">Nothing to download. The person paying doesn’t need an account.</p>
     </div>
     <div class="stage" id="stage">${heroNotes()}
@@ -282,6 +308,37 @@ ${siteNav()}
 
 ${storySection()}
 
+<section class="sec handoff" id="for-you"><div class="wrap"><div class="grid">
+  <div>
+    <p class="kicker reveal">Your AI shops. You tap.</p>
+    <h2 class="reveal">Ask your AI.<br>Finish on your phone.</h2>
+    <p class="lead reveal">“Find me a flight to SFO on the 17th.” Your assistant finds it, holds the price and texts you a Spot. You open it, check it and tap Apple Pay. Done.</p>
+    <ul class="ticks reveal">
+      <li><b>Real flights.</b> Live fares from the airlines, booked the second you pay, with your confirmation code right there.</li>
+      <li><b>Any store’s cart.</b> Your AI puts the cart together, and Spot orders it with a one-time card.</li>
+      <li><b>Price held, clock showing.</b> The link counts down while the fare or price is held, so nothing changes under you.</li>
+      <li><b>You always have the last tap.</b> Your AI can’t spend a cent without you.</li>
+    </ul>
+    <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/integrations#mcp">Add Spot to your AI →</a><a class="btn ghost" href="#agents">For developers</a></div>
+  </div>
+  <div class="stage" id="stage2">
+    <div class="float f4" aria-hidden="true">⏳ fare held 29:58</div>
+    <div class="float f5" aria-hidden="true">✈️ Booked · <b>QX7R2P</b></div>
+    <div class="phone" aria-label="Your AI assistant texts you a flight it found; you tap to finish and it's booked">
+      <div class="screen">
+        <div class="top"><div class="avatar ai">✦</div><div class="who">Your AI</div></div>
+        <div class="thread" id="thread2">
+          <div class="b me">find me a flight to SFO on the 17th, morning, nonstop pls</div>
+          <div class="b them">On it ✈️ Best nonstop: 9:40am, lands 11:55. $249. Holding the fare for you, tap to finish 👇</div>
+          <div class="b them tripcard" id="trip"><div class="tc"><div class="tr"><div><b>9:40a</b><span>AUS</span></div><div class="tl"><i></i><em>nonstop</em></div><div style="text-align:right"><b>11:55a</b><span>SFO</span></div></div><div class="tm"><span>Fri, Oct 17 · 1 adult</span><span class="tp">$249</span></div><div class="tb">Finish on Spot · ⏳ 29:58</div><div class="tdone">✓ Booked · QX7R2P</div></div></div>
+          <div class="b me">done 🙌</div>
+          <div class="b them">You’re booked. Confirmation QX7R2P. Aisle seat’s yours 😉</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div></section>
+
 <section class="sec" id="why"><div class="wrap">
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
@@ -298,6 +355,7 @@ ${storySection()}
       <tr><td>Payer just taps, no checkout</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Money can only buy the item</td><td class="us">${check}</td><td>${cross}</td><td>${check}</td><td>${check}</td></tr>
       <tr><td>Ask in the moment</td><td class="us">${check}</td><td>${check}</td><td>${check}</td><td>${cross}</td></tr>
+      <tr><td>Your AI can hand it to you to finish</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Ordered for you</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>Some</td></tr>
     </tbody>
   </table></div>
@@ -319,10 +377,12 @@ ${chatWallSection()}
   <div>
     <p class="kicker reveal">For AI agents</p>
     <h2 class="reveal">The pay-for-me layer for AI shopping.</h2>
-    <p class="lead reveal">Shopping agents can build a cart, but they can’t ask someone else to pay for it. Spot gives any agent three tools, over MCP or REST.</p>
+    <p class="lead reveal">Shopping agents can build a cart, but they can’t pay for it. With Spot they can ask someone else to, or hand it back to their user to finish in one tap. Over MCP or REST.</p>
     <div class="tools reveal">
-      <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link and a message to send</span></div>
-      <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered</span></div>
+      <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link for someone else, or <b>for_me</b>: a finish link texted to your user</span></div>
+      <div class="tool"><code>search_flights</code><span>live fares, cheapest first plus the best nonstop</span></div>
+      <div class="tool"><code>create_flight_ask</code><span>hold a fare and text your user a link to book it</span></div>
+      <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered, booked</span></div>
       <div class="tool"><code>order_spot_ask</code><span>once paid, place the order at the store</span></div>
     </div>
     <div class="cta" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="#join" data-kind="agent">Get an API key</a><a class="btn ghost" href="/integrations#mcp">Set up MCP →</a></div>
@@ -362,7 +422,9 @@ ${noteSection(buddyNoId(true))}
   <h2 class="reveal" style="text-align:center">Questions</h2>
   <div class="faq">
     <details><summary>What does it cost?</summary><p>The person paying adds a 4% Spot fee, shown before they pay. Choosing “send it straight to my Venmo or Cash App” is free, because the money never goes through Spot.</p></details>
-    <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest. Some stores block automatic checkout, and then Spot hands you a ready-to-go checkout link and your one-time card instead.</p></details>
+    <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest, and stores that support agent checkout (the Universal Commerce Protocol) are ordered straight through their own checkout. Some stores block automatic checkout, and then Spot hands you a ready-to-go checkout link and your one-time card instead.</p></details>
+    <details><summary>Can my AI book flights with Spot?</summary><p>Yes. Add Spot to your assistant and ask for a flight. It searches live fares, holds the one you like and texts you a link. You add who’s flying, tap Apple Pay, and Spot books it with the airline and shows your confirmation code. If the airline can’t book it, you’re refunded right away.</p></details>
+    <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
     <details><summary>Why a one-time card instead of cash?</summary><p>It’s what makes people comfortable saying yes: the money can only buy what you asked for. It also shuts out the fraud that plagues cash transfers.</p></details>
     <details><summary>What if I don’t end up buying it?</summary><p>You can refund the person who paid in one tap from your Spot page.</p></details>
@@ -400,6 +462,15 @@ ${FX_JS}
       setTimeout(play,10500)};
     play();
   }
+  // AI handoff phone: plays when scrolled into view, the trip card flips to "booked", loops.
+  const t2=document.getElementById('thread2'),trip=document.getElementById('trip');
+  if(t2){const bs=[...t2.children];
+    if(reduce){bs.forEach(b=>b.classList.add('shown'));trip.classList.add('done')}
+    else{const play2=()=>{bs.forEach(b=>b.classList.remove('shown'));trip.classList.remove('done');
+        const t=[300,1500,2600,4600,5600];bs.forEach((b,i)=>setTimeout(()=>b.classList.add('shown'),t[i]));
+        setTimeout(()=>{trip.classList.add('done');spotConfetti(document.getElementById('stage2'),'55%','52%')},4800);
+        setTimeout(play2,11000)};
+      new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){play2();o.disconnect()}},{threshold:.3}).observe(t2)}}
   // Phone tilts toward the pointer.
   const stage=document.getElementById('stage'),phone=stage&&stage.querySelector('.phone');
   if(phone&&!reduce)stage.addEventListener('pointermove',e=>{const r=stage.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;phone.style.transform='rotateY('+(x*14).toFixed(1)+'deg) rotateX('+(-y*10).toFixed(1)+'deg) rotate(2deg)'});
