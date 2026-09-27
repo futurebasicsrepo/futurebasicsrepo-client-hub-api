@@ -36,6 +36,7 @@ export function validateShipping(s) {
 export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {} }) {
   const pending = new Map(); // cartId → { resolve, timer }
   const shots = new Map(); // cartId → png Buffer
+  const browsers = new Set();
   let running = 0;
   const maxJobs = Number(env.SPOT_AGENT_MAX || 2);
   const agentOn = () => env.SPOT_AGENT === 'on' && Boolean(client || env.ANTHROPIC_API_KEY);
@@ -101,6 +102,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
         const cart = spot.byId(cartId);
         const card = await provider.revealCard(cart);
         browser = await launchBrowser();
+        browsers.add(browser);
         // Narrow window: stores serve their compact layout, and the confirm
         // screenshot stays readable on the requester's phone.
         const context = await browser.newContext({ locale: 'en-US', viewport: { width: 520, height: 1000 }, deviceScaleFactor: 2 });
@@ -120,6 +122,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
                 pending.delete(cartId);
                 resolve(false);
               }, CONFIRM_TIMEOUT_MS);
+              timer.unref?.();
               pending.set(cartId, { resolve, timer });
               update(cartId, { state: 'awaiting_confirm', total_cents, summary, has_shot: Boolean(screenshot) }, 'order_awaiting_confirm');
             }),
@@ -136,8 +139,16 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           clearTimeout(w.timer);
           pending.delete(cartId);
         }
+        if (browser) browsers.delete(browser);
         await browser?.close().catch(() => {});
       }
+    },
+
+    // "For me" carts: the requester already gave their shipping address, so
+    // ordering starts the moment the card is issued.
+    async autoStart(cart) {
+      if (cart.for !== 'self' || !cart.requester?.shipping || cart.status !== 'card_issued' || cart.fulfillment) return null;
+      return this.start(cart, cart.requester.shipping);
     },
 
     confirm(cart, place) {
@@ -151,5 +162,16 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     },
 
     screenshot: (cart) => shots.get(cart.id) || null,
+
+    // Server shutdown: nothing is placed without a person, so waiting
+    // checkouts are declined and their browsers closed.
+    async close() {
+      for (const [, w] of pending) {
+        clearTimeout(w.timer);
+        w.resolve(false);
+      }
+      pending.clear();
+      await Promise.all([...browsers].map((b) => b.close().catch(() => {})));
+    },
   };
 }

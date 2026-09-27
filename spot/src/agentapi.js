@@ -4,7 +4,8 @@
 // user but can't make someone *else* pay. Spot gives it three verbs, over
 // REST and as an MCP server:
 //
-//   create_spot_ask   cart (or a link / description) → shareable pay link
+//   create_spot_ask   cart (or a link / description) → shareable pay link,
+//                     or (for_me) a finish-on-your-phone link, texted/emailed
 //   get_spot_ask      status: waiting, paid, ordering, ordered…
 //   order_spot_ask    once paid, place the order at the store (the
 //                     requester still confirms the final tap on their page)
@@ -27,7 +28,7 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, env, urlFor, capture }) {
   const keys = apiKeys(env);
 
   function agentFor(req) {
@@ -52,7 +53,9 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
     const link = urlFor(req, `/c/${cart.token}`);
     const f = own.fulfillment;
     const next = {
-      open: `Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`,
+      open: cart.for === 'self'
+        ? 'Waiting for the requester to finish on their phone: confirm shipping, pay, then tap Place order.'
+        : `Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`,
       paid: 'Paid. The requester is setting up their card; check back shortly.',
       card_issued: f?.state === 'awaiting_confirm'
         ? `The store's checkout is filled in (${usd(f.total_cents)}). The requester must confirm the final tap on their Spot page.`
@@ -68,7 +71,9 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
     }[cart.status];
     return {
       ask_id: cart.token,
+      for: cart.for || 'other',
       status: cart.status,
+      expires_at: new Date(cart.expires_at).toISOString(),
       link,
       share_message: shareMessage(cart, link),
       share_card_url: `${link}/card.png`,
@@ -103,15 +108,21 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
         throw err;
       }
     }
+    const forSelf = b.for === 'self';
     const { cart, manageKey } = spot.create(
-      { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle: b.settle },
+      { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle: forSelf ? 'card' : b.settle, for: forSelf ? 'self' : 'other', expires_minutes: b.expires_minutes },
       { ip: req.ip },
     );
-    const tagged = spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
-    return view(req, tagged, {
-      requester_page: urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`),
-      requester_page_note: 'Private: give this only to the requester. It shows their card and is where they confirm the order.',
-    });
+    spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
+    if (forSelf && b.ship_to) spot.prepare(cart.token, manageKey, b.ship_to);
+    const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
+    const extra = forSelf
+      ? { finish_link: privateLink, finish_link_note: 'Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.' }
+      : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It shows their card and is where they confirm the order.' };
+    if (forSelf && (b.notify?.email || b.notify?.phone)) {
+      extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+    }
+    return view(req, spot.byId(cart.id), extra);
   }
 
   async function orderAsk(req, agent, askId, shipping) {
@@ -165,7 +176,7 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link that someone else (a parent, partner, friend) can pay in one tap. Their money goes onto a one-time card that only works at that store. Pass items, or a product/cart url, or a text description. Returns the link and a message for your user to send.",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; their money goes onto a one-time card that only works at that store. Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -176,6 +187,11 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
           text: z.string().optional().describe('A description like "black Salomon XT-6 size 10.5", if you have nothing else'),
           extras_cents: z.number().int().min(0).optional().describe('Estimated shipping + tax in cents'),
           note: z.string().max(280).optional().describe('A short note shown to the payer'),
+          for_me: z.boolean().optional().describe('Your user pays for this themselves and finishes on their phone'),
+          send_to_email: z.string().optional().describe('for_me: email the finish link here'),
+          send_to_phone: z.string().optional().describe('for_me: text the finish link to this phone number'),
+          ship_to: shippingShape.optional().describe('for_me: shipping address, if you already know it (they can change it)'),
+          expires_minutes: z.number().int().min(5).max(4320).optional().describe('How long the link stays valid, e.g. for a price that only holds briefly'),
         },
       },
       async (a) => {
@@ -189,6 +205,10 @@ export function registerAgentApi(app, { spot, fulfiller, env, urlFor, capture })
               text: a.text,
               extras_cents: a.extras_cents,
               note: a.note,
+              for: a.for_me ? 'self' : 'other',
+              notify: { email: a.send_to_email, phone: a.send_to_phone },
+              ship_to: a.ship_to,
+              expires_minutes: a.expires_minutes,
             }),
           );
         } catch (e) {

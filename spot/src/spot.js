@@ -3,8 +3,9 @@
 // the sandbox simulator.
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CartError, config, decideAuthorization, transition, validateCart } from './cart.js';
+import { validateShipping } from './fulfill/index.js';
 
-export function createSpot({ db, provider, cfg = config(), log = console }) {
+export function createSpot({ db, provider, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
 
   function load(token) {
@@ -59,7 +60,7 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
         status: 'open',
         rev: 1,
         created_at: now,
-        expires_at: now + cfg.expiresHours * 3600_000,
+        expires_at: now + (v.expires_minutes ? v.expires_minutes * 60_000 : cfg.expiresHours * 3600_000),
         requester_ip: ip || null,
       };
       db.insert(cart);
@@ -76,6 +77,21 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'edited');
+      return next;
+    },
+
+    onCardIssued,
+
+    // "For me" carts: the requester confirms where it ships before paying.
+    // Their shipping address doubles as the card's billing address.
+    prepare(token, key, shippingInput) {
+      const cart = loadManaged(token, key);
+      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      const shipping = validateShipping(shippingInput);
+      const billing = cart.requester.billing || { line1: shipping.line1, city: shipping.city, state: shipping.state, postal_code: shipping.postal_code };
+      const next = { ...cart, requester: { ...cart.requester, shipping, billing, email: cart.requester.email || shipping.email } };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'shipping_set');
       return next;
     },
 
@@ -149,7 +165,14 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
       }
       try {
         const card = await provider.issueCard(cart);
-        return move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined } }, { last4: card.last4 });
+        const issued = move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined } }, { last4: card.last4 });
+        // "For me" carts go straight on to ordering once the card exists.
+        try {
+          await this.onCardIssued(issued);
+        } catch (err) {
+          log.error?.({ err, cart: cart.id }, 'auto-order failed to start');
+        }
+        return db.byId(cart.id);
       } catch (err) {
         log.error?.({ err, cart: cart.id }, 'card issue failed');
         db.event(cart.id, 'issue_failed', { message: err.message });
@@ -230,6 +253,7 @@ export function publicCart(cart) {
     token: cart.token,
     status: cart.status,
     rev: cart.rev || 1,
+    for: cart.for || 'other',
     settle: cart.settle,
     requester: { name: cart.requester.name, venmo: cart.requester.venmo, cashtag: cart.requester.cashtag },
     merchant: cart.merchant,

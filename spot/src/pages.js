@@ -356,6 +356,45 @@ export function managePage({ token, provider }) {
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
 let reveal=null;
+const SELF_STATUS={open:['Ready for you',''],paid:['Paid! setting up your card…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
+let tick=null;
+// "For me" carts: an agent (or you) put this together; finish it here.
+function finishPanel(c){
+  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},saved(),c.requester.shipping||{});
+  const left=c.expires_at-Date.now(),held=left<24*3600e3;
+  const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
+  let h='<h1 style="font-size:32px;margin-top:22px">Your cart is ready 🛒</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · put together for you'+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
+  if(held)h+='<div class="pill warn" style="margin-top:12px" id="hold">⏳ price held for <span id="left"></span></div>';
+  h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
+    +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
+  h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
+    +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
+    +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
+    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
+    +'<p class="small muted">After you pay, Spot fills in '+esc(c.merchant.name)+'’s checkout with a one-time card and shows you the total. Nothing is ordered until you tap Place order.</p></section>'
+    +'<button class="btn ghost" id="cancel">Not now</button>';
+  $('#app').innerHTML=h;
+  clearInterval(tick);
+  if(held){const upd=()=>{const el=$('#left');if(!el)return clearInterval(tick);const ms=c.expires_at-Date.now();if(ms<=0){clearInterval(tick);return draw()}const m=Math.floor(ms/60000),sec=Math.floor(ms/1000)%60;el.textContent=(m>=60?Math.floor(m/60)+'h '+(m%60)+'m':m+':'+String(sec).padStart(2,'0'))};upd();tick=setInterval(upd,1000)}
+  const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
+  on('cancel',async()=>{if(confirm('Drop this cart?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
+  let stripeReady=null;
+  $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
+    const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
+    try{
+      if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
+      if(MODE==='sandbox'){b.textContent='paying…';await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:v.name.split(' ')[0]});return draw()}
+      if(!stripeReady){const p=await api('/v1/carts/'+TOKEN+'/pay',{});const stripe=Stripe(p.publishable_key);
+        const elements=stripe.elements({clientSecret:p.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
+        const ex=elements.create('expressCheckout',{buttonHeight:52});ex.mount('#payEl');elements.create('payment',{layout:'tabs',wallets:{applePay:'never',googlePay:'never'}}).mount('#payEl');
+        const confirmPay=async()=>{const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;
+          for(let i=0;i<20;i++){const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}draw()};
+        ex.on('confirm',()=>confirmPay().catch(err=>{$('#finErr').textContent=err.message}));
+        stripeReady=confirmPay;b.disabled=false;b.textContent='Pay '+usd(c.total_cents);return}
+      b.textContent='paying…';await stripeReady();
+    }catch(err){$('#finErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+}
+
 const saved=()=>{try{return JSON.parse(localStorage.getItem('spot:ship'))||{}}catch{return {}}};
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
@@ -374,9 +413,14 @@ function orderBox(c,f,agentOn){
     +(agentOn?'<p class="small muted">Spot fills in '+esc(c.merchant.name)+'’s checkout with your one-time card, then shows you the total. Nothing is placed until you tap Place order.</p>':'');
 }
 async function draw(){
-  const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;const [label,tone]=STATUS[c.status]||[c.status,''];
-  let h='<h1 style="font-size:28px">'+esc(c.merchant.name)+' cart</h1><span class="pill '+tone+'">'+label+'</span>';
-  h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;
+  clearInterval(tick);
+  const self=c.for==='self';
+  if(self&&c.status==='open')return finishPanel(c);
+  const [label,tone]=(self?SELF_STATUS:STATUS)[c.status]||[c.status,''];
+  let h='<h1 style="font-size:28px">'+(self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
+  if(self&&c.status==='expired')h+='<section class="card"><h2>This one timed out ⏳</h2><p class="muted" style="margin:0">The price was only held for a little while. Ask your assistant to find it again.</p></section>';
+  if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(r.needs_billing){
     h+='<section class="card"><h2>'+(c.status==='paid'?'🎉 '+esc(c.payer_name||'Someone')+' spotted you!':'One thing for your card')+'</h2><p class="small muted" style="margin-top:0">'+(c.status==='paid'?'Add your billing address and your card is ready right away.':'Add your billing address now so your card is ready the moment someone pays.')+'</p><form id="bill"><input id="b1" placeholder="Street" autocomplete="address-line1" required><div class="row" style="margin-top:6px"><input id="b2" placeholder="City" autocomplete="address-level2" required><input id="b3" placeholder="State" autocomplete="address-level1" required><input id="b4" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" required></div><button class="btn">'+(c.status==='paid'?'Get my card':'Save')+'</button><div class="err" id="billErr"></div></form></section>';
   }
@@ -412,7 +456,7 @@ async function draw(){
   if(['open','paid'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
-  return shell({ title: 'My Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}</style>` });
 }
 
 export function notFoundPage() {
