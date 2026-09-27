@@ -6,7 +6,7 @@ import { CartError, computeTotals, config, decideAuthorization, transition, vali
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
 
-export function createSpot({ db, provider, flights = null, cfg = config(), log = console, onCardIssued = () => {} }) {
+export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
 
   function load(token) {
@@ -47,6 +47,7 @@ export function createSpot({ db, provider, flights = null, cfg = config(), log =
 
     create(input, { ip } = {}, limits = cfg) {
       const v = validateCart(input, limits);
+      risk?.checkCreate(ip);
       // The billing address is only needed to issue the card, which happens
       // after someone pays, so creating a link never asks for it.
       const billing = input?.requester?.billing;
@@ -139,7 +140,7 @@ export function createSpot({ db, provider, flights = null, cfg = config(), log =
     // than risking a second ticket. If the airline says no, the traveler is
     // refunded straight away.
     async bookFlight(cart) {
-      if (cart.status !== 'paid' || cart.flight?.booking_started) return cart;
+      if (cart.status !== 'paid' || cart.hold || cart.flight?.booking_started) return cart;
       const started = this.patch(cart.id, (c) => ({ ...c, flight: { ...c.flight, booking_started: Date.now() } }), 'booking_started');
       try {
         const booking = await flights.book(started.flight);
@@ -244,14 +245,40 @@ export function createSpot({ db, provider, flights = null, cfg = config(), log =
         db.event(cart.id, 'amount_mismatch', { expected: cart.total_cents, got: amountCents });
         throw new CartError('Payment amount does not match cart', 409);
       }
-      const paid = move(cart, 'pay', { paid_at: Date.now(), payer: payer || null }, { amount_cents: amountCents });
+      const paid = move(cart, 'pay', { paid_at: Date.now(), payer: payer?.name ? { name: payer.name } : null }, { amount_cents: amountCents });
+      const verdict = risk ? risk.assessPayment(paid, payer || {}) : { action: 'ok' };
+      if (verdict.action === 'refund') {
+        db.event(cart.id, 'risk_refund', { reason: verdict.reason });
+        await provider.refund(paid);
+        return move(paid, 'refund', { refunded_at: Date.now(), risk: verdict });
+      }
+      if (verdict.action === 'hold') {
+        return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
+      }
       return paid.kind === 'flight' ? this.bookFlight(paid) : this.issue(paid);
+    },
+
+    // From /admin: a held payment checks out, so carry on as if it was never held.
+    async release(cartId) {
+      const cart = db.byId(cartId);
+      if (!cart?.hold || cart.status !== 'paid') throw new CartError('Nothing held on this cart', 409);
+      const next = this.patch(cart.id, (c) => ({ ...c, hold: null, released_at: Date.now() }), 'released');
+      return next.kind === 'flight' ? this.bookFlight(next) : this.issue(next);
+    },
+
+    // From /admin: refund the payer (paid or card issued) and cancel the card.
+    async adminRefund(cartId) {
+      const cart = db.byId(cartId);
+      if (!cart) throw new CartError('Cart not found', 404);
+      if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
+      await provider.refund(cart);
+      return move(cart, 'refund', { refunded_at: Date.now(), hold: null }, { by: 'admin' });
     },
 
     // Issue the merchant-locked card. Safe to retry: a failed issue leaves
     // the cart `paid`, and the requester page retries on the next view.
     async issue(cart) {
-      if (cart.status !== 'paid' || cart.kind === 'flight') return cart;
+      if (cart.status !== 'paid' || cart.kind === 'flight' || cart.hold) return cart;
       if (this.needsBilling(cart)) {
         if (!db.events(cart.id).some((e) => e.kind === 'needs_billing')) db.event(cart.id, 'needs_billing');
         return cart;
@@ -374,6 +401,7 @@ export function ownerCart(cart) {
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
     fulfillment: cart.fulfillment || null,
+    held: Boolean(cart.hold),
     travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender }) => ({ given_name, family_name, born_on, gender })) || null,
     contact: cart.flight?.contact || null,
   };

@@ -136,6 +136,11 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
 | `SPOT_LEGAL_NAME` | `the Spot team` | Who runs Spot, named on `/terms` and `/privacy` |
 | `SPOT_CONTACT_EMAIL` | `hello@spotmeplease.com` | Contact address on the legal pages |
+| `SPOT_ADMIN_TOKEN` | | 16+ random characters. Turns on `/admin` (held payments, recent carts, block list, API keys, signups) |
+| `SPOT_MAX_LINKS_PER_IP_DAY` | `30` | Links one network can make per day |
+| `SPOT_MAX_PAYMENTS_PER_CARD_DAY` / `SPOT_MAX_CARD_CENTS_DAY` | `3` / `100000` | One card paying more Spots, or more money, in 24h is held for review |
+| `SPOT_MAX_RECEIVED_CENTS_DAY` | `150000` | One requester receiving more than this in 24h is held |
+| `SPOT_FIRST_PAYMENT_HOLD_CENTS` | `40000` | A card's first payment above this is held (not for "for me" carts) |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

@@ -20,6 +20,12 @@ Work through it in order. Each step says where to click and exactly what to set.
    - `SPOT_CONTACT_EMAIL` = `hello@spotmeplease.com` (or whatever you'll read)
 5. **Make that inbox real.** Use Cloudflare Email Routing (free) or your registrar's email forwarding to send hello@spotmeplease.com to your inbox.
 
+## 1b. Admin page (2 minutes)
+
+1. Make a long random token on your computer: `openssl rand -hex 24`.
+2. Set the Railway variable `SPOT_ADMIN_TOKEN` to it, and keep a copy in your password manager.
+3. Open https://spotmeplease.com/admin and sign in with the token. Held payments, recent carts, the block list, API keys and signups all live here.
+
 ## 2. Stripe (about 30 minutes, plus Stripe's review)
 
 1. **Create and activate an account** at dashboard.stripe.com. Enter your business details and bank account. Use https://spotmeplease.com as the website, and https://spotmeplease.com/terms and /privacy for the policy links.
@@ -30,7 +36,8 @@ Work through it in order. Each step says where to click and exactly what to set.
    - Events: `payment_intent.succeeded` and `issuing_authorization.request`
    - Copy the signing secret.
 5. **Turn on real-time card authorizations** in Issuing settings, pointed at the same endpoint. This is how Spot declines a card used at the wrong store.
-6. **Set the Railway variables** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET`. Start with the **test** keys (`sk_test_…`, `pk_test_…`) and do step 8 first. Swap to live keys once it all works.
+6. **Tighten Radar** under Radar → Rules. Spot's own rules (see /admin) catch patterns across links. Radar catches bad cards. Turn on "Block if CVC verification fails" and "Block if postal code verification fails", and review payments Radar scores as elevated risk.
+7. **Set the Railway variables** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET`. Start with the **test** keys (`sk_test_…`, `pk_test_…`) and do step 8 first. Swap to live keys once it all works.
 
 ## 3. AI (5 minutes)
 

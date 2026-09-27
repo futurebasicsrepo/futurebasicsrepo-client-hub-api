@@ -160,7 +160,7 @@ test('stripe webhooks: payment succeeded issues card; authorization request is a
     },
     answerAuthorization: async (id, approved) => answers.push([id, approved]),
     needsBilling: true,
-    payerNameFor: async (pi) => (pi.latest_charge === 'ch_1' ? 'Mom' : null),
+    payerFor: async (pi) => (pi.latest_charge === 'ch_1' ? { name: 'Mom', fingerprint: 'fp_mom' } : {}),
   };
   const { app, call } = setup(provider);
   t.after(() => app.close());

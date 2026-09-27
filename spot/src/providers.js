@@ -143,12 +143,17 @@ export function stripeProvider(env = process.env) {
     },
 
     // Apple Pay / Google Pay / card forms carry the payer's name, so the pay
-    // page never has to ask for it.
-    async payerNameFor(pi) {
+    // page never has to ask for it. The card fingerprint (same card → same
+    // value, wallet or not) feeds the fraud rules in risk.js.
+    async payerFor(pi) {
       const chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id;
-      if (!chargeId) return null;
+      if (!chargeId) return {};
       const charge = await stripe.charges.retrieve(chargeId);
-      return charge.billing_details?.name?.split(' ')[0] || null;
+      return {
+        name: charge.billing_details?.name?.split(' ')[0] || null,
+        email: charge.billing_details?.email || charge.receipt_email || null,
+        fingerprint: charge.payment_method_details?.card?.fingerprint || null,
+      };
     },
 
     verifyWebhook(rawBody, signature) {

@@ -18,11 +18,14 @@ import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
 import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
+import { createRisk } from './risk.js';
+import { registerAdmin } from './admin.js';
 import { platformProfile } from './fulfill/ucp.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, flights = createFlights({ env }) } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
-  const spot = createSpot({ db, provider, flights, cfg, log: app.log });
+  const risk = createRisk({ db, env });
+  const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
   // One public address: pages opened on www. or the Railway domain move to
@@ -100,6 +103,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const now = Date.now();
     for (const [k, h] of hits) if (h.reset < now) hits.delete(k);
     spot.sweepExpired();
+    risk.sweep();
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -270,7 +274,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     await spot.startPayment(req.params.token);
     const cart = spot.load(req.params.token);
     const name = String(req.body?.payer_name || '').trim().slice(0, 60) || null;
-    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name } });
+    // test_card lets tests (and demos) play a repeat or blocked card.
+    const fingerprint = req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null;
+    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name, fingerprint } });
     return { cart: publicCart(done) };
   });
 
@@ -337,6 +343,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
+  registerAdmin(app, { db, spot, env, urlFor });
+
   // ─── Inbound texts (Twilio) ───────────────────────────────────────────────
   // Point the Twilio number's "A message comes in" webhook here. STOP-type
   // replies add the number to Spot's opt-out list and START removes it.
@@ -379,10 +387,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     switch (event.type) {
       case 'payment_intent.succeeded':
         if (obj.metadata?.spot_cart_id) {
+          const payer = (await provider.payerFor?.(obj).catch(() => null)) || {};
           await spot.paymentSucceeded({
             paymentRef: obj.id,
             amountCents: obj.amount_received,
-            payer: { name: (await provider.payerNameFor?.(obj).catch(() => null)) || obj.shipping?.name || null },
+            payer: { ...payer, name: payer.name || obj.shipping?.name || null },
           });
         }
         break;
