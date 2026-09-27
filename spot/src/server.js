@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
 import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
@@ -7,6 +8,7 @@ import { openDb } from './db.js';
 import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
+import { sitePage } from './site.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
@@ -69,7 +71,46 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/client/home.js', async (req, reply) => reply.type('text/javascript; charset=utf-8').header('cache-control', 'public, max-age=300').send(homeJs));
 
   // ─── Pages ────────────────────────────────────────────────────────────────
-  app.get('/', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg })));
+  // ─── Website ──────────────────────────────────────────────────────────────
+  app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
+
+  const require = createRequire(import.meta.url);
+  const fonts = Object.fromEntries(
+    [400, 600, 800].map((w) => [`bricolage-${w}.woff2`, readFileSync(require.resolve(`@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-${w}-normal.woff2`))]),
+  );
+  app.get('/fonts/:file', async (req, reply) => {
+    const f = fonts[req.params.file];
+    if (!f) return reply.code(404).send();
+    return reply.type('font/woff2').header('cache-control', 'public, max-age=31536000, immutable').send(f);
+  });
+
+  // Demo share cards for the website, drawn by the real share-card renderer.
+  const demo = {
+    token: 'demo',
+    status: 'open',
+    requester: { name: 'Kyle' },
+    merchant: { name: 'Kiln & Co.' },
+    items: [{ title: 'The Super Puff jacket', quantity: 1, price_cents: 25000 }],
+    cart_cents: 27100,
+  };
+  const demoCards = {};
+  app.get('/site/:file', async (req, reply) => {
+    const which = { 'card-open.png': 'open', 'card-covered.png': 'covered' }[req.params.file];
+    if (!which) return reply.code(404).send();
+    demoCards[which] ||= await renderShareCard(which === 'open' ? demo : { ...demo, status: 'card_issued', payer_name: 'Mom' });
+    return reply.type('image/png').header('cache-control', 'public, max-age=86400').send(demoCards[which]);
+  });
+
+  app.post('/v1/waitlist', async (req) => {
+    limits.create(req);
+    const b = req.body || {};
+    if (b.company_fax) return { ok: true }; // bot
+    const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
+    const kind = ['asker', 'agent', 'creator'].includes(b.kind) ? b.kind : 'asker';
+    db.joinWaitlist(email, kind);
+    return { ok: true };
+  });
   app.get('/new', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg })));
 
   app.get('/c/:token', async (req, reply) => {

@@ -13,7 +13,8 @@ spot/
   src/providers.js  sandbox (no money) and Stripe (PaymentIntents + Issuing)
   src/spot.js       service layer: every state change goes through here
   src/server.js     Fastify routes + Stripe webhooks
-  src/pages.js      the three pages: composer, pay, requester
+  src/site.js       the public website at /  (the app is at /new)
+  src/pages.js      the three pages: composer (/new), pay, requester
   src/client/home.js  the composer's behaviour (capture → check → send)
   src/sharecard.js  link-preview image + the mascot (satori → resvg)
   src/db.js         Node's built-in SQLite

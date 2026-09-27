@@ -33,6 +33,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       at       INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS cart_events_cart ON cart_events (cart_id, id);
+    CREATE TABLE IF NOT EXISTS waitlist (
+      email  TEXT PRIMARY KEY,
+      kind   TEXT NOT NULL,
+      at     INTEGER NOT NULL
+    );
   `);
 
   const q = {
@@ -48,6 +53,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     expire: db.prepare(`SELECT id FROM carts WHERE status = 'open' AND expires_at < ?`),
     event: db.prepare('INSERT INTO cart_events (cart_id, kind, detail, at) VALUES (?, ?, ?, ?)'),
     events: db.prepare('SELECT kind, detail, at FROM cart_events WHERE cart_id = ? ORDER BY id'),
+    join: db.prepare('INSERT INTO waitlist (email, kind, at) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET kind = excluded.kind'),
+    waitlist: db.prepare('SELECT email, kind, at FROM waitlist ORDER BY at DESC'),
   };
 
   const hydrate = (row) =>
@@ -89,6 +96,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       q.event.run(cartId, kind, detail == null ? null : JSON.stringify(detail), Date.now());
     },
     events: (cartId) => q.events.all(cartId).map((e) => ({ ...e, detail: e.detail ? JSON.parse(e.detail) : null })),
+    joinWaitlist: (email, kind) => q.join.run(email, kind, Date.now()),
+    waitlist: () => q.waitlist.all(),
     close: () => db.close(),
   };
 }
