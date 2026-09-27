@@ -6,6 +6,7 @@ import { api, type Comment } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { timeAgo } from '@/lib/format';
 import Avatar from './Avatar';
+import ReportButton from './ReportButton';
 
 function Composer({ postId, parentId, onPosted, onCancel, autoFocus }: {
   postId: string; parentId?: number; onPosted: (comment: Comment) => void; onCancel?: () => void; autoFocus?: boolean;
@@ -98,6 +99,7 @@ export default function Comments({ postId, open, onCount }: { postId: string; op
         <div className="row" style={{ gap: 14 }}>
           {!isReply && user && open && !c.deleted && <button className="linkish" onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}>Reply</button>}
           {c.canDelete && <button className="linkish" onClick={() => remove(c.id)}>Delete</button>}
+          {!c.deleted && c.author && user && c.author.handle !== user.handle && <ReportButton type="comment" id={c.id} />}
         </div>
       </div>
     </div>

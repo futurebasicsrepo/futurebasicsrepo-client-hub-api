@@ -10,6 +10,7 @@ import Avatar from './Avatar';
 import Feed from './Feed';
 import StudioList from './StudioList';
 import ProfileMatches from './ProfileMatches';
+import ReportButton from './ReportButton';
 
 type Tab = 'posts' | 'studio' | 'matches';
 const LABELS: Record<Tab, string> = { posts: 'Posts', studio: 'Studio', matches: 'Matches' };
@@ -68,9 +69,11 @@ export default function ProfileView({ handle }: { handle: string }) {
           <div><strong>{compact(profile.matchCount ?? 0)}</strong><span className="mono muted">Matches</span></div>
           <div><strong>{compact(profile.totalScore)}</strong><span className="mono muted">Upvotes</span></div>
         </div>
+        {!isMe && user && <div className="row"><ReportButton type="user" id={profile.handle} label="Report profile" /></div>}
         {isMe && !editing && (
           <div className="row">
             <button className="btn btn-sm" onClick={() => { setDraft({ displayName: profile.displayName, bio: profile.bio }); setEditing(true); }}>Edit profile</button>
+            {user?.role && user.role !== 'user' && <Link href="/mod" className="btn btn-sm">Mod queue</Link>}
             <button className="btn btn-sm btn-ghost" onClick={() => { signOut(); router.push('/'); }}>Sign out</button>
           </div>
         )}

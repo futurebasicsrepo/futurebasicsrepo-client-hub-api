@@ -7,6 +7,7 @@ import { api, type Reply, type Thread } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { timeAgo } from '@/lib/format';
 import VoteButton from './VoteButton';
+import ReportButton from '../ReportButton';
 
 type Node = { reply: Reply; children: Node[] };
 
@@ -116,6 +117,7 @@ export default function ThreadView({ slug, id }: { slug: string; id: string }) {
                 {!r.deleted && <VoteButton small path={`/v1/replies/${r.id}/vote`} score={r.score} voted={r.viewerHasVoted} next={`/f/${slug}/t/${id}`} />}
                 {user && !r.deleted && !thread.deleted && <button className="linkish" onClick={() => setReplyTo(replyTo === r.id ? null : r.id)}>Reply</button>}
                 {r.canDelete && <button className="linkish" onClick={() => removeReply(r.id)}>Delete</button>}
+                {!r.deleted && r.author && r.author.handle !== user?.handle && <ReportButton type="reply" id={r.id} />}
               </div>
               {replyTo === r.id && <ReplyComposer threadId={thread.id} parentId={r.id} onPosted={add} onCancel={() => setReplyTo(null)} />}
               {node.children.length > 0 && <div className="reply-children">{node.children.map(renderNode)}</div>}
@@ -138,6 +140,7 @@ export default function ThreadView({ slug, id }: { slug: string; id: string }) {
           <div className="row" style={{ gap: 14 }}>
             <span className="muted">💬 {thread.replyCount} {thread.replyCount === 1 ? 'reply' : 'replies'}</span>
             {thread.canDelete && <button className="linkish" onClick={removeThread}>Delete</button>}
+            {!thread.deleted && thread.author && thread.author.handle !== user?.handle && <ReportButton type="thread" id={thread.id} />}
           </div>
         </div>
       </article>

@@ -31,17 +31,18 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
   }
   const join = (fandomId, userId) => pool.query(`insert into fandom_members (fandom_id, user_id) values ($1, $2) on conflict do nothing`, [fandomId, userId]);
 
+  const gone = row => Boolean(row.deleted_at || row.hidden_at); // deleted by its author or hidden by moderators
   const threadView = (row, extra = {}) => ({
     id: row.id,
     channel: row.channel,
-    title: row.deleted_at ? '[removed]' : row.title,
-    body: row.deleted_at ? '' : row.body,
+    title: gone(row) ? '[removed]' : row.title,
+    body: gone(row) ? '' : row.body,
     score: row.score,
     replyCount: row.reply_count,
     createdAt: row.created_at,
     lastActivityAt: row.last_activity_at,
-    deleted: Boolean(row.deleted_at),
-    author: row.deleted_at ? null : { handle: row.handle, displayName: row.display_name },
+    deleted: gone(row),
+    author: gone(row) ? null : { handle: row.handle, displayName: row.display_name },
     fandom: row.fandom_slug ? { slug: row.fandom_slug, name: row.fandom_name } : undefined,
     viewerHasVoted: Boolean(row.voted),
     ...extra
@@ -50,13 +51,13 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
     id: Number(row.id),
     parentId: row.parent_id == null ? null : Number(row.parent_id),
     depth: row.depth,
-    body: row.deleted_at ? null : row.body,
+    body: gone(row) ? null : row.body,
     score: row.score,
     createdAt: row.created_at,
-    deleted: Boolean(row.deleted_at),
-    author: row.deleted_at ? null : { handle: row.handle, displayName: row.display_name },
+    deleted: gone(row),
+    author: gone(row) ? null : { handle: row.handle, displayName: row.display_name },
     viewerHasVoted: Boolean(row.voted),
-    canDelete: !row.deleted_at && userId != null && Number(row.user_id) === userId
+    canDelete: !gone(row) && userId != null && Number(row.user_id) === userId
   });
   const messageView = row => ({
     id: Number(row.id), body: row.body, createdAt: row.created_at, author: { handle: row.handle, displayName: row.display_name }
@@ -72,7 +73,7 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
         exists(select 1 from fandom_members where fandom_id = $1 and user_id = $2) as joined`, [fandom.id, req.user?.id ?? null]);
     const { rows: activity } = await pool.query(`
       select channel, count(*)::int as threads, max(last_activity_at) as last_at from threads
-      where fandom_id = $1 and deleted_at is null group by channel`, [fandom.id]);
+      where fandom_id = $1 and deleted_at is null and hidden_at is null group by channel`, [fandom.id]);
     const byChannel = new Map(activity.map(a => [a.channel, a]));
     return {
       fandom: { slug: fandom.slug, name: fandom.name, memberCount: counts.members, postCount: counts.posts, joined: counts.joined },
@@ -106,7 +107,7 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
     const sort = SORTS[req.query.sort] ? req.query.sort : 'hot';
     const offset = Math.max(0, Math.min(1000, Number(req.query.offset) || 0));
     const { rows } = await pool.query(`${THREAD_SELECT}
-      where t.fandom_id = $2 and t.channel = $3 and t.deleted_at is null
+      where t.fandom_id = $2 and t.channel = $3 and t.deleted_at is null and t.hidden_at is null
       order by ${SORTS[sort]} limit 26 offset $4`, [req.user?.id ?? null, fandom.id, channel.slug, offset]);
     return { threads: rows.slice(0, 25).map(r => threadView(r)), nextOffset: rows.length > 25 ? offset + 25 : null };
   });
@@ -136,14 +137,14 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
 
   app.get('/v1/threads/:id', async (req, reply) => {
     const thread = await loadThread(req, req.params.id);
-    if (!thread || (thread.deleted_at && !thread.reply_count)) return fail(reply, 404, 'Thread not found.');
+    if (!thread || (gone(thread) && !thread.reply_count)) return fail(reply, 404, 'Thread not found.');
     const { rows } = await pool.query(`
       select r.*, u.handle, u.display_name,
         exists(select 1 from reply_votes v where v.reply_id = r.id and v.user_id = $2) as voted
       from replies r join users u on u.id = r.user_id where r.thread_id = $1 order by r.created_at asc limit 2000`,
     [thread.id, req.user?.id ?? null]);
     return {
-      thread: threadView(thread, { canDelete: !thread.deleted_at && req.user?.id === Number(thread.user_id) }),
+      thread: threadView(thread, { canDelete: !gone(thread) && req.user?.id === Number(thread.user_id) }),
       replies: rows.map(r => replyView(r, req.user?.id ?? null))
     };
   });
@@ -158,7 +159,7 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
   app.post('/v1/threads/:id/replies', { preHandler: requireUser }, async (req, reply) => {
     if (!replyLimiter(`reply:${req.user.id}`)) return fail(reply, 429, 'Slow down a little.');
     const thread = await loadThread(req, req.params.id);
-    if (!thread || thread.deleted_at) return fail(reply, 404, 'Thread not found.');
+    if (!thread || gone(thread)) return fail(reply, 404, 'Thread not found.');
     const body = clean(req.body?.body, 5000);
     if (!body) return fail(reply, 400, 'Write something first.');
     let parentId = null, depth = 0;
@@ -195,12 +196,12 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
   }
   app.post('/v1/threads/:id/vote', { preHandler: requireUser }, async (req, reply) => {
     const thread = await loadThread(req, req.params.id);
-    if (!thread || thread.deleted_at) return fail(reply, 404, 'Thread not found.');
+    if (!thread || gone(thread)) return fail(reply, 404, 'Thread not found.');
     return vote('thread_votes', 'thread_id', thread.id, req.user.id, Number(req.body?.value) === 1, 'threads');
   });
   app.post('/v1/replies/:id/vote', { preHandler: requireUser }, async (req, reply) => {
     if (!REPLY_ID.test(req.params.id)) return fail(reply, 404, 'Reply not found.');
-    const { rows: [row] } = await pool.query(`select id from replies where id = $1 and deleted_at is null`, [req.params.id]);
+    const { rows: [row] } = await pool.query(`select id from replies where id = $1 and deleted_at is null and hidden_at is null`, [req.params.id]);
     if (!row) return fail(reply, 404, 'Reply not found.');
     return vote('reply_votes', 'reply_id', row.id, req.user.id, Number(req.body?.value) === 1, 'replies');
   });
@@ -223,7 +224,7 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
     const before = Number(req.query.before) || null;
     const { rows } = await pool.query(`
       select m.*, u.handle, u.display_name from chat_messages m join users u on u.id = m.user_id
-      where m.fandom_id = $1 and m.channel = $2 and m.deleted_at is null and ($3::bigint is null or m.id < $3)
+      where m.fandom_id = $1 and m.channel = $2 and m.deleted_at is null and m.hidden_at is null and ($3::bigint is null or m.id < $3)
       order by m.id desc limit 60`, [chat.fandom.id, chat.channel.slug, before]);
     return { messages: rows.reverse().map(messageView), online: rooms.get(chat.room)?.size ?? 0 };
   });
@@ -270,4 +271,9 @@ export function registerCommunity(app, { pool, fail, requireUser }) {
     for (const room of rooms.values()) for (const raw of room) raw.end();
     rooms.clear();
   });
+
+  return {
+    // Moderators took a chat message down: everyone in the room drops it.
+    removeChatMessage: ({ fandomId, channel }, id) => broadcast(`${fandomId}:${channel}`, 'remove', { id })
+  };
 }
