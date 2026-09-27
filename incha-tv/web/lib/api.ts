@@ -11,6 +11,21 @@ export interface User { id: number; handle: string; displayName: string; bio: st
 export interface Profile extends Omit<User, 'id'> { postCount: number; totalScore: number; matchCount?: number }
 export interface Fandom { slug: string; name: string; postCount?: number; latestAt?: string | null; coverUrl?: string | null }
 
+// ---- fandom communities ----
+export interface Channel { slug: string; name: string; kind: 'threads' | 'chat'; description: string; threadCount: number; lastActivityAt: string | null; online?: number }
+export interface FandomHub { fandom: { slug: string; name: string; memberCount: number; postCount: number; joined: boolean }; channels: Channel[] }
+export interface Author { handle: string; displayName: string }
+export interface Thread {
+  id: string; channel: string; title: string; body: string; score: number; replyCount: number;
+  createdAt: string; lastActivityAt: string; deleted: boolean; author: Author | null;
+  fandom?: { slug: string; name: string }; viewerHasVoted: boolean; canDelete?: boolean;
+}
+export interface Reply {
+  id: number; parentId: number | null; depth: number; body: string | null; score: number; createdAt: string;
+  deleted: boolean; author: Author | null; viewerHasVoted: boolean; canDelete: boolean;
+}
+export interface ChatMessage { id: number; body: string; createdAt: string; author: Author }
+
 export interface Post {
   id: string;
   title: string;

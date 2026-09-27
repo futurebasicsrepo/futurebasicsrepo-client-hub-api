@@ -191,6 +191,61 @@ export async function migrate() {
     -- Matches the server called full time on because the scoreboard went quiet (the period it was in, for resuming).
     alter table matches add column if not exists auto_ended_from text check (auto_ended_from in ('1h','ht','2h'));
     alter table matches add column if not exists resumed_at timestamptz;
+
+    -- Fandoms as communities: members, Reddit-style threads with nested replies, and live chat channels.
+    create table if not exists fandom_members (
+      fandom_id bigint not null references fandoms(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      primary key (fandom_id, user_id)
+    );
+    create index if not exists fandom_members_user on fandom_members (user_id);
+    create table if not exists threads (
+      id text primary key,
+      fandom_id bigint not null references fandoms(id) on delete cascade,
+      channel text not null,
+      user_id bigint not null references users(id) on delete cascade,
+      title text not null,
+      body text not null default '',
+      score integer not null default 0,
+      reply_count integer not null default 0,
+      created_at timestamptz not null default now(),
+      last_activity_at timestamptz not null default now(),
+      deleted_at timestamptz
+    );
+    create index if not exists threads_channel on threads (fandom_id, channel, last_activity_at desc);
+    create table if not exists thread_votes (
+      thread_id text not null references threads(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      primary key (thread_id, user_id)
+    );
+    create table if not exists replies (
+      id bigserial primary key,
+      thread_id text not null references threads(id) on delete cascade,
+      parent_id bigint references replies(id) on delete cascade,
+      depth integer not null default 0,
+      user_id bigint not null references users(id) on delete cascade,
+      body text,
+      score integer not null default 0,
+      created_at timestamptz not null default now(),
+      deleted_at timestamptz
+    );
+    create index if not exists replies_thread on replies (thread_id, created_at);
+    create table if not exists reply_votes (
+      reply_id bigint not null references replies(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      primary key (reply_id, user_id)
+    );
+    create table if not exists chat_messages (
+      id bigserial primary key,
+      fandom_id bigint not null references fandoms(id) on delete cascade,
+      channel text not null,
+      user_id bigint not null references users(id) on delete cascade,
+      body text,
+      created_at timestamptz not null default now(),
+      deleted_at timestamptz
+    );
+    create index if not exists chat_channel on chat_messages (fandom_id, channel, id desc);
     create index if not exists matches_live on matches (period_started_at) where period in ('1h','ht','2h');
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');

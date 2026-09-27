@@ -218,6 +218,29 @@ Other people's profiles show their Posts and the public matches they kept score 
 - **Co-scorekeepers:** the match creator can add up to 3 people by handle to run the scoreboard with them. Handy when the scorekeeper is also filming. Co-keepers can step down themselves.
 - Setup: set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` on the API (generate them with `npx web-push generate-vapid-keys`). Without them, follows still work and alerts are simply off.
 
+## Fandom communities
+
+A fandom (`/f/:slug`) is a community: part Discord server, part subreddit.
+
+- **Join** a fandom (posting a thread or chatting joins you automatically). The header shows members and clips.
+- **# channels** (fixed set, `api/src/community.js`): `general`, `transfers`, `away-days` and `banter` hold **threads**; `matchday` is a **live chat**; `clips` is the fandom's video feed.
+- **Threads**, Reddit style: title + text, upvotes, Hot / New / Top (hot weighs score, replies and recent activity). Replies nest up to 6 levels (deeper replies sit beside their parent), every branch collapses, and the best replies float up.
+- **Live chat**: history on open plus Server-Sent Events for new messages and who's here; messages from the same person within 5 minutes group like Discord.
+- Limits: 6 threads per 10 minutes, 12 replies a minute, 6 chat messages per 10 seconds. Authors can delete their own threads and replies; a removed thread with replies stays readable as `[removed]`.
+
+| Method | Path | Auth | Notes |
+| --- | --- | --- | --- |
+| GET | `/v1/fandoms/:slug/hub` | – | fandom (members, joined), channels with thread counts / who's in chat |
+| POST/DELETE | `/v1/fandoms/:slug/join` | ✓ | join / leave |
+| GET | `/v1/fandoms/:slug/threads` | – | `channel`, `sort=hot\|new\|top`, `offset` |
+| POST | `/v1/fandoms/:slug/threads` | ✓ | `{ channel, title, body? }` |
+| GET/DELETE | `/v1/threads/:id` | –/author | thread + all replies (flat, with `parentId` and `depth`) |
+| POST | `/v1/threads/:id/replies` | ✓ | `{ body, parentId? }` |
+| POST | `/v1/threads/:id/vote`, `/v1/replies/:id/vote` | ✓ | `{ value: 1\|0 }` |
+| DELETE | `/v1/replies/:id` | author | |
+| GET/POST | `/v1/fandoms/:slug/chat/:channel` | –/✓ | last 60 messages (`before` to page back) / send `{ body }` |
+| GET | `/v1/fandoms/:slug/chat/:channel/stream` | – | SSE: `message`, `online` |
+
 ## World scores
 
 `/scores` shows pro and international football from around the world: every league on ESPN's public soccer scoreboard, usually 40+ competitions and 300+ games on a Saturday. It has Yesterday, Today and Tomorrow views, a live-only filter, team and league search, and leagues you can follow, which pin to the top on that device. The home screen gets an "Around the world" strip, and the score ticker adds live pro games after the grassroots ones.
