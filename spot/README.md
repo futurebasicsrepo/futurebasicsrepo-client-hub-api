@@ -69,6 +69,16 @@ Once a cart is paid and its card exists, the requester can have Spot place the o
   - There are caps on steps and time. Whenever it's stuck (a CAPTCHA, a required login, out of stock), it hands back to the requester with a prefilled checkout link and the card.
 - The requester page has the shipping form, live progress, the confirm step and the result. State is on `cart.fulfillment`. The browser session is in memory, so a restart mid-checkout ends that attempt.
 
+## Accounts
+
+Sign in at `/signin` with a 6-digit code sent to your email by Resend. There are no passwords. When no email service is configured, test mode shows the code on screen. `/account` has four parts:
+- **Ready for you:** carts and flights your AI handed back to you.
+- **Your Spots:** every Spot you made, on any device. Spots made on a device before signing in are claimed with their private keys.
+- **Saved details:** your name, shipping address and travelers, which pre-fill checkout.
+- **Your AI:** API keys tied to the account, which you can connect or disconnect.
+
+A signed-in owner opens their own Spots without the private key. Codes and sessions are stored hashed. The session cookie is `HttpOnly; SameSite=Lax`, and account writes are JSON-only.
+
 ## Spot for AI agents (REST + MCP)
 
 Shopping agents can build carts but can't make someone else pay. Spot gives them three verbs:
@@ -136,6 +146,11 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
 | `SPOT_LEGAL_NAME` | `the Spot team` | Who runs Spot, named on `/terms` and `/privacy` |
 | `SPOT_CONTACT_EMAIL` | `hello@spotmeplease.com` | Contact address on the legal pages |
+| `SPOT_ADMIN_TOKEN` | | 16+ random characters. Turns on `/admin` (held payments, recent carts, block list, API keys, signups) |
+| `SPOT_MAX_LINKS_PER_IP_DAY` | `30` | Links one network can make per day |
+| `SPOT_MAX_PAYMENTS_PER_CARD_DAY` / `SPOT_MAX_CARD_CENTS_DAY` | `3` / `100000` | One card paying more Spots, or more money, in 24h is held for review |
+| `SPOT_MAX_RECEIVED_CENTS_DAY` | `150000` | One requester receiving more than this in 24h is held |
+| `SPOT_FIRST_PAYMENT_HOLD_CENTS` | `40000` | A card's first payment above this is held (not for "for me" carts) |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

@@ -241,7 +241,7 @@ export function siteNav(active = '') {
   const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#for-you', 'AI handoff', 'for-you')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}</div>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#for-you', 'AI handoff', 'for-you')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
   <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
 </div></nav>`;
 }

@@ -18,11 +18,16 @@ import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
 import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
+import { createRisk } from './risk.js';
+import { registerAdmin } from './admin.js';
+import { registerAccounts } from './accounts.js';
+import { accountPage, signinPage } from './accountpage.js';
 import { platformProfile } from './fulfill/ucp.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, flights = createFlights({ env }) } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
-  const spot = createSpot({ db, provider, flights, cfg, log: app.log });
+  const risk = createRisk({ db, env });
+  const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
   // One public address: pages opened on www. or the Railway domain move to
@@ -100,6 +105,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const now = Date.now();
     for (const [k, h] of hits) if (h.reset < now) hits.delete(k);
     spot.sweepExpired();
+    risk.sweep();
+    db.sessions.prune();
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -122,6 +129,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('text/plain').send(env.MCP_REGISTRY_AUTH);
   });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
+  app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, '') })));
+  app.get('/account', async (req, reply) => {
+    if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/account');
+    reply.header('cache-control', 'no-store');
+    return html(reply, accountPage({ origin: urlFor(req, '') }));
+  });
   app.get('/terms', async (req, reply) => html(reply, termsPage({ origin: urlFor(req, ''), env })));
   app.get('/privacy', async (req, reply) => html(reply, privacyPage({ origin: urlFor(req, ''), env })));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
@@ -218,8 +231,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   app.get('/c/:token/manage', async (req, reply) => {
     try {
-      spot.loadManaged(req.params.token, req.query.k);
+      spot.loadManaged(req.params.token, keyOf(req));
     } catch {
+      // Opened from the account page on a signed-out browser: sign in first.
+      if (!req.query.k && !accounts.userIdOf(req)) return reply.redirect(`/signin?next=${encodeURIComponent(req.url)}`);
       return html(reply, notFoundPage(), 404);
     }
     return html(reply, managePage({ token: req.params.token, provider: provider.name }));
@@ -243,7 +258,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Carts ────────────────────────────────────────────────────────────────
   app.post('/v1/carts', async (req, reply) => {
     limits.create(req);
-    const { cart, manageKey } = spot.create(req.body, { ip: req.ip });
+    const { cart, manageKey } = spot.create(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
     reply.code(201);
     return {
       cart: publicCart(cart),
@@ -270,12 +285,15 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     await spot.startPayment(req.params.token);
     const cart = spot.load(req.params.token);
     const name = String(req.body?.payer_name || '').trim().slice(0, 60) || null;
-    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name } });
+    // test_card lets tests (and demos) play a repeat or blocked card.
+    const fingerprint = req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null;
+    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name, fingerprint } });
     return { cart: publicCart(done) };
   });
 
   // ─── Requester (manage key) ───────────────────────────────────────────────
-  const keyOf = (req) => req.body?.k || req.query?.k;
+  // The private key from the link, or the signed-in owner's session.
+  const keyOf = (req) => ({ k: req.body?.k || req.query?.k, userId: accounts.userIdOf(req) });
 
   app.get('/v1/carts/:token/manage', async (req) => {
     let cart = spot.loadManaged(req.params.token, keyOf(req));
@@ -287,6 +305,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       events: spot.events(cart).map(({ kind, at }) => ({ kind, at })),
       provider: provider.name,
       link: urlFor(req, `/c/${cart.token}`),
+      // Saved details to pre-fill forms, when the owner is signed in.
+      profile: (() => {
+        const uid = accounts.userIdOf(req);
+        const u = uid && (!cart.user_id || cart.user_id === uid) ? db.users.byId(uid) : null;
+        return u ? { email: u.email, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [] } : null;
+      })(),
     };
   });
 
@@ -337,6 +361,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
+  registerAdmin(app, { db, spot, env, urlFor });
+  const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
+
   // ─── Inbound texts (Twilio) ───────────────────────────────────────────────
   // Point the Twilio number's "A message comes in" webhook here. STOP-type
   // replies add the number to Spot's opt-out list and START removes it.
@@ -379,10 +406,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     switch (event.type) {
       case 'payment_intent.succeeded':
         if (obj.metadata?.spot_cart_id) {
+          const payer = (await provider.payerFor?.(obj).catch(() => null)) || {};
           await spot.paymentSucceeded({
             paymentRef: obj.id,
             amountCents: obj.amount_received,
-            payer: { name: (await provider.payerNameFor?.(obj).catch(() => null)) || obj.shipping?.name || null },
+            payer: { ...payer, name: payer.name || obj.shipping?.name || null },
           });
         }
         break;
