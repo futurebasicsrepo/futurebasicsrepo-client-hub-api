@@ -169,7 +169,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it.</p>
   <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
 </section>
-<footer>Spot · cart links for anyone, anywhere</footer>
+<footer>Spot · cart links for anyone, anywhere<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
 <script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents, provider })}</script>
 <script src="/client/home.js" defer></script>`;
   return shell({ title: 'Spot: cover my cart', body, head: `<meta name="description" content="Turn any cart into a link someone else can pay."><style>${HOME_CSS}</style>` });
@@ -275,7 +275,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 ${open ? `<div class="act" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
-<footer><a href="/">make your own Spot</a></footer>`;
+<footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
 
   const script = `${SHARED_JS}
 const buddy=$('#buddy'),pupils=buddy&&buddy.querySelector('.pupils');
@@ -351,7 +351,7 @@ export function managePage({ token, provider }) {
   const body = `
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
 <div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
-<footer>Keep this page private. Anyone with it can see your card.</footer>`;
+<footer>Keep this page private. Anyone with it can see your card.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
   const script = `${SHARED_JS}
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};

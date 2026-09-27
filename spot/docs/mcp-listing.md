@@ -6,22 +6,26 @@ Spot's MCP server is remote (streamable HTTP at `/mcp`). Agents connect with a f
 
 The official registry also feeds the GitHub MCP Registry and the VS Code MCP gallery.
 
-`server.json` in this folder is ready. The name `io.github.futurebasicsrepo/spot` needs a GitHub login that can publish for the `futurebasicsrepo` account.
+`server.json` in this folder is ready. Its name is `com.spotmeplease/spot`, so the registry needs proof that you own spotmeplease.com. Spot serves that proof itself at `https://spotmeplease.com/.well-known/mcp-registry-auth`.
 
-```sh
-# macOS / Linux
-brew install mcp-publisher      # or download from github.com/modelcontextprotocol/registry/releases
-cd spot
-mcp-publisher login github      # opens a browser; sign in as futurebasicsrepo (or a member of it)
-mcp-publisher publish           # reads ./server.json
-```
+1. Make a signing key on your own computer and keep the private half private. Don't paste it into chat or commit it:
+   ```sh
+   openssl genpkey -algorithm Ed25519 -out spot-registry-key.pem
+   echo "v=MCPv1; k=ed25519; p=$(openssl pkey -in spot-registry-key.pem -pubout -outform DER | tail -c 32 | base64)"
+   ```
+2. In Railway, set `MCP_REGISTRY_AUTH` to the whole `v=MCPv1; …` line that printed. This is the public half, so it's safe.
+3. Publish:
+   ```sh
+   brew install mcp-publisher      # or download from github.com/modelcontextprotocol/registry/releases
+   cd spot
+   PRIVATE_KEY=$(openssl pkey -in spot-registry-key.pem -noout -text | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')
+   mcp-publisher login http --domain spotmeplease.com --private-key "$PRIVATE_KEY"
+   mcp-publisher publish           # reads ./server.json
+   ```
 
-To publish a new version, bump `version` in `server.json` and run `publish` again.
+To publish a new version, bump `version` in `server.json` and run `publish` again. Keep `spot-registry-key.pem` somewhere safe, because you need it for every future publish.
 
-If Spot moves to its own domain (for example `spot.example`):
-1. Rename it to `com.example.spot/spot` (reverse DNS).
-2. Log in with `mcp-publisher login dns --domain spot.example` or `login http`.
-3. Update `websiteUrl` and the remote `url`.
+If you'd rather use GitHub instead of the domain, change the name to `io.github.futurebasicsrepo/spot` and run `mcp-publisher login github`.
 
 ## 2. Other directories
 

@@ -107,14 +107,15 @@ On the finish page you add who's flying (names as on your ID, date of birth), pl
 
 Without `DUFFEL_ACCESS_TOKEN`, a demo airline ("Spot Air") returns made-up fares so you can try the flow. With a `duffel_test_…` token you get Duffel's test airline, and a `duffel_live_…` token books real tickets.
 
-MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories, see [docs/mcp-listing.md](docs/mcp-listing.md) and `server.json`. Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
+MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories, see [docs/mcp-listing.md](docs/mcp-listing.md) and `server.json`. Going live step by step: [docs/go-live.md](docs/go-live.md). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
 
 | Variable | Default | |
 |---|---|---|
 | `PORT` | `3000` | |
-| `PUBLIC_URL` | request host | Base for share links, e.g. `https://spot.example` |
+| `PUBLIC_URL` | request host | Base for share links, e.g. `https://spotmeplease.com`. When set, page views on `www.` or the Railway domain redirect to it; API, MCP, webhook and `/health` requests are never redirected |
+| `MCP_REGISTRY_AUTH` | | `v=MCPv1; k=ed25519; p=…`, served at `/.well-known/mcp-registry-auth` so the MCP Registry can verify the domain (see docs/mcp-listing.md) |
 | `SPOT_DB` | `./data/spot.db` | SQLite file; put it on a volume |
 | `SPOT_FEE_BPS` | `400` | Payer fee, basis points |
 | `SPOT_FEE_FIXED_CENTS` | `0` | |
@@ -130,9 +131,11 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_KEY_ASKS_PER_DAY` / `SPOT_KEY_MESSAGES_PER_DAY` / `SPOT_KEY_SEARCHES_PER_DAY` | `100` / `20` / `200` | Daily quotas for self-serve keys; `SPOT_API_KEYS` partners have none |
 | `RESEND_API_KEY` | | Emails finish links |
 | `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links. Texts start with “Spot:” and end with “Reply STOP to opt out.” Set the number's incoming-message webhook to `POST /v1/webhooks/twilio` (signed), and Spot will never text a number that replied STOP |
 | `DUFFEL_ACCESS_TOKEN` | | Turns on real flight search and booking (`duffel_test_…` or `duffel_live_…`) |
 | `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
+| `SPOT_LEGAL_NAME` | `the Spot team` | Who runs Spot, named on `/terms` and `/privacy` |
+| `SPOT_CONTACT_EMAIL` | `hello@spotmeplease.com` | Contact address on the legal pages |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

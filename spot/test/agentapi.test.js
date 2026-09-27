@@ -192,3 +192,61 @@ test('self-serve keys: minted once, work over REST, and have daily quotas', asyn
   const off = app(t, { env: { ...env, SPOT_OPEN_KEYS: 'off' } });
   assert.equal((await off.inject({ method: 'POST', url: '/v1/agent/keys', payload: { email: 'dev@example.com' } })).statusCode, 404);
 });
+
+test('custom domain: page views move to PUBLIC_URL, APIs and webhooks do not', async (t) => {
+  const a = app(t, { env: { ...env, PUBLIC_URL: 'https://spotmeplease.com', MCP_REGISTRY_AUTH: 'v=MCPv1; k=ed25519; p=abc' } });
+  const get = (host, url, method = 'GET') => a.inject({ method, url, headers: { host } });
+  let r = await get('www.spotmeplease.com', '/new?x=1');
+  assert.equal(r.statusCode, 301);
+  assert.equal(r.headers.location, 'https://spotmeplease.com/new?x=1');
+  r = await get('spot-production-7896.up.railway.app', '/c/abc');
+  assert.equal(r.headers.location, 'https://spotmeplease.com/c/abc');
+  assert.notEqual((await get('spotmeplease.com', '/')).statusCode, 301);
+  assert.equal((await get('spot-production-7896.up.railway.app', '/health')).statusCode, 200);
+  assert.notEqual((await get('www.spotmeplease.com', '/v1/carts/abc')).statusCode, 301);
+  assert.notEqual((await get('spot-production-7896.up.railway.app', '/v1/webhooks/stripe', 'POST')).statusCode, 301);
+  assert.notEqual((await get('other.example', '/')).statusCode, 301);
+  r = await get('spotmeplease.com', '/.well-known/mcp-registry-auth');
+  assert.equal(r.body, 'v=MCPv1; k=ed25519; p=abc');
+});
+
+test('texts: branded, say how to opt out, and STOP replies stop them', async (t) => {
+  const { createHmac } = await import('node:crypto');
+  const sent = [];
+  const notifyFetch = async (url, init) => {
+    sent.push(new URLSearchParams(String(init.body)).get('Body'));
+    return new Response('{}', { status: 200 });
+  };
+  const twilio = { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15125550000', PUBLIC_URL: 'https://spotmeplease.com' };
+  const a = app(t, { notifyFetch, env: { ...env, ...twilio } });
+  const base = { requester: { name: 'Kyle' }, merchant: { name: 'Nike' }, items: [{ title: 'Dunk', price_cents: 11500 }], for: 'self' };
+  const ask = () => a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: { ...base, notify: { phone: '512-555-0100' } } });
+
+  assert.equal((await ask()).json().delivered.text, 'sent');
+  assert.match(sent[0], /^Spot: Your cart is ready/);
+  assert.match(sent[0], /Reply STOP to opt out\.$/);
+
+  const inbound = (body, sign = true) => {
+    const params = Object.keys(body).sort().map((k) => k + body[k]).join('');
+    const sig = createHmac('sha1', 'tok').update('https://spotmeplease.com/v1/webhooks/twilio' + params).digest('base64');
+    return a.inject({ method: 'POST', url: '/v1/webhooks/twilio', headers: { 'content-type': 'application/x-www-form-urlencoded', ...(sign ? { 'x-twilio-signature': sig } : {}) }, payload: new URLSearchParams(body).toString() });
+  };
+  assert.equal((await inbound({ From: '+15125550100', Body: 'STOP' }, false)).statusCode, 403, 'unsigned is refused');
+  const stop = await inbound({ From: '+15125550100', Body: ' Stop ' });
+  assert.equal(stop.statusCode, 200);
+  assert.match(stop.body, /<Response><\/Response>/);
+  assert.equal((await ask()).json().delivered.text, 'opted_out');
+  assert.equal(sent.length, 1, 'nothing sent after STOP');
+  await inbound({ From: '+15125550100', Body: 'start' });
+  assert.equal((await ask()).json().delivered.text, 'sent');
+});
+
+test('terms and privacy pages', async (t) => {
+  const a = app(t, { env: { ...env, SPOT_LEGAL_NAME: 'The Future Basics LLC' } });
+  const terms = await a.inject({ method: 'GET', url: '/terms' });
+  assert.equal(terms.statusCode, 200);
+  assert.match(terms.body, /The Future Basics LLC/);
+  assert.match(terms.body, /Reply <b>STOP<\/b>|reply <b>STOP<\/b>/);
+  const privacy = await a.inject({ method: 'GET', url: '/privacy' });
+  assert.match(privacy.body, /No mobile information will be shared with third parties or affiliates for marketing or promotional purposes/);
+});
