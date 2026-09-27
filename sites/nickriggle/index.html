@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nick Riggle</title>
+<meta name="description" content="Nick Riggle is Professor of Philosophy at the University of San Diego and the author of This Beauty, On Being Awesome, Aesthetic Life and Why It Matters, and Understanding Aesthetic Life.">
+<meta name="theme-color" content="#0d0c0b">
+<link rel="canonical" href="https://nickriggle.vercel.app/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d0c0b'/%3E%3Ccircle cx='32' cy='32' r='25' fill='none' stroke='%23b8975a' stroke-opacity='.7'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Georgia,serif' font-size='28' fill='%23efe9dc' letter-spacing='-1'%3ENR%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="https://nickriggle.vercel.app/assets/apple-touch-icon.png">
+<meta property="og:type" content="profile">
+<meta property="og:site_name" content="Nick Riggle">
+<meta property="og:url" content="https://nickriggle.vercel.app/">
+<meta property="og:title" content="Nick Riggle: philosopher, author, former pro skater">
+<meta property="og:description" content="Professor of Philosophy at the University of San Diego. Author of This Beauty, On Being Awesome, Aesthetic Life and Why It Matters, and Understanding Aesthetic Life. On beauty and why it matters.">
+<meta property="og:image" content="https://nickriggle.vercel.app/assets/og.jpg">
+<meta property="og:image:secure_url" content="https://nickriggle.vercel.app/assets/og.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Nick Riggle, Professor of Philosophy at the University of San Diego">
+<meta property="profile:first_name" content="Nick">
+<meta property="profile:last_name" content="Riggle">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Nick Riggle: philosopher, author, former pro skater">
+<meta name="twitter:description" content="Professor of Philosophy at the University of San Diego. Author of This Beauty, On Being Awesome, and Aesthetic Life and Why It Matters.">
+<meta name="twitter:image" content="https://nickriggle.vercel.app/assets/og.jpg">
+<meta name="twitter:image:alt" content="Nick Riggle, Professor of Philosophy at the University of San Diego">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Manrope:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ink:#0d0c0b;--ink-2:#14120f;--ink-3:#1e1b16;
+  --paper:#efe9dc;--paper-2:#e4dccb;
+  --gold:#b8975a;--gold-hi:#e3cb92;--gold-dim:rgba(184,151,90,.35);
+  --stone:#a19a8b;--stone-2:#6b665c;
+  --line:rgba(239,233,220,.12);--line-paper:rgba(13,12,11,.16);
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --sans:"Manrope","Helvetica Neue",Arial,sans-serif;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --gutter:clamp(16px,5vw,72px);
+  --fg:var(--paper);--bg:var(--ink);--mute:var(--stone);--ln:var(--line);--acc:var(--gold-hi);
+  --glass-fill:rgba(255,255,255,.085);--glass-fill-hi:rgba(255,255,255,.17);--glass-line:rgba(255,255,255,.2);--glass-rim:rgba(255,255,255,.85);--glass-spec:rgba(255,255,255,.55);--glass-band:rgba(255,255,255,.28);--glass-shadow:0 16px 44px -14px rgba(0,0,0,.65);
+  --spring:cubic-bezier(.3,1.4,.5,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ink);color:var(--paper);font-family:var(--sans);font-size:clamp(15px,1.05vw,17px);line-height:1.6;overflow-x:hidden;font-feature-settings:"ss01"}
+::selection{background:var(--gold);color:var(--ink)}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+img{max-width:100%}
+
+/* ---------- grain ---------- */
+body::before{content:"";position:fixed;inset:-50%;width:200%;height:200%;pointer-events:none;z-index:60;opacity:.06;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 6s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-4%)}60%{transform:translate(-4%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+
+/* ---------- curtain ---------- */
+.curtain{position:fixed;inset:0;z-index:80;background:var(--ink);display:grid;place-items:center;transition:transform 1.1s var(--ease),visibility 0s 1.1s;visibility:visible}
+.curtain.up{transform:translateY(-100%);visibility:hidden}
+.curtain-name{font-family:var(--display);font-weight:300;font-size:clamp(40px,7vw,96px);letter-spacing:.02em;color:var(--paper);display:flex;gap:.25em;overflow:hidden}
+.curtain-name span{display:inline-block;transform:translateY(110%);animation:rise 1s var(--ease) forwards}
+.curtain-name span:nth-child(2){animation-delay:.12s}
+.curtain-rule{width:min(60vw,320px);height:1px;background:var(--gold);transform:scaleX(0);transform-origin:left;animation:draw 1.1s .4s var(--ease) forwards;margin-top:18px}
+@keyframes rise{to{transform:none}}
+@keyframes draw{to{transform:scaleX(1)}}
+
+/* ---------- cursor ---------- */
+.cursor{position:fixed;left:-20px;top:-20px;width:10px;height:10px;border-radius:50%;background:var(--gold);pointer-events:none;z-index:90;transform:translate(-50%,-50%);transition:width .3s var(--ease),height .3s var(--ease),opacity .3s;opacity:0;mix-blend-mode:difference}
+.cursor.on{opacity:1}
+.cursor.big{width:5px;height:5px;background:var(--gold-hi)}
+@media (pointer:coarse){.cursor{display:none}}
+
+/* ---------- nav (liquid glass capsule) ---------- */
+.nav{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:0;right:0;z-index:70;display:flex;justify-content:center;padding:0 var(--gutter);pointer-events:none}
+.nav-bar{pointer-events:auto;display:flex;align-items:center;justify-content:space-between;gap:16px;width:min(100%,1180px);padding:8px 8px 8px 22px;color:var(--paper);transition:transform .6s var(--ease),padding .5s var(--ease),color .4s}
+.nav.hide .nav-bar{transform:translateY(-150%)}
+.nav.tight .nav-bar{padding:5px 5px 5px 18px}
+.nav.light .nav-bar{color:var(--ink);--glass-fill:rgba(255,255,255,.46);--glass-fill-hi:rgba(255,255,255,.66);--glass-line:rgba(13,12,11,.12);--glass-rim:rgba(255,255,255,1);--glass-spec:rgba(255,255,255,.95);--glass-band:rgba(255,255,255,.6);--glass-shadow:0 14px 34px -16px rgba(13,12,11,.35)}
+.nav-logo{font-family:var(--display);font-size:22px;letter-spacing:.06em;font-weight:400;position:relative;z-index:1}
+.nav-links{display:none;gap:26px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;position:relative;z-index:1}
+.nav-links a{position:relative;padding:4px 0;opacity:.75;transition:opacity .3s}
+.nav-links a:hover,.nav-links a[aria-current="true"]{opacity:1}
+.nav-links a::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:currentColor;transform:scaleX(0);transform-origin:right;transition:transform .5s var(--ease)}
+.nav-links a:hover::after,.nav-links a[aria-current="true"]::after{transform:scaleX(1);transform-origin:left}
+@media (min-width:1024px){.nav-links{display:flex}}
+.mode{position:relative;z-index:1;display:flex;align-items:center;font-size:11px;letter-spacing:.14em;text-transform:uppercase;border-radius:999px;padding:3px;background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 0 0 1px var(--glass-line)}
+.nav.light .mode{background:rgba(13,12,11,.05)}
+.mode-blob{position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:999px;background:var(--glass-fill-hi);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.12),0 6px 16px -6px rgba(0,0,0,.45);transition:transform .65s var(--spring),width .65s var(--spring);pointer-events:none}
+.mode-blob::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,var(--glass-spec),transparent 55%);opacity:.85}
+.mode button{position:relative;z-index:1;padding:7px 12px;border-radius:999px;opacity:.55;transition:opacity .3s,color .3s}
+.mode button[aria-pressed="true"]{opacity:1}
+.progress{position:fixed;left:0;top:0;height:2px;width:100%;z-index:71;background:transparent;transform-origin:left;pointer-events:none}
+.progress i{display:block;height:100%;background:var(--gold);transform:scaleX(0);transform-origin:left}
+
+/* ---------- layout ---------- */
+main{display:flex;flex-direction:column}
+.plate{position:relative;padding:clamp(80px,12vw,160px) var(--gutter);--fg:var(--paper);--bg:var(--ink);--mute:var(--stone);--ln:var(--line);--acc:var(--gold-hi);background:var(--bg);color:var(--fg)}
+.plate--paper{--fg:var(--ink);--bg:var(--paper);--mute:var(--stone-2);--ln:var(--line-paper);--acc:var(--gold);--glass-fill:rgba(255,255,255,.38);--glass-fill-hi:rgba(255,255,255,.62);--glass-line:rgba(13,12,11,.12);--glass-rim:rgba(255,255,255,1);--glass-spec:rgba(255,255,255,.95);--glass-band:rgba(255,255,255,.6);--glass-shadow:0 14px 34px -16px rgba(13,12,11,.35)}
+.plate--deep{--bg:var(--ink-2)}
+.wrap{max-width:1280px;margin:0 auto}
+.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--acc);display:flex;align-items:center;gap:14px;margin:0 0 28px}
+.eyebrow::before{content:"";width:28px;height:1px;background:currentColor}
+h2{font-family:var(--display);font-weight:300;font-size:clamp(38px,6vw,84px);line-height:1.02;letter-spacing:-.01em;margin:0 0 .5em;text-wrap:balance}
+h2 em{font-style:italic;color:var(--acc)}
+.lede{font-family:var(--display);font-size:clamp(21px,2.3vw,30px);line-height:1.35;font-weight:300;max-width:34em;margin:0}
+.copy{max-width:62ch;color:var(--mute)}
+.copy p{margin:0 0 1.2em}
+.split{display:grid;gap:40px}
+@media (min-width:900px){.split{grid-template-columns:5fr 7fr;gap:80px;align-items:start}}
+.sticky{position:sticky;top:120px}
+
+/* reveal states (JS adds .js) */
+.js .rv{opacity:0;transform:translateY(28px);transition:opacity 1s var(--ease),transform 1.1s var(--ease)}
+.js .rv.in{opacity:1;transform:none}
+.js .rv-lines .ln{display:block;overflow:hidden}
+.js .rv-lines .ln span{display:block;transform:translateY(110%);transition:transform 1.1s var(--ease)}
+.js .rv-lines.in .ln span{transform:none}
+.js .rv-lines.in .ln:nth-child(2) span{transition-delay:.08s}
+.js .rv-lines.in .ln:nth-child(3) span{transition-delay:.16s}
+.js .rv-lines.in .ln:nth-child(4) span{transition-delay:.24s}
+.js .rv-words .wd{opacity:.18;transition:opacity .6s}
+.js .rv-words .wd.on{opacity:1}
+
+/* ---------- buttons (liquid glass) ---------- */
+.btn{display:inline-flex;align-items:center;gap:12px;font-size:12px;letter-spacing:.18em;text-transform:uppercase;padding:16px 26px;color:var(--fg);border-radius:999px;position:relative;isolation:isolate;transition:color .4s,box-shadow .5s var(--ease),background-color .4s;will-change:transform}
+.btn span{position:relative;z-index:2}
+.btn--ghost{--glass-fill:rgba(255,255,255,.035)}
+.plate--paper .btn--ghost{--glass-fill:rgba(255,255,255,.18)}
+.btn:hover{--glass-fill:var(--glass-fill-hi)}
+.btn:hover .arrow::before{transform:scaleX(1.3);transform-origin:left}
+.btn:active{transition-duration:.1s}
+.arrow{width:16px;height:16px;position:relative;flex:none}
+.arrow::before{content:"";position:absolute;left:0;top:50%;width:14px;height:1px;background:currentColor;transition:transform .5s var(--ease)}
+.arrow::after{content:"";position:absolute;right:1px;top:50%;width:6px;height:6px;border-top:1px solid currentColor;border-right:1px solid currentColor;transform:translateY(-50%) rotate(45deg)}
+.btn:hover .arrow::before{transform:scaleX(1.3);transform-origin:left}
+
+/* ---------- hero ---------- */
+.hero{position:relative;display:flex;flex-direction:column;justify-content:flex-start;padding:calc(84px + env(safe-area-inset-top,0px)) var(--gutter) clamp(40px,6vw,80px);overflow:hidden;background:var(--ink)}
+@media (min-width:900px){.hero{min-height:min(92svh,980px);justify-content:flex-end;padding-top:calc(120px + env(safe-area-inset-top,0px))}}
+#arcs{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:.9}
+.hero-glow{position:absolute;width:70vmax;height:70vmax;left:50%;top:-10%;transform:translateX(-30%);background:radial-gradient(closest-side,rgba(184,151,90,.16),transparent 70%);filter:blur(30px);pointer-events:none;animation:breathe 12s ease-in-out infinite}
+@keyframes breathe{50%{transform:translateX(-24%) translateY(6%) scale(1.08)}}
+.hero-in{position:relative;max-width:1280px;margin:0 auto;width:100%;display:grid;grid-template-columns:minmax(0,1fr)}
+.hero-portrait{order:-1;position:relative;width:min(66vw,300px);aspect-ratio:4/5;margin:0 4vw 30px auto;clip-path:inset(0 0 0 0);animation:unveil 1.4s 1.2s var(--ease) both}
+.no-curtain .hero-portrait{animation-delay:.1s}
+@keyframes unveil{from{clip-path:inset(0 0 100% 0);opacity:0}to{clip-path:inset(0 0 0 0);opacity:1}}
+.hero-portrait .oval{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:var(--ink-3);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.hero-portrait img{width:100%;height:100%;object-fit:cover;object-position:50% 22%;display:block;filter:saturate(.8) contrast(1.05);transform:scale(1.04);transition:transform 1.6s var(--ease)}
+.hero-portrait:hover img{transform:scale(1)}
+.hero-portrait .oval::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:inset 0 -60px 90px -30px rgba(13,12,11,.75),inset 0 0 0 1px rgba(227,203,146,.25);pointer-events:none}
+.hero-portrait::before{content:"";position:absolute;inset:-14px;border-radius:50%;border:1px solid var(--gold-dim);transform:translate(10px,12px) rotate(-8deg);pointer-events:none}
+.hero-portrait::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid rgba(227,203,146,.12);pointer-events:none}
+@media (min-width:900px){
+  .hero-in{grid-template-columns:minmax(0,1fr) clamp(300px,33vw,460px);grid-template-rows:auto auto auto;column-gap:clamp(36px,5vw,88px);align-items:end}
+  .hero-portrait{order:0;grid-column:2;grid-row:1/4;align-self:center;width:min(100%,420px);margin:0 0 0 auto}
+  .hero .eyebrow,.hero-name,.hero-row{grid-column:1}
+  .hero-name{font-size:clamp(66px,10.8vw,196px)}
+}
+.hero .eyebrow{margin-bottom:22px}
+.hero-name{font-family:var(--display);font-weight:300;font-size:clamp(66px,14.5vw,220px);line-height:.88;letter-spacing:-.025em;margin:0 0 .18em;display:flex;flex-wrap:wrap;column-gap:.22em}
+.hero-name .w{display:block;overflow:hidden;padding:.06em .08em .24em 0;margin:-.06em -.08em -.24em 0}
+.hero-name .w i{display:block;font-style:normal;transform:translateY(100%);animation:rise 1.2s 1.15s var(--ease) forwards}
+.hero-name .w:nth-child(2) i{animation-delay:1.27s}
+.no-curtain .hero-name .w i{animation-delay:.05s}
+.no-curtain .hero-name .w:nth-child(2) i{animation-delay:.15s}
+.hero-row{display:grid;gap:28px;align-items:end}
+@media (min-width:1180px){.hero-row{grid-template-columns:1.15fr 1fr}}
+.hero-line{font-family:var(--display);font-weight:300;font-size:clamp(24px,3.4vw,44px);line-height:1.2;margin:0;text-wrap:balance}
+.rot{display:inline-block;position:relative;font-style:italic;color:var(--gold-hi);vertical-align:bottom}
+.rot b{font-weight:300;display:inline-block;transition:transform .7s var(--ease),opacity .5s;will-change:transform}
+.rot b.out{transform:translateY(-.5em);opacity:0}
+.rot b.pre{transform:translateY(.5em);opacity:0;transition:none}
+.hero-side{display:flex;flex-direction:column;gap:22px;color:var(--stone)}
+.hero-side p{margin:0;max-width:40ch}
+.who{display:flex;flex-wrap:wrap;gap:10px}
+.who .btn{padding:14px 22px}
+.who-hint{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--stone-2)}
+.cue{position:absolute;right:var(--gutter);bottom:clamp(40px,6vw,80px);display:none;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--stone-2);writing-mode:vertical-rl;align-items:center;gap:12px}
+.cue::after{content:"";width:1px;height:56px;background:linear-gradient(var(--gold),transparent);animation:cue 2.2s ease-in-out infinite}
+@keyframes cue{50%{transform:translateY(10px);opacity:.4}}
+
+
+/* ---------- marquee ---------- */
+.marquee{display:flex;align-items:stretch;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--ink);overflow:hidden}
+.marquee-label{flex:none;display:flex;align-items:center;padding:0 clamp(14px,2.4vw,28px) 0 var(--gutter);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);border-right:1px solid var(--line);white-space:nowrap}
+.marquee-view{flex:1;min-width:0;overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent)}
+.marquee-track{display:flex;width:max-content;animation:slide 70s linear infinite;padding:16px 0}
+.marquee-track span{display:flex;align-items:center;white-space:nowrap;padding:0 clamp(18px,2.6vw,34px);font-family:var(--display);font-size:clamp(17px,1.7vw,23px);font-weight:300;color:var(--stone);line-height:1}
+.marquee-track span::after{content:"";width:5px;height:5px;background:var(--gold);transform:rotate(45deg);margin-left:clamp(18px,2.6vw,34px);flex:none;opacity:.8}
+@keyframes slide{to{transform:translateX(-50%)}}
+.marquee:hover .marquee-track{animation-play-state:paused}
+
+.frame-cap{position:absolute;left:24px;bottom:22px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--stone)}
+.glance{list-style:none;margin:0;padding:0;border-top:1px solid var(--ln)}
+.glance li{display:grid;grid-template-columns:84px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--ln);font-size:14px;align-items:baseline}
+.glance small{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);font-variant-numeric:tabular-nums}
+.glance b{font-weight:500}
+.glance span{display:block;color:var(--mute);font-size:13px}
+.glance-h{font-family:var(--display);font-size:26px;font-weight:400;margin:0 0 16px}
+
+/* ---------- liquid glass core ---------- */
+.glass{position:relative;isolation:isolate;background:var(--glass-fill);box-shadow:inset 0 1.5px 0 var(--glass-rim),inset 0 -1px 0 rgba(255,255,255,.1),inset 0 0 0 1px var(--glass-line),inset 0 0 22px rgba(255,255,255,.06),var(--glass-shadow);-webkit-backdrop-filter:blur(22px) saturate(180%) brightness(1.08);backdrop-filter:blur(22px) saturate(180%) brightness(1.08);border-radius:999px;transition:background-color .4s,box-shadow .5s var(--ease)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+  background:radial-gradient(160px 90px at var(--mx,28%) var(--my,-10%),var(--glass-spec),transparent 62%),linear-gradient(180deg,var(--glass-band) 0%,rgba(255,255,255,.1) 22%,transparent 48%,rgba(255,255,255,.07) 100%);
+  opacity:1;transition:opacity .4s}
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;padding:1.2px;
+  background:linear-gradient(135deg,var(--glass-rim),rgba(255,255,255,.14) 36%,rgba(255,255,255,.04) 60%,rgba(255,255,255,.6));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;opacity:1}
+.glass>*{position:relative;z-index:2}
+.glass--panel{border-radius:22px}
+.glass--lite{-webkit-backdrop-filter:none;backdrop-filter:none}
+.nav-bar::before{background:radial-gradient(180px 100px at var(--mx,28%) var(--my,-10%),var(--glass-spec),transparent 62%),linear-gradient(180deg,var(--glass-band) 0%,rgba(255,255,255,.1) 22%,transparent 48%,rgba(255,255,255,.07) 100%),linear-gradient(100deg,transparent 30%,rgba(255,255,255,.2) 50%,transparent 70%);background-size:auto,auto,240% 100%;animation:sweep 9s ease-in-out infinite}
+@keyframes sweep{0%,20%{background-position:0 0,0 0,140% 0}70%,100%{background-position:0 0,0 0,-40% 0}}
+.chip{display:inline-flex;align-items:center;gap:10px;padding:7px 12px;border-radius:999px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;background:linear-gradient(180deg,var(--glass-band),transparent 55%),var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line);color:var(--mute)}
+.eyebrow{display:inline-flex;align-items:center;gap:12px;padding:8px 16px 8px 14px;border-radius:999px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 -1px 0 rgba(0,0,0,.1),inset 0 0 0 1px var(--glass-line);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);position:relative;overflow:hidden}
+.eyebrow::before{width:22px;flex:none}
+.eyebrow::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,var(--glass-spec),transparent 52%);opacity:.55;pointer-events:none}
+.tile,.card{border:0;border-radius:22px;background:var(--glass-fill);box-shadow:inset 0 1.5px 0 var(--glass-rim),inset 0 -1px 0 rgba(255,255,255,.08),inset 0 0 0 1px var(--glass-line),inset 0 0 24px rgba(255,255,255,.05),var(--glass-shadow);-webkit-backdrop-filter:blur(18px) saturate(160%);backdrop-filter:blur(18px) saturate(160%)}
+.tile{transition:background-color .5s,transform .7s var(--ease),box-shadow .5s}
+.tile:hover{background:var(--glass-fill-hi);transform:translateY(-6px)}
+.tile::before,.card::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(220px 120px at var(--mx,30%) var(--my,0%),var(--glass-spec),transparent 60%),linear-gradient(180deg,var(--glass-band) 0%,rgba(255,255,255,.08) 20%,transparent 45%);opacity:.7;pointer-events:none}
+.card{position:relative;overflow:hidden}
+.card>*{position:relative}
+.tile::after{border-radius:50%}
+.card{background:var(--glass-fill)}
+.book-links a,.tl-k,.cover-tag,.toast{background:linear-gradient(180deg,var(--glass-band),transparent 55%),var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line)}
+.book-links a{border:0;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.book-links a:hover{background:var(--glass-fill-hi);color:var(--fg)}
+.tl-k{border:0}
+.cover-tag{right:8px;border-radius:999px;background:rgba(184,151,90,.85);color:var(--ink);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.toast{background:rgba(184,151,90,.85);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 14px 40px -12px rgba(0,0,0,.6)}
+.rail-hint span:last-child{padding:6px 12px;border-radius:999px;background:linear-gradient(180deg,var(--glass-band),transparent 55%),var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),inset 0 0 0 1px var(--glass-line);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-transparency:reduce){.glass,.tile,.card,.eyebrow,.book-links a{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--bg)}}
+
+@media (max-width:899px){
+  .hero{padding-top:calc(74px + env(safe-area-inset-top,0px));padding-bottom:28px}
+  .hero-portrait{width:auto;height:min(36vh,300px);height:min(36svh,300px);margin:0 4vw 14px auto}
+  .hero .eyebrow{margin-bottom:12px}
+  .hero-name{margin-bottom:.16em;font-size:clamp(58px,15vw,84px)}
+  .hero-row{gap:14px}
+  .hero-line{font-size:clamp(21px,5.7vw,26px);min-height:1.25em;line-height:1.2}
+  .hero-side{gap:12px}
+  .hero-side p{font-size:15px;line-height:1.5}
+  .who{gap:8px}
+  .who .btn{padding:13px 20px}
+}
+@media (max-width:600px){.eyebrow{font-size:10px;letter-spacing:.15em;gap:9px;padding:7px 12px 7px 11px;border-radius:16px;line-height:1.5}.eyebrow::before{width:14px}}
+
+/* ---------- start here (students) ---------- */
+.start-grid{display:grid;gap:14px}
+@media (min-width:720px){.start-grid{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1100px){.start-grid{grid-template-columns:repeat(4,1fr)}}
+.tile{text-align:left;display:flex;flex-direction:column;gap:14px;min-height:200px;padding:26px 24px;border:1px solid var(--ln);position:relative;overflow:hidden;transition:border-color .5s,transform .7s var(--ease);background:transparent}
+.tile:hover{border-color:var(--acc);transform:translateY(-6px)}
+.tile::after{content:"";position:absolute;inset:auto -40% -60% auto;width:70%;aspect-ratio:1;border-radius:50%;background:radial-gradient(closest-side,rgba(184,151,90,.22),transparent);opacity:0;transition:opacity .6s}
+.tile:hover::after{opacity:1}
+.tile-k{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
+.tile-t{font-family:var(--display);font-size:28px;line-height:1.1;font-weight:400;margin:0}
+.tile-d{color:var(--mute);font-size:14px;margin:0;flex:1}
+.tile-a{font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:inline-flex;gap:10px;align-items:center}
+
+/* ---------- books ---------- */
+.books{padding-left:0;padding-right:0}
+.books .wrap{padding:0 var(--gutter)}
+.rail-wrap{position:relative}
+.rail{display:flex;gap:clamp(16px,3vw,48px);overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gutter);padding:8px var(--gutter) 24px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.rail::-webkit-scrollbar{display:none}
+.book{flex:0 0 min(82vw,520px);scroll-snap-align:start;display:grid;gap:26px;align-content:start}
+@media (min-width:900px){.book{flex-basis:min(44vw,560px);grid-template-columns:200px 1fr;gap:32px}}
+.cover{aspect-ratio:2/3;width:min(52vw,200px);position:relative;transform-style:preserve-3d;transition:transform .7s var(--ease);will-change:transform}
+.cover-face{position:absolute;inset:0;box-shadow:24px 30px 60px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.08) inset;overflow:hidden;background:var(--ink-3)}
+.cover-face img{width:100%;height:100%;object-fit:cover;display:block}
+.cover-tag{position:absolute;top:10px;right:-6px;background:var(--gold);color:var(--ink);font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:6px 10px;box-shadow:0 6px 16px rgba(0,0,0,.35);z-index:2}
+.cover-face::after{content:"";position:absolute;left:0;top:0;bottom:0;width:9px;background:linear-gradient(90deg,rgba(0,0,0,.35),rgba(255,255,255,.12) 40%,rgba(0,0,0,.2))}
+.cover-spine{position:absolute;left:0;top:0;bottom:0;width:22px;transform:rotateY(-90deg);transform-origin:left;background:#000;opacity:.6}
+.book-t{font-family:var(--display);font-size:clamp(28px,3vw,40px);line-height:1.05;font-weight:300;margin:0 0 6px;text-wrap:balance}
+.book-m{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--acc);margin:0 0 16px}
+.book-d{color:var(--mute);margin:0 0 20px;font-size:15px;max-width:40ch}
+.book-links{display:flex;flex-wrap:wrap;gap:10px}
+.book-links a{font-size:11px;letter-spacing:.16em;text-transform:uppercase;padding:10px 14px;border:1px solid var(--ln);border-radius:999px;transition:border-color .4s,background .4s,color .4s}
+.book-links a:hover{border-color:var(--acc);background:var(--acc);color:var(--ink)}
+.rail-bar{height:1px;background:var(--ln);margin:0 var(--gutter);position:relative}
+.rail-bar i{position:absolute;left:0;top:0;height:100%;width:33%;background:var(--acc);transition:transform .2s linear}
+.rail-hint{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);padding:18px var(--gutter) 0;display:flex;justify-content:space-between}
+
+@media (min-width:1024px){.rail{scroll-snap-type:none}#books{padding-block:56px 40px}#books .lede{margin-bottom:32px!important}#books h2{font-size:clamp(38px,4.6vw,64px)}}
+
+.awards{list-style:none;margin:36px 0 0;padding:0;display:grid;gap:14px;border-top:1px solid var(--ln)}
+@media (min-width:640px){.awards{grid-template-columns:1fr 1fr;gap:18px 32px}}
+.awards li{display:grid;gap:3px;padding-top:16px}
+.awards b{font-family:var(--display);font-size:22px;font-weight:400;line-height:1.1}
+.awards small{font-size:12px;color:var(--mute);letter-spacing:.02em}
+.next{margin:40px 0 0;padding:28px 0 0;border-top:1px solid var(--ln);color:var(--mute);font-size:15px;max-width:70ch}
+.next em{color:var(--fg)}
+.next .eyebrow{display:flex}
+.wip{margin-top:56px;padding-top:36px;border-top:1px solid var(--ln)}
+.wip ul{list-style:none;margin:0;padding:0;display:grid;gap:10px 40px}
+@media (min-width:800px){.wip ul{grid-template-columns:1fr 1fr}}
+.wip li{display:flex;justify-content:space-between;gap:16px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--ln)}
+.wip b{font-weight:500}
+.wip span{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);flex:none}
+.star{font-style:normal;color:var(--acc)}
+.tl-group{margin:0 0 12px;display:inline-block}
+.tl-t em{font-style:italic}
+.addr{font-style:normal;margin-top:28px;color:var(--mute);line-height:1.7;font-size:14px}
+.addr a{border-bottom:1px solid var(--ln)}
+
+/* ---------- research ---------- */
+.ideas{border-top:1px solid var(--ln)}
+.idea{border-bottom:1px solid var(--ln)}
+.idea-h{width:100%;display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:baseline;padding:26px 0;text-align:left;transition:color .3s}
+.idea-h:hover{color:var(--acc)}
+.idea-n{font-size:11px;letter-spacing:.2em;color:var(--acc);font-variant-numeric:tabular-nums}
+.idea-t{font-family:var(--display);font-size:clamp(26px,3.6vw,48px);font-weight:300;line-height:1.05;margin:0;text-wrap:balance}
+.idea-x{width:36px;height:36px;border:1px solid var(--ln);border-radius:50%;position:relative;flex:none;transition:transform .6s var(--ease),border-color .3s;align-self:center}
+.idea-x::before,.idea-x::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:1px;background:currentColor;transform:translate(-50%,-50%)}
+.idea-x::after{transform:translate(-50%,-50%) rotate(90deg)}
+.idea-h[aria-expanded="true"] .idea-x{transform:rotate(135deg);border-color:var(--acc)}
+.idea-b{display:grid;grid-template-rows:0fr;transition:grid-template-rows .7s var(--ease)}
+.idea-h[aria-expanded="true"]+.idea-b{grid-template-rows:1fr}
+.idea-b>div{overflow:hidden}
+.idea-in{display:grid;gap:28px;padding:0 0 36px}
+@media (min-width:900px){.idea-in{grid-template-columns:1fr 1fr;gap:64px;padding-left:calc(11px + 20px + 1.5ch)}}
+.idea-p{margin:0;color:var(--mute);max-width:52ch}
+.pubs{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.pubs li{display:grid;gap:2px;padding-left:18px;position:relative}
+.pubs li::before{content:"";position:absolute;left:0;top:.75em;width:8px;height:1px;background:var(--acc)}
+.pubs b{font-weight:500}
+.pubs small{font-size:12px;letter-spacing:.06em;color:var(--mute)}
+
+/* ---------- stats / skate ---------- */
+.skate{overflow:hidden}
+.skate-big{font-family:var(--display);font-weight:300;font-size:clamp(34px,7vw,110px);line-height:.98;letter-spacing:-.02em;margin:0 0 48px;max-width:14em}
+.skate-big em{color:var(--acc)}
+.stats{display:grid;gap:0;border-top:1px solid var(--ln);border-bottom:1px solid var(--ln)}
+@media (min-width:720px){.stats{grid-template-columns:repeat(3,1fr)}}
+.stat{padding:30px 0;border-bottom:1px solid var(--ln)}
+@media (min-width:720px){.stat{border-bottom:0;border-right:1px solid var(--ln);padding:36px 28px}.stat:first-child{padding-left:0}.stat:last-child{border-right:0}}
+.stat-n{font-family:var(--display);font-size:clamp(60px,8vw,120px);font-weight:300;line-height:1;color:var(--acc);font-variant-numeric:tabular-nums}
+.stat-n sup{font-size:.4em;vertical-align:top;top:.4em;position:relative}
+.stat-l{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin-top:10px}
+.skate-track{position:absolute;left:0;right:0;bottom:0;pointer-events:none;opacity:.5}
+.skate-track svg{width:100%;height:auto;display:block}
+.skate-track path{fill:none;stroke:var(--gold);stroke-width:1;stroke-dasharray:1;stroke-dashoffset:1}
+.skate.in .skate-track path{animation:trace 2.6s var(--ease) forwards}
+@keyframes trace{to{stroke-dashoffset:0}}
+
+/* ---------- talks ---------- */
+.tl{list-style:none;margin:0;padding:0;border-top:1px solid var(--ln)}
+.tl li{display:grid;grid-template-columns:1fr;gap:6px;padding:26px 0;border-bottom:1px solid var(--ln);position:relative}
+@media (min-width:800px){.tl li{grid-template-columns:150px 1fr auto;gap:32px;align-items:baseline}}
+.tl li::after{content:"";position:absolute;left:0;bottom:-1px;height:1px;width:100%;background:var(--acc);transform:scaleX(0);transform-origin:left;transition:transform .8s var(--ease)}
+.tl li:hover::after{transform:scaleX(1)}
+.tl-d{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc);font-variant-numeric:tabular-nums}
+.tl-t{font-family:var(--display);font-size:clamp(22px,2.6vw,34px);line-height:1.1;font-weight:300;margin:0;text-wrap:balance}
+.tl-w{font-size:13px;color:var(--mute)}
+.tl-k{font-size:10px;letter-spacing:.2em;text-transform:uppercase;border:1px solid var(--ln);border-radius:999px;padding:6px 10px;justify-self:start;color:var(--mute)}
+
+/* ---------- teaching ---------- */
+.teach-grid{display:grid;gap:40px}
+@media (min-width:900px){.teach-grid{grid-template-columns:1fr 1fr;gap:80px}}
+.card{border:1px solid var(--ln);padding:30px 28px;display:grid;gap:14px;position:relative;background:linear-gradient(180deg,rgba(184,151,90,.06),transparent)}
+.card h3{font-family:var(--display);font-size:30px;font-weight:400;margin:0;line-height:1.05}
+.card p{margin:0;color:var(--mute)}
+.card .btn{justify-self:start}
+.cite{font-family:var(--display);font-size:20px;line-height:1.4;margin:0;padding:22px;border-left:1px solid var(--acc);background:rgba(184,151,90,.06)}
+.cite i{color:var(--acc)}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--gold);color:var(--ink);font-size:12px;letter-spacing:.16em;text-transform:uppercase;padding:14px 22px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .4s,transform .5s var(--ease);z-index:75}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- press ---------- */
+.press{display:grid;gap:0;border-top:1px solid var(--ln)}
+@media (min-width:800px){.press{grid-template-columns:1fr 1fr}}
+@media (min-width:1100px){.press{grid-template-columns:repeat(3,1fr)}}
+.press a{display:grid;gap:10px;padding:34px 28px 34px 0;border-bottom:1px solid var(--ln);position:relative;transition:padding .6s var(--ease)}
+@media (min-width:800px){.press a{padding-left:28px;border-right:1px solid var(--ln)}.press a:nth-child(2n){border-right:0}.press a:nth-child(2n+1){padding-left:0}}
+@media (min-width:1100px){.press a:nth-child(2n){border-right:1px solid var(--ln)}.press a:nth-child(3n){border-right:0}.press a:nth-child(2n+1){padding-left:28px}.press a:nth-child(3n+1){padding-left:0}}
+.press a:hover{padding-left:12px}
+@media (min-width:800px){.press a:hover{padding-left:40px}.press a:nth-child(2n+1):hover{padding-left:12px}}
+@media (min-width:1100px){.press a:nth-child(2n+1):hover{padding-left:40px}.press a:nth-child(3n+1):hover{padding-left:12px}}
+.press-o{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
+.press-t{font-family:var(--display);font-size:26px;line-height:1.1;font-weight:300;text-wrap:balance}
+.press-d{font-size:13px;color:var(--mute)}
+
+/* ---------- contact / footer ---------- */
+.contact{text-align:left}
+.mail{font-family:var(--display);font-weight:300;font-size:clamp(28px,5.6vw,84px);letter-spacing:-.02em;line-height:1;display:inline-block;position:relative;word-break:break-all}
+.mail::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:1px;background:var(--acc);transform:scaleX(0);transform-origin:left;transition:transform .8s var(--ease)}
+.mail:hover::after{transform:scaleX(1)}
+.links{display:flex;flex-wrap:wrap;gap:10px 28px;margin-top:40px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.links a{position:relative;padding:6px 0;transition:color .3s}
+.links a:hover{color:var(--fg)}
+footer{padding:30px var(--gutter) calc(30px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:space-between;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--stone-2);background:var(--ink)}
+footer button{letter-spacing:inherit;text-transform:inherit;font-size:inherit;color:var(--stone)}
+footer button:hover{color:var(--paper)}
+
+.lenis,.lenis body{scroll-behavior:auto!important}
+.lenis.lenis-stopped{overflow:hidden}
+.gs .hero-name .w i{animation:none;transform:none}
+.gs .hero-portrait{animation:none;clip-path:none}
+.gs .hero .eyebrow{opacity:1}
+.wd2{display:inline-block;will-change:transform}
+.js .eyebrow::before{transform:scaleX(0);transform-origin:left;transition:transform 1.1s var(--ease) .15s}
+.js .eyebrow.in::before,.js .rv.in .eyebrow::before,.js .in>.eyebrow::before{transform:none}
+.js .eyebrow.rv.in::before{transform:none}
+.cursor-ring{position:fixed;left:-40px;top:-40px;width:34px;height:34px;border:1px solid var(--gold);border-radius:50%;pointer-events:none;z-index:89;transform:translate(-50%,-50%);opacity:0;transition:width .45s var(--ease),height .45s var(--ease),opacity .3s,border-color .3s}
+.cursor-ring.on{opacity:.9}
+.cursor-ring.big{width:64px;height:64px;border-color:var(--gold-hi)}
+.cursor-ring.down{width:22px;height:22px}
+@media (pointer:coarse){.cursor-ring{display:none}}
+.cover-face::before{content:"";position:absolute;inset:0;z-index:2;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.22),transparent 55%);opacity:0;transition:opacity .5s;pointer-events:none}
+.cover:hover .cover-face::before{opacity:1}
+.cover{will-change:transform;transition:opacity .4s}
+.gs .cover{transition:none}
+.idea-b .pubs li{opacity:0;transform:translateY(12px);transition:opacity .55s var(--ease),transform .7s var(--ease)}
+.idea-h[aria-expanded="true"]+.idea-b .pubs li{opacity:1;transform:none;transition-delay:calc(.18s + var(--i,0)*70ms)}
+.idea-b .idea-p{opacity:0;transform:translateY(10px);transition:opacity .5s var(--ease) .1s,transform .6s var(--ease) .1s}
+.idea-h[aria-expanded="true"]+.idea-b .idea-p{opacity:1;transform:none}
+.hero-portrait::before{animation:ringdrift 14s ease-in-out infinite alternate}
+@keyframes ringdrift{from{transform:translate(10px,12px) rotate(-8deg)}to{transform:translate(4px,18px) rotate(4deg)}}
+@media (pointer:coarse){body::before{animation:none;opacity:.045}}
+.btn{will-change:transform}
+.tile,.card,.press a,.tl li,.glance li,.awards li,.wip li,.stat{will-change:opacity,transform}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .curtain{display:none}
+  .nav-bar::before{animation:none}
+  .hero-name .w i{transform:none}
+  .hero-portrait{animation:none;clip-path:none;opacity:1}
+  .js .rv,.js .rv-lines .ln span{opacity:1;transform:none}
+  .js .rv-words .wd{opacity:1}
+  .cursor{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="curtain" id="curtain" aria-hidden="true">
+  <div>
+    <div class="curtain-name"><span>Nick</span><span>Riggle</span></div>
+    <div class="curtain-rule"></div>
+  </div>
+</div>
+<div class="cursor" id="cursor" aria-hidden="true"></div>
+<div class="cursor-ring" id="ring" aria-hidden="true"></div>
+<div class="progress" aria-hidden="true"><i id="prog"></i></div>
+
+<nav class="nav" id="nav" aria-label="Site">
+ <div class="nav-bar glass" id="navbar">
+  <a class="nav-logo" href="#top">N. Riggle</a>
+  <div class="nav-links" id="navlinks">
+    <a href="#about">About</a>
+    <a href="#books">Books</a>
+    <a href="#research">Research</a>
+    <a href="#talks">Talks</a>
+    <a href="#teaching">Teaching</a>
+    <a href="#contact">Contact</a>
+  </div>
+  <div class="mode" role="group" aria-label="Choose how you read this site">
+    <span class="mode-blob" id="modeblob" aria-hidden="true"></span>
+    <button type="button" id="mode-student" data-mode="student" aria-pressed="false">Student</button>
+    <button type="button" id="mode-colleague" data-mode="colleague" aria-pressed="true">Colleague</button>
+  </div>
+ </div>
+</nav>
+
+<header class="hero" id="top">
+  <canvas id="arcs" aria-hidden="true"></canvas>
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-in">
+    <div class="hero-portrait"><div class="oval"><img src="assets/nick-riggle.webp" alt="Nick Riggle" fetchpriority="high"></div></div>
+    <p class="eyebrow">Philosopher &middot; Author &middot; Former pro skater</p>
+    <h1 class="hero-name"><span class="w"><i>Nick</i></span><span class="w"><i>Riggle</i></span></h1>
+    <div class="hero-row">
+      <p class="hero-line">On <span class="rot" aria-live="off"><b id="rot">beauty</b></span> and why it matters.</p>
+      <div class="hero-side">
+        <p>Professor of Philosophy at the University of San Diego. Author of <em>This Beauty</em>, <em>On Being Awesome</em>, <em>Aesthetic Life and Why It Matters</em>, and the forthcoming <em>Understanding Aesthetic Life</em>.</p>
+        <div class="who" id="who">
+          <span class="who-hint" style="flex-basis:100%">I&rsquo;m here as a</span>
+          <button type="button" class="btn btn--ghost glass" data-mode="student"><span>Student</span><span class="arrow"></span></button>
+          <button type="button" class="btn btn--ghost glass" data-mode="colleague"><span>Colleague</span><span class="arrow"></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="marquee" aria-hidden="true">
+  <div class="marquee-label">Published in</div>
+  <div class="marquee-view"><div class="marquee-track" id="marquee"><span>The Philosophical Review</span><span>Mind</span><span>Philosophy and Phenomenological Research</span><span>Philosophers&rsquo; Imprint</span><span>The Philosophical Quarterly</span><span>British Journal of Aesthetics</span><span>Journal of Aesthetics and Art Criticism</span><span>Analysis</span><span>Ergo</span><span>Oxford University Press</span><span>Basic Books</span><span>Penguin</span><span>The New York Times</span><span>Aeon</span><span>Psyche</span></div></div>
+</div>
+
+<main id="main">
+
+<!-- ===== START HERE (students) ===== -->
+<section class="plate plate--deep" id="start" data-student="1" data-colleague="7">
+  <div class="wrap">
+    <p class="eyebrow rv">Start here</p>
+    <h2 class="rv">Students, this is <em>your</em> page.</h2>
+    <p class="lede rv" style="margin-bottom:48px">Everything you need in class and after it, one tap away.</p>
+    <div class="start-grid">
+      <a class="tile rv" href="mailto:nriggle@sandiego.edu?subject=Office%20hours">
+        <span class="tile-k">Office hours</span>
+        <h3 class="tile-t">Book a conversation</h3>
+        <p class="tile-d">Bring a question, a draft, or a half-formed idea. Email to set a time that works.</p>
+        <span class="tile-a">Email Nick <span class="arrow"></span></span>
+      </a>
+      <a class="tile rv" href="#teaching">
+        <span class="tile-k">Courses</span>
+        <h3 class="tile-t">What we&rsquo;re reading</h3>
+        <p class="tile-d">Aesthetics, ethics, and the philosophy of art at USD. Current courses and expectations.</p>
+        <span class="tile-a">See teaching <span class="arrow"></span></span>
+      </a>
+      <a class="tile rv" href="#books">
+        <span class="tile-k">Where to begin</span>
+        <h3 class="tile-t">Read <em>This Beauty</em> first</h3>
+        <p class="tile-d">The most accessible entry into the ideas behind the seminar. Then the papers.</p>
+        <span class="tile-a">The books <span class="arrow"></span></span>
+      </a>
+      <button type="button" class="tile rv" id="cite-btn-top">
+        <span class="tile-k">Writing a paper?</span>
+        <h3 class="tile-t">Copy a citation</h3>
+        <p class="tile-d">A ready-to-paste reference for the prize-winning Philosophical Review article on aesthetic value.</p>
+        <span class="tile-a">Copy citation <span class="arrow"></span></span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== ABOUT ===== -->
+<section class="plate plate--paper" id="about" data-student="5" data-colleague="1">
+  <div class="wrap split">
+    <div>
+      <div class="sticky">
+        <p class="glance-h rv">At a glance</p>
+        <ul class="glance">
+          <li class="rv"><small>2026&ndash;</small><div><b>Professor of Philosophy</b><span>University of San Diego</span></div></li>
+          <li class="rv"><small>2021&ndash;26</small><div><b>Associate Professor</b><span>University of San Diego</span></div></li>
+          <li class="rv"><small>2015&ndash;21</small><div><b>Assistant Professor</b><span>University of San Diego</span></div></li>
+          <li class="rv"><small>2019</small><div><b>Resident, Centre for Aesthetics</b><span>University of Leeds</span></div></li>
+          <li class="rv"><small>2014&ndash;15</small><div><b>Visiting Assistant Professor</b><span>Lafayette College</span></div></li>
+          <li class="rv"><small>2013&ndash;14</small><div><b>Lecturer</b><span>New York University</span></div></li>
+          <li class="rv"><small>2013</small><div><b>PhD, Philosophy</b><span>New York University</span></div></li>
+          <li class="rv"><small>2006</small><div><b>BA, Philosophy, Highest Honors</b><span>University of California, Berkeley</span></div></li>
+          <li class="rv"><small>1998&ndash;2000</small><div><b>ESPN X Games, three times</b><span>Professional rollerblader</span></div></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <p class="eyebrow rv">About</p>
+      <h2 class="rv">A philosopher of <em>beauty</em> who learned to fall first.</h2>
+      <p class="lede rv-words" style="margin-bottom:36px">Nick Riggle left high school to skate professionally, touring the world in demos, shows, and competitions, including three ESPN X Games. Then he went to Berkeley, then NYU, and came out the other side asking what beauty, style, and awesomeness actually demand of us.</p>
+      <div class="copy rv">
+        <p>He is Professor of Philosophy at the University of San Diego, where his research centers on aesthetic value: what it is, why it matters, and how a life shaped by it might be more free. He works in aesthetics, value theory, philosophy of language, social philosophy, and Kant and post-Kantian philosophy. He received his PhD from New York University in 2013 and his BA, with highest honors, from the University of California, Berkeley.</p>
+        <p>His academic writing appears in <em>The Philosophical Review</em>, <em>Mind</em>, <em>Philosophy and Phenomenological Research</em>, <em>Philosophers&rsquo; Imprint</em>, <em>The Philosophical Quarterly</em>, the <em>British Journal of Aesthetics</em>, and the <em>Journal of Aesthetics and Art Criticism</em>. His essays for general readers appear in <em>The New York Times</em>, Aeon, and Psyche.</p>
+        <p>He founded and directs the Southern California Aesthetics Forum, co-founded the Food Studies Minor at USD, and co-organized the first major academic conference on the philosophy of street art.</p>
+      </div>
+      <ul class="awards">
+        <li class="rv"><b>Arthur Danto Prize</b><small>American Philosophical Association, for &ldquo;Aesthetic Value and the Practice of Aesthetic Valuing&rdquo;</small></li>
+        <li class="rv"><b>The Philosopher&rsquo;s Annual</b><small>Selected among the ten best essays of 2024</small></li>
+        <li class="rv"><b>Experience Project Fellow</b><small>Non-residential fellowship, 2016</small></li>
+        <li class="rv"><b>Mellon Dissertation Fellow</b><small>New York University, 2012&ndash;2013</small></li>
+      </ul>
+      <div class="rv" style="margin-top:36px;display:flex;flex-wrap:wrap;gap:12px">
+        <a class="btn glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Curriculum vitae</span><span class="arrow"></span></a>
+        <a class="btn btn--ghost glass" href="#research"><span>Research</span><span class="arrow"></span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== BOOKS ===== -->
+<section class="plate books" id="books" data-student="2" data-colleague="3">
+  <div class="wrap">
+    <p class="eyebrow rv">Books</p>
+    <h2 class="rv">Four books. <em>One</em> question.</h2>
+    <p class="lede rv" style="margin-bottom:56px">What does it mean to live a life shaped by what you find beautiful?</p>
+  </div>
+  <div class="rail-wrap">
+    <div class="rail" id="rail">
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/understanding-aesthetic-life.webp" alt="Cover of Understanding Aesthetic Life: Essays" loading="lazy"></div>
+          <span class="cover-tag">Forthcoming</span>
+        </div>
+        <div>
+          <h3 class="book-t">Understanding Aesthetic Life: Essays</h3>
+          <p class="book-m">Oxford University Press &middot; November 2026</p>
+          <p class="book-d">The essays behind aesthetic communitarianism, collected. Why valuing beauty is something we do together, and what follows for taste, style, discourse, and freedom.</p>
+          <div class="book-links">
+            <a href="https://global.oup.com/academic/search?q=Understanding+Aesthetic+Life+Riggle" target="_blank" rel="noopener">Oxford</a>
+            <a href="https://bookshop.org/search?keywords=Understanding+Aesthetic+Life+Nick+Riggle" target="_blank" rel="noopener">Bookshop</a>
+          </div>
+        </div>
+      </article>
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/this-beauty.webp" alt="Cover of This Beauty: A Philosophy of Being Alive" loading="lazy"></div>
+        </div>
+        <div>
+          <h3 class="book-t">This Beauty: A Philosophy of Being Alive</h3>
+          <p class="book-m">Basic Books &middot; 2022</p>
+          <p class="book-d">You did not choose to exist. Loving beauty, Riggle argues, is how an unchosen life becomes one worth embracing. The subject of an author-meets-critics session at the 2025 APA Eastern.</p>
+          <div class="book-links">
+            <a href="https://bookshop.org/p/books/this-beauty-a-philosophy-of-being-alive-nick-riggle/78b09fd20e8b13ad" target="_blank" rel="noopener">Bookshop</a>
+            <a href="https://www.barnesandnoble.com/w/this-beauty-nick-riggle/1141319371" target="_blank" rel="noopener">Barnes &amp; Noble</a>
+            <a href="https://www.publishersweekly.com/9781541675506" target="_blank" rel="noopener">Publishers Weekly</a>
+          </div>
+        </div>
+      </article>
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/aesthetic-life.webp" alt="Cover of Aesthetic Life and Why It Matters" loading="lazy"></div>
+        </div>
+        <div>
+          <h3 class="book-t">Aesthetic Life and Why It Matters: Three Views</h3>
+          <p class="book-m">Oxford University Press &middot; 2022 &middot; with Dominic McIver Lopes and Bence Nanay</p>
+          <p class="book-d">Three philosophers, three answers to the same question. Riggle&rsquo;s view: aesthetic life matters because of the community and freedom it makes possible.</p>
+          <div class="book-links">
+            <a href="https://global.oup.com/academic/search?q=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Oxford</a>
+            <a href="https://bookshop.org/search?keywords=Aesthetic+Life+and+Why+It+Matters" target="_blank" rel="noopener">Bookshop</a>
+          </div>
+        </div>
+      </article>
+      <article class="book rv">
+        <div class="cover" data-tilt>
+          <div class="cover-spine"></div>
+          <div class="cover-face"><img src="assets/on-being-awesome.webp" alt="Cover of On Being Awesome: A Unified Theory of How Not to Suck" loading="lazy"></div>
+        </div>
+        <div>
+          <h3 class="book-t">On Being Awesome: A Unified Theory of How Not to Suck</h3>
+          <p class="book-m">Penguin Books &middot; 2017</p>
+          <p class="book-d">A pro-skater-turned-philosopher builds a serious theory of awesomeness and its opposite. High fives, open doors, and the social freedom we create for one another.</p>
+          <div class="book-links">
+            <a href="https://www.penguinrandomhouse.com/authors/2144680/nick-riggle/" target="_blank" rel="noopener">Penguin Random House</a>
+            <a href="https://bookshop.org/search?keywords=On+Being+Awesome+Nick+Riggle" target="_blank" rel="noopener">Bookshop</a>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="rail-bar" aria-hidden="true"><i id="railbar"></i></div>
+    <div class="rail-hint" aria-hidden="true"><span>Drag or scroll</span><span id="railcount">1 / 4</span></div>
+  </div>
+  <div class="wrap">
+    <p class="next rv"><span class="eyebrow" style="margin:0 0 10px">Next</span><em>This is Aesthetics</em>, with C. Thi Nguyen (Wiley-Blackwell, in progress) &middot; <em>Art Beyond the Individual</em> &middot; <em>List Life: Reclaiming Taste in the Era of Content</em></p>
+  </div>
+</section>
+
+<!-- ===== RESEARCH ===== -->
+<section class="plate plate--paper" id="research" data-student="6" data-colleague="2">
+  <div class="wrap">
+    <div class="split" style="margin-bottom:56px">
+      <div>
+        <p class="eyebrow rv">Research</p>
+        <h2 class="rv">Five threads, <em>argued</em> across fifteen years.</h2>
+      </div>
+      <p class="lede rv" style="align-self:end">Open any thread to see the papers behind it. Every paper is available as a talk.</p>
+    </div>
+    <div class="ideas" id="ideas">
+
+      <div class="idea rv">
+        <button type="button" class="idea-h" aria-expanded="true" aria-controls="i1">
+          <span class="idea-n">I</span>
+          <h3 class="idea-t">Aesthetic value is something we do together</h3>
+          <span class="idea-x"></span>
+        </button>
+        <div class="idea-b" id="i1"><div><div class="idea-in">
+          <p class="idea-p">Against the picture of taste as private pleasure, Riggle argues that aesthetic value lives in a practice: valuing beauty is a way of sharing attention, building community, and expressing individuality at once. He calls the view aesthetic communitarianism.</p>
+          <ul class="pubs">
+            <li><b>Aesthetic Value and the Practice of Aesthetic Valuing</b><small>The Philosophical Review 133:2 &middot; 2024 &middot; <i class="star">Arthur Danto Prize &middot; Philosopher&rsquo;s Annual</i></small></li>
+            <li><b>Autonomy and Aesthetic Valuing</b><small>Philosophy and Phenomenological Research 109:1 &middot; 2024</small></li>
+            <li><b>Aesthetic Acquaintance in Practice</b><small>The Philosophical Quarterly &middot; forthcoming</small></li>
+            <li><b>Toward a Communitarian Theory of Aesthetic Value</b><small>Journal of Aesthetics and Art Criticism 80:1 &middot; 2022</small></li>
+            <li><b>Community and Conflict in Aesthetic Life: A Reply to Song</b><small>Journal of Aesthetics and Art Criticism 83:2 &middot; 2025</small></li>
+            <li><b>Convergence, Community, and Force in Aesthetic Discourse</b><small>Ergo 8:47 &middot; 2022</small></li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <div class="idea rv">
+        <button type="button" class="idea-h" aria-expanded="false" aria-controls="i2">
+          <span class="idea-n">II</span>
+          <h3 class="idea-t">Beauty is an invitation to be free</h3>
+          <span class="idea-x"></span>
+        </button>
+        <div class="idea-b" id="i2"><div><div class="idea-in">
+          <p class="idea-p">Reading Schiller with Samantha Matherne, and Kant against the grain, Riggle develops the thought that our interest in beauty is an interest in a distinctive kind of freedom, and that beauty is bound up with love and happiness.</p>
+          <ul class="pubs">
+            <li><b>Schiller on Freedom and Aesthetic Value, Parts I &amp; II</b><small>with Samantha Matherne &middot; British Journal of Aesthetics 60:4 and 61:1 &middot; 2020, 2021 &middot; <i class="star">Oxford&rsquo;s Best of 2020 in Philosophy</i></small></li>
+            <li><b>Connecting Beauty and Love</b><small>in Art and Philosophy: New Essays at the Intersection, ed. Alex King &middot; Oxford University Press &middot; 2025</small></li>
+            <li><b>Beauty and Happiness</b><small>in Reasons and Relevance, ed. Steven Hales &middot; Hackett &middot; forthcoming</small></li>
+            <li><b>On the Interest in Beauty and Disinterest</b><small>Philosophers&rsquo; Imprint 16:9 &middot; 2016</small></li>
+            <li><b>On the Aesthetic Ideal</b><small>British Journal of Aesthetics 55:4 &middot; 2015</small></li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <div class="idea rv">
+        <button type="button" class="idea-h" aria-expanded="false" aria-controls="i3">
+          <span class="idea-n">III</span>
+          <h3 class="idea-t">Style is the expression of ideals</h3>
+          <span class="idea-x"></span>
+        </button>
+        <div class="idea-b" id="i3"><div><div class="idea-in">
+          <p class="idea-p">Having style, personal or artistic, is a matter of expressing the ideals you hold for yourself or your work. The same thought powers the theory of awesomeness, and a view of how we become new people.</p>
+          <ul class="pubs">
+            <li><b>Artistic Style as the Expression of Ideals</b><small>with Robert Hopkins &middot; Philosophers&rsquo; Imprint 21:8 &middot; 2021</small></li>
+            <li><b>Personal Ideals as Metaphors</b><small>Journal of the American Philosophical Association 3:3 &middot; 2018 &middot; <i class="star">Author-meets-critics, Pacific APA 2019</i></small></li>
+            <li><b>Transformative Expression</b><small>in Becoming Someone New, eds. Schwenkler &amp; Lambert &middot; Oxford University Press &middot; 2020</small></li>
+            <li><b>Personal Style and Artistic Style</b><small>The Philosophical Quarterly 65:261 &middot; 2015</small></li>
+            <li><b>Practice, Play, and Style in Alva No&euml;&rsquo;s The Entanglement</b><small>Analysis &middot; forthcoming</small></li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <div class="idea rv">
+        <button type="button" class="idea-h" aria-expanded="false" aria-controls="i4">
+          <span class="idea-n">IV</span>
+          <h3 class="idea-t">Street art belongs to the street</h3>
+          <span class="idea-x"></span>
+        </button>
+        <div class="idea-b" id="i4"><div><div class="idea-in">
+          <p class="idea-p">Street art uses the street as an artistic resource, not just a location. Riggle&rsquo;s 2010 paper set the terms of the philosophical debate. He co-organized the first major conference on the subject in 2015 and returned to it as a keynote in 2025.</p>
+          <ul class="pubs">
+            <li><b>Street Art: The Transfiguration of the Commonplaces</b><small>Journal of Aesthetics and Art Criticism 68:3 &middot; 2010</small></li>
+            <li><b>Using the Street for Art: A Reply to Baldini</b><small>Journal of Aesthetics and Art Criticism 74:2 &middot; 2016</small></li>
+            <li><b>Street Art and Graffiti</b><small>Oxford Encyclopedia of Aesthetics, ed. Michael Kelly &middot; 2014</small></li>
+            <li><b>Street Art as Aesthetic Practice: Community, Conflict, Critique</b><small>Keynote &middot; Painting the Town, Georgia State University &middot; 2025</small></li>
+          </ul>
+        </div></div></div>
+      </div>
+
+      <div class="idea rv">
+        <button type="button" class="idea-h" aria-expanded="false" aria-controls="i5">
+          <span class="idea-n">V</span>
+          <h3 class="idea-t">Hype, rankings, and the culture of the list</h3>
+          <span class="idea-x"></span>
+        </button>
+        <div class="idea-b" id="i5"><div><div class="idea-in">
+          <p class="idea-p">What are we doing when we give a wine 94 points, hype a record, or rank the canon? Recent work on aesthetic discourse, ranking, and snobbery, heading toward a trade book on taste in the era of content.</p>
+          <ul class="pubs">
+            <li><b>Can&rsquo;t Kill the Vibe: Against Hope in Aesthetic Discourse</b><small>Mind 135:1 &middot; 2026</small></li>
+            <li><b>Aesthetic Ranking: Tomatoes, Parker Points, and Pitchforks</b><small>Philosophical Topics 52:1 &middot; 2024</small></li>
+            <li><b>The Canonical Snob</b><small>in progress</small></li>
+            <li><b>The Hype is Real</b><small>talk &middot; ASA Annual Meeting, November 2026</small></li>
+          </ul>
+        </div></div></div>
+      </div>
+
+    </div>
+
+    <div class="wip">
+      <p class="eyebrow rv">In progress</p>
+      <ul>
+        <li class="rv"><b>Aesthetic Value as the Highest Good: The Very Idea(s)</b><span>with Clinton Tolley</span></li>
+        <li class="rv"><b>Aesthetic Attention: No Such Thing (Sort Of)</b><span>paper</span></li>
+        <li class="rv"><b>The Eras Tour Through Life</b><span>paper</span></li>
+        <li class="rv"><b>Art Beyond the Individual</b><span>book</span></li>
+        <li class="rv"><b>List Life: Reclaiming Taste in the Era of Content</b><span>trade book</span></li>
+      </ul>
+    </div>
+
+    <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
+      <a class="btn glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>Full CV</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener"><span>PhilPeople</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://scholar.google.com/citations?user=IKYxdxIAAAAJ&amp;hl=en" target="_blank" rel="noopener"><span>Google Scholar</span><span class="arrow"></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SKATE ===== -->
+<section class="plate skate" id="skate" data-student="4" data-colleague="5">
+  <div class="wrap">
+    <p class="eyebrow rv">Before the seminar room</p>
+    <h2 class="skate-big rv-lines"><span class="ln"><span>Dropped out to skate.</span></span><span class="ln"><span>Three X Games.</span></span><span class="ln"><span>Then <em>Berkeley</em>, then <em>NYU</em>.</span></span></h2>
+    <div class="stats">
+      <div class="stat rv"><div class="stat-n" data-count="3">0</div><div class="stat-l">ESPN X Games, 1998&ndash;2000</div></div>
+      <div class="stat rv"><div class="stat-n" data-count="4">0</div><div class="stat-l">Books</div></div>
+      <div class="stat rv"><div class="stat-n" data-count="20">0<sup>+</sup></div><div class="stat-l">Articles and chapters</div></div>
+    </div>
+  </div>
+  <div class="skate-track" aria-hidden="true">
+    <svg viewBox="0 0 1440 220" preserveAspectRatio="none"><path pathLength="1" d="M-20 200 C 200 200, 260 40, 480 40 S 760 200, 960 200 S 1240 40, 1460 60"/></svg>
+  </div>
+</section>
+
+<!-- ===== TALKS ===== -->
+<section class="plate plate--paper" id="talks" data-student="7" data-colleague="4">
+  <div class="wrap">
+    <div class="split" style="margin-bottom:48px">
+      <div>
+        <p class="eyebrow rv">Talks &amp; events</p>
+        <h2 class="rv">Upcoming and <em>recent</em>.</h2>
+      </div>
+      <p class="lede rv" style="align-self:end">Colloquia, keynotes, and public conversations about beauty, style, and living well. From San Diego to Beijing.</p>
+    </div>
+
+    <p class="tl-k chip tl-group rv">Upcoming</p>
+    <ol class="tl">
+      <li class="rv"><span class="tl-d">Sep 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Rutgers University</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Duke Kunshan University</h3><span class="tl-w">Kunshan, China</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Oct 2026</span><div><h3 class="tl-t">Peking University</h3><span class="tl-w">Beijing, China</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC San Diego</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Nov 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">American Society for Aesthetics Annual Meeting &middot; Salt Lake City</span></div><span class="tl-k chip">Refereed</span></li>
+      <li class="rv"><span class="tl-d">Feb 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">MIT</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Mar 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">Harvard University</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Apr 2027</span><div><h3 class="tl-t">Comments on Kenneth Walden&rsquo;s <em>The Imperative of Genius</em></h3><span class="tl-w">ASA Eastern Division Meeting &middot; Philadelphia</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">May 2027</span><div><h3 class="tl-t">Philosophy Department Colloquium</h3><span class="tl-w">UC Riverside</span></div><span class="tl-k chip">Invited</span></li>
+    </ol>
+
+    <p class="tl-k chip tl-group rv" style="margin-top:48px">Recent</p>
+    <ol class="tl">
+      <li class="rv"><span class="tl-d">May 2026</span><div><h3 class="tl-t">Aesthetic Attention: No Such Thing (Sort Of)</h3><span class="tl-w">Workshop on Imagination, Beauty, and Attention &middot; Canterbury, England</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Feb 2026</span><div><h3 class="tl-t">The Hype is Real</h3><span class="tl-w">Oberlin College Philosophy Colloquium</span></div><span class="tl-k chip">Invited</span></li>
+      <li class="rv"><span class="tl-d">Jan 2026</span><div><h3 class="tl-t">Response to Robbie Kubala and Kenneth Walden</h3><span class="tl-w">Danto Prize author-meets-critics session &middot; APA Eastern, Baltimore</span></div><span class="tl-k chip">Prize session</span></li>
+      <li class="rv"><span class="tl-d">Oct 2025</span><div><h3 class="tl-t">Street Art as Aesthetic Practice: Community, Conflict, Critique</h3><span class="tl-w">Keynote &middot; Painting the Town &middot; Georgia State University, Atlanta</span></div><span class="tl-k chip">Keynote</span></li>
+      <li class="rv"><span class="tl-d">Jan 2025</span><div><h3 class="tl-t">Author-meets-critics for <em>This Beauty</em></h3><span class="tl-w">with James Ryerson and Jonathan Fine &middot; APA Eastern, New York City</span></div><span class="tl-k chip">Book session</span></li>
+    </ol>
+
+    <div class="rv" style="margin-top:48px;display:flex;flex-wrap:wrap;gap:12px">
+      <a class="btn glass" href="mailto:nriggle@sandiego.edu?subject=Speaking%20invitation"><span>Invite Nick to speak</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="https://www.brightsightspeakers.com/speakers-a-z/nick-riggle" target="_blank" rel="noopener"><span>Speaker bureau</span><span class="arrow"></span></a>
+      <a class="btn btn--ghost glass" href="assets/Nick-Riggle-CV-August-2026.pdf" target="_blank" rel="noopener" data-cv><span>All talks, on the CV</span><span class="arrow"></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TEACHING ===== -->
+<section class="plate plate--deep" id="teaching" data-student="3" data-colleague="6">
+  <div class="wrap">
+    <p class="eyebrow rv">Teaching</p>
+    <h2 class="rv">Philosophy, taught like it <em>matters</em>.</h2>
+    <div class="teach-grid" style="margin-top:40px">
+      <div class="copy rv">
+        <p>At the University of San Diego, Nick teaches courses in aesthetics, ethics, and the philosophy of art. The seminar room works the way a skate session does: everyone is trying something hard, in public, and getting better because of who is watching.</p>
+        <p>Expect close reading, real argument, and writing that gets rewritten. Expect, too, to leave with a sharper sense of what you find beautiful and why that is not a small thing.</p>
+        <p>He also directs and co-founded the USD Food Studies Minor, an interdisciplinary program on how we grow, cook, share, and judge what we eat.</p>
+        <p class="cite" id="cite">Riggle, N. (2024). <i>Aesthetic Value and the Practice of Aesthetic Valuing.</i> The Philosophical Review, 133(2), 113&ndash;149.</p>
+      </div>
+      <div style="display:grid;gap:16px;align-content:start">
+        <div class="card rv">
+          <h3>Office hours</h3>
+          <p>Drop-in times are posted in each course syllabus. Outside of them, email to arrange a meeting, in person or online.</p>
+          <a class="btn glass" href="mailto:nriggle@sandiego.edu?subject=Office%20hours"><span>Email to book</span><span class="arrow"></span></a>
+        </div>
+        <div class="card rv">
+          <h3>Graduate students</h3>
+          <p>USD has no graduate program in philosophy, but Nick serves on dissertation committees elsewhere, most recently at UC San Diego, UC Santa Cruz, CU Boulder, and UC Davis. If your project is in aesthetics or value theory, reach out.</p>
+          <a class="btn btn--ghost glass" href="mailto:nriggle@sandiego.edu?subject=Dissertation%20committee"><span>Get in touch</span><span class="arrow"></span></a>
+        </div>
+        <div class="card rv">
+          <h3>For your bibliography</h3>
+          <p>Copy a formatted citation for the Philosophical Review article, or find the rest on PhilPeople.</p>
+          <button type="button" class="btn btn--ghost glass" id="cite-btn"><span>Copy citation</span><span class="arrow"></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PRESS ===== -->
+<section class="plate" id="press" data-student="8" data-colleague="8">
+  <div class="wrap">
+    <p class="eyebrow rv">Public writing &amp; media</p>
+    <h2 class="rv">Ideas that <em>leave</em> the journal.</h2>
+    <div class="press" style="margin-top:40px">
+      <a class="rv" href="https://www.nytimes.com/search?query=Nick+Riggle+Matisse" target="_blank" rel="noopener">
+        <span class="press-o">The New York Times &middot; 2022</span>
+        <span class="press-t">How Matisse and I Got a Beautiful Body</span>
+        <span class="press-d">An essay on beauty, the body, and paying attention.</span>
+      </a>
+      <a class="rv" href="https://psyche.co/authors/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">Psyche &middot; 2022</span>
+        <span class="press-t">Beauty Is Not an Ornament to the Good Life</span>
+        <span class="press-d">Why aesthetic life is central, not decorative.</span>
+      </a>
+      <a class="rv" href="https://aeon.co/users/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">Aeon &middot; 2016</span>
+        <span class="press-t">High Five! Awesomeness as the Imperative of Our Time</span>
+        <span class="press-d">The essay that became <em>On Being Awesome</em>.</span>
+      </a>
+      <a class="rv" href="https://sandiegomagazine.com/features/its-a-beautiful-life/" target="_blank" rel="noopener">
+        <span class="press-o">San Diego Magazine</span>
+        <span class="press-t">It&rsquo;s a Beautiful Life</span>
+        <span class="press-d">A profile of the skater who became a philosopher of beauty.</span>
+      </a>
+      <a class="rv" href="https://www.scientificamerican.com/search/?q=Nick+Riggle+awesome" target="_blank" rel="noopener">
+        <span class="press-o">Scientific American &middot; 2017</span>
+        <span class="press-t">How to Be Awesome</span>
+        <span class="press-d">An interview on the theory of awesomeness and suckiness.</span>
+      </a>
+      <a class="rv" href="https://www.philosophytalk.org/search?keys=awesomeness" target="_blank" rel="noopener">
+        <span class="press-o">Philosophy Talk &middot; 2021</span>
+        <span class="press-t">The Ethics of Awesomeness</span>
+        <span class="press-d">On the radio with the Philosophy Talk hosts.</span>
+      </a>
+      <a class="rv" href="https://hiphination.org/" target="_blank" rel="noopener">
+        <span class="press-o">Hi-Phi Nation (Slate)</span>
+        <span class="press-t">YOLO Apologetics &middot; Freedom and Hostile Design</span>
+        <span class="press-d">Contributor to two episodes of the philosophy documentary podcast.</span>
+      </a>
+      <a class="rv" href="https://www.hereinjournal.org/nick-riggle" target="_blank" rel="noopener">
+        <span class="press-o">HereIn Journal &middot; 2021</span>
+        <span class="press-t">The Shaping of a Place</span>
+        <span class="press-d">On the painter Eva Struble.</span>
+      </a>
+      <a class="rv" href="https://podcasts.apple.com/au/podcast/riggles-picks/id1716838324" target="_blank" rel="noopener">
+        <span class="press-o">Podcast</span>
+        <span class="press-t">Riggle&rsquo;s Picks</span>
+        <span class="press-d">Conversations about what is worth your attention. Also on YouTube.</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CONTACT ===== -->
+<section class="plate plate--paper contact" id="contact" data-student="9" data-colleague="9">
+  <div class="wrap">
+    <p class="eyebrow rv">Contact</p>
+    <h2 class="rv">Say <em>hello</em>.</h2>
+    <a class="mail rv" href="mailto:nriggle@sandiego.edu">nriggle@sandiego.edu</a>
+    <address class="addr rv">Department of Philosophy &middot; University of San Diego<br>5998 Alcal&aacute; Park, San Diego, CA 92110 &middot; <a href="tel:+16192606873">(619) 260-6873</a></address>
+    <div class="links">
+      <a class="rv" href="https://www.sandiego.edu/directory/biography.php?profile_id=828" target="_blank" rel="noopener">USD Directory</a>
+      <a class="rv" href="https://philpeople.org/profiles/nick-riggle" target="_blank" rel="noopener">PhilPeople</a>
+      <a class="rv" href="https://scholar.google.com/citations?user=IKYxdxIAAAAJ&amp;hl=en" target="_blank" rel="noopener">Google Scholar</a>
+      <a class="rv" href="https://www.penguinrandomhouse.com/authors/2144680/nick-riggle/" target="_blank" rel="noopener">Penguin Random House</a>
+      <a class="rv" href="https://www.youtube.com/playlist?list=PL3UjflPaaFAA_2yxkfoavSyj9QCjDkUJ3" target="_blank" rel="noopener">YouTube</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <span>&copy; <span id="yr">2026</span> Nick Riggle &middot; Department of Philosophy, University of San Diego</span>
+  <button type="button" id="totop">Back to top &uarr;</button>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite">Citation copied</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
+<script>
+(function(){
+  var root=document.documentElement;
+  root.classList.add('js');
+  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fine=window.matchMedia('(pointer: fine)').matches;
+  var $=function(s,c){return (c||document).querySelector(s)};
+  var $$=function(s,c){return Array.prototype.slice.call((c||document).querySelectorAll(s))};
+  var store={get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},set:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  var sess={get:function(k){try{return sessionStorage.getItem(k)}catch(e){return null}},set:function(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}};
+  var G=!!(window.gsap&&window.ScrollTrigger)&&!reduce;
+  if(G){gsap.registerPlugin(ScrollTrigger);root.classList.add('gs')}
+
+  /* ---- smooth scroll (desktop, pointer devices) ---- */
+  var lenis=null;
+  if(window.Lenis&&!reduce&&fine){
+    try{
+      lenis=new Lenis({lerp:.085,wheelMultiplier:.95,smoothWheel:true});
+      root.classList.add('lenis');
+      if(G){lenis.on('scroll',ScrollTrigger.update);gsap.ticker.add(function(t){lenis.raf(t*1000)});gsap.ticker.lagSmoothing(0)}
+      else{(function raf(t){lenis.raf(t);requestAnimationFrame(raf)})(0)}
+    }catch(e){lenis=null}
+  }
+  function scrollTo(target){
+    if(lenis)lenis.scrollTo(target,{duration:1.5,easing:function(t){return 1-Math.pow(1-t,4)}});
+    else target.scrollIntoView({behavior:reduce?'auto':'smooth'});
+  }
+  $$('a[href^="#"]').forEach(function(a){a.addEventListener('click',function(e){
+    var id=a.getAttribute('href');if(id.length<2)return;var t=$(id);if(!t)return;
+    e.preventDefault();scrollTo(t);try{history.replaceState(null,'',id)}catch(err){}
+  })});
+  $('#totop').addEventListener('click',function(){if(lenis)lenis.scrollTo(0,{duration:1.4});else window.scrollTo({top:0,behavior:reduce?'auto':'smooth'})});
+
+  /* ---- curtain + hero entrance ---- */
+  var curtain=$('#curtain');
+  var seen=sess.get('nr-seen');
+  var introDelay=0;
+  if(reduce||seen){curtain.remove();root.classList.add('no-curtain')}
+  else{introDelay=1.1;setTimeout(function(){curtain.classList.add('up');sess.set('nr-seen','1')},1350)}
+  if(G){
+    var tl=gsap.timeline({delay:introDelay,defaults:{ease:'expo.out'}});
+    tl.from('.hero-name .w i',{yPercent:110,duration:1.4,stagger:.12},0)
+      .fromTo('.hero-portrait',{clipPath:'inset(0 0 100% 0)',opacity:0},{clipPath:'inset(0 0 0% 0)',opacity:1,duration:1.5},.05)
+      .from('.hero .eyebrow',{opacity:0,y:14,duration:.9},.35)
+      .from('.hero-line',{opacity:0,y:28,duration:1.1},.6)
+      .from('.hero-side > *',{opacity:0,y:22,duration:1,stagger:.1},.75)
+      .from('.nav',{opacity:0,y:-8,duration:.9},.5)
+      .from('.marquee',{opacity:0,duration:1.2},1);
+    setTimeout(function(){var e=$('.hero .eyebrow');if(e)e.classList.add('in')},introDelay*1000+400);
+  }else{$('.hero .eyebrow').classList.add('in')}
+
+  /* ---- mode (student / colleague) ---- */
+  var main=$('#main');
+  var sections=$$('#main > section');
+  function applyMode(mode,save){
+    sections.forEach(function(s){s.style.order=s.getAttribute('data-'+mode)||0});
+    $$('[data-mode]').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-mode')===mode))});
+    root.setAttribute('data-mode',mode);
+    if(save)store.set('nr-mode',mode);
+    if(typeof placeBlob==='function')placeBlob();
+    if(G)ScrollTrigger.refresh();
+  }
+  var saved=store.get('nr-mode');
+  var guess=(window.matchMedia('(pointer: coarse)').matches||window.innerWidth<820)?'student':'colleague';
+  applyMode(saved||guess,false);
+  $$('[data-mode]').forEach(function(b){b.addEventListener('click',function(){
+    var m=b.getAttribute('data-mode');applyMode(m,true);
+    if(b.closest('#who')){var el=$(m==='student'?'#start':'#about');if(el)setTimeout(function(){scrollTo(el)},60)}
+  })});
+
+  /* ---- reveals ---- */
+  var revealSel='.rv,.rv-lines,.rv-words,.skate';
+  if(G){
+    ScrollTrigger.batch(revealSel,{start:'top 92%',once:true,batchMax:12,onEnter:function(batch){
+      batch.forEach(function(el,i){setTimeout(function(){el.classList.add('in')},i*70)});
+    }});
+    /* headings: word-level rise */
+    function splitWords(el){
+      var frag=document.createDocumentFragment();
+      Array.prototype.slice.call(el.childNodes).forEach(function(n){
+        if(n.nodeType===3){n.nodeValue.split(/(\s+)/).forEach(function(t){if(!t)return;if(/^\s+$/.test(t)){frag.appendChild(document.createTextNode(' '))}else{var s=document.createElement('span');s.className='wd2';s.textContent=t;frag.appendChild(s)}})}
+        else if(n.nodeType===1){splitWords(n);frag.appendChild(n)}
+        else frag.appendChild(n);
+      });
+      el.innerHTML='';el.appendChild(frag);
+    }
+    $$('h2.rv').forEach(function(h){
+      h.classList.remove('rv');splitWords(h);
+      gsap.from(h.querySelectorAll('.wd2'),{yPercent:70,opacity:0,rotate:2.5,transformOrigin:'0% 100%',duration:1.3,ease:'expo.out',stagger:.055,scrollTrigger:{trigger:h,start:'top 88%',once:true}});
+    });
+  }else{
+    var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px',threshold:.08});
+    $$(revealSel).forEach(function(el){io.observe(el)});
+  }
+
+  /* word-by-word paragraph */
+  $$('.rv-words').forEach(function(p){
+    var html=p.innerHTML;
+    p.innerHTML=html.split(/(\s+)/).map(function(t){return /^\s+$/.test(t)?t:'<span class="wd">'+t+'</span>'}).join('');
+    var words=$$('.wd',p);
+    function upd(){
+      var r=p.getBoundingClientRect(),vh=window.innerHeight;
+      var prog=Math.min(1,Math.max(0,(vh*0.85-r.top)/(r.height+vh*0.25)));
+      var n=Math.floor(prog*words.length);
+      words.forEach(function(w,i){w.classList.toggle('on',i<n)});
+    }
+    window.addEventListener('scroll',upd,{passive:true});upd();
+  });
+
+  /* ---- rotating word ---- */
+  var words=['beauty','awesomeness','style','freedom','community'];
+  var rot=$('#rot'),ri=0;
+  if(!reduce){setInterval(function(){
+    rot.classList.add('out');
+    setTimeout(function(){ri=(ri+1)%words.length;rot.textContent=words[ri];rot.classList.remove('out');rot.classList.add('pre');
+      requestAnimationFrame(function(){requestAnimationFrame(function(){rot.classList.remove('pre')})})},520);
+  },2800)}
+
+  /* ---- marquee ---- */
+  var mq=$('#marquee');mq.innerHTML+=mq.innerHTML;
+
+  /* ---- liquid glass: specular tracking, nav tint, segmented blob ---- */
+  if(fine){
+    $$('.glass,.eyebrow,.tile,.card').forEach(function(g){
+      g.addEventListener('pointermove',function(e){var r=g.getBoundingClientRect();g.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');g.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%')});
+      g.addEventListener('pointerleave',function(){g.style.removeProperty('--mx');g.style.removeProperty('--my')});
+    });
+  }
+  var navEl=$('#nav'),navBar=$('#navbar'),blob=$('#modeblob');
+  function placeBlob(){var b=$('.mode button[aria-pressed="true"]');if(!b||!blob)return;var m=b.parentNode.getBoundingClientRect(),r=b.getBoundingClientRect();blob.style.width=r.width+'px';blob.style.transform='translateX('+(r.left-m.left-3)+'px)'}
+  function navTint(){
+    var n=navEl.getBoundingClientRect(),bh=navBar.offsetHeight;var els=document.elementsFromPoint?document.elementsFromPoint(Math.min(window.innerWidth-1,n.left+n.width*.5),Math.min(window.innerHeight-1,n.top+bh+3)):[];var el=null;for(var i=0;i<els.length;i++){if(!navEl.contains(els[i])){el=els[i];break}}
+    var light=!!(el&&el.closest&&el.closest('.plate--paper'));navEl.classList.toggle('light',light);
+  }
+  window.addEventListener('resize',placeBlob);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(placeBlob);setTimeout(placeBlob,50);setTimeout(placeBlob,900);
+
+  /* ---- nav + progress ---- */
+  var nav=$('#nav'),lastY=0,prog=$('#prog'),tintQueued=false;
+  var navlinks=$$('#navlinks a');
+  window.addEventListener('scroll',function(){
+    var y=window.scrollY;
+    var wasHidden=nav.classList.contains('hide');nav.classList.toggle('hide',y>lastY+4&&y>200);nav.classList.toggle('tight',y>80);lastY=y;
+    if(wasHidden&&!nav.classList.contains('hide')){setTimeout(navTint,80);setTimeout(navTint,700)}
+    if(!tintQueued){tintQueued=true;requestAnimationFrame(function(){tintQueued=false;navTint()})}
+    var h=document.documentElement.scrollHeight-window.innerHeight;
+    prog.style.transform='scaleX('+(h>0?y/h:0)+')';
+  },{passive:true});
+  var secIO=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){var id='#'+e.target.id;navlinks.forEach(function(a){a.setAttribute('aria-current',String(a.getAttribute('href')===id))})}})},{rootMargin:'-40% 0px -55% 0px'});
+  sections.forEach(function(s){secIO.observe(s)});
+  $('#yr').textContent=new Date().getFullYear();
+  setTimeout(navTint,100);
+
+  /* ---- ideas accordion ---- */
+  $$('.idea-b .pubs li').forEach(function(li,i){li.style.setProperty('--i',String(i%8))});
+  $$('.idea-h').forEach(function(h){h.addEventListener('click',function(){
+    var open=h.getAttribute('aria-expanded')==='true';
+    $$('.idea-h').forEach(function(o){o.setAttribute('aria-expanded','false')});
+    h.setAttribute('aria-expanded',String(!open));
+    setTimeout(function(){if(G)ScrollTrigger.refresh()},750);
+  })});
+
+  /* ---- citation copy ---- */
+  var toast=$('#toast'),tt;
+  function copyCite(){
+    var text=$('#cite').textContent.replace(/\s+/g,' ').trim();
+    function done(){toast.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('on')},2200)}
+    function fallback(){var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}document.body.removeChild(ta);done()}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback)}else fallback();
+  }
+  $('#cite-btn').addEventListener('click',copyCite);
+  $('#cite-btn-top').addEventListener('click',copyCite);
+
+  /* ---- book rail: progress, drag, tilt, sheen, active scale ---- */
+  var rail=$('#rail'),bar=$('#railbar'),count=$('#railcount'),books=$$('.book',rail);
+  function railUpd(){
+    var max=rail.scrollWidth-rail.clientWidth;var p=max>0?rail.scrollLeft/max:0;
+    bar.style.width=(100/books.length)+'%';bar.style.transform='translateX('+(p*(books.length-1)*100)+'%)';
+    count.textContent=(Math.round(p*(books.length-1))+1)+' / '+books.length;
+    if(!fine){var cx=rail.getBoundingClientRect().left+rail.clientWidth*.42;
+      books.forEach(function(b){var r=b.getBoundingClientRect();var d=Math.min(1,Math.abs((r.left+r.width*.4)-cx)/(rail.clientWidth*.9));var c=b.querySelector('.cover');c.style.transform='scale('+(1-d*.07)+')';c.style.opacity=String(1-d*.35)})}
+  }
+  rail.addEventListener('scroll',railUpd,{passive:true});railUpd();window.addEventListener('resize',railUpd);
+  if(fine){
+    var down=false,sx=0,sl=0,moved=false;
+    rail.addEventListener('pointerdown',function(e){down=true;moved=false;sx=e.clientX;sl=rail.scrollLeft;rail.style.cursor='grabbing'});
+    window.addEventListener('pointerup',function(){down=false;rail.style.cursor=''});
+    rail.addEventListener('pointermove',function(e){if(!down)return;if(Math.abs(e.clientX-sx)>4)moved=true;rail.scrollLeft=sl-(e.clientX-sx)});
+    rail.addEventListener('click',function(e){if(moved){e.preventDefault();e.stopPropagation()}},true);
+    rail.addEventListener('wheel',function(e){if(window.innerWidth>=1024)return;if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&rail.scrollWidth>rail.clientWidth){var max=rail.scrollWidth-rail.clientWidth;var atEnd=(e.deltaY>0&&rail.scrollLeft>=max-1)||(e.deltaY<0&&rail.scrollLeft<=1);if(!atEnd){e.preventDefault();rail.scrollLeft+=e.deltaY}}},{passive:false});
+    $$('[data-tilt]').forEach(function(c){
+      var face=c.querySelector('.cover-face');
+      var rx=G?gsap.quickTo(c,'rotationX',{duration:.6,ease:'power3'}):null,ry=G?gsap.quickTo(c,'rotationY',{duration:.6,ease:'power3'}):null;
+      if(G)gsap.set(c,{transformPerspective:900});
+      c.addEventListener('pointermove',function(e){var r=c.getBoundingClientRect();var x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+        face.style.setProperty('--mx',(x*100)+'%');face.style.setProperty('--my',(y*100)+'%');
+        if(G){ry((x-.5)*22);rx(-(y-.5)*16)}else{c.style.transform='perspective(900px) rotateY('+((x-.5)*22)+'deg) rotateX('+(-(y-.5)*16)+'deg)'}});
+      c.addEventListener('pointerleave',function(){if(G){ry(0);rx(0)}else{c.style.transform=''}});
+    });
+  }
+
+  /* ---- counters ---- */
+  var cIO=new IntersectionObserver(function(es){es.forEach(function(e){if(!e.isIntersecting)return;cIO.unobserve(e.target);
+    var el=e.target,end=+el.getAttribute('data-count'),t0=null;
+    if(reduce){el.firstChild.nodeValue=end;return}
+    function step(ts){if(!t0)t0=ts;var p=Math.min(1,(ts-t0)/1600);var v=Math.round(end*(1-Math.pow(1-p,4)));el.firstChild.nodeValue=v;if(p<1)requestAnimationFrame(step)}
+    requestAnimationFrame(step);
+  })},{threshold:.6});
+  $$('[data-count]').forEach(function(el){cIO.observe(el)});
+
+  /* ---- cursor: dot + lagging ring ---- */
+  var cur=$('#cursor'),ring=$('#ring');
+  if(fine&&!reduce){
+    var cx=0,cy=0,tx=0,ty=0,rx2=0,ry2=0,on=false;
+    window.addEventListener('pointermove',function(e){tx=e.clientX;ty=e.clientY;if(!on){on=true;cur.classList.add('on');ring.classList.add('on');cx=rx2=tx;cy=ry2=ty}});
+    document.addEventListener('mouseleave',function(){cur.classList.remove('on');ring.classList.remove('on');on=false});
+    (function loop(){cx+=(tx-cx)*.35;cy+=(ty-cy)*.35;rx2+=(tx-rx2)*.14;ry2+=(ty-ry2)*.14;
+      cur.style.left=cx+'px';cur.style.top=cy+'px';ring.style.left=rx2+'px';ring.style.top=ry2+'px';requestAnimationFrame(loop)})();
+    $$('a,button,[data-tilt]').forEach(function(el){el.addEventListener('pointerenter',function(){cur.classList.add('big');ring.classList.add('big')});el.addEventListener('pointerleave',function(){cur.classList.remove('big');ring.classList.remove('big')})});
+    document.addEventListener('pointerdown',function(){ring.classList.add('down')});document.addEventListener('pointerup',function(){ring.classList.remove('down')});
+  }
+
+  /* ---- magnetic buttons ---- */
+  if(fine&&G){
+    $$('.btn').forEach(function(b){
+      var xTo=gsap.quickTo(b,'x',{duration:.6,ease:'power3'}),yTo=gsap.quickTo(b,'y',{duration:.6,ease:'power3'});
+      b.addEventListener('pointermove',function(e){var r=b.getBoundingClientRect();xTo((e.clientX-(r.left+r.width/2))*.28);yTo((e.clientY-(r.top+r.height/2))*.35)});
+      b.addEventListener('pointerenter',function(){gsap.to(b,{scale:1.045,duration:.6,ease:'elastic.out(1,.55)'})});
+      b.addEventListener('pointerleave',function(){xTo(0);yTo(0);gsap.to(b,{scale:1,duration:.5,ease:'power3.out'})});
+      b.addEventListener('pointerdown',function(){gsap.to(b,{scale:.96,duration:.15,ease:'power2.out'})});
+      b.addEventListener('pointerup',function(){gsap.to(b,{scale:1.045,duration:.6,ease:'elastic.out(1,.55)'})});
+    });
+  }
+
+  /* ---- hero canvas: drifting arcs ---- */
+  var cv=$('#arcs'),ctx=cv.getContext('2d'),W=0,H=0,dpr=fine?Math.min(2,window.devicePixelRatio||1):1,mx=.5,my=.5,mxs=.5,mys=.5,running=true;
+  function size(){var r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+  size();window.addEventListener('resize',size);
+  var arcs=[];for(var i=0;i<9;i++){arcs.push({y:.15+i*.09,amp:40+Math.random()*90,ph:Math.random()*6.28,sp:.00012+Math.random()*.0002,w:.6+Math.random()*.7,a:.10+Math.random()*.16})}
+  if(fine)window.addEventListener('pointermove',function(e){mx=e.clientX/window.innerWidth;my=e.clientY/window.innerHeight});
+  function draw(t){
+    ctx.clearRect(0,0,W,H);
+    mxs+=(mx-mxs)*.03;mys+=(my-mys)*.03;
+    var px=(mxs-.5)*40,py=(mys-.5)*30,stepX=fine?16:24;
+    arcs.forEach(function(a,i){
+      ctx.beginPath();ctx.lineWidth=a.w;ctx.strokeStyle='rgba(184,151,90,'+a.a+')';
+      var base=H*a.y+py*(i%3-1);
+      for(var x=-20;x<=W+20;x+=stepX){
+        var k=x/W;
+        var y=base+Math.sin(k*3.2+a.ph+t*a.sp)*a.amp*Math.sin(k*3.14159)+Math.cos(k*7+t*a.sp*1.7)*10+px*(i%2?1:-1)*k;
+        if(x===-20)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    });
+  }
+  if(reduce){draw(0)}else{
+    var heroIO=new IntersectionObserver(function(es){running=es[0].isIntersecting},{threshold:0});heroIO.observe(cv);
+    (function frame(t){if(running)draw(t);requestAnimationFrame(frame)})(0);
+  }
+
+  /* ---- scroll-linked motion (GSAP) ---- */
+  if(G){
+    gsap.to('.hero-glow',{yPercent:-30,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+    $$('.plate--paper').forEach(function(p){
+      var h=p.querySelector('h2');if(!h)return;
+      gsap.fromTo(h,{xPercent:-1.5},{xPercent:1.5,ease:'none',scrollTrigger:{trigger:p,start:'top bottom',end:'bottom top',scrub:true}});
+    });
+    gsap.to('.skate-track',{yPercent:-18,ease:'none',scrollTrigger:{trigger:'#skate',start:'top bottom',end:'bottom top',scrub:true}});
+    $$('.stat-n').forEach(function(n,i){gsap.fromTo(n,{y:30*(i+1)},{y:-20*(i+1),ease:'none',scrollTrigger:{trigger:'#skate',start:'top bottom',end:'bottom top',scrub:true}})});
+    ScrollTrigger.matchMedia({
+      '(min-width: 900px)':function(){
+        gsap.to('.hero-name',{yPercent:8,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+        gsap.to('.hero-portrait',{yPercent:10,ease:'none',scrollTrigger:{trigger:'#top',start:'top top',end:'bottom top',scrub:true}});
+        gsap.to('.sticky .glance',{y:-40,ease:'none',scrollTrigger:{trigger:'#about',start:'top bottom',end:'bottom top',scrub:true}});
+      },
+      '(min-width: 1024px)':function(){
+        var total=function(){return rail.scrollWidth-rail.clientWidth};
+        var rw=$('.rail-wrap');if(total()<=0||(rw.offsetTop+rw.offsetHeight)>window.innerHeight-48)return;
+        var pinEnd=function(){return '+='+(total()+200)};
+        gsap.to(rail,{scrollLeft:total,ease:'none',scrollTrigger:{trigger:'#books',start:'top top',end:pinEnd,pin:true,scrub:.8,invalidateOnRefresh:true,anticipatePin:1}});
+        $$('.book .cover').forEach(function(c,i){gsap.fromTo(c,{y:24+i*8},{y:-24-i*8,ease:'none',scrollTrigger:{trigger:'#books',start:'top top',end:pinEnd,scrub:1}})});
+      }
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
