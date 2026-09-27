@@ -71,6 +71,25 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       at      INTEGER NOT NULL,
       PRIMARY KEY (kind, value)
     );
+    -- Accounts: email sign-in with one-time codes; sessions by cookie.
+    CREATE TABLE IF NOT EXISTS users (
+      id          TEXT PRIMARY KEY,
+      email       TEXT NOT NULL UNIQUE,
+      doc         TEXT NOT NULL DEFAULT '{}',
+      created_at  INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS login_codes (
+      email       TEXT PRIMARY KEY,
+      code_hash   TEXT NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      attempts    INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+      hash        TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      expires_at  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS carts_user ON carts (json_extract(doc, '$.user_id'), created_at);
     -- Numbers that replied STOP to a Spot text.
     CREATE TABLE IF NOT EXISTS sms_optouts (
       phone  TEXT PRIMARY KEY,
@@ -85,6 +104,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       revoked     INTEGER NOT NULL DEFAULT 0
     );
   `);
+  // api_keys gained an owner when accounts arrived.
+  if (!db.prepare('PRAGMA table_info(api_keys)').all().some((c) => c.name === 'user_id')) db.exec('ALTER TABLE api_keys ADD COLUMN user_id TEXT');
 
   const q = {
     insert: db.prepare(`INSERT INTO carts (id, token, manage_hash, status, settle, doc, created_at, expires_at, updated_at)
@@ -120,8 +141,25 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     keys: db.prepare('SELECT name, email, created_at, revoked FROM api_keys ORDER BY created_at DESC'),
     revokeKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ?'),
     addKey: db.prepare('INSERT INTO api_keys (hash, name, email, created_at) VALUES (?, ?, ?, ?)'),
-    keyByHash: db.prepare('SELECT name, email, revoked FROM api_keys WHERE hash = ?'),
+    keyByHash: db.prepare('SELECT name, email, revoked, user_id FROM api_keys WHERE hash = ?'),
+    keysByUser: db.prepare('SELECT name, created_at, revoked FROM api_keys WHERE user_id = ? ORDER BY created_at DESC'),
+    revokeUserKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ? AND user_id = ?'),
+    userByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
+    userById: db.prepare('SELECT * FROM users WHERE id = ?'),
+    userInsert: db.prepare('INSERT INTO users (id, email, doc, created_at) VALUES (?, ?, ?, ?)'),
+    userSave: db.prepare('UPDATE users SET doc = ? WHERE id = ?'),
+    codePut: db.prepare('INSERT OR REPLACE INTO login_codes (email, code_hash, expires_at, attempts) VALUES (?, ?, ?, 0)'),
+    codeGet: db.prepare('SELECT * FROM login_codes WHERE email = ?'),
+    codeTry: db.prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?'),
+    codeDel: db.prepare('DELETE FROM login_codes WHERE email = ?'),
+    sessPut: db.prepare('INSERT INTO sessions (hash, user_id, expires_at) VALUES (?, ?, ?)'),
+    sessGet: db.prepare('SELECT user_id FROM sessions WHERE hash = ? AND expires_at > ?'),
+    sessDel: db.prepare('DELETE FROM sessions WHERE hash = ?'),
+    sessPrune: db.prepare('DELETE FROM sessions WHERE expires_at < ?'),
+    cartsByUser: db.prepare("SELECT * FROM carts WHERE json_extract(doc, '$.user_id') = ? ORDER BY created_at DESC LIMIT ?"),
   };
+
+  const userRow = (r) => r && { id: r.id, email: r.email, created_at: r.created_at, ...JSON.parse(r.doc || '{}') };
 
   const hydrate = (row) =>
     row && {
@@ -190,7 +228,31 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       remove: (phone) => q.optIn.run(phone),
       has: (phone) => Boolean(q.optedOut.get(phone)),
     },
-    addKey: (hash, name, email) => q.addKey.run(hash, name, email, Date.now()),
+    addKey: (hash, name, email, userId = null) => {
+      q.addKey.run(hash, name, email, Date.now());
+      if (userId) db.prepare('UPDATE api_keys SET user_id = ? WHERE hash = ?').run(userId, hash);
+    },
+    users: {
+      byEmail: (email) => userRow(q.userByEmail.get(email)),
+      byId: (id) => userRow(q.userById.get(id)),
+      create: (id, email) => q.userInsert.run(id, email, '{}', Date.now()),
+      save: (id, doc) => q.userSave.run(JSON.stringify(doc), id),
+      carts: (id, limit = 100) => q.cartsByUser.all(id, limit).map(hydrate),
+      keys: (id) => q.keysByUser.all(id),
+      revokeKey: (id, name) => q.revokeUserKey.run(name, id).changes === 1,
+    },
+    codes: {
+      put: (email, hash, expiresAt) => q.codePut.run(email, hash, expiresAt),
+      get: (email) => q.codeGet.get(email) || null,
+      attempt: (email) => q.codeTry.run(email),
+      remove: (email) => q.codeDel.run(email),
+    },
+    sessions: {
+      create: (hash, userId, expiresAt) => q.sessPut.run(hash, userId, expiresAt),
+      userId: (hash) => q.sessGet.get(hash, Date.now())?.user_id || null,
+      remove: (hash) => q.sessDel.run(hash),
+      prune: () => q.sessPrune.run(Date.now()),
+    },
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
     close: () => db.close(),
   };

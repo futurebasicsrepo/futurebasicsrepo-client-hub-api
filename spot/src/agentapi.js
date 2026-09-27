@@ -46,6 +46,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     if (hit) return hit.name;
     const row = selfServe && db?.keyByHash(h.toString('hex'));
     if (!row || row.revoked) throw new CartError('Bad API key', 401);
+    // Keys made from an account put their asks in that account.
+    req.spotUserId = row.user_id || null;
     return `key:${row.name}`;
   }
 
@@ -145,13 +147,13 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const forSelf = b.for === 'self';
     const { cart, manageKey } = spot.create(
       { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle: forSelf ? 'card' : b.settle, for: forSelf ? 'self' : 'other', expires_minutes: b.expires_minutes },
-      { ip: req.ip },
+      { ip: req.ip, userId: req.spotUserId },
     );
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
     if (forSelf && b.ship_to) spot.prepare(cart.token, manageKey, b.ship_to);
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
     const extra = forSelf
-      ? { finish_link: privateLink, finish_link_note: 'Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.' }
+      ? { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` }
       : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It shows their card and is where they confirm the order.' };
     if (forSelf && (b.notify?.email || b.notify?.phone)) {
       extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
@@ -187,11 +189,11 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const { cart, manageKey } = spot.createFlight(
       offer,
       { requester: b.requester, note: b.note, expires_minutes: b.expires_minutes, travelers: b.travelers, contact: b.contact },
-      { ip: req.ip },
+      { ip: req.ip, userId: req.spotUserId },
     );
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
-    const extra = { finish_link: privateLink, finish_link_note: "Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it." };
+    const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
     if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
     return view(req, spot.byId(cart.id), extra);
   }

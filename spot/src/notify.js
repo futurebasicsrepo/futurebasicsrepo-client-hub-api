@@ -70,6 +70,15 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
   }
 
   return {
+    // Sign-in code for an account. Returns the email status.
+    async sendSignInCode(to, code) {
+      return email(to, {
+        subject: `${code} is your Spot sign-in code`,
+        text: `Your Spot sign-in code is ${code}. It works for 10 minutes. If you didn't ask for it, ignore this email.`,
+        html: `<p style="font:16px/1.5 system-ui,sans-serif">Your Spot sign-in code:</p><p style="font:800 34px/1 ui-monospace,monospace;letter-spacing:.2em;margin:8px 0 16px">${esc(code)}</p><p style="font:14px/1.5 system-ui,sans-serif;color:#6f675c">It works for 10 minutes. If you didn't ask for it, ignore this email.</p>`,
+      }).catch(() => 'failed');
+    },
+
     // Returns { email?: status, text?: status } for the channels asked for.
     async sendFinishLink(cart, link, { email: to, phone } = {}) {
       const msg = finishMessage(cart, link);

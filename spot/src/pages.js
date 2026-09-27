@@ -358,11 +358,11 @@ const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting u
 let reveal=null;
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! setting up your card…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
-let tick=null;
+let tick=null,PROFILE=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
   const fl=c.kind==='flight';
-  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},saved(),c.requester.shipping||{},c.contact||{});
+  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},PROFILE?{email:PROFILE.email,name:PROFILE.name||c.requester.name,phone:PROFILE.shipping?.phone||''}:{},saved(),PROFILE?.shipping||{},c.requester.shipping||{},c.contact||{});
   const left=c.expires_at-Date.now(),held=left<24*3600e3;
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
   let h='<h1 style="font-size:32px;margin-top:22px">'+(fl?'Your flight is ready ✈️':'Your cart is ready 🛒')+'</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · '+(fl?'found for you':'put together for you')+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
@@ -421,7 +421,8 @@ function travelersForm(c,s){
   const t=c.travelers||[];const n=c.flight.passengers;c.flight.passengers_list=Array.from({length:n});
   const inp=(nm,ph,val,extra)=>'<input name="'+nm+'" placeholder="'+ph+'" value="'+esc(val||'')+'" '+(extra||'')+'>';
   const first=(s.name||'').split(' ');
-  return c.flight.passengers_list.map((_,i)=>{const p=t[i]||(i===0&&!t.length?{given_name:first[0],family_name:first.slice(1).join(' ')}:{});
+  const pt=PROFILE?.travelers||[];
+  return c.flight.passengers_list.map((_,i)=>{const p=t[i]||pt[i]||(i===0&&!t.length?{given_name:first[0],family_name:first.slice(1).join(' ')}:{});
     return (n>1?'<div class="small muted" style="margin:'+(i?'14px':'0')+' 0 6px">Traveler '+(i+1)+'</div>':'')
       +'<div class="row">'+inp('g'+i,'First name',p.given_name,'required autocomplete="'+(i?'off':'given-name')+'"')+inp('f'+i,'Last name',p.family_name,'required autocomplete="'+(i?'off':'family-name')+'"')+'</div>'
       +'<div class="row trav" style="margin-top:6px;align-items:flex-end"><label class="dob"><span>Date of birth</span>'+inp('b'+i,'',p.born_on,'type="date" required max="'+new Date().toISOString().slice(0,10)+'"')+'</label><select name="x'+i+'" required aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f"'+(p.gender==='f'?' selected':'')+'>Female</option><option value="m"'+(p.gender==='m'?' selected':'')+'>Male</option></select></div>'}).join('')
@@ -434,7 +435,7 @@ function orderBox(c,f,agentOn){
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
     +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
   if(st==='starting'||st==='working')return '<h2><span class="spin"></span> Ordering at '+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
-  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},c.requester.shipping||saved());
+  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},PROFILE?.shipping||{},c.requester.shipping||saved());
   const note=st==='needs_you'?'<p class="small" style="color:var(--warn);margin-top:0">'+esc(f.reason||'This one needs you.')+'</p>'+(f.manual_url?'<a class="btn dark" href="'+esc(f.manual_url)+'" target="_blank" rel="noopener">Open checkout at '+esc(c.merchant.name)+'</a><p class="small muted">'+(f.method==='shopify'||f.method==='ucp'?'Your cart and address are already filled in. ':'')+'Pay with your one-time card below.</p>':''):(st==='cancelled'?'<p class="small muted" style="margin-top:0">Nothing was ordered. Start again whenever you’re ready.</p>':'');
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
   return '<h2>'+(agentOn?'Want Spot to order it for you?':'Ship it to you')+'</h2>'+note
@@ -445,7 +446,7 @@ function orderBox(c,f,agentOn){
     +(agentOn?'<p class="small muted">Spot fills in '+esc(c.merchant.name)+'’s checkout with your one-time card, then shows you the total. Nothing is placed until you tap Place order.</p>':'');
 }
 async function draw(){
-  const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;
+  const r=await api('/v1/carts/'+TOKEN+'/manage'+(K?'?k='+encodeURIComponent(K):''));const c=r.cart;PROFILE=r.profile||null;
   clearInterval(tick);
   const self=c.for==='self';
   if(self&&c.status==='open')return finishPanel(c);
@@ -493,7 +494,7 @@ async function draw(){
   const live=f&&['starting','working','awaiting_confirm'].includes(f.state);
   if(['open','paid'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
-draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
+draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'<section class="card"><h2>Sign in to see this Spot</h2><p class="muted">It’s in your Spot account.</p><a class="btn" href="/signin?next='+encodeURIComponent(location.pathname)+'">Sign in</a></section>'});`;
   return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
 .route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}

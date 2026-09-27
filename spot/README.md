@@ -69,6 +69,16 @@ Once a cart is paid and its card exists, the requester can have Spot place the o
   - There are caps on steps and time. Whenever it's stuck (a CAPTCHA, a required login, out of stock), it hands back to the requester with a prefilled checkout link and the card.
 - The requester page has the shipping form, live progress, the confirm step and the result. State is on `cart.fulfillment`. The browser session is in memory, so a restart mid-checkout ends that attempt.
 
+## Accounts
+
+Sign in at `/signin` with a 6-digit code sent to your email by Resend. There are no passwords. When no email service is configured, test mode shows the code on screen. `/account` has four parts:
+- **Ready for you:** carts and flights your AI handed back to you.
+- **Your Spots:** every Spot you made, on any device. Spots made on a device before signing in are claimed with their private keys.
+- **Saved details:** your name, shipping address and travelers, which pre-fill checkout.
+- **Your AI:** API keys tied to the account, which you can connect or disconnect.
+
+A signed-in owner opens their own Spots without the private key. Codes and sessions are stored hashed. The session cookie is `HttpOnly; SameSite=Lax`, and account writes are JSON-only.
+
 ## Spot for AI agents (REST + MCP)
 
 Shopping agents can build carts but can't make someone else pay. Spot gives them three verbs:

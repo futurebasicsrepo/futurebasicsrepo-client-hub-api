@@ -16,9 +16,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     return cart;
   }
 
+  // `key` is the private manage key, or { k, userId }: a signed-in owner
+  // gets in without the key.
   function loadManaged(token, key) {
     const cart = load(token);
-    const a = Buffer.from(hash(String(key || '')));
+    const auth = key && typeof key === 'object' ? key : { k: key };
+    if (auth.userId && cart.user_id && cart.user_id === auth.userId) return cart;
+    const a = Buffer.from(hash(String(auth.k || '')));
     const b = Buffer.from(cart.manage_hash);
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new CartError('Cart not found', 404);
     return cart;
@@ -45,7 +49,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   return {
     provider,
 
-    create(input, { ip } = {}, limits = cfg) {
+    create(input, { ip, userId } = {}, limits = cfg) {
       const v = validateCart(input, limits);
       risk?.checkCreate(ip);
       // The billing address is only needed to issue the card, which happens
@@ -64,6 +68,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         created_at: now,
         expires_at: now + (v.expires_minutes ? v.expires_minutes * 60_000 : cfg.expiresHours * 3600_000),
         requester_ip: ip || null,
+        user_id: userId || null,
       };
       db.insert(cart);
       return { cart, manageKey };
@@ -72,7 +77,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // A flight an agent found for its user. The traveler finishes on their
     // phone: who's flying, then pay; Spot books it with the airline. The
     // link lives no longer than the airline holds the fare.
-    createFlight(offer, input = {}, { ip } = {}) {
+    createFlight(offer, input = {}, { ip, userId } = {}) {
       if (!offer?.id || !offer.total_cents) throw new CartError('Pick a flight offer first');
       const hold = offer.expires_at ? Math.floor((Date.parse(offer.expires_at) - Date.now()) / 60_000) : null;
       if (hold !== null && hold < 5) throw new CartError('That fare is about to expire. Search again.', 410);
@@ -88,7 +93,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
           for: 'self',
           expires_minutes: Math.max(5, minutes),
         },
-        { ip },
+        { ip, userId },
         { ...cfg, maxCartCents: cfg.maxFlightCents ?? cfg.maxCartCents },
       );
       let next = { ...cart, kind: 'flight', flight: { offer } };
@@ -203,6 +208,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     load,
     loadManaged,
+
+    // Attach a Spot made before signing in (proved by its private key).
+    claim(token, key, userId) {
+      const cart = loadManaged(token, { k: key });
+      if (cart.user_id === userId) return cart;
+      if (cart.user_id) throw new CartError('That Spot belongs to another account', 409);
+      return this.patch(cart.id, (c) => ({ ...c, user_id: userId }), 'claimed');
+    },
     byId: (id) => db.byId(id),
 
     // Change a cart's document without changing its status (fulfilment
