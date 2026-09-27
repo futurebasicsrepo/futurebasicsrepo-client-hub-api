@@ -107,7 +107,7 @@ On the finish page you add who's flying (names as on your ID, date of birth), pl
 
 Without `DUFFEL_ACCESS_TOKEN`, a demo airline ("Spot Air") returns made-up fares so you can try the flow. With a `duffel_test_…` token you get Duffel's test airline, and a `duffel_live_…` token books real tickets.
 
-MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
+MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories, see [docs/mcp-listing.md](docs/mcp-listing.md) and `server.json`. Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
 
@@ -126,6 +126,8 @@ MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bea
 | `SPOT_AGENT_MODEL` | `claude-opus-5` | |
 | `SPOT_AGENT_MAX` | `2` | Checkouts running at once |
 | `SPOT_API_KEYS` | | `name:secret,name2:secret2` for the agent API / MCP |
+| `SPOT_OPEN_KEYS` | on | Self-serve agent keys from `/integrations#mcp` (`POST /v1/agent/keys`). Set `off` to allow only `SPOT_API_KEYS` |
+| `SPOT_KEY_ASKS_PER_DAY` / `SPOT_KEY_MESSAGES_PER_DAY` / `SPOT_KEY_SEARCHES_PER_DAY` | `100` / `20` / `200` | Daily quotas for self-serve keys; `SPOT_API_KEYS` partners have none |
 | `RESEND_API_KEY` | | Emails finish links |
 | `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links |

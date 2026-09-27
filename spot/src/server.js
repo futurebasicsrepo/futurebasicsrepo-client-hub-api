@@ -289,7 +289,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  registerAgentApi(app, { spot, fulfiller, notifier, flights, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
 
   app.post('/v1/sandbox/authorize', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
