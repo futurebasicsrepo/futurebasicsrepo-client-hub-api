@@ -17,6 +17,8 @@ spot/
   src/client/home.js  the composer's behaviour (capture → check → send)
   src/sharecard.js  link-preview image + the mascot (satori → resvg)
   src/db.js         Node's built-in SQLite
+  src/fulfill/      "order it for me": Shopify cart builder + the checkout agent
+  src/agentapi.js   REST + MCP API for other AI agents
 ```
 
 ## Run it
@@ -41,6 +43,31 @@ With no Stripe keys set, Spot runs in **sandbox mode**. Payment is a "Pay (test)
 
 Cart states: `open → paid → card_issued → completed`, plus `canceled`, `expired` (72h) and `refunded`. Handoff carts go `open → completed` when the requester taps "I got the money". Transitions use a compare-and-set on the status column, so duplicate webhooks can't issue two cards or approve two charges.
 
+## Order it for me
+
+Once a cart is paid and its card exists, the requester can have Spot place the order.
+
+- **Shopify stores (no AI):** `src/fulfill/shopify.js` reads the store's `/products/<handle>.js`, picks the variant that matches the captured size or colour, and builds a cart permalink with contact and shipping prefilled. Shopify doesn't let anyone pay on a store they don't own without a person or a browser on the payment step, so the agent (or the requester) does that part.
+- **Checkout agent:** `src/fulfill/agent.js` runs Claude against a real Chromium page through a small tool set (`navigate`, `click`, `type`, `select`, `fill_payment`, `wait`, `ready_to_place_order`, `order_placed`, `need_human`). The page is described as text, with a ref for every interactive element, across iframes. Guardrails are enforced in code:
+  - The model never sees the card. `fill_payment` types it server-side, page snapshots mask payment fields and card-like numbers, and `type` refuses payment fields.
+  - Top-level pages must stay on the store's own site (plus Shopify checkout hosts). Anything else is undone.
+  - The store's total must fit the card limit before the requester is asked.
+  - Nothing is placed until the requester taps **Place order** on their page, which shows a screenshot of the filled-in checkout and the total. The agent pauses up to 10 minutes.
+  - There are caps on steps and time. Whenever it's stuck (a CAPTCHA, a required login, out of stock), it hands back to the requester with a prefilled checkout link and the card.
+- The requester page has the shipping form, live progress, the confirm step and the result. State is on `cart.fulfillment`. The browser session is in memory, so a restart mid-checkout ends that attempt.
+
+## Spot for AI agents (REST + MCP)
+
+Shopping agents can build carts but can't make someone else pay. Spot gives them three verbs:
+
+| MCP tool | REST | |
+|---|---|---|
+| `create_spot_ask` | `POST /v1/agent/asks` | items, or a url, or a description → pay link, share message, share-card URL, and (once only) the requester's private page |
+| `get_spot_ask` | `GET /v1/agent/asks/:id` | status and the next step |
+| `order_spot_ask` | `POST /v1/agent/asks/:id/order` | once paid, place the order at the store (the requester still confirms the final tap) |
+
+MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
+
 ## Configuration
 
 | Variable | Default | |
@@ -54,6 +81,10 @@ Cart states: `open → paid → card_issued → completed`, plus `canceled`, `ex
 | `SPOT_EXPIRES_HOURS` | `72` | |
 | `ANTHROPIC_API_KEY` | | Turns on screenshot capture |
 | `SPOT_VISION_MODEL` | `claude-opus-5` | |
+| `SPOT_AGENT` | off | `on` lets the checkout agent run (needs `ANTHROPIC_API_KEY`) |
+| `SPOT_AGENT_MODEL` | `claude-opus-5` | |
+| `SPOT_AGENT_MAX` | `2` | Checkouts running at once |
+| `SPOT_API_KEYS` | | `name:secret,name2:secret2` for the agent API / MCP |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

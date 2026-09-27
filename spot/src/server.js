@@ -8,10 +8,13 @@ import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
+import { createFulfiller } from './fulfill/index.js';
+import { registerAgentApi } from './agentapi.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const spot = createSpot({ db, provider, cfg, log: app.log });
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill });
   const baseUrl = () => (process.env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const captureUrl = capture.fromUrl || captureFromUrl;
@@ -30,7 +33,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   app.setErrorHandler((err, req, reply) => {
-    const status = err instanceof CartError || err instanceof CaptureError ? err.status : err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
+    const status = err instanceof CartError || err instanceof CaptureError ? err.status : Number.isInteger(err.status) && err.status < 500 ? err.status : err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
     if (status >= 500) req.log.error(err);
     reply.code(status).send({ error: status >= 500 ? 'Something went wrong' : err.message });
   });
@@ -168,6 +171,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return {
       cart: ownerCart(cart),
       needs_billing: spot.needsBilling(cart),
+      agent_enabled: fulfiller.agentEnabled(),
       events: spot.events(cart).map(({ kind, at }) => ({ kind, at })),
       provider: provider.name,
       link: urlFor(req, `/c/${cart.token}`),
@@ -186,6 +190,24 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));
 
   // Sandbox only: simulate the merchant running the issued card at checkout.
+  // ─── Order it for me (checkout agent) ─────────────────────────────────────
+  app.post('/v1/carts/:token/manage/order', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    return { cart: ownerCart(await fulfiller.start(cart, req.body?.shipping)) };
+  });
+  app.post('/v1/carts/:token/manage/order/confirm', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    return { cart: ownerCart(fulfiller.confirm(cart, req.body?.place === true)) };
+  });
+  app.get('/v1/carts/:token/manage/order/shot.png', async (req, reply) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    const png = fulfiller.screenshot(cart);
+    if (!png) return reply.code(404).send();
+    return reply.type('image/png').header('cache-control', 'no-store').send(png);
+  });
+
+  registerAgentApi(app, { spot, fulfiller, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
+
   app.post('/v1/sandbox/authorize', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
     const cart = spot.loadManaged(req.body?.token, keyOf(req));
