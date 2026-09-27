@@ -59,6 +59,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 .sandbox{background:#fff3cd;color:#6b4e00;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin:10px 0}
 @media (prefers-color-scheme:dark){.sandbox{background:#3a2f10;color:#ffd97a}}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--spot);border-radius:50%;animation:rot .8s linear infinite;vertical-align:-1px}@keyframes rot{to{transform:rotate(360deg)}}
 `;
 
 function shell({ title, head = '', body, script = '' }) {
@@ -355,12 +356,33 @@ export function managePage({ token, provider }) {
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
 let reveal=null;
+const saved=()=>{try{return JSON.parse(localStorage.getItem('spot:ship'))||{}}catch{return {}}};
+function orderBox(c,f,agentOn){
+  const st=f&&f.state;
+  if(st==='placed')return '<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>';
+  if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
+    +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
+  if(st==='starting'||st==='working')return '<h2><span class="spin"></span> Ordering at '+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
+  const s=Object.assign({name:c.requester.name,email:c.requester.email||''},c.requester.shipping||saved());
+  const note=st==='needs_you'?'<p class="small" style="color:var(--warn);margin-top:0">'+esc(f.reason||'This one needs you.')+'</p>'+(f.manual_url?'<a class="btn dark" href="'+esc(f.manual_url)+'" target="_blank" rel="noopener">Open checkout at '+esc(c.merchant.name)+'</a><p class="small muted">'+(f.method==='shopify'?'Your cart and address are already filled in. ':'')+'Pay with your one-time card below.</p>':''):(st==='cancelled'?'<p class="small muted" style="margin-top:0">Nothing was ordered. Start again whenever you’re ready.</p>':'');
+  const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
+  return '<h2>'+(agentOn?'Want Spot to order it for you?':'Ship it to you')+'</h2>'+note
+    +'<form id="shipForm">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
+    +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
+    +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
+    +'<button class="btn">'+(agentOn?'Order it for me':'Get my checkout link')+'</button><div class="err" id="shipErr"></div></form>'
+    +(agentOn?'<p class="small muted">Spot fills in '+esc(c.merchant.name)+'’s checkout with your one-time card, then shows you the total. Nothing is placed until you tap Place order.</p>':'');
+}
 async function draw(){
   const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;const [label,tone]=STATUS[c.status]||[c.status,''];
   let h='<h1 style="font-size:28px">'+esc(c.merchant.name)+' cart</h1><span class="pill '+tone+'">'+label+'</span>';
   h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(r.needs_billing){
     h+='<section class="card"><h2>'+(c.status==='paid'?'🎉 '+esc(c.payer_name||'Someone')+' spotted you!':'One thing for your card')+'</h2><p class="small muted" style="margin-top:0">'+(c.status==='paid'?'Add your billing address and your card is ready right away.':'Add your billing address now so your card is ready the moment someone pays.')+'</p><form id="bill"><input id="b1" placeholder="Street" autocomplete="address-line1" required><div class="row" style="margin-top:6px"><input id="b2" placeholder="City" autocomplete="address-level2" required><input id="b3" placeholder="State" autocomplete="address-level1" required><input id="b4" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" required></div><button class="btn">'+(c.status==='paid'?'Get my card':'Save')+'</button><div class="err" id="billErr"></div></form></section>';
+  }
+  const f=c.fulfillment;
+  if(c.status==='card_issued'||(f&&f.state==='placed')){
+    h+='<section class="card" id="orderBox">'+orderBox(c,f,r.agent_enabled)+'</section>';
   }
   if(c.status==='card_issued'&&c.card){
     h+='<section class="card"><h2>Check out at '+esc(c.merchant.name)+'</h2><div class="cc"><div>SPOT · one-time</div><div class="n" id="ccn">•••• •••• •••• '+esc(c.card.last4)+'</div><div class="meta"><span>'+esc(c.requester.name)+'</span><span>'+String(c.card.exp_month).padStart(2,'0')+'/'+String(c.card.exp_year).slice(-2)+'</span><span id="cvc">CVC •••</span></div></div>';
@@ -376,12 +398,18 @@ async function draw(){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   on('rev',async()=>{try{reveal=reveal||await api('/v1/carts/'+TOKEN+'/manage/reveal',{k:K});$('#ccn').textContent=reveal.number.replace(/(.{4})/g,'$1 ').trim();$('#cvc').textContent='CVC '+reveal.cvc;$('#rev').textContent='Copy number';$('#rev').onclick=()=>navigator.clipboard.writeText(reveal.number)}catch(e){alert(e.message)}});
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
+  const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
+    const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
+    try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('placeIt',async()=>{$('#placeIt').disabled=true;$('#placeIt').textContent='placing…';await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:true});draw()});
+  on('notYet',async()=>{await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:false});draw()});
   const bill=$('#bill');if(bill)bill.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/billing',{k:K,billing:{line1:$('#b1').value,city:$('#b2').value,state:$('#b3').value,postal_code:$('#b4').value}});draw()}catch(err){$('#billErr').textContent=err.message}};
   on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});
   on('cancel',async()=>{if(confirm('Cancel this link?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
   on('refund',async()=>{if(confirm('Refund the payer and cancel your card?')){await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K});draw()}});
   // keep watching for payment, but never redraw under someone typing
-  if(['open','paid'].includes(c.status))setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},4000);
+  const live=f&&['starting','working','awaiting_confirm'].includes(f.state);
+  if(['open','paid'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
   return shell({ title: 'My Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });

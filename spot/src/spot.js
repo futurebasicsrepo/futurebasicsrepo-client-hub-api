@@ -94,6 +94,23 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
 
     load,
     loadManaged,
+    byId: (id) => db.byId(id),
+
+    // Change a cart's document without changing its status (fulfilment
+    // progress, shipping). Re-reads and retries if the status moved under us,
+    // e.g. the store charging the card mid-checkout.
+    patch(cartId, fn, event) {
+      for (let i = 0; i < 5; i++) {
+        const cart = db.byId(cartId);
+        if (!cart) throw new CartError('Cart not found', 404);
+        const next = fn(cart);
+        if (db.save({ ...next, status: cart.status }, cart.status)) {
+          if (event) db.event(cartId, event);
+          return db.byId(cartId);
+        }
+      }
+      throw new CartError('Cart changed, try again', 409);
+    },
     events: (cart) => db.events(cart.id),
 
     // Payer opened the pay page and wants to pay by card / wallet.
@@ -237,5 +254,6 @@ export function ownerCart(cart) {
     spent_at: cart.spent_at || null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
+    fulfillment: cart.fulfillment || null,
   };
 }
