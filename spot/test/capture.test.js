@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { captureFromScreenshot, captureFromUrl, draftFromVision, isPrivateAddress, parseProductHtml } from '../src/capture.js';
+import { captureFromText, draftFromLookup, splitText, captureFromScreenshot, captureFromUrl, draftFromVision, isPrivateAddress, parseProductHtml } from '../src/capture.js';
 
 const LD_PAGE = `<html><head><title>ignored</title>
 <meta property="og:site_name" content="Aritzia">
@@ -84,4 +84,30 @@ test('screenshot capture sends a structured-output vision request', async () => 
   await assert.rejects(captureFromScreenshot({ data: 'x', media_type: 'image/tiff' }, { client }), /PNG/);
   const refusing = { beta: { messages: { create: async () => ({ stop_reason: 'refusal', content: [] }) } } };
   await assert.rejects(captureFromScreenshot({ data: 'aGk=', media_type: 'image/png' }, { client: refusing }), /Could not read/);
+});
+
+test('splitText pulls the link out of shared text', () => {
+  assert.deepEqual(splitText('  Check out Dunk Low on Nike! https://nike.com/t/dunk?x=1. '), { text: 'Check out Dunk Low on Nike! https://nike.com/t/dunk?x=1.', url: 'https://nike.com/t/dunk?x=1' });
+  assert.equal(splitText('xt-6 in 10.5').url, null);
+});
+
+test('web lookup result becomes a draft that needs review', () => {
+  const d = draftFromLookup({ found: true, merchant_name: 'Salomon', merchant_url: 'https://www.salomon.com', product_url: 'https://www.salomon.com/en-us/xt-6', title: 'XT-6', variant: 'Black / 10.5', unit_price: '$200.00' }, 'xt6');
+  assert.deepEqual([d.merchant.name, d.merchant.url, d.items[0].price_cents, d.needs_review], ['Salomon', 'https://www.salomon.com', 20000, true]);
+  assert.equal(draftFromLookup({ found: false }, 'mystery thing $5').items[0].title, 'mystery thing');
+  assert.equal(draftFromLookup({ found: true, title: 'x', product_url: 'javascript:alert(1)', unit_price: '$1' }, 'x').items[0].url, null);
+});
+
+test('text lookup asks Claude with web search and resumes paused turns', async () => {
+  const calls = [];
+  const client = { beta: { messages: { create: async (req) => {
+    calls.push(req);
+    if (calls.length === 1) return { stop_reason: 'pause_turn', content: [{ type: 'server_tool_use', id: 's1', name: 'web_search', input: {} }] };
+    return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Here you go: {"found":true,"merchant_name":"Salomon","merchant_url":"https://salomon.com","product_url":"https://salomon.com/xt6","title":"XT-6","variant":"10.5","unit_price":"$200"}' }] };
+  } } } };
+  const d = await captureFromText('salomon xt-6 in 10.5', { client });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].tools[0].type, 'web_search_20260209');
+  assert.equal(calls[1].messages.at(-1).role, 'assistant', 'paused turn is continued');
+  assert.equal(d.items[0].price_cents, 20000);
 });
