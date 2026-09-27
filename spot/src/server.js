@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
-import { CaptureError, captureFromScreenshot, captureFromUrl } from './capture.js';
+import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
 import { openDb } from './db.js';
 import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
@@ -15,6 +16,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const captureUrl = capture.fromUrl || captureFromUrl;
   const captureShot = capture.fromScreenshot || captureFromScreenshot;
+  const captureText = capture.fromText || ((t) => captureFromText(t, { fromUrl: captureUrl }));
 
   // Keep the raw body: Stripe signs the exact bytes it sent.
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
@@ -60,6 +62,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   app.get('/health', async () => ({ ok: true, provider: provider.name }));
 
+  const homeJs = readFileSync(new URL('./client/home.js', import.meta.url));
+  app.get('/client/home.js', async (req, reply) => reply.type('text/javascript; charset=utf-8').header('cache-control', 'public, max-age=300').send(homeJs));
+
   // ─── Pages ────────────────────────────────────────────────────────────────
   app.get('/', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg })));
   app.get('/new', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg })));
@@ -85,7 +90,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return reply.code(404).send();
     }
     const pub = publicCart(cart);
-    const key = `${cart.token}:${cart.status}:${pub.payer_name || ''}`;
+    const key = `${cart.token}:${pub.rev}:${cart.status}:${pub.payer_name || ''}`;
     let png = cards.get(key);
     if (!png) {
       const productImage = await fetchProductImage(cart.items.find((i) => i.image_url)?.image_url);
@@ -110,6 +115,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.capture(req);
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
+    if (b.text) return captureText(String(b.text));
     if (b.image?.data) {
       if (!process.env.ANTHROPIC_API_KEY && !capture.fromScreenshot) {
         throw new CaptureError('Screenshot capture is not configured on this server — paste a link or enter items');
@@ -159,7 +165,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/v1/carts/:token/manage', async (req) => {
     let cart = spot.loadManaged(req.params.token, keyOf(req));
     if (cart.status === 'paid') cart = await spot.issue(cart); // retry a failed issue
-    return { cart: ownerCart(cart), events: spot.events(cart).map(({ kind, at }) => ({ kind, at })), provider: provider.name, link: urlFor(req, `/c/${cart.token}`) };
+    return {
+      cart: ownerCart(cart),
+      needs_billing: spot.needsBilling(cart),
+      events: spot.events(cart).map(({ kind, at }) => ({ kind, at })),
+      provider: provider.name,
+      link: urlFor(req, `/c/${cart.token}`),
+    };
   });
 
   app.post('/v1/carts/:token/manage/reveal', async (req) => {
@@ -167,6 +179,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return spot.revealCard(cart);
   });
 
+  app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
+  app.post('/v1/carts/:token/manage/billing', async (req) => ({ cart: ownerCart(await spot.addBilling(req.params.token, keyOf(req), req.body?.billing)) }));
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/cancel', async (req) => ({ cart: ownerCart(await spot.cancel(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));
@@ -200,7 +214,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
           await spot.paymentSucceeded({
             paymentRef: obj.id,
             amountCents: obj.amount_received,
-            payer: { name: obj.shipping?.name || null },
+            payer: { name: (await provider.payerNameFor?.(obj).catch(() => null)) || obj.shipping?.name || null },
           });
         }
         break;

@@ -45,13 +45,10 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
 
     create(input, { ip } = {}) {
       const v = validateCart(input, cfg);
-      if (provider.name === 'stripe' && v.settle === 'card') {
-        const b = input.requester?.billing || {};
-        if (![b.line1, b.city, b.state, b.postal_code].every((x) => typeof x === 'string' && x.trim())) {
-          throw new CartError('A billing address is needed to issue your card');
-        }
-        v.requester.billing = { line1: b.line1.trim(), city: b.city.trim(), state: b.state.trim(), postal_code: b.postal_code.trim() };
-      }
+      // The billing address is only needed to issue the card, which happens
+      // after someone pays, so creating a link never asks for it.
+      const billing = input?.requester?.billing;
+      if (billing && hasBilling(billing)) v.requester.billing = cleanBilling(billing);
       const now = Date.now();
       const manageKey = randomBytes(24).toString('base64url');
       const cart = {
@@ -60,12 +57,39 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
         token: randomBytes(9).toString('base64url'), // 12-char public link id
         manage_hash: hash(manageKey),
         status: 'open',
+        rev: 1,
         created_at: now,
         expires_at: now + cfg.expiresHours * 3600_000,
         requester_ip: ip || null,
       };
       db.insert(cart);
       return { cart, manageKey };
+    },
+
+    // Fix a link after making it (a wrong price, a missed item). Only while
+    // nobody has started paying, so a payer is never charged a moved amount.
+    edit(token, key, input) {
+      const cart = loadManaged(token, key);
+      if (cart.status !== 'open' || cart.payment_ref) throw new CartError('This cart can no longer be changed', 409);
+      const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
+      v.requester.billing = cart.requester.billing;
+      const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'edited');
+      return next;
+    },
+
+    needsBilling: (cart) => Boolean(provider.needsBilling && cart.settle === 'card' && !cart.requester.billing),
+
+    // Requester adds their billing address after being paid; issues the card.
+    async addBilling(token, key, billing) {
+      const cart = loadManaged(token, key);
+      if (!hasBilling(billing)) throw new CartError('Street, city, state and ZIP are all needed');
+      if (!['open', 'paid'].includes(cart.status)) throw new CartError('Your card is already set up', 409);
+      const next = { ...cart, requester: { ...cart.requester, billing: cleanBilling(billing) } };
+      if (!db.save(next, cart.status)) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'billing_added');
+      return next.status === 'paid' ? this.issue(next) : next;
     },
 
     load,
@@ -102,6 +126,10 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
     // the cart `paid`, and the requester page retries on the next view.
     async issue(cart) {
       if (cart.status !== 'paid') return cart;
+      if (this.needsBilling(cart)) {
+        if (!db.events(cart.id).some((e) => e.kind === 'needs_billing')) db.event(cart.id, 'needs_billing');
+        return cart;
+      }
       try {
         const card = await provider.issueCard(cart);
         return move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined } }, { last4: card.last4 });
@@ -171,10 +199,20 @@ export function createSpot({ db, provider, cfg = config(), log = console }) {
 
 // What anyone holding the public link may see. No emails, no billing address,
 // no card data.
+function hasBilling(b) {
+  return Boolean(b) && [b.line1, b.city, b.state, b.postal_code].every((x) => typeof x === 'string' && x.trim());
+}
+
+function cleanBilling(b) {
+  const f = (x, n) => String(x).trim().slice(0, n);
+  return { line1: f(b.line1, 120), city: f(b.city, 60), state: f(b.state, 30), postal_code: f(b.postal_code, 12) };
+}
+
 export function publicCart(cart) {
   return {
     token: cart.token,
     status: cart.status,
+    rev: cart.rev || 1,
     settle: cart.settle,
     requester: { name: cart.requester.name, venmo: cart.requester.venmo, cashtag: cart.requester.cashtag },
     merchant: cart.merchant,

@@ -11,7 +11,7 @@ const json = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/>/g, '\\
 const CSS = `
 :root{--bg:#fbf7f1;--card:#fff;--ink:#1b1712;--muted:#6f675c;--line:#e8e0d4;--spot:#ff5a36;--spot-ink:#fff;--ok:#1d8a52;--warn:#b25b00;--radius:18px}
 @media (prefers-color-scheme:dark){:root{--bg:#141210;--card:#1e1b18;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47}}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+*{box-sizing:border-box}[hidden]{display:none!important}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",Inter,system-ui,sans-serif}
 main{max-width:520px;margin:0 auto;padding:20px 16px 64px}
 a{color:inherit}
@@ -75,125 +75,103 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
 `;
 
-// ─── Home / create ──────────────────────────────────────────────────────────
+// ─── Home: the composer ─────────────────────────────────────────────────────
+// One box, then one Send. The behaviour lives in src/client/home.js.
+const HOME_CSS = `
+.hero{display:flex;align-items:center;gap:12px;margin:18px 0 14px}
+.hero svg{width:74px;height:74px;flex:none;animation:bob 3.2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-4px)}}
+.hero .say{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:11px 15px;font-weight:800;font-size:19px;letter-spacing:-.01em}
+.box{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:12px;transition:border-color .15s}
+.box:focus-within,.box.drop{border-color:var(--spot)}
+.box textarea{border:0;background:transparent;resize:none;font-size:18px;padding:6px 4px;min-height:56px;outline:none}
+.box textarea:focus{outline:none}
+.boxrow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.iconbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-weight:600;font-size:14px;color:var(--muted);cursor:pointer;margin:0}
+.boxrow .btn{margin:0 0 0 auto;width:auto;padding:11px 20px}
+.chipbar{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:6px 10px;font-size:14px;margin-bottom:6px}
+.chipbar button{margin-left:auto;border:0;background:none;font-size:18px;color:var(--muted);cursor:pointer}
+.hint{color:var(--muted);font-size:14px;margin:10px 4px 0}
+.shareimg{width:100%;aspect-ratio:1200/630;border-radius:18px;display:block;background:var(--line);border:1px solid var(--line)}
+.people{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{display:inline-flex;align-items:center;padding:10px 14px;border-radius:99px;background:var(--ink);color:var(--bg);font-weight:700;font-size:15px;text-decoration:none;border:0;cursor:pointer;font-family:inherit}
+.chip.ghost{background:transparent;color:var(--ink);border:1px dashed var(--line)}
+.sendrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.sendrow .btn{margin:0;font-size:15px;padding:12px 8px}
+.mine-row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);text-decoration:none}
+.mine-row:last-child{border-bottom:0}
+.textlink{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;font:inherit;font-size:14px;cursor:pointer}
+details.more{margin-top:14px}details.more summary{cursor:pointer;font-weight:600;color:var(--muted)}
+@media (hover:none){.desktop-only{display:none}}
+@media (prefers-reduced-motion:reduce){.hero svg{animation:none}}
+`;
+
 export function homePage({ origin, provider, cfg }) {
   const bookmarklet = `javascript:location.href=${JSON.stringify(`${origin}/new?url=`)}+encodeURIComponent(location.href)`;
   const body = `
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
-<h1>Your cart, anywhere.<br>Someone else's tap.</h1>
-<p class="lead">Turn any cart into a link. Whoever opens it covers it in one tap, and you check out with a card that only works at that store.</p>
-${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves. Payments and cards are simulated.</div>' : ''}
+<div class="hero">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
+${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 
-<section class="card" id="capture">
-  <h2>1 · Grab the cart</h2>
-  <div class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" data-tab="link">Link</button>
-    <button role="tab" aria-selected="false" data-tab="shot">Screenshot</button>
-    <button role="tab" aria-selected="false" data-tab="manual">Type it</button>
+<section id="compose">
+  <div class="box" id="box">
+    <div class="chipbar" id="chip" hidden><span id="chipName"></span><button id="chipX" aria-label="Remove screenshot">×</button></div>
+    <textarea id="q" rows="2" autocomplete="off" placeholder="paste a link, drop a screenshot, or say what you want" aria-label="What do you want?"></textarea>
+    <div class="boxrow">
+      <label class="iconbtn" for="shot">📷 screenshot</label><input id="shot" type="file" accept="image/*" hidden>
+      <button class="btn" id="go">Spot it</button>
+    </div>
   </div>
-  <div data-pane="link"><label for="url">Product or cart page</label><input id="url" type="url" inputmode="url" placeholder="https://store.com/products/…"><button class="btn dark" id="grab">Grab it</button></div>
-  <div data-pane="shot" hidden><label for="shot">Screenshot of any cart or checkout</label><input id="shot" type="file" accept="image/png,image/jpeg,image/webp"><p class="small muted">Read by AI. You'll check every line before sharing.</p></div>
-  <div data-pane="manual" hidden><p class="muted small" style="margin:0">Add the items below.</p></div>
   <div class="err" id="capErr"></div>
+  <p class="hint">Someone taps your link, covers it, and you check out with a card that only works at that store.</p>
 </section>
 
-<section class="card" id="review">
-  <h2>2 · Check it</h2>
-  <label for="merchant">Store</label>
-  <div class="row"><input id="merchant" placeholder="Store name"><input id="merchantUrl" placeholder="store.com (optional)"></div>
-  <label>Items</label>
-  <div id="items"></div>
-  <button class="btn ghost small" id="addItem" type="button">+ Add item</button>
-  <label for="extras">Shipping + tax estimate</label>
-  <input id="extras" inputmode="decimal" placeholder="0.00">
-  <div id="totals" style="margin-top:12px"></div>
-</section>
-
-<section class="card" id="you">
-  <h2>3 · Get it covered</h2>
-  <div class="row"><div><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="Kyle"></div><div><label for="email">Email (optional)</label><input id="email" type="email" autocomplete="email" placeholder="you@…"></div></div>
-  <label for="settle">How should the money reach you?</label>
-  <select id="settle">
-    <option value="card">Store card: they pay, you check out with a one-time card</option>
-    <option value="handoff">Straight to my Venmo / Cash App</option>
-  </select>
-  <div id="billing" ${provider === 'stripe' ? '' : 'hidden'}>
-    <label>Billing address for your card</label>
-    <input id="b_line1" placeholder="Street" autocomplete="address-line1"><div class="row" style="margin-top:6px"><input id="b_city" placeholder="City" autocomplete="address-level2"><input id="b_state" placeholder="State" autocomplete="address-level1"><input id="b_zip" placeholder="ZIP" autocomplete="postal-code"></div>
+<section id="check" hidden>
+  <div class="card">
+    <p class="small" id="checkMsg" style="margin:0 0 6px;color:var(--warn)"></p>
+    <label for="merchant">Store</label><input id="merchant" placeholder="Store name">
+    <label>Items</label><div id="items"></div>
+    <button class="btn ghost small" id="addItem" type="button">+ Add item</button>
+    <label for="extras">Shipping + tax estimate</label><input id="extras" inputmode="decimal" placeholder="0.00">
+    <div id="totals" style="margin-top:12px"></div>
+    <div id="nameRow"><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="so they know who's asking"></div>
+    <details class="more"><summary>more options</summary>
+      <label for="settle">How the money reaches you</label>
+      <select id="settle"><option value="card">One-time card for this store</option><option value="handoff">Straight to my Venmo / Cash App</option></select>
+      <div class="row"><div><label for="venmo">Venmo</label><input id="venmo" placeholder="@handle"></div><div><label for="cashtag">Cash App</label><input id="cashtag" placeholder="$cashtag"></div></div>
+      <label for="note">Note for them</label><input id="note" maxlength="280" placeholder="birthday list 🎂">
+      <label for="email">Email (optional, for updates)</label><input id="email" type="email" autocomplete="email">
+      <p class="small"><button class="textlink" id="notMe" type="button">change my name</button></p>
+    </details>
+    <button class="btn" id="saveCheck">Looks good →</button>
+    <div class="err" id="checkErr"></div>
   </div>
-  <div class="row"><div><label for="venmo">Venmo (optional)</label><input id="venmo" placeholder="@handle"></div><div><label for="cashtag">Cash App (optional)</label><input id="cashtag" placeholder="$cashtag"></div></div>
-  <label for="note">Note to whoever pays (optional)</label>
-  <input id="note" maxlength="280" placeholder="birthday list 🎂">
-  <button class="btn" id="create">Make my link</button>
-  <div class="err" id="createErr"></div>
 </section>
 
-<section class="card" id="done" hidden>
-  <h2>Your link is ready</h2>
-  <div class="linkbox"><span id="link"></span></div>
-  <div class="row"><button class="btn" id="share">Share</button><button class="btn ghost" id="copy">Copy</button></div>
-  <p class="small muted">Your private page shows payment status and your card once it's covered. <b>Bookmark it</b>, since it's the only way back in.</p>
-  <a class="btn dark" id="manage" href="#">Open my page</a>
+<section id="ready" hidden>
+  <img id="card" class="shareimg" alt="Your Spot share card">
+  <div class="linkbox" style="margin-top:10px"><span id="linkText"></span></div>
+  <button class="btn" id="send">Send</button>
+  <div class="people" id="people"></div>
+  <form id="personForm" class="card" hidden style="margin-top:10px">
+    <div class="row"><div><label for="pName">Name</label><input id="pName" placeholder="Mom"></div><div><label for="pPhone">Phone</label><input id="pPhone" type="tel" inputmode="tel" placeholder="(555) 123-4567"></div></div>
+    <button class="btn dark small" style="margin-top:10px">Save</button>
+  </form>
+  <div class="sendrow"><a class="btn ghost" id="txt">Text</a><a class="btn ghost" id="wa" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" id="copy">Copy</button></div>
+  <p class="small muted" style="margin-top:14px;display:flex;justify-content:space-between;gap:10px"><button class="textlink" id="edit">edit cart</button><a id="manageLink" href="#">see who pays →</a><button class="textlink" id="again">start another</button></p>
 </section>
 
-<section class="card">
-  <h2>Grab carts in one click</h2>
-  <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it to start a Spot.</p>
+<section id="mine" class="card" hidden><h2>My Spots</h2><div id="mineList"></div></section>
+
+<section class="card desktop-only">
+  <h2>Spot from any page</h2>
+  <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it.</p>
   <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
 </section>
-<footer>Spot · cart links for anyone, anywhere</footer>`;
-
-  const script = `${SHARED_JS}
-const CFG=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents })};
-let items=[];
-const tabs=[...document.querySelectorAll('[data-tab]')];
-tabs.forEach(t=>t.onclick=()=>{tabs.forEach(x=>x.setAttribute('aria-selected',x===t));document.querySelectorAll('[data-pane]').forEach(p=>p.hidden=p.dataset.pane!==t.dataset.tab);if(t.dataset.tab==='manual'&&!items.length){items.push(blank());render()}});
-const blank=()=>({title:'',variant:null,quantity:1,price_cents:null,image_url:null,url:null});
-const toCents=v=>{const m=String(v||'').replace(/[,\\s$]/g,'').match(/^\\d+(\\.\\d{0,2})?$/);return m?Math.round(parseFloat(m[0])*100):null};
-function render(){
-  $('#items').innerHTML=items.map((it,i)=>'<div class="edit-item"><input aria-label="Item" data-i="'+i+'" data-f="title" value="'+esc(it.title)+(it.variant?' ('+esc(it.variant)+')':'')+'" placeholder="Item"><input aria-label="Price" data-i="'+i+'" data-f="price" inputmode="decimal" value="'+(it.price_cents!=null?(it.price_cents/100).toFixed(2):'')+'" placeholder="Price"><input aria-label="Qty" data-i="'+i+'" data-f="qty" inputmode="numeric" value="'+it.quantity+'"><button class="x" data-del="'+i+'" aria-label="Remove">×</button></div>').join('')||'<p class="muted small">No items yet.</p>';
-  totals();
-}
-$('#items').addEventListener('input',e=>{const el=e.target,i=+el.dataset.i,f=el.dataset.f;if(f==='title'){items[i].title=el.value;items[i].variant=null}if(f==='price')items[i].price_cents=toCents(el.value);if(f==='qty')items[i].quantity=Math.max(1,parseInt(el.value)||1);totals()});
-$('#items').addEventListener('click',e=>{const d=e.target.dataset.del;if(d!=null){items.splice(+d,1);render()}});
-$('#addItem').onclick=()=>{items.push(blank());render()};
-$('#extras').oninput=totals;$('#settle').onchange=()=>{totals();$('#billing').hidden=${json(provider !== 'stripe')}||$('#settle').value!=='card'};
-function totals(){
-  const sub=items.reduce((s,it)=>s+(it.price_cents||0)*it.quantity,0),ex=toCents($('#extras').value)||0,cart=sub+ex;
-  const fee=$('#settle').value==='handoff'?0:Math.round(cart*CFG.feeBps/10000)+CFG.feeFixed;
-  $('#totals').innerHTML='<div class="sum"><span>Items</span><span>'+usd(sub)+'</span></div><div class="sum"><span>Shipping + tax</span><span>'+usd(ex)+'</span></div>'+(fee?'<div class="sum"><span>Spot fee (paid by them)</span><span>'+usd(fee)+'</span></div>':'')+'<div class="sum total"><span>They pay</span><span>'+usd(cart+fee)+'</span></div>'+(cart>CFG.max?'<div class="err">Carts are capped at '+usd(CFG.max)+' for now.</div>':'');
-}
-function load(d){
-  if(d.merchant){$('#merchant').value=d.merchant.name||'';$('#merchantUrl').value=d.merchant.url||''}
-  items=(d.items||[]).map(it=>({...blank(),...it}));if(!items.length)items.push(blank());
-  if(d.extras_cents)$('#extras').value=(d.extras_cents/100).toFixed(2);
-  render();
-  const miss=items.some(i=>!i.price_cents);
-  $('#capErr').textContent=d.warning||(miss?'Some prices were not found. Fill them in below.':'');
-  $('#review').scrollIntoView({behavior:'smooth'});
-}
-async function grab(body,btn){$('#capErr').textContent='';if(btn){btn.disabled=true;btn.textContent='Reading…'}try{load(await api('/v1/capture',body))}catch(e){$('#capErr').textContent=e.message}finally{if(btn){btn.disabled=false;btn.textContent='Grab it'}}}
-$('#grab').onclick=()=>{const u=$('#url').value.trim();if(u)grab({url:u},$('#grab'))};
-$('#shot').onchange=async()=>{const f=$('#shot').files[0];if(!f)return;if(f.size>6e6){$('#capErr').textContent='Screenshot must be under 6 MB';return}
-  const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(f)});
-  $('#capErr').textContent='Reading your screenshot…';grab({image:{data,media_type:f.type}})};
-$('#create').onclick=async()=>{
-  const btn=$('#create');$('#createErr').textContent='';btn.disabled=true;
-  try{
-    const res=await api('/v1/carts',{
-      requester:{name:$('#name').value,email:$('#email').value,venmo:$('#venmo').value,cashtag:$('#cashtag').value,billing:{line1:$('#b_line1').value,city:$('#b_city').value,state:$('#b_state').value,postal_code:$('#b_zip').value}},
-      merchant:{name:$('#merchant').value,url:$('#merchantUrl').value&&!/^https?:/.test($('#merchantUrl').value)?'https://'+$('#merchantUrl').value:$('#merchantUrl').value},
-      items:items.filter(i=>i.title||i.price_cents),extras_cents:toCents($('#extras').value)||0,settle:$('#settle').value,note:$('#note').value});
-    $('#link').textContent=res.link;$('#manage').href=res.manage_link;$('#done').hidden=false;$('#done').scrollIntoView({behavior:'smooth'});
-    try{localStorage.setItem('spot:'+res.cart.token,res.manage_link)}catch{}
-    $('#share').onclick=()=>navigator.share?navigator.share({title:'Cover my cart?',url:res.link}).catch(()=>{}):navigator.clipboard.writeText(res.link);
-    $('#copy').onclick=()=>{navigator.clipboard.writeText(res.link);$('#copy').textContent='Copied'};
-  }catch(e){$('#createErr').textContent=e.message}finally{btn.disabled=false}
-};
-render();
-const qp=new URLSearchParams(location.search).get('url');if(qp){$('#url').value=qp;grab({url:qp},$('#grab'))}
-`;
-  return shell({ title: 'Spot: cover my cart', body, script, head: '<meta name="description" content="Turn any cart into a link someone else can pay.">' });
+<footer>Spot · cart links for anyone, anywhere</footer>
+<script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents, provider })}</script>
+<script src="/client/home.js" defer></script>`;
+  return shell({ title: 'Spot: cover my cart', body, head: `<meta name="description" content="Turn any cart into a link someone else can pay."><style>${HOME_CSS}</style>` });
 }
 
 // ─── Pay page (the link that gets shared) ───────────────────────────────────
@@ -221,6 +199,8 @@ const PAY_CSS = `
 details{margin-top:8px;color:var(--muted);font-size:14px}
 details summary{cursor:pointer;font-weight:600}
 details .sum{font-size:14px}
+.or{text-align:center;color:var(--muted);font-size:14px;margin:10px 0}
+#cardBox summary::-webkit-details-marker{display:none}
 .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:fall 1.6s ease-in forwards}
 @keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.8}}
@@ -323,10 +303,13 @@ function actionBox(cart, links, provider, total) {
   }
   const fallback = links.length ? `<p class="small muted" style="text-align:center;margin:10px 0 0">or send it straight to them: ${links.map((l) => `<a href="${esc(l.url)}">${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`).join(' · ')}</p>` : '';
   if (provider === 'sandbox') {
-    return `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (so ${name} knows who to thank)" aria-label="Your name"></div>
+    return `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (optional)" aria-label="Your name (optional)"></div>
 <button class="btn go" id="go">Spot ${name} ${total}</button><div class="err" id="payErr"></div>${fallback}`;
   }
-  return `<div id="stripeEl"></div><button class="btn go" id="go" disabled>Spot ${name} ${total}</button><div class="err" id="payErr"></div>${fallback}`;
+  // Wallet buttons first: one tap, and the wallet supplies the payer's name.
+  return `<div id="express"></div><div class="or" id="orCard" hidden>or pay with card</div>
+<details id="cardBox"><summary class="btn ghost" style="list-style:none">Pay with card</summary><div id="stripeEl" style="margin-top:12px"></div><button class="btn go" id="go" disabled>Spot ${name} ${total}</button></details>
+<div class="err" id="payErr"></div>${fallback}`;
 }
 
 function detailsBox(cart) {
@@ -345,12 +328,20 @@ function payScript(cart, provider) {
   }
   return `(async()=>{try{
   const T=${json(cart.token)};const c=await api('/v1/carts/'+T+'/pay',{});
-  const stripe=Stripe(c.publishable_key);const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
-  elements.create('payment',{layout:'tabs',wallets:{applePay:'auto',googlePay:'auto'}}).mount('#stripeEl');$('#go').disabled=false;
-  $('#go').onclick=async()=>{$('#go').disabled=true;$('#payErr').textContent='';
+  const stripe=Stripe(c.publishable_key);
+  const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
+  const settle=async(payer)=>{$('#payErr').textContent='';
     const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
-    if(error){$('#payErr').textContent=error.message;$('#go').disabled=false;return}
-    $('#go').textContent='confirming…';for(let i=0;i<20;i++){const r=await api('/v1/carts/'+T);if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}celebrate('')};
+    if(error){$('#payErr').textContent=error.message;return false}
+    for(let i=0;i<20;i++){const r=await api('/v1/carts/'+T);if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
+    celebrate(payer||'');return true};
+  // Apple Pay / Google Pay / Link: shown only on devices that have one.
+  const ex=elements.create('expressCheckout',{buttonHeight:52,buttonTheme:{applePay:'black',googlePay:'black'},buttonType:{applePay:'plain',googlePay:'plain'}});
+  ex.on('ready',({availablePaymentMethods})=>{if(availablePaymentMethods){$('#orCard').hidden=false}else{$('#cardBox').open=true}});
+  ex.on('confirm',async(ev)=>{const ok=await settle((ev.billingDetails?.name||'').split(' ')[0]);if(!ok)ev.paymentFailed&&ev.paymentFailed()});
+  ex.mount('#express');
+  elements.create('payment',{layout:'tabs',wallets:{applePay:'never',googlePay:'never'}}).mount('#stripeEl');$('#go').disabled=false;
+  $('#go').onclick=async()=>{$('#go').disabled=true;$('#go').textContent='confirming…';if(!await settle('')){$('#go').disabled=false;$('#go').textContent='Try again'}};
 }catch(e){$('#payErr').textContent=e.message}})();`;
 }
 
@@ -362,12 +353,15 @@ export function managePage({ token, provider }) {
 <footer>Keep this page private. Anyone with it can see your card.</footer>`;
   const script = `${SHARED_JS}
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
-const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid, issuing your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
+const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
 let reveal=null;
 async function draw(){
   const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;const [label,tone]=STATUS[c.status]||[c.status,''];
   let h='<h1 style="font-size:28px">'+esc(c.merchant.name)+' cart</h1><span class="pill '+tone+'">'+label+'</span>';
   h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  if(r.needs_billing){
+    h+='<section class="card"><h2>'+(c.status==='paid'?'🎉 '+esc(c.payer_name||'Someone')+' spotted you!':'One thing for your card')+'</h2><p class="small muted" style="margin-top:0">'+(c.status==='paid'?'Add your billing address and your card is ready right away.':'Add your billing address now so your card is ready the moment someone pays.')+'</p><form id="bill"><input id="b1" placeholder="Street" autocomplete="address-line1" required><div class="row" style="margin-top:6px"><input id="b2" placeholder="City" autocomplete="address-level2" required><input id="b3" placeholder="State" autocomplete="address-level1" required><input id="b4" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" required></div><button class="btn">'+(c.status==='paid'?'Get my card':'Save')+'</button><div class="err" id="billErr"></div></form></section>';
+  }
   if(c.status==='card_issued'&&c.card){
     h+='<section class="card"><h2>Check out at '+esc(c.merchant.name)+'</h2><div class="cc"><div>SPOT · one-time</div><div class="n" id="ccn">•••• •••• •••• '+esc(c.card.last4)+'</div><div class="meta"><span>'+esc(c.requester.name)+'</span><span>'+String(c.card.exp_month).padStart(2,'0')+'/'+String(c.card.exp_year).slice(-2)+'</span><span id="cvc">CVC •••</span></div></div>';
     h+='<button class="btn dark" id="rev">Show card number</button><p class="small muted">Works once, only at '+esc(c.merchant.name)+', up to '+usd(c.cart_cents)+' plus a little for tax changes.</p></section>';
@@ -382,10 +376,12 @@ async function draw(){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   on('rev',async()=>{try{reveal=reveal||await api('/v1/carts/'+TOKEN+'/manage/reveal',{k:K});$('#ccn').textContent=reveal.number.replace(/(.{4})/g,'$1 ').trim();$('#cvc').textContent='CVC '+reveal.cvc;$('#rev').textContent='Copy number';$('#rev').onclick=()=>navigator.clipboard.writeText(reveal.number)}catch(e){alert(e.message)}});
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
+  const bill=$('#bill');if(bill)bill.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/billing',{k:K,billing:{line1:$('#b1').value,city:$('#b2').value,state:$('#b3').value,postal_code:$('#b4').value}});draw()}catch(err){$('#billErr').textContent=err.message}};
   on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});
   on('cancel',async()=>{if(confirm('Cancel this link?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
   on('refund',async()=>{if(confirm('Refund the payer and cancel your card?')){await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K});draw()}});
-  if(['open','paid'].includes(c.status))setTimeout(draw,4000);
+  // keep watching for payment, but never redraw under someone typing
+  if(['open','paid'].includes(c.status))setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},4000);
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
   return shell({ title: 'My Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });

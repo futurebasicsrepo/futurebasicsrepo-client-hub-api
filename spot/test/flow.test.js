@@ -159,24 +159,36 @@ test('stripe webhooks: payment succeeded issues card; authorization request is a
       return JSON.parse(raw.toString());
     },
     answerAuthorization: async (id, approved) => answers.push([id, approved]),
+    needsBilling: true,
+    payerNameFor: async (pi) => (pi.latest_charge === 'ch_1' ? 'Mom' : null),
   };
   const { app, call } = setup(provider);
   t.after(() => app.close());
-  const billing = { line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' };
-  assert.equal((await call('POST', '/v1/carts', cartBody())).status, 400, 'stripe card carts need billing');
-  const a = (await call('POST', '/v1/carts', cartBody({ requester: { name: 'Kyle', billing } }))).body;
+  // Links need no billing address up front…
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  assert.equal(a.cart.status, 'open');
   const pay = await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
   assert.equal(pay.body.client_secret, 'pi_123_secret');
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody() })).status, 409, 'no edits once a payer has started');
 
   const hook = (event, sig = 'good') => app.inject({ method: 'POST', url: '/v1/webhooks/stripe', headers: { 'stripe-signature': sig, 'content-type': 'application/json' }, payload: JSON.stringify(event) });
   assert.equal((await hook({}, 'forged')).statusCode, 400);
 
-  const succeeded = { type: 'payment_intent.succeeded', data: { object: { id: 'pi_123', amount_received: a.cart.total_cents, metadata: { spot_cart_id: 'x' } } } };
+  const succeeded = { type: 'payment_intent.succeeded', data: { object: { id: 'pi_123', amount_received: a.cart.total_cents, latest_charge: 'ch_1', metadata: { spot_cart_id: 'x' } } } };
   assert.equal((await hook(succeeded)).statusCode, 200);
   assert.equal((await hook(succeeded)).statusCode, 200, 'duplicate delivery is harmless');
-  const m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
-  assert.equal(m.body.cart.status, 'card_issued');
-  assert.equal(m.body.events.filter((e) => e.kind === 'issue').length, 1);
+
+  // …so after payment the requester is asked for it, then the card issues.
+  let m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.cart.status, 'paid');
+  assert.equal(m.body.needs_billing, true);
+  assert.equal(m.body.cart.payer_name, 'Mom', 'payer name comes from the wallet');
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/billing`, { k: a.manage_key, billing: { line1: '1 Main St' } })).status, 400);
+  const billed = await call('POST', `/v1/carts/${a.cart.token}/manage/billing`, { k: a.manage_key, billing: { line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' } });
+  assert.equal(billed.body.cart.status, 'card_issued');
+  m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.needs_billing, false);
+  assert.deepEqual(m.body.events.map((e) => e.kind).filter((k) => ['needs_billing', 'billing_added', 'issue'].includes(k)), ['needs_billing', 'billing_added', 'issue']);
 
   const authReq = (id, name, amount) => ({ type: 'issuing_authorization.request', data: { object: { id, card: { id: 'ic_abc' }, pending_request: { amount, currency: 'usd' }, merchant_data: { name } } } });
   await hook(authReq('iauth_1', 'STEAM GAMES', 5000));
@@ -196,4 +208,53 @@ test('capture endpoint: url via injected capturer, screenshot needs a key', asyn
   const s = await app.inject({ method: 'POST', url: '/v1/capture', payload: { image: { data: 'aGk=', media_type: 'image/png' } } });
   if (saved) process.env.ANTHROPIC_API_KEY = saved;
   assert.equal(s.statusCode, 422);
+});
+
+test('edit a link before anyone pays; the share card redraws', async (t) => {
+  const { app, call } = setup();
+  t.after(() => app.close());
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  const png1 = (await app.inject({ method: 'GET', url: `/c/${a.cart.token}/card.png` })).rawPayload;
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: 'nope', cart: cartBody() })).status, 404);
+  const e = await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, {
+    k: a.manage_key,
+    cart: cartBody({ items: [{ title: 'Super Puff Long', quantity: 1, price_cents: 32000 }], extras_cents: 0 }),
+  });
+  assert.equal(e.status, 200);
+  assert.equal(e.body.cart.rev, 2);
+  assert.equal(e.body.cart.cart_cents, 32000);
+  assert.equal(e.body.cart.requester.name, 'Kyle', 'requester is kept');
+  const page = await call('GET', `/c/${a.cart.token}`);
+  assert.match(page.body, /Super Puff Long/);
+  const png2 = (await app.inject({ method: 'GET', url: `/c/${a.cart.token}/card.png` })).rawPayload;
+  assert.notDeepEqual(png1, png2);
+  await call('POST', `/v1/carts/${a.cart.token}/sandbox-pay`, {});
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody() })).status, 409);
+});
+
+test('composer page and its script are served; text capture routes', async (t) => {
+  const db = openDb(':memory:');
+  const seen = [];
+  const app = buildApp({
+    db, provider: sandboxProvider(), cfg, logger: false,
+    capture: { fromUrl: async (u) => (seen.push(u), { source: 'url', merchant: { name: 'Nike', url: 'https://nike.com' }, items: [] }) },
+  });
+  t.after(() => app.close());
+  const home = await app.inject({ method: 'GET', url: '/' });
+  assert.match(home.body, /id="q"/);
+  assert.match(home.body, /<script src="\/client\/home.js" defer><\/script>/);
+  const js = await app.inject({ method: 'GET', url: '/client/home.js' });
+  assert.equal(js.statusCode, 200);
+  assert.match(js.headers['content-type'], /javascript/);
+  new Function(js.body); // parses
+  // Shared text with a link inside it goes to the link capturer.
+  await app.inject({ method: 'POST', url: '/v1/capture', payload: { text: 'check this out on Nike! https://www.nike.com/t/dunk-low.' } });
+  assert.deepEqual(seen, ['https://www.nike.com/t/dunk-low']);
+  // A plain description without an API key becomes an editable draft.
+  const saved = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  const d = await app.inject({ method: 'POST', url: '/v1/capture', payload: { text: 'black salomon xt-6 size 10.5 $200' } });
+  if (saved) process.env.ANTHROPIC_API_KEY = saved;
+  assert.equal(d.json().items[0].title, 'black salomon xt-6 size 10.5');
+  assert.equal(d.json().items[0].price_cents, 20000);
 });

@@ -3,6 +3,9 @@
 //   captureFromUrl(url)          product or cart page → items via JSON-LD, then
 //                                Open Graph / product meta tags
 //   captureFromScreenshot(img)   screenshot of any cart → items via Claude vision
+//   captureFromText(text)        whatever was typed or shared: a link inside the
+//                                text is fetched; otherwise Claude looks the
+//                                product up on the web
 //
 // Both return a *draft*: the requester always reviews and can edit the items
 // and total before a link is made, so a misread never charges anyone.
@@ -321,6 +324,97 @@ export function draftFromVision(v) {
     extras_cents: dollarsToCents(v.shipping_and_tax) || 0,
     needs_review: true, // always confirm what a model read off an image
     warning: currencyOk ? null : `Prices look like ${v.currency}; Spot works in USD for now`,
+  };
+}
+
+// ─── Text capture ───────────────────────────────────────────────────────────
+// The composer is one box. Shared text from apps often wraps the link in a
+// sentence ("Check out this on Nike! https://…"), so pull the link out first.
+const URL_IN_TEXT = /https?:\/\/[^\s<>"')]+/i;
+
+export function splitText(raw) {
+  const text = String(raw || '').trim().slice(0, 2000);
+  const url = text.match(URL_IN_TEXT)?.[0]?.replace(/[.,!?]+$/, '') || null;
+  return { text, url };
+}
+
+// Draft for a description when no lookup is possible: one item named after
+// what they typed, with any "$120" in it used as the price.
+export function draftFromDescription(text) {
+  const price = text.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/);
+  const title = text.replace(/\$\s?\d[\d,]*(?:\.\d{1,2})?/, '').replace(/\s+/g, ' ').trim() || text;
+  return {
+    source: 'text',
+    merchant: { name: '', url: null },
+    items: [{ title: title.slice(0, 140), variant: null, quantity: 1, price_cents: price ? dollarsToCents(price[1]) : null, image_url: null, url: null }],
+    needs_review: true,
+  };
+}
+
+const LOOKUP_SCHEMA_HINT = `{"found": true|false, "merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00"}`;
+
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl } = {}) {
+  const { text, url } = splitText(raw);
+  if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
+  if (url) return fromUrl(url);
+  if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
+
+  const anthropic = client ?? new Anthropic();
+  const messages = [
+    {
+      role: 'user',
+      content: `Someone wants a friend to buy them this: "${text.replace(/"/g, "'")}"
+
+Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave. Reply with ONLY this JSON and nothing else:
+${LOOKUP_SCHEMA_HINT}
+Set "found" to false if you can't find a specific product with a current price.`,
+    },
+  ];
+  // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
+  let response;
+  for (let i = 0; i < 3; i++) {
+    response = await anthropic.beta.messages.create({
+      model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+      max_tokens: 4000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low' },
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
+      messages,
+    });
+    if (response.stop_reason !== 'pause_turn') break;
+    messages.push({ role: 'assistant', content: response.content });
+  }
+  if (response.stop_reason === 'refusal') return draftFromDescription(text);
+  const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  const json = out.match(/\{[\s\S]*\}/)?.[0];
+  let v;
+  try {
+    v = JSON.parse(json);
+  } catch {
+    return draftFromDescription(text);
+  }
+  return draftFromLookup(v, text);
+}
+
+export function draftFromLookup(v, text) {
+  if (!v?.found || !v.title) return draftFromDescription(text);
+  const safe = (u) => {
+    try {
+      const x = new URL(u);
+      return x.protocol === 'https:' || x.protocol === 'http:' ? x.toString() : null;
+    } catch {
+      return null;
+    }
+  };
+  const site = safe(v.merchant_url) || safe(v.product_url);
+  const merchantUrl = site ? new URL(site).origin : null;
+  const price = dollarsToCents(v.unit_price);
+  return {
+    source: 'lookup',
+    merchant: { name: String(v.merchant_name || '').slice(0, 80) || (merchantUrl ? prettyHost(new URL(merchantUrl).hostname.replace(/^www\./, '')) : ''), url: merchantUrl },
+    items: [{ title: String(v.title).slice(0, 140), variant: v.variant || null, quantity: 1, price_cents: price && price > 0 ? price : null, image_url: null, url: safe(v.product_url) }],
+    needs_review: true, // prices found by search are a guess until the requester confirms
   };
 }
 

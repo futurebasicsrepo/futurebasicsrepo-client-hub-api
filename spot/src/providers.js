@@ -71,6 +71,8 @@ export function stripeProvider(env = process.env) {
   return {
     name: 'stripe',
     stripe,
+    needsBilling: true, // Issuing cardholders need a billing address
+
     async createPayment(cart) {
       // Reuse the intent if the payer reloads the page.
       if (cart.payment_ref) {
@@ -134,6 +136,15 @@ export function stripeProvider(env = process.env) {
     async refund(cart) {
       if (cart.payment_ref) await stripe.refunds.create({ payment_intent: cart.payment_ref }, { idempotencyKey: `spot-refund-${cart.id}` });
       if (cart.card_ref) await stripe.issuing.cards.update(cart.card_ref, { status: 'canceled' });
+    },
+
+    // Apple Pay / Google Pay / card forms carry the payer's name, so the pay
+    // page never has to ask for it.
+    async payerNameFor(pi) {
+      const chargeId = typeof pi.latest_charge === 'string' ? pi.latest_charge : pi.latest_charge?.id;
+      if (!chargeId) return null;
+      const charge = await stripe.charges.retrieve(chargeId);
+      return charge.billing_details?.name?.split(' ')[0] || null;
     },
 
     verifyWebhook(rawBody, signature) {

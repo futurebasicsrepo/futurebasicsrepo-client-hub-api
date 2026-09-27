@@ -13,7 +13,8 @@ spot/
   src/providers.js  sandbox (no money) and Stripe (PaymentIntents + Issuing)
   src/spot.js       service layer: every state change goes through here
   src/server.js     Fastify routes + Stripe webhooks
-  src/pages.js      the three pages: create, pay, requester
+  src/pages.js      the three pages: composer, pay, requester
+  src/client/home.js  the composer's behaviour (capture → check → send)
   src/sharecard.js  link-preview image + the mascot (satori → resvg)
   src/db.js         Node's built-in SQLite
 ```
@@ -31,7 +32,8 @@ With no Stripe keys set, Spot runs in **sandbox mode**. Payment is a "Pay (test)
 
 ## How it works
 
-1. **Capture.** Paste a product or cart link, upload a screenshot, or type items. The "Spot this" bookmarklet on the home page sends whatever page you're on straight into capture. Links are read from JSON-LD `Product` data, then Open Graph / `product:price` tags. Screenshots are read by Claude with a JSON schema. Either way the requester reviews every line before a link exists.
+1. **Capture: one box.** Paste a link or any shared text that has a link in it, drop or paste a screenshot, or just say what you want ("black Salomon XT-6 in 10.5"). Links are read from JSON-LD `Product` data, then Open Graph / `product:price` tags. Screenshots are read by Claude with a JSON schema. Descriptions are looked up by Claude with web search; with no API key they become an editable item. If a link was read confidently (every price found, store known) and the requester is known on this device, Spot skips the review step and goes straight to Send. Everything else gets a quick check first. The "Spot this" bookmarklet, `/new?url=` and `/new?text=` all feed the same box.
+   **Sending:** one Send button (the phone's share sheet with the message already written), "Ask Mom"-style buttons for saved people (a text message already written; Android can pick from contacts), plus Text, WhatsApp and Copy. The requester's name, payout handles, favourite people and their recent Spots ("My Spots") are remembered in `localStorage` on that device. A link can be edited until someone starts paying, and the share card redraws.
 2. **Share.** When the link (`/c/<12 chars>`) is pasted into iMessage, WhatsApp, Slack, Discord or X, it shows a share card drawn for that cart (`/c/<token>/card.png`, 1200×630 PNG, `src/sharecard.js`). The card has Spot the mascot asking "psst… can you spot Kyle?", the item, the store and the price. It redraws to "Mom spotted Kyle!" with a happy mascot once the cart is paid. The pay page is a short chat from Spot, not a form. The mascot's eyes follow the pointer, and paying ends in confetti.
 3. **Pay.** Stripe Payment Element: Apple Pay, Google Pay or card. The payer pays the cart plus a 4% fee.
 4. **Card.** When `payment_intent.succeeded` arrives, Spot issues a Stripe Issuing virtual card. The requester's private page shows it.
@@ -56,7 +58,7 @@ Cart states: `open → paid → card_issued → completed`, plus `canceled`, `ex
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |
 
-In Stripe mode, card carts need the requester's billing address, which is required to create an Issuing cardholder. The create page asks for it.
+In Stripe mode, the card needs the requester's billing address (Issuing cardholders require one). Making a link never asks for it: once someone pays, the requester's page asks for it and the card issues right away. The payer's name comes from their Apple Pay / Google Pay / card details, and the pay page shows wallet buttons first.
 
 ## What's verified and what isn't
 
