@@ -1,0 +1,36 @@
+{
+  "current": {
+    "color_bg": "#EDE6D3",
+    "color_paper": "#FAF6EC",
+    "color_ink": "#141414",
+    "color_accent_1": "#E0322B",
+    "color_accent_2": "#1E7A3C",
+    "color_accent_3": "#F5C518",
+    "color_accent_4": "#2457C5",
+    "motion_level": "full",
+    "enable_cursor": true,
+    "enable_scanlines": true,
+    "enable_osd": true,
+    "enable_hover_swap": true,
+    "enable_view_transitions": true,
+    "corner_radius": 4,
+    "grid_density": "4",
+    "card_show_vendor": true,
+    "card_show_size": true,
+    "card_quick_add": true,
+    "badge_new_days": "14",
+    "whatnot_url": "https://www.whatnot.com/user/commonground12",
+    "whatnot_live": false,
+    "whatnot_next": "",
+    "whatnot_next_title": "Friday Night Heat: Jordans, Dunks & Vintage",
+    "whatnot_badge": true,
+    "consign_api_url": "https://hub.thefuturebasics.com",
+    "social_instagram": "https://www.instagram.com/commonground12/",
+    "social_facebook": "https://www.facebook.com/CommonGroundWalnut/",
+    "sections": {
+      "announcement-bar": { "type": "announcement-bar", "settings": {} },
+      "header": { "type": "header", "settings": {} },
+      "footer": { "type": "footer", "settings": {} }
+    }
+  }
+}

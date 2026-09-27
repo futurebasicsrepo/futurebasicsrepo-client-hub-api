@@ -1,0 +1,40 @@
+<section class="cbanner{% if collection.image and section.settings.show_image %} cbanner--has-image{% endif %}">
+  {%- if collection.image and section.settings.show_image -%}
+    <div class="cbanner__media" data-parallax>
+      <img src="{{ collection.image | image_url: width: 1800 }}" width="{{ collection.image.width }}" height="{{ collection.image.height }}" alt="{{ collection.image.alt | default: collection.title | escape }}" loading="eager">
+    </div>
+  {%- endif -%}
+  <div class="cbanner__inner page-width">
+    <nav class="breadcrumbs small" aria-label="Breadcrumbs">
+      <a href="{{ routes.root_url }}">Home</a> <span aria-hidden="true">/</span>
+      <a href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }}</a>
+      {%- unless collection.handle == 'all' -%} <span aria-hidden="true">/</span> <span aria-current="page">{{ collection.title }}</span>{%- endunless -%}
+    </nav>
+    <h1 class="h1 cbanner__title" data-glitch data-text="{{ collection.title | escape }}">
+      {%- if collection.handle == 'all' -%}{{ 'sections.header.shop_all' | t }}{%- else -%}{{ 'sections.collection.shop_all_in' | t: collection: collection.title }}{%- endif -%}
+    </h1>
+    {%- if section.settings.show_description and collection.description != blank -%}
+      <div class="cbanner__desc rte">{{ collection.description }}</div>
+    {%- endif -%}
+    {%- if section.settings.show_siblings -%}
+      <ul class="cbanner__siblings" aria-label="Collections">
+        <li><a class="chip{% if collection.handle == 'all' %} chip--active{% endif %}" href="{{ routes.all_products_collection_url }}">All</a></li>
+        {%- for c in collections limit: 20 -%}
+          {%- unless c.handle == 'all' or c.handle == 'frontpage' or c.all_products_count == 0 -%}
+            <li><a class="chip{% if c.handle == collection.handle %} chip--active{% endif %}" href="{{ c.url }}">{{ c.title }}</a></li>
+          {%- endunless -%}
+        {%- endfor -%}
+      </ul>
+    {%- endif -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Collection banner",
+  "settings": [
+    { "type": "checkbox", "id": "show_image", "label": "Show collection image", "default": true },
+    { "type": "checkbox", "id": "show_description", "label": "Show description", "default": true },
+    { "type": "checkbox", "id": "show_siblings", "label": "Show quick-jump chips to other collections", "default": true }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,54 @@
+<section class="search section page-width" id="ProductGrid" data-collection data-section-id="{{ section.id }}">
+  <form action="{{ routes.search_url }}" method="get" role="search" class="search__form">
+    <label class="visually-hidden" for="SearchPage">{{ 'general.search.title' | t }}</label>
+    <div class="search__row">
+      <input id="SearchPage" type="search" name="q" value="{{ search.terms | escape }}" placeholder="{{ 'general.search.placeholder' | t }}" autofocus>
+      <input type="hidden" name="options[prefix]" value="last">
+      <button type="submit" class="btn btn--primary">{{ 'general.search.submit' | t }} {% render 'icon', name: 'search' %}</button>
+    </div>
+  </form>
+  {%- if search.performed -%}
+    <h1 class="h2 search__title">{{ 'general.search.results_with_count' | t: count: search.results_count, terms: search.terms }}</h1>
+    {%- paginate search.results by 24 -%}
+      <div class="collection__layout collection__layout--sidebar">
+        <aside class="collection__facets">
+          {% render 'facets', results: search, section_id: section.id, results_count: search.results_count %}
+        </aside>
+        <div class="collection__results" data-results>
+          <div class="loader" data-loader aria-hidden="true"><span class="loader__bar"></span></div>
+          {%- if search.results_count == 0 -%}
+            <div class="empty"><p class="h3">¯\_(ツ)_/¯</p><p>{{ 'general.search.no_results' | t: terms: search.terms }}</p><a class="btn btn--primary" href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }}</a></div>
+          {%- else -%}
+            <div class="product-grid product-grid--{{ settings.grid_density }}">
+              {%- for item in search.results -%}
+                {%- if item.object_type == 'product' -%}
+                  {% render 'product-card', product: item, index: forloop.index %}
+                {%- else -%}
+                  <article class="product-card product-card--text reveal">
+                    <div class="product-card__info">
+                      <p class="product-card__vendor">{{ item.object_type }}</p>
+                      <h3 class="product-card__title"><a href="{{ item.url }}">{{ item.title }}</a></h3>
+                      <p class="small">{{ item.content | strip_html | truncatewords: 24 }}</p>
+                    </div>
+                  </article>
+                {%- endif -%}
+              {%- endfor -%}
+            </div>
+            {% render 'pagination', paginate: paginate, anchor: '#ProductGrid' %}
+          {%- endif -%}
+        </div>
+      </div>
+    {%- endpaginate -%}
+  {%- else -%}
+    <div class="search__idle">
+      <p class="kicker">Try</p>
+      <div class="search__chips">
+        {%- for c in collections limit: 12 -%}{%- unless c.handle == 'all' or c.all_products_count == 0 -%}<a class="chip" href="{{ c.url }}">{{ c.title }}</a>{%- endunless -%}{%- endfor -%}
+      </div>
+    </div>
+  {%- endif -%}
+</section>
+<script src="{{ 'facets.js' | asset_url }}" defer="defer"></script>
+{% schema %}
+{ "name": "Search results", "settings": [] }
+{% endschema %}

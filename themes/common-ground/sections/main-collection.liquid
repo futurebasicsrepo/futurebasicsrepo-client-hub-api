@@ -1,0 +1,48 @@
+{%- liquid
+  assign per = section.settings.per_page
+-%}
+<section class="collection section page-width" id="ProductGrid" data-collection data-section-id="{{ section.id }}">
+  {%- paginate collection.products by per -%}
+    <div class="collection__layout collection__layout--{{ section.settings.filter_layout }}">
+      <aside class="collection__facets">
+        {% render 'facets', results: collection, section_id: section.id, results_count: collection.products_count %}
+      </aside>
+      <div class="collection__results" data-results>
+        <div class="loader" data-loader aria-hidden="true"><span class="loader__bar"></span><span class="small">{{ 'accessibility.loading' | t }}</span></div>
+        {%- if collection.products.size == 0 -%}
+          <div class="empty">
+            <p class="h3">( ˘･з･)</p>
+            <p>{{ 'sections.collection.empty' | t }}</p>
+            <a class="btn btn--primary" href="{{ collection.url }}">{{ 'sections.collection.clear_all' | t }}</a>
+          </div>
+        {%- else -%}
+          <div class="product-grid product-grid--{{ settings.grid_density }}">
+            {%- for product in collection.products -%}
+              {%- liquid
+                assign lazy = true
+                if forloop.index <= 4
+                  assign lazy = false
+                endif
+              -%}
+              {% render 'product-card', product: product, lazy: lazy, index: forloop.index %}
+            {%- endfor -%}
+          </div>
+          {% render 'pagination', paginate: paginate, anchor: '#ProductGrid' %}
+        {%- endif -%}
+      </div>
+    </div>
+  {%- endpaginate -%}
+</section>
+<script src="{{ 'facets.js' | asset_url }}" defer="defer"></script>
+{% schema %}
+{
+  "name": "Collection grid",
+  "settings": [
+    { "type": "range", "id": "per_page", "label": "Products per page", "min": 12, "max": 48, "step": 4, "default": 24 },
+    { "type": "select", "id": "filter_layout", "label": "Filters", "options": [
+      { "value": "sidebar", "label": "Sidebar on desktop, drawer on mobile" }, { "value": "drawer", "label": "Drawer everywhere" }
+    ], "default": "sidebar" },
+    { "type": "paragraph", "content": "Which filters appear (Brand, Type, Size, Price, In stock, Color) is set in Shopify admin → Apps → Search & Discovery → Filters." }
+  ]
+}
+{% endschema %}

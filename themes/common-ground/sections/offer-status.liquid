@@ -1,0 +1,51 @@
+{%- liquid
+  assign api = settings.consign_api_url | strip | replace: ' ', ''
+  if api == blank
+    assign api = 'https://hub.thefuturebasics.com'
+  endif
+-%}
+<section class="sell section page-width" data-offer-ticket data-api="{{ api }}">
+  <div class="section__head">
+    <div>
+      <p class="kicker reveal">{{ section.settings.kicker | default: 'YOUR OFFER' }}</p>
+      <h1 class="h1 reveal" style="--i:1">{{ section.settings.heading | default: 'Track your offer' }}</h1>
+    </div>
+  </div>
+
+  <div class="empty" data-offer-empty hidden>
+    <p>We couldn&rsquo;t find that offer. Check the link from your email, or <a href="{{ routes.all_products_collection_url }}">keep browsing</a>.</p>
+  </div>
+
+  <div class="ticket" data-ticket hidden>
+    <div class="ticket__head">
+      <span class="ticket__kicker">MAKE AN OFFER</span>
+      <span class="ticket__state chip" data-ticket-state></span>
+    </div>
+    <div class="ticket__item">
+      <div class="ticket__gallery"><img data-ticket-image hidden alt="" width="200" height="200"></div>
+      <div class="ticket__info">
+        <h2 class="h3" data-ticket-title></h2>
+        <p class="ticket__asking" data-ticket-amount></p>
+      </div>
+    </div>
+    <div class="ticket__thread" data-ticket-offers></div>
+    <form class="ticket__respond form" data-ticket-respond hidden>
+      <p class="ticket__respond-title">The shop countered. Your move:</p>
+      <div class="ticket__actions">
+        <button type="button" class="btn btn--primary" data-respond="accept">Accept &amp; pay <span data-ticket-latest></span></button>
+        <button type="button" class="btn btn--ghost" data-respond="decline">Decline</button>
+      </div>
+    </form>
+    <p class="ticket__foot small" data-ticket-foot></p>
+  </div>
+</section>
+<script src="{{ 'make-offer.js' | asset_url }}" defer="defer"></script>
+{% schema %}
+{
+  "name": "Offer status",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "YOUR OFFER" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Track your offer" }
+  ]
+}
+{% endschema %}

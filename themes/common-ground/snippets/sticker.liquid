@@ -1,0 +1,6 @@
+{%- comment -%} Rotating badge sticker. Usage: {% render 'sticker', text: 'NEW', color: 'hot', size: 'sm' %} {%- endcomment -%}
+{%- liquid
+  assign c = color | default: 'hot'
+  assign s = size | default: 'md'
+-%}
+<span class="sticker sticker--{{ c }} sticker--{{ s }}" aria-hidden="true"><span class="sticker__text">{{ text }}</span></span>

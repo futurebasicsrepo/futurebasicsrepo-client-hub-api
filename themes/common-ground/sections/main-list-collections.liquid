@@ -1,0 +1,22 @@
+{%- assign palette = 'hot,volt,acid,tang' | split: ',' -%}
+<section class="section page-width">
+  <h1 class="h1 reveal">{{ section.settings.heading }}</h1>
+  <div class="collection-list__grid">
+    <a class="ctile ctile--ink reveal" href="{{ routes.all_products_collection_url }}" data-tilt>
+      <div class="ctile__body"><span class="ctile__title">{{ 'sections.header.shop_all' | t }}</span><span class="ctile__cta">{{ 'sections.collection.all_products' | t }} →</span></div>
+    </a>
+    {%- for c in collections -%}
+      {%- unless c.handle == 'all' or c.handle == 'frontpage' -%}
+        {%- assign pidx = forloop.index0 | modulo: 4 -%}
+        {%- assign color = palette[pidx] -%}
+        <a class="ctile ctile--{{ color }} reveal" href="{{ c.url }}" data-tilt style="--i:{{ forloop.index0 }}">
+          <div class="ctile__media">{%- assign ci = c.image | default: c.products.first.featured_image -%}{%- if ci -%}<img src="{{ ci | image_url: width: 800 }}" width="{{ ci.width }}" height="{{ ci.height }}" alt="{{ c.title | escape }}" loading="lazy">{%- endif -%}</div>
+          <div class="ctile__body"><span class="ctile__title">{{ c.title }}</span><span class="ctile__cta">{{ 'sections.collection.shop_all_in' | t: collection: c.title }} <span class="ctile__num">{{ c.all_products_count }}</span></span></div>
+        </a>
+      {%- endunless -%}
+    {%- endfor -%}
+  </div>
+</section>
+{% schema %}
+{ "name": "Collections list", "settings": [ { "type": "text", "id": "heading", "label": "Heading", "default": "Collections" } ] }
+{% endschema %}

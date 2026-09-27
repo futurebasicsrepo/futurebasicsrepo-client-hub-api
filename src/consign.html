@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade-in counter · Work</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#141416;--dim:#727279;--line:#d8d8d4;--bg:#f6f6f2;--paper:#fff;--cue:#2edc83;--hot:#E0322B;--acid:#F5C518}
+*{box-sizing:border-box}body{margin:0;font-family:'Space Grotesk',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+a{color:inherit}.hidden{display:none!important}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--paper);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;letter-spacing:.08em;text-transform:uppercase}header .meta{color:var(--dim);font-size:13px}header nav{margin-left:auto;display:flex;gap:8px}
+.tabs{display:flex;gap:6px;padding:16px 24px 0}.tab{border:1px solid var(--line);background:var(--paper);padding:6px 12px;border-radius:999px;cursor:pointer;font-size:13px}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{display:grid;grid-template-columns:380px 1fr;gap:0;min-height:calc(100vh - 60px)}
+.list{border-right:1px solid var(--line);background:var(--paper);overflow:auto}
+.row{display:grid;grid-template-columns:64px 1fr auto;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}.row:hover,.row.on{background:#f0f0ea}
+.row img,.row .noimg{width:64px;height:64px;object-fit:cover;border-radius:8px;background:#e8e8e2;border:1px solid var(--line)}
+.row b{display:block;font-size:14px}.row .meta{font-size:12px;color:var(--dim)}
+.pill{font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:#e8e8e2}.pill.store{background:var(--acid)}.pill.seller{background:#d8ecff}.pill.accepted,.pill.paid{background:var(--cue)}.pill.declined,.pill.withdrawn{background:#ddd;color:#666}
+.detail{padding:24px;overflow:auto}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}.gallery img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+h2{margin:0 0 4px;font-size:22px}h3{margin:0 0 10px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:14px}.kv span:first-child{color:var(--dim)}
+.thread{display:grid;gap:8px}.offer{max-width:70%;padding:10px 14px;border-radius:12px;border:1px solid var(--line)}.offer.store{justify-self:end;background:var(--acid)}.offer.seller{justify-self:start;background:#eef5ff}.offer.old{opacity:.5}.offer b{font-size:20px;display:block}.offer .meta{font-size:12px;color:var(--dim)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.actions label{display:grid;gap:4px;font-size:12px;color:var(--dim)}
+input,textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}textarea{width:100%;min-height:70px}
+button{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;font-weight:600}button.ghost{background:#fff;color:var(--ink)}button.hot{background:var(--hot);border-color:var(--hot)}button:disabled{opacity:.5}
+.empty{padding:48px;color:var(--dim);text-align:center}.msg{color:var(--hot);font-size:13px;min-height:18px}
+@media(max-width:900px){main{grid-template-columns:1fr}.list{max-height:40vh}}
+</style>
+</head>
+<body>
+<header><h1>Trade-in counter</h1><span class="meta" id="state">consignment offers</span><nav><a href="/admin">← Work</a></nav></header>
+<div id="auth" class="hidden card" style="margin:24px"><p>Sign in on <a href="/admin">Work</a> first, then come back here.</p></div>
+<div id="app">
+  <div class="tabs" id="tabs"><span class="tab on" data-f="open">Open</span><span class="tab" data-f="accepted">Accepted</span><span class="tab" data-f="paid">Paid</span><span class="tab" data-f="declined">Declined</span><span class="tab" data-f="all">All</span></div>
+  <main>
+    <div class="list" id="list"><div class="empty">Loading…</div></div>
+    <div class="detail" id="detail"><div class="empty">Pick a ticket.</div></div>
+  </main>
+</div>
+<script>
+const API=location.origin,KEY='fb.admin.token';let token=localStorage.getItem(KEY)||'',filter='open',current=null;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format((c||0)/100);
+const when=iso=>new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const COND={deadstock:'Deadstock',like_new:'Like new',used_good:'Used · good',used_fair:'Used · fair'},DEAL={either:'Cash or consign',cash:'Cash',consign:'Consignment',trade:'Store credit'};
+async function api(p,o={}){o.headers=o.headers||{};if(token)o.headers.Authorization='Bearer '+token;if(o.body)o.headers['Content-Type']='application/json';const r=await fetch(API+p,o),d=await r.json();if(!r.ok){const e=Error(d.error||r.statusText);e.status=r.status;throw e}return d}
+async function loadList(){try{const d=await api('/v1/admin/consignments?status='+filter);document.getElementById('auth').classList.add('hidden');document.getElementById('app').classList.remove('hidden');
+  const list=document.getElementById('list');list.innerHTML=d.consignments.length?d.consignments.map(c=>`<div class="row${current&&current.id===c.id?' on':''}" data-id="${c.id}">${c.cover_url?`<img src="${esc(c.cover_url)}" alt="">`:'<div class="noimg"></div>'}<div><b>${esc(c.item_title)}</b><span class="meta">${esc([c.brand,c.size?'Size '+c.size:null,COND[c.condition]].filter(Boolean).join(' · '))}<br>${esc(c.seller_name)} · ${when(c.updated_at)}${c.open_amount_cents?' · '+money(c.open_amount_cents)+' on the table':c.asking_cents?' · asking '+money(c.asking_cents):''}</span></div><span class="pill ${c.waiting_on||c.status}">${c.waiting_on==='store'?'your move':c.waiting_on==='seller'?'waiting':c.status}</span></div>`).join(''):'<div class="empty">Nothing here.</div>';
+  const openCount=(d.counts||[]).filter(x=>['submitted','reviewing','countered'].includes(x.status)).reduce((a,x)=>a+x.n,0);document.getElementById('state').textContent=openCount?`${openCount} waiting on you`:'all caught up';
+  const route=location.pathname.match(/^\/consign\/([^/]+)$/);if(route&&!current)openTicket(route[1]);
+}catch(e){if(e.status===401||e.status===403){document.getElementById('auth').classList.remove('hidden');document.getElementById('app').classList.add('hidden')}else document.getElementById('list').innerHTML=`<div class="empty">${esc(e.message)}</div>`}}
+async function openTicket(id){const d=await api('/v1/admin/consignments/'+id);current=d.consignment;current.ticket_url=d.ticket_url;history.replaceState(null,'','/consign/'+id);renderDetail();document.querySelectorAll('.row').forEach(r=>r.classList.toggle('on',r.dataset.id===id))}
+function renderDetail(){const c=current,open=[...c.offers].reverse().find(o=>o.status==='open'),closed=['accepted','declined','withdrawn','paid'].includes(c.status);
+  const canOffer=!closed&&(!open||open.by==='store'),canRespond=!closed&&open&&open.by==='seller';
+  document.getElementById('detail').innerHTML=`
+  <div class="card"><div style="display:flex;gap:12px;align-items:start;flex-wrap:wrap"><div style="flex:1"><h2>${esc(c.item_title)}</h2><div class="meta" style="color:var(--dim)">${esc([c.brand,c.size?'Size '+c.size:null,COND[c.condition],DEAL[c.deal_type]].filter(Boolean).join(' · '))} · ticket #${c.id.slice(0,8).toUpperCase()}</div></div><span class="pill ${c.status}">${c.status}</span></div>
+    <p style="margin:12px 0 0">${esc(c.details||'')}</p><div class="gallery" style="margin-top:12px">${c.images.map(i=>`<a href="${esc(i.url)}" target="_blank"><img src="${esc(i.url)}" alt=""></a>`).join('')}</div></div>
+  <div class="card"><h3>Seller</h3><div class="kv"><span>Name</span><span>${esc(c.seller_name)}</span><span>Email</span><span><a href="mailto:${esc(c.seller_email)}">${esc(c.seller_email)}</a></span><span>Phone</span><span>${esc(c.seller_phone||'—')}</span><span>Asking</span><span>${c.asking_cents?money(c.asking_cents):'open to offers'}</span><span>Agreed</span><span>${c.agreed_cents?'<b>'+money(c.agreed_cents)+'</b>':'—'}</span><span>Ticket link</span><span>${c.ticket_url?`<a href="${esc(c.ticket_url)}" target="_blank">${esc(c.ticket_url)}</a>`:'<em>set CONSIGN_TICKET_URL to the storefront Sell page</em>'}</span></div></div>
+  <div class="card"><h3>Negotiation</h3><div class="thread">${c.offers.length?c.offers.map(o=>`<div class="offer ${o.by}${o.status==='superseded'?' old':''}"><span class="meta">${o.by==='store'?'Common Ground':esc(c.seller_name)} ${o.kind==='accept'?'accepted':o.kind==='decline'?'declined':o.kind==='counter'?'countered':'offered'} · ${when(o.created_at)}</span>${o.amount_cents?`<b>${money(o.amount_cents)}</b>`:''}${o.note?`<div>${esc(o.note)}</div>`:''}</div>`).join(''):'<div class="meta" style="color:var(--dim)">No offers yet.</div>'}</div>
+    ${closed?'':`<div class="actions" style="margin-top:14px">${canOffer||canRespond?`<label>${canRespond?'Counter':open?'New offer':'Offer'} (USD)<input id="amt" type="number" min="1" step="1" style="width:130px"></label><label style="flex:1">Note to seller<input id="note" maxlength="600" placeholder="Cash today, or 70/30 consignment split"></label>`:''}
+      ${canOffer?`<button id="btnOffer">${open?'Re-offer':'Make offer'}</button>`:''}${canRespond?`<button class="hot" id="btnAccept">Accept ${money(open.amount_cents)}</button><button id="btnCounter">Counter</button>`:''}<button class="ghost" id="btnDecline">Pass</button></div><div class="msg" id="msg"></div>`}
+  </div>
+  <div class="card"><h3>Status &amp; notes</h3><div class="actions"><select id="status">${['submitted','reviewing','offered','countered','accepted','paid','declined','withdrawn'].map(s=>`<option ${s===c.status?'selected':''}>${s}</option>`).join('')}</select><button class="ghost" id="btnStatus">Update status</button></div><textarea id="notes" placeholder="Internal notes (authentication, drop-off date, payout method)">${esc(c.staff_notes||'')}</textarea><div style="margin-top:8px"><button class="ghost" id="btnNotes">Save notes</button></div></div>`;
+  const move=async(action,withAmount)=>{const msg=document.getElementById('msg');msg.textContent='';try{const body={action};if(withAmount){body.amount_cents=Math.round(parseFloat(document.getElementById('amt').value||'0')*100);body.note=document.getElementById('note').value}else{body.note=document.getElementById('note')?.value}const d=await api('/v1/admin/consignments/'+c.id+'/offers',{method:'POST',body:JSON.stringify(body)});current=Object.assign(d.consignment,{ticket_url:c.ticket_url});renderDetail();loadList()}catch(e){msg.textContent=e.message}};
+  document.getElementById('btnOffer')?.addEventListener('click',()=>move(open?'offer':'offer',true));
+  document.getElementById('btnCounter')?.addEventListener('click',()=>move('counter',true));
+  document.getElementById('btnAccept')?.addEventListener('click',()=>{if(confirm('Accept '+money(open.amount_cents)+'? This closes the deal and emails the seller.'))move('accept',false)});
+  document.getElementById('btnDecline')?.addEventListener('click',()=>{if(confirm('Pass on this item? The seller gets an email.'))move('decline',false)});
+  const patch=async body=>{try{const d=await api('/v1/admin/consignments/'+c.id,{method:'PATCH',body:JSON.stringify(body)});current=Object.assign(d.consignment,{ticket_url:c.ticket_url});renderDetail();loadList()}catch(e){alert(e.message)}};
+  document.getElementById('btnStatus').addEventListener('click',()=>patch({status:document.getElementById('status').value}));
+  document.getElementById('btnNotes').addEventListener('click',()=>patch({staff_notes:document.getElementById('notes').value}));
+}
+document.getElementById('tabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));filter=t.dataset.f;loadList()});
+document.getElementById('list').addEventListener('click',e=>{const r=e.target.closest('.row');if(r)openTicket(r.dataset.id)});
+loadList();
+</script>
+</body>
+</html>

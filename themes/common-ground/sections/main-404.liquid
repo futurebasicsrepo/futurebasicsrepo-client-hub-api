@@ -1,0 +1,9 @@
+<section class="section page-width notfound">
+  <p class="notfound__code" data-glitch data-text="404">404</p>
+  <h1 class="h2">{{ 'general.not_found.title' | t }}</h1>
+  <p>{{ 'general.not_found.text' | t }}</p>
+  <div class="hero__actions"><a class="btn btn--primary" href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }}</a><a class="btn btn--ghost" href="{{ routes.root_url }}">{{ 'general.back_home' | t }}</a></div>
+</section>
+{% schema %}
+{ "name": "404", "settings": [] }
+{% endschema %}

@@ -1,0 +1,47 @@
+{%- comment -%}
+  Gold "seal of quality" badge (Nintendo-style): scalloped gold disc, embossed ring text, center line.
+  Usage: {% render 'seal', ring: 'COMMON GROUND · AUTHENTICATED', center: 'EST.', big: '2012', foot: 'SEAL OF QUALITY', uid: section.id %}
+{%- endcomment -%}
+{%- liquid
+  assign uid = uid | default: 'seal'
+  assign ring = ring | default: 'COMMON GROUND · AUTHENTICATED CONSIGNMENT ·'
+  assign center = center | default: 'EST.'
+  assign big = big | default: '2012'
+  assign foot = foot | default: 'SEAL OF QUALITY'
+-%}
+<svg class="seal" viewBox="0 0 200 200" role="img" aria-label="{{ center }} {{ big }} {{ foot }}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="gold-{{ uid }}" cx="35%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#fff3b0"/>
+      <stop offset=".35" stop-color="#f2c744"/>
+      <stop offset=".7" stop-color="#c8912a"/>
+      <stop offset="1" stop-color="#7a4f10"/>
+    </radialGradient>
+    <linearGradient id="shine-{{ uid }}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <path id="ringpath-{{ uid }}" d="M100,100 m-70,0 a70,70 0 1,1 140,0 a70,70 0 1,1 -140,0"/>
+    <clipPath id="clip-{{ uid }}"><circle cx="100" cy="100" r="96"/></clipPath>
+  </defs>
+  {%- comment -%} scalloped edge: 24 bumps {%- endcomment -%}
+  <g fill="url(#gold-{{ uid }})" stroke="#5a3a08" stroke-width="2">
+    <circle cx="100" cy="100" r="88"/>
+    {%- for i in (0..23) -%}
+      {%- assign a = i | times: 15 -%}
+      <circle cx="100" cy="8" r="9" transform="rotate({{ a }} 100 100)"/>
+    {%- endfor -%}
+  </g>
+  <circle cx="100" cy="100" r="88" fill="url(#gold-{{ uid }})"/>
+  <circle cx="100" cy="100" r="80" fill="none" stroke="#7a4f10" stroke-width="2"/>
+  <circle cx="100" cy="100" r="58" fill="none" stroke="#7a4f10" stroke-width="2"/>
+  <circle cx="100" cy="100" r="55" fill="none" stroke="#fff3b0" stroke-width="1" opacity=".7"/>
+  <text font-family="'Archivo Black', Impact, sans-serif" font-size="13.5" letter-spacing="1.2" fill="#3b2506">
+    <textPath href="#ringpath-{{ uid }}" startOffset="0">{{ ring }}</textPath>
+  </text>
+  <text x="100" y="86" text-anchor="middle" font-family="'Archivo Black', Impact, sans-serif" font-size="14" fill="#3b2506" letter-spacing="2">{{ center }}</text>
+  <text x="100" y="124" text-anchor="middle" font-family="'Archivo Black', Impact, sans-serif" font-size="40" fill="#3b2506">{{ big }}</text>
+  <text x="100" y="142" text-anchor="middle" font-family="'VT323', monospace" font-size="13" fill="#3b2506" letter-spacing="1.5">{{ foot }}</text>
+  <g clip-path="url(#clip-{{ uid }})" class="seal__shine"><rect x="-120" y="0" width="70" height="200" fill="url(#shine-{{ uid }})" transform="skewX(-20)"/></g>
+</svg>
