@@ -14,7 +14,7 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   process.env.TRANSCODE = 'off'; // fake media bytes here; real conversion is covered in media.test.js
   const { migrate, pool } = await import('../src/db.js');
   const { buildApp } = await import('../src/app.js');
-  await pool.query('drop table if exists push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
+  await pool.query('drop table if exists mod_actions, reports, chat_messages, reply_votes, replies, thread_votes, threads, fandom_members, push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
   await migrate();
   const app = await buildApp({ logger: false });
   t.after(async () => { await app.close(); await pool.end(); });

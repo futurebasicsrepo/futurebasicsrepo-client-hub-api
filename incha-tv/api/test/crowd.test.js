@@ -43,7 +43,7 @@ test('the crowd: watcher counts and pooled cheers over the match stream', { skip
   process.env.TRANSCODE = 'off';
   const { migrate, pool } = await import('../src/db.js');
   const { buildApp } = await import('../src/app.js');
-  await pool.query('drop table if exists push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
+  await pool.query('drop table if exists mod_actions, reports, chat_messages, reply_votes, replies, thread_votes, threads, fandom_members, push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
   await migrate();
   const app = await buildApp({ logger: false });
   await app.listen({ port: 0, host: '127.0.0.1' });

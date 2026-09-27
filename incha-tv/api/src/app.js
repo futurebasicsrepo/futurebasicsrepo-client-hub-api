@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import * as storage from './storage.js';
 import { registerMatches } from './matches.js';
+import { registerCommunity } from './community.js';
+import { registerModeration } from './moderation.js';
 import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
@@ -58,6 +60,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     return payload;
   });
 
+  let moderation = null;
   app.decorateRequest('user', null);
   app.addHook('onRequest', async req => {
     const header = req.headers.authorization || '';
@@ -65,6 +68,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     try {
       const { payload } = await jwtVerify(header.slice(7), jwtSecret);
       req.user = { id: Number(payload.sub), handle: payload.handle };
+      if (moderation?.isBanned(req.user.id)) req.user = null; // banned accounts are signed out everywhere
     } catch { /* treat bad tokens as signed out */ }
   });
 
@@ -149,6 +153,8 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   async function loadOwnPost(req, reply, id) {
     const row = await loadPost(req, id);
     if (!row || Number(row.user_id) !== req.user.id) { fail(reply, 404, 'Post not found.'); return null; }
+    // A post moderators removed can be deleted by its owner, but not edited or republished.
+    if (row.status === 'removed' && req.method !== 'DELETE') { fail(reply, 403, 'This post was removed for breaking the community rules.'); return null; }
     return row;
   }
 
@@ -168,6 +174,9 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   app.decorate('sweepStaleMatches', matchCentre.sweepStaleMatches);
   live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });
   registerAlerts(app, { pool, fail, requireUser, notifier, loadMatch: matchCentre.loadMatch });
+  const community = registerCommunity(app, { pool, fail, requireUser });
+  moderation = registerModeration(app, { pool, fail, requireUser, mediaUrl, onChatRemoved: community.removeChatMessage });
+  app.addHook('onReady', async () => { await moderation.loadBans(); });
   const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
   app.decorate('transcoder', transcoder);
   // Pick up work a previous process didn't finish: queued conversions and streams cut off by a restart.
@@ -238,13 +247,14 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     const { rows } = await pool.query(`select * from users where email = $1 or handle = $1`, [login]);
     const ok = rows[0] && await verifyPassword(String(req.body?.password || ''), rows[0].password_hash);
     if (!ok) return fail(reply, 401, 'Wrong email/handle or password.');
+    if (rows[0].banned_at) return fail(reply, 403, 'This account has been suspended for breaking the community rules.');
     return { token: await issueToken(rows[0]), user: userView(rows[0]) };
   });
 
   app.get('/v1/me', { preHandler: requireUser }, async (req, reply) => {
     const { rows } = await pool.query(`select * from users where id = $1`, [req.user.id]);
     if (!rows[0]) return fail(reply, 401, 'Sign in to continue.');
-    return { user: userView(rows[0]) };
+    return { user: { ...userView(rows[0]), role: await moderation.roleOf(req.user) } };
   });
 
   app.patch('/v1/me', { preHandler: requireUser }, async (req, reply) => {
@@ -498,15 +508,19 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     }
   });
 
-  const commentView = (row, req, postOwnerId) => ({
-    id: Number(row.id),
-    parentId: row.parent_id === null ? null : Number(row.parent_id),
-    body: row.deleted_at ? null : row.body,
-    deleted: Boolean(row.deleted_at),
-    createdAt: row.created_at,
-    author: row.deleted_at ? null : { handle: row.handle, displayName: row.display_name },
-    canDelete: !row.deleted_at && Boolean(req.user && (Number(row.user_id) === req.user.id || postOwnerId === req.user.id))
-  });
+  // Deleted by its author or hidden by moderators, a comment shows as removed (its replies stay).
+  const commentView = (row, req, postOwnerId) => {
+    const gone = Boolean(row.deleted_at || row.hidden_at);
+    return {
+      id: Number(row.id),
+      parentId: row.parent_id === null ? null : Number(row.parent_id),
+      body: gone ? null : row.body,
+      deleted: gone,
+      createdAt: row.created_at,
+      author: gone ? null : { handle: row.handle, displayName: row.display_name },
+      canDelete: !gone && Boolean(req.user && (Number(row.user_id) === req.user.id || postOwnerId === req.user.id))
+    };
+  };
 
   app.get('/v1/posts/:id/comments', async (req, reply) => {
     const post = await loadVisiblePost(req, reply, req.params.id);

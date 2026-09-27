@@ -7,9 +7,32 @@ export type Visibility = 'public' | 'unlisted' | 'private';
 export type FilterName = 'none' | 'terrace' | 'matchday' | 'floodlight' | 'vintage' | 'mono';
 export type Sort = 'hot' | 'new' | 'top';
 
-export interface User { id: number; handle: string; displayName: string; bio: string; createdAt: string }
+export interface User { id: number; handle: string; displayName: string; bio: string; createdAt: string; role?: 'user' | 'moderator' | 'admin' }
 export interface Profile extends Omit<User, 'id'> { postCount: number; totalScore: number; matchCount?: number }
 export interface Fandom { slug: string; name: string; postCount?: number; latestAt?: string | null; coverUrl?: string | null }
+
+// ---- fandom communities ----
+export interface Channel { slug: string; name: string; kind: 'threads' | 'chat'; description: string; threadCount: number; lastActivityAt: string | null; online?: number }
+export interface FandomHub { fandom: { slug: string; name: string; memberCount: number; postCount: number; joined: boolean }; channels: Channel[] }
+export interface Author { handle: string; displayName: string }
+export interface Thread {
+  id: string; channel: string; title: string; body: string; score: number; replyCount: number;
+  createdAt: string; lastActivityAt: string; deleted: boolean; author: Author | null;
+  fandom?: { slug: string; name: string }; viewerHasVoted: boolean; canDelete?: boolean;
+}
+export interface Reply {
+  id: number; parentId: number | null; depth: number; body: string | null; score: number; createdAt: string;
+  deleted: boolean; author: Author | null; viewerHasVoted: boolean; canDelete: boolean;
+}
+// ---- moderation ----
+export type ReportType = 'post' | 'comment' | 'thread' | 'reply' | 'chat' | 'match' | 'user';
+export interface ModItem {
+  type: ReportType; id: string; reports: number; reporters: number; reasons: Record<string, number>;
+  firstAt: string; lastAt: string; autoHidden: boolean; link: string | null; notes: string[];
+  snapshot: { title?: string; body?: string | null; image?: string | null } | null;
+  status: 'open' | 'actioned' | 'dismissed'; resolution: string | null; author: string | null; authorBanned: boolean;
+}
+export interface ChatMessage { id: number; body: string; createdAt: string; author: Author }
 
 export interface Post {
   id: string;
@@ -28,7 +51,7 @@ export interface Post {
   trimStart: number | null;
   trimEnd: number | null;
   filter: FilterName;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'removed';
   visibility: Visibility;
   score: number;
   commentCount: number;

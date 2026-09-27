@@ -26,6 +26,7 @@ export default function Header() {
           <Link href="/fandoms" aria-current={current('/fandoms')} className="hide-sm">Fandoms</Link>
           <a href={SHOP_URL} target="_blank" rel="noopener">Shop ↗</a>
           {user && <Link href={`/u/${user.handle}?tab=studio`} className="hide-sm">Studio</Link>}
+          {user?.role && user.role !== 'user' && <Link href="/mod" aria-current={current('/mod')} className="hide-sm">Mod</Link>}
         </nav>
         <form
           className="search"
