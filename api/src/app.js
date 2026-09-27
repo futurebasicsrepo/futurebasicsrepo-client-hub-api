@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import * as storage from './storage.js';
 import { registerMatches } from './matches.js';
+import { registerCommunity } from './community.js';
 import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
@@ -168,6 +169,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   app.decorate('sweepStaleMatches', matchCentre.sweepStaleMatches);
   live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });
   registerAlerts(app, { pool, fail, requireUser, notifier, loadMatch: matchCentre.loadMatch });
+  registerCommunity(app, { pool, fail, requireUser });
   const transcoder = createTranscoder({ pool, log: app.log, onReady: post => matchCentre.notify(post.match_id).catch(() => {}) });
   app.decorate('transcoder', transcoder);
   // Pick up work a previous process didn't finish: queued conversions and streams cut off by a restart.
