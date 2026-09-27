@@ -14,6 +14,7 @@ spot/
   src/spot.js       service layer: every state change goes through here
   src/server.js     Fastify routes + Stripe webhooks
   src/pages.js      the three pages: create, pay, requester
+  src/sharecard.js  link-preview image + the mascot (satori → resvg)
   src/db.js         Node's built-in SQLite
 ```
 
@@ -31,7 +32,7 @@ With no Stripe keys set, Spot runs in **sandbox mode**. Payment is a "Pay (test)
 ## How it works
 
 1. **Capture.** Paste a product or cart link, upload a screenshot, or type items. The "Spot this" bookmarklet on the home page sends whatever page you're on straight into capture. Links are read from JSON-LD `Product` data, then Open Graph / `product:price` tags. Screenshots are read by Claude with a JSON schema. Either way the requester reviews every line before a link exists.
-2. **Share.** The link (`/c/<12 chars>`) shows a preview in iMessage, IG, Discord and Slack: "Cover Kyle's Aritzia cart: $271.00", with the product image.
+2. **Share.** When the link (`/c/<12 chars>`) is pasted into iMessage, WhatsApp, Slack, Discord or X, it shows a share card drawn for that cart (`/c/<token>/card.png`, 1200×630 PNG, `src/sharecard.js`). The card has Spot the mascot asking "psst… can you spot Kyle?", the item, the store and the price. It redraws to "Mom spotted Kyle!" with a happy mascot once the cart is paid. The pay page is a short chat from Spot, not a form. The mascot's eyes follow the pointer, and paying ends in confetti.
 3. **Pay.** Stripe Payment Element: Apple Pay, Google Pay or card. The payer pays the cart plus a 4% fee.
 4. **Card.** When `payment_intent.succeeded` arrives, Spot issues a Stripe Issuing virtual card. The requester's private page shows it.
 5. **Merchant lock.** Every charge on the card hits the `issuing_authorization.request` webhook. Spot approves it only if the card is unused, the merchant name or URL matches the cart's store, and the amount is within the cart total plus 5% (max $15) for tax drift. The card also carries a Stripe `all_time` spending limit as a backstop if the webhook is down. The first approved charge completes the cart, and every later charge is declined.

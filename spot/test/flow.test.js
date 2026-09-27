@@ -39,9 +39,20 @@ test('card flow: create → pay → card issued → merchant-locked single use',
   // The shared link renders with a preview card and escapes user text.
   const page = await call('GET', `/c/${cart.token}`);
   assert.equal(page.status, 200);
-  assert.match(page.body, /<meta property="og:title" content="Cover Kyle&#39;s Aritzia cart: \$271.00">/);
-  assert.match(page.body, /og:image" content="https:\/\/cdn.example.com\/p.jpg"/);
+  assert.match(page.body, /<meta property="og:title" content="psst… can you spot Kyle\?">/);
+  assert.match(page.body, /og:description" content="Super Puff Shorty from Aritzia · \$271.00 · tap to cover it"/);
+  assert.match(page.body, new RegExp(`og:image" content="http://localhost(:80)?/c/${cart.token}/card.png"`));
   assert.match(page.body, /birthday &lt;3/);
+  assert.match(page.body, /Spot Kyle \$281.84/);
+
+  // The preview image is a real PNG, drawn for this cart.
+  const img = await app.inject({ method: 'GET', url: `/c/${cart.token}/card.png` });
+  assert.equal(img.statusCode, 200);
+  assert.equal(img.headers['content-type'], 'image/png');
+  assert.deepEqual([...img.rawPayload.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  assert.equal(img.rawPayload.readUInt32BE(16), 1200);
+  assert.equal(img.rawPayload.readUInt32BE(20), 630);
+  assert.equal((await app.inject({ method: 'GET', url: '/c/nope/card.png' })).statusCode, 404);
 
   // Owner endpoints need the manage key.
   assert.equal((await call('GET', `/v1/carts/${cart.token}/manage?k=wrong`)).status, 404);
@@ -77,7 +88,8 @@ test('card flow: create → pay → card issued → merchant-locked single use',
   // Single use.
   assert.equal((await auth('ARITZIA LP VANCOUVER', 100)).body.reason, 'card_not_active');
   const after = await call('GET', `/c/${cart.token}`);
-  assert.match(after.body, /Already covered by Mom/);
+  assert.match(after.body, /Mom already spotted Kyle/);
+  assert.match(after.body, /og:title" content="Mom spotted Kyle! 🎉"/);
 });
 
 test('handoff flow: venmo/cash app links, no fee, requester marks received', async (t) => {

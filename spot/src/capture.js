@@ -205,7 +205,7 @@ async function readCapped(res, max) {
 }
 
 // Blocks SSRF: the capture fetch must only reach public internet hosts.
-async function assertPublicHost(rawHost) {
+export async function assertPublicHost(rawHost) {
   const hostname = rawHost.replace(/^\[|\]$/g, ''); // URL keeps IPv6 literals bracketed
   const addrs = isIP(hostname) ? [{ address: hostname }] : await lookup(hostname, { all: true }).catch(() => []);
   if (!addrs.length) throw new CaptureError('Could not find that store');

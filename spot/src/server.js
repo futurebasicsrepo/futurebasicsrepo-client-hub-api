@@ -5,6 +5,7 @@ import { CaptureError, captureFromScreenshot, captureFromUrl } from './capture.j
 import { openDb } from './db.js';
 import { homePage, managePage, notFoundPage, payPage } from './pages.js';
 import { pickProvider } from './providers.js';
+import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { createSpot, ownerCart, publicCart } from './spot.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true } = {}) {
@@ -71,6 +72,28 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return html(reply, notFoundPage(), 404);
     }
     return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
+  });
+
+  // Share-card image for link previews. Cached per cart state: it only
+  // changes when the cart does (e.g. flips to "covered").
+  const cards = new Map();
+  app.get('/c/:token/card.png', async (req, reply) => {
+    let cart;
+    try {
+      cart = spot.load(req.params.token);
+    } catch {
+      return reply.code(404).send();
+    }
+    const pub = publicCart(cart);
+    const key = `${cart.token}:${cart.status}:${pub.payer_name || ''}`;
+    let png = cards.get(key);
+    if (!png) {
+      const productImage = await fetchProductImage(cart.items.find((i) => i.image_url)?.image_url);
+      png = await renderShareCard(pub, { productImage });
+      if (cards.size > 500) cards.delete(cards.keys().next().value);
+      cards.set(key, png);
+    }
+    return reply.type('image/png').header('cache-control', 'public, max-age=300').send(png);
   });
 
   app.get('/c/:token/manage', async (req, reply) => {

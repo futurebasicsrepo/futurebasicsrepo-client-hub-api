@@ -197,85 +197,161 @@ const qp=new URLSearchParams(location.search).get('url');if(qp){$('#url').value=
 }
 
 // ─── Pay page (the link that gets shared) ───────────────────────────────────
+// Spot, the mascot, does the asking: a short chat that says who wants what,
+// then one big button. Money details sit behind "how this works".
+const PAY_CSS = `
+.chat{display:flex;flex-direction:column;gap:8px;margin:18px 0 6px}
+.bub{align-self:flex-start;max-width:86%;background:var(--card);border:1px solid var(--line);padding:11px 15px;border-radius:20px 20px 20px 6px;font-size:17px;opacity:0;transform:translateY(8px) scale(.98);animation:pop .35s cubic-bezier(.2,.9,.3,1.2) forwards}
+.bub.quote{background:color-mix(in srgb,var(--spot) 10%,var(--card));border-color:transparent;font-style:italic}
+.bub.big{font-weight:800;font-size:20px;letter-spacing:-.01em}
+@keyframes pop{to{opacity:1;transform:none}}
+.buddy{display:flex;align-items:flex-end;gap:12px;margin-top:22px}
+.buddy svg{width:92px;height:92px;flex:none;animation:bob 3.2s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-4px)}}
+.buddy .hi{font-weight:800;font-size:28px;letter-spacing:-.02em;line-height:1.05;padding-bottom:10px}
+.pcard{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;margin:0}
+.pcard .thumb{width:72px;height:72px}
+.pcard .t{font-weight:700;line-height:1.2}.pcard .v{color:var(--muted);font-size:14px}
+.pcard .p{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.act{padding:10px 0 4px}
+.btn.go{font-size:19px;padding:17px;border-radius:18px;box-shadow:0 10px 24px color-mix(in srgb,var(--spot) 35%,transparent)}
+.btn.go:active{transform:scale(.98)}
+.namefield{display:flex;gap:8px;align-items:center;margin-top:6px}
+.namefield input{padding:10px 12px}
+details{margin-top:8px;color:var(--muted);font-size:14px}
+details summary{cursor:pointer;font-weight:600}
+details .sum{font-size:14px}
+.confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:fall 1.6s ease-in forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.8}}
+@media (prefers-reduced-motion:reduce){.bub{animation:none;opacity:1;transform:none}.buddy svg{animation:none}}
+`;
+
+// Inline, animatable version of the mascot: pupils follow the pointer
+// (desktop) or glance at the button (phone); swaps to a happy face on pay.
+function buddySvg(happy) {
+  return `<svg viewBox="0 0 200 200" aria-hidden="true" id="buddy" class="${happy ? 'happy' : ''}">
+<ellipse cx="100" cy="188" rx="50" ry="7" fill="currentColor" opacity=".08"/>
+<circle cx="100" cy="100" r="78" fill="var(--spot)"/><circle cx="72" cy="68" r="20" fill="#fff" opacity=".18"/>
+<g class="open" ${happy ? 'style="display:none"' : ''}>
+<ellipse cx="78" cy="90" rx="15" ry="17" fill="#fff"/><ellipse cx="122" cy="90" rx="15" ry="17" fill="#fff"/>
+<g class="pupils"><circle cx="78" cy="92" r="8" fill="#1b1712"/><circle cx="122" cy="92" r="8" fill="#1b1712"/><circle cx="81" cy="89" r="2.6" fill="#fff"/><circle cx="125" cy="89" r="2.6" fill="#fff"/></g>
+<path d="M88 122 q12 9 24 0" stroke="#1b1712" stroke-width="5" fill="none" stroke-linecap="round"/></g>
+<g class="joy" ${happy ? '' : 'style="display:none"'}>
+<path d="M67 92 q11 -13 22 0M111 92 q11 -13 22 0" stroke="#1b1712" stroke-width="6" fill="none" stroke-linecap="round"/>
+<path d="M82 118 q18 24 36 0" fill="#1b1712"/></g>
+<circle cx="60" cy="116" r="9" fill="#ff9a7e"/><circle cx="140" cy="116" r="9" fill="#ff9a7e"/></svg>`;
+}
+
 export function payPage({ cart, links, provider, pageUrl }) {
-  const first = cart.items.find((i) => i.image_url);
-  const title = `Cover ${cart.requester.name}'s ${cart.merchant.name} cart: ${usd(cart.cart_cents)}`;
-  const desc = cart.items.map((i) => (i.quantity > 1 ? `${i.quantity}× ` : '') + i.title).join(', ').slice(0, 200);
+  const name = cart.requester.name;
+  const open = cart.status === 'open';
+  const covered = ['paid', 'card_issued', 'completed'].includes(cart.status);
+  const first = cart.items[0];
+  const total = usd(cart.settle === 'card' ? cart.total_cents : cart.cart_cents);
+  const ogTitle = covered ? `${cart.payer_name || 'Someone'} spotted ${name}! 🎉` : `psst… can you spot ${name}?`;
+  const ogDesc = `${first.title}${cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : ''} from ${cart.merchant.name} · ${usd(cart.cart_cents)} · tap to cover it`;
   const head = `
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot">
-<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:url" content="${esc(pageUrl)}">${first ? `<meta property="og:image" content="${esc(first.image_url)}">` : ''}
-<meta name="twitter:card" content="${first ? 'summary_large_image' : 'summary'}"><meta name="robots" content="noindex">
-${provider === 'stripe' && cart.settle === 'card' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
+<meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}">
+<meta property="og:url" content="${esc(pageUrl)}">
+<meta property="og:image" content="${esc(pageUrl)}/card.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(`${ogTitle} ${ogDesc}`)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="robots" content="noindex">
+<style>${PAY_CSS}</style>
+${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
 
-  const itemsHtml = cart.items
+  const products = cart.items
     .map(
-      (i) => `<li class="item"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
-<div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `Qty ${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
-<div class="p">${usd(i.price_cents * i.quantity)}</div></li>`,
+      (i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+<div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `×${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
+<div class="p">${usd(i.price_cents * i.quantity)}</div></div>`,
     )
     .join('');
 
+  let lines;
+  if (covered) {
+    lines = [`<div class="bub big">${esc(cart.payer_name || 'Someone')} already spotted ${esc(name)} 🎉</div>`, `<div class="bub">nothing left to do here. you're all good.</div>`];
+  } else if (!open) {
+    const why = { expired: 'this link expired', canceled: `${esc(name)} canceled this one`, refunded: 'this one was refunded' }[cart.status] || 'this link is closed';
+    lines = [`<div class="bub big">oh! ${why}.</div>`, `<div class="bub">ask ${esc(name)} for a fresh one 🙂</div>`];
+  } else {
+    lines = [
+      `<div class="bub">${esc(name)} found something at <b>${esc(cart.merchant.name)}</b> and is hoping you'll spot them</div>`,
+      cart.note ? `<div class="bub quote">“${esc(cart.note)}” — ${esc(name)}</div>` : '',
+      products,
+      `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
+    ];
+  }
+  // stagger the pop-in
+  let n = 0;
+  const chat = lines.join('').replace(/class="(pcard )?bub/g, (m) => `style="animation-delay:${(0.15 + 0.32 * n++).toFixed(2)}s" ${m}`);
+
   const body = `
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
-<h1 style="font-size:28px">${esc(cart.requester.name)} asked you to cover their cart</h1>
-<p class="lead">from <b>${esc(cart.merchant.name)}</b></p>
-${cart.note ? `<div class="hero-note">💬 <span>${esc(cart.note)}</span></div>` : ''}
-${provider === 'sandbox' && cart.settle === 'card' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
-<section class="card">
-  <ul class="items">${itemsHtml}</ul>
-  <div style="margin-top:10px">
-    <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
-    ${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
-    ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
-    <div class="sum total"><span>Total</span><span>${usd(cart.total_cents)}</span></div>
-  </div>
-</section>
-<section class="card" id="payBox">${payBox(cart, links, provider)}</section>
-${cart.settle === 'card' ? `<p class="small muted">Your money goes onto a one-time card that ${esc(cart.requester.name)} can only use at ${esc(cart.merchant.name)}, for this amount. It can't be cashed out.</p>` : ''}
-<footer><a href="/">Make your own Spot</a></footer>`;
+<div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
+<div class="chat" id="chat">${chat}</div>
+${open ? `<div class="act" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
+${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
+${open ? detailsBox(cart) : ''}
+<footer><a href="/">make your own Spot</a></footer>`;
 
-  const script =
-    cart.settle !== 'card' || cart.status !== 'open'
-      ? ''
-      : `${SHARED_JS}
-const TOKEN=${json(cart.token)},MODE=${json(provider)};
-const done=(name)=>{$('#payBox').innerHTML='<h2>🎉 Covered. Thank you'+(name?', '+esc(name):'')+'!</h2><p class="muted" style="margin:0">'+${json(esc(cart.requester.name))}+' has been told and can check out now.</p>'};
-async function poll(n){for(let i=0;i<n;i++){const r=await api('/v1/carts/'+TOKEN);if(r.cart.status!=='open')return true;await new Promise(z=>setTimeout(z,1500))}return false}
-if(MODE==='sandbox'){
-  $('#pay').onclick=async()=>{const b=$('#pay');b.disabled=true;b.textContent='Paying…';try{const name=$('#payer').value;await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:name});done(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Pay (test)'}};
-}else{
-  (async()=>{try{
-    const c=await api('/v1/carts/'+TOKEN+'/pay',{});
-    const stripe=Stripe(c.publishable_key);const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
-    const el=elements.create('payment',{layout:'tabs',wallets:{applePay:'auto',googlePay:'auto'}});el.mount('#stripeEl');$('#pay').disabled=false;
-    $('#pay').onclick=async()=>{$('#pay').disabled=true;$('#payErr').textContent='';
-      const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
-      if(error){$('#payErr').textContent=error.message;$('#pay').disabled=false;return}
-      $('#pay').textContent='Confirming…';await poll(20);done('')};
-  }catch(e){$('#payErr').textContent=e.message}})();
-}`;
-  return shell({ title, head, body, script });
+  const script = `${SHARED_JS}
+const buddy=$('#buddy'),pupils=buddy&&buddy.querySelector('.pupils');
+function look(x,y){if(!pupils)return;const r=buddy.getBoundingClientRect(),dx=x-(r.left+r.width/2),dy=y-(r.top+r.height/2),d=Math.hypot(dx,dy)||1,k=Math.min(7,d/30);pupils.setAttribute('transform','translate('+(dx/d*k).toFixed(1)+' '+(dy/d*k).toFixed(1)+')')}
+addEventListener('pointermove',e=>look(e.clientX,e.clientY),{passive:true});
+const go=$('#go');if(go){const g=()=>{const r=go.getBoundingClientRect();look(r.left+r.width/2,r.top+r.height/2)};setTimeout(g,1600)}
+function celebrate(payer){
+  buddy.querySelector('.open').style.display='none';buddy.querySelector('.joy').style.display='';
+  $('.buddy .hi').textContent='yay!';
+  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you\\'re the best'+(payer?', '+esc(payer):'')+' 🧡</div><div class="bub" style="animation-delay:.45s">I just told '+${json(esc(name))}+'. they can check out now.</div>');
+  const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();
+  const c=document.createElement('div');c.className='confetti';const cols=['#ff5a36','#ffb347','#1d8a52','#4b7bff','#ffd23f'];
+  for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}
+  document.body.appendChild(c);setTimeout(()=>c.remove(),3000);scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+}
+${open && cart.settle === 'card' ? payScript(cart, provider) : ''}`;
+  return shell({ title: ogTitle, head, body, script });
 }
 
-function payBox(cart, links, provider) {
-  if (cart.status === 'expired') return '<h2>This link has expired</h2><p class="muted" style="margin:0">Ask for a fresh one.</p>';
-  if (cart.status === 'canceled') return '<h2>This cart was canceled</h2>';
-  if (cart.status === 'refunded') return '<h2>This cart was refunded</h2>';
-  if (cart.status !== 'open') {
-    return `<h2>✅ Already covered${cart.payer_name ? ` by ${esc(cart.payer_name)}` : ''}</h2><p class="muted" style="margin:0">Nothing more to do here.</p>`;
-  }
+function actionBox(cart, links, provider, total) {
+  const name = esc(cart.requester.name);
   if (cart.settle === 'handoff') {
-    return `<h2>Send ${usd(cart.cart_cents)} to ${esc(cart.requester.name)}</h2>
-${links.map((l) => `<a class="btn ${l.kind === 'venmo' ? '' : 'dark'}" href="${esc(l.url)}" rel="noopener">${esc(l.label)}</a>`).join('')}
-<p class="small muted">Amount and note are filled in for you. This goes straight to ${esc(cart.requester.name)}; Spot never touches the money.</p>`;
+    return links
+      .map((l, i) => `<a class="btn go ${i ? 'dark' : ''}" ${i ? '' : 'id="go"'} href="${esc(l.url)}" rel="noopener">Send ${total} on ${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`)
+      .join('');
   }
-  const fallback = links.length ? `<p class="small muted" style="margin-top:14px">Or send it directly: ${links.map((l) => `<a href="${esc(l.url)}">${esc(l.label)}</a>`).join(' · ')}</p>` : '';
+  const fallback = links.length ? `<p class="small muted" style="text-align:center;margin:10px 0 0">or send it straight to them: ${links.map((l) => `<a href="${esc(l.url)}">${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`).join(' · ')}</p>` : '';
   if (provider === 'sandbox') {
-    return `<label for="payer">Your name (so they know who to thank)</label><input id="payer" maxlength="60" placeholder="Mom">
-<button class="btn dark" id="pay"> Pay ${usd(cart.total_cents)} (test)</button><div class="err" id="payErr"></div>${fallback}`;
+    return `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (so ${name} knows who to thank)" aria-label="Your name"></div>
+<button class="btn go" id="go">Spot ${name} ${total}</button><div class="err" id="payErr"></div>${fallback}`;
   }
-  return `<div id="stripeEl"></div><button class="btn dark" id="pay" disabled>Pay ${usd(cart.total_cents)}</button><div class="err" id="payErr"></div>${fallback}`;
+  return `<div id="stripeEl"></div><button class="btn go" id="go" disabled>Spot ${name} ${total}</button><div class="err" id="payErr"></div>${fallback}`;
+}
+
+function detailsBox(cart) {
+  const card = cart.settle === 'card';
+  return `<details><summary>how this works</summary>
+<p>${card ? `Your money goes onto a one-time card that ${esc(cart.requester.name)} can only use at ${esc(cart.merchant.name)}, for this amount. It can't be cashed out, and if it isn't used you get refunded.` : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
+<div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
+${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
+<div class="sum"><b>Total</b><b>${usd(card ? cart.total_cents : cart.cart_cents)}</b></div></details>`;
+}
+
+function payScript(cart, provider) {
+  if (provider === 'sandbox') {
+    return `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='spotting…';try{const name=$('#payer').value.trim();await api('/v1/carts/'+${json(cart.token)}+'/sandbox-pay',{payer_name:name});celebrate(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};`;
+  }
+  return `(async()=>{try{
+  const T=${json(cart.token)};const c=await api('/v1/carts/'+T+'/pay',{});
+  const stripe=Stripe(c.publishable_key);const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
+  elements.create('payment',{layout:'tabs',wallets:{applePay:'auto',googlePay:'auto'}}).mount('#stripeEl');$('#go').disabled=false;
+  $('#go').onclick=async()=>{$('#go').disabled=true;$('#payErr').textContent='';
+    const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
+    if(error){$('#payErr').textContent=error.message;$('#go').disabled=false;return}
+    $('#go').textContent='confirming…';for(let i=0;i<20;i++){const r=await api('/v1/carts/'+T);if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}celebrate('')};
+}catch(e){$('#payErr').textContent=e.message}})();`;
 }
 
 // ─── Requester page ─────────────────────────────────────────────────────────
