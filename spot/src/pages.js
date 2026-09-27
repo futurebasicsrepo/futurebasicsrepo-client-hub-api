@@ -1,0 +1,323 @@
+// Server-rendered pages. No build step: each page is one HTML string with
+// inline CSS and a small inline script. Everything interpolated from a cart
+// goes through esc(), and data handed to scripts goes through json().
+import { usd } from './cart.js';
+
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+// Safe inside <script>: blocks </script> and HTML comment tricks.
+const json = (v) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+
+const CSS = `
+:root{--bg:#fbf7f1;--card:#fff;--ink:#1b1712;--muted:#6f675c;--line:#e8e0d4;--spot:#ff5a36;--spot-ink:#fff;--ok:#1d8a52;--warn:#b25b00;--radius:18px}
+@media (prefers-color-scheme:dark){:root{--bg:#141210;--card:#1e1b18;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 ui-sans-serif,-apple-system,"SF Pro Text",Inter,system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:20px 16px 64px}
+a{color:inherit}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;font-size:20px;text-decoration:none}
+.dot{width:22px;height:22px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent)}
+h1{font-size:34px;line-height:1.05;letter-spacing:-.03em;margin:28px 0 10px}
+h2{font-size:18px;margin:0 0 12px;letter-spacing:-.01em}
+p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:14px 0}
+.tabs{display:flex;gap:6px;background:var(--line);padding:4px;border-radius:14px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;padding:10px 6px;border-radius:10px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 6px}
+input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;border-color:transparent}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:14px;padding:15px 18px;font:inherit;font-weight:700;font-size:17px;cursor:pointer;text-decoration:none;background:var(--spot);color:var(--spot-ink);margin-top:14px}
+.btn.dark{background:var(--ink);color:var(--bg)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.small{padding:9px 12px;font-size:14px;width:auto;margin:0}
+.items{list-style:none;margin:0;padding:0}
+.item{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.thumb{width:56px;height:56px;border-radius:12px;background:var(--line) center/cover no-repeat;flex:none}
+.item .t{font-weight:600}.item .v{color:var(--muted);font-size:14px}
+.item .p{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.sum{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0;font-variant-numeric:tabular-nums}
+.sum.total{color:var(--ink);font-weight:800;font-size:20px;padding-top:10px;border-top:1px solid var(--line);margin-top:8px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:5px 10px;border-radius:99px;background:var(--line)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.muted{color:var(--muted)}.small{font-size:13px}
+.err{color:#c62828;font-weight:600;margin-top:10px;min-height:1em}
+.edit-item{display:grid;grid-template-columns:1fr 64px 34px;gap:6px;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.edit-item [data-f=title]{grid-column:1/-1}
+.edit-item input{padding:10px}
+.x{border:0;background:transparent;font-size:20px;color:var(--muted);cursor:pointer}
+.linkbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;word-break:break-all;font-weight:600}
+.cc{border-radius:16px;padding:18px;color:#fff;background:linear-gradient(135deg,#ff5a36,#ff8a3d 60%,#ffb347);font-family:ui-monospace,Menlo,monospace;box-shadow:0 10px 30px #ff5a3640}
+.cc .n{font-size:20px;letter-spacing:.08em;margin:22px 0 10px}
+.cc .meta{display:flex;justify-content:space-between;font-size:13px;opacity:.9}
+.hero-note{display:flex;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--spot) 10%,transparent);border-radius:14px;padding:12px 14px;margin:12px 0;font-size:14px}
+.bm{display:inline-block;padding:8px 12px;border-radius:10px;background:var(--ink);color:var(--bg);font-weight:700;text-decoration:none;font-size:14px}
+footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
+.sandbox{background:#fff3cd;color:#6b4e00;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin:10px 0}
+@media (prefers-color-scheme:dark){.sandbox{background:#3a2f10;color:#ffd97a}}
+`;
+
+function shell({ title, head = '', body, script = '' }) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc(title)}</title><meta name="theme-color" content="#ff5a36">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">
+${head}<style>${CSS}</style></head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`;
+}
+
+const SHARED_JS = `
+const $=(s,r=document)=>r.querySelector(s);
+const usd=c=>'$'+(c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+async function api(path,body,method){const r=await fetch(path,{method:method||(body?'POST':'GET'),headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
+`;
+
+// ─── Home / create ──────────────────────────────────────────────────────────
+export function homePage({ origin, provider, cfg }) {
+  const bookmarklet = `javascript:location.href=${JSON.stringify(`${origin}/new?url=`)}+encodeURIComponent(location.href)`;
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<h1>Your cart, anywhere.<br>Someone else's tap.</h1>
+<p class="lead">Turn any cart into a link. Whoever opens it covers it in one tap, and you check out with a card that only works at that store.</p>
+${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves. Payments and cards are simulated.</div>' : ''}
+
+<section class="card" id="capture">
+  <h2>1 · Grab the cart</h2>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="link">Link</button>
+    <button role="tab" aria-selected="false" data-tab="shot">Screenshot</button>
+    <button role="tab" aria-selected="false" data-tab="manual">Type it</button>
+  </div>
+  <div data-pane="link"><label for="url">Product or cart page</label><input id="url" type="url" inputmode="url" placeholder="https://store.com/products/…"><button class="btn dark" id="grab">Grab it</button></div>
+  <div data-pane="shot" hidden><label for="shot">Screenshot of any cart or checkout</label><input id="shot" type="file" accept="image/png,image/jpeg,image/webp"><p class="small muted">Read by AI. You'll check every line before sharing.</p></div>
+  <div data-pane="manual" hidden><p class="muted small" style="margin:0">Add the items below.</p></div>
+  <div class="err" id="capErr"></div>
+</section>
+
+<section class="card" id="review">
+  <h2>2 · Check it</h2>
+  <label for="merchant">Store</label>
+  <div class="row"><input id="merchant" placeholder="Store name"><input id="merchantUrl" placeholder="store.com (optional)"></div>
+  <label>Items</label>
+  <div id="items"></div>
+  <button class="btn ghost small" id="addItem" type="button">+ Add item</button>
+  <label for="extras">Shipping + tax estimate</label>
+  <input id="extras" inputmode="decimal" placeholder="0.00">
+  <div id="totals" style="margin-top:12px"></div>
+</section>
+
+<section class="card" id="you">
+  <h2>3 · Get it covered</h2>
+  <div class="row"><div><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="Kyle"></div><div><label for="email">Email (optional)</label><input id="email" type="email" autocomplete="email" placeholder="you@…"></div></div>
+  <label for="settle">How should the money reach you?</label>
+  <select id="settle">
+    <option value="card">Store card: they pay, you check out with a one-time card</option>
+    <option value="handoff">Straight to my Venmo / Cash App</option>
+  </select>
+  <div id="billing" ${provider === 'stripe' ? '' : 'hidden'}>
+    <label>Billing address for your card</label>
+    <input id="b_line1" placeholder="Street" autocomplete="address-line1"><div class="row" style="margin-top:6px"><input id="b_city" placeholder="City" autocomplete="address-level2"><input id="b_state" placeholder="State" autocomplete="address-level1"><input id="b_zip" placeholder="ZIP" autocomplete="postal-code"></div>
+  </div>
+  <div class="row"><div><label for="venmo">Venmo (optional)</label><input id="venmo" placeholder="@handle"></div><div><label for="cashtag">Cash App (optional)</label><input id="cashtag" placeholder="$cashtag"></div></div>
+  <label for="note">Note to whoever pays (optional)</label>
+  <input id="note" maxlength="280" placeholder="birthday list 🎂">
+  <button class="btn" id="create">Make my link</button>
+  <div class="err" id="createErr"></div>
+</section>
+
+<section class="card" id="done" hidden>
+  <h2>Your link is ready</h2>
+  <div class="linkbox"><span id="link"></span></div>
+  <div class="row"><button class="btn" id="share">Share</button><button class="btn ghost" id="copy">Copy</button></div>
+  <p class="small muted">Your private page shows payment status and your card once it's covered. <b>Bookmark it</b>, since it's the only way back in.</p>
+  <a class="btn dark" id="manage" href="#">Open my page</a>
+</section>
+
+<section class="card">
+  <h2>Grab carts in one click</h2>
+  <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it to start a Spot.</p>
+  <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
+</section>
+<footer>Spot · cart links for anyone, anywhere</footer>`;
+
+  const script = `${SHARED_JS}
+const CFG=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents })};
+let items=[];
+const tabs=[...document.querySelectorAll('[data-tab]')];
+tabs.forEach(t=>t.onclick=()=>{tabs.forEach(x=>x.setAttribute('aria-selected',x===t));document.querySelectorAll('[data-pane]').forEach(p=>p.hidden=p.dataset.pane!==t.dataset.tab);if(t.dataset.tab==='manual'&&!items.length){items.push(blank());render()}});
+const blank=()=>({title:'',variant:null,quantity:1,price_cents:null,image_url:null,url:null});
+const toCents=v=>{const m=String(v||'').replace(/[,\\s$]/g,'').match(/^\\d+(\\.\\d{0,2})?$/);return m?Math.round(parseFloat(m[0])*100):null};
+function render(){
+  $('#items').innerHTML=items.map((it,i)=>'<div class="edit-item"><input aria-label="Item" data-i="'+i+'" data-f="title" value="'+esc(it.title)+(it.variant?' ('+esc(it.variant)+')':'')+'" placeholder="Item"><input aria-label="Price" data-i="'+i+'" data-f="price" inputmode="decimal" value="'+(it.price_cents!=null?(it.price_cents/100).toFixed(2):'')+'" placeholder="Price"><input aria-label="Qty" data-i="'+i+'" data-f="qty" inputmode="numeric" value="'+it.quantity+'"><button class="x" data-del="'+i+'" aria-label="Remove">×</button></div>').join('')||'<p class="muted small">No items yet.</p>';
+  totals();
+}
+$('#items').addEventListener('input',e=>{const el=e.target,i=+el.dataset.i,f=el.dataset.f;if(f==='title'){items[i].title=el.value;items[i].variant=null}if(f==='price')items[i].price_cents=toCents(el.value);if(f==='qty')items[i].quantity=Math.max(1,parseInt(el.value)||1);totals()});
+$('#items').addEventListener('click',e=>{const d=e.target.dataset.del;if(d!=null){items.splice(+d,1);render()}});
+$('#addItem').onclick=()=>{items.push(blank());render()};
+$('#extras').oninput=totals;$('#settle').onchange=()=>{totals();$('#billing').hidden=${json(provider !== 'stripe')}||$('#settle').value!=='card'};
+function totals(){
+  const sub=items.reduce((s,it)=>s+(it.price_cents||0)*it.quantity,0),ex=toCents($('#extras').value)||0,cart=sub+ex;
+  const fee=$('#settle').value==='handoff'?0:Math.round(cart*CFG.feeBps/10000)+CFG.feeFixed;
+  $('#totals').innerHTML='<div class="sum"><span>Items</span><span>'+usd(sub)+'</span></div><div class="sum"><span>Shipping + tax</span><span>'+usd(ex)+'</span></div>'+(fee?'<div class="sum"><span>Spot fee (paid by them)</span><span>'+usd(fee)+'</span></div>':'')+'<div class="sum total"><span>They pay</span><span>'+usd(cart+fee)+'</span></div>'+(cart>CFG.max?'<div class="err">Carts are capped at '+usd(CFG.max)+' for now.</div>':'');
+}
+function load(d){
+  if(d.merchant){$('#merchant').value=d.merchant.name||'';$('#merchantUrl').value=d.merchant.url||''}
+  items=(d.items||[]).map(it=>({...blank(),...it}));if(!items.length)items.push(blank());
+  if(d.extras_cents)$('#extras').value=(d.extras_cents/100).toFixed(2);
+  render();
+  const miss=items.some(i=>!i.price_cents);
+  $('#capErr').textContent=d.warning||(miss?'Some prices were not found. Fill them in below.':'');
+  $('#review').scrollIntoView({behavior:'smooth'});
+}
+async function grab(body,btn){$('#capErr').textContent='';if(btn){btn.disabled=true;btn.textContent='Reading…'}try{load(await api('/v1/capture',body))}catch(e){$('#capErr').textContent=e.message}finally{if(btn){btn.disabled=false;btn.textContent='Grab it'}}}
+$('#grab').onclick=()=>{const u=$('#url').value.trim();if(u)grab({url:u},$('#grab'))};
+$('#shot').onchange=async()=>{const f=$('#shot').files[0];if(!f)return;if(f.size>6e6){$('#capErr').textContent='Screenshot must be under 6 MB';return}
+  const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(f)});
+  $('#capErr').textContent='Reading your screenshot…';grab({image:{data,media_type:f.type}})};
+$('#create').onclick=async()=>{
+  const btn=$('#create');$('#createErr').textContent='';btn.disabled=true;
+  try{
+    const res=await api('/v1/carts',{
+      requester:{name:$('#name').value,email:$('#email').value,venmo:$('#venmo').value,cashtag:$('#cashtag').value,billing:{line1:$('#b_line1').value,city:$('#b_city').value,state:$('#b_state').value,postal_code:$('#b_zip').value}},
+      merchant:{name:$('#merchant').value,url:$('#merchantUrl').value&&!/^https?:/.test($('#merchantUrl').value)?'https://'+$('#merchantUrl').value:$('#merchantUrl').value},
+      items:items.filter(i=>i.title||i.price_cents),extras_cents:toCents($('#extras').value)||0,settle:$('#settle').value,note:$('#note').value});
+    $('#link').textContent=res.link;$('#manage').href=res.manage_link;$('#done').hidden=false;$('#done').scrollIntoView({behavior:'smooth'});
+    try{localStorage.setItem('spot:'+res.cart.token,res.manage_link)}catch{}
+    $('#share').onclick=()=>navigator.share?navigator.share({title:'Cover my cart?',url:res.link}).catch(()=>{}):navigator.clipboard.writeText(res.link);
+    $('#copy').onclick=()=>{navigator.clipboard.writeText(res.link);$('#copy').textContent='Copied'};
+  }catch(e){$('#createErr').textContent=e.message}finally{btn.disabled=false}
+};
+render();
+const qp=new URLSearchParams(location.search).get('url');if(qp){$('#url').value=qp;grab({url:qp},$('#grab'))}
+`;
+  return shell({ title: 'Spot: cover my cart', body, script, head: '<meta name="description" content="Turn any cart into a link someone else can pay.">' });
+}
+
+// ─── Pay page (the link that gets shared) ───────────────────────────────────
+export function payPage({ cart, links, provider, pageUrl }) {
+  const first = cart.items.find((i) => i.image_url);
+  const title = `Cover ${cart.requester.name}'s ${cart.merchant.name} cart: ${usd(cart.cart_cents)}`;
+  const desc = cart.items.map((i) => (i.quantity > 1 ? `${i.quantity}× ` : '') + i.title).join(', ').slice(0, 200);
+  const head = `
+<meta property="og:type" content="website"><meta property="og:site_name" content="Spot">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(pageUrl)}">${first ? `<meta property="og:image" content="${esc(first.image_url)}">` : ''}
+<meta name="twitter:card" content="${first ? 'summary_large_image' : 'summary'}"><meta name="robots" content="noindex">
+${provider === 'stripe' && cart.settle === 'card' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
+
+  const itemsHtml = cart.items
+    .map(
+      (i) => `<li class="item"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+<div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `Qty ${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
+<div class="p">${usd(i.price_cents * i.quantity)}</div></li>`,
+    )
+    .join('');
+
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<h1 style="font-size:28px">${esc(cart.requester.name)} asked you to cover their cart</h1>
+<p class="lead">from <b>${esc(cart.merchant.name)}</b></p>
+${cart.note ? `<div class="hero-note">💬 <span>${esc(cart.note)}</span></div>` : ''}
+${provider === 'sandbox' && cart.settle === 'card' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
+<section class="card">
+  <ul class="items">${itemsHtml}</ul>
+  <div style="margin-top:10px">
+    <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
+    ${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+    ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
+    <div class="sum total"><span>Total</span><span>${usd(cart.total_cents)}</span></div>
+  </div>
+</section>
+<section class="card" id="payBox">${payBox(cart, links, provider)}</section>
+${cart.settle === 'card' ? `<p class="small muted">Your money goes onto a one-time card that ${esc(cart.requester.name)} can only use at ${esc(cart.merchant.name)}, for this amount. It can't be cashed out.</p>` : ''}
+<footer><a href="/">Make your own Spot</a></footer>`;
+
+  const script =
+    cart.settle !== 'card' || cart.status !== 'open'
+      ? ''
+      : `${SHARED_JS}
+const TOKEN=${json(cart.token)},MODE=${json(provider)};
+const done=(name)=>{$('#payBox').innerHTML='<h2>🎉 Covered. Thank you'+(name?', '+esc(name):'')+'!</h2><p class="muted" style="margin:0">'+${json(esc(cart.requester.name))}+' has been told and can check out now.</p>'};
+async function poll(n){for(let i=0;i<n;i++){const r=await api('/v1/carts/'+TOKEN);if(r.cart.status!=='open')return true;await new Promise(z=>setTimeout(z,1500))}return false}
+if(MODE==='sandbox'){
+  $('#pay').onclick=async()=>{const b=$('#pay');b.disabled=true;b.textContent='Paying…';try{const name=$('#payer').value;await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:name});done(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Pay (test)'}};
+}else{
+  (async()=>{try{
+    const c=await api('/v1/carts/'+TOKEN+'/pay',{});
+    const stripe=Stripe(c.publishable_key);const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
+    const el=elements.create('payment',{layout:'tabs',wallets:{applePay:'auto',googlePay:'auto'}});el.mount('#stripeEl');$('#pay').disabled=false;
+    $('#pay').onclick=async()=>{$('#pay').disabled=true;$('#payErr').textContent='';
+      const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
+      if(error){$('#payErr').textContent=error.message;$('#pay').disabled=false;return}
+      $('#pay').textContent='Confirming…';await poll(20);done('')};
+  }catch(e){$('#payErr').textContent=e.message}})();
+}`;
+  return shell({ title, head, body, script });
+}
+
+function payBox(cart, links, provider) {
+  if (cart.status === 'expired') return '<h2>This link has expired</h2><p class="muted" style="margin:0">Ask for a fresh one.</p>';
+  if (cart.status === 'canceled') return '<h2>This cart was canceled</h2>';
+  if (cart.status === 'refunded') return '<h2>This cart was refunded</h2>';
+  if (cart.status !== 'open') {
+    return `<h2>✅ Already covered${cart.payer_name ? ` by ${esc(cart.payer_name)}` : ''}</h2><p class="muted" style="margin:0">Nothing more to do here.</p>`;
+  }
+  if (cart.settle === 'handoff') {
+    return `<h2>Send ${usd(cart.cart_cents)} to ${esc(cart.requester.name)}</h2>
+${links.map((l) => `<a class="btn ${l.kind === 'venmo' ? '' : 'dark'}" href="${esc(l.url)}" rel="noopener">${esc(l.label)}</a>`).join('')}
+<p class="small muted">Amount and note are filled in for you. This goes straight to ${esc(cart.requester.name)}; Spot never touches the money.</p>`;
+  }
+  const fallback = links.length ? `<p class="small muted" style="margin-top:14px">Or send it directly: ${links.map((l) => `<a href="${esc(l.url)}">${esc(l.label)}</a>`).join(' · ')}</p>` : '';
+  if (provider === 'sandbox') {
+    return `<label for="payer">Your name (so they know who to thank)</label><input id="payer" maxlength="60" placeholder="Mom">
+<button class="btn dark" id="pay"> Pay ${usd(cart.total_cents)} (test)</button><div class="err" id="payErr"></div>${fallback}`;
+  }
+  return `<div id="stripeEl"></div><button class="btn dark" id="pay" disabled>Pay ${usd(cart.total_cents)}</button><div class="err" id="payErr"></div>${fallback}`;
+}
+
+// ─── Requester page ─────────────────────────────────────────────────────────
+export function managePage({ token, provider }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Keep this page private. Anyone with it can see your card.</footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
+const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid, issuing your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
+let reveal=null;
+async function draw(){
+  const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));const c=r.cart;const [label,tone]=STATUS[c.status]||[c.status,''];
+  let h='<h1 style="font-size:28px">'+esc(c.merchant.name)+' cart</h1><span class="pill '+tone+'">'+label+'</span>';
+  h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  if(c.status==='card_issued'&&c.card){
+    h+='<section class="card"><h2>Check out at '+esc(c.merchant.name)+'</h2><div class="cc"><div>SPOT · one-time</div><div class="n" id="ccn">•••• •••• •••• '+esc(c.card.last4)+'</div><div class="meta"><span>'+esc(c.requester.name)+'</span><span>'+String(c.card.exp_month).padStart(2,'0')+'/'+String(c.card.exp_year).slice(-2)+'</span><span id="cvc">CVC •••</span></div></div>';
+    h+='<button class="btn dark" id="rev">Show card number</button><p class="small muted">Works once, only at '+esc(c.merchant.name)+', up to '+usd(c.cart_cents)+' plus a little for tax changes.</p></section>';
+    if(MODE==='sandbox')h+='<section class="card"><h2>Test checkout</h2><p class="small muted" style="margin-top:0">Simulate the store charging your card.</p><label>Merchant name as the card network sees it</label><input id="sm" value="'+esc(c.merchant.name.toUpperCase())+'"><label>Amount</label><input id="sa" inputmode="decimal" value="'+(c.cart_cents/100).toFixed(2)+'"><button class="btn" id="sim">Run test charge</button><div id="simOut" class="err"></div></section>';
+  }
+  if(c.status==='completed'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">'+(c.spent_cents?'Card used at '+esc(c.spent_merchant)+' for '+usd(c.spent_cents)+'.':'Marked as received.')+'</p></section>'}
+  if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
+  if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
+  if(c.status==='card_issued')h+='<button class="btn ghost" id="refund">Refund the payer</button>';
+  h+='<section class="card"><h2>Activity</h2>'+r.events.map(e=>'<div class="sum"><span>'+esc(e.kind.replace(/_/g,' '))+'</span><span>'+new Date(e.at).toLocaleString()+'</span></div>').join('')+'</section>';
+  $('#app').innerHTML=h;
+  const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
+  on('rev',async()=>{try{reveal=reveal||await api('/v1/carts/'+TOKEN+'/manage/reveal',{k:K});$('#ccn').textContent=reveal.number.replace(/(.{4})/g,'$1 ').trim();$('#cvc').textContent='CVC '+reveal.cvc;$('#rev').textContent='Copy number';$('#rev').onclick=()=>navigator.clipboard.writeText(reveal.number)}catch(e){alert(e.message)}});
+  on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
+  on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});
+  on('cancel',async()=>{if(confirm('Cancel this link?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
+  on('refund',async()=>{if(confirm('Refund the payer and cancel your card?')){await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K});draw()}});
+  if(['open','paid'].includes(c.status))setTimeout(draw,4000);
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
+  return shell({ title: 'My Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+export function notFoundPage() {
+  return shell({
+    title: 'Spot: not found',
+    body: '<a class="brand" href="/"><span class="dot"></span>Spot</a><h1>This link doesn\'t exist</h1><p class="lead">Double-check it, or <a href="/">make your own Spot</a>.</p>',
+  });
+}

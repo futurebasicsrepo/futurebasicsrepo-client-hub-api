@@ -1,0 +1,20 @@
+{
+  "name": "spot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spot: turn any cart into a link someone else can pay.",
+  "type": "module",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "fastify": "^5.12.5",
+    "stripe": "^22.6.2"
+  }
+}
