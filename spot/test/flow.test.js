@@ -240,7 +240,7 @@ test('composer page and its script are served; text capture routes', async (t) =
     capture: { fromUrl: async (u) => (seen.push(u), { source: 'url', merchant: { name: 'Nike', url: 'https://nike.com' }, items: [] }) },
   });
   t.after(() => app.close());
-  const home = await app.inject({ method: 'GET', url: '/' });
+  const home = await app.inject({ method: 'GET', url: '/new' });
   assert.match(home.body, /id="q"/);
   assert.match(home.body, /<script src="\/client\/home.js" defer><\/script>/);
   const js = await app.inject({ method: 'GET', url: '/client/home.js' });
@@ -257,4 +257,33 @@ test('composer page and its script are served; text capture routes', async (t) =
   if (saved) process.env.ANTHROPIC_API_KEY = saved;
   assert.equal(d.json().items[0].title, 'black salomon xt-6 size 10.5');
   assert.equal(d.json().items[0].price_cents, 20000);
+});
+
+test('website: landing page, fonts, demo cards and early-access list', async (t) => {
+  const db = openDb(':memory:');
+  const app = buildApp({ db, provider: sandboxProvider(), cfg, logger: false });
+  t.after(() => app.close());
+  const home = await app.inject({ method: 'GET', url: '/' });
+  assert.equal(home.statusCode, 200);
+  assert.match(home.body, /Your cart, anywhere\./);
+  assert.match(home.body, /href="\/new"/);
+  assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
+  assert.match(home.body, /<span class="s">"http:\/\/localhost(:80)?\/mcp"/);
+  for (const f of ['bricolage-400.woff2', 'bricolage-800.woff2']) {
+    const r = await app.inject({ method: 'GET', url: `/fonts/${f}` });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.headers['content-type'], 'font/woff2');
+  }
+  assert.equal((await app.inject({ method: 'GET', url: '/fonts/../../package.json' })).statusCode, 404);
+  for (const f of ['card-open.png', 'card-covered.png']) {
+    const r = await app.inject({ method: 'GET', url: `/site/${f}` });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.rawPayload.readUInt32BE(16), 1200);
+  }
+  const join = (payload) => app.inject({ method: 'POST', url: '/v1/waitlist', payload });
+  assert.equal((await join({ email: 'nope' })).statusCode, 400);
+  assert.equal((await join({ email: 'Kyle@Example.com', kind: 'agent' })).statusCode, 200);
+  assert.equal((await join({ email: 'kyle@example.com', kind: 'creator' })).statusCode, 200);
+  assert.equal((await join({ email: 'bot@example.com', company_fax: 'x' })).statusCode, 200);
+  assert.deepEqual(db.waitlist().map((w) => [w.email, w.kind]), [['kyle@example.com', 'creator']]);
 });

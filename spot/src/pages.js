@@ -210,7 +210,7 @@ details .sum{font-size:14px}
 
 // Inline, animatable version of the mascot: pupils follow the pointer
 // (desktop) or glance at the button (phone); swaps to a happy face on pay.
-function buddySvg(happy) {
+export function buddySvg(happy) {
   return `<svg viewBox="0 0 200 200" aria-hidden="true" id="buddy" class="${happy ? 'happy' : ''}">
 <ellipse cx="100" cy="188" rx="50" ry="7" fill="currentColor" opacity=".08"/>
 <circle cx="100" cy="100" r="78" fill="var(--spot)"/><circle cx="72" cy="68" r="20" fill="#fff" opacity=".18"/>
