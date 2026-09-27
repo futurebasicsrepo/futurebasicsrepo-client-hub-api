@@ -9,12 +9,13 @@
 //     ├──cancel──▶ canceled
 //     └──expire──▶ expired
 //   paid / card_issued ──refund──▶ refunded
+//   paid ──book──▶ completed               (flights: booked straight with the airline)
 
 export const SETTLE_MODES = ['card', 'handoff'];
 
 const TRANSITIONS = {
   open: { pay: 'paid', mark_received: 'completed', cancel: 'canceled', expire: 'expired' },
-  paid: { issue: 'card_issued', refund: 'refunded' },
+  paid: { issue: 'card_issued', book: 'completed', refund: 'refunded' },
   card_issued: { spend: 'completed', refund: 'refunded' },
   completed: {},
   canceled: {},
@@ -44,6 +45,7 @@ export function config(env = process.env) {
     feeBps: int(env.SPOT_FEE_BPS, 400), // 4% payer fee
     feeFixedCents: int(env.SPOT_FEE_FIXED_CENTS, 0),
     maxCartCents: int(env.SPOT_MAX_CART_CENTS, 50000), // $500 cap per link while fraud controls are young
+    maxFlightCents: int(env.SPOT_MAX_FLIGHT_CENTS, 200000), // flights are paid by the traveler themselves
     expiresHours: int(env.SPOT_EXPIRES_HOURS, 72),
   };
 }

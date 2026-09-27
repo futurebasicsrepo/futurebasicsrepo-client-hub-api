@@ -1,0 +1,227 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { buildApp } from '../src/server.js';
+import { openDb } from '../src/db.js';
+import { sandboxProvider } from '../src/providers.js';
+import { payableHandler, pickVariant } from '../src/fulfill/ucp.js';
+
+const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
+const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
+
+// A store that speaks UCP: discovery, catalog lookup, checkout with
+// shipping options, a tokenizer, and completion.
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true } = {}) {
+  const log = [];
+  let origin;
+  const sessions = new Map();
+  const view = (co) => ({
+    ucp: {
+      version: '2026-08-25',
+      capabilities: { 'dev.ucp.shopping.checkout': [{ version: '2026-08-25' }] },
+      payment_handlers: tokenizer
+        ? { 'com.example.processor_tokenizer': [{ id: 'proc_1', version: '2026-08-25', available_instruments: [{ type: 'card' }], config: { environment: 'sandbox', business_id: 'merchant_42', endpoint: `${origin}/tok` } }] }
+        : { 'com.google.pay': [{ id: 'gpay', version: '2026-08-25', available_instruments: [{ type: 'card' }], config: {} }] },
+    },
+    links: [{ type: 'terms_of_service', url: `${origin}/terms` }],
+    currency: 'USD',
+    continue_url: continueUrl ?? `${origin}/checkout/${co.id}`,
+    ...co,
+  });
+  const server = createServer(async (req, res) => {
+    let raw = '';
+    for await (const c of req) raw += c;
+    const body = raw ? JSON.parse(raw) : undefined;
+    log.push({ method: req.method, url: req.url, headers: req.headers, body });
+    const send = (code, obj) => {
+      res.writeHead(code, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(obj));
+    };
+    if (req.url === '/.well-known/ucp') {
+      return send(200, {
+        ucp: {
+          version: '2026-08-25',
+          services: { 'dev.ucp.shopping': [{ version: '2026-08-25', transport: 'rest', endpoint: `${origin}/ucp/` }] },
+          capabilities: {
+            'dev.ucp.shopping.checkout': [{ version: '2026-08-25' }],
+            'dev.ucp.shopping.fulfillment': [{ version: '2026-08-25' }],
+            ...(catalog ? { 'dev.ucp.shopping.catalog.lookup': [{ version: '2026-08-25' }] } : {}),
+          },
+          payment_handlers: {},
+        },
+      });
+    }
+    if (req.url === '/ucp/catalog/lookup') {
+      return send(200, {
+        ucp: { version: '2026-08-25' },
+        products: body.ids.filter((id) => id.includes('/products/puffer')).map((id) => ({
+          id: 'prod_puffer',
+          title: 'Super Puff',
+          variants: [
+            { id: 'var_black_s', title: 'Black / S', inputs: [{ id, match: 'featured' }], availability: { available: true } },
+            { id: 'var_black_m', title: 'Black / M', inputs: [{ id, match: 'featured' }], availability: { available: true } },
+          ],
+        })),
+      });
+    }
+    if (req.method === 'POST' && req.url === '/ucp/checkout-sessions') {
+      const co = { id: `chk_${sessions.size + 1}`, status: 'incomplete', line_items: body.line_items.map((l, i) => ({ id: `li_${i}`, item: { id: l.item.id, title: 'Super Puff', price: 25000 }, quantity: l.quantity })), totals: [{ type: 'subtotal', amount: 25000 }, { type: 'total', amount: 25000 }] };
+      sessions.set(co.id, co);
+      return send(201, view(co));
+    }
+    const m = req.url.match(/^\/ucp\/checkout-sessions\/([^/]+)(\/complete|\/cancel)?$/);
+    if (m) {
+      const co = sessions.get(m[1]);
+      if (req.method === 'PUT') {
+        const method = body.fulfillment.methods[0];
+        const picked = method.groups?.[0]?.selected_option_id;
+        const dest = { id: 'dest_1', type: 'shipping_address', ...method.destinations[0] };
+        const ship = picked === 'express' ? 1500 : 800;
+        Object.assign(co, {
+          status: picked ? 'ready_for_complete' : 'incomplete',
+          fulfillment: { methods: [{ id: 'ship_1', type: 'shipping', line_item_ids: ['li_0'], selected_destination_id: 'dest_1', destinations: [dest], groups: [{ id: 'pkg_1', ...(picked ? { selected_option_id: picked } : {}), options: [{ id: 'express', title: 'Express', totals: [{ type: 'total', amount: 1500 }] }, { id: 'standard', title: 'Standard', totals: [{ type: 'total', amount: 800 }] }] }] }] },
+          totals: picked ? [{ type: 'subtotal', amount: 25000 }, { type: 'fulfillment', amount: ship }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 25000 + ship + 1100 }] : co.totals,
+        });
+        return send(200, view(co));
+      }
+      if (m[2] === '/complete') {
+        Object.assign(co, { status: 'completed', order: { id: 'ord_777', permalink_url: `${origin}/orders/ord_777` } });
+        return send(200, view(co));
+      }
+      if (m[2] === '/cancel') {
+        co.status = 'canceled';
+        return send(200, view(co));
+      }
+    }
+    if (req.url === '/tok/tokenize') return send(200, { token: 'tok_from_store' });
+    send(404, { code: 'not_found', content: 'nope' });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  origin = `http://127.0.0.1:${server.address().port}`;
+  return { origin, log, close: () => new Promise((r) => server.close(r)) };
+}
+
+async function setup(t, store, { agent = false } = {}) {
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: agent ? 'on' : 'off', PUBLIC_URL: 'https://spot.example' }, fulfill: { ucp: { allowPrivate: true } } });
+  t.after(async () => {
+    await app.close();
+    await store.close();
+  });
+  const call = async (method, url, payload) => (await app.inject({ method, url, payload })).json();
+  const made = await call('POST', '/v1/carts', {
+    requester: { name: 'Kyle Riggle' },
+    merchant: { name: 'Puff Co', url: store.origin },
+    items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }],
+    extras_cents: 2500,
+  });
+  const token = made.cart.token;
+  const k = made.manage_key;
+  await call('POST', `/v1/carts/${token}/sandbox-pay`, { payer_name: 'Mom' });
+  const state = async () => (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).cart.fulfillment;
+  const until = async (want) => {
+    for (let i = 0; i < 100; i++) {
+      const f = await state();
+      if (f && want.includes(f.state)) return f;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`never reached ${want}: ${JSON.stringify(await state())}`);
+  };
+  return { app, call, token, k, until };
+}
+
+test('Spot publishes a UCP platform profile', async (t) => {
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: {} });
+  t.after(() => app.close());
+  const p = (await app.inject({ method: 'GET', url: '/.well-known/ucp' })).json();
+  assert.match(p.ucp.version, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(p.ucp.services['dev.ucp.shopping'][0].transport, 'rest');
+  assert.ok(p.ucp.capabilities['dev.ucp.shopping.checkout']);
+  assert.equal(p.ucp.capabilities['dev.ucp.shopping.fulfillment'][0].extends, 'dev.ucp.shopping.checkout');
+  assert.deepEqual(p.ucp.payment_handlers, {});
+});
+
+test('UCP store: ordered through its checkout API, no browser, agent off', async (t) => {
+  const store = await startUcpStore();
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const waiting = await until(['awaiting_confirm', 'needs_you']);
+  assert.equal(waiting.state, 'awaiting_confirm', JSON.stringify(waiting));
+  assert.equal(waiting.method, 'ucp');
+  assert.equal(waiting.total_cents, 25000 + 800 + 1100, 'cheapest shipping picked');
+  assert.match(waiting.summary, /shipping \$8\.00 · tax \$11\.00/);
+
+  // Nothing is paid before the requester taps Place order.
+  assert.ok(!store.log.some((r) => r.url.endsWith('/complete') || r.url.startsWith('/tok')));
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const done = await until(['placed', 'needs_you']);
+  assert.equal(done.state, 'placed', JSON.stringify(done));
+  assert.equal(done.order_number, 'ord_777');
+  assert.equal(done.order_url, `${store.origin}/orders/ord_777`);
+
+  const reqs = store.log.filter((r) => r.url.startsWith('/ucp/'));
+  for (const r of reqs) {
+    assert.equal(r.headers['ucp-agent'], 'profile="https://spot.example/.well-known/ucp"');
+    assert.ok(r.headers['request-id']);
+    if (r.method !== 'GET') assert.ok(r.headers['idempotency-key']);
+  }
+  const lookup = reqs.find((r) => r.url === '/ucp/catalog/lookup');
+  assert.deepEqual(lookup.body.ids, [`${store.origin}/products/puffer`]);
+  const create = reqs.find((r) => r.method === 'POST' && r.url === '/ucp/checkout-sessions');
+  assert.deepEqual(create.body.line_items, [{ item: { id: 'var_black_m' }, quantity: 1 }], 'matched Black / M');
+  assert.equal(create.body.buyer.email, 'kyle@example.com');
+  const [setAddr, pick] = reqs.filter((r) => r.method === 'PUT');
+  assert.deepEqual(setAddr.body.fulfillment.methods[0].destinations[0], { first_name: 'Kyle', last_name: 'Riggle', street_address: '1 Main St', address_locality: 'Austin', address_region: 'TX', postal_code: '78701', address_country: 'US', phone_number: '+15125550100' });
+  assert.equal(pick.body.fulfillment.methods[0].selected_destination_id, 'dest_1');
+  assert.deepEqual(pick.body.fulfillment.methods[0].groups, [{ id: 'pkg_1', selected_option_id: 'standard' }]);
+  assert.deepEqual(pick.body.line_items, [{ id: 'li_0', item: { id: 'var_black_m' }, quantity: 1 }], 'PUT resends full state');
+
+  const tok = store.log.find((r) => r.url === '/tok/tokenize');
+  assert.equal(tok.body.credential.type, 'pan');
+  assert.match(tok.body.credential.number, /^\d{16}$/);
+  assert.deepEqual(tok.body.binding, { type: 'dev.ucp.shopping.checkout', id: 'chk_1' });
+  assert.deepEqual(tok.body.identity, { access_token: 'merchant_42' });
+  const complete = reqs.find((r) => r.url.endsWith('/complete'));
+  const inst = complete.body.payment.instruments[0];
+  assert.equal(inst.handler_id, 'proc_1');
+  assert.deepEqual(inst.credential, { type: 'token', token: 'tok_from_store' });
+  assert.ok(!JSON.stringify(complete.body).includes(tok.body.credential.number), 'the card number only goes to the tokenizer');
+});
+
+test('UCP store with no handler Spot can pay: requester gets the prefilled checkout', async (t) => {
+  const store = await startUcpStore({ tokenizer: false });
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const f = await until(['needs_you', 'awaiting_confirm']);
+  assert.equal(f.state, 'needs_you');
+  assert.equal(f.method, 'ucp');
+  assert.equal(f.manual_url, `${store.origin}/checkout/chk_1`);
+  assert.match(f.reason, /ready with your cart and address/);
+});
+
+test('UCP links are web links only', async (t) => {
+  const store = await startUcpStore({ tokenizer: false, continueUrl: 'javascript:alert(1)' });
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const f = await until(['needs_you']);
+  assert.equal(f.manual_url, null);
+});
+
+test('items the UCP catalog does not know fall back to the usual route', async (t) => {
+  const store = await startUcpStore({ catalog: false });
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const f = await until(['needs_you']);
+  assert.equal(f.method, 'agent');
+  assert.match(f.reason, /Automatic checkout is off/);
+  assert.ok(!store.log.some((r) => r.url === '/ucp/checkout-sessions'), 'no checkout was opened');
+});
+
+test('variant picking and handler choice', () => {
+  const product = { variants: [{ id: 'a', title: 'Cream / M', inputs: [{ id: 'u', match: 'featured' }] }, { id: 'b', title: 'Black / M', inputs: [{ id: 'u', match: 'featured' }] }, { id: 'c', title: 'Black / L', availability: { available: false } }] };
+  assert.equal(pickVariant(product, { variant: 'm black' }, 'u').id, 'b');
+  assert.equal(pickVariant(product, { variant: 'Black / L' }, 'u'), null, 'sold out');
+  assert.equal(pickVariant(product, { variant: null }, 'u').id, 'a', 'featured when no variant asked for');
+  assert.equal(pickVariant({ variants: [{ id: 'x', inputs: [{ id: 'u', match: 'exact' }] }] }, { variant: 'whatever' }, 'u').id, 'x');
+  assert.equal(payableHandler({ ucp: { payment_handlers: { g: [{ id: 'g', available_instruments: [{ type: 'card' }], config: {} }] } } }), null);
+  assert.equal(payableHandler({ ucp: { payment_handlers: { p: [{ id: 'p', available_instruments: [{ type: 'card' }], config: { endpoint: 'https://t.example/' } }] } } }).endpoint, 'https://t.example');
+});

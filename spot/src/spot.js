@@ -2,10 +2,11 @@
 // rules in cart.js are enforced the same way for HTTP routes, webhooks and
 // the sandbox simulator.
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { CartError, config, decideAuthorization, transition, validateCart } from './cart.js';
+import { CartError, computeTotals, config, decideAuthorization, transition, validateCart } from './cart.js';
+import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
 
-export function createSpot({ db, provider, cfg = config(), log = console, onCardIssued = () => {} }) {
+export function createSpot({ db, provider, flights = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
 
   function load(token) {
@@ -44,8 +45,8 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
   return {
     provider,
 
-    create(input, { ip } = {}) {
-      const v = validateCart(input, cfg);
+    create(input, { ip } = {}, limits = cfg) {
+      const v = validateCart(input, limits);
       // The billing address is only needed to issue the card, which happens
       // after someone pays, so creating a link never asks for it.
       const billing = input?.requester?.billing;
@@ -67,11 +68,101 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
       return { cart, manageKey };
     },
 
+    // A flight an agent found for its user. The traveler finishes on their
+    // phone: who's flying, then pay; Spot books it with the airline. The
+    // link lives no longer than the airline holds the fare.
+    createFlight(offer, input = {}, { ip } = {}) {
+      if (!offer?.id || !offer.total_cents) throw new CartError('Pick a flight offer first');
+      const hold = offer.expires_at ? Math.floor((Date.parse(offer.expires_at) - Date.now()) / 60_000) : null;
+      if (hold !== null && hold < 5) throw new CartError('That fare is about to expire. Search again.', 410);
+      const asked = input.expires_minutes ? Number(input.expires_minutes) : null;
+      const minutes = Math.min(...[hold, asked, 72 * 60].filter((x) => Number.isFinite(x) && x > 0));
+      const { cart, manageKey } = this.create(
+        {
+          requester: input.requester,
+          merchant: { name: offer.airline.name },
+          items: [{ title: flightTitle(offer), variant: flightVariant(offer), quantity: 1, price_cents: offer.total_cents }],
+          note: input.note,
+          settle: 'card',
+          for: 'self',
+          expires_minutes: Math.max(5, minutes),
+        },
+        { ip },
+        { ...cfg, maxCartCents: cfg.maxFlightCents ?? cfg.maxCartCents },
+      );
+      let next = { ...cart, kind: 'flight', flight: { offer } };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      if (input.travelers?.length && input.contact) {
+        try {
+          next = this.setTravelersNow(next, input.travelers, input.contact);
+        } catch {
+          // Partial details from the agent: the traveler fills the rest in.
+        }
+      }
+      return { cart: next, manageKey };
+    },
+
+    // Save who's flying and re-check the fare with the airline before the
+    // traveler pays. If the price moved, the cart moves with it and the
+    // page shows the new total before anyone is charged.
+    async setTravelers(token, key, body = {}) {
+      const cart = loadManaged(token, key);
+      if (cart.kind !== 'flight') throw new CartError('Not a flight', 400);
+      if (cart.status !== 'open') throw new CartError('This trip is already paid', 409);
+      let next = this.setTravelersNow(cart, body.travelers, body.contact);
+      const fresh = await flights.offer(cart.flight.offer.id).catch((err) => {
+        if (err.status === 410) expire(db.byId(cart.id));
+        throw err;
+      });
+      const was = cart.total_cents;
+      if (fresh.total_cents !== cart.flight.offer.total_cents) {
+        const items = [{ ...next.items[0], price_cents: fresh.total_cents }];
+        const totals = computeTotals(items, 0, 'card', cfg);
+        if (totals.cart_cents > (cfg.maxFlightCents ?? cfg.maxCartCents)) throw new CartError('The fare went up past what Spot can take for now', 409);
+        next = { ...next, items, ...totals, rev: (next.rev || 1) + 1, flight: { ...next.flight, offer: { ...fresh, passengers: next.flight.offer.passengers } } };
+        if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+        db.event(cart.id, 'fare_changed', { from: was, to: next.total_cents });
+      }
+      return { cart: next, price_changed: next.total_cents !== was ? { from_cents: was, to_cents: next.total_cents } : null };
+    },
+
+    setTravelersNow(cart, travelers, contact) {
+      const v = validateTravelers(cart.flight.offer.passengers, travelers, contact);
+      const next = { ...cart, flight: { ...cart.flight, ...v }, requester: { ...cart.requester, email: cart.requester.email || v.contact.email } };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'travelers_set');
+      return next;
+    },
+
+    // Book the paid fare. Runs once: a crash mid-booking leaves the cart
+    // `paid` with booking_started set, for a human to check in Duffel rather
+    // than risking a second ticket. If the airline says no, the traveler is
+    // refunded straight away.
+    async bookFlight(cart) {
+      if (cart.status !== 'paid' || cart.flight?.booking_started) return cart;
+      const started = this.patch(cart.id, (c) => ({ ...c, flight: { ...c.flight, booking_started: Date.now() } }), 'booking_started');
+      try {
+        const booking = await flights.book(started.flight);
+        return move(started, 'book', { flight: { ...started.flight, booking } }, { booking_reference: booking.booking_reference });
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'flight booking failed');
+        const reason = err.status === 410 ? 'The airline released the fare before it could be booked.' : `The airline couldn't book it: ${err.message}`;
+        db.event(cart.id, 'booking_failed', { code: err.code || null, message: err.message });
+        try {
+          await provider.refund(started);
+          return move(started, 'refund', { refunded_at: Date.now(), flight: { ...started.flight, error: reason } });
+        } catch (e) {
+          log.error?.({ err: e, cart: cart.id }, 'refund after failed booking failed');
+          return this.patch(cart.id, (c) => ({ ...c, flight: { ...c.flight, error: `${reason} Your refund is being processed by hand.` } }), 'refund_failed');
+        }
+      }
+    },
+
     // Fix a link after making it (a wrong price, a missed item). Only while
     // nobody has started paying, so a payer is never charged a moved amount.
     edit(token, key, input) {
       const cart = loadManaged(token, key);
-      if (cart.status !== 'open' || cart.payment_ref) throw new CartError('This cart can no longer be changed', 409);
+      if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
       const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
       v.requester.billing = cart.requester.billing;
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
@@ -87,6 +178,7 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
     prepare(token, key, shippingInput) {
       const cart = loadManaged(token, key);
       if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.kind === 'flight') throw new CartError('Flights don\'t ship. Add who\'s flying instead.', 400);
       const shipping = validateShipping(shippingInput);
       const billing = cart.requester.billing || { line1: shipping.line1, city: shipping.city, state: shipping.state, postal_code: shipping.postal_code };
       const next = { ...cart, requester: { ...cart.requester, shipping, billing, email: cart.requester.email || shipping.email } };
@@ -95,7 +187,7 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
       return next;
     },
 
-    needsBilling: (cart) => Boolean(provider.needsBilling && cart.settle === 'card' && !cart.requester.billing),
+    needsBilling: (cart) => Boolean(provider.needsBilling && cart.settle === 'card' && cart.kind !== 'flight' && !cart.requester.billing),
 
     // Requester adds their billing address after being paid; issues the card.
     async addBilling(token, key, billing) {
@@ -134,6 +226,7 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
       const cart = load(token);
       if (cart.settle !== 'card') throw new CartError('This cart is paid directly by Venmo or Cash App', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already covered', 409);
+      if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
       const { ref, client } = await provider.createPayment(cart);
       if (ref !== cart.payment_ref) {
         const next = { ...cart, payment_ref: ref };
@@ -152,13 +245,13 @@ export function createSpot({ db, provider, cfg = config(), log = console, onCard
         throw new CartError('Payment amount does not match cart', 409);
       }
       const paid = move(cart, 'pay', { paid_at: Date.now(), payer: payer || null }, { amount_cents: amountCents });
-      return this.issue(paid);
+      return paid.kind === 'flight' ? this.bookFlight(paid) : this.issue(paid);
     },
 
     // Issue the merchant-locked card. Safe to retry: a failed issue leaves
     // the cart `paid`, and the requester page retries on the next view.
     async issue(cart) {
-      if (cart.status !== 'paid') return cart;
+      if (cart.status !== 'paid' || cart.kind === 'flight') return cart;
       if (this.needsBilling(cart)) {
         if (!db.events(cart.id).some((e) => e.kind === 'needs_billing')) db.event(cart.id, 'needs_billing');
         return cart;
@@ -254,6 +347,8 @@ export function publicCart(cart) {
     status: cart.status,
     rev: cart.rev || 1,
     for: cart.for || 'other',
+    kind: cart.kind || 'goods',
+    flight: publicFlight(cart.flight),
     settle: cart.settle,
     requester: { name: cart.requester.name, venmo: cart.requester.venmo, cashtag: cart.requester.cashtag },
     merchant: cart.merchant,
@@ -279,5 +374,7 @@ export function ownerCart(cart) {
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
     fulfillment: cart.fulfillment || null,
+    travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender }) => ({ given_name, family_name, born_on, gender })) || null,
+    contact: cart.flight?.contact || null,
   };
 }

@@ -17,6 +17,13 @@ export function normalizePhone(raw) {
 }
 
 export function finishMessage(cart, link) {
+  if (cart.kind === 'flight') {
+    const trip = cart.items[0]?.title || 'your flight';
+    return {
+      subject: `Your flight is ready: ${trip}`,
+      text: `Your flight is ready ✈️ ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a bit. Finish on your phone: ${link}`,
+    };
+  }
   const first = cart.items[0]?.title || 'your cart';
   const more = cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : '';
   return {
@@ -64,7 +71,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
         out.email = await email(to, {
           subject: msg.subject,
           text: msg.text,
-          html: `<p style="font:16px/1.5 system-ui,sans-serif">Your cart is ready 🛒<br><b>${esc(cart.items[0]?.title)}</b> from ${esc(cart.merchant.name)} · ${usd(cart.total_cents)}</p>
+          html: `<p style="font:16px/1.5 system-ui,sans-serif">${cart.kind === 'flight' ? 'Your flight is ready ✈️' : 'Your cart is ready 🛒'}<br><b>${esc(cart.items[0]?.title)}</b> from ${esc(cart.merchant.name)} · ${usd(cart.total_cents)}</p>
 <p><a href="${esc(link)}" style="display:inline-block;background:#ff5a36;color:#fff;padding:12px 18px;border-radius:10px;font:700 16px system-ui,sans-serif;text-decoration:none">Finish on your phone →</a></p>`,
         }).catch(() => 'failed');
       }

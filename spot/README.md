@@ -51,6 +51,15 @@ Cart states: `open → paid → card_issued → completed`, plus `canceled`, `ex
 
 Once a cart is paid and its card exists, the requester can have Spot place the order.
 
+- **UCP stores (no browser, no AI):** stores that publish a [Universal Commerce Protocol](https://ucp.dev) profile at `/.well-known/ucp` get their order through the store's own checkout API (`src/fulfill/ucp.js`), and this works even with `SPOT_AGENT` off. Spot acts as a UCP *platform*: its profile is at `/.well-known/ucp`, and every request names it in the `UCP-Agent` header.
+  1. `POST /catalog/lookup` with each item's product URL, then pick the variant that matches the captured size or colour.
+  2. `POST /checkout-sessions` with the items and the buyer.
+  3. `PUT` the shipping address, then `PUT` again choosing the cheapest option for each package.
+  4. The requester confirms the store's own total.
+  5. The one-time card goes only to the store's card tokenizer (the shared UCP Tokenization API, bound to that checkout).
+  6. `POST …/complete` places the order, and the store returns its order id and link.
+
+  If the store wants a person (`requires_escalation`, a 3-D Secure challenge, or no card tokenizer Spot can use), the requester gets the store's `continue_url`: its checkout with the cart and address already filled in. If the store's catalog doesn't know an item, Spot falls back to the routes below. UCP is still a draft spec, and this targets version `2026-08-25`.
 - **Shopify stores (no AI):** `src/fulfill/shopify.js` reads the store's `/products/<handle>.js`, picks the variant that matches the captured size or colour, and builds a cart permalink with contact and shipping prefilled. Shopify doesn't let anyone pay on a store they don't own without a person or a browser on the payment step, so the agent (or the requester) does that part.
 - **Checkout agent:** `src/fulfill/agent.js` runs Claude against a real Chromium page through a small tool set (`navigate`, `click`, `type`, `select`, `fill_payment`, `wait`, `ready_to_place_order`, `order_placed`, `need_human`). The page is described as text, with a ref for every interactive element, across iframes. Guardrails are enforced in code:
   - The model never sees the card. `fill_payment` types it server-side, page snapshots mask payment fields and card-like numbers, and `type` refuses payment fields.
@@ -80,6 +89,24 @@ An agent can also build a cart for its own user ("find me these flights") and ha
 
 The user opens the link, checks the address, and pays with Apple Pay, Google Pay or a card. The merchant-locked card issues, and if `SPOT_AGENT=on` the checkout agent starts the order by itself. The user still confirms the last tap.
 
+### Flights (Duffel)
+
+"Find me a flight to SFO on the 17th". The agent searches real fares, you pick one, and it sends you a link to finish on your phone.
+
+| MCP tool | REST | |
+|---|---|---|
+| `search_flights` | `POST /v1/agent/flights/search` | origin, destination, dates, adults, cabin → a few offers (cheapest first plus the best nonstop), each with an `offer_id` |
+| `create_flight_ask` | `POST /v1/agent/flights/asks` | holds one offer and returns a `finish_link`, which Spot can text or email |
+
+On the finish page you add who's flying (names as on your ID, date of birth), plus an email and phone for the airline. Spot re-checks the fare. If the price moved, the page shows the new total before you're charged. Then you pay, and Spot books through Duffel and shows the confirmation code.
+
+- **No one-time card:** Spot pays the airline from its Duffel balance, so keep the balance topped up in the Duffel dashboard.
+- **If the airline refuses the booking,** you're refunded straight away.
+- **The link only lives as long as the fare is held,** usually about 20–30 minutes.
+- **Fares are USD only for now.**
+
+Without `DUFFEL_ACCESS_TOKEN`, a demo airline ("Spot Air") returns made-up fares so you can try the flow. With a `duffel_test_…` token you get Duffel's test airline, and a `duffel_live_…` token books real tickets.
+
 MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bearer <key>` from `SPOT_API_KEYS`. Each ask belongs to the agent that made it.
 
 ## Configuration
@@ -102,6 +129,8 @@ MCP is streamable HTTP at `POST /mcp` (stateless). Both need `Authorization: Bea
 | `RESEND_API_KEY` | | Emails finish links |
 | `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links |
+| `DUFFEL_ACCESS_TOKEN` | | Turns on real flight search and booking (`duffel_test_…` or `duffel_live_…`) |
+| `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |

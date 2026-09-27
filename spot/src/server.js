@@ -15,11 +15,20 @@ import { createSpot, ownerCart, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
 import { createNotifier } from './notify.js';
+import { createFlights } from './flights.js';
+import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, flights = createFlights({ env }) } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
-  const spot = createSpot({ db, provider, cfg, log: app.log });
-  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill });
+  const spot = createSpot({ db, provider, flights, cfg, log: app.log });
+  // Spot's UCP platform profile URL, named in every UCP request. Needs an
+  // absolute URL, so it's PUBLIC_URL or the host of the latest request.
+  let seenOrigin = null;
+  app.addHook('onRequest', async (req) => {
+    if (!seenOrigin && req.headers.host) seenOrigin = `${req.protocol}://${req.headers.host}`;
+  });
+  const profileUrl = () => `${env.PUBLIC_URL?.replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000'}/.well-known/ucp`;
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, ...(fulfill.ucp || {}) } });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   app.addHook('onClose', async () => fulfiller.close());
   const notifier = createNotifier({ env, log: app.log, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
@@ -80,6 +89,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Website ──────────────────────────────────────────────────────────────
   app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
 
+  app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
 
   // The browser extension, built for this server's address.
@@ -252,6 +262,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
+  app.post('/v1/carts/:token/manage/travelers', async (req) => {
+    const { cart, price_changed } = await spot.setTravelers(req.params.token, keyOf(req), req.body || {});
+    return { cart: ownerCart(cart), price_changed };
+  });
   app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
   app.post('/v1/carts/:token/manage/billing', async (req) => ({ cart: ownerCart(await spot.addBilling(req.params.token, keyOf(req), req.body?.billing)) }));
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
@@ -275,7 +289,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  registerAgentApi(app, { spot, fulfiller, notifier, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
 
   app.post('/v1/sandbox/authorize', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
