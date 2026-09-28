@@ -252,7 +252,7 @@ Anyone signed in can **report** a clip, comment, thread, reply, chat message, ma
 
 ## Private preview gate
 
-While `GATE_EMAILS` (comma-separated) and `GATE_SECRET` are set on the **web** (Vercel) project, every page redirects to `/gate` until someone signs in with an incha.tv account whose email is on the list. `web/proxy.ts` checks a signed, httpOnly cookie (HMAC-SHA256, 30 days) on each request; `/api/gate` checks the password against the API and issues it. Remove `GATE_EMAILS` (and redeploy) to open the site to everyone. The API itself stays reachable, so the gate hides the site, not the raw API.
+While `GATE_EMAILS` and/or `GATE_HANDLES` (comma-separated) and `GATE_SECRET` are set on the **web** (Vercel) project, every page redirects to `/gate` until someone signs in with an incha.tv account whose email or handle is on the list. `web/proxy.ts` checks a signed, httpOnly cookie (HMAC-SHA256, 30 days) on each request; `/api/gate` checks the password against the API and issues it. Remove both lists (and redeploy) to open the site to everyone. The API itself stays reachable, so the gate hides the site, not the raw API.
 
 ## World scores
 
