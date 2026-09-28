@@ -223,17 +223,25 @@
   $('#extras').oninput = totals;
   $('#settle').onchange = totals;
 
+  // Same math as the server (cart.js computeTotals), per store: when Spot
+  // buys it, the payer adds the fee and a refundable allowance for tax and
+  // price changes, so "They pay" matches the pay page.
+  const feeOf = (goods) => Math.round((goods * CFG.feeBps) / 10000) + CFG.feeFixed;
+  const cushionOf = (goods) => Math.min(Math.round((goods * CFG.cushionBps) / 10000), CFG.cushionMax);
   function totals() {
     const sub = draft.items.reduce((s, it) => s + (it.price_cents || 0) * it.quantity, 0);
     const cart = sub + (toCents($('#extras').value) || 0);
-    const fee = $('#settle').value === 'card' ? Math.round((cart * CFG.feeBps) / 10000) + CFG.feeFixed : 0;
-    const prev = basket.reduce((n, st) => n + goodsOf(st), 0);
-    const prevFee = basket.reduce((n, st) => n + Math.round((goodsOf(st) * CFG.feeBps) / 10000) + CFG.feeFixed, 0);
+    const card = $('#settle').value === 'card';
+    const all = [...basket.map(goodsOf), cart];
+    const goods = all.reduce((n, g) => n + g, 0);
+    const fee = card ? all.reduce((n, g) => n + feeOf(g), 0) : 0;
+    const room = card ? all.reduce((n, g) => n + cushionOf(g), 0) : 0;
+    const prev = basket.length;
     $('#totals').innerHTML =
       (prev ? basket.map((st) => '<div class="sum"><span>' + esc(st.merchant.name) + '</span><span>' + usd(goodsOf(st)) + '</span></div>').join('') + '<div class="sum"><span>This store</span><span>' + usd(cart) + '</span></div>' : '') +
-      (fee ? '<div class="sum"><span>' + (prev ? 'Everything' : 'Items + shipping') + '</span><span>' + usd(cart + prev) + '</span></div><div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee + prevFee) + '</span></div>' : '') +
-      '<div class="sum total"><span>They pay</span><span>' + usd(cart + fee + prev + prevFee) + '</span></div>' +
-      (cart + prev > CFG.max ? '<div class="err">Spots are capped at ' + usd(CFG.max) + ' for now' + (prev ? ', across all stores' : '') + '.</div>' : '');
+      (card ? '<div class="sum"><span>' + (prev ? 'Everything' : 'Items + shipping') + '</span><span>' + usd(goods) + '</span></div>' + (room ? '<div class="sum"><span>Tax and price changes (unused goes back to them)</span><span>' + usd(room) + '</span></div>' : '') + '<div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee) + '</span></div>' : '') +
+      '<div class="sum total"><span>They pay</span><span>' + usd(goods + fee + room) + '</span></div>' +
+      (goods > CFG.max ? '<div class="err">Spots are capped at ' + usd(CFG.max) + ' for now' + (prev ? ', across all stores' : '') + '.</div>' : '');
   }
 
   $('#saveCheck').onclick = async () => {
