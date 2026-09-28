@@ -284,7 +284,7 @@ ${siteNav()}
       <h1 style="margin-top:22px">The <em class="circled">yes button${circleMark}</em> for AI shopping.</h1>
       <p class="lead">AI can find it and fill the cart. Spot gets the yes, from you or from whoever’s paying. One tap, and the store gets the order.</p>
       <div class="modes">
-        <a class="mode" href="#how"><span class="mi">💸</span><span><b>Spot me</b><small>Someone else pays. Their money can only buy that cart.</small></span></a>
+        <a class="mode" href="#how"><span class="mi">💸</span><span><b>Spot me</b><small>Someone else pays, even for carts from several stores. Their money can only buy that cart.</small></span></a>
         <a class="mode" href="#for-you"><span class="mi">🤖</span><span><b>Finish for me</b><small>Your AI finds it, you tap Apple Pay. Even flights.</small></span></a>
         <a class="mode" href="#rules"><span class="mi">🧾</span><span><b>Rules for your AI</b><small>Limits, allowed stores, and an approver for the rest.</small></span></a>
         <a class="mode" href="#stores"><span class="mi">🛍️</span><span><b>Pay the store directly</b><small>Where stores support it: no Spot fee, the store’s own checkout.</small></span></a>
@@ -382,9 +382,9 @@ ${storySection()}
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
   <div class="feats">
-    <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>They buy exactly that cart from Spot, and Spot orders it and ships it to you. No cash changes hands, so saying yes is easy.</p></div>
+    <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>Their money buys exactly that cart, from the store directly or through Spot, and it ships to you. No cash changes hands, so saying yes is easy.</p></div>
     <div class="feat reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
-    <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store, or straight to the store.</h3><p>Links, screenshots, or a few words. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
+    <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store, even several at once.</h3><p>Links, screenshots, or a few words. Put up to 5 stores in one link and one payment. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
     <div class="feat reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
   </div>
   <div class="tablewrap reveal"><table>
@@ -420,7 +420,7 @@ ${chatWallSection()}
     <h2 class="reveal">Your agent builds the cart.<br>Spot gets the yes.</h2>
     <p class="lead reveal">Agents can find anything, but a person has to say yes to paying. Spot is that step: hand the cart to your user, or to whoever’s paying, and get back a signed approval once they do. Over MCP or REST, with no card numbers anywhere near your agent.</p>
     <div class="tools reveal">
-      <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link for someone else, or <b>for_me</b>: a finish link texted to your user</span></div>
+      <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link for someone else, or <b>for_me</b>: a finish link texted to your user. <b>stores</b>: carts from up to 5 stores in one link</span></div>
       <div class="tool"><code>search_flights</code><span>live fares, cheapest first plus the best nonstop</span></div>
       <div class="tool"><code>create_flight_ask</code><span>hold a fare and text your user a link to book it</span></div>
       <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered, booked</span></div>
@@ -497,7 +497,7 @@ ${noteSection(buddyNoId(true))}
     <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap. Your AI never gets a card number.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
     <details><summary>Why does Spot buy it instead of sending money?</summary><p>For stores that can’t take the payment directly, it’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
-    <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid.</p></details>
+    <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid. Paid the store directly? Then the store’s own cancellation and return policy applies.</p></details>
     <details><summary>Is Spot live?</summary><p>Spot is in early access. ${provider === 'sandbox' ? 'Right now it runs in test mode, so no real money moves. Try the whole flow for free.' : 'Payments run on Stripe.'}</p></details>
   </div>
 </div></section>
