@@ -607,7 +607,7 @@ ${rows}
 <p class="small"><a href="/v1/approvals/${esc(id)}">Signed record (JSON)</a> · <a href="/.well-known/spot-keys.json">Spot's public keys</a></p>
 <details class="more"><summary>Raw signature</summary><p class="small" style="word-break:break-all;font-family:ui-monospace,Menlo,monospace">${esc(jws)}</p></details>
 </section>
-<footer><a href="/trust">How Spot keeps AI shopping honest</a> · <a href="/terms">Terms</a></footer>`;
+<footer><a href="/#trust">How Spot keeps AI shopping honest</a> · <a href="/terms">Terms</a></footer>`;
   return shell({ title: 'Spot: signed approval', body, head: '<meta name="robots" content="noindex">' });
 }
 

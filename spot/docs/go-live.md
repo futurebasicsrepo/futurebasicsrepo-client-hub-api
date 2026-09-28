@@ -141,6 +141,17 @@ Carriers sometimes push back when people sign up to texts through a third party,
 
 Follow `docs/mcp-listing.md`. In short: make the signing key on your computer, set `MCP_REGISTRY_AUTH` in Railway, then run `mcp-publisher login http --domain spotmeplease.com …` and `mcp-publisher publish`.
 
+## 7a. Signing keys (5 minutes)
+
+Spot signs approvals and its requests to stores with two Ed25519 keys. It makes them on first start and keeps them in the database, so they survive redeploys. To pin them so they also survive a database restore, make them on your own computer and set them in Railway yourself (don't paste them into chat):
+
+```sh
+openssl genpkey -algorithm Ed25519 -out approvals.pem
+openssl genpkey -algorithm Ed25519 -out requests.pem
+```
+
+Set `SPOT_APPROVAL_KEY` and `SPOT_REQUEST_KEY` to each file's whole contents. Check https://spotmeplease.com/.well-known/spot-keys.json and `/.well-known/http-message-signatures-directory` afterwards. Changing a key means old approvals no longer verify, so set them once.
+
 ## 8. Try the whole thing (10 minutes, still on test keys)
 
 1. Open https://spotmeplease.com and make a Spot from a real product link.
@@ -150,5 +161,8 @@ Follow `docs/mcp-listing.md`. In short: make the signing key on your computer, s
 5. In /admin, check "Money to check" is empty, and Backups is green.
 6. Ask your AI (with Spot connected at /integrations#mcp) for a flight, and finish it from the link.
 7. Text STOP to the Twilio number. The next text to that number should come back as `opted_out`.
+8. On /account: connect an AI, give it a $20 per-order limit, add an approver (a second email of yours), and agree from that inbox. Ask your AI for something over $20: the approver should get it to pay. Check the activity log.
+9. On /integrations#stores: register a test store domain you control, put the snippet on a page there, tap the button, and send the cart. Put `/.well-known/spot-merchant.txt` up and press Verify; the pay page should show the ✓.
+10. After paying, open the receipt: "Who did what" should link a signed approval page.
 
 Once all of that works, swap in the **live** Stripe keys, and later the live Duffel token.

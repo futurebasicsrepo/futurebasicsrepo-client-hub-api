@@ -127,6 +127,14 @@ pre .k{color:#ffb347}pre .s{color:#8fd6a8}pre .c{color:#7d7368}
 @media (max-width:900px){.agents .grid{grid-template-columns:1fr}pre{font-size:12px;padding:16px}}
 
 /* safety */
+.rulecard,.storedemo{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:0 20px 50px -30px rgba(0,0,0,.35);max-width:440px;justify-self:center;width:100%}
+.rc-head{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:18px;margin-bottom:10px}.rc-head small{font-weight:600;color:var(--muted);font-size:13px}
+.rc-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}.rc-row span{color:var(--muted)}
+.rc-log{margin-top:12px;display:grid;gap:7px;font-size:14px}.rc-log div{display:flex;gap:8px;align-items:center}.rc-log em{font-style:normal;color:var(--muted);font-size:12px}
+.rc-log i{width:9px;height:9px;border-radius:50%;flex:none;background:var(--ok)}.rc-log i.warn{background:var(--spot2)}.rc-log i.no{background:var(--spot)}
+.sd-line{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}.sd-line.total{font-weight:800;border-bottom:0}
+.sd-btn{margin-top:10px;border-radius:999px;padding:14px;text-align:center;font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px}.sd-btn.dark{background:var(--ink);color:var(--bg)}.sd-btn.spot{background:#ff5a36;color:#fff}.sd-btn i{width:11px;height:11px;border-radius:50%;background:#fff}
+.storedemo small{display:block;text-align:center;color:var(--muted);font-size:12px;margin-top:6px}
 .safe{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:46px}
 .safe div{border-top:3px solid var(--spot);padding-top:16px}
 .safe p{color:var(--muted);margin-top:8px;font-size:16px}
@@ -160,8 +168,8 @@ details p{color:var(--muted);margin-top:12px}
 .mode:hover{transform:translateY(-2px) rotate(-.5deg);border-color:var(--spot);box-shadow:0 12px 26px rgba(27,23,18,.1)}
 .mode .mi{font-size:26px;line-height:1}.mode b{display:block;font-size:17px}.mode small{display:block;color:var(--muted);font-size:14px;line-height:1.35;margin-top:2px}
 @media (max-width:520px){.modes{grid-template-columns:1fr}}
-.handoff .grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
-@media (max-width:900px){.handoff .grid{grid-template-columns:1fr}}
+.handoff .grid,#rules .grid,.stores .grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+@media (max-width:900px){.handoff .grid,#rules .grid,.stores .grid{grid-template-columns:1fr}}
 .handoff .phone{transform:rotate(-2deg)}
 .ticks{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px}
 .ticks li{position:relative;padding-left:34px;color:var(--muted)}.ticks li b{color:var(--ink)}
@@ -241,13 +249,13 @@ export function siteNav(active = '') {
   const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#for-you', 'AI handoff', 'for-you')}${a('/#agents', 'For AI agents', 'agents')}${a('/integrations', 'Integrations', 'integrations')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
   <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
 </div></nav>`;
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For agents</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
@@ -262,8 +270,8 @@ export const SITE_JS = `
 `;
 
 export function sitePage({ origin, provider }) {
-  const title = 'Spot: your cart, anywhere. Someone else’s tap.';
-  const desc = 'Turn any cart into a link. Someone else taps Apple Pay, or your AI shops and texts it to you to finish. Either way, one tap and it’s ordered.';
+  const title = 'Spot: the yes button for AI shopping';
+  const desc = 'AI can find it and fill the cart. Spot gets the yes, from you or from whoever’s paying, with rules you set and signed proof of every approval. One tap, and the store gets the order.';
   return `${siteHead({ title, desc, origin, path: '/' })}
 
 ${siteNav()}
@@ -273,14 +281,16 @@ ${siteNav()}
   <div class="grid">
     <div>
       <span class="pill"><i></i>Early access${provider === 'sandbox' ? ' · test mode' : ''}</span>
-      <h1 style="margin-top:22px">Your cart, anywhere. <em class="circled">Someone else’s tap.${circleMark}</em></h1>
-      <p class="lead">Turn any cart into a link. Send it to whoever’s paying, or let your AI shop and send it to you. One tap, and it’s ordered.</p>
+      <h1 style="margin-top:22px">The <em class="circled">yes button${circleMark}</em> for AI shopping.</h1>
+      <p class="lead">AI can find it and fill the cart. Spot gets the yes, from you or from whoever’s paying. One tap, and the store gets the order.</p>
       <div class="modes">
         <a class="mode" href="#how"><span class="mi">💸</span><span><b>Spot me</b><small>Someone else pays. Their money can only buy that cart.</small></span></a>
         <a class="mode" href="#for-you"><span class="mi">🤖</span><span><b>Finish for me</b><small>Your AI finds it, you tap Apple Pay. Even flights.</small></span></a>
+        <a class="mode" href="#rules"><span class="mi">🧾</span><span><b>Rules for your AI</b><small>Limits, allowed stores, and an approver for the rest.</small></span></a>
+        <a class="mode" href="#stores"><span class="mi">🛍️</span><span><b>Pay the store directly</b><small>Where stores support it: no Spot fee, the store’s own checkout.</small></span></a>
       </div>
-      <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="#for-you">See the AI handoff</a></div>
-      <p class="fine">Nothing to download. The person paying doesn’t need an account.</p>
+      <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="/integrations#mcp">Add Spot to your AI</a></div>
+      <p class="fine">Nothing to download. The person paying doesn’t need an account. Your AI never gets a card number.</p>
     </div>
     <div class="stage" id="stage">${heroNotes()}
     <div class="float f2" aria-hidden="true">🎉 Mom spotted you</div>
@@ -317,7 +327,8 @@ ${storySection()}
       <li><b>Real flights.</b> Live fares from the airlines, booked the second you pay, with your confirmation code right there.</li>
       <li><b>Any store’s cart.</b> Your AI puts the cart together, and Spot buys it from the store and ships it to you.</li>
       <li><b>Price held, clock showing.</b> The link counts down while the fare or price is held, so nothing changes under you.</li>
-      <li><b>You always have the last tap.</b> Your AI can’t spend a cent without you.</li>
+      <li><b>You always have the last tap.</b> Your AI can’t spend a cent without a person saying yes.</li>
+      <li><b>Rules it can’t argue with.</b> Cap each order and each month, pick the stores, and send anything over the line to someone you trust.</li>
     </ul>
     <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/integrations#mcp">Add Spot to your AI →</a><a class="btn ghost" href="#agents">For developers</a></div>
   </div>
@@ -339,13 +350,41 @@ ${storySection()}
   </div>
 </div></div></section>
 
+<section class="sec alt" id="rules"><div class="wrap"><div class="grid">
+  <div>
+    <p class="kicker reveal">Rules and approvers</p>
+    <h2 class="reveal">Let your AI shop.<br>Keep the say.</h2>
+    <p class="lead reveal">Every AI you connect gets its own rules. Inside them, it hands you the cart to finish. Outside them, it’s refused, or it goes to your approver: a parent, a partner, your finance inbox. They pay for it or turn it down.</p>
+    <ul class="ticks reveal">
+      <li><b>Limits.</b> A cap per order and per month, per AI.</li>
+      <li><b>Only these stores.</b> An allowlist, so a kid’s AI shops at Target, not everywhere.</li>
+      <li><b>An approver.</b> They agree by email first, and every ask shows exactly what the AI picked and why it came to them.</li>
+      <li><b>See everything.</b> Each AI’s activity (asked, blocked, ordered) sits on your account, with an off switch that works instantly.</li>
+    </ul>
+    <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/account">Set rules →</a><a class="btn ghost" href="#trust">How approvals are signed</a></div>
+  </div>
+  <div class="rulecard reveal" aria-label="Example: spending rules for an AI assistant">
+    <div class="rc-head"><span>🤖 claude</span><small>$84 of $200 this month</small></div>
+    <div class="rc-row"><span>Max per order</span><b>$75</b></div>
+    <div class="rc-row"><span>Max per month</span><b>$200</b></div>
+    <div class="rc-row"><span>Only these stores</span><b>target.com, rei.com</b></div>
+    <div class="rc-row"><span>Over a limit</span><b>Send to Mom</b></div>
+    <div class="rc-log">
+      <div><i class="ok"></i>Asked · Trail socks, REI · $18</div>
+      <div><i class="warn"></i>Sent to Mom · Rain shell, REI · $129 <em>over $75</em></div>
+      <div><i class="no"></i>Blocked · Sneakers, other store</div>
+      <div><i class="ok"></i>Mom approved · signed ✓</div>
+    </div>
+  </div>
+</div></div></section>
+
 <section class="sec" id="why"><div class="wrap">
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
   <div class="feats">
     <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>They buy exactly that cart from Spot, and Spot orders it and ships it to you. No cash changes hands, so saying yes is easy.</p></div>
     <div class="feat reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
-    <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store.</h3><p>Links, screenshots, or a few words. If you can buy it online, you can Spot it.</p></div>
+    <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store, or straight to the store.</h3><p>Links, screenshots, or a few words. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
     <div class="feat reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
   </div>
   <div class="tablewrap reveal"><table>
@@ -356,6 +395,8 @@ ${storySection()}
       <tr><td>Money can only buy the item</td><td class="us">${check}</td><td>${cross}</td><td>${check}</td><td>${check}</td></tr>
       <tr><td>Ask in the moment</td><td class="us">${check}</td><td>${check}</td><td>${check}</td><td>${cross}</td></tr>
       <tr><td>Your AI can hand it to you to finish</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>Spending rules and an approver for your AI</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>Signed proof of who approved what</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Ordered for you</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>Some</td></tr>
     </tbody>
   </table></div>
@@ -376,15 +417,17 @@ ${chatWallSection()}
 <section class="sec agents" id="agents"><div class="wrap"><div class="grid">
   <div>
     <p class="kicker reveal">For AI agents</p>
-    <h2 class="reveal">The pay-for-me layer for AI shopping.</h2>
-    <p class="lead reveal">Shopping agents can build a cart, but they can’t pay for it. With Spot they can ask someone else to, or hand it back to their user to finish in one tap. Over MCP or REST.</p>
+    <h2 class="reveal">Your agent builds the cart.<br>Spot gets the yes.</h2>
+    <p class="lead reveal">Agents can find anything, but a person has to say yes to paying. Spot is that step: hand the cart to your user, or to whoever’s paying, and get back a signed approval once they do. Over MCP or REST, with no card numbers anywhere near your agent.</p>
     <div class="tools reveal">
       <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link for someone else, or <b>for_me</b>: a finish link texted to your user</span></div>
       <div class="tool"><code>search_flights</code><span>live fares, cheapest first plus the best nonstop</span></div>
       <div class="tool"><code>create_flight_ask</code><span>hold a fare and text your user a link to book it</span></div>
       <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered, booked</span></div>
       <div class="tool"><code>order_spot_ask</code><span>once paid, place the order at the store</span></div>
+      <div class="tool"><code>pay_at_store</code><span>stores with agent checkout (UCP): the payer pays the store directly, no fee</span></div>
     </div>
+    <p class="more reveal">Your user’s rules are enforced for you: over a limit, the ask is refused with the reason, or sent to their approver. Every yes comes back as a signed approval you can verify.</p>
     <div class="cta" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="#join" data-kind="agent">Get an API key</a><a class="btn ghost" href="/integrations#mcp">Set up MCP →</a></div>
     <p class="more reveal">Works with Claude and any app that speaks MCP. <a href="/integrations">See all integrations</a></p>
   </div>
@@ -404,14 +447,36 @@ ${chatWallSection()}
   </div>
 </div></div></section>
 
-<section class="sec"><div class="wrap">
-  <p class="kicker reveal">Safety</p>
-  <h2 class="reveal">Built so saying yes is safe.</h2>
+<section class="sec stores" id="stores"><div class="wrap"><div class="grid">
+  <div>
+    <p class="kicker reveal">For stores</p>
+    <h2 class="reveal">Don’t lose the sale to “I’ll ask my mom.”</h2>
+    <p class="lead reveal">Put an <b>Ask someone to pay</b> button by your checkout. The shopper’s cart, at your prices, becomes a link they send to whoever’s paying. You get the order either way.</p>
+    <ul class="ticks reveal">
+      <li><b>Paid on your own checkout.</b> If your store supports agent checkout (UCP), the payer pays you directly. You’re the seller, it’s your receipt, and Spot never holds the money.</li>
+      <li><b>Two lines of code.</b> A publishable key that only works on your domain. Verify the domain and your carts show a ✓.</li>
+      <li><b>Know it’s Spot.</b> Spot signs its requests to your store (HTTP Message Signatures, Web Bot Auth), so you can tell it from other bots.</li>
+    </ul>
+    <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/integrations#stores">Add the button →</a></div>
+  </div>
+  <div class="storedemo reveal" aria-label="A store checkout with an Ask someone to pay button">
+    <div class="sd-line"><span>Trail Jacket · M</span><b>$189.00</b></div>
+    <div class="sd-line"><span>Shipping</span><b>$8.00</b></div>
+    <div class="sd-line total"><span>Total</span><b>$197.00</b></div>
+    <div class="sd-btn dark">Checkout</div>
+    <div class="sd-btn spot"><i></i>Ask someone to pay</div>
+    <small>They pay, it ships to you. Powered by Spot</small>
+  </div>
+</div></div></section>
+
+<section class="sec" id="trust"><div class="wrap">
+  <p class="kicker reveal">Trust</p>
+  <h2 class="reveal">Every yes is a person’s, and you can prove it.</h2>
   <div class="safe">
-    <div class="reveal"><h3>Exactly that cart</h3><p>Spot buys only those items, from that store, with a single-use card nobody else ever sees. Other charges are declined.</p></div>
-    <div class="reveal"><h3>No cash-outs</h3><p>No cash, cards or gift cards change hands, which keeps stolen cards out.</p></div>
+    <div class="reveal"><h3>Signed approvals</h3><p>When someone pays or taps Place order, Spot signs exactly what they approved: the store, the items, the amount, who, when, and which AI asked. Anyone can check it against Spot’s public keys.</p></div>
+    <div class="reveal"><h3>Exactly that cart</h3><p>Money paid through Spot buys only those items from that store, with a single-use card nobody ever sees. No cash, gift cards or cash-outs.</p></div>
+    <div class="reveal"><h3>An activity log for your AI</h3><p>What each AI asked for, what was blocked and why, what got ordered. Disconnect it and it stops that second.</p></div>
     <div class="reveal"><h3>Money back, automatically</h3><p>Canceled, not orderable, or cheaper at the store? The difference goes straight back to whoever paid.</p></div>
-    <div class="reveal"><h3>You have the last tap</h3><p>Nothing is ordered until you confirm. Changed your mind? Cancel for a full refund.</p></div>
   </div>
 </div></section>
 
@@ -421,12 +486,16 @@ ${noteSection(buddyNoId(true))}
   <p class="kicker reveal" style="text-align:center">FAQ</p>
   <h2 class="reveal" style="text-align:center">Questions</h2>
   <div class="faq">
-    <details><summary>What does it cost?</summary><p>The person paying adds a 4% Spot fee, plus a small allowance for tax and price changes (up to 5%, at most $15) that comes back if the store doesn’t charge it. Everything is shown before they pay. Choosing “send it straight to my Venmo or Cash App” is free, because the money never goes through Spot.</p></details>
+    <details><summary>What does it cost?</summary><p>When the store supports agent checkout, the person paying pays the store directly and Spot is free. Otherwise, when Spot buys it for you, the payer adds a 4% Spot fee plus a small allowance for tax and price changes (up to 5%, at most $15) that comes back if the store doesn’t charge it. Everything is shown before they pay. “Send it straight to my Venmo or Cash App” is free too, because the money never goes through Spot.</p></details>
+    <details><summary>What’s “pay the store directly”?</summary><p>Some stores support agent checkout (the Universal Commerce Protocol). For those, Spot sets up the store’s own checkout with exactly your cart, shipped to you, and the person paying pays the store there. The store is the seller: its receipt, its returns. Spot never holds the money or sees a card.</p></details>
+    <details><summary>Can I limit what my AI spends?</summary><p>Yes. On your account, each AI you connect can have a cap per order and per month, and a list of stores it can shop at. Anything outside those is refused, or sent to your approver to pay for or turn down. You can see everything each AI did, and disconnect it any time.</p></details>
+    <details><summary>What’s a signed approval?</summary><p>A record of exactly what a person said yes to (the store, items, amount, who and when, and which AI asked), signed with Spot’s key. It’s linked from receipts, your AI can fetch it, and anyone can check it against Spot’s public keys at /.well-known/spot-keys.json.</p></details>
+    <details><summary>How does a store add the button?</summary><p>Register your domain on the <a href="/integrations#stores">integrations page</a> and paste two lines by your checkout. The key only works on your own domain. Put a small file on your site to verify it, and your carts show a ✓ to whoever pays.</p></details>
     <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest, and stores that support agent checkout (the Universal Commerce Protocol) are ordered straight through their own checkout. Before anyone pays, Spot checks it can order from that store. If a store blocks it later and Spot can’t order within 3 days, whoever paid gets a full refund automatically.</p></details>
     <details><summary>Can my AI book flights with Spot?</summary><p>Yes. Add Spot to your assistant and ask for a flight. It searches live fares, holds the one you like and texts you a link. You add who’s flying, tap Apple Pay, and Spot books it with the airline and shows your confirmation code. If the airline can’t book it, you’re refunded right away.</p></details>
-    <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap.</p></details>
+    <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap. Your AI never gets a card number.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
-    <details><summary>Why does Spot buy it instead of sending money?</summary><p>It’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
+    <details><summary>Why does Spot buy it instead of sending money?</summary><p>For stores that can’t take the payment directly, it’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
     <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid.</p></details>
     <details><summary>Is Spot live?</summary><p>Spot is in early access. ${provider === 'sandbox' ? 'Right now it runs in test mode, so no real money moves. Try the whole flow for free.' : 'Payments run on Stripe.'}</p></details>
   </div>
@@ -437,7 +506,7 @@ ${noteSection(buddyNoId(true))}
   <p class="lead reveal" style="margin-left:auto;margin-right:auto">Leave your email and we’ll let you know when real payments go live, or send you an API key for your agent.</p>
   <form id="joinForm" class="reveal">
     <input type="email" name="email" required placeholder="you@email.com" aria-label="Email" autocomplete="email">
-    <select name="kind" aria-label="I am"><option value="asker">I want to ask</option><option value="agent">I’m building an agent</option><option value="creator">I’m a creator</option></select>
+    <select name="kind" aria-label="I am"><option value="asker">I want to ask</option><option value="agent">I’m building an agent</option><option value="creator">I’m a creator</option><option value="store">I run a store</option></select>
     <input class="hp" name="company_fax" tabindex="-1" autocomplete="off" aria-hidden="true">
     <button class="btn primary">Join</button>
   </form>

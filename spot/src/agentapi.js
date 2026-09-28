@@ -369,7 +369,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   });
 
   function mcpServer(req, agent) {
-    const server = new McpServer({ name: 'spot', title: 'Spot', version: '0.2.0', websiteUrl: 'https://spotmeplease.com' });
+    const server = new McpServer({ name: 'spot', title: 'Spot', version: '0.3.0', websiteUrl: 'https://spotmeplease.com' });
     const reply = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 2) }], structuredContent: obj });
     const fail = (e) => ({ content: [{ type: 'text', text: e.draft ? `${e.message}\nDraft: ${JSON.stringify(e.draft)}` : e.message }], isError: true });
 
@@ -378,7 +378,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver).",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -423,7 +423,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
 
     server.registerTool(
       'get_spot_ask',
-      { title: 'Check a Spot ask', description: 'Status of an ask: waiting for a payer, paid, ordering, ordered. Includes the next step.', inputSchema: { ask_id: z.string() } },
+      { title: 'Check a Spot ask', description: 'Status of an ask: waiting for a payer, paid, ordering, ordered. Includes the next step, and once a person says yes, their signed approval (approval_url; verify against /.well-known/spot-keys.json).', inputSchema: { ask_id: z.string() } },
       async ({ ask_id }) => {
         try {
           return reply(view(req, owned(agent, ask_id)));

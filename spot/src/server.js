@@ -246,7 +246,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (b.company_fax) return { ok: true }; // bot
     const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    const kinds = ['asker', 'agent', 'creator', ...COMING_SOON.map((c) => `notify:${c.slug}`)];
+    const kinds = ['asker', 'agent', 'creator', 'store', ...COMING_SOON.map((c) => `notify:${c.slug}`)];
     const kind = kinds.includes(b.kind) ? b.kind : 'asker';
     db.joinWaitlist(email, kind);
     return { ok: true };

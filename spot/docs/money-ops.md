@@ -1,6 +1,6 @@
 # Money operations runbook
 
-Spot is the seller of every card cart. The payer buys the cart from Spot, and Spot buys it from the store with its own single-use Issuing card and ships it to the requester. This page is what a person does to keep that honest. Most of it is automatic; the rest shows up on **/admin → Money to check**.
+Spot is the seller of every card cart. (Carts paid at the store directly are different: the store is the seller, Spot never holds that money, and returns go to the store. Nothing on this page applies to them except "Things only a person can decide".) The payer buys the cart from Spot, and Spot buys it from the store with its own single-use Issuing card and ships it to the requester. This page is what a person does to keep that honest. Most of it is automatic; the rest shows up on **/admin → Money to check**.
 
 ## What Spot does by itself
 
@@ -59,3 +59,4 @@ The Terms say returns go through Spot. When a payer or requester emails hello@:
 - Raising `SPOT_MAX_CART_CENTS` ($500 today) or the fraud limits.
 - Turning on live flights (`SPOT_FLIGHTS_LIVE`). This waits on the seller-of-travel decision (see docs/go-live.md step 4).
 - Any change to the Terms (`src/legal.js`), which should go past counsel.
+- Which stores get the ✓. Verification is automatic (a file on the store's domain), but you can see every store on /admin → Stores with the button.

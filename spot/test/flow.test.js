@@ -449,7 +449,8 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   t.after(() => app.close());
   const home = await app.inject({ method: 'GET', url: '/' });
   assert.equal(home.statusCode, 200);
-  assert.match(home.body, /Your cart, anywhere\./);
+  assert.match(home.body, /yes button/);
+  for (const id of ['rules', 'stores', 'trust', 'agents', 'faq']) assert.match(home.body, new RegExp(`id="${id}"`));
   assert.match(home.body, /href="\/new"/);
   assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
   assert.match(home.body, /id="agentlog"/, 'agent demo');

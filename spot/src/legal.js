@@ -56,11 +56,15 @@ export function termsPage({ origin, env = process.env }) {
 <li><b>Spot me.</b> You (the <i>requester</i>) make a link for a cart from an online store. Someone else (the <i>buyer</i>, who we also call the payer) opens it and buys that cart from Spot as a gift for you. Spot orders exactly those items from the store and has them shipped to you.</li>
 <li><b>Finish for me.</b> An AI assistant builds a cart or finds a flight for you and sends you a private link. You check it and buy it from Spot yourself.</li>
 <li><b>Flights.</b> Fares come from airlines through our booking partner. When you pay, Spot buys the ticket from the airline in the traveler’s name. The airline operates the flight, and its fare rules apply (changes, cancellations, baggage, check-in).</li>
+<li><b>Pay the store directly.</b> For stores that support agent checkout (the Universal Commerce Protocol), Spot sets up the store’s own checkout with the cart, shipped to the requester, and the buyer pays the store there. See section 3.</li>
+<li><b>Rules and approvers.</b> If you connect an AI assistant to your Spot account, you can set limits for it and name an approver who pays for, or declines, what falls outside them. Your approver agrees by email first.</li>
+<li><b>Store buttons.</b> Stores can add an “Ask someone to pay” button that opens their cart in Spot. The cart, prices and store come from the store.</li>
 <li><b>Ordering.</b> Spot fills in the store’s checkout with its own single-use card. It always stops and shows the store’s total first, and only places the order when the requester taps Place order.</li>
 </ul>
 
-<h2>3. Spot is the seller</h2>
-<p>When you pay for a cart on Spot, you’re buying it from Spot, and your receipt comes from Spot. Spot buys the items from the store and has the store ship them to the requester’s address. The store is responsible for the product itself (its quality, warranty and safety) and for delivery; Spot handles your order, cancellations, refunds and returns. Handoff links that send money straight to Venmo or Cash App are different: that money goes directly to the requester, and Spot isn’t part of that transaction.</p>
+<h2>3. Who the seller is</h2>
+<p><b>When you pay the store directly</b> (the store’s own checkout page, opened from Spot), the store is the seller. You’re buying from the store under its terms: its price, receipt, shipping, returns and support. Spot doesn’t take that payment, doesn’t charge a fee for it, and isn’t a party to that sale. Spot only set up the checkout and shows its status.</p>
+<p><b>When you pay on Spot</b>, you’re buying the cart from Spot, and your receipt comes from Spot. Spot buys the items from the store and has the store ship them to the requester’s address. The store is responsible for the product itself (its quality, warranty and safety) and for delivery; Spot handles your order, cancellations, refunds and returns. Handoff links that send money straight to Venmo or Cash App are different: that money goes directly to the requester, and Spot isn’t part of that transaction.</p>
 
 <h2>4. Payments and fees</h2>
 <ul>
@@ -69,6 +73,7 @@ export function termsPage({ origin, env = process.env }) {
 <li>Spot buys the cart with its own single-use card, limited to that store and to what you paid for the goods. Nobody receives cash, a card or store credit, and the card can’t be used anywhere else.</li>
 <li>Spot doesn’t sell gift cards, prepaid cards, crypto, money orders or other cash equivalents, and won’t order them.</li>
 <li>Handoff links that send money straight to Venmo or Cash App carry no Spot fee.</li>
+<li>Paying the store directly carries no Spot fee. The store sets the price, including shipping and tax, and shows it before you pay.</li>
 </ul>
 
 <h2>5. Cancellations, refunds and returns</h2>
@@ -78,6 +83,7 @@ export function termsPage({ origin, env = process.env }) {
 <li><b>If the store charges less</b> than the buyer paid for the goods, or cancels, the difference (or everything) goes back to the buyer automatically.</li>
 <li><b>Returns:</b> contact us at <a href="mailto:${email}">${email}</a> within the store’s return window. We arrange the return with the store under its return policy, and when the store refunds Spot, we refund the buyer that amount. The Spot fee is refunded only when the whole order is.</li>
 <li><b>Flights:</b> if the airline can’t issue a ticket you paid for, you’re refunded in full automatically. Once a ticket is issued, changes and refunds follow the airline’s fare rules.</li>
+<li><b>Paid the store directly?</b> Cancellations, refunds and returns go through the store under its policies; contact the store. We’re glad to help you reach them.</li>
 <li>If a link expires or is canceled before anyone pays, nothing is charged.</li>
 <li>Refunds go back to the original card or wallet and usually appear within 5–10 business days.</li>
 </ul>
@@ -100,6 +106,9 @@ export function termsPage({ origin, env = process.env }) {
 <li>API keys are for you and your app. Keep them secret. Free keys have daily limits; we may change limits or revoke keys used for abuse.</li>
 <li>Your agent may only send a Spot link, text or email to a person who asked for it, such as its own user. It must not buy anything, or state that something is bought, without the person completing payment on Spot. Spot, not the agent, is the seller of anything bought through Spot.</li>
 <li>Agents act for their users, not for Spot. You’re responsible for what your agent tells people.</li>
+<li>Keys made from a Spot account follow that account’s rules. When an ask breaks them, Spot refuses it or sends it to the account’s approver; your agent must not try to get around those rules (for example by splitting an order).</li>
+<li>When a person approves a purchase, Spot issues a signed record of what they approved. It’s evidence of that person’s approval, not a guarantee of payment, delivery or price.</li>
+<li><b>Stores</b> using the “Ask someone to pay” button must send accurate items and prices from their own checkout, and may only use their key on their own domain.</li>
 </ul>
 
 <h2 id="texts">9. Text messages</h2>
@@ -158,6 +167,8 @@ export function privacyPage({ origin, env = process.env }) {
 <ul>
 <li><b>Stripe</b>, for payments, refunds and Spot’s cards.</li>
 <li><b>Stores</b> Spot buys from, to ship your order (the requester’s name, shipping address, email and phone). Spot pays with its own card.</li>
+<li><b>Stores you pay directly</b>: Spot sends the store the cart, the requester’s name and shipping address, and the buyer’s email, so the store can take the payment on its own checkout and send its receipt. Your card goes to the store’s payment provider, never to Spot.</li>
+<li><b>Your approver</b>, if you name one: the cart your AI put together, the store and the total, why it came to them, and your first name and shipping address (so it can ship to you).</li>
 <li><b>Airlines and our flight-booking partner (Duffel)</b>, for traveler details and payment for your booking.</li>
 <li><b>Anthropic</b>, which provides the AI that reads screenshots and fills in store checkouts. Card numbers are never sent to it.</li>
 <li><b>Twilio and Resend</b>, to deliver texts and emails you asked for.</li>
@@ -167,7 +178,7 @@ export function privacyPage({ origin, env = process.env }) {
 <p>We don’t sell or rent personal information. <b>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.</b> Text-messaging opt-in data and consent are never shared with anyone except the providers that deliver our messages.</p>
 
 <h2>5. The person who paid, and the person who asked</h2>
-<p>A payer sees the cart, the requester’s first name and the store, never the requester’s address or card. A requester sees the payer’s first name, never their card or contact details.</p>
+<p>A payer sees the cart, the requester’s first name and the store, never the requester’s address or card, except on a store’s own checkout when paying the store directly, where the ship-to address is shown. A requester sees the payer’s first name, never their card or contact details. Signed approval records contain the store, items, amount, whether the buyer or the requester approved, and which AI asked, but no names, addresses or card details.</p>
 
 <h2>6. How long we keep it</h2>
 <p>Cart and order records are kept for as long as needed for refunds, disputes, fraud prevention and accounting (generally up to 7 years for payment records). Screenshots are used to read the cart and aren’t kept. You can ask us to delete your information sooner where the law allows.</p>

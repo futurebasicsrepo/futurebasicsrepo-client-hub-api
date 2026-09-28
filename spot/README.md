@@ -1,8 +1,15 @@
 # Spot
 
-**Your cart, anywhere. Someone else's tap.**
+**The yes button for AI shopping.**
 
-Spot turns any shopping cart into a link. Whoever opens the link buys that cart **from Spot** in one tap, as a gift or for themselves. Spot then orders exactly those items from the store with its own single-use card and ships them to the requester, so nobody receives cash or a card. If the requester just wants money straight to them, the link can send the payer to Venmo or Cash App instead, and then Spot isn't part of the payment.
+AI can find it and fill the cart; a person has to say yes to paying. Spot is that yes: from the user, or from whoever's paying, with rules the user sets for their AI and signed proof of every approval.
+
+- **Pay the store directly.** For stores with agent checkout (UCP), Spot builds the store's own checkout and the payer pays the store there. The store is the seller; no fee, and Spot never holds the money.
+- **Rules and approvers.** Each AI key on an account gets limits (per order, per month, allowed stores). Outside them, asks are refused, or go to an approver who agreed by email.
+- **Store button.** Stores embed "Ask someone to pay" by their checkout; the shopper's cart opens in Spot at the store's prices.
+- **Trust.** Every yes is a signed approval (EdDSA JWS, keys at `/.well-known/spot-keys.json`); Spot signs its requests to stores (RFC 9421, Web Bot Auth); each AI key has an activity log with an off switch.
+
+Otherwise, Spot turns any shopping cart into a link. Whoever opens the link buys that cart **from Spot** in one tap, as a gift or for themselves. Spot then orders exactly those items from the store with its own single-use card and ships them to the requester, so nobody receives cash or a card. If the requester just wants money straight to them, the link can send the payer to Venmo or Cash App instead, and then Spot isn't part of the payment.
 
 This is a standalone prototype. It lives in this repo for now and shares nothing with the client hub, so it can move to its own repo as is.
 
@@ -22,7 +29,12 @@ spot/
   src/sharecard.js  link-preview image + the mascot (satori → resvg)
   src/db.js         Node's built-in SQLite
   src/fulfill/      "order it for me": Shopify cart builder + the checkout agent
-  src/agentapi.js   REST + MCP API for other AI agents
+  src/agentapi.js   REST + MCP API for other AI agents (enforces each key's rules)
+  src/direct.js     pay the store directly: the store's own UCP checkout
+  src/rules.js      spending rules for AI keys, and the account's approver
+  src/signing.js    Ed25519 keys: signed approvals (JWS) and signed requests (RFC 9421)
+  src/approvals.js  record and read signed approvals
+  src/merchants.js  the store's "Ask someone to pay" button, keys and domain verification
 ```
 
 ## Run it
@@ -137,6 +149,28 @@ Shopping agents can build carts but can't make someone else pay. Spot gives them
 | `get_spot_ask` | `GET /v1/agent/asks/:id` | status and the next step |
 | `order_spot_ask` | `POST /v1/agent/asks/:id/order` | once paid, place the order at the store (the requester still confirms the final tap) |
 
+### Rules, approvers and signed approvals
+
+Keys made from an account (`POST /v1/me/keys`) follow that account's rules, set with `POST /v1/me/keys/:name/rules`:
+
+```json
+{ "max_order_cents": 7500, "monthly_cents": 20000, "stores": ["target.com"], "approver": "over_limit" }
+```
+
+`approver` is `never` (refuse), `over_limit` (send asks over a limit to the approver) or `always`. A store outside `stores` is always refused. Refusals are `403` with the reason. The approver is set with `POST /v1/me/approver {email, name}` and only counts once they agree from the email (`/approver/confirm`, a button, so link scanners can't agree for them). Routed asks become "someone else pays" carts shipped to the user, and `get_spot_ask` shows `sent_to_approver`.
+
+Every yes (paying on Spot, paying the store, or tapping Place order) is recorded as a signed approval: a compact JWS (EdDSA) with the store, items, amount, who approved, how, and which AI asked. `get_spot_ask` returns `approvals` and `approval_url`; `GET /v1/approvals/:id` returns the JWS; `/approvals/:id` is the page people see. Keys: `/.well-known/spot-keys.json`. Spot also signs its requests to stores (UCP calls, product pages) with HTTP Message Signatures, `tag="web-bot-auth"`; keys at `/.well-known/http-message-signatures-directory`.
+
+Each key's activity (asked, sent to approver, blocked, ordered, messages sent) is on the account page, with Disconnect.
+
+### Pay the store directly
+
+`settle: "direct"` (MCP `pay_at_store`, on by default when the store's `/.well-known/ucp` offers checkout). The requester adds where it ships; then the payer taps Pay, Spot creates the store's checkout session (items, buyer email, ship-to, cheapest shipping) and redirects to its `continue_url`. Spot polls the session until it's `completed` and the cart completes with the store's order number. `GET /v1/stores/check?url=` tells the composer whether a store supports it.
+
+### Store button
+
+`POST /v1/merchants {domain, name, email}` returns a publishable key and the snippet. `/embed/button.js` renders the button; on tap it posts the cart (`window.SpotCart()` or `data-items`) to `POST /v1/merchant/asks`, which only answers the store's own origins, and opens `/new?draft=…`. The store's items and prices are used when the cart is created; editing them drops the ✓. A file at `https://<domain>/.well-known/spot-merchant.txt` containing `spot-merchant=<id>` plus `POST /v1/merchants/verify` marks the store verified.
+
 ### Finish on your phone
 
 An agent can also build a cart for its own user ("find me these flights") and hand it over to pay. Pass `for: "self"` (MCP: `for_me: true`) and you get back a private `finish_link`. Options:
@@ -214,12 +248,14 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_CARD_BILLING` | | The company cardholder's billing address as `line1|city|state|zip`, used when a store checks it |
 | `SPOT_ORDER_DEADLINE_HOURS` | `72` | A paid card cart Spot hasn't ordered by then is refunded in full |
 | `SPOT_FLIGHTS_LIVE` | off | With a live Stripe key, flights are refused unless this is `on` |
+| `SPOT_APPROVAL_KEY` | made on first start | Ed25519 private key (PKCS#8 PEM) for signed approvals. Set it to pin the key across database restores |
+| `SPOT_REQUEST_KEY` | made on first start | Ed25519 private key (PKCS#8 PEM) for signing requests to stores |
 
 The payer's name comes from their Apple Pay / Google Pay / card details, and the pay page shows wallet buttons first.
 
 ## What's verified and what isn't
 
-- **Verified:** 100+ tests (`npm test`) cover validation, fees and the cushion, the state machine, merchant matching, blocked categories, gift-card rules, authorization limits, the refund race, captures, partial refunds, returns, reversals, disputes, the payer cancel link, the order deadline, screenshot masking, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
+- **Verified:** 110+ tests (`npm test`) cover paying the store directly (against a fake UCP store), spending rules and approver routing, signed approvals and request signatures, the store button's origin check and domain verification, and cover validation, fees and the cushion, the state machine, merchant matching, blocked categories, gift-card rules, authorization limits, the refund race, captures, partial refunds, returns, reversals, disputes, the payer cancel link, the order deadline, screenshot masking, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
 - **Not yet run against real Stripe.** The Stripe provider is written against the documented API but hasn't been run with test keys. Issuing also has to be enabled on the Stripe account, which is an application process.
 - **Before live money:**
   - Counsel's sign-off that Spot as the seller isn't money transmission where it launches, a sales-tax view on reselling, and Stripe's approval of the Issuing use case (Spot's own cards to buy what customers bought from Spot).
