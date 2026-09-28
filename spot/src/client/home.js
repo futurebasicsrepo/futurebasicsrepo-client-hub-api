@@ -252,6 +252,8 @@
       settle: me.settle || 'card',
       ...(me.settle === 'direct' && draft.merchant && !draft.merchant.url ? { merchant: { ...draft.merchant, url: (draft.items.find((i) => i.url) || {}).url } } : {}),
       note: draft.note,
+      // The store's cart as sent; once edited it's just a cart.
+      ...(draft.draft_id && draft.orig === JSON.stringify(draft.items) ? { draft_id: draft.draft_id } : {}),
     };
   }
 
@@ -385,7 +387,18 @@
   show('compose');
   const p = new URLSearchParams(location.search);
   const incoming = p.get('url') || p.get('text');
-  if (incoming) {
+  if (p.get('draft')) {
+    // From a store's "Ask someone to pay" button: its cart, ready to send.
+    api('/v1/merchant/drafts/' + encodeURIComponent(p.get('draft')))
+      .then((d) => {
+        draft = { merchant: d.merchant, items: d.items, extras_cents: d.extras_cents || 0, note: '', draft_id: p.get('draft'), verified: d.verified, orig: JSON.stringify(d.items) };
+        made = null;
+        check((d.verified ? '✓ ' : '') + 'your ' + d.merchant.name + ' cart. who should pay for it?');
+      })
+      .catch((e) => {
+        $('#capErr').textContent = e.message;
+      });
+  } else if (incoming) {
     q.value = incoming;
     go();
   } else if (me.name) {

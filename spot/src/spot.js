@@ -188,6 +188,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
       const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
+      // Changed items aren't the store's cart any more.
+      if (cart.source && JSON.stringify(v.items) !== JSON.stringify(cart.items)) next.source = { ...cart.source, verified: false, edited: true };
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'edited');
       return next;

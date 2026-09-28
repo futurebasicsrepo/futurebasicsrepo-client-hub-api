@@ -21,6 +21,7 @@ import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
+import { registerMerchants } from './merchants.js';
 import { registerAccounts } from './accounts.js';
 import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
@@ -32,7 +33,7 @@ import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
@@ -348,10 +349,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   app.post('/v1/carts', async (req, reply) => {
     limits.create(req);
-    if (req.body?.settle === 'direct' && !(await spot.direct.supports(req.body?.merchant?.url ?? req.body?.merchant_url))) {
+    // From a store's "Ask someone to pay" button: the store's cart, as sent.
+    const fromStore = req.body?.draft_id ? merchants.fromDraft(req.body.draft_id) : null;
+    const input = fromStore ? { ...req.body, ...fromStore.input } : req.body;
+    if (input?.settle === 'direct' && !(await spot.direct.supports(input?.merchant?.url ?? input?.merchant_url))) {
       throw new CartError('This store doesn’t take direct checkout yet. Use a card link instead.', 409);
     }
-    const { cart, manageKey } = spot.create(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
+    let { cart, manageKey } = spot.create(input, { ip: req.ip, userId: accounts.userIdOf(req) });
+    if (fromStore) cart = spot.patch(cart.id, (c) => ({ ...c, source: fromStore.source }), 'from_store_button');
     reply.code(201);
     return {
       cart: publicCart(cart),
@@ -475,6 +480,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
+  const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
   registerAdmin(app, { db, spot, env, urlFor, backups });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerPasskeys(app, { db, urlFor });
