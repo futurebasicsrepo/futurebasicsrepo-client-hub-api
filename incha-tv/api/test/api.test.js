@@ -45,6 +45,7 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   const fan = json(res).token;
   res = await call('POST', '/v1/auth/login', null, { login: '@SERGIO', password: 'hinchada123' });
   assert.equal(res.statusCode, 200);
+  assert.equal(json(res).user.email, 'sergio@incha.tv', 'your own login response carries your email');
   res = await call('POST', '/v1/auth/login', null, { login: 'sergio', password: 'nope' });
   assert.equal(res.statusCode, 401);
 
@@ -164,6 +165,7 @@ test('incha.tv API flow', { skip: !dbUrl && 'set TEST_DATABASE_URL to run' }, as
   res = await call('GET', '/v1/me/posts', creator);
   assert.equal(json(res).posts.length, 1);
   res = await call('GET', '/v1/users/sergio');
+  assert.equal(json(res).user.email, undefined, 'public profiles never expose email');
   assert.equal(json(res).user.postCount, 0);
   assert.equal(json(res).user.id, undefined, 'profile hides internal id');
   res = await call('GET', '/v1/fandoms');
