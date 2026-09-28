@@ -16,7 +16,7 @@ const COOKIE = 'spot_admin';
 const KINDS = ['card', 'email', 'ip', 'phone'];
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 
-export function registerAdmin(app, { db, spot, env, urlFor }) {
+export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
   const token = env.SPOT_ADMIN_TOKEN && env.SPOT_ADMIN_TOKEN.length >= 16 ? env.SPOT_ADMIN_TOKEN : null;
   const want = token ? Buffer.from(sha(token)) : null;
   const same = (v) => {
@@ -99,6 +99,7 @@ export function registerAdmin(app, { db, spot, env, urlFor }) {
       keys: db.admin.keys(),
       signups: signups.slice(0, 300),
       signup_total: signups.length,
+      backups: backups?.status() || null,
     };
   });
 
@@ -123,6 +124,14 @@ export function registerAdmin(app, { db, spot, env, urlFor }) {
     guard(req);
     db.blocks.remove(String(req.body?.kind || ''), String(req.body?.value || '').toLowerCase());
     return { blocks: db.blocks.list() };
+  });
+
+  app.post('/v1/admin/backups/run', async (req) => {
+    guard(req);
+    if (!backups) throw new CartError('Backups aren’t set up', 404);
+    const last = await backups.run('manual');
+    if (!last.ok) throw new CartError(`Backup failed: ${last.error}`, 500);
+    return { backups: backups.status() };
   });
 
   app.post('/v1/admin/keys/:name/revoke', async (req) => {
@@ -188,6 +197,7 @@ document.getElementById('login').addEventListener('submit',async e=>{e.preventDe
     <form class="inline" id="blockForm"><select name="kind" aria-label="What to block"><option value="card">Card fingerprint</option><option value="email">Payer email</option><option value="ip">IP address</option><option value="phone">Phone</option></select><input name="value" placeholder="Value" required aria-label="Value"><input name="reason" placeholder="Reason (optional)" aria-label="Reason"><button class="ab no">Block</button></form>
     <div class="tw"><table><thead><tr><th>Kind</th><th>Value</th><th>Reason</th><th>Since</th><th></th></tr></thead><tbody id="blocks"></tbody></table></div></section>
   <section class="panel"><h2>API keys</h2><div class="tw"><table><thead><tr><th>Name</th><th>Email</th><th>Created</th><th>Status</th><th></th></tr></thead><tbody id="keys"></tbody></table></div></section>
+  <section class="panel"><h2>Backups</h2><div id="backup"><p class="muted">Loading…</p></div><div class="row" style="margin-top:10px"><button class="ab go" data-act="backup">Back up now</button></div></section>
   <section class="panel"><h2>Signups <span class="muted" id="signupTotal"></span></h2><div class="tw"><table><thead><tr><th>Email</th><th>Interest</th><th>When</th></tr></thead><tbody id="signups"></tbody></table></div></section>
   <p class="err" id="err"></p>
 </div></main>
@@ -203,6 +213,11 @@ async function load(){
   $('#recent').innerHTML=d.recent.map(x=>'<tr><td>'+when(x.created_at)+'</td><td><span class="pill '+(x.hold&&x.status==='paid'?'hold':x.status)+'">'+(x.hold&&x.status==='paid'?'held':x.status.replace('_',' '))+'</span></td><td>'+(x.kind==='flight'?'✈️ ':'')+esc(x.item||'')+(x.items>1?' +'+(x.items-1):'')+'</td><td>'+esc(x.merchant)+'</td><td>'+esc(x.requester)+(x.agent?' <span class="muted">via '+esc(x.agent)+'</span>':'')+'</td><td>'+esc(x.payer||'')+'</td><td class="num">'+usd(x.total_cents)+'</td><td>'+esc([x.for==='self'?'for me':'',x.order,x.booking,x.risk].filter(Boolean).join(' · '))+'</td><td>'+(['paid','card_issued'].includes(x.status)?'<button class="ab no" data-act="refund" data-id="'+x.id+'">Refund</button>':'')+'</td></tr>').join('')||'<tr><td colspan="9" class="muted">No carts yet.</td></tr>';
   $('#blocks').innerHTML=d.blocks.map(b=>'<tr><td>'+esc(b.kind)+'</td><td>'+esc(b.value)+'</td><td>'+esc(b.reason||'')+'</td><td>'+when(b.at)+'</td><td><button class="ab" data-act="unblock" data-k="'+esc(b.kind)+'" data-v="'+esc(b.value)+'">Remove</button></td></tr>').join('')||'<tr><td colspan="5" class="muted">Nothing blocked.</td></tr>';
   $('#keys').innerHTML=d.keys.map(k=>'<tr><td>'+esc(k.name)+'</td><td>'+esc(k.email)+'</td><td>'+when(k.created_at)+'</td><td>'+(k.revoked?'revoked':'active')+'</td><td>'+(k.revoked?'':'<button class="ab no" data-act="revoke" data-v="'+esc(k.name)+'">Revoke</button>')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No self-serve keys yet.</td></tr>';
+  const bk=d.backups,ok=bk&&bk.last_ok,last=bk&&bk.last,ago=t=>{const h=(Date.now()-t)/36e5;return h<1?Math.max(1,Math.round(h*60))+' min ago':h<48?Math.round(h)+' h ago':Math.round(h/24)+' days ago'},kb=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
+  $('#backup').innerHTML=!bk?'<p class="muted">Not available.</p>':(ok?'<p><b>Last good backup: '+ago(ok.at)+'</b> <span class="muted">('+when(ok.at)+')</span><br><span class="muted">'+esc(ok.name)+' · '+kb(ok.bytes)+' · '+ok.carts+' carts, '+ok.users+' accounts · '+(ok.remote?'copied to the bucket ('+ok.remote.kept+' kept there)':'on the volume only')+'</span></p>':'<p><b>No backup yet.</b></p>')
+    +(last&&!last.ok?'<p class="err">Last try failed '+ago(last.at)+': '+esc(last.error)+'. Retrying hourly.</p>':'')
+    +(bk.bucket?'':'<p class="muted">⚠️ No bucket set, so backups stay on the same volume as the database. Add a Railway bucket (see docs/go-live.md).</p>')
+    +'<p class="muted">Runs daily at '+String(bk.hour_utc).padStart(2,'0')+':00 UTC. On the volume: '+(bk.local.length?esc(bk.local.join(', ')):'none')+'.</p>';
   $('#signupTotal').textContent='('+d.signup_total+')';
   $('#signups').innerHTML=d.signups.map(s=>'<tr><td>'+esc(s.email)+'</td><td>'+esc(s.kind)+'</td><td>'+when(s.at)+'</td></tr>').join('')||'<tr><td colspan="3" class="muted">No signups yet.</td></tr>';
 }
@@ -217,6 +232,7 @@ document.addEventListener('click',async e=>{
     if(a==='refund')await post('/v1/admin/carts/'+b.dataset.id+'/refund');
     if(a==='blockcard'){await post('/v1/admin/blocks',{kind:'card',value:b.dataset.v,reason:'Blocked from a held payment'});await post('/v1/admin/carts/'+b.dataset.id+'/refund')}
     if(a==='unblock')await post('/v1/admin/blocks/remove',{kind:b.dataset.k,value:b.dataset.v});
+    if(a==='backup'){b.textContent='Backing up…';try{await post('/v1/admin/backups/run')}finally{b.textContent='Back up now';b.disabled=false}}
     if(a==='revoke')await post('/v1/admin/keys/'+encodeURIComponent(b.dataset.v)+'/revoke');
     await load();
   }catch(err){$('#err').textContent=err.message;b.disabled=false}

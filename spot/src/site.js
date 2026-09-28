@@ -253,7 +253,7 @@ export function siteFooter() {
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
 export const SITE_JS = `
   const nav=document.getElementById('nav');
-  addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>8),{passive:true});
+  addEventListener('scroll',()=>nav&&nav.classList.toggle('scrolled',scrollY>8),{passive:true});
   try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
