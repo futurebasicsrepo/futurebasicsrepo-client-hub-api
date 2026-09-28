@@ -142,7 +142,7 @@ export function privacyPage({ origin, env = process.env }) {
 <li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the email on the payment (used only to tell you when the gift was ordered), the amount and whether it succeeded. We never see or store the payer’s card number.</li>
 <li><b>One-time cards:</b> the card is held by Stripe. We show its details only on the requester’s private page and use them only to check out at that store.</li>
 <li><b>Flights:</b> each traveler’s name, date of birth and gender as on their ID, plus a contact email and phone, which airlines require.</li>
-<li><b>Accounts:</b> if you sign in by text, your mobile number. If you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
+<li><b>Accounts:</b> if you sign in by text, your mobile number. If you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). If you add a passkey (Face ID, Touch ID or similar), only its public key: your fingerprint or face never leaves your device. Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
 <li><b>Agents and developers:</b> your email and API key usage.</li>
 <li><b>Technical:</b> IP address, browser type and basic logs, for security and to keep Spot working.</li>
 </ul>
@@ -176,7 +176,7 @@ export function privacyPage({ origin, env = process.env }) {
 </ul>
 
 <h2>8. Security</h2>
-<p>Private links use long random keys; sign-in codes, sessions and API keys are stored only as hashes; and all traffic is encrypted. No system is perfect, so keep your private Spot links to yourself.</p>
+<p>Private links use long random keys; sign-in codes, sessions and API keys are stored only as hashes; passkeys are stored only as public keys; and all traffic is encrypted. No system is perfect, so keep your private Spot links to yourself.</p>
 
 <h2>9. Children</h2>
 <p>Spot is for adults. We don’t knowingly collect information from children under 13, and anyone under 18 should use Spot only with a parent or guardian.</p>

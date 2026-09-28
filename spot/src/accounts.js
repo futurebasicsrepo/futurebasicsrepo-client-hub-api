@@ -8,6 +8,11 @@
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
+//   POST /v1/me/link/start  { email } | { phone }         → code to that address
+//   POST /v1/me/link/verify { email | phone, code }       → it's now on this account
+//
+// Linking an email or phone that already has its own Spot account merges
+// that account into this one (the code proves you own both).
 //
 // Codes and sessions are stored only as SHA-256 hashes. The cookie is
 // HttpOnly + SameSite=Lax, and every write needs a JSON body, so other sites
@@ -81,6 +86,34 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
   // flow can be tried. Never in Stripe mode.
   const showCode = () => provider.name === 'sandbox' && !env.RESEND_API_KEY;
 
+  // Codes are stored under `key` as sha256(key:code). Five tries, then gone.
+  const newCode = (key) => {
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    db.codes.put(key, sha(`${key}:${code}`), Date.now() + CODE_TTL);
+    return code;
+  };
+  const checkCode = (key, code) => {
+    const row = db.codes.get(key);
+    const wrong = () => new CartError('That code didn’t work. Check it, or send a new one.', 401);
+    if (!row || row.expires_at < Date.now() || row.attempts >= 5) throw wrong();
+    db.codes.attempt(key);
+    const a = Buffer.from(sha(`${key}:${code}`));
+    const b = Buffer.from(row.code_hash);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) throw wrong();
+    db.codes.remove(key);
+  };
+  // Where a code goes: { phone } or { email }, checked and normalized.
+  const address = (body) => {
+    if (body?.phone !== undefined) {
+      const phone = normalizePhone(body.phone);
+      if (!phone) throw new CartError('That number looks wrong. Include the area code.');
+      return { phone };
+    }
+    const email = String(body?.email || '').trim().toLowerCase().slice(0, 200);
+    if (!EMAIL.test(email)) throw new CartError('That email looks wrong');
+    return { email };
+  };
+
   const smsReady = () => Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM);
 
   app.post('/v1/auth/start', async (req) => {
@@ -91,8 +124,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       limit(`ip:${req.ip}`, 20, 3600_000);
       limit(`phone:${phone}`, 5, 3600_000);
       if (db.optouts.has(phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number, or sign in with email.', 409);
-      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-      db.codes.put(phone, sha(`${phone}:${code}`), Date.now() + CODE_TTL);
+      const code = newCode(phone);
       if (provider.name === 'sandbox' && !smsReady()) return { sent: 'screen', code };
       const sent = await notifier.sendSignInText(phone, code, new URL(urlFor(req, '/')).hostname);
       if (sent !== 'sent') throw new CartError('We couldn’t text that number just now. Try again, or use email.', 503);
@@ -102,8 +134,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (!EMAIL.test(email)) throw new CartError('That email looks wrong');
     limit(`ip:${req.ip}`, 20, 3600_000);
     limit(`email:${email}`, 5, 3600_000);
-    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    db.codes.put(email, sha(`${email}:${code}`), Date.now() + CODE_TTL);
+    const code = newCode(email);
     const sent = showCode() ? 'shown' : await notifier.sendSignInCode(email, code);
     if (sent !== 'sent' && sent !== 'shown') throw new CartError('We couldn’t send the email just now. Try again in a minute.', 503);
     return { sent: sent === 'sent' ? 'email' : 'screen', ...(sent === 'shown' ? { code } : {}) };
@@ -115,14 +146,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const email = phone || String(req.body?.email || '').trim().toLowerCase();
     const code = String(req.body?.code || '').replace(/\D/g, '');
     limit(`verify:${req.ip}`, 30, 3600_000);
-    const row = db.codes.get(email);
-    const wrong = () => new CartError('That code didn’t work. Check it, or send a new one.', 401);
-    if (!row || row.expires_at < Date.now() || row.attempts >= 5) throw wrong();
-    db.codes.attempt(email);
-    const a = Buffer.from(sha(`${email}:${code}`));
-    const b = Buffer.from(row.code_hash);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw wrong();
-    db.codes.remove(email);
+    checkCode(email, code);
 
     const user = phone ? userForPhone(db, phone) : userForEmail(db, email);
     startSession(db, req, reply, urlFor, user.id);
@@ -145,6 +169,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       ready: carts.filter((c) => c.for === 'self' && c.status === 'open'),
       carts,
       keys: db.users.keys(user.id),
+      passkeys: db.passkeys.ofUser(user.id),
+      linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
     };
   });
@@ -159,6 +185,57 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (b.travelers !== undefined) next.travelers = cleanTravelers(b.travelers);
     db.users.save(user.id, next);
     return { user: profile(db.users.byId(user.id)) };
+  });
+
+  // Add (or change) this account's email or phone. The code is bound to
+  // this account, so it can't be used to sign in or to link elsewhere.
+  app.post('/v1/me/link/start', async (req) => {
+    json(req);
+    const user = me(req);
+    const to = address(req.body);
+    const value = to.phone || to.email;
+    if (value === user.email || value === user.phone) throw new CartError(`That’s already on your account`, 409);
+    limit(`ip:${req.ip}`, 20, 3600_000);
+    limit(`link:${user.id}`, 10, 3600_000);
+    limit(`${to.phone ? 'phone' : 'email'}:${value}`, 5, 3600_000);
+    if (to.phone && db.optouts.has(to.phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number first.', 409);
+    const code = newCode(`link:${user.id}:${value}`);
+    if (to.phone) {
+      if (provider.name === 'sandbox' && !smsReady()) return { sent: 'screen', code };
+      const sent = await notifier.sendSignInText(to.phone, code, new URL(urlFor(req, '/')).hostname);
+      if (sent !== 'sent') throw new CartError('We couldn’t text that number just now. Try again in a minute.', 503);
+      return { sent: 'text' };
+    }
+    const sent = showCode() ? 'shown' : await notifier.sendSignInCode(to.email, code);
+    if (sent !== 'sent' && sent !== 'shown') throw new CartError('We couldn’t send the email just now. Try again in a minute.', 503);
+    return { sent: sent === 'sent' ? 'email' : 'screen', ...(sent === 'shown' ? { code } : {}) };
+  });
+
+  app.post('/v1/me/link/verify', async (req) => {
+    json(req);
+    const user = me(req);
+    const to = address(req.body);
+    const value = to.phone || to.email;
+    limit(`verify:${req.ip}`, 30, 3600_000);
+    checkCode(`link:${user.id}:${value}`, String(req.body?.code || '').replace(/\D/g, ''));
+
+    // Someone already signs in with it: that's you too, so join the accounts.
+    const other = to.phone ? db.identities.userId('phone', to.phone) : db.users.byEmail(to.email)?.id;
+    let merged = false;
+    if (other && other !== user.id) {
+      db.users.merge(other, user.id);
+      merged = true;
+    }
+    const now = db.users.byId(user.id);
+    if (to.email) {
+      if (now.email !== to.email) db.users.setEmail(user.id, to.email);
+    } else {
+      // One phone per account: the old number stops signing you in.
+      for (const i of db.identities.ofUser(user.id)) if (i.provider === 'phone' && i.subject !== to.phone) db.identities.remove('phone', i.subject);
+      if (!db.identities.userId('phone', to.phone)) db.identities.add('phone', to.phone, user.id);
+      db.users.save(user.id, { phone: to.phone, name: now.name || null, shipping: now.shipping || null, travelers: now.travelers || [] });
+    }
+    return { user: profile(db.users.byId(user.id)), merged };
   });
 
   app.post('/v1/me/claim', async (req) => {

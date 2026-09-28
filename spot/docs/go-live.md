@@ -50,6 +50,8 @@ Email-code sign-in works as soon as Resend is set up (step 5). These two buttons
 4. Permissions: `email` and `public_profile` (standard access is enough). Switch the app to **Live**.
 5. Set the Railway variables `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`.
 
+**Passkeys (Face ID / Touch ID)** need no setup. They're tied to the domain they're made on, so add yours after spotmeplease.com is live. Ones made on the Railway address won't work there.
+
 **Both:** set `SPOT_SESSION_SECRET` to the output of `openssl rand -hex 32`, so a redeploy doesn't cancel sign-ins in progress.
 
 ## 1b. Admin page (2 minutes)
