@@ -126,6 +126,18 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       at       INTEGER NOT NULL,
       PRIMARY KEY (cart_id, key)
     );
+    -- Money movements on Spot's Issuing cards (store captures and store
+    -- refunds), one row per Stripe transaction, so each is handled once.
+    CREATE TABLE IF NOT EXISTS issuing_txns (
+      id             TEXT PRIMARY KEY,
+      cart_id        TEXT NOT NULL,
+      authorization  TEXT,
+      type           TEXT NOT NULL,
+      amount_cents   INTEGER NOT NULL,
+      merchant       TEXT,
+      at             INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS issuing_txns_cart ON issuing_txns (cart_id);
     -- Server-side secrets that must survive restarts (e.g. link signing).
     CREATE TABLE IF NOT EXISTS settings (
       key    TEXT PRIMARY KEY,
@@ -370,7 +382,27 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       remove: (hash) => q.sessDel.run(hash),
       prune: () => q.sessPrune.run(Date.now()),
     },
+    // Carts the money sweep looks at: in flight, or completed with a pending
+    // release or a failed partial refund.
+    idsForMoneySweep: () =>
+      db
+        .prepare(`SELECT id FROM carts WHERE status IN ('refunding', 'paid', 'card_issued')
+                  OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR doc LIKE '%"state":"failed"%')) LIMIT 2000`)
+        .all()
+        .map((r) => r.id),
+    idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    issuing: {
+      // True if this transaction is new (a webhook can arrive twice).
+      add: (t) => db.prepare('INSERT OR IGNORE INTO issuing_txns (id, cart_id, "authorization", type, amount_cents, merchant, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(t.id, t.cart_id, t.authorization ?? null, t.type, t.amount_cents, t.merchant ?? null, Date.now()).changes === 1,
+      ofCart: (cartId) => db.prepare('SELECT id, "authorization", type, amount_cents, merchant, at FROM issuing_txns WHERE cart_id = ? ORDER BY at').all(cartId),
+      // Carts whose card money doesn't add up (for /admin): charged more than
+      // the payer paid for the goods, or refunded more than they paid.
+      totals: (cartId) => {
+        const r = db.prepare("SELECT COALESCE(SUM(CASE WHEN type = 'capture' THEN amount_cents END), 0) AS captured, COALESCE(SUM(CASE WHEN type = 'refund' THEN amount_cents END), 0) AS returned FROM issuing_txns WHERE cart_id = ?").get(cartId);
+        return { captured: r.captured, returned: r.returned };
+      },
+    },
     // Stored state that changes (e.g. the last backup), unlike setting().
     state: {
       get: (key) => {

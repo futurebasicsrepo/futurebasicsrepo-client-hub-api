@@ -14,9 +14,9 @@ const cartBody = (patch = {}) => ({
   ...patch,
 });
 
-function setup(provider = sandboxProvider()) {
+function setup(provider = sandboxProvider(), extra = {}) {
   const db = openDb(':memory:');
-  const app = buildApp({ db, provider, cfg, logger: false });
+  const app = buildApp({ db, provider, cfg, logger: false, ...extra });
   const call = async (method, url, payload) => {
     const r = await app.inject({ method, url, payload });
     return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body, headers: r.headers };
@@ -24,14 +24,15 @@ function setup(provider = sandboxProvider()) {
   return { app, db, call };
 }
 
-test('card flow: create → pay → card issued → merchant-locked single use', async (t) => {
+test('card flow: create → pay → Spot’s card issued → merchant-locked single use', async (t) => {
   const { app, call } = setup();
   t.after(() => app.close());
 
   const created = await call('POST', '/v1/carts', cartBody());
   assert.equal(created.status, 201);
   const { cart, manage_key: k } = created.body;
-  assert.equal(cart.total_cents, 27100 + 1084);
+  assert.equal(cart.cushion_cents, 1355, 'room for tax and price changes, 5% up to $15');
+  assert.equal(cart.total_cents, 27100 + 1355 + 1084);
   assert.equal(cart.status, 'open');
   assert.match(created.body.link, /\/c\/[\w-]{12}$/);
   assert.equal(created.body.cart.requester.email, undefined, 'public view hides email');
@@ -43,7 +44,9 @@ test('card flow: create → pay → card issued → merchant-locked single use',
   assert.match(page.body, /og:description" content="Super Puff Shorty from Aritzia · \$271.00 · tap to cover it"/);
   assert.match(page.body, new RegExp(`og:image" content="http://localhost(:80)?/c/${cart.token}/card.png"`));
   assert.match(page.body, /birthday &lt;3/);
-  assert.match(page.body, /Spot Kyle \$281.84/);
+  assert.match(page.body, /Spot Kyle \$295.39/);
+  assert.match(page.body, /You're buying this from Spot as a gift for Kyle/);
+  assert.match(page.body, /unused comes back/);
 
   // The preview image is a real PNG, drawn for this cart.
   const img = await app.inject({ method: 'GET', url: `/c/${cart.token}/card.png` });
@@ -56,7 +59,8 @@ test('card flow: create → pay → card issued → merchant-locked single use',
 
   // Owner endpoints need the manage key.
   assert.equal((await call('GET', `/v1/carts/${cart.token}/manage?k=wrong`)).status, 404);
-  assert.equal((await call('POST', `/v1/carts/${cart.token}/manage/reveal`, { k })).status, 409, 'no card before payment');
+  // Spot's card is never shown to anyone: there is no reveal route.
+  assert.equal((await call('POST', `/v1/carts/${cart.token}/manage/reveal`, { k })).status, 404);
 
   const paid = await call('POST', `/v1/carts/${cart.token}/sandbox-pay`, { payer_name: 'Mom' });
   assert.equal(paid.status, 200);
@@ -67,12 +71,10 @@ test('card flow: create → pay → card issued → merchant-locked single use',
   assert.equal((await call('POST', `/v1/carts/${cart.token}/sandbox-pay`, {})).status, 409);
 
   const mine = await call('GET', `/v1/carts/${cart.token}/manage?k=${k}`);
-  assert.equal(mine.body.cart.card.brand, 'Visa');
+  assert.equal(mine.body.cart.card_ready, true);
+  assert.equal(mine.body.cart.card, undefined, 'no card details, not even the last 4');
+  assert.doesNotMatch(JSON.stringify(mine.body), /sandbox_secret|"number"|cvc/);
   assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'issue']);
-
-  const card = await call('POST', `/v1/carts/${cart.token}/manage/reveal`, { k });
-  assert.match(card.body.number, /^\d{16}$/);
-  assert.equal(card.body.number.slice(-4), mine.body.cart.card.last4);
 
   // Wrong store, then over the limit: declined, card still live.
   const auth = (merchant_name, amount_cents) => call('POST', '/v1/sandbox/authorize', { token: cart.token, k, merchant_name, amount_cents });
@@ -80,6 +82,7 @@ test('card flow: create → pay → card issued → merchant-locked single use',
   assert.equal((await auth('ARITZIA LP VANCOUVER', 99999)).body.reason, 'over_limit');
 
   // Right store, price drifted up a bit with tax: approved, cart completes.
+  assert.equal((await auth('ARITZIA LP VANCOUVER', 27100 + 1356)).body.reason, 'over_limit', 'never more than the payer paid for the goods');
   const ok = await auth('ARITZIA LP VANCOUVER', 27480);
   assert.equal(ok.body.approved, true);
   assert.equal(ok.body.cart.status, 'completed');
@@ -121,7 +124,7 @@ test('expired and canceled links cannot be paid', async (t) => {
 
 test('refund cancels an issued card', async (t) => {
   const refunded = [];
-  const provider = { ...sandboxProvider(), refund: async (c) => refunded.push(c.id) };
+  const provider = { ...sandboxProvider(), refund: async (c) => { refunded.push(c.id); } };
   const { app, call } = setup(provider);
   t.after(() => app.close());
   const a = (await call('POST', '/v1/carts', cartBody())).body;
@@ -146,55 +149,236 @@ test('a failed card issue leaves the cart paid and is retried', async (t) => {
   assert.ok(m.body.events.some((e) => e.kind === 'issue_failed'));
 });
 
-test('stripe webhooks: payment succeeded issues card; authorization request is answered', async (t) => {
+// A Stripe-shaped provider around the sandbox, recording what would move.
+function stripeLike(log = []) {
   const sbx = sandboxProvider();
-  const answers = [];
-  const provider = {
+  return {
     ...sbx,
     name: 'stripe',
-    createPayment: async (c) => ({ ref: 'pi_123', client: { mode: 'stripe', client_secret: 'pi_123_secret' } }),
-    issueCard: async (c) => ({ ...(await sbx.issueCard(c)), ref: 'ic_abc' }),
+    log,
+    createPayment: async (c) => ({ ref: `pi_${c.token}`, client: { mode: 'stripe', client_secret: `pi_${c.token}_secret` } }),
+    issueCard: async (c) => ({ ...(await sbx.issueCard(c)), ref: `ic_${c.token}` }),
+    cancelCard: async (c) => { log.push(['cancel', c.card_ref]); },
+    refund: async (c, amount, key) => { log.push(['refund', c.payment_ref, amount ?? 'all', key ?? null]); },
     verifyWebhook: (raw, sig) => {
       if (sig !== 'good') throw new Error('bad sig');
       return JSON.parse(raw.toString());
     },
-    answerAuthorization: async (id, approved) => answers.push([id, approved]),
-    needsBilling: true,
-    payerFor: async (pi) => (pi.latest_charge === 'ch_1' ? { name: 'Mom', fingerprint: 'fp_mom' } : {}),
+    answerAuthorization: async (id, approved) => log.push(['answer', id, approved]),
+    payerFor: async (pi) => (pi.latest_charge === 'ch_1' ? { name: 'Mom', email: 'mom@example.com', fingerprint: 'fp_mom' } : {}),
   };
-  const { app, call } = setup(provider);
+}
+// Stripe mode with the checkout agent on (a stand-in client), so card
+// payments are accepted for any store.
+const stripeSetup = (provider) => setup(provider, { env: { SPOT_AGENT: 'on' }, fulfill: { client: {} } });
+const hookFor = (app) => (event, sig = 'good') => app.inject({ method: 'POST', url: '/v1/webhooks/stripe', headers: { 'stripe-signature': sig, 'content-type': 'application/json' }, payload: JSON.stringify(event) });
+async function paidStripeCart(app, call, hook, body = cartBody()) {
+  const a = (await call('POST', '/v1/carts', body)).body;
+  await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
+  await hook({ type: 'payment_intent.succeeded', data: { object: { id: `pi_${a.cart.token}`, amount_received: a.cart.total_cents, latest_charge: 'ch_1', metadata: { spot_cart_id: 'x' } } } });
+  return a;
+}
+
+test('stripe webhooks: payment issues Spot’s card at once (no billing step); authorizations are answered', async (t) => {
+  const provider = stripeLike();
+  const { app, call } = stripeSetup(provider);
   t.after(() => app.close());
-  // Links need no billing address up front…
   const a = (await call('POST', '/v1/carts', cartBody())).body;
   assert.equal(a.cart.status, 'open');
   const pay = await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
-  assert.equal(pay.body.client_secret, 'pi_123_secret');
+  assert.equal(pay.body.client_secret, `pi_${a.cart.token}_secret`);
   assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody() })).status, 409, 'no edits once a payer has started');
 
-  const hook = (event, sig = 'good') => app.inject({ method: 'POST', url: '/v1/webhooks/stripe', headers: { 'stripe-signature': sig, 'content-type': 'application/json' }, payload: JSON.stringify(event) });
+  const hook = hookFor(app);
   assert.equal((await hook({}, 'forged')).statusCode, 400);
-
-  const succeeded = { type: 'payment_intent.succeeded', data: { object: { id: 'pi_123', amount_received: a.cart.total_cents, latest_charge: 'ch_1', metadata: { spot_cart_id: 'x' } } } };
+  const succeeded = { type: 'payment_intent.succeeded', data: { object: { id: `pi_${a.cart.token}`, amount_received: a.cart.total_cents, latest_charge: 'ch_1', metadata: { spot_cart_id: 'x' } } } };
   assert.equal((await hook(succeeded)).statusCode, 200);
   assert.equal((await hook(succeeded)).statusCode, 200, 'duplicate delivery is harmless');
 
-  // …so after payment the requester is asked for it, then the card issues.
-  let m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
-  assert.equal(m.body.cart.status, 'paid');
-  assert.equal(m.body.needs_billing, true);
+  const m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.cart.status, 'card_issued', 'Spot’s company card: nothing to ask the requester');
+  assert.equal(m.body.needs_billing, undefined);
   assert.equal(m.body.cart.payer_name, 'Mom', 'payer name comes from the wallet');
-  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/billing`, { k: a.manage_key, billing: { line1: '1 Main St' } })).status, 400);
-  const billed = await call('POST', `/v1/carts/${a.cart.token}/manage/billing`, { k: a.manage_key, billing: { line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' } });
-  assert.equal(billed.body.cart.status, 'card_issued');
-  m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
-  assert.equal(m.body.needs_billing, false);
-  assert.deepEqual(m.body.events.map((e) => e.kind).filter((k) => ['needs_billing', 'billing_added', 'issue'].includes(k)), ['needs_billing', 'billing_added', 'issue']);
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/billing`, { k: a.manage_key, billing: {} })).status, 404, 'no billing step');
 
-  const authReq = (id, name, amount) => ({ type: 'issuing_authorization.request', data: { object: { id, card: { id: 'ic_abc' }, pending_request: { amount, currency: 'usd' }, merchant_data: { name } } } });
+  const card = `ic_${a.cart.token}`;
+  const authReq = (id, name, amount, mcc) => ({ type: 'issuing_authorization.request', data: { object: { id, card: { id: card }, pending_request: { amount, currency: 'usd' }, merchant_data: { name, category_code: mcc } } } });
+  await hook(authReq('iauth_0', 'ARITZIA', 5000, '6540'));
   await hook(authReq('iauth_1', 'STEAM GAMES', 5000));
   await hook(authReq('iauth_2', 'ARITZIA', 27100));
   await hook(authReq('iauth_3', 'ARITZIA', 27100));
-  assert.deepEqual(answers, [['iauth_1', false], ['iauth_2', true], ['iauth_3', false]]);
+  assert.deepEqual(provider.log.filter((x) => x[0] === 'answer'), [['answer', 'iauth_0', false], ['answer', 'iauth_1', false], ['answer', 'iauth_2', true], ['answer', 'iauth_3', false]]);
+});
+
+test('refund race: an authorization during a refund is declined, and the card is canceled before money moves', async (t) => {
+  const log = [];
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const provider = { ...stripeLike(log), refund: async (c) => { log.push(['refund:start']); await gate; log.push(['refund:done', c.payment_ref]); } };
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  const refunding = call('POST', `/v1/carts/${a.cart.token}/manage/refund`, { k: a.manage_key });
+  await new Promise((r) => setTimeout(r, 20));
+  // Mid-refund: the store tries to charge Spot's card.
+  const mid = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(mid.body.cart.status, 'refunding');
+  await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_race', card: { id: `ic_${a.cart.token}` }, pending_request: { amount: 27100, currency: 'usd' }, merchant_data: { name: 'ARITZIA' } } } });
+  assert.deepEqual(log.find((x) => x[1] === 'iauth_race'), ['answer', 'iauth_race', false]);
+  release();
+  const done = await refunding;
+  assert.equal(done.body.cart.status, 'refunded');
+  const order = log.filter((x) => ['cancel', 'refund:start'].includes(x[0])).map((x) => x[0]);
+  assert.deepEqual(order, ['cancel', 'refund:start'], 'card canceled first');
+});
+
+test('a refund that fails stays `refunding` and is retried by the sweep', async (t) => {
+  let fail = true;
+  const log = [];
+  const provider = { ...stripeLike(log), refund: async (c) => { if (fail) throw new Error('stripe down'); log.push(['refund', c.payment_ref]); } };
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  const r = await call('POST', `/v1/carts/${a.cart.token}/manage/refund`, { k: a.manage_key });
+  assert.equal(r.status, 502);
+  let m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.cart.status, 'refunding', 'the card stays dead meanwhile');
+  fail = false;
+  await app.spot.sweepMoney(Date.now() + 10 * 60_000);
+  m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.cart.status, 'refunded');
+  assert.equal(log.filter((x) => x[0] === 'refund').length, 1);
+});
+
+test('after the store charges: the card is canceled, unused money and returns go back to the payer (once), fee kept', async (t) => {
+  const provider = stripeLike();
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  const token = a.cart.token;
+  const card = `ic_${token}`;
+  await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_ok', card: { id: card }, pending_request: { amount: 27800, currency: 'usd' }, merchant_data: { name: 'ARITZIA' } } } });
+  const capture = { type: 'issuing_transaction.created', data: { object: { id: 'ipi_cap', card, authorization: 'iauth_ok', type: 'capture', amount: -27600, merchant_data: { name: 'ARITZIA' } } } };
+  await hook(capture);
+  await hook(capture);
+  assert.deepEqual(provider.log.filter((x) => x[0] === 'cancel'), [['cancel', card]], 'canceled once, right after the charge');
+  // The authorization closes: $276 charged of $284.55 paid for the goods.
+  await hook({ type: 'issuing_authorization.updated', data: { object: { id: 'iauth_ok', card, status: 'closed', approved: true, transactions: [{ id: 'ipi_cap', type: 'capture', amount: -27600 }] } } });
+  // A return later.
+  const ret = { type: 'issuing_transaction.created', data: { object: { id: 'ipi_ret', card, authorization: 'iauth_ok', type: 'refund', amount: 5000, merchant_data: { name: 'ARITZIA' } } } };
+  await hook(ret);
+  await hook(ret);
+  const refunds = provider.log.filter((x) => x[0] === 'refund');
+  assert.deepEqual(refunds, [['refund', `pi_${token}`, 27100 + 1355 - 27600, 'unused_iauth_ok'], ['refund', `pi_${token}`, 5000, 'return_ipi_ret']]);
+  const m = await call('GET', `/v1/carts/${token}/manage?k=${a.manage_key}`);
+  assert.equal(m.body.cart.status, 'completed');
+  assert.equal(m.body.cart.refunded_cents, 855 + 5000);
+  assert.deepEqual(m.body.cart.refunds.map((r) => [r.reason, r.state]), [['unused', 'done'], ['store_refund', 'done']]);
+  // A full return can't refund the fee through the partial path.
+  await hook({ type: 'issuing_transaction.created', data: { object: { id: 'ipi_ret2', card, type: 'refund', amount: 999999 } } });
+  const after = await call('GET', `/v1/carts/${token}/manage?k=${a.manage_key}`);
+  assert.equal(after.body.cart.refunded_cents, 27100 + 1355, 'capped at what was paid for the goods; the fee stays');
+});
+
+test('a reversed authorization refunds the payer in full; an expired one waits 30 days for a late charge', async (t) => {
+  const provider = stripeLike();
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const approve = async (a, id) => hook({ type: 'issuing_authorization.request', data: { object: { id, card: { id: `ic_${a.cart.token}` }, pending_request: { amount: 27100, currency: 'usd' }, merchant_data: { name: 'ARITZIA' } } } });
+  const a = await paidStripeCart(app, call, hook);
+  await approve(a, 'iauth_a');
+  await hook({ type: 'issuing_authorization.updated', data: { object: { id: 'iauth_a', card: `ic_${a.cart.token}`, status: 'reversed', approved: true, transactions: [] } } });
+  const ma = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal(ma.body.cart.status, 'refunded');
+  assert.equal(ma.body.cart.refund_reason, 'store_reversed');
+
+  const b = await paidStripeCart(app, call, hook);
+  await approve(b, 'iauth_b');
+  await hook({ type: 'issuing_authorization.updated', data: { object: { id: 'iauth_b', card: `ic_${b.cart.token}`, status: 'expired', approved: true, transactions: [] } } });
+  let mb = await call('GET', `/v1/carts/${b.cart.token}/manage?k=${b.manage_key}`);
+  assert.equal(mb.body.cart.status, 'completed', 'not yet: a store can still capture after expiry');
+  await app.spot.sweepMoney(Date.now() + 31 * 86400_000);
+  mb = await call('GET', `/v1/carts/${b.cart.token}/manage?k=${b.manage_key}`);
+  assert.equal(mb.body.cart.status, 'refunded');
+  assert.equal(mb.body.cart.refund_reason, 'store_never_charged');
+
+  // Expired, then the store captures late: only the unused part comes back.
+  const c = await paidStripeCart(app, call, hook);
+  await approve(c, 'iauth_c');
+  await hook({ type: 'issuing_authorization.updated', data: { object: { id: 'iauth_c', card: `ic_${c.cart.token}`, status: 'expired', approved: true, transactions: [] } } });
+  await hook({ type: 'issuing_transaction.created', data: { object: { id: 'ipi_late', card: `ic_${c.cart.token}`, type: 'capture', amount: -27000 } } });
+  await app.spot.sweepMoney(Date.now() + 10 * 60_000);
+  const mc = await call('GET', `/v1/carts/${c.cart.token}/manage?k=${c.manage_key}`);
+  assert.equal(mc.body.cart.status, 'completed');
+  assert.equal(mc.body.cart.refunded_cents, 27100 + 1355 - 27000);
+});
+
+test('a dispute stops Spot’s card and blocks the payer’s card from Spot', async (t) => {
+  const provider = stripeLike();
+  const { app, db, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  await hook({ type: 'charge.dispute.created', data: { object: { id: 'dp_1', payment_intent: `pi_${a.cart.token}`, reason: 'fraudulent' } } });
+  assert.ok(provider.log.some((x) => x[0] === 'cancel'));
+  assert.ok(db.blocks.list().some((b) => b.kind === 'card' && b.value === 'fp_mom'));
+  await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_d', card: { id: `ic_${a.cart.token}` }, pending_request: { amount: 100, currency: 'usd' }, merchant_data: { name: 'ARITZIA' } } } });
+  assert.deepEqual(provider.log.find((x) => x[1] === 'iauth_d'), ['answer', 'iauth_d', false]);
+  const r = await call('POST', `/v1/carts/${a.cart.token}/manage/order`, { k: a.manage_key, shipping: { name: 'Kyle', line1: '1 Main', city: 'Austin', state: 'TX', postal_code: '78701', email: 'k@x.com' } });
+  assert.equal(r.status, 409, 'nothing is ordered on a disputed payment');
+});
+
+test('the payer gets a Spot receipt and can cancel for a full refund until the order is placed', async (t) => {
+  const provider = stripeLike();
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  const path = app.spot.payerPath(app.spot.load(a.cart.token));
+  const p = new URL(path, 'http://x').searchParams.get('p');
+  assert.equal((await call('GET', path)).status, 200);
+  assert.equal((await call('GET', `/c/${a.cart.token}/receipt?p=${p.slice(0, -2)}xx`)).status, 404);
+  const r = (await call('GET', `/v1/carts/${a.cart.token}/receipt?p=${p}`)).body;
+  assert.equal(r.can_cancel, true);
+  assert.equal(r.cart.total_cents, a.cart.total_cents);
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/receipt/cancel`, { p: 'nope' })).status, 404);
+  const c = await call('POST', `/v1/carts/${a.cart.token}/receipt/cancel`, { p });
+  assert.equal(c.body.cart.status, 'refunded');
+  assert.ok(provider.log.some((x) => x[0] === 'refund' && x[2] === 'all'));
+
+  // Once Spot is placing the order, nobody can cancel from under it.
+  const b = await paidStripeCart(app, call, hook);
+  app.spot.patch(app.spot.load(b.cart.token).id, (x) => ({ ...x, fulfillment: { state: 'awaiting_confirm' } }));
+  const pb = new URL(app.spot.payerPath(app.spot.load(b.cart.token)), 'http://x').searchParams.get('p');
+  assert.equal((await call('POST', `/v1/carts/${b.cart.token}/receipt/cancel`, { p: pb })).status, 409);
+  assert.equal((await call('POST', `/v1/carts/${b.cart.token}/manage/refund`, { k: b.manage_key })).status, 409);
+});
+
+test('a card cart Spot can’t order within 72 hours is refunded automatically', async (t) => {
+  const provider = stripeLike();
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+  const a = await paidStripeCart(app, call, hook);
+  await app.spot.sweepMoney(Date.now() + 71 * 3600_000);
+  assert.equal(app.spot.load(a.cart.token).status, 'card_issued');
+  await app.spot.sweepMoney(Date.now() + 73 * 3600_000);
+  const cart = app.spot.load(a.cart.token);
+  assert.equal(cart.status, 'refunded');
+  assert.equal(cart.refund_reason, 'not_ordered');
+});
+
+test('card payments are only taken for stores Spot can order from', async (t) => {
+  const { app, call } = setup(stripeLike(), { env: {}, fulfill: { ucp: { fetchImpl: async () => new Response('nope', { status: 404 }) } } });
+  t.after(() => app.close());
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  const r = await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /can't order from Aritzia automatically yet.*Venmo/);
 });
 
 test('capture endpoint: url via injected capturer, screenshot needs a key', async (t) => {

@@ -2,22 +2,31 @@
 // the merchant-lock decision for issued cards. No I/O here, so it's all unit
 // tested in test/cart.test.js.
 //
-// Lifecycle
+// Lifecycle (card carts: the payer buys the cart from Spot, and Spot orders
+// it from the store with its own single-use card)
 //   open ──pay──▶ paid ──issue──▶ card_issued ──spend──▶ completed
-//     │                                   (merchant-locked, single use)
+//     │                        (Spot's card: merchant-locked, single use)
 //     ├──mark_received──▶ completed        (venmo / cash app handoff mode)
 //     ├──cancel──▶ canceled
 //     └──expire──▶ expired
-//   paid / card_issued ──refund──▶ refunded
+//   paid / card_issued / completed ──begin_refund──▶ refunding ──refund──▶ refunded
 //   paid ──book──▶ completed               (flights: booked straight with the airline)
+//
+// A full refund always passes through `refunding` BEFORE any money moves, so
+// an authorization that arrives mid-refund finds the card no longer active.
+// Partial refunds (unused cushion, store returns) don't change the state;
+// they add up in refunded_cents.
 
 export const SETTLE_MODES = ['card', 'handoff'];
 
 const TRANSITIONS = {
   open: { pay: 'paid', mark_received: 'completed', cancel: 'canceled', expire: 'expired' },
-  paid: { issue: 'card_issued', book: 'completed', refund: 'refunded' },
-  card_issued: { spend: 'completed', refund: 'refunded' },
-  completed: {},
+  paid: { issue: 'card_issued', book: 'completed', begin_refund: 'refunding' },
+  card_issued: { spend: 'completed', begin_refund: 'refunding' },
+  // A reversed or never-captured authorization, or a full return.
+  completed: { begin_refund: 'refunding' },
+  // Stays here if the payment provider fails mid-refund; retried from /admin.
+  refunding: { refund: 'refunded' },
   canceled: {},
   expired: {},
   refunded: {},
@@ -109,7 +118,12 @@ export function validateCart(input, cfg = config()) {
   if (cashtag && !HANDLE.test(cashtag)) throw new CartError('Cash App $cashtag looks wrong');
   if (settle === 'handoff' && !venmo && !cashtag) throw new CartError('Add a Venmo handle or $cashtag to get paid directly');
 
-  const totals = computeTotals(items, extras, settle, cfg);
+  if (settle === 'card') {
+    const bad = items.find((it) => cashlikeItem(`${it.title} ${it.variant || ''}`));
+    if (bad) throw new CartError(`Spot can't buy gift cards, prepaid cards or other cash equivalents ("${bad.title}")`);
+  }
+
+  const totals = computeTotals(items, extras, settle, cfg, { cushion: b.kind !== 'flight' });
   if (totals.cart_cents > cfg.maxCartCents) {
     throw new CartError(`Carts are capped at ${usd(cfg.maxCartCents)} for now`);
   }
@@ -126,69 +140,134 @@ export function validateCart(input, cfg = config()) {
   };
 }
 
-// cart_cents = what the card is allowed to spend (items + shipping/tax estimate)
-// fee_cents  = our fee, paid by the payer on top; zero in handoff mode because
-//              no money moves through us
-// total_cents = what the payer is charged
-export function computeTotals(items, extrasCents, settle, cfg = config()) {
+// cart_cents    = the goods: items + shipping/tax estimate
+// cushion_cents = room for tax and price changes at the store (card carts,
+//                 not flights). The payer pays it up front; whatever the
+//                 store doesn't charge comes back to them.
+// fee_cents     = our fee, paid by the payer on top; zero in handoff mode
+//                 because no money moves through us
+// total_cents   = what the payer is charged
+export function computeTotals(items, extrasCents, settle, cfg = config(), { cushion = true } = {}) {
   const subtotal = items.reduce((s, it) => s + it.price_cents * it.quantity, 0);
   const cart = subtotal + extrasCents;
   const fee = settle === 'handoff' ? 0 : Math.round((cart * cfg.feeBps) / 10000) + cfg.feeFixedCents;
-  return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, fee_cents: fee, total_cents: cart + fee };
+  const room = settle === 'card' && cushion ? cushionCents(cart) : 0;
+  return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, cushion_cents: room, fee_cents: fee, total_cents: cart + room + fee };
+}
+
+// What the payer paid toward the goods (everything but the fee). Carts made
+// before the cushion existed have none.
+export function goodsCents(cart) {
+  return cart.cart_cents + (cart.cushion_cents || 0);
 }
 
 // ─── Merchant lock ──────────────────────────────────────────────────────────
-// Decides a real-time card authorization. The issued card may be used once,
-// at the cart's merchant, for no more than the cart amount plus a small
-// tolerance (prices and tax drift a little between capture and checkout).
+// Decides a real-time authorization on Spot's card. It may be used once, at
+// the cart's store, for no more than the cart plus the cushion (prices and
+// tax drift a little between capture and checkout), and never at a cash-like
+// merchant.
 export const AUTH_TOLERANCE_BPS = 500; // +5%
 export const AUTH_TOLERANCE_MAX_CENTS = 1500; // capped at $15
 
-export function authLimitCents(cartCents) {
-  return cartCents + Math.min(Math.round((cartCents * AUTH_TOLERANCE_BPS) / 10000), AUTH_TOLERANCE_MAX_CENTS);
+export function cushionCents(cartCents) {
+  return Math.min(Math.round((cartCents * AUTH_TOLERANCE_BPS) / 10000), AUTH_TOLERANCE_MAX_CENTS);
 }
+
+export function authLimitCents(cartCents) {
+  return cartCents + cushionCents(cartCents);
+}
+
+// Cash and cash-like merchants, by Stripe Issuing category (enforced by the
+// card network through spending controls) and by MCC (checked again here, in
+// the real-time webhook). Gift cards sold by ordinary retailers carry the
+// retailer's category, so carts also refuse gift-card items (validateCart).
+export const BLOCKED_CATEGORIES = [
+  'automated_cash_disburse', // 6011 ATMs
+  'manual_cash_disburse', // 6010
+  'financial_institutions', // 6012
+  'non_fi_money_orders', // 6051 quasi-cash, crypto, money orders
+  'wires_money_orders', // 4829 money transfers
+  'non_fi_stored_value_card_purchase_load', // 6540 prepaid and gift card loads
+  'security_brokers_dealers', // 6211
+  'betting_casino_gambling', // 7995
+  'government_licensed_online_casions_online_gambling_us_region_only', // 7801 (Stripe's spelling)
+  'government_licensed_horse_dog_racing_us_region_only', // 7802
+  'government_owned_lotteries_us_region_only', // 7800
+  'government_owned_lotteries_non_us_region', // 9406
+  'pawn_shops', // 5933
+  'timeshares', // 7012
+  'dating_escort_services', // 7273
+  'massage_parlors', // 7297
+];
+export const BLOCKED_MCCS = new Set(['6010', '6011', '6012', '6051', '4829', '6540', '6211', '7995', '7801', '7802', '7800', '9406', '5933', '7012', '7273', '7297']);
 
 export function decideAuthorization(cart, auth) {
   if (!cart) return { approved: false, reason: 'unknown_card' };
   if (cart.status !== 'card_issued') return { approved: false, reason: 'card_not_active' };
   if ((auth.currency || 'usd').toLowerCase() !== 'usd') return { approved: false, reason: 'currency' };
   if (!Number.isInteger(auth.amount_cents) || auth.amount_cents <= 0) return { approved: false, reason: 'amount' };
+  const m = auth.merchant || {};
+  if (BLOCKED_MCCS.has(String(m.category_code || '')) || BLOCKED_CATEGORIES.includes(m.category)) return { approved: false, reason: 'blocked_category' };
   if (auth.amount_cents > authLimitCents(cart.cart_cents)) return { approved: false, reason: 'over_limit' };
-  if (!merchantMatches(cart.merchant, auth.merchant)) return { approved: false, reason: 'wrong_merchant' };
+  if (!merchantMatches(cart.merchant, m)) return { approved: false, reason: 'wrong_merchant' };
   return { approved: true, reason: 'ok' };
 }
 
 // Card networks report merchant names in messy forms ("NIKE.COM", "NIKE
-// 8291 PORTLAND OR", "SQ *BLUE BOTTLE"). We match on the distinctive word
-// of the store's name or domain appearing in the network name or URL.
+// 8291 PORTLAND OR", "SQ *BLUE BOTTLE", "AMZN Mktp US"). We match on the
+// store's domain name and its whole name (or first two words), never on a
+// single generic word, so "Blue Bottle Coffee" doesn't match any coffee shop.
 const STOP = new Set(['the', 'inc', 'llc', 'ltd', 'co', 'com', 'shop', 'store', 'www', 'online', 'official', 'us', 'usa', 'and', 'sq', 'tst', 'paypal']);
+// How some big stores appear on card statements.
+const ALIASES = {
+  amazon: ['amzn', 'amazon'],
+  walmart: ['walmart', 'wmsupercenter', 'wmtcom'],
+  target: ['target'],
+  bestbuy: ['bestbuy', 'bbycom'],
+  homedepot: ['homedepot', 'thdcom'],
+  apple: ['applecom', 'appleinc', 'applestore'],
+  costco: ['costco'],
+  nordstrom: ['nordstrom', 'nordrack'],
+  macys: ['macys'],
+};
+
+const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !STOP.has(w) && !/^\d+$/.test(w));
 
 export function merchantKeys(merchant) {
   const keys = new Set();
-  const add = (s) => {
-    for (const w of String(s || '').toLowerCase().split(/[^a-z0-9]+/)) {
-      if (w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w)) keys.add(w);
-    }
-  };
-  add(merchant?.name);
+  const name = words(merchant?.name);
+  if (name.length) {
+    keys.add(name.join(''));
+    if (name.length > 2) keys.add(name.slice(0, 2).join(''));
+  }
   const host = hostOf(merchant?.url);
-  if (host) add(host.replace(/^www\./, '').split('.').slice(0, -1).join(' '));
-  return keys;
+  if (host) {
+    const labels = host.replace(/^www\./, '').split('.');
+    // The label before the public suffix: nike.com → nike, shop.nike.co.uk → nike.
+    const reg = labels.length > 2 && labels.at(-2).length <= 3 ? labels.at(-3) : labels.at(-2);
+    if (reg) keys.add(reg.replace(/[^a-z0-9]/g, ''));
+  }
+  for (const k of [...keys]) for (const a of ALIASES[k] || []) keys.add(a);
+  return new Set([...keys].filter((k) => k.length >= 3));
 }
 
 export function merchantMatches(cartMerchant, authMerchant) {
   const keys = merchantKeys(cartMerchant);
   if (!keys.size) return false;
-  const hay = [authMerchant?.name, authMerchant?.url, hostOf(authMerchant?.url)]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ');
-  const squashed = hay.replace(/ /g, '');
+  const hay = [authMerchant?.name, authMerchant?.url, hostOf(authMerchant?.url)].filter(Boolean).join(' ').toLowerCase();
+  const tokens = hay.split(/[^a-z0-9]+/).filter(Boolean);
+  const squashed = tokens.join('');
   for (const k of keys) {
-    if (hay.split(' ').includes(k) || squashed.includes(k)) return true;
+    // Short keys must be a whole word; longer ones may run into other text.
+    if (k.length < 5 ? tokens.includes(k) : squashed.includes(k)) return true;
   }
   return false;
+}
+
+// Items Spot won't buy on its card: gift cards and other cash equivalents.
+const CASHLIKE = /\b(e-?gift|gift\s*cards?|giftcards?|gift\s*certificates?|prepaid\s*(visa|mastercard|card|debit)|reload(able)?\s*(card|pack)|money\s*orders?|vanilla\s*(visa|gift)|visa\s*gift|amex\s*gift|mastercard\s*gift|bitcoin|crypto|store\s*credit)\b/i;
+export function cashlikeItem(title) {
+  return CASHLIKE.test(String(title || ''));
 }
 
 // ─── Handoff links ──────────────────────────────────────────────────────────

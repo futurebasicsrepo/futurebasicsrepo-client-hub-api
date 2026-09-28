@@ -8,6 +8,11 @@
 //   booked           requester  email + text   flight booked, with the confirmation code
 //   booking_failed   requester  email          couldn't book; refunded
 //   ready            account    email          your AI handed you a cart and didn't send it itself
+//   receipt          payer      email          Spot's receipt (Spot is the seller), with a
+//                                              cancel-for-a-refund link until it's ordered
+//   refunded         payer      email          a full refund (canceled, couldn't be ordered…)
+//                    requester  email
+//   refunded_part    payer      email          unused money or a store return, sent back
 //
 // Each (cart, event, person) is told once: sends are recorded in the
 // notices table. Texts go only to numbers that haven't replied STOP (notify.js).
@@ -53,8 +58,8 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           key: 'covered',
           to: requesterContact(cart),
           subject: `🎉 ${payer} spotted you!`,
-          text: `${payer} covered your ${item} from ${store} (${usd(cart.cart_cents)}). Open your Spot to get it ordered: ${link}`,
-          html: mail({ preheader: `${item} is covered`, title: `🎉 ${payer} spotted you!`, lines: [`<b>${esc(item)}</b> from ${esc(store)} is covered: ${usd(cart.cart_cents)}.`, 'Your one-time card is ready. Spot can place the order for you, and you tap once to confirm.'], cta: { label: 'Get it ordered →', url: link } }),
+          text: `${payer} covered your ${item} from ${store} (${usd(cart.cart_cents)}). Tell Spot where to ship it: ${link}`,
+          html: mail({ preheader: `${item} is covered`, title: `🎉 ${payer} spotted you!`, lines: [`<b>${esc(item)}</b> from ${esc(store)} is covered: ${usd(cart.cart_cents)}.`, `Tell Spot where to ship it. Spot buys it from ${esc(store)} for you, and you tap once to confirm.`], cta: { label: 'Get it ordered →', url: link } }),
           sms: `Spot: 🎉 ${payer} spotted you! ${item} from ${store} is covered. Get it ordered: ${link}`,
         }];
       case 'confirm_needed':
@@ -70,9 +75,9 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         return [{
           key: `needs_you_${f.started_at || ''}`,
           to: { email: requesterContact(cart).email },
-          subject: `Finish your ${store} order`,
-          text: `Spot couldn't finish ${store}'s checkout on its own (${f.reason || 'it needs you'}). Your card and a ready checkout link are on your Spot: ${link}`,
-          html: mail({ preheader: 'One step left', title: `Finish your ${store} order`, lines: [`Spot couldn’t finish the checkout on its own: ${esc(f.reason || 'the store needs you')}.`, 'Your one-time card and a ready-to-go checkout link are waiting on your Spot page.'], cta: { label: 'Finish the order →', url: link } }),
+          subject: `Your ${store} order needs a nudge`,
+          text: `Spot couldn't place your ${store} order automatically (${f.reason || 'the store needs a person'}). Try again from your Spot. If it can't be ordered within 3 days, the payer is refunded in full. ${link}`,
+          html: mail({ preheader: 'Try again, or we refund', title: `Your ${store} order needs a nudge`, lines: [`Spot couldn’t place the order automatically: ${esc(f.reason || 'the store needs a person')}.`, 'Try again from your Spot page. If it can’t be ordered within 3 days, the payer is refunded in full.'], cta: { label: 'Open your Spot →', url: link } }),
         }];
       case 'ordered': {
         const out = [{
@@ -88,7 +93,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
             to: { email: cart.payer_contact.email },
             subject: `🎁 Your gift for ${who} was ordered`,
             text: `Thanks for spotting ${who}! ${item} from ${store} was ordered. Want someone to spot you? ${base}/new`,
-            html: mail({ preheader: `${item} is on its way to ${who}`, title: `🎁 Your gift for ${who} was ordered`, lines: [`Thanks for spotting ${esc(who)}! <b>${esc(item)}</b> from ${esc(store)} is on its way.`, 'Your money went onto a one-time card that could only buy this.'], cta: { label: 'Make your own Spot →', url: `${base}/new` }, note: 'Anything you want someone to cover? Turn any cart into a link.' }),
+            html: mail({ preheader: `${item} is on its way to ${who}`, title: `🎁 Your gift for ${who} was ordered`, lines: [`Thanks for spotting ${esc(who)}! <b>${esc(item)}</b> from ${esc(store)} is on its way.`, `Spot bought it from ${esc(store)} with your payment, and it ships straight to ${esc(who)}.`], cta: { label: 'Make your own Spot →', url: `${base}/new` }, note: 'Anything you want someone to cover? Turn any cart into a link.' }),
           });
         }
         return out;
@@ -121,6 +126,68 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `🤖 ${msg.subject}`,
           text: msg.text,
           html: mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
+        }];
+      }
+      case 'receipt': {
+        const email = cart.payer_contact?.email;
+        if (!email) return [];
+        const receipt = `${base}${spot.payerPath(cart)}`;
+        const rows = [
+          `<b>${esc(item)}</b>${cart.items.length > 1 ? ` +${cart.items.length - 1} more` : ''} from ${esc(store)}${cart.kind === 'flight' ? '' : `, shipped to ${esc(who)}`}`,
+          `Goods ${usd(cart.cart_cents)}${cart.cushion_cents ? ` · up to ${usd(cart.cushion_cents)} for tax and price changes (unused comes back)` : ''} · Spot fee ${usd(cart.fee_cents)} · <b>Total ${usd(cart.total_cents)}</b>`,
+          cart.kind === 'flight' ? 'Spot bought this ticket from the airline for the traveler.' : 'You bought this from Spot. Spot orders it from the store and ships it; returns go through Spot.',
+          cart.kind === 'flight' ? '' : 'Changed your mind? Cancel for a full refund any time before Spot places the order.',
+        ].filter(Boolean);
+        return [{
+          key: 'receipt',
+          to: { email },
+          subject: `Your Spot receipt: ${item}`,
+          text: `Receipt from Spot. ${item} from ${store}${cart.kind === 'flight' ? '' : ` for ${who}`}. Total ${usd(cart.total_cents)}. ${cart.kind === 'flight' ? '' : 'Cancel for a full refund until it’s ordered: '}${receipt}`,
+          html: mail({ preheader: `Total ${usd(cart.total_cents)}`, title: '🧾 Your Spot receipt', lines: rows, cta: { label: cart.kind === 'flight' ? 'View receipt' : 'View receipt or cancel', url: receipt }, note: `Questions or returns: ${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}` }),
+        }];
+      }
+      case 'refunded': {
+        const why = {
+          payer_canceled: 'You canceled it before it was ordered.',
+          requester_canceled: `${who} canceled it before it was ordered.`,
+          not_ordered: `Spot couldn’t order it from ${store} in time.`,
+          store_reversed: `${store} canceled the charge.`,
+          store_released: `${store} didn’t charge for it.`,
+          store_never_charged: `${store} never charged for it.`,
+          admin: 'Spot refunded it.',
+        }[cart.refund_reason] || 'It was refunded.';
+        const out = [];
+        if (cart.payer_contact?.email) {
+          out.push({
+            key: 'refunded_payer',
+            to: { email: cart.payer_contact.email },
+            subject: `Refunded: ${item}`,
+            text: `${why} We refunded ${usd(cart.total_cents)} to your card; it usually shows in 5–10 business days.`,
+            html: mail({ preheader: `${usd(cart.total_cents)} back to your card`, title: 'You’ve been refunded', lines: [esc(why), `We refunded <b>${usd(cart.total_cents)}</b> to your card, Spot fee included. It usually shows in 5–10 business days.`] }),
+          });
+        }
+        const to = requesterContact(cart).email;
+        if (to && !['requester_canceled'].includes(cart.refund_reason) && cart.for !== 'self') {
+          out.push({
+            key: 'refunded_requester',
+            to: { email: to },
+            subject: `Your ${store} Spot was refunded`,
+            text: `${why} ${payer} got their money back. ${link}`,
+            html: mail({ preheader: `${payer} was refunded`, title: 'This one was refunded', lines: [esc(why), `${esc(payer)} got their money back, so nothing was ordered.`], cta: { label: 'Open your Spot', url: link } }),
+          });
+        }
+        return out;
+      }
+      case 'refunded_part': {
+        const email = cart.payer_contact?.email || (cart.for === 'self' ? requesterContact(cart).email : null);
+        if (!email || !extra?.key) return [];
+        const what = extra.reason === 'store_refund' ? `${store} refunded a return` : `${store} charged less than expected`;
+        return [{
+          key: `refund_${extra.key}`,
+          to: { email },
+          subject: `${usd(extra.amount_cents)} back from Spot`,
+          text: `${what}, so we sent ${usd(extra.amount_cents)} back to your card.`,
+          html: mail({ preheader: `${usd(extra.amount_cents)} back to your card`, title: `${usd(extra.amount_cents)} back to your card`, lines: [`${esc(what)} for <b>${esc(item)}</b>, so we sent the difference back to your card. It usually shows in 5–10 business days.`] }),
         }];
       }
       default:

@@ -2,7 +2,7 @@
 
 **Your cart, anywhere. Someone else's tap.**
 
-Spot turns any shopping cart into a link. Whoever opens the link covers it in one tap. The money goes onto a one-time virtual card that only works at that store, for that amount, so it can't be cashed out. If the requester just wants money straight to them, the link can send the payer to Venmo or Cash App instead.
+Spot turns any shopping cart into a link. Whoever opens the link buys that cart **from Spot** in one tap, as a gift or for themselves. Spot then orders exactly those items from the store with its own single-use card and ships them to the requester, so nobody receives cash or a card. If the requester just wants money straight to them, the link can send the payer to Venmo or Cash App instead, and then Spot isn't part of the payment.
 
 This is a standalone prototype. It lives in this repo for now and shares nothing with the client hub, so it can move to its own repo as is.
 
@@ -34,18 +34,22 @@ npm start          # http://localhost:3000, sandbox mode
 npm test
 ```
 
-With no Stripe keys set, Spot runs in **sandbox mode**. Payment is a "Pay (test)" button, the card is a fake Visa number, and the requester page has a "Test checkout" box that simulates the store charging the card. That's enough to demo the full loop on two phones.
+With no Stripe keys set, Spot runs in **sandbox mode**. Payment is a "Pay (test)" button, Spot's card is a fake Visa number, and the requester page has a "Test the store's side" box that plays what the store does with Spot's card: an authorization, a capture, a refund for a return, or a release. That's enough to demo the full loop on two phones.
 
 ## How it works
 
 1. **Capture: one box.** Paste a link or any shared text that has a link in it, drop or paste a screenshot, or just say what you want ("black Salomon XT-6 in 10.5"). Links are read from JSON-LD `Product` data, then Open Graph / `product:price` tags. Screenshots are read by Claude with a JSON schema. Descriptions are looked up by Claude with web search; with no API key they become an editable item. If a link was read confidently (every price found, store known) and the requester is known on this device, Spot skips the review step and goes straight to Send. Everything else gets a quick check first. The "Spot this" bookmarklet, `/new?url=` and `/new?text=` all feed the same box.
    **Sending:** one Send button (the phone's share sheet with the message already written), "Ask Mom"-style buttons for saved people (a text message already written; Android can pick from contacts), plus Text, WhatsApp and Copy. The requester's name, payout handles, favourite people and their recent Spots ("My Spots") are remembered in `localStorage` on that device. A link can be edited until someone starts paying, and the share card redraws.
 2. **Share.** When the link (`/c/<12 chars>`) is pasted into iMessage, WhatsApp, Slack, Discord or X, it shows a share card drawn for that cart (`/c/<token>/card.png`, 1200×630 PNG, `src/sharecard.js`). The card has Spot the mascot asking "psst… can you spot Kyle?", the item, the store and the price. It redraws to "Mom spotted Kyle!" with a happy mascot once the cart is paid. The pay page is a short chat from Spot, not a form. The mascot's eyes follow the pointer, and paying ends in confetti.
-3. **Pay.** Stripe Payment Element: Apple Pay, Google Pay or card. The payer pays the cart plus a 4% fee.
-4. **Card.** When `payment_intent.succeeded` arrives, Spot issues a Stripe Issuing virtual card. The requester's private page shows it.
-5. **Merchant lock.** Every charge on the card hits the `issuing_authorization.request` webhook. Spot approves it only if the card is unused, the merchant name or URL matches the cart's store, and the amount is within the cart total plus 5% (max $15) for tax drift. The card also carries a Stripe `all_time` spending limit as a backstop if the webhook is down. The first approved charge completes the cart, and every later charge is declined.
+3. **Pay: the payer buys the cart from Spot.** Stripe Payment Element: Apple Pay, Google Pay or card. The price is the cart, plus a cushion for tax and price changes (5%, max $15, and whatever the store doesn't charge goes back), plus a 4% fee. Before taking money, Spot checks it can actually order from that store (a UCP store, or the checkout agent is on); if not, the payer is pointed to the Venmo / Cash App handoff. The payer gets a receipt from Spot (`/c/<token>/receipt?p=…`, signed) with a cancel-for-a-full-refund button that works until the order is placed.
+4. **Spot's card.** When `payment_intent.succeeded` arrives, Spot issues a single-use Stripe Issuing virtual card to **its own company cardholder** (`STRIPE_ISSUING_CARDHOLDER`). Nobody outside Spot ever sees it: there is no reveal route, and the requester's page only learns that ordering can start.
+5. **Merchant lock.** Every charge on the card hits the `issuing_authorization.request` webhook. Spot approves it only if the card is unused, the merchant isn't cash-like (ATMs, money transfer, stored value, quasi-cash, gambling, pawn and more, checked by Stripe category and MCC), the merchant's name or domain matches the cart's store (never a single generic word), and the amount fits what the payer paid for the goods. The card carries the same limits as Stripe spending controls (`all_time` limit plus `blocked_categories`) in case the webhook is down. The first approved charge completes the cart, and every later charge is declined. Carts can't contain gift cards, prepaid cards or other cash equivalents.
+6. **After the store charges** (`issuing_transaction.created`, `issuing_authorization.updated`): Spot cancels the card, and whatever the store didn't charge goes back to the payer as a partial refund. A store refund for a return is passed on to the payer. A reversed authorization refunds the payer in full. An expired one waits 30 days for a late capture first. Each Stripe transaction is recorded once (`issuing_txns`), so a webhook delivered twice never refunds twice. The fee is only refunded with the whole payment.
+7. **Disputes** (`charge.dispute.created`) stop Spot's card, block the payer's card fingerprint, and show up on /admin.
 
-Cart states: `open → paid → card_issued → completed`, plus `canceled`, `expired` (72h) and `refunded`. Handoff carts go `open → completed` when the requester taps "I got the money". Transitions use a compare-and-set on the status column, so duplicate webhooks can't issue two cards or approve two charges.
+Cart states: `open → paid → card_issued → completed`, plus `canceled`, `expired` (72h), `refunding` and `refunded`. Handoff carts go `open → completed` when the requester taps "I got the money". Transitions use a compare-and-set on the status column, so duplicate webhooks can't issue two cards or approve two charges.
+
+**Refunds never race a charge.** A full refund first moves the cart to `refunding` (so any authorization arriving from then on is declined), then cancels the card, then refunds the payment. If Stripe fails midway, the cart stays `refunding`, and the sweeper retries every 5 minutes with the same idempotency key. A card cart Spot hasn't ordered within `SPOT_ORDER_DEADLINE_HOURS` (72) is refunded automatically.
 
 ## Order it for me
 
@@ -56,17 +60,17 @@ Once a cart is paid and its card exists, the requester can have Spot place the o
   2. `POST /checkout-sessions` with the items and the buyer.
   3. `PUT` the shipping address, then `PUT` again choosing the cheapest option for each package.
   4. The requester confirms the store's own total.
-  5. The one-time card goes only to the store's card tokenizer (the shared UCP Tokenization API, bound to that checkout).
+  5. Spot's card is fetched only now, after the confirm, and goes only to the store's card tokenizer (the shared UCP Tokenization API, bound to that checkout, over HTTPS).
   6. `POST …/complete` places the order, and the store returns its order id and link.
 
-  If the store wants a person (`requires_escalation`, a 3-D Secure challenge, or no card tokenizer Spot can use), the requester gets the store's `continue_url`: its checkout with the cart and address already filled in. If the store's catalog doesn't know an item, Spot falls back to the routes below. UCP is still a draft spec, and this targets version `2026-08-25`.
+  If the store wants a person (`requires_escalation`, a 3-D Secure challenge, or no card tokenizer Spot can use), the order stops as "needs you": the requester can retry, and if Spot can't order it in time the payer is refunded. If the store's catalog doesn't know an item, Spot falls back to the routes below. UCP is still a draft spec, and this targets version `2026-08-25`.
 - **Shopify stores (no AI):** `src/fulfill/shopify.js` reads the store's `/products/<handle>.js`, picks the variant that matches the captured size or colour, and builds a cart permalink with contact and shipping prefilled. Shopify doesn't let anyone pay on a store they don't own without a person or a browser on the payment step, so the agent (or the requester) does that part.
 - **Checkout agent:** `src/fulfill/agent.js` runs Claude against a real Chromium page through a small tool set (`navigate`, `click`, `type`, `select`, `fill_payment`, `wait`, `ready_to_place_order`, `order_placed`, `need_human`). The page is described as text, with a ref for every interactive element, across iframes. Guardrails are enforced in code:
-  - The model never sees the card. `fill_payment` types it server-side, page snapshots mask payment fields and card-like numbers, and `type` refuses payment fields.
+  - The model never sees the card. `fill_payment` fetches it at that moment and types it server-side, page snapshots mask payment fields and card-like numbers, and `type` refuses payment fields. The confirm screenshot the requester sees has card fields and payment iframes painted over (`CARD_FIELDS`). If a store checks the billing address, the agent uses Spot's (`SPOT_CARD_BILLING`).
   - Top-level pages must stay on the store's own site (plus Shopify checkout hosts). Anything else is undone.
   - The store's total must fit the card limit before the requester is asked.
   - Nothing is placed until the requester taps **Place order** on their page, which shows a screenshot of the filled-in checkout and the total. The agent pauses up to 10 minutes.
-  - There are caps on steps and time. Whenever it's stuck (a CAPTCHA, a required login, out of stock), it hands back to the requester with a prefilled checkout link and the card.
+  - There are caps on steps and time. Whenever it's stuck (a CAPTCHA, a required login, out of stock), it stops as "needs you" for a retry. Nobody is ever handed the card.
 - The requester page has the shipping form, live progress, the confirm step and the result. State is on `cart.fulfillment`. The browser session is in memory, so a restart mid-checkout ends that attempt.
 
 ## Accounts
@@ -154,7 +158,8 @@ The user opens the link, checks the address, and pays with Apple Pay, Google Pay
 
 On the finish page you add who's flying (names as on your ID, date of birth), plus an email and phone for the airline. Spot re-checks the fare. If the price moved, the page shows the new total before you're charged. Then you pay, and Spot books through Duffel and shows the confirmation code.
 
-- **No one-time card:** Spot pays the airline from its Duffel balance, so keep the balance topped up in the Duffel dashboard.
+- **No card:** Spot pays the airline from its Duffel balance, so keep the balance topped up in the Duffel dashboard.
+- **Live flights are off by default:** with a live Stripe key (`sk_live_`), `create_flight_ask` refuses unless `SPOT_FLIGHTS_LIVE=on`. Spot buying tickets for travelers makes it a seller of travel, so settle registration (or Duffel's customer-card method, where the airline is merchant of record) first.
 - **If the airline refuses the booking,** you're refunded straight away.
 - **The link only lives as long as the fare is held,** usually about 20–30 minutes.
 - **Fares are USD only for now.**
@@ -204,16 +209,21 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_FIRST_PAYMENT_HOLD_CENTS` | `40000` | A card's first payment above this is held (not for "for me" carts) |
 | `STRIPE_SECRET_KEY` | | Turns on Stripe mode |
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
-| `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded` and `issuing_authorization.request` |
+| `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded`, `issuing_authorization.request`, `issuing_authorization.updated`, `issuing_transaction.created` and `charge.dispute.created` |
+| `STRIPE_ISSUING_CARDHOLDER` | | Spot's own company cardholder (`ich_…`), made once in the Stripe dashboard. Every card is issued to it |
+| `SPOT_CARD_BILLING` | | The company cardholder's billing address as `line1|city|state|zip`, used when a store checks it |
+| `SPOT_ORDER_DEADLINE_HOURS` | `72` | A paid card cart Spot hasn't ordered by then is refunded in full |
+| `SPOT_FLIGHTS_LIVE` | off | With a live Stripe key, flights are refused unless this is `on` |
 
-In Stripe mode, the card needs the requester's billing address (Issuing cardholders require one). Making a link never asks for it: once someone pays, the requester's page asks for it and the card issues right away. The payer's name comes from their Apple Pay / Google Pay / card details, and the pay page shows wallet buttons first.
+The payer's name comes from their Apple Pay / Google Pay / card details, and the pay page shows wallet buttons first.
 
 ## What's verified and what isn't
 
-- **Verified:** 22 tests (`npm test`) cover validation, fees, the state machine, merchant matching, authorization limits, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
+- **Verified:** 100+ tests (`npm test`) cover validation, fees and the cushion, the state machine, merchant matching, blocked categories, gift-card rules, authorization limits, the refund race, captures, partial refunds, returns, reversals, disputes, the payer cancel link, the order deadline, screenshot masking, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
 - **Not yet run against real Stripe.** The Stripe provider is written against the documented API but hasn't been run with test keys. Issuing also has to be enabled on the Stripe account, which is an application process.
 - **Before live money:**
-  - Show card numbers with Stripe Issuing Elements, not `expand: ['number']`, which is test-mode only.
+  - Counsel's sign-off that Spot as the seller isn't money transmission where it launches, a sales-tax view on reselling, and Stripe's approval of the Issuing use case (Spot's own cards to buy what customers bought from Spot).
+  - PCI DSS: Spot's checkout handles its own card number in server memory (fetched at the payment step, never logged or stored, masked in screenshots), which is in PCI scope. Get an assessor's view (likely SAQ D).
   - Move the manage key out of the URL into a login or magic link.
   - Add KYC on requesters and a payout hold for new accounts.
   - Move to Postgres once there's more than one instance.

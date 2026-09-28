@@ -187,7 +187,7 @@ test('UCP store: ordered through its checkout API, no browser, agent off', async
   assert.ok(!JSON.stringify(complete.body).includes(tok.body.credential.number), 'the card number only goes to the tokenizer');
 });
 
-test('UCP store with no handler Spot can pay: requester gets the prefilled checkout', async (t) => {
+test('UCP store with no handler Spot can pay: needs a retry (no card is handed out)', async (t) => {
   const store = await startUcpStore({ tokenizer: false });
   const { call, token, k, until } = await setup(t, store);
   await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
@@ -195,7 +195,7 @@ test('UCP store with no handler Spot can pay: requester gets the prefilled check
   assert.equal(f.state, 'needs_you');
   assert.equal(f.method, 'ucp');
   assert.equal(f.manual_url, `${store.origin}/checkout/chk_1`);
-  assert.match(f.reason, /ready with your cart and address/);
+  assert.match(f.reason, /can't take Spot's card automatically/);
 });
 
 test('UCP links are web links only', async (t) => {
@@ -212,7 +212,7 @@ test('items the UCP catalog does not know fall back to the usual route', async (
   await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
   const f = await until(['needs_you']);
   assert.equal(f.method, 'agent');
-  assert.match(f.reason, /Automatic checkout is off/);
+  assert.match(f.reason, /Automatic ordering is off/);
   assert.ok(!store.log.some((r) => r.url === '/ucp/checkout-sessions'), 'no checkout was opened');
 });
 

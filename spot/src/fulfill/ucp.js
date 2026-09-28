@@ -14,7 +14,7 @@
 // served at /.well-known/ucp and named in the UCP-Agent header. Whenever the
 // store needs a person (requires_escalation, no handler Spot can pay with,
 // a 3-D Secure challenge), the requester gets the store's continue_url: the
-// checkout with cart and address already in it, plus their one-time card.
+// checkout with cart and address already in it; Spot can't pay there, so it's retried or refunded.
 import { randomUUID } from 'node:crypto';
 import { assertPublicHost } from '../capture.js';
 import { usd } from '../cart.js';
@@ -241,7 +241,7 @@ export async function runUcpCheckout(opts) {
   return out;
 }
 
-async function checkout({ discovery, cart, shipping, card, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false }) {
+async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false }) {
   const call = ucpClient({ endpoint: discovery.endpoint, profileUrl, fetchImpl, allowPrivate });
   if (!discovery.lookup) return null;
   const resolved = await resolveItems(call, cart).catch(() => null);
@@ -273,7 +273,7 @@ async function checkout({ discovery, cart, shipping, card, profileUrl, limit, co
 
   const handler = payableHandler(co);
   if (!handler) {
-    return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `${cart.merchant.name}'s checkout is ready with your cart and address. Pay there with your one-time card`, manual_url: manual };
+    return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `${cart.merchant.name}'s checkout can't take Spot's card automatically`, manual_url: manual };
   }
 
   const lines = co.line_items.map((li) => `${li.quantity}× ${li.item?.title || 'item'}`).join(', ');
@@ -289,18 +289,20 @@ async function checkout({ discovery, cart, shipping, card, profileUrl, limit, co
   progress('Placing your order');
   try {
     const tok = await guard(`${handler.endpoint}/tokenize`, allowPrivate);
+    // Fetched only now, after the requester confirmed, and dropped after.
+    const card = await getCard();
     const tr = await send(fetchImpl, tok, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json', 'ucp-agent': `profile="${profileUrl}"` },
       body: JSON.stringify({
-        credential: { type: 'pan', number: card.number, expiry_month: card.exp_month, expiry_year: card.exp_year, cvc: card.cvc, name: cart.requester.name },
+        credential: { type: 'pan', number: card.number, expiry_month: card.exp_month, expiry_year: card.exp_year, cvc: card.cvc, name: billing?.name || 'Spot' },
         binding: { type: 'dev.ucp.shopping.checkout', id: co.id },
         ...(handler.config?.business_id ? { identity: { access_token: handler.config.business_id } } : {}),
       }),
     });
     const { token } = await tr.json().catch(() => ({}));
     if (!tr.ok || !token) throw new UcpError("The store's card processor didn't accept the card");
-    const b = cart.requester.billing;
+    const b = billing;
     co = await call('POST', `/checkout-sessions/${encodeURIComponent(co.id)}/complete`, {
       payment: {
         instruments: [{

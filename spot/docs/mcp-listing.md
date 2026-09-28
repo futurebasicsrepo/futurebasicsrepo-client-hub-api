@@ -48,7 +48,7 @@ Most of these pick things up from the official registry. The rest take a short f
 **Description:**
 Spot is the pay-for-me layer for AI shopping. Agents can build carts but can't pay, and Spot gives them two ways to finish:
 
-- **Spot me:** turn any cart into a link someone else pays with one tap (Apple Pay, Google Pay or card). Their money goes onto a one-time card locked to that store and amount, so it can only buy that cart.
+- **Spot me:** turn any cart into a link someone else pays with one tap (Apple Pay, Google Pay or card). They buy exactly that cart from Spot, and Spot orders it and ships it to your user, so it can only buy that cart.
 - **Finish for me:** your agent finds it (any store's cart, or a real flight), holds the price, and texts you a link. You check it, tap Apple Pay, and Spot orders or books it. Nothing is spent without a person.
 
 **Tools:**

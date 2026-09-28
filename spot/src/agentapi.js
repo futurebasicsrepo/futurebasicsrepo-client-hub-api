@@ -89,17 +89,18 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       open: cart.for === 'self'
         ? 'Waiting for the requester to finish on their phone: confirm shipping, pay, then tap Place order.'
         : `Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`,
-      paid: 'Paid. The requester is setting up their card; check back shortly.',
+      paid: 'Paid. Spot is getting ready to order; check back shortly.',
       card_issued: f?.state === 'awaiting_confirm'
         ? `The store's checkout is filled in (${usd(f.total_cents)}). The requester must confirm the final tap on their Spot page.`
         : f?.state === 'working' || f?.state === 'starting'
           ? 'Placing the order at the store now.'
           : f?.state === 'needs_you'
-            ? `Automatic checkout stopped: ${f.reason}. The requester can check out themselves from their Spot page.`
-            : 'Paid and the one-time card is ready. Call order_spot_ask with the shipping address to place the order.',
-      completed: f?.state === 'placed' ? `Ordered${f.order_number ? ` (order ${f.order_number})` : ''}. Done.` : 'Done: the card was used at the store.',
+            ? `Automatic ordering stopped: ${f.reason}. Call order_spot_ask again to retry. If Spot can't order it within 3 days, the payer is refunded in full.`
+            : 'Paid. Call order_spot_ask with the shipping address and Spot buys it from the store.',
+      completed: f?.state === 'placed' ? `Ordered${f.order_number ? ` (order ${f.order_number})` : ''}. Done.` : 'Done: the store charged for the order.',
       expired: 'The link expired before anyone paid.',
       canceled: 'The requester canceled this ask.',
+      refunding: 'Refunding the payer.',
       refunded: 'The payer was refunded.',
     }[cart.status];
     return {
@@ -188,6 +189,10 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     quota(agent, 'asks', QUOTA.asks);
     if (b.notify?.email || b.notify?.phone) quota(agent, 'messages', QUOTA.messages);
     if (!flights) throw new CartError('Flights are not enabled on this server', 404);
+    // Selling flights with real money waits on a seller-of-travel decision
+    // (registration, or the airline as merchant of record via Duffel). Until
+    // then, live Stripe keys keep flights off unless SPOT_FLIGHTS_LIVE=on.
+    if (String(env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') && env.SPOT_FLIGHTS_LIVE !== 'on') throw new CartError('Flights aren’t available on Spot yet.', 403);
     if (!b.offer_id) throw new CartError('offer_id is required (from search_flights)');
     const offer = await flights.offer(String(b.offer_id));
     const { cart, manageKey } = spot.createFlight(
@@ -292,7 +297,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; their money goes onto a one-time card that only works at that store. Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -350,7 +355,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Order a paid Spot cart',
         description:
-          "Once someone has paid (status card_issued), place the order at the store, shipped to the given address. Spot fills the store's checkout with the one-time card; the requester confirms the final tap on their Spot page. If the store blocks automation, they get a prefilled checkout link instead.",
+          "Once someone has paid (status card_issued), place the order at the store, shipped to the given address. Spot buys it from the store with its own card; the requester confirms the final tap on their Spot page. If the store blocks automation, call it again to retry; if Spot can't order within 3 days the payer is refunded.",
         inputSchema: { ask_id: z.string(), shipping: shippingShape },
       },
       async ({ ask_id, shipping }) => {

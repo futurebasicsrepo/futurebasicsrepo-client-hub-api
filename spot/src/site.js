@@ -315,7 +315,7 @@ ${storySection()}
     <p class="lead reveal">“Find me a flight to SFO on the 17th.” Your assistant finds it, holds the price and texts you a Spot. You open it, check it and tap Apple Pay. Done.</p>
     <ul class="ticks reveal">
       <li><b>Real flights.</b> Live fares from the airlines, booked the second you pay, with your confirmation code right there.</li>
-      <li><b>Any store’s cart.</b> Your AI puts the cart together, and Spot orders it with a one-time card.</li>
+      <li><b>Any store’s cart.</b> Your AI puts the cart together, and Spot buys it from the store and ships it to you.</li>
       <li><b>Price held, clock showing.</b> The link counts down while the fare or price is held, so nothing changes under you.</li>
       <li><b>You always have the last tap.</b> Your AI can’t spend a cent without you.</li>
     </ul>
@@ -343,7 +343,7 @@ ${storySection()}
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
   <div class="feats">
-    <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>Their money goes onto a one-time card locked to that store and that amount. It can’t be cashed out, so saying yes is easy.</p></div>
+    <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>They buy exactly that cart from Spot, and Spot orders it and ships it to you. No cash changes hands, so saying yes is easy.</p></div>
     <div class="feat reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
     <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store.</h3><p>Links, screenshots, or a few words. If you can buy it online, you can Spot it.</p></div>
     <div class="feat reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
@@ -408,10 +408,10 @@ ${chatWallSection()}
   <p class="kicker reveal">Safety</p>
   <h2 class="reveal">Built so saying yes is safe.</h2>
   <div class="safe">
-    <div class="reveal"><h3>Locked cards</h3><p>One store, one amount, one use. Other charges are declined.</p></div>
-    <div class="reveal"><h3>No cash-outs</h3><p>Money can’t be turned into cash, which keeps stolen cards out.</p></div>
-    <div class="reveal"><h3>Card stays hidden</h3><p>Spot’s checkout assistant fills the card in without ever seeing the number.</p></div>
-    <div class="reveal"><h3>You have the last tap</h3><p>Nothing is ordered until you confirm. Changed your mind? Refund in one tap.</p></div>
+    <div class="reveal"><h3>Exactly that cart</h3><p>Spot buys only those items, from that store, with a single-use card nobody else ever sees. Other charges are declined.</p></div>
+    <div class="reveal"><h3>No cash-outs</h3><p>No cash, cards or gift cards change hands, which keeps stolen cards out.</p></div>
+    <div class="reveal"><h3>Money back, automatically</h3><p>Canceled, not orderable, or cheaper at the store? The difference goes straight back to whoever paid.</p></div>
+    <div class="reveal"><h3>You have the last tap</h3><p>Nothing is ordered until you confirm. Changed your mind? Cancel for a full refund.</p></div>
   </div>
 </div></section>
 
@@ -421,13 +421,13 @@ ${noteSection(buddyNoId(true))}
   <p class="kicker reveal" style="text-align:center">FAQ</p>
   <h2 class="reveal" style="text-align:center">Questions</h2>
   <div class="faq">
-    <details><summary>What does it cost?</summary><p>The person paying adds a 4% Spot fee, shown before they pay. Choosing “send it straight to my Venmo or Cash App” is free, because the money never goes through Spot.</p></details>
-    <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest, and stores that support agent checkout (the Universal Commerce Protocol) are ordered straight through their own checkout. Some stores block automatic checkout, and then Spot hands you a ready-to-go checkout link and your one-time card instead.</p></details>
+    <details><summary>What does it cost?</summary><p>The person paying adds a 4% Spot fee, plus a small allowance for tax and price changes (up to 5%, at most $15) that comes back if the store doesn’t charge it. Everything is shown before they pay. Choosing “send it straight to my Venmo or Cash App” is free, because the money never goes through Spot.</p></details>
+    <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest, and stores that support agent checkout (the Universal Commerce Protocol) are ordered straight through their own checkout. Before anyone pays, Spot checks it can order from that store. If a store blocks it later and Spot can’t order within 3 days, whoever paid gets a full refund automatically.</p></details>
     <details><summary>Can my AI book flights with Spot?</summary><p>Yes. Add Spot to your assistant and ask for a flight. It searches live fares, holds the one you like and texts you a link. You add who’s flying, tap Apple Pay, and Spot books it with the airline and shows your confirmation code. If the airline can’t book it, you’re refunded right away.</p></details>
     <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
-    <details><summary>Why a one-time card instead of cash?</summary><p>It’s what makes people comfortable saying yes: the money can only buy what you asked for. It also shuts out the fraud that plagues cash transfers.</p></details>
-    <details><summary>What if I don’t end up buying it?</summary><p>You can refund the person who paid in one tap from your Spot page.</p></details>
+    <details><summary>Why does Spot buy it instead of sending money?</summary><p>It’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
+    <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid.</p></details>
     <details><summary>Is Spot live?</summary><p>Spot is in early access. ${provider === 'sandbox' ? 'Right now it runs in test mode, so no real money moves. Try the whole flow for free.' : 'Payments run on Stripe.'}</p></details>
   </div>
 </div></section>

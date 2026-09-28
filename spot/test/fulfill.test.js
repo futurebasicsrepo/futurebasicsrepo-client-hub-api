@@ -70,12 +70,14 @@ async function setup(t, { env = { SPOT_AGENT: 'on' }, model } = {}) {
       await new Promise((z) => setTimeout(z, 250));
     }
   };
-  return { store, model: m, call, cart, k, manage, waitFor };
+  return { app, store, model: m, call, cart, k, manage, waitFor };
 }
 
 test('order it for me: shopify cart → agent fills checkout → requester confirms → placed', { timeout: 90_000 }, async (t) => {
-  const { store, model, call, cart, k, waitFor } = await setup(t);
-  const card = (await call('POST', `/v1/carts/${cart.token}/manage/reveal`, { k })).body;
+  const { app, store, model, call, cart, k, waitFor } = await setup(t);
+  // Spot's card, as the checkout fetches it at the payment step (never via any route).
+  assert.equal((await call('POST', `/v1/carts/${cart.token}/manage/reveal`, { k })).status, 404);
+  const card = await app.spot.provider.revealCard(app.spot.load(cart.token));
 
   assert.equal((await call('POST', `/v1/carts/${cart.token}/manage/order`, { k, shipping: { name: 'Kyle' } })).status, 400, 'shipping is validated');
   const started = await call('POST', `/v1/carts/${cart.token}/manage/order`, { k, shipping });
