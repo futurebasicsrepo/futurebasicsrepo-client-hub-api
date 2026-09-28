@@ -125,7 +125,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   </div>
   <div class="err" id="capErr"></div>
   <div class="card" id="basket" hidden></div>
-  <p class="hint">Someone taps your link, covers it, and you check out with a card that only works at that store.</p>
+  <p class="hint">Someone taps your link and covers it, and the store gets the order. You can put carts from up to 5 stores in one link.</p>
 </section>
 
 <section id="check" hidden>
@@ -289,7 +289,7 @@ const go=$('#go');if(go){const g=()=>{const r=go.getBoundingClientRect();look(r.
 function celebrate(payer){
   buddy.querySelector('.open').style.display='none';buddy.querySelector('.joy').style.display='';
   $('.buddy .hi').textContent='yay!';
-  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you\\'re the best'+(payer?', '+esc(payer):'')+' 🧡</div><div class="bub" style="animation-delay:.45s">I just told '+${json(esc(name))}+'. they can check out now.</div>');
+  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you\\'re the best'+(payer?', '+esc(payer):'')+' 🧡</div><div class="bub" style="animation-delay:.45s">I just told '+${json(esc(name))}+'. '+${json(cart.settle === 'direct' ? 'the store has the order.' : 'Spot orders it for them now.')}+'</div>');
   const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();
   const c=document.createElement('div');c.className='confetti';const cols=['#ff5a36','#ffb347','#1d8a52','#4b7bff','#ffd23f'];
   for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}

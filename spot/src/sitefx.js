@@ -61,7 +61,7 @@ export function storySection() {
         <h2>One little link, <span class="scrib">start to finish${underlineMark}</span></h2>
         <ol class="beats">
           <li data-beat="0" data-n="1"><b>You spot it.</b> Paste a link, a screenshot, or just say it. Spot turns it into a cute card.</li>
-          <li data-beat="1" data-n="2"><b>Mom taps.</b> One tap of Apple Pay. Her money becomes a card that only works at that store.</li>
+          <li data-beat="1" data-n="2"><b>Mom taps.</b> One tap of Apple Pay. Her money can only buy that cart, from one store or several.</li>
           <li data-beat="2" data-n="3"><b>It ships.</b> Spot fills in the checkout, you tap Place order, and a box is on its way.</li>
         </ol>
         <div class="progress" aria-hidden="true"><i></i></div>
