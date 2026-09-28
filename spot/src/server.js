@@ -22,9 +22,10 @@ import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { registerAccounts } from './accounts.js';
 import { accountPage, signinPage } from './accountpage.js';
+import { registerOAuth } from './oauth.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, flights = createFlights({ env }) } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }) } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
@@ -129,7 +130,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('text/plain').send(env.MCP_REGISTRY_AUTH);
   });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
-  app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, '') })));
+  app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available })));
   app.get('/account', async (req, reply) => {
     if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/account');
     reply.header('cache-control', 'no-store');
@@ -363,6 +364,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   registerAdmin(app, { db, spot, env, urlFor });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
+  const oauth = registerOAuth(app, { db, env, urlFor, log: app.log, ...(oauthFetch ? { fetchImpl: oauthFetch } : {}) });
 
   // ─── Inbound texts (Twilio) ───────────────────────────────────────────────
   // Point the Twilio number's "A message comes in" webhook here. STOP-type

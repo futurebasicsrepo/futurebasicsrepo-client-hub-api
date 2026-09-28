@@ -20,6 +20,38 @@ Work through it in order. Each step says where to click and exactly what to set.
    - `SPOT_CONTACT_EMAIL` = `hello@spotmeplease.com` (or whatever you'll read)
 5. **Make that inbox real.** Use Cloudflare Email Routing (free) or your registrar's email forwarding to send hello@spotmeplease.com to your inbox.
 
+## 1a. Sign in with Google and Facebook (20 minutes)
+
+Email-code sign-in works as soon as Resend is set up (step 5). These two buttons are optional, and each one appears once its keys are set.
+
+**Google**
+1. console.cloud.google.com → create a project called "Spot".
+2. APIs & Services → OAuth consent screen:
+   - User type: External
+   - App name: Spot
+   - Support email: yours
+   - Authorized domain: `spotmeplease.com`
+   - Privacy link: https://spotmeplease.com/privacy
+   - Terms link: https://spotmeplease.com/terms
+   - Scopes: `openid`, `email`, `profile`
+   - Publish the app.
+3. Credentials → Create credentials → OAuth client ID → Web application. Authorized redirect URI: `https://spotmeplease.com/auth/google/callback`.
+4. Set the Railway variables `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+
+**Facebook (Meta)**
+1. developers.facebook.com → My Apps → Create app. Use case: "Authenticate and request data from users with Facebook Login".
+2. Facebook Login → Settings → Valid OAuth Redirect URIs: `https://spotmeplease.com/auth/facebook/callback`.
+3. App settings → Basic:
+   - App domain: `spotmeplease.com`
+   - Privacy Policy URL: https://spotmeplease.com/privacy
+   - Terms: https://spotmeplease.com/terms
+   - User data deletion → Instructions URL: https://spotmeplease.com/privacy#delete
+   - Pick a category and add an icon.
+4. Permissions: `email` and `public_profile` (standard access is enough). Switch the app to **Live**.
+5. Set the Railway variables `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`.
+
+**Both:** set `SPOT_SESSION_SECRET` to the output of `openssl rand -hex 32`, so a redeploy doesn't cancel sign-ins in progress.
+
 ## 1b. Admin page (2 minutes)
 
 1. Make a long random token on your computer: `openssl rand -hex 24`.
@@ -63,11 +95,12 @@ US texting needs an approved **A2P 10DLC** brand and campaign. Until they're app
 
 1. **Buy a number:** twilio.com → Phone Numbers → Buy a number (a US local number).
 2. **Register the brand:** Messaging → Regulatory compliance → A2P 10DLC. You'll need your legal business name, EIN and address.
-3. **Register the campaign.** Use case: *Account notifications* (or *Customer care*). Paste this:
-   - **Description:** Spot sends transactional texts only to people who ask for them: a private link to review and pay for a shopping cart or flight that their AI assistant prepared for them, and updates about that order or trip. No marketing.
+3. **Register the campaign.** Use case: *Mixed* (sign-in codes plus account notifications). Paste this:
+   - **Description:** Spot sends transactional texts only to people who ask for them: one-time sign-in codes when they choose to sign in by text, and a private link to review and pay for a shopping cart or flight that their AI assistant prepared for them, with updates about that order or trip. No marketing.
+   - **Sample 0 (sign-in):** `Spot: 482913 is your sign-in code. It works for 10 minutes. Don't share it. Reply STOP to opt out.`
    - **Sample 1:** `Spot: Your cart is ready 🛒 Dunk Low from Nike, $119.60. Finish on your phone: https://spotmeplease.com/c/Ab12Cd34Ef56/manage?k=… Reply STOP to opt out.`
    - **Sample 2:** `Spot: Your flight is ready ✈️ AUS → SFO · Fri, Oct 17, Delta, $258.96. The fare only holds for a bit. Finish on your phone: https://spotmeplease.com/c/Gh78Ij90Kl12/manage?k=… Reply STOP to opt out.`
-   - **How people opt in:** A user asks their AI assistant, which is connected to Spot, to text them a link, and gives their own mobile number in that request. Spot's terms only allow agents to text a user's own number with their permission (https://spotmeplease.com/terms#texts). Every message names Spot and says how to opt out.
+   - **How people opt in:** For sign-in codes, a user types their own mobile number on https://spotmeplease.com/signin, chooses Text, and taps "Text me a code". The page shows "Msg & data rates may apply. Reply STOP to opt out." and links the Terms. For links, a user asks their AI assistant, which is connected to Spot, to text them a link, and gives their own mobile number in that request. Spot's terms only allow agents to text a user's own number with their permission (https://spotmeplease.com/terms#texts). Every message names Spot and says how to opt out.
    - **Opt-out message:** `Spot: You're unsubscribed and won't get more texts. Reply START to resubscribe.`
    - **Help message:** `Spot: order and trip texts you asked for. Help: hello@spotmeplease.com. Msg & data rates may apply. Reply STOP to opt out.`
    - **Privacy and terms links:** https://spotmeplease.com/privacy and https://spotmeplease.com/terms

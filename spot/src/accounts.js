@@ -16,6 +16,7 @@ import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 
 import { CartError } from './cart.js';
 import { validateShipping } from './fulfill/index.js';
 import { ownerCart } from './spot.js';
+import { normalizePhone } from './notify.js';
 
 export const SESSION_COOKIE = 'spot_session';
 const CODE_TTL = 10 * 60_000;
@@ -26,6 +27,36 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export function sessionUserId(db, req) {
   const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([A-Za-z0-9_-]{43})`));
   return m ? db.sessions.userId(sha(m[1])) : null;
+}
+
+// The account for a verified email, made on first sign-in.
+export function userForEmail(db, email) {
+  let user = db.users.byEmail(email);
+  if (!user) {
+    db.users.create(randomUUID(), email);
+    user = db.users.byEmail(email);
+  }
+  return user;
+}
+
+// Text-message sign-in: the account is found by its phone identity; a new
+// one starts without an email (added later, when a receipt needs it).
+export function userForPhone(db, phone) {
+  let id = db.identities.userId('phone', phone);
+  if (!id) {
+    id = randomUUID();
+    db.users.create(id, null);
+    db.users.save(id, { phone });
+    db.identities.add('phone', phone, id);
+  }
+  return db.users.byId(id);
+}
+
+export function startSession(db, req, reply, urlFor, userId) {
+  const token = randomBytes(32).toString('base64url');
+  db.sessions.create(sha(token), userId, Date.now() + SESSION_TTL);
+  const secure = urlFor(req, '').startsWith('https:') ? '; Secure' : '';
+  reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}${secure}`);
 }
 
 export function registerAccounts(app, { db, env, notifier, provider, urlFor, spot }) {
@@ -50,8 +81,23 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
   // flow can be tried. Never in Stripe mode.
   const showCode = () => provider.name === 'sandbox' && !env.RESEND_API_KEY;
 
+  const smsReady = () => Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM);
+
   app.post('/v1/auth/start', async (req) => {
     json(req);
+    if (req.body?.phone !== undefined) {
+      const phone = normalizePhone(req.body.phone);
+      if (!phone) throw new CartError('That number looks wrong. Include the area code.');
+      limit(`ip:${req.ip}`, 20, 3600_000);
+      limit(`phone:${phone}`, 5, 3600_000);
+      if (db.optouts.has(phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number, or sign in with email.', 409);
+      const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+      db.codes.put(phone, sha(`${phone}:${code}`), Date.now() + CODE_TTL);
+      if (provider.name === 'sandbox' && !smsReady()) return { sent: 'screen', code };
+      const sent = await notifier.sendSignInText(phone, code, new URL(urlFor(req, '/')).hostname);
+      if (sent !== 'sent') throw new CartError('We couldn’t text that number just now. Try again, or use email.', 503);
+      return { sent: 'text' };
+    }
     const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
     if (!EMAIL.test(email)) throw new CartError('That email looks wrong');
     limit(`ip:${req.ip}`, 20, 3600_000);
@@ -65,7 +111,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
 
   app.post('/v1/auth/verify', async (req, reply) => {
     json(req);
-    const email = String(req.body?.email || '').trim().toLowerCase();
+    const phone = req.body?.phone !== undefined ? normalizePhone(req.body.phone) : null;
+    const email = phone || String(req.body?.email || '').trim().toLowerCase();
     const code = String(req.body?.code || '').replace(/\D/g, '');
     limit(`verify:${req.ip}`, 30, 3600_000);
     const row = db.codes.get(email);
@@ -77,15 +124,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw wrong();
     db.codes.remove(email);
 
-    let user = db.users.byEmail(email);
-    if (!user) {
-      db.users.create(randomUUID(), email);
-      user = db.users.byEmail(email);
-    }
-    const token = randomBytes(32).toString('base64url');
-    db.sessions.create(sha(token), user.id, Date.now() + SESSION_TTL);
-    const secure = urlFor(req, '').startsWith('https:') ? '; Secure' : '';
-    reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}${secure}`);
+    const user = phone ? userForPhone(db, phone) : userForEmail(db, email);
+    startSession(db, req, reply, urlFor, user.id);
     return { user: profile(user) };
   });
 
@@ -113,9 +153,9 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     json(req);
     const user = me(req);
     const b = req.body || {};
-    const next = { name: user.name || null, shipping: user.shipping || null, travelers: user.travelers || [] };
+    const next = { phone: user.phone || null, name: user.name || null, shipping: user.shipping || null, travelers: user.travelers || [] };
     if (b.name !== undefined) next.name = String(b.name || '').trim().slice(0, 60) || null;
-    if (b.shipping !== undefined) next.shipping = b.shipping ? validateShipping({ email: user.email, ...b.shipping }) : null;
+    if (b.shipping !== undefined) next.shipping = b.shipping ? validateShipping({ ...b.shipping, email: b.shipping.email || user.email || '' }) : null;
     if (b.travelers !== undefined) next.travelers = cleanTravelers(b.travelers);
     db.users.save(user.id, next);
     return { user: profile(db.users.byId(user.id)) };
@@ -144,7 +184,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const slug = String(req.body?.agent_name || 'my-ai').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'my-ai';
     const name = `${slug}-${randomBytes(3).toString('hex')}`;
     const key = `spot_${randomBytes(24).toString('base64url')}`;
-    db.addKey(sha(key), name, user.email, user.id);
+    db.addKey(sha(key), name, user.email || user.phone || 'unknown', user.id);
     reply.code(201);
     return { api_key: key, name, mcp_url: urlFor(req, '/mcp'), keys: db.users.keys(user.id) };
   });
@@ -160,7 +200,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
 }
 
 function profile(u) {
-  return { email: u.email, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [] };
+  return { email: u.email || null, phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [] };
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
