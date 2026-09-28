@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -25,9 +26,10 @@ import { accountPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
+import { createBackups, restoreOnBoot } from './backup.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }) } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
@@ -61,6 +63,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   app.addHook('onClose', async () => fulfiller.close());
   const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  // Nightly database backups (started from the entry point, not in tests).
+  const backups = createBackups({ db, env, dir: backupDir || join(dirname(env.SPOT_DB || './data/spot.db'), 'backups'), notifier, log: app.log, ...(backupFetch ? { fetchImpl: backupFetch } : {}) });
+  app.decorate('backups', backups);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
   spot.emit = (kind, id, extra) => events.emit(kind, id, extra);
   const baseUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -366,7 +371,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
-  registerAdmin(app, { db, spot, env, urlFor });
+  registerAdmin(app, { db, spot, env, urlFor, backups });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerPasskeys(app, { db, urlFor });
   const oauth = registerOAuth(app, { db, env, urlFor, log: app.log, ...(oauthFetch ? { fetchImpl: oauthFetch } : {}) });
@@ -442,7 +447,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // A restore asked for with SPOT_RESTORE_FROM happens before the database opens.
+  await restoreOnBoot({ dbFile: process.env.SPOT_DB || './data/spot.db' }).catch((err) => {
+    console.error(`Restore failed, starting with the current database: ${err.message}`);
+  });
   const app = buildApp();
+  app.backups.start();
   const port = Number(process.env.PORT || 3000);
   app.listen({ port, host: '0.0.0.0' }).catch((err) => {
     app.log.error(err);

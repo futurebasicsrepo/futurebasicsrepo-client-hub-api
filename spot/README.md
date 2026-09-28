@@ -104,6 +104,25 @@ A signed-in owner opens their own Spots without the private key. Codes and sessi
 - **STOP:** texts skip numbers that replied STOP.
 - **Never blocks:** sending never blocks or breaks the flow that triggered it.
 
+## Backups
+
+The database is one SQLite file on the Railway volume, so Spot backs itself up (`src/backup.js`).
+
+- **Daily at 10:00 UTC** (`SPOT_BACKUP_HOUR_UTC`). It also runs right away if the last good backup is over 26 hours old, for example on the first boot.
+- **A consistent copy while running:** `VACUUM INTO` makes the copy, then `PRAGMA integrity_check` checks it before it's kept, and the copy is gzipped.
+- **Two places:**
+  - The last 3 stay on the volume, in `backups/` next to the database, for a quick undo.
+  - Each one is also uploaded to an S3-compatible bucket, off the volume. The bucket keeps every day for 30 days, then one per month for a year. The uploader is a tiny S3 client with Signature V4 (`src/s3.js`, checked against AWS's published examples), so there's no SDK.
+- **Failures** retry hourly and email `SPOT_ALERT_EMAIL` (or `SPOT_CONTACT_EMAIL`), at most once a day.
+- **/admin** shows the last good backup, its size and counts, whether it reached the bucket, and has **Back up now**.
+
+**Restore:** set `SPOT_RESTORE_FROM` and redeploy. Before the database opens, Spot downloads and checks the backup, keeps the current file as `spot.db.before-restore-<time>`, and swaps the backup in. A marker stops it from restoring again on the next restart, but remove the variable afterwards. It takes one of:
+- `latest`
+- a backup name (`spot-2026-09-28T100000Z.db.gz`)
+- `local:<name>`, for a copy on the volume
+
+A backup that fails its check is refused, and the current database is left alone.
+
 ## Spot for AI agents (REST + MCP)
 
 Shopping agents can build carts but can't make someone else pay. Spot gives them three verbs:
@@ -173,6 +192,10 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_CONTACT_EMAIL` | `hello@spotmeplease.com` | Contact address on the legal pages |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | | Turns on "Continue with Google". Redirect URI: `<PUBLIC_URL>/auth/google/callback` |
 | `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | | Turns on "Continue with Facebook". Redirect URI: `<PUBLIC_URL>/auth/facebook/callback` |
+| `BACKUP_S3_ENDPOINT` / `BACKUP_S3_BUCKET` / `BACKUP_S3_REGION` / `BACKUP_S3_ACCESS_KEY_ID` / `BACKUP_S3_SECRET_ACCESS_KEY` | unset (volume only) | Where daily backups go. On Railway, reference the bucket's `ENDPOINT`, `BUCKET`, `REGION`, `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY`. `BACKUP_S3_PATH_STYLE=1` for older buckets that need path-style URLs |
+| `SPOT_BACKUP_HOUR_UTC` | `10` | Hour of the daily backup |
+| `SPOT_ALERT_EMAIL` | `SPOT_CONTACT_EMAIL` | Who hears about failed backups |
+| `SPOT_RESTORE_FROM` | unset | Restore at startup: `latest`, a backup name, or `local:<name>`. Remove it afterwards |
 | `SPOT_SESSION_SECRET` | random per start | Signs the short sign-in cookie. Set it so a restart doesn't cancel sign-ins in progress |
 | `SPOT_ADMIN_TOKEN` | | 16+ random characters. Turns on `/admin` (held payments, recent carts, block list, API keys, signups) |
 | `SPOT_MAX_LINKS_PER_IP_DAY` | `30` | Links one network can make per day |

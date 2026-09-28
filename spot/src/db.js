@@ -371,6 +371,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       prune: () => q.sessPrune.run(Date.now()),
     },
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    // Stored state that changes (e.g. the last backup), unlike setting().
+    state: {
+      get: (key) => {
+        const v = db.prepare('SELECT value FROM settings WHERE key = ?').get(`state:${key}`)?.value;
+        return v ? JSON.parse(v) : null;
+      },
+      set: (key, value) => db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(`state:${key}`, JSON.stringify(value)),
+    },
+    // A consistent copy of the whole database, taken while it's in use.
+    backupTo: (file) => db.prepare('VACUUM INTO ?').run(file),
     close: () => db.close(),
   };
 }

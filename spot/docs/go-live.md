@@ -60,6 +60,16 @@ Email-code sign-in works as soon as Resend is set up (step 5). These two buttons
 2. Set the Railway variable `SPOT_ADMIN_TOKEN` to it, and keep a copy in your password manager.
 3. Open https://spotmeplease.com/admin and sign in with the token. Held payments, recent carts, the block list, API keys and signups all live here.
 
+## 1c. Backups (5 minutes)
+
+Spot backs up its database every day by itself. These two steps put copies somewhere other than the database's own disk.
+
+1. **The bucket.** Railway → spot project → the `spot-backups` bucket should already exist, with `BACKUP_S3_*` variables on the spot service that point at it. The first backup runs about 2 minutes after a deploy. Open /admin → Backups: it should say "copied to the bucket".
+2. **Volume snapshots too:** Railway → spot service → the `spot-data` volume → Backups → turn on a **daily** schedule. That's a second, independent safety net, and one click to restore.
+3. Optional: set `SPOT_ALERT_EMAIL` if failed-backup emails should go somewhere other than `SPOT_CONTACT_EMAIL`.
+
+**To restore:** set `SPOT_RESTORE_FROM` = `latest` (or a backup's name from the bucket's Files tab), redeploy, check the site, then delete the variable. The database from before the restore is kept on the volume as `spot.db.before-restore-…`.
+
 ## 2. Stripe (about 30 minutes, plus Stripe's review)
 
 1. **Create and activate an account** at dashboard.stripe.com. Enter your business details and bank account. Use https://spotmeplease.com as the website, and https://spotmeplease.com/terms and /privacy for the policy links.
