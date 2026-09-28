@@ -69,24 +69,39 @@ export function integrationsPage({ origin }) {
   <span style="width:10px;height:10px;border-radius:50%;background:#fff"></span>
   Ask someone to spot me
 </a>`;
+  const button = `<!-- Spot: put this by your checkout -->
+<div data-spot-button></div>
+<script src="${origin}/embed/button.js" data-key="spk_YOUR_KEY" async></script>
+<script>
+  // Tell Spot what's in the cart when the shopper taps the button.
+  window.SpotCart = () => ({
+    items: [{ title: "Trail Jacket", variant: "M", quantity: 1, price_cents: 18900,
+              url: "https://yourstore.com/products/trail-jacket" }],
+    extras_cents: 800 // shipping + tax estimate
+  });
+</script>`;
+  const verify = `https://yourstore.com/.well-known/spot-merchant.txt
+spot-merchant=mer_…   (from your registration)`;
   const bookmarklet = `javascript:location.href=${JSON.stringify(`${origin}/new?url=`)}+encodeURIComponent(location.href)`;
 
   const body = `${siteNav('integrations')}
 <header class="ihero"><div class="wrap">
   <p class="kicker">Integrations</p>
-  <h1>Spot from anywhere.</h1>
-  <p class="lead">Your browser, your store, your AI assistant. Every way to turn “I want this” into a link someone else can pay.</p>
-  <div class="jump"><a href="#extension">Browser extension</a><a href="#mcp">AI assistants (MCP)</a><a href="#api">REST API</a><a href="#shopify">Shopify button</a><a href="#website">Any website</a><a href="#bookmarklet">Bookmarklet</a><a href="#soon">Coming soon</a></div>
+  <h1>The yes button, everywhere.</h1>
+  <p class="lead">For AI builders, for stores, and for shoppers. Every way to turn “I want this” into a yes from the right person.</p>
+  <div class="jump"><a href="#builders">For AI builders</a><a href="#stores">For stores</a><a href="#shoppers">For shoppers</a><a href="#soon">Coming soon</a></div>
 </div></header>
 
-<section style="padding-bottom:60px"><div class="wrap"><div class="igrid">
+<section style="padding-bottom:60px"><div class="wrap">
+<h2 class="reveal" id="builders" style="scroll-margin-top:90px">For AI builders</h2>
+<p class="lead reveal">Your agent builds the cart. Spot gets a person’s yes, enforces your user’s rules, and hands back signed proof. Your agent never touches a card number.</p>
+<div class="igrid">
 
-  <div class="icard wide reveal" id="extension">
-    <div class="top"><div class="ic">🧩</div><h3>Spot this: browser extension</h3><span class="badge live">Available · v${EXTENSION_VERSION}</span></div>
-    <p>One click (or <code>Alt</code>+<code>Shift</code>+<code>S</code>) on any product page and it’s a Spot. Right-click a link to Spot it, or highlight text like “black trail runners 10.5” to have Spot find it. Works in Chrome, Edge, Brave and Arc. It reads nothing on the page: it only sends the address to Spot.</p>
-    <div class="row2"><a class="btn primary" href="/downloads/spot-extension.zip" download>Download for Chrome →</a><span class="muted" style="font-size:14px">Chrome Web Store listing coming soon</span></div>
-    <ol><li>Unzip the download somewhere you’ll keep it.</li><li>Open <code>chrome://extensions</code> and turn on <b>Developer mode</b>.</li><li>Click <b>Load unpacked</b>, choose the folder, and pin <b>Spot this</b> to your toolbar.</li></ol>
-  </div>
+
+
+
+
+
 
   <div class="icard reveal" id="mcp">
     <div class="top"><div class="ic">🤖</div><h3>AI assistants (MCP)</h3><span class="badge live">Available</span></div>
@@ -96,27 +111,60 @@ export function integrationsPage({ origin }) {
     ${code('mcpcfg', mcp)}
     <p style="font-size:14px">Free keys cover 100 asks and 20 texts or emails a day. Your key is shown once, so paste it somewhere safe.</p>
   </div>
-
   <div class="icard reveal" id="api">
     <div class="top"><div class="ic">⚡️</div><h3>REST API</h3><span class="badge live">Available</span></div>
-    <p>The same three actions over HTTP: <code>POST /v1/agent/asks</code>, <code>GET /v1/agent/asks/:id</code>, <code>POST /v1/agent/asks/:id/order</code>. Send items, a product link, or a plain description.</p>
+    <p>The same actions over HTTP: <code>POST /v1/agent/asks</code>, <code>GET /v1/agent/asks/:id</code>, <code>POST /v1/agent/asks/:id/order</code>. Send items, a product link, or a plain description.</p>
     ${code('restcurl', rest)}
   </div>
+  <div class="icard wide reveal" id="trust">
+    <div class="top"><div class="ic">🔏</div><h3>Rules, approvals and signatures</h3><span class="badge live">Available</span></div>
+    <ol>
+      <li><b>Your user’s rules are enforced for you.</b> Keys made from a Spot account carry that person’s limits (per order, per month, allowed stores). Outside them, <code>create_spot_ask</code> returns <code>403</code> with the reason, or sends the ask to their approver and says so in <code>sent_to_approver</code>.</li>
+      <li><b>Several stores, one ask.</b> Pass <code>stores</code> (2–5, each with its own items) instead of <code>items</code>: one link and one payment, and Spot orders from each store. <code>get_spot_ask</code> shows each store’s status and order.</li>
+      <li><b>Pay at the store.</b> For stores that support agent checkout (UCP), asks default to <code>pay_at_store</code>: the payer pays the store on its own checkout, and there’s no Spot fee.</li>
+      <li><b>Signed approvals.</b> Once a person pays or places the order, <code>get_spot_ask</code> returns <code>approvals</code> and <code>approval_url</code>: an EdDSA-signed JWS of exactly what was approved. Verify it against <a href="/.well-known/spot-keys.json"><code>/.well-known/spot-keys.json</code></a>.</li>
+      <li><b>Signed requests.</b> Spot signs its requests to stores with HTTP Message Signatures (RFC 9421, Web Bot Auth). Keys: <a href="/.well-known/http-message-signatures-directory"><code>/.well-known/http-message-signatures-directory</code></a>.</li>
+    </ol>
+  </div>
+</div>
 
+<h2 class="reveal" id="stores" style="margin-top:90px;scroll-margin-top:90px">For stores</h2>
+<p class="lead reveal">Don’t lose the sale to “I’ll ask my mom.” Let shoppers send the cart to whoever’s paying, and you get the order.</p>
+<div class="igrid">
+  <div class="icard wide reveal" id="storebutton">
+    <div class="top"><div class="ic">🛍️</div><h3>“Ask someone to pay” button</h3><span class="badge live">Available</span></div>
+    <p>Shoppers who’d otherwise leave to “ask my mom” tap this instead. Their cart, at your prices, opens in Spot ready to send. If your store supports agent checkout (UCP), the payer pays you directly on your own checkout, so you’re the seller and there’s no Spot fee. Otherwise Spot buys it from you and ships it to them.</p>
+    <form class="keyform" id="merchForm"><input name="name" required placeholder="Store name" aria-label="Store name" maxlength="60"><input name="domain" required placeholder="yourstore.com" aria-label="Store domain"><input type="email" name="email" required placeholder="you@yourstore.com" aria-label="Email" autocomplete="email"><button class="btn primary">Get a key</button></form>
+    <p class="keyout" id="merchOut" aria-live="polite"></p>
+    ${code('buttoncode', button)}
+    <p style="font-size:14px">The key is publishable: it only works from pages on your domain. Or set <code>data-items</code> on the div instead of <code>window.SpotCart</code>.</p>
+    <h4 style="margin:6px 0 0">Verify your domain for a ✓</h4>
+    <p>Put a text file here with the line from your registration, then press Verify. Payers see “sent from Your Store’s checkout ✓”.</p>
+    ${code('verifycode', verify)}
+    <div class="row2"><button class="btn ghost" id="verifyBtn" hidden>Verify my domain</button><span class="keyout" id="verifyOut"></span></div>
+  </div>
   <div class="icard reveal" id="shopify">
-    <div class="top"><div class="ic">🛍️</div><h3>Shopify store button</h3><span class="badge live">Available</span></div>
-    <p>Let shoppers ask someone else to pay: a friend or parent covers it, and you still get the order. Paste this into your product template (<b>Online Store → Themes → Edit code</b>, e.g. <code>main-product.liquid</code>, below the buy buttons).</p>
+    <div class="top"><div class="ic">🛍️</div><h3>Shopify: no-code link</h3><span class="badge live">Available</span></div>
+    <p>A simpler link that sends the product page to Spot, with no key. Paste this into your product template (<b>Online Store → Themes → Edit code</b>, e.g. <code>main-product.liquid</code>, below the buy buttons).</p>
     ${code('shopifycode', shopify)}
     <p style="font-size:14px">A one-click Shopify app is <a href="#soon">coming soon</a>.</p>
   </div>
-
   <div class="icard reveal" id="website">
     <div class="top"><div class="ic">🌐</div><h3>Button for any website</h3><span class="badge live">Available</span></div>
     <p>Any store platform, any page: this button sends the current page to Spot.</p>
     ${code('anysite', anySite)}
     <p style="font-size:14px">Try it: <a class="demo-btn" href="/new?url=${encodeURIComponent(`${origin}/`)}">● Ask someone to spot me</a></p>
   </div>
+</div>
 
+<h2 class="reveal" id="shoppers" style="margin-top:90px;scroll-margin-top:90px">For shoppers</h2>
+<div class="igrid">
+  <div class="icard wide reveal" id="extension">
+    <div class="top"><div class="ic">🧩</div><h3>Spot this: browser extension</h3><span class="badge live">Available · v${EXTENSION_VERSION}</span></div>
+    <p>One click (or <code>Alt</code>+<code>Shift</code>+<code>S</code>) on any product page and it’s a Spot. Right-click a link to Spot it, or highlight text like “black trail runners 10.5” to have Spot find it. Works in Chrome, Edge, Brave and Arc. It reads nothing on the page: it only sends the address to Spot.</p>
+    <div class="row2"><a class="btn primary" href="/downloads/spot-extension.zip" download>Download for Chrome →</a><span class="muted" style="font-size:14px">Chrome Web Store listing coming soon</span></div>
+    <ol><li>Unzip the download somewhere you’ll keep it.</li><li>Open <code>chrome://extensions</code> and turn on <b>Developer mode</b>.</li><li>Click <b>Load unpacked</b>, choose the folder, and pin <b>Spot this</b> to your toolbar.</li></ol>
+  </div>
   <div class="icard wide reveal" id="bookmarklet">
     <div class="top"><div class="ic">🔖</div><h3>Bookmarklet</h3><span class="badge live">Available</span></div>
     <p>No install at all: drag this to your bookmarks bar, then click it on any product page. Works in every desktop browser.</p>
@@ -144,6 +192,16 @@ ${SITE_JS}
       const pre=document.getElementById('mcpcfg');pre.textContent=pre.textContent.replace(/Bearer [^"]+/,'Bearer '+d.api_key);
       ko.innerHTML='Your key is in the config below. It’s shown once, so copy it now 🧡';kf.hidden=true}
     catch(err){ko.textContent=err.message;b.disabled=false}});
+  const mf=document.getElementById('merchForm'),mo=document.getElementById('merchOut'),vb=document.getElementById('verifyBtn'),vo=document.getElementById('verifyOut');let merchant=null;
+  mf&&mf.addEventListener('submit',async e=>{e.preventDefault();const b=mf.querySelector('button');b.disabled=true;mo.textContent='';
+    try{const r=await fetch('/v1/merchants',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(mf)))});const d=await r.json();if(!r.ok)throw new Error(d.error||'Try again');merchant=d;
+      const pre=document.getElementById('buttoncode');pre.textContent=pre.textContent.replace(/spk_YOUR_KEY/,d.publishable_key).split('https://yourstore.com').join('https://'+d.verify.url.split('/')[2]);
+      document.getElementById('verifycode').textContent=d.verify.url+'\\n'+d.verify.content;
+      mo.textContent='Your key is in the snippet below. Next, verify your domain for the ✓.';mf.hidden=true;vb.hidden=false}
+    catch(err){mo.textContent=err.message;b.disabled=false}});
+  vb&&vb.addEventListener('click',async()=>{vb.disabled=true;vo.textContent='';
+    try{const r=await fetch('/v1/merchants/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({merchant_id:merchant.merchant_id})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Try again');vo.textContent='Verified ✓ '+d.domain;vb.hidden=true}
+    catch(err){vo.textContent=err.message;vb.disabled=false}});
   document.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{
     try{await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent);b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy',1600)}catch{}
   }));
@@ -154,8 +212,8 @@ ${SITE_JS}
 </body></html>`;
 
   return siteHead({
-    title: 'Spot integrations: browser extension, AI assistants, Shopify and more',
-    desc: 'Spot from anywhere: a Chrome extension, an MCP server for AI assistants, a REST API, a Shopify store button, and more on the way.',
+    title: 'Spot integrations: for AI builders, stores and shoppers',
+    desc: 'The yes button for AI shopping: an MCP server and REST API with rules, approvals and signed receipts for AI builders; an “Ask someone to pay” button for stores; an extension for shoppers.',
     origin,
     path: '/integrations',
     extraCss: CSS,

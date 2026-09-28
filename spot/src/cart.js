@@ -2,8 +2,14 @@
 // the merchant-lock decision for issued cards. No I/O here, so it's all unit
 // tested in test/cart.test.js.
 //
-// Lifecycle (card carts: the payer buys the cart from Spot, and Spot orders
-// it from the store with its own single-use card)
+// Three ways to pay (settle):
+//   direct   the payer pays the store on the store's own checkout (UCP); the
+//            store is the seller and Spot never holds the money. No Spot fee.
+//   card     the payer buys the cart from Spot, and Spot orders it from the
+//            store with its own single-use card (stores without agent checkout)
+//   handoff  money goes straight to the requester on Venmo / Cash App
+//
+// Lifecycle
 //   open ──pay──▶ paid ──issue──▶ card_issued ──spend──▶ completed
 //     │                        (Spot's card: merchant-locked, single use)
 //     ├──mark_received──▶ completed        (venmo / cash app handoff mode)
@@ -11,16 +17,17 @@
 //     └──expire──▶ expired
 //   paid / card_issued / completed ──begin_refund──▶ refunding ──refund──▶ refunded
 //   paid ──book──▶ completed               (flights: booked straight with the airline)
+//   open ──store_paid──▶ completed         (direct: the store confirmed the payer's order)
 //
 // A full refund always passes through `refunding` BEFORE any money moves, so
 // an authorization that arrives mid-refund finds the card no longer active.
 // Partial refunds (unused cushion, store returns) don't change the state;
 // they add up in refunded_cents.
 
-export const SETTLE_MODES = ['card', 'handoff'];
+export const SETTLE_MODES = ['card', 'handoff', 'direct'];
 
 const TRANSITIONS = {
-  open: { pay: 'paid', mark_received: 'completed', cancel: 'canceled', expire: 'expired' },
+  open: { pay: 'paid', mark_received: 'completed', store_paid: 'completed', cancel: 'canceled', expire: 'expired' },
   paid: { issue: 'card_issued', book: 'completed', begin_refund: 'refunding' },
   card_issued: { spend: 'completed', begin_refund: 'refunding' },
   // A reversed or never-captured authorization, or a full return.
@@ -39,6 +46,8 @@ export function transition(state, action, mode) {
   // carts can't be closed by the requester just saying they got paid.
   if (mode === 'handoff' && action === 'pay') throw new CartError('This cart is paid directly by Venmo or Cash App', 409);
   if (mode === 'card' && action === 'mark_received') throw new CartError('Card carts complete when the card is used', 409);
+  if (mode === 'direct' && (action === 'pay' || action === 'mark_received')) throw new CartError('This cart is paid on the store’s own checkout', 409);
+  if (mode !== 'direct' && action === 'store_paid') throw new CartError('Only carts paid at the store complete that way', 409);
   return next;
 }
 
@@ -106,7 +115,8 @@ export function validateCart(input, cfg = config()) {
   // 'self': the requester pays their own cart (an agent built it and handed
   // it over to finish on their phone). 'other' (default): someone else pays.
   const forWhom = b.for === 'self' ? 'self' : 'other';
-  if (forWhom === 'self' && settle !== 'card') throw new CartError('Your own carts are paid by card');
+  if (forWhom === 'self' && settle === 'handoff') throw new CartError('Your own carts are paid by card or at the store');
+  if (settle === 'direct' && !merchantUrl) throw new CartError('Paying the store directly needs the store’s website');
   let expiresMinutes = null;
   if (b.expires_minutes != null) {
     expiresMinutes = Number.parseInt(b.expires_minutes, 10);
@@ -150,7 +160,8 @@ export function validateCart(input, cfg = config()) {
 export function computeTotals(items, extrasCents, settle, cfg = config(), { cushion = true } = {}) {
   const subtotal = items.reduce((s, it) => s + it.price_cents * it.quantity, 0);
   const cart = subtotal + extrasCents;
-  const fee = settle === 'handoff' ? 0 : Math.round((cart * cfg.feeBps) / 10000) + cfg.feeFixedCents;
+  // No fee when the money never goes through Spot (handoff, direct).
+  const fee = settle === 'card' ? Math.round((cart * cfg.feeBps) / 10000) + cfg.feeFixedCents : 0;
   const room = settle === 'card' && cushion ? cushionCents(cart) : 0;
   return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, cushion_cents: room, fee_cents: fee, total_cents: cart + room + fee };
 }

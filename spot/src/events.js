@@ -19,6 +19,7 @@
 // Sending never blocks or breaks the flow that triggered it.
 import { usd } from './cart.js';
 import { emailLayout, finishMessage } from './notify.js';
+import { agentLabel } from './approvals.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -52,6 +53,51 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
     const f = cart.fulfillment || {};
     const fl = cart.flight;
     const mail = (o) => emailLayout({ base, ...o });
+    // Provenance: which AI built it, and the signed approval, if any.
+    const approval = db.approvals?.ofCart(cart.id).at(-1);
+    const approvalLink = approval ? `${base}/approvals/${approval.id}` : null;
+    const builtBy = cart.agent ? agentLabel(cart.agent) : null;
+    const trail = [builtBy ? `🤖 Put together by ${esc(builtBy)}` : '', approvalLink ? `✅ <a href="${esc(approvalLink)}">Signed approval</a>` : ''].filter(Boolean).join(' · ');
+    const direct = cart.settle === 'direct';
+    // A multi-store ask: one receipt and one "covered" for all its stores.
+    const bundle = extra?.bundle && db.bundles ? db.bundles.byId(extra.bundle) : null;
+    if (bundle && (kind === 'receipt' || kind === 'covered')) {
+      const carts = db.bundles.carts(bundle.id);
+      const total = carts.reduce((n, c) => n + c.total_cents, 0);
+      const stores = carts.map((c) => c.merchant.name).join(', ');
+      if (kind === 'covered') {
+        const blink = `${base}${spot.bundlePrivatePath(bundle)}`;
+        return [{
+          key: 'covered',
+          to: requesterContact(cart),
+          subject: `🎉 ${payer} spotted you!`,
+          text: `${payer} covered your cart from ${stores}. Tell Spot where to ship it: ${blink}`,
+          html: mail({ preheader: `${carts.length} stores, covered`, title: `🎉 ${payer} spotted you!`, lines: [`Your cart from <b>${esc(stores)}</b> is covered.`, 'Spot orders from each store for you, and you tap once per store to confirm.'], cta: { label: 'Get it ordered →', url: blink } }),
+          sms: `Spot: 🎉 ${payer} spotted you! Your cart from ${carts.length} stores is covered. Get it ordered: ${blink}`,
+        }];
+      }
+      const email = cart.payer_contact?.email;
+      if (!email) return [];
+      const receipt = `${base}${spot.bundlePayerPath(bundle)}`;
+      return [{
+        key: 'receipt',
+        to: { email },
+        subject: `Your Spot receipt: ${carts.length} stores for ${who}`,
+        text: `Receipt from Spot. ${stores}, shipped to ${who}. Total ${usd(total)}. Cancel anything not ordered yet: ${receipt}`,
+        html: mail({
+          preheader: `Total ${usd(total)}`,
+          title: '🧾 Your Spot receipt',
+          lines: [
+            ...carts.map((c) => `<b>${esc(c.merchant.name)}</b>: ${esc(c.items[0]?.title)}${c.items.length > 1 ? ` +${c.items.length - 1} more` : ''} · ${usd(c.total_cents)}`),
+            `<b>Total ${usd(total)}</b>, shipped to ${esc(who)}.`,
+            'You bought these from Spot. Spot orders each store’s items and ships them; returns go through Spot. If a store can’t be ordered, you get its share back automatically.',
+            trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : '',
+          ].filter(Boolean),
+          cta: { label: 'View receipt or cancel', url: receipt },
+          note: `Questions or returns: ${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}`,
+        }),
+      }];
+    }
     switch (kind) {
       case 'covered':
         return [{
@@ -85,7 +131,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           to: { email: requesterContact(cart).email },
           subject: `📦 Ordered: ${item}`,
           text: `${store} confirmed your order${f.order_number ? ` #${f.order_number}` : ''}. Watch your email for tracking. ${link}`,
-          html: mail({ preheader: `${store} confirmed your order`, title: '📦 Ordered!', lines: [`${esc(store)} confirmed your order${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, 'Watch your email for tracking from the store.'], cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
+          html: mail({ preheader: `${store} confirmed your order`, title: '📦 Ordered!', lines: [`${esc(store)} confirmed your order${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
         }];
         if (cart.for !== 'self' && cart.payer_contact?.email) {
           out.push({
@@ -93,7 +139,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
             to: { email: cart.payer_contact.email },
             subject: `🎁 Your gift for ${who} was ordered`,
             text: `Thanks for spotting ${who}! ${item} from ${store} was ordered. Want someone to spot you? ${base}/new`,
-            html: mail({ preheader: `${item} is on its way to ${who}`, title: `🎁 Your gift for ${who} was ordered`, lines: [`Thanks for spotting ${esc(who)}! <b>${esc(item)}</b> from ${esc(store)} is on its way.`, `Spot bought it from ${esc(store)} with your payment, and it ships straight to ${esc(who)}.`], cta: { label: 'Make your own Spot →', url: `${base}/new` }, note: 'Anything you want someone to cover? Turn any cart into a link.' }),
+            html: mail({ preheader: `${item} is on its way to ${who}`, title: `🎁 Your gift for ${who} was ordered`, lines: [`Thanks for spotting ${esc(who)}! <b>${esc(item)}</b> from ${esc(store)} is on its way.`, direct ? `You paid ${esc(store)} directly, so its receipt and returns apply. It ships straight to ${esc(who)}.` : `Spot bought it from ${esc(store)} with your payment, and it ships straight to ${esc(who)}.`, trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: 'Make your own Spot →', url: `${base}/new` }, note: 'Anything you want someone to cover? Turn any cart into a link.' }),
           });
         }
         return out;
@@ -137,6 +183,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           `Goods ${usd(cart.cart_cents)}${cart.cushion_cents ? ` · up to ${usd(cart.cushion_cents)} for tax and price changes (unused comes back)` : ''} · Spot fee ${usd(cart.fee_cents)} · <b>Total ${usd(cart.total_cents)}</b>`,
           cart.kind === 'flight' ? 'Spot bought this ticket from the airline for the traveler.' : 'You bought this from Spot. Spot orders it from the store and ships it; returns go through Spot.',
           cart.kind === 'flight' ? '' : 'Changed your mind? Cancel for a full refund any time before Spot places the order.',
+          trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : '',
         ].filter(Boolean);
         return [{
           key: 'receipt',

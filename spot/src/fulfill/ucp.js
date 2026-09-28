@@ -70,7 +70,7 @@ async function send(fetchImpl, url, init, ms = TIMEOUT_MS) {
 
 // Links from the store end up as buttons on the requester's page: web
 // links only.
-function link(u, allowPrivate) {
+export function link(u, allowPrivate) {
   try {
     const x = new URL(u);
     return x.protocol === 'https:' || (allowPrivate && x.protocol === 'http:') ? x.toString() : null;
@@ -111,10 +111,12 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
-export function ucpClient({ endpoint, profileUrl, fetchImpl = fetch, allowPrivate = false }) {
+// `sign(url)` → extra headers that prove the request is Spot's (HTTP Message
+// Signatures, see signing.js), so stores can tell Spot from other bots.
+export function ucpClient({ endpoint, profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
   return async function call(method, path, body) {
     const u = await guard(`${endpoint}${path}`, allowPrivate);
-    const headers = { accept: 'application/json', 'ucp-agent': `profile="${profileUrl}"`, 'request-id': randomUUID() };
+    const headers = { accept: 'application/json', 'ucp-agent': `profile="${profileUrl}"`, 'request-id': randomUUID(), ...(sign ? sign(u) : {}) };
     if (body !== undefined) {
       headers['content-type'] = 'application/json';
       headers['idempotency-key'] = randomUUID();
@@ -151,7 +153,7 @@ export function pickVariant(product, item, inputId) {
   return variants.find((v) => v.inputs?.some((i) => i.id === inputId)) || (variants.length === 1 ? variants[0] : null);
 }
 
-async function resolveItems(call, cart) {
+export async function resolveItems(call, cart) {
   const ids = cart.items.map((i) => i.url).filter(Boolean);
   if (ids.length !== cart.items.length) return null;
   const res = await call('POST', '/catalog/lookup', { ids, context: { address_country: 'US' } });
@@ -166,9 +168,9 @@ async function resolveItems(call, cart) {
 }
 
 // ─── Checkout ───────────────────────────────────────────────────────────────
-const totalOf = (co) => co?.totals?.find((t) => t.type === 'total')?.amount ?? null;
+export const totalOf = (co) => co?.totals?.find((t) => t.type === 'total')?.amount ?? null;
 
-function address(ship) {
+export function address(ship) {
   const [first, ...rest] = ship.name.split(' ');
   return {
     first_name: first,
@@ -183,13 +185,13 @@ function address(ship) {
   };
 }
 
-function buyer(ship) {
+export function buyer(ship) {
   const a = address(ship);
   return { email: ship.email, first_name: a.first_name, last_name: a.last_name, ...(a.phone_number ? { phone_number: a.phone_number } : {}) };
 }
 
 // PUT replaces the session, so every update resends the whole state.
-function state(co, ship, fulfillment) {
+export function state(co, ship, fulfillment) {
   return {
     buyer: buyer(ship),
     line_items: co.line_items.map((li) => ({ id: li.id, item: { id: li.item.id }, quantity: li.quantity })),
@@ -198,7 +200,7 @@ function state(co, ship, fulfillment) {
 }
 
 // Cheapest option in every package, keeping the store's destination id.
-function selectShipping(co) {
+export function selectShipping(co) {
   const methods = co.fulfillment?.methods || [];
   const ship = methods.find((m) => m.type === 'shipping');
   if (!ship) return null;
@@ -241,8 +243,8 @@ export async function runUcpCheckout(opts) {
   return out;
 }
 
-async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false }) {
-  const call = ucpClient({ endpoint: discovery.endpoint, profileUrl, fetchImpl, allowPrivate });
+async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false, sign = null }) {
+  const call = ucpClient({ endpoint: discovery.endpoint, profileUrl, fetchImpl, allowPrivate, sign });
   if (!discovery.lookup) return null;
   const resolved = await resolveItems(call, cart).catch(() => null);
   if (!resolved?.lines) return null;

@@ -138,6 +138,50 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       at             INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS issuing_txns_cart ON issuing_txns (cart_id);
+    -- Signed approvals: a person said yes to exactly this purchase.
+    CREATE TABLE IF NOT EXISTS approvals (
+      id       TEXT PRIMARY KEY,
+      cart_id  TEXT NOT NULL,
+      jws      TEXT NOT NULL,
+      at       INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS approvals_cart ON approvals (cart_id);
+    -- What each AI key did, for its owner's activity log.
+    CREATE TABLE IF NOT EXISTS agent_events (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent     TEXT NOT NULL,
+      user_id   TEXT,
+      kind      TEXT NOT NULL,
+      detail    TEXT,
+      at        INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS agent_events_agent ON agent_events (agent, at);
+    -- Stores using the "Ask someone to pay" button.
+    CREATE TABLE IF NOT EXISTS merchants (
+      id           TEXT PRIMARY KEY,
+      domain       TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      email        TEXT NOT NULL,
+      key          TEXT NOT NULL UNIQUE,
+      verified_at  INTEGER,
+      created_at   INTEGER NOT NULL
+    );
+    -- A cart a store's button sent over, waiting for the shopper's name (1h).
+    CREATE TABLE IF NOT EXISTS merchant_drafts (
+      id           TEXT PRIMARY KEY,
+      merchant_id  TEXT NOT NULL,
+      doc          TEXT NOT NULL,
+      expires_at   INTEGER NOT NULL
+    );
+    -- One ask across several stores: a cart per store, paid in one go.
+    CREATE TABLE IF NOT EXISTS bundles (
+      id           TEXT PRIMARY KEY,
+      token        TEXT NOT NULL UNIQUE,
+      manage_hash  TEXT NOT NULL,
+      payment_ref  TEXT UNIQUE,
+      doc          TEXT NOT NULL,
+      created_at   INTEGER NOT NULL
+    );
     -- Server-side secrets that must survive restarts (e.g. link signing).
     CREATE TABLE IF NOT EXISTS settings (
       key    TEXT PRIMARY KEY,
@@ -169,6 +213,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
   }
   // api_keys gained an owner when accounts arrived.
   if (!db.prepare('PRAGMA table_info(api_keys)').all().some((c) => c.name === 'user_id')) db.exec('ALTER TABLE api_keys ADD COLUMN user_id TEXT');
+  // Spending rules an account sets for each of its AI keys.
+  if (!db.prepare('PRAGMA table_info(api_keys)').all().some((c) => c.name === 'rules')) db.exec('ALTER TABLE api_keys ADD COLUMN rules TEXT');
 
   const q = {
     insert: db.prepare(`INSERT INTO carts (id, token, manage_hash, status, settle, doc, created_at, expires_at, updated_at)
@@ -205,7 +251,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     revokeKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ?'),
     addKey: db.prepare('INSERT INTO api_keys (hash, name, email, created_at) VALUES (?, ?, ?, ?)'),
     keyByHash: db.prepare('SELECT name, email, revoked, user_id FROM api_keys WHERE hash = ?'),
-    keysByUser: db.prepare('SELECT name, created_at, revoked FROM api_keys WHERE user_id = ? ORDER BY created_at DESC'),
+    keysByUser: db.prepare('SELECT name, created_at, revoked, rules FROM api_keys WHERE user_id = ? ORDER BY created_at DESC'),
     revokeUserKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ? AND user_id = ?'),
     userByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
     userById: db.prepare('SELECT * FROM users WHERE id = ?'),
@@ -241,6 +287,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at: row.expires_at,
     };
 
+  const bundleRow = (r) => (r ? { id: r.id, token: r.token, manage_hash: r.manage_hash, payment_ref: r.payment_ref, created_at: r.created_at, ...JSON.parse(r.doc) } : null);
   const docOf = (cart) => {
     const { id, token, manage_hash, status, settle, payment_ref, card_ref, created_at, expires_at, ...doc } = cart;
     return JSON.stringify(doc);
@@ -256,6 +303,17 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     byId: (id) => hydrate(q.byId.get(id)),
     byPayment: (ref) => hydrate(q.byPayment.get(ref)),
     byCard: (ref) => hydrate(q.byCard.get(ref)),
+    // Every cart a Stripe payment paid for: one, or each store's cart in a
+    // bundle (their refs are "<payment>#<n>").
+    byPaymentAll: (ref) => db.prepare("SELECT * FROM carts WHERE payment_ref = ? OR payment_ref LIKE ? ESCAPE '\\' ORDER BY payment_ref").all(ref, `${String(ref).replace(/[\\%_]/g, (c) => `\\${c}`)}#%`).map(hydrate),
+    bundles: {
+      insert: (b) => db.prepare('INSERT INTO bundles (id, token, manage_hash, payment_ref, doc, created_at) VALUES (?, ?, ?, NULL, ?, ?)').run(b.id, b.token, b.manage_hash, JSON.stringify(b.doc), b.created_at),
+      byToken: (t) => bundleRow(db.prepare('SELECT * FROM bundles WHERE token = ?').get(String(t))),
+      byId: (id) => bundleRow(db.prepare('SELECT * FROM bundles WHERE id = ?').get(String(id))),
+      byPayment: (ref) => bundleRow(db.prepare('SELECT * FROM bundles WHERE payment_ref = ?').get(String(ref))),
+      setPayment: (id, ref) => db.prepare('UPDATE bundles SET payment_ref = ? WHERE id = ?').run(ref, id),
+      carts: (id) => db.prepare("SELECT * FROM carts WHERE json_extract(doc, '$.bundle_id') = ? ORDER BY json_extract(doc, '$.bundle_index')").all(id).map(hydrate),
+    },
     // Returns true if the write won; false if someone else moved the cart first.
     save(cart, fromStatus) {
       const r = q.update.run(cart.status, docOf(cart), cart.payment_ref ?? null, cart.card_ref ?? null, Date.now(), cart.id, fromStatus);
@@ -316,7 +374,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       create: (id, email) => q.userInsert.run(id, email, '{}', Date.now()),
       save: (id, doc) => q.userSave.run(JSON.stringify(doc), id),
       carts: (id, limit = 100) => q.cartsByUser.all(id, limit).map(hydrate),
-      keys: (id) => q.keysByUser.all(id),
+      keys: (id) => q.keysByUser.all(id).map((k) => ({ ...k, rules: k.rules ? JSON.parse(k.rules) : null })),
       revokeKey: (id, name) => q.revokeUserKey.run(name, id).changes === 1,
       setEmail: (id, email) => db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, id),
       // Fold account `fromId` into `intoId`: its Spots, AI keys, sign-in
@@ -390,6 +448,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
                   OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR doc LIKE '%"state":"failed"%')) LIMIT 2000`)
         .all()
         .map((r) => r.id),
+    idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
     issuing: {
@@ -401,6 +460,44 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       totals: (cartId) => {
         const r = db.prepare("SELECT COALESCE(SUM(CASE WHEN type = 'capture' THEN amount_cents END), 0) AS captured, COALESCE(SUM(CASE WHEN type = 'refund' THEN amount_cents END), 0) AS returned FROM issuing_txns WHERE cart_id = ?").get(cartId);
         return { captured: r.captured, returned: r.returned };
+      },
+    },
+    approvals: {
+      add: (a) => db.prepare('INSERT INTO approvals (id, cart_id, jws, at) VALUES (?, ?, ?, ?)').run(a.id, a.cart_id, a.jws, Date.now()),
+      get: (id) => db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) || null,
+      ofCart: (cartId) => db.prepare('SELECT id, jws, at FROM approvals WHERE cart_id = ? ORDER BY at').all(cartId),
+    },
+    agentEvents: {
+      add: (agent, userId, kind, detail) => db.prepare('INSERT INTO agent_events (agent, user_id, kind, detail, at) VALUES (?, ?, ?, ?, ?)').run(agent, userId ?? null, kind, detail ? JSON.stringify(detail) : null, Date.now()),
+      recent: (agent, limit = 20) => db.prepare('SELECT kind, detail, at FROM agent_events WHERE agent = ? ORDER BY id DESC LIMIT ?').all(agent, limit).map((r) => ({ ...r, detail: r.detail ? JSON.parse(r.detail) : null })),
+    },
+    keyRules: {
+      get: (name) => {
+        const r = db.prepare('SELECT rules, user_id FROM api_keys WHERE name = ?').get(name);
+        return r ? { user_id: r.user_id, rules: r.rules ? JSON.parse(r.rules) : null } : null;
+      },
+      set: (userId, name, rules) => db.prepare('UPDATE api_keys SET rules = ? WHERE name = ? AND user_id = ?').run(rules ? JSON.stringify(rules) : null, name, userId).changes === 1,
+    },
+    // What an AI key's asks added up to this month (canceled, expired and
+    // refunded ones don't count).
+    agentMonthCents: (agent, since) =>
+      db.prepare("SELECT COALESCE(SUM(json_extract(doc, '$.cart_cents')), 0) AS c FROM carts WHERE json_extract(doc, '$.agent') = ? AND created_at >= ? AND status NOT IN ('canceled', 'expired', 'refunded')").get(agent, since).c,
+    merchants: {
+      add: (m) => db.prepare('INSERT INTO merchants (id, domain, name, email, key, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(m.id, m.domain, m.name, m.email, m.key, Date.now()),
+      byKey: (key) => db.prepare('SELECT * FROM merchants WHERE key = ?').get(key) || null,
+      byId: (id) => db.prepare('SELECT * FROM merchants WHERE id = ?').get(id) || null,
+      verify: (id) => db.prepare('UPDATE merchants SET verified_at = ? WHERE id = ?').run(Date.now(), id),
+      list: () => db.prepare('SELECT id, domain, name, email, verified_at, created_at FROM merchants ORDER BY created_at DESC LIMIT 200').all(),
+      countForDomain: (domain) => db.prepare('SELECT COUNT(*) AS n FROM merchants WHERE domain = ?').get(domain).n,
+    },
+    drafts: {
+      put: (id, merchantId, doc) => {
+        db.prepare('DELETE FROM merchant_drafts WHERE expires_at < ?').run(Date.now());
+        db.prepare('INSERT INTO merchant_drafts (id, merchant_id, doc, expires_at) VALUES (?, ?, ?, ?)').run(id, merchantId, JSON.stringify(doc), Date.now() + 3600_000);
+      },
+      get: (id) => {
+        const r = db.prepare('SELECT * FROM merchant_drafts WHERE id = ? AND expires_at > ?').get(id, Date.now());
+        return r ? { merchant_id: r.merchant_id, ...JSON.parse(r.doc) } : null;
       },
     },
     // Stored state that changes (e.g. the last backup), unlike setting().

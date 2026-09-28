@@ -74,7 +74,7 @@ test('card flow: create → pay → Spot’s card issued → merchant-locked sin
   assert.equal(mine.body.cart.card_ready, true);
   assert.equal(mine.body.cart.card, undefined, 'no card details, not even the last 4');
   assert.doesNotMatch(JSON.stringify(mine.body), /sandbox_secret|"number"|cvc/);
-  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'issue']);
+  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'approval_signed', 'issue']);
 
   // Wrong store, then over the limit: declined, card still live.
   const auth = (merchant_name, amount_cents) => call('POST', '/v1/sandbox/authorize', { token: cart.token, k, merchant_name, amount_cents });
@@ -449,7 +449,8 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   t.after(() => app.close());
   const home = await app.inject({ method: 'GET', url: '/' });
   assert.equal(home.statusCode, 200);
-  assert.match(home.body, /Your cart, anywhere\./);
+  assert.match(home.body, /yes button/);
+  for (const id of ['rules', 'stores', 'trust', 'agents', 'faq']) assert.match(home.body, new RegExp(`id="${id}"`));
   assert.match(home.body, /href="\/new"/);
   assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
   assert.match(home.body, /id="agentlog"/, 'agent demo');

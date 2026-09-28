@@ -1,7 +1,7 @@
 // Server-rendered pages. No build step: each page is one HTML string with
 // inline CSS and a small inline script. Everything interpolated from a cart
 // goes through esc(), and data handed to scripts goes through json().
-import { usd } from './cart.js';
+import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, usd } from './cart.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -124,6 +124,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     </div>
   </div>
   <div class="err" id="capErr"></div>
+  <div class="card" id="basket" hidden></div>
   <p class="hint">Someone taps your link, covers it, and you check out with a card that only works at that store.</p>
 </section>
 
@@ -138,13 +139,14 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <div id="nameRow"><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="so they know who's asking"></div>
     <details class="more"><summary>more options</summary>
       <label for="settle">How the money reaches you</label>
-      <select id="settle"><option value="card">Spot buys it and ships it to me</option><option value="handoff">Straight to my Venmo / Cash App</option></select>
+      <select id="settle"><option value="direct" id="optDirect" hidden>They pay the store directly (no Spot fee)</option><option value="card">Spot buys it and ships it to me</option><option value="handoff">Straight to my Venmo / Cash App</option></select>
       <div class="row"><div><label for="venmo">Venmo</label><input id="venmo" placeholder="@handle"></div><div><label for="cashtag">Cash App</label><input id="cashtag" placeholder="$cashtag"></div></div>
       <label for="note">Note for them</label><input id="note" maxlength="280" placeholder="birthday list 🎂">
       <label for="email">Email (optional, for updates)</label><input id="email" type="email" autocomplete="email">
       <p class="small"><button class="textlink" id="notMe" type="button">change my name</button></p>
     </details>
     <button class="btn" id="saveCheck">Looks good →</button>
+    <button class="btn ghost" id="addStore" type="button">+ Add a cart from another store</button>
     <div class="err" id="checkErr"></div>
   </div>
 </section>
@@ -159,6 +161,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <button class="btn dark small" style="margin-top:10px">Save</button>
   </form>
   <div class="sendrow"><a class="btn ghost" id="txt">Text</a><a class="btn ghost" id="wa" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" id="copy">Copy</button></div>
+  <p class="small" id="shipNudge" hidden style="margin-top:12px">📦 One step before they can pay: <a id="shipLink" href="#">add where it ships</a>. They'll pay the store directly.</p>
   <p class="small muted" style="margin-top:14px;display:flex;justify-content:space-between;gap:10px"><button class="textlink" id="edit">edit cart</button><a id="manageLink" href="#">see who pays →</a><button class="textlink" id="again">start another</button></p>
 </section>
 
@@ -170,7 +173,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
 </section>
 <footer>Spot · cart links for anyone, anywhere<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
-<script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents, provider })}</script>
+<script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents, cushionBps: AUTH_TOLERANCE_BPS, cushionMax: AUTH_TOLERANCE_MAX_CENTS, provider })}</script>
 <script src="/client/home.js" defer></script>`;
   return shell({ title: 'Spot: cover my cart', body, head: `<meta name="description" content="Turn any cart into a link someone else can pay."><style>${HOME_CSS}</style>` });
 }
@@ -260,6 +263,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
     lines = [
       `<div class="bub">${esc(name)} found something at <b>${esc(cart.merchant.name)}</b> and is hoping you'll spot them</div>`,
       cart.note ? `<div class="bub quote">“${esc(cart.note)}” — ${esc(name)}</div>` : '',
+      cart.built_by || cart.source ? `<div class="bub">${cart.built_by ? `🤖 put together by ${esc(name)}’s AI (${esc(cart.built_by)})` : `🛍️ sent from ${esc(cart.source.name || cart.merchant.name)}’s checkout${cart.source.verified ? ' ✓' : ''}`}${cart.via_approver ? `. ${esc(name)}’s spending rules sent it to you to approve` : ''}</div>` : '',
       products,
       `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
     ];
@@ -291,7 +295,8 @@ function celebrate(payer){
   for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}
   document.body.appendChild(c);setTimeout(()=>c.remove(),3000);scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 }
-${open && cart.settle === 'card' ? payScript(cart, provider) : ''}`;
+${open && cart.settle === 'card' ? payScript(cart, provider) : ''}
+${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });
 }
 
@@ -301,6 +306,16 @@ function actionBox(cart, links, provider, total) {
     return links
       .map((l, i) => `<a class="btn go ${i ? 'dark' : ''}" ${i ? '' : 'id="go"'} href="${esc(l.url)}" rel="noopener">Send ${total} on ${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`)
       .join('');
+  }
+  if (cart.settle === 'direct') {
+    const store = esc(cart.merchant.name);
+    const alt = links.length ? `<p class="small muted" style="text-align:center;margin:10px 0 0">or send it straight to them: ${links.map((l) => `<a href="${esc(l.url)}">${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`).join(' · ')}</p>` : '';
+    if (!cart.pay_at_store?.ready) {
+      return `<button class="btn go" id="go" disabled>Waiting for ${name} to add where it ships</button><p class="small muted" style="text-align:center;margin:10px 0 0">Check back in a bit. This page updates by itself.</p>${alt}`;
+    }
+    return `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (optional)" aria-label="Your name (optional)"></div>
+<button class="btn go" id="go">Pay ${store} ${total}</button>
+<p class="small muted" style="text-align:center;margin:10px 0 0">You pay ${store} on its own checkout, with its shipping to ${name} already filled in. Spot never touches your money and adds no fee.</p><div class="err" id="payErr"></div>${alt}`;
   }
   const fallback = links.length ? `<p class="small muted" style="text-align:center;margin:10px 0 0">or send it straight to them: ${links.map((l) => `<a href="${esc(l.url)}">${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`).join(' · ')}</p>` : '';
   if (provider === 'sandbox') {
@@ -315,6 +330,14 @@ function actionBox(cart, links, provider, total) {
 
 function detailsBox(cart) {
   const card = cart.settle === 'card';
+  if (cart.settle === 'direct') {
+    return `<details><summary>how this works</summary>
+<p>You pay ${esc(cart.merchant.name)} directly, on its own checkout page. Spot sets it up with exactly these items shipped to ${esc(cart.requester.name)}, so you'll see their shipping address there. ${esc(cart.merchant.name)} is the seller: its receipt, returns and support apply, and Spot never holds your money or card.</p>
+<div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
+${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+<div class="sum"><span>Spot fee</span><span>none</span></div>
+<div class="sum"><b>About</b><b>${usd(cart.cart_cents)}</b></div><p class="small muted" style="margin:6px 0 0">${esc(cart.merchant.name)} shows the exact total before you pay.</p></details>`;
+  }
   return `<details><summary>how this works</summary>
 <p>${card ? (cart.kind === 'flight' ? `You're buying this ticket from Spot, and Spot books it with ${esc(cart.merchant.name)}.` : `You're buying this from Spot as a gift for ${esc(cart.requester.name)}. Spot orders exactly these items from ${esc(cart.merchant.name)} and ships them to ${esc(cart.requester.name)}. Nobody gets cash or a card. Changed your mind? Cancel for a full refund until it's ordered, from the link in your receipt.`) : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
 <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
@@ -324,18 +347,30 @@ ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_c
 <div class="sum"><b>Total</b><b>${usd(card ? cart.total_cents : cart.cart_cents)}</b></div></details>`;
 }
 
-function payScript(cart, provider) {
+// Pay at the store: Spot builds the store's checkout, then this page sends
+// the payer there. Back on this page, it watches for the store's order.
+function directScript(cart) {
+  return `const T=${json(cart.token)};
+const watch=async()=>{for(let i=0;i<240;i++){try{const r=await api('/v1/carts/'+T+'/direct/status');if(r.cart.status==='completed'){celebrate(r.cart.payer_name||'');return}}catch{}await new Promise(z=>setTimeout(z,5000))}};
+${cart.pay_at_store?.started ? 'watch();' : ''}
+${cart.pay_at_store?.ready ? '' : "setTimeout(()=>location.reload(),15000);"}
+const go=$('#go');if(go&&!go.disabled)go.onclick=async()=>{go.disabled=true;go.textContent='opening '+${json(cart.merchant.name)}+'…';$('#payErr').textContent='';
+  try{const r=await api('/v1/carts/'+T+'/direct/start',{name:$('#payer').value.trim()});watch();location.href=r.continue_url}
+  catch(e){$('#payErr').textContent=e.message;go.disabled=false;go.textContent='Try again'}};`;
+}
+
+function payScript(cart, provider, base = '/v1/carts/') {
   if (provider === 'sandbox') {
-    return `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='spotting…';try{const name=$('#payer').value.trim();await api('/v1/carts/'+${json(cart.token)}+'/sandbox-pay',{payer_name:name});celebrate(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};`;
+    return `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='spotting…';try{const name=$('#payer').value.trim();await api(${json(base)}+${json(cart.token)}+'/sandbox-pay',{payer_name:name});celebrate(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};`;
   }
   return `(async()=>{try{
-  const T=${json(cart.token)};const c=await api('/v1/carts/'+T+'/pay',{});
+  const T=${json(cart.token)},B=${json(base)};const c=await api(B+T+'/pay',{});
   const stripe=Stripe(c.publishable_key);
   const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
   const settle=async(payer)=>{$('#payErr').textContent='';
     const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
     if(error){$('#payErr').textContent=error.message;return false}
-    for(let i=0;i<20;i++){const r=await api('/v1/carts/'+T);if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
+    for(let i=0;i<20;i++){const r=await api(B+T);if((r.cart||r.bundle).status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
     celebrate(payer||'');return true};
   // Apple Pay / Google Pay / Link: shown only on devices that have one.
   const ex=elements.create('expressCheckout',{buttonHeight:52,buttonTheme:{applePay:'black',googlePay:'black'},buttonType:{applePay:'plain',googlePay:'plain'}});
@@ -368,6 +403,7 @@ function finishPanel(c,notice){
   let h='<h1 style="font-size:32px;margin-top:22px">'+(fl?'Your flight is ready ✈️':'Your cart is ready 🛒')+'</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · '+(fl?'found for you':'put together for you')+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
   if(held)h+='<div class="pill warn" style="margin-top:12px" id="hold">⏳ '+(fl?'fare':'price')+' held for <span id="left"></span></div>';
   if(notice)h+='<p class="small" style="color:var(--warn);margin:12px 0 0">'+esc(notice)+'</p>';
+  if(c.pay_at_store&&c.pay_at_store.started)h+='<p class="small" style="margin:12px 0 0">Paying at '+esc(c.merchant.name)+'? This page updates as soon as the store confirms your order.</p>';
   if(fl)h+='<section class="card">'+itinerary(c.flight)+totals(c)+'</section>';
   else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
     +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
@@ -379,8 +415,8 @@ function finishPanel(c,notice){
   else h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
-    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
-    +'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>'
+    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
+    +(c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>')
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
@@ -394,6 +430,7 @@ function finishPanel(c,notice){
       if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i]})),contact:{email:v.email,phone:v.phone}});
         if(r.price_changed)return finishPanel(r.cart,'Heads up: '+c.merchant.name+' changed the fare. The new total is '+usd(r.price_changed.to_cents)+'. Tap pay again if it still works for you.');v.name=v.g0||''}
       else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
+      if(c.settle==='direct'){b.textContent='opening '+c.merchant.name+'…';const r=await api('/v1/carts/'+TOKEN+'/direct/start',{email:v.email,name:v.name});location.href=r.continue_url;return}
       if(MODE==='sandbox'){b.textContent='paying…';await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:v.name.split(' ')[0]});return draw()}
       if(!stripeReady){const p=await api('/v1/carts/'+TOKEN+'/pay',{});const stripe=Stripe(p.publishable_key);
         const elements=stripe.elements({clientSecret:p.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
@@ -449,7 +486,7 @@ async function draw(){
   const r=await api('/v1/carts/'+TOKEN+'/manage'+(K?'?k='+encodeURIComponent(K):''));const c=r.cart;PROFILE=r.profile||null;
   clearInterval(tick);
   const self=c.for==='self';
-  if(self&&c.status==='open')return finishPanel(c);
+  if(self&&c.status==='open'){finishPanel(c);if(c.pay_at_store&&c.pay_at_store.started)setTimeout(()=>{if(document.activeElement?.tagName!=='INPUT')draw()},5000);return}
   const fl=c.kind==='flight'?c.flight:null;
   const [label,tone]=(fl?FLIGHT_STATUS:self?SELF_STATUS:STATUS)[c.status]||[c.status,''];
   let h='<h1 style="font-size:28px">'+(fl?'Your trip':self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
@@ -460,6 +497,14 @@ async function draw(){
   if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
   if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  if(c.settle==='direct'&&c.status==='open'&&!self){
+    const sh=c.requester.shipping;
+    h+='<section class="card" id="shipDirect"><h2>'+(sh?'Ships to':'Where should it ship?')+'</h2>'
+      +(sh?'<p class="muted" style="margin:0">'+esc(sh.name)+', '+esc(sh.line1)+', '+esc(sh.city)+' '+esc(sh.state)+'</p><button class="btn ghost" id="editShip">Change</button>':'')
+      +'<form id="dShip" '+(sh?'hidden':'')+'>'+['name|Full name|name','line1|Street|address-line1','line2|Apt, suite (optional)|address-line2','city|City|address-level2','state|State|address-level1','postal_code|ZIP|postal-code','email|Email for shipping updates|email','phone|Phone (optional)|tel'].map(x=>{const [n,ph,ac]=x.split('|');return '<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc((sh||PROFILE?.shipping||{})[n]||(n==='name'?c.requester.name:''))+'" '+(['line2','phone'].includes(n)?'':'required')+' style="margin-top:6px">'}).join('')
+      +'<button class="btn">Save</button><div class="err" id="dShipErr"></div></form>'
+      +'<p class="small muted">Whoever pays checks out on '+esc(c.merchant.name)+'’s own page and pays the store directly, so they’ll see this address there.</p></section>';
+  }
   const f=c.fulfillment;
   if(c.status==='card_issued'||(f&&f.state==='placed')){
     h+='<section class="card" id="orderBox">'+orderBox(c,f,r.agent_enabled)+'</section>';
@@ -480,6 +525,8 @@ async function draw(){
   h+='<section class="card"><h2>Activity</h2>'+r.events.map(e=>'<div class="sum"><span>'+esc(e.kind.replace(/_/g,' '))+'</span><span>'+new Date(e.at).toLocaleString()+'</span></div>').join('')+'</section>';
   $('#app').innerHTML=h;
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
+  const ds=$('#dShip');if(ds)ds.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(ds))});draw()}catch(err){$('#dShipErr').textContent=err.message}};
+  on('editShip',()=>{$('#dShip').hidden=false;$('#editShip').remove()});
   const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
   on('cap',()=>sim('capture'));on('ret',()=>sim('refund'));on('rel',()=>sim('closed'));
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
@@ -526,7 +573,8 @@ async function draw(){
     +(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>'+usd(c.cushion_cents)+'</span></div>':'')
     +'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div><div class="sum total"><span>Paid</span><span>'+usd(c.total_cents)+'</span></div>'
     +(r.ordered?'<p class="small muted">Ordered'+(r.ordered.order_number?' · order #'+esc(r.ordered.order_number):'')+'. Returns go through Spot: reply to your receipt email.</p>':'')
-    +'</section>';
+    +'</section>'
+    +(c.built_by||r.approvals.length?'<section class="card"><h2>Who did what</h2>'+(c.built_by?'<p class="small" style="margin-top:0">🤖 Put together by <b>'+esc(c.built_by)+'</b> for '+esc(c.requester.name)+'</p>':'')+r.approvals.map(a=>'<p class="small">✅ Approved by '+(a.approved_by==='requester'?esc(c.requester.name):'you')+' · '+new Date(a.at).toLocaleString()+' · <a href="'+esc(a.url)+'">signed approval</a></p>').join('')+'</section>':'');
   if(c.status==='refunded')h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+(WHY[c.refund_reason]||'')+' '+usd(c.total_cents)+' went back to your card. It usually shows in 5–10 business days.</p></section>';
   if(r.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+r.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
   if(r.can_cancel)h+='<button class="btn ghost" id="cancel">Cancel and get a full refund</button><p class="small muted">Until Spot places the order. The Spot fee is refunded too.</p>';
@@ -535,6 +583,167 @@ async function draw(){
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
   return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+// ─── Multi-store asks (bundles) ─────────────────────────────────────────────
+// One link, one payment; a section per store. Spot buys each store's cart
+// with its own card and orders them separately.
+export function bundlePayPage({ bundle: b, provider, pageUrl, cardUrl }) {
+  const name = b.requester.name;
+  const open = b.status === 'open';
+  const covered = ['paid', 'completed'].includes(b.status);
+  const n = b.stores.length;
+  const ogTitle = covered ? `${b.payer_name || 'Someone'} spotted ${name}! 🎉` : `psst… can you spot ${name}?`;
+  const ogDesc = `${b.items.length} things from ${n} stores · ${usd(b.cart_cents)} · tap to cover it`;
+  const head = `
+<meta property="og:type" content="website"><meta property="og:site_name" content="Spot">
+<meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}">
+<meta property="og:url" content="${esc(pageUrl)}"><meta property="og:image" content="${esc(cardUrl)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="robots" content="noindex">
+<style>${PAY_CSS}.store-h{font-weight:800;margin:14px 0 4px;font-size:15px;color:var(--muted)}</style>
+${provider === 'stripe' && open ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
+  const section = (st) => `<div class="store-h bub">🛍️ ${esc(st.merchant.name)} · ${usd(st.cart_cents)}</div>${st.items
+    .map((i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+<div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `×${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
+<div class="p">${usd(i.price_cents * i.quantity)}</div></div>`)
+    .join('')}`;
+  let lines;
+  if (covered) lines = [`<div class="bub big">${esc(b.payer_name || 'Someone')} already spotted ${esc(name)} 🎉</div>`, `<div class="bub">nothing left to do here. you're all good.</div>`];
+  else if (!open) lines = [`<div class="bub big">oh! ${b.status === 'expired' ? 'this link expired' : 'this one is closed'}.</div>`, `<div class="bub">ask ${esc(name)} for a fresh one 🙂</div>`];
+  else {
+    lines = [
+      `<div class="bub">${esc(name)} put together a cart from <b>${n} stores</b> and is hoping you'll spot them</div>`,
+      b.note ? `<div class="bub quote">“${esc(b.note)}” — ${esc(name)}</div>` : '',
+      b.built_by ? `<div class="bub">🤖 put together by ${esc(name)}’s AI (${esc(b.built_by)})</div>` : '',
+      ...b.stores.map(section),
+      `<div class="bub big">it's ${usd(b.total_cents)} all in, one payment. want to cover it?</div>`,
+    ];
+  }
+  let k = 0;
+  const chat = lines.join('').replace(/class="(pcard |store-h )?bub/g, (m) => `style="animation-delay:${(0.15 + 0.22 * k++).toFixed(2)}s" ${m}`);
+  const who = esc(name);
+  const action = provider === 'sandbox'
+    ? `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (optional)" aria-label="Your name (optional)"></div><button class="btn go" id="go">Spot ${who} ${usd(b.total_cents)}</button><div class="err" id="payErr"></div>`
+    : `<div id="express"></div><div class="or" id="orCard" hidden>or pay with card</div><details id="cardBox"><summary class="btn ghost" style="list-style:none">Pay with card</summary><div id="stripeEl" style="margin-top:12px"></div><button class="btn go" id="go" disabled>Spot ${who} ${usd(b.total_cents)}</button></details><div class="err" id="payErr"></div>`;
+  const details = `<details><summary>how this works</summary>
+<p>You're buying these from Spot as a gift for ${who}, in one payment. Spot orders each store's items from that store and ships them to ${who}. Nobody gets cash or a card. If a store can't be ordered, you get that store's share back automatically. Changed your mind? Cancel for a refund of anything not ordered yet, from the link in your receipt.</p>
+${b.stores.map((st) => `<div class="sum"><span>${esc(st.merchant.name)}</span><span>${usd(st.cart_cents)}</span></div>`).join('')}
+${b.cushion_cents ? `<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to ${usd(b.cushion_cents)}</span></div>` : ''}
+${b.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(b.fee_cents)}</span></div>` : ''}
+<div class="sum"><b>Total</b><b>${usd(b.total_cents)}</b></div></details>`;
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
+<div class="chat" id="chat">${chat}</div>
+${open ? `<div class="act" id="act">${action}</div>` : ''}
+${open && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
+${open ? details : ''}
+<footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
+  const script = `${SHARED_JS}
+function celebrate(payer){
+  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you\\'re the best'+(payer?', '+esc(payer):'')+' 🧡</div><div class="bub" style="animation-delay:.45s">I just told '+${json(esc(name))}+'. Spot orders from each store now.</div>');
+  const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+}
+${open ? payScript(b, provider, '/v1/bundles/') : ''}`;
+  return shell({ title: ogTitle, head, body, script });
+}
+
+// The requester's page for a multi-store ask: shipping once for every
+// store, then each store's own page to follow (and confirm) its order.
+export function bundleManagePage({ token }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Keep this page private. Anyone with it can manage this Spot.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k');
+const ST={open:'Waiting',paid:'Paid, getting ready',card_issued:'Covered! Ready to order',completed:'Ordered',canceled:'Canceled',expired:'Expired',refunding:'Refunding…',refunded:'Refunded'};
+const q='?k='+encodeURIComponent(K||'');
+async function draw(){
+  const r=await api('/v1/bundles/'+TOKEN+'/manage'+q);const b=r.bundle;
+  let h='<h1 style="font-size:30px;margin-top:22px">'+(b.status==='open'?'Your multi-store Spot':b.status==='paid'?'🎉 '+esc(b.payer_name||'Someone')+' spotted you!':b.status==='completed'?'All done 📦':'This Spot is '+esc(b.status))+'</h1>'
+    +'<p class="muted" style="margin:6px 0 0">'+b.stores.length+' stores · '+usd(b.total_cents)+' total</p>'
+    +(b.for==='self'?'':'<section class="card"><p class="small muted" style="margin-top:0">Share this link. One payment covers every store.</p><div class="row"><input readonly value="'+esc(location.origin+'/b/'+TOKEN)+'" id="link"><button class="btn ghost" id="copy" style="width:auto">Copy</button></div></section>');
+  const ship=r.stores[0].requester.shipping;
+  if(b.status==='open'){
+    const s=ship||{};const f=(n,ph,ac,x)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(x||'')+'>';
+    h+='<section class="card"><h2>Ship everything to</h2><form id="ship">'+f('name','Full name','name','required')+'<div style="height:6px"></div>'+f('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+f('line2','Apt, suite (optional)','address-line2')
+      +'<div class="row" style="margin-top:6px">'+f('city','City','address-level2','required')+f('state','State','address-level1','required')+f('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div><div class="row" style="margin-top:6px">'+f('email','Email','email','required type="email"')+f('phone','Phone (optional)','tel','type="tel"')+'</div>'
+      +'<button class="btn" style="margin-top:10px">'+(ship?'Update address':'Save address')+'</button><div class="err" id="shipErr"></div></form></section>';
+    // Your own multi-store cart: pay once for everything, then confirm each store.
+    if(b.for==='self'&&ship)h+='<a class="btn" href="/b/'+esc(TOKEN)+'">Pay '+usd(b.total_cents)+' for all '+b.stores.length+' stores →</a>';
+  }
+  h+=r.stores.map(c=>'<section class="card"><div class="sum"><b>🛍️ '+esc(c.merchant.name)+'</b><span class="pill">'+esc(ST[c.status]||c.status)+'</span></div>'
+    +c.items.map(i=>'<div class="sum"><span>'+esc(i.title)+(i.quantity>1?' ×'+i.quantity:'')+'</span><span>'+usd(i.price_cents*i.quantity)+'</span></div>').join('')
+    +(c.fulfillment&&c.fulfillment.order_number?'<p class="small">Order #'+esc(c.fulfillment.order_number)+'</p>':'')
+    +(c.refund_reason?'<p class="small muted">Refunded to whoever paid.</p>':'')
+    +(['card_issued','paid','completed'].includes(c.status)?'<a class="btn ghost" href="/c/'+esc(c.token)+'/manage'+q+'">'+(c.status==='card_issued'?'Order from '+esc(c.merchant.name)+' →':'Details')+'</a>':'')+'</section>').join('');
+  if(b.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this Spot</button>';
+  if(r.stores.some(c=>['paid','card_issued'].includes(c.status)))h+='<button class="btn ghost" id="refund">Cancel what isn’t ordered yet (refunds the payer)</button>';
+  $('#app').innerHTML=h;
+  if($('#copy'))$('#copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#link').value);$('#copy').textContent='Copied'}catch{}};
+  const sf=$('#ship');if(sf)sf.onsubmit=async e=>{e.preventDefault();try{await api('/v1/bundles/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(sf))});draw()}catch(err){$('#shipErr').textContent=err.message}};
+  const c=$('#cancel');if(c)c.onclick=async()=>{if(!confirm('Cancel this Spot?'))return;await api('/v1/bundles/'+TOKEN+'/manage/cancel',{k:K});draw()};
+  const rf=$('#refund');if(rf)rf.onclick=async()=>{if(!confirm('Cancel everything not ordered yet and refund the payer for it?'))return;try{await api('/v1/bundles/'+TOKEN+'/manage/refund',{k:K})}catch(err){alert(err.message)}draw()};
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});
+setInterval(()=>{if(!document.querySelector('input:focus'))draw().catch(()=>{})},15000);`;
+  return shell({ title: 'Your Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+// The payer's receipt for a multi-store ask.
+export function bundleReceiptPage({ token }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Questions or returns: <a href="mailto:${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}">${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}</a><br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},P=new URLSearchParams(location.search).get('p');
+const ST={paid:'Paid, not ordered yet',card_issued:'Paid, not ordered yet',completed:'Ordered',refunding:'Refunding…',refunded:'Refunded'};
+async function draw(){
+  const r=await api('/v1/bundles/'+TOKEN+'/receipt?p='+encodeURIComponent(P));const b=r.bundle;
+  let h='<h1 style="font-size:28px">🧾 Your Spot receipt</h1><p class="muted">A gift for '+esc(b.requester.name)+' from '+b.stores.length+' stores, in one payment. Spot orders each store’s items and ships them to them.</p>';
+  h+=b.stores.map((st,i)=>{const x=r.stores[i];return '<section class="card"><div class="sum"><b>'+esc(st.merchant.name)+'</b><span class="pill">'+esc(ST[x.status]||x.status)+'</span></div>'
+    +st.items.map(it=>'<div class="sum"><span>'+esc(it.title)+(it.quantity>1?' ×'+it.quantity:'')+'</span><span>'+usd(it.price_cents*it.quantity)+'</span></div>').join('')
+    +'<div class="sum total"><span>This store</span><span>'+usd(st.total_cents)+'</span></div>'
+    +(x.ordered?'<p class="small muted">Ordered'+(x.ordered.order_number?' · order #'+esc(x.ordered.order_number):'')+'</p>':'')
+    +(x.status==='refunded'?'<p class="small muted">'+usd(st.total_cents)+' went back to your card.</p>':'')
+    +x.approvals.map(a=>'<p class="small"><a href="'+esc(a.url)+'">✅ signed approval</a></p>').join('')+'</section>'}).join('');
+  h+='<section class="card"><div class="sum total"><span>Paid</span><span>'+usd(b.total_cents)+'</span></div></section>';
+  if(r.stores.some(x=>x.can_cancel))h+='<button class="btn ghost" id="cancel">Cancel what isn’t ordered yet</button><p class="small muted">You get those stores’ share back, Spot fee included.</p>';
+  $('#app').innerHTML=h;
+  const c=$('#cancel');if(c)c.onclick=async()=>{if(!confirm('Cancel everything not ordered yet and get a refund for it?'))return;c.disabled=true;try{await api('/v1/bundles/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
+  return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+// A signed approval, readable by a person. The same record is at
+// /v1/approvals/:id as a JWS anyone can check against /.well-known/spot-keys.json.
+const HOW = { paid_spot: 'paid with Spot', paid_at_store: 'paid the store directly', placed_order: 'tapped Place order' };
+export function approvalPage({ id, payload: p, jws }) {
+  const who = p.approved_by === 'requester' ? 'The person it was for' : 'The person who paid';
+  const when = new Date(p.iat * 1000).toUTCString();
+  const rows = (p.items || []).map((i) => `<div class="sum"><span>${esc(i.title)}${i.variant ? ` · ${esc(i.variant)}` : ''}${i.quantity > 1 ? ` ×${i.quantity}` : ''}</span><span>${usd(i.price_cents * i.quantity)}</span></div>`).join('');
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<h1 style="font-size:28px">✅ Approved by a person</h1>
+<span class="pill">Signature checks out</span>
+<section class="card">
+<p style="margin-top:0"><b>${esc(who)}</b> ${esc(HOW[p.how] || 'approved it')} on ${esc(when)}.</p>
+${p.agent ? `<p class="muted">🤖 Put together by <b>${esc(p.agent)}</b>, an AI assistant. A person said yes to exactly this.</p>` : ''}
+<p class="muted">From <b>${esc(p.merchant?.name)}</b></p>
+${rows}
+<div class="sum total"><span>Approved amount</span><span>${usd(p.amount_cents || 0)}</span></div>
+</section>
+<section class="card">
+<h2>Check it yourself</h2>
+<p class="small muted">Spot signs every approval with an Ed25519 key (a JWS). Anyone, whether a store, an AI agent or you, can verify it against Spot's public keys. Nothing here is a card number or an address.</p>
+<p class="small"><a href="/v1/approvals/${esc(id)}">Signed record (JSON)</a> · <a href="/.well-known/spot-keys.json">Spot's public keys</a></p>
+<details class="more"><summary>Raw signature</summary><p class="small" style="word-break:break-all;font-family:ui-monospace,Menlo,monospace">${esc(jws)}</p></details>
+</section>
+<footer><a href="/#trust">How Spot keeps AI shopping honest</a> · <a href="/terms">Terms</a></footer>`;
+  return shell({ title: 'Spot: signed approval', body, head: '<meta name="robots" content="noindex">' });
 }
 
 export function notFoundPage() {

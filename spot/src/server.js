@@ -7,29 +7,33 @@ import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
 import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
 import { openDb } from './db.js';
-import { homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
+import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { sitePage } from './site.js';
 import { privacyPage, termsPage } from './legal.js';
 import { COMING_SOON, integrationsPage } from './integrations.js';
 import { extensionZip, EXTENSION_VERSION } from './extension.js';
-import { createSpot, ownerCart, publicCart } from './spot.js';
+import { createSpot, ownerCart, publicBundle, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
 import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
+import { registerMerchants } from './merchants.js';
 import { registerAccounts } from './accounts.js';
-import { accountPage, signinPage } from './accountpage.js';
+import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
+import { createDirect } from './direct.js';
+import { createSigning } from './signing.js';
+import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
@@ -58,8 +62,15 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.addHook('onRequest', async (req) => {
     if (!seenOrigin && req.headers.host) seenOrigin = `${req.protocol}://${req.headers.host}`;
   });
-  const profileUrl = () => `${env.PUBLIC_URL?.replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000'}/.well-known/ucp`;
-  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, ...(fulfill.ucp || {}) } });
+  const baseUrl = () => env.PUBLIC_URL?.replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000';
+  const profileUrl = () => `${baseUrl()}/.well-known/ucp`;
+  // Signed approvals, and signed requests to stores (see signing.js).
+  const signing = createSigning({ db, env, origin: baseUrl });
+  const signRequest = (u) => signing.signRequest(u);
+  app.decorate('signing', signing);
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
+  // Paying the store directly: Spot builds the store's checkout, the payer pays there.
+  spot.direct = createDirect({ profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
@@ -71,10 +82,16 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('backups', backups);
   app.decorate('spot', spot);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
-  spot.emit = (kind, id, extra) => events.emit(kind, id, extra);
-  const baseUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
-  const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
-  const captureUrl = capture.fromUrl || captureFromUrl;
+  const approvals = createApprovals({ db, spot, signing, baseUrl, log: app.log });
+  app.decorate('approvals', approvals);
+  spot.emit = (kind, id, extra) => {
+    // A person said yes: record a signed approval of exactly what they approved.
+    if (kind === 'approved') return approvals.record(id, extra);
+    return events.emit(kind, id, extra);
+  };
+  const publicUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
+  const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
+  const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const captureShot = capture.fromScreenshot || captureFromScreenshot;
   const captureText = capture.fromText || ((t) => captureFromText(t, { fromUrl: captureUrl }));
 
@@ -124,6 +141,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     db.sessions.prune();
     // Retries stuck refunds, refunds carts Spot couldn't order in time.
     if (++sweeps % 5 === 0) spot.sweepMoney().catch((err) => app.log.error({ err }, 'money sweep failed'));
+    // Follows store checkouts that payers opened but haven't come back from.
+    if (sweeps % 2 === 0) spot.sweepDirect().catch((err) => app.log.error({ err }, 'store checkout sweep failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -144,6 +163,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/.well-known/mcp-registry-auth', async (req, reply) => {
     if (!env.MCP_REGISTRY_AUTH) return reply.code(404).send('not configured');
     return reply.type('text/plain').send(env.MCP_REGISTRY_AUTH);
+  });
+  // Keys that check Spot's signed approvals.
+  app.get('/.well-known/spot-keys.json', async (req, reply) => reply.header('cache-control', 'public, max-age=3600').send(signing.approvalKeys()));
+  // Keys that check Spot's signed requests to stores (Web Bot Auth directory).
+  app.get('/.well-known/http-message-signatures-directory', async (req, reply) => {
+    reply.headers({ 'content-type': 'application/http-message-signatures-directory+json', 'cache-control': 'public, max-age=3600', ...signing.signDirectory(urlFor(req, req.url)) });
+    return JSON.stringify(signing.requestKeys());
+  });
+  // A signed approval, for a store, an agent or a person to check.
+  app.get('/v1/approvals/:id', async (req) => {
+    const a = db.approvals.get(String(req.params.id));
+    if (!a) throw new CartError('Approval not found', 404);
+    return { id: a.id, approval: a.jws, payload: approvals.read(a.jws), keys: urlFor(req, '/.well-known/spot-keys.json'), how_to_verify: 'EdDSA (Ed25519) JWS; the header kid names the key in spot-keys.json.' };
+  });
+  app.get('/approver/confirm', async (req, reply) => html(reply, approverConfirmPage({ origin: urlFor(req, '') })));
+  app.get('/approvals/:id', async (req, reply) => {
+    const a = db.approvals.get(String(req.params.id));
+    const payload = a && approvals.read(a.jws);
+    if (!payload) return html(reply, notFoundPage(), 404);
+    return html(reply, approvalPage({ id: a.id, payload, jws: a.jws }));
   });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
   app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available })));
@@ -207,7 +246,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (b.company_fax) return { ok: true }; // bot
     const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    const kinds = ['asker', 'agent', 'creator', ...COMING_SOON.map((c) => `notify:${c.slug}`)];
+    const kinds = ['asker', 'agent', 'creator', 'store', ...COMING_SOON.map((c) => `notify:${c.slug}`)];
     const kind = kinds.includes(b.kind) ? b.kind : 'asker';
     db.joinWaitlist(email, kind);
     return { ok: true };
@@ -221,6 +260,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     } catch {
       return html(reply, notFoundPage(), 404);
     }
+    // One store's part of a multi-store ask: the payer pays for all of it.
+    const bundle = spot.bundleOf(cart);
+    if (bundle) return reply.redirect(`/b/${bundle.token}`, 302);
     return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
   });
 
@@ -248,6 +290,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       refunded_cents: cart.refunded_cents || 0,
       refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
       can_cancel: ['paid', 'card_issued'].includes(cart.status) && cart.kind !== 'flight' && !ordering,
+      approvals: approvals.summary(cart.id),
     };
   });
   app.post('/v1/carts/:token/receipt/cancel', async (req) => ({ cart: publicCart(await spot.payerCancel(req.params.token, req.body?.p)) }));
@@ -301,9 +344,22 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Carts ────────────────────────────────────────────────────────────────
+  // Does this store let the payer pay it directly (UCP checkout)?
+  app.get('/v1/stores/check', async (req) => {
+    const url = String(req.query.url || '');
+    return { pay_at_store: url ? await spot.direct.supports(url) : false };
+  });
+
   app.post('/v1/carts', async (req, reply) => {
     limits.create(req);
-    const { cart, manageKey } = spot.create(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
+    // From a store's "Ask someone to pay" button: the store's cart, as sent.
+    const fromStore = req.body?.draft_id ? merchants.fromDraft(req.body.draft_id) : null;
+    const input = fromStore ? { ...req.body, ...fromStore.input } : req.body;
+    if (input?.settle === 'direct' && !(await spot.direct.supports(input?.merchant?.url ?? input?.merchant_url))) {
+      throw new CartError('This store doesn’t take direct checkout yet. Use a card link instead.', 409);
+    }
+    let { cart, manageKey } = spot.create(input, { ip: req.ip, userId: accounts.userIdOf(req) });
+    if (fromStore) cart = spot.patch(cart.id, (c) => ({ ...c, source: fromStore.source }), 'from_store_button');
     reply.code(201);
     return {
       cart: publicCart(cart),
@@ -316,6 +372,106 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/v1/carts/:token', async (req) => {
     const cart = spot.load(req.params.token);
     return { cart: publicCart(cart), handoff: handoffLinks(cart), provider: provider.name };
+  });
+
+  // Pay the store directly: build the store's checkout and hand back its page.
+  app.post('/v1/carts/:token/direct/start', async (req) => {
+    limits.pay(req);
+    const email = req.body?.email ? String(req.body.email).trim().toLowerCase().slice(0, 200) : null;
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
+    return spot.directStart(req.params.token, { email, name: req.body?.name || null });
+  });
+  app.get('/v1/carts/:token/direct/status', async (req, reply) => {
+    reply.header('cache-control', 'no-store');
+    return { cart: publicCart(await spot.directSync(req.params.token)) };
+  });
+
+  // ─── Multi-store asks (bundles) ──────────────────────────────────────────
+  app.post('/v1/bundles', async (req, reply) => {
+    limits.create(req);
+    const { bundle, manageKey } = spot.createBundle(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
+    reply.code(201);
+    return { bundle: publicBundle(bundle), link: urlFor(req, `/b/${bundle.token}`), manage_link: urlFor(req, `/b/${bundle.token}/manage?k=${manageKey}`), manage_key: manageKey };
+  });
+  app.get('/v1/bundles/:token', async (req) => ({ bundle: publicBundle(spot.loadBundle(req.params.token)), provider: provider.name }));
+  app.post('/v1/bundles/:token/pay', async (req) => {
+    limits.pay(req);
+    return spot.startBundlePayment(req.params.token);
+  });
+  app.post('/v1/bundles/:token/sandbox-pay', async (req) => {
+    if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
+    limits.pay(req);
+    await spot.startBundlePayment(req.params.token);
+    const b = spot.loadBundle(req.params.token);
+    const name = String(req.body?.payer_name || '').trim().slice(0, 60) || null;
+    const fingerprint = req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null;
+    const total = b.carts.reduce((n, c) => n + c.total_cents, 0);
+    await spot.paymentSucceeded({ paymentRef: b.payment_ref, amountCents: total, payer: { name, fingerprint, email: req.body?.payer_email || null } });
+    return { bundle: publicBundle(spot.loadBundle(req.params.token)) };
+  });
+  const ownerBundle = (req, b) => ({ bundle: publicBundle(b), stores: b.carts.map((c) => ownerCart(c)) });
+  app.get('/v1/bundles/:token/manage', async (req, reply) => {
+    reply.header('cache-control', 'no-store');
+    return ownerBundle(req, spot.loadBundleManaged(req.params.token, keyOf(req)));
+  });
+  app.post('/v1/bundles/:token/manage/prepare', async (req) => ownerBundle(req, spot.prepareBundle(req.params.token, keyOf(req), req.body?.shipping)));
+  app.post('/v1/bundles/:token/manage/cancel', async (req) => ownerBundle(req, spot.cancelBundle(req.params.token, keyOf(req))));
+  app.post('/v1/bundles/:token/manage/refund', async (req) => ownerBundle(req, await spot.refundBundle(req.params.token, { key: keyOf(req) })));
+  app.get('/v1/bundles/:token/receipt', async (req, reply) => {
+    const b = spot.loadBundle(req.params.token);
+    if (!spot.payerOk(b.token, req.query.p)) throw new CartError('Not found', 404);
+    reply.header('cache-control', 'no-store');
+    const orderingNow = (c) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(c.fulfillment?.state);
+    return {
+      bundle: publicBundle(b),
+      stores: b.carts.map((c) => ({
+        token: c.token,
+        status: c.status,
+        ordered: c.fulfillment?.state === 'placed' ? { order_number: c.fulfillment.order_number || null } : null,
+        refunded_cents: c.refunded_cents || 0,
+        refund_reason: c.refund_reason || null,
+        can_cancel: ['paid', 'card_issued'].includes(c.status) && !orderingNow(c),
+        approvals: approvals.summary(c.id),
+      })),
+    };
+  });
+  app.post('/v1/bundles/:token/receipt/cancel', async (req) => ({ bundle: publicBundle(await spot.refundBundle(req.params.token, { p: String(req.body?.p || '') })) }));
+  app.get('/b/:token', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundlePayPage({ bundle: publicBundle(b), provider: provider.name, pageUrl: urlFor(req, `/b/${b.token}`), cardUrl: urlFor(req, `/c/${b.carts[0].token}/card.png`) }));
+  });
+  // Link previews for a multi-store ask use its first store's card.
+  app.get('/b/:token/card.png', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+    } catch {
+      return reply.code(404).send();
+    }
+    return reply.redirect(`/c/${b.carts[0].token}/card.png${req.query.v ? `?v=${encodeURIComponent(req.query.v)}` : ''}`, 302);
+  });
+  app.get('/b/:token/manage', async (req, reply) => {
+    try {
+      spot.loadBundle(req.params.token);
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundleManagePage({ token: req.params.token, provider: provider.name }));
+  });
+  app.get('/b/:token/receipt', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+      if (!spot.payerOk(b.token, req.query.p)) throw new Error('bad link');
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundleReceiptPage({ token: b.token }));
   });
 
   app.post('/v1/carts/:token/pay', async (req) => {
@@ -343,6 +499,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/v1/carts/:token/manage', async (req) => {
     let cart = spot.loadManaged(req.params.token, keyOf(req));
     if (cart.status === 'paid') cart = await spot.issue(cart); // retry a failed issue
+    if (cart.settle === 'direct' && cart.direct?.checkout_id) cart = await spot.directSync(cart.token);
     return {
       cart: ownerCart(cart),
       agent_enabled: fulfiller.agentEnabled(),
@@ -385,7 +542,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, capture: { url: captureUrl, text: captureText } });
 
   // Sandbox only: what the store does with Spot's card after checkout: charge
   // it (capture), refund a return, or release / reverse the authorization.
@@ -414,6 +571,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
+  const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
   registerAdmin(app, { db, spot, env, urlFor, backups });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerPasskeys(app, { db, urlFor });

@@ -18,7 +18,7 @@ const MAX_HTML_BYTES = 2_000_000;
 const FETCH_TIMEOUT_MS = 8000;
 
 // ─── URL capture ────────────────────────────────────────────────────────────
-export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1' } = {}) {
+export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1', sign = null } = {}) {
   let url;
   try {
     url = new URL(rawUrl);
@@ -35,13 +35,14 @@ export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate =
     const res = await fetchImpl(url, {
       signal: ctrl.signal,
       redirect: 'manual', // a redirect could point at a private address; don't follow blindly
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; SpotBot/0.1; +https://spot.cart)', accept: 'text/html' },
+      // Signed (Web Bot Auth), so stores can tell Spot from other bots.
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; SpotBot/0.2; +https://spotmeplease.com/for-stores)', accept: 'text/html', ...(sign ? sign(url) : {}) },
     });
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location');
       if (!loc) throw new CaptureError('The store redirected without a destination');
       clearTimeout(timer);
-      return captureFromUrl(new URL(loc, url).toString(), { fetchImpl, allowPrivate });
+      return captureFromUrl(new URL(loc, url).toString(), { fetchImpl, allowPrivate, sign });
     }
     if (!res.ok) throw new CaptureError(`The store returned ${res.status}`);
     html = await readCapped(res, MAX_HTML_BYTES);

@@ -72,6 +72,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     const m = req.url.match(/^\/ucp\/checkout-sessions\/([^/]+)(\/complete|\/cancel)?$/);
     if (m) {
       const co = sessions.get(m[1]);
+      if (req.method === 'GET' && !m[2]) return send(200, view(co));
       if (req.method === 'PUT') {
         const method = body.fulfillment.methods[0];
         const picked = method.groups?.[0]?.selected_option_id;
@@ -94,6 +95,13 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
       }
     }
     if (req.url === '/tok/tokenize') return send(200, { token: 'tok_from_store' });
+    // The store's own checkout page: the payer pays the store here.
+    const pay = req.url.match(/^\/checkout\/([^/]+)\/pay$/);
+    if (pay && req.method === 'POST') {
+      const co = sessions.get(pay[1]);
+      Object.assign(co, { status: 'completed', order: { id: 'ord_888', permalink_url: `${origin}/orders/ord_888` } });
+      return send(200, view(co));
+    }
     send(404, { code: 'not_found', content: 'nope' });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -224,4 +232,85 @@ test('variant picking and handler choice', () => {
   assert.equal(pickVariant({ variants: [{ id: 'x', inputs: [{ id: 'u', match: 'exact' }] }] }, { variant: 'whatever' }, 'u').id, 'x');
   assert.equal(payableHandler({ ucp: { payment_handlers: { g: [{ id: 'g', available_instruments: [{ type: 'card' }], config: {} }] } } }), null);
   assert.equal(payableHandler({ ucp: { payment_handlers: { p: [{ id: 'p', available_instruments: [{ type: 'card' }], config: { endpoint: 'https://t.example/' } }] } } }).endpoint, 'https://t.example');
+});
+
+
+// ─── Pay the store directly ────────────────────────────────────────────────
+async function directSetup(t, store) {
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { PUBLIC_URL: 'https://spot.example' }, fulfill: { ucp: { allowPrivate: true } } });
+  t.after(async () => {
+    await app.close();
+    await store.close();
+  });
+  const call = async (method, url, payload) => {
+    const r = await app.inject({ method, url, payload });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body };
+  };
+  return { app, call };
+}
+const directCart = (origin, patch = {}) => ({
+  requester: { name: 'Kyle Riggle' },
+  merchant: { name: 'Puff Co', url: origin },
+  items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${origin}/products/puffer` }],
+  extras_cents: 2500,
+  settle: 'direct',
+  ...patch,
+});
+
+test('pay the store directly: Spot builds the store’s checkout, the payer pays the store, Spot never holds the money', async (t) => {
+  const store = await startUcpStore();
+  const { app, call } = await directSetup(t, store);
+  assert.deepEqual((await call('GET', `/v1/stores/check?url=${encodeURIComponent(store.origin)}`)).body, { pay_at_store: true });
+
+  const made = (await call('POST', '/v1/carts', directCart(store.origin))).body;
+  assert.equal(made.cart.fee_cents, 0, 'no Spot fee: the store is the seller');
+  assert.equal(made.cart.cushion_cents, 0);
+  assert.equal(made.cart.total_cents, 27500);
+  const { token } = made.cart;
+  const k = made.manage_key;
+
+  // Not payable until the requester says where it ships.
+  let page = await call('GET', `/c/${token}`);
+  assert.match(page.body, /Waiting for Kyle Riggle to add where it ships/);
+  assert.equal((await call('POST', `/v1/carts/${token}/direct/start`, {})).status, 409);
+  assert.equal((await call('POST', `/v1/carts/${token}/sandbox-pay`, {})).status, 409, 'Spot never takes this payment');
+  await call('POST', `/v1/carts/${token}/manage/prepare`, { k, shipping });
+
+  page = await call('GET', `/c/${token}`);
+  assert.match(page.body, /Pay Puff Co \$275\.00/);
+  assert.match(page.body, /Spot never touches your money and adds no fee/);
+
+  const started = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Mom', email: 'Mom@Example.com' });
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  assert.equal(started.body.continue_url, `${store.origin}/checkout/chk_1`, 'the payer goes to the store’s own checkout');
+  assert.equal(started.body.total_cents, 25000 + 800 + 1100, 'the store’s real total, cheapest shipping');
+  const created = store.log.find((r) => r.method === 'POST' && r.url === '/ucp/checkout-sessions');
+  assert.equal(created.body.buyer.email, 'mom@example.com', 'the payer is the buyer, so the store emails them its receipt');
+  const put = store.log.filter((r) => r.method === 'PUT').at(-1);
+  assert.equal(put.body.fulfillment.methods[0].destinations[0].street_address, '1 Main St', 'shipped to the requester');
+  assert.ok(!store.log.some((r) => r.url === '/tok/tokenize' || r.url.endsWith('/complete')), 'Spot never pays or completes: the payer does, on the store’s page');
+
+  // Starting again reuses the same checkout.
+  assert.equal((await call('POST', `/v1/carts/${token}/direct/start`, {})).body.continue_url, started.body.continue_url);
+  assert.equal((await call('GET', `/v1/carts/${token}/direct/status`)).body.cart.status, 'open');
+
+  // The payer pays on the store's page; Spot's sweep notices.
+  await fetch(`${store.origin}/checkout/chk_1/pay`, { method: 'POST' });
+  await app.spot.sweepDirect();
+  const mine = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).body;
+  assert.equal(mine.cart.status, 'completed');
+  assert.equal(mine.cart.payer_name, 'Mom');
+  assert.equal(mine.cart.fulfillment.state, 'placed');
+  assert.equal(mine.cart.fulfillment.method, 'direct');
+  assert.equal(mine.cart.fulfillment.order_number, 'ord_888');
+  assert.equal(mine.cart.card_ready, false, 'no card was ever issued');
+});
+
+test('pay the store directly: only for stores that take UCP checkout', async (t) => {
+  const store = await startUcpStore();
+  const { call } = await directSetup(t, store);
+  const r = await call('POST', '/v1/carts', directCart('http://127.0.0.1:1', {}));
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /doesn’t take direct checkout/);
+  assert.equal((await call('POST', '/v1/carts', directCart(store.origin, { merchant: { name: 'Puff Co' } }))).status, 409, 'needs the store’s website');
 });

@@ -43,19 +43,22 @@ Most of these pick things up from the official registry. The rest take a short f
 
 **Name:** Spot
 
-**One line (≤100 chars):** Let AI agents ask someone else to pay for a cart, or text you a cart or flight to finish in a tap.
+**One line (≤100 chars):** The yes button for AI shopping: a person approves and pays, with rules and signed proof.
 
 **Description:**
-Spot is the pay-for-me layer for AI shopping. Agents can build carts but can't pay, and Spot gives them two ways to finish:
+Spot is the yes button for AI shopping. Agents can build carts, but a person has to say yes to paying. Spot is that step:
 
 - **Spot me:** turn any cart into a link someone else pays with one tap (Apple Pay, Google Pay or card). They buy exactly that cart from Spot, and Spot orders it and ships it to your user, so it can only buy that cart.
 - **Finish for me:** your agent finds it (any store's cart, or a real flight), holds the price, and texts you a link. You check it, tap Apple Pay, and Spot orders or books it. Nothing is spent without a person.
+- **Pay the store directly:** for stores with agent checkout (UCP), the payer pays the store on its own checkout. The store is the seller and there's no Spot fee.
+- **Rules and approvers:** keys from a Spot account follow that person's limits (per order, per month, allowed stores). Over a limit, the ask is refused with the reason or sent to their approver.
+- **Signed approvals:** every yes comes back as an EdDSA-signed record (`approval_url`) anyone can verify. Spot signs its requests to stores with HTTP Message Signatures (Web Bot Auth).
 
 **Tools:**
-- `create_spot_ask`: items, a link or a description → a pay link for someone else, or (`for_me`) a finish link texted or emailed to your user
+- `create_spot_ask`: items, a link or a description → a pay link for someone else, or (`for_me`) a finish link texted or emailed to your user. `pay_at_store` defaults on for UCP stores; `stores` puts carts from 2–5 stores in one link and one payment
 - `search_flights`: live fares, cheapest first plus the best nonstop
 - `create_flight_ask`: hold a fare and send your user a link to book it
-- `get_spot_ask`: status and the next step (waiting, paid, ordering, ordered, booked)
+- `get_spot_ask`: status, the next step, and signed approvals once someone says yes
 - `order_spot_ask`: once paid, place the order at the store (the user confirms the last tap)
 
 **Tags:** payments, shopping, commerce, checkout, flights, travel, agents

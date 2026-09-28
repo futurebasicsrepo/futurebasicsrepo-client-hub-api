@@ -2,6 +2,7 @@
 // rules in cart.js are enforced the same way for HTTP routes, webhooks and
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { agentLabel } from './approvals.js';
 import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
@@ -64,13 +65,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   return {
     provider,
 
-    create(input, { ip, userId } = {}, limits = cfg) {
+    create(input, { ip, userId } = {}, limits = cfg, opts = {}) {
       const v = validateCart(input, limits);
-      risk?.checkCreate(ip);
+      if (!opts.skipRisk) risk?.checkCreate(ip);
       const now = Date.now();
-      const manageKey = randomBytes(24).toString('base64url');
+      const manageKey = opts.manageKey || randomBytes(24).toString('base64url');
       const cart = {
         ...v,
+        ...(opts.extra || {}),
         id: randomUUID(),
         token: randomBytes(9).toString('base64url'), // 12-char public link id
         manage_hash: hash(manageKey),
@@ -187,6 +189,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
       const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
+      // Changed items aren't the store's cart any more.
+      if (cart.source && JSON.stringify(v.items) !== JSON.stringify(cart.items)) next.source = { ...cart.source, verified: false, edited: true };
+      if (cart.bundle_id) {
+        const others = db.bundles.carts(cart.bundle_id).filter((c) => c.id !== cart.id).reduce((n, c) => n + c.cart_cents, 0);
+        if (others + next.cart_cents > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+      }
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'edited');
       return next;
@@ -253,6 +261,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     async startPayment(token) {
       const cart = load(token);
       if (cart.settle !== 'card') throw new CartError('This cart is paid directly by Venmo or Cash App', 409);
+      if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already covered', 409);
       if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
       if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
@@ -268,6 +277,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // Called by the Stripe webhook (or the sandbox) once money has landed.
     async paymentSucceeded({ paymentRef, amountCents, payer }) {
+      const bundle = db.bundles?.byPayment(paymentRef);
+      if (bundle) return this._bundlePaid(bundle, amountCents, payer);
       const cart = db.byPayment(paymentRef);
       if (!cart) throw new CartError('Unknown payment', 404);
       if (cart.status !== 'open') return cart; // duplicate webhook delivery
@@ -286,6 +297,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       // Spot is the seller: the payer gets a receipt from Spot, with a link
       // to cancel for a full refund until the order is placed.
+      // Sign the approval first so the receipt can link it.
+      this.emit('approved', paid.id, { by: paid.for === 'self' ? 'requester' : 'payer', how: 'paid_spot', amount_cents: amountCents });
       this.emit('receipt', paid.id);
       if (verdict.action === 'hold') {
         return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
@@ -299,7 +312,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = db.byId(cartId);
       if (!cart?.hold || cart.status !== 'paid') throw new CartError('Nothing held on this cart', 409);
       const next = this.patch(cart.id, (c) => ({ ...c, hold: null, released_at: Date.now() }), 'released');
-      if (next.kind !== 'flight' && next.for !== 'self') this.emit('covered', next.id);
+      if (next.kind !== 'flight' && next.for !== 'self' && !next.bundle_id) this.emit('covered', next.id);
       return next.kind === 'flight' ? this.bookFlight(next) : this.issue(next);
     },
 
@@ -310,6 +323,65 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (!cart) throw new CartError('Cart not found', 404);
       if (!['paid', 'card_issued', 'completed', 'refunding'].includes(cart.status) || !cart.payment_ref) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
       return this.refundCart(cart, { reason: 'admin', by: 'admin' });
+    },
+
+    // ─── Pay the store directly (settle 'direct', see direct.js) ─────────
+    // Set by the server: the UCP client that builds and follows store checkouts.
+    direct: null,
+
+    // The payer taps "Pay <store>": build the store's checkout (reused for 30
+    // minutes) and send them to it. Spot never takes this payment.
+    async directStart(token, { email = null, name = null } = {}) {
+      const cart = load(token);
+      if (cart.settle !== 'direct') throw new CartError('This cart isn’t paid at the store', 409);
+      if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already taken care of', 409);
+      if (!this.direct) throw new CartError('Paying the store directly isn’t available right now', 503);
+      const d = cart.direct;
+      if (d?.checkout_id && Date.now() - d.started_at < 30 * 60_000) {
+        const now = await this.directSync(token);
+        if (now.status !== 'open') throw new CartError('This cart is already taken care of', 409);
+        if (now.direct?.checkout_id) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
+      }
+      const started = await this.direct.start(cart, { email });
+      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
+      return { continue_url: started.continue_url, total_cents: started.total_cents };
+    },
+
+    // Ask the store how its checkout is going. When the store says it's
+    // completed, the cart completes with the store's order.
+    async directSync(token, { force = false } = {}) {
+      const cart = load(token);
+      const d = cart.direct;
+      if (cart.settle !== 'direct' || cart.status !== 'open' || !d?.checkout_id || !this.direct) return cart;
+      if (!force && d.checked_at && Date.now() - d.checked_at < 5000) return cart;
+      let st;
+      try {
+        st = await this.direct.status(d);
+      } catch (err) {
+        log.warn?.({ err, cart: cart.id }, 'store checkout status failed');
+        return this.patch(cart.id, (c) => ({ ...c, direct: { ...c.direct, checked_at: Date.now() } }));
+      }
+      if (st.status === 'completed') {
+        const done = move(db.byId(cart.id), 'store_paid', {
+          paid_at: Date.now(),
+          payer: cart.payer || (d.payer_name ? { name: d.payer_name } : null),
+          payer_contact: d.payer_email ? { email: d.payer_email } : cart.payer_contact || null,
+          fulfillment: { state: 'placed', method: 'direct', order_number: st.order_number, order_url: st.order_url, total_cents: st.total_cents, placed_at: Date.now() },
+        }, { order_number: st.order_number });
+        this.emit('approved', done.id, { by: cart.for === 'self' ? 'requester' : 'payer', amount_cents: st.total_cents, how: 'paid_at_store' });
+        this.emit('ordered', done.id);
+        return done;
+      }
+      if (st.status === 'canceled') return this.patch(cart.id, (c) => ({ ...c, direct: null }), 'store_checkout_canceled');
+      return this.patch(cart.id, (c) => ({ ...c, direct: { ...c.direct, checked_at: Date.now(), total_cents: st.total_cents ?? c.direct.total_cents } }));
+    },
+
+    // Follow open store checkouts (from the server's sweeper).
+    async sweepDirect() {
+      for (const id of db.idsDirectOpen()) {
+        const cart = db.byId(id);
+        if (cart) await this.directSync(cart.token, { force: true }).catch(() => {});
+      }
     },
 
     // ─── Refunds ─────────────────────────────────────────────────────────
@@ -324,7 +396,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const already = cur.refunded_cents || 0;
       try {
         await provider.cancelCard(cur);
-        if (cur.total_cents - already > 0) await provider.refund(cur, already ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
+        // A bundle's carts share one payment: always name this cart's share.
+        if (cur.total_cents - already > 0) await provider.refund(cur, already || cur.bundle_id ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
       } catch (err) {
         log.error?.({ err, cart: cur.id }, 'refund failed');
         db.event(cur.id, 'refund_failed', { message: err.message });
@@ -432,13 +505,17 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // The payer disputed their payment with their bank. Stop the card, block
     // the payer's card from Spot, and flag it for a human.
     async dispute(paymentRef, reason = null) {
-      const cart = db.byPayment(paymentRef);
-      if (!cart) return null;
-      let cur = this.patch(cart.id, (c) => ({ ...c, dispute: { at: Date.now(), reason } }), 'disputed');
-      cur = await this._cancelOnce(cur);
-      const fp = db.risk?.paymentFor?.(cart.id)?.fingerprint;
-      if (fp && db.blocks) db.blocks.add('card', fp, `Disputed a payment (cart ${cart.token})`);
-      return cur;
+      const carts = db.byPaymentAll ? db.byPaymentAll(paymentRef) : [db.byPayment(paymentRef)].filter(Boolean);
+      if (!carts.length) return null;
+      let first = null;
+      for (const cart of carts) {
+        let cur = this.patch(cart.id, (c) => ({ ...c, dispute: { at: Date.now(), reason } }), 'disputed');
+        cur = await this._cancelOnce(cur);
+        first = first || cur;
+      }
+      const fp = carts.map((c) => db.risk?.paymentFor?.(c.id)?.fingerprint).find(Boolean);
+      if (fp && db.blocks) db.blocks.add('card', fp, `Disputed a payment (cart ${carts[0].token})`);
+      return first;
     },
 
     // The payer cancels from their receipt, until Spot places the order.
@@ -544,6 +621,145 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return this.refundCart(cart, { reason: 'requester_canceled', by: 'requester' });
     },
 
+    // ─── Bundles: one ask across several stores ──────────────────────────
+    // A cart per store (each its own card, order, refunds and deadline),
+    // one link and one payment. If one store can't be ordered, only that
+    // store's share is refunded.
+    createBundle(input, { ip, userId } = {}) {
+      const b = input && typeof input === 'object' ? input : {};
+      const stores = Array.isArray(b.stores) ? b.stores : [];
+      if (stores.length < 2) throw new CartError('A multi-store ask needs carts from at least two stores');
+      if (stores.length > MAX_BUNDLE_STORES) throw new CartError(`Up to ${MAX_BUNDLE_STORES} stores in one ask`);
+      if (b.settle && b.settle !== 'card') throw new CartError('Multi-store asks are paid on Spot, in one payment', 400);
+      const forWhom = b.for === 'self' ? 'self' : 'other';
+      const each = (st) => ({ requester: b.requester, merchant: st?.merchant, items: st?.items, extras_cents: st?.extras_cents, note: b.note, settle: 'card', for: forWhom, expires_minutes: b.expires_minutes });
+      const valid = stores.map((st) => validateCart(each(st), cfg));
+      const goods = valid.reduce((n, v) => n + v.cart_cents, 0);
+      if (goods > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+      risk?.checkCreate(ip);
+      const manageKey = randomBytes(24).toString('base64url');
+      const id = randomUUID();
+      const token = randomBytes(9).toString('base64url');
+      const carts = stores.map((st, i) => this.create(each(st), { ip, userId }, cfg, { manageKey, skipRisk: true, extra: { bundle_id: id, bundle_index: i } }).cart);
+      db.bundles.insert({ id, token, manage_hash: hash(manageKey), created_at: Date.now(), doc: { for: forWhom, requester: { name: carts[0].requester.name }, note: carts[0].note || null, count: carts.length } });
+      for (const c of carts) db.event(c.id, 'bundled', { bundle: token });
+      return { bundle: this.loadBundle(token), manageKey };
+    },
+
+    loadBundle(token) {
+      const b = db.bundles.byToken(String(token || ''));
+      if (!b) throw new CartError('Not found', 404);
+      const carts = db.bundles.carts(b.id).map((c) => (c.status === 'open' && c.expires_at < Date.now() ? expire(c) : c));
+      return { ...b, carts, status: bundleStatus(carts) };
+    },
+
+    // The same private key opens the bundle and each of its store carts.
+    loadBundleManaged(token, key) {
+      const b = this.loadBundle(token);
+      const auth = key && typeof key === 'object' ? key : { k: key };
+      if (auth.userId && b.carts[0]?.user_id === auth.userId) return b;
+      const a = Buffer.from(hash(String(auth.k || '')));
+      const m = Buffer.from(b.manage_hash);
+      if (a.length === m.length && timingSafeEqual(a, m)) return b;
+      const sig = Buffer.from(manageSig(b.token));
+      const got = Buffer.from(String(auth.k || ''));
+      if (sig.length === got.length && timingSafeEqual(sig, got)) return b;
+      throw new CartError('Not found', 404);
+    },
+    bundlePrivatePath: (b) => `/b/${b.token}/manage?k=${manageSig(b.token)}`,
+    bundlePayerPath: (b) => `/b/${b.token}/receipt?p=${payerSig(b.token)}`,
+    bundleOf: (cart) => (cart?.bundle_id ? db.bundles.byId(cart.bundle_id) : null),
+
+    // One payment for every store: the intent is for the bundle's total, and
+    // each store's cart holds "<payment>#<n>" so refunds go back per store.
+    async startBundlePayment(token) {
+      const b = this.loadBundle(token);
+      if (b.status !== 'open') throw new CartError(b.status === 'expired' ? 'This link has expired' : 'This is already covered', 409);
+      if (b.for === 'self' && !b.carts[0].requester.shipping) throw new CartError('Add where it ships first', 409);
+      for (const c of b.carts) {
+        if (!(await this.canOrder(c))) throw new CartError(`Spot can't order from ${c.merchant.name} automatically yet, so it can't take a payment for this ask.`, 409);
+      }
+      const total = b.carts.reduce((n, c) => n + c.total_cents, 0);
+      const { ref, client } = await provider.createPayment({ id: b.id, total_cents: total, requester: b.carts[0].requester, merchant: { name: storesLabel(b.carts) }, payment_ref: b.payment_ref, bundle: true });
+      if (ref !== b.payment_ref) db.bundles.setPayment(b.id, ref);
+      b.carts.forEach((c, i) => {
+        const pr = `${ref}#${i}`;
+        if (c.payment_ref !== pr && !db.save({ ...c, payment_ref: pr }, 'open')) throw new CartError('Cart changed, try again', 409);
+      });
+      return client;
+    },
+
+    async _bundlePaid(bundle, amountCents, payer) {
+      const carts = db.bundles.carts(bundle.id);
+      const open = carts.filter((c) => c.status === 'open');
+      if (!open.length) return carts[0]; // duplicate webhook delivery
+      const total = carts.reduce((n, c) => n + c.total_cents, 0);
+      if (amountCents !== total) {
+        for (const c of carts) db.event(c.id, 'amount_mismatch', { expected: total, got: amountCents });
+        throw new CartError('Payment amount does not match cart', 409);
+      }
+      const at = Date.now();
+      const who = { paid_at: at, payer: payer?.name ? { name: payer.name } : null, payer_contact: payer?.email ? { email: String(payer.email).toLowerCase() } : null };
+      const paid = [];
+      for (const c of carts) {
+        if (c.status === 'open') {
+          paid.push(move(c, 'pay', who, { amount_cents: c.total_cents, bundle: bundle.token }));
+        } else {
+          // Expired or canceled before the money landed: give that share back.
+          db.event(c.id, 'paid_while_closed', { status: c.status });
+          await provider.refund(c, c.total_cents, 'closed').catch((err) => log.error?.({ err, cart: c.id }, 'refund of closed bundle cart failed'));
+        }
+      }
+      const verdict = risk ? risk.assessPayment({ ...paid[0], total_cents: paid.reduce((n, c) => n + c.total_cents, 0) }, payer || {}) : { action: 'ok' };
+      if (verdict.action === 'refund') {
+        for (const c of paid) {
+          db.event(c.id, 'risk_refund', { reason: verdict.reason });
+          await this.refundCart(this.patch(c.id, (x) => ({ ...x, risk: verdict })), { reason: 'risk', quiet: true });
+        }
+        return db.byId(paid[0].id);
+      }
+      for (const c of paid) this.emit('approved', c.id, { by: c.for === 'self' ? 'requester' : 'payer', how: 'paid_spot', amount_cents: c.total_cents });
+      this.emit('receipt', paid[0].id, { bundle: bundle.id });
+      if (verdict.action === 'hold') {
+        for (const c of paid) this.patch(c.id, (x) => ({ ...x, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
+        return db.byId(paid[0].id);
+      }
+      if (paid[0].for !== 'self') this.emit('covered', paid[0].id, { bundle: bundle.id });
+      for (const c of paid) await this.issue(c);
+      return db.byId(paid[0].id);
+    },
+
+    // Shipping for every store at once.
+    prepareBundle(token, key, shippingInput) {
+      const b = this.loadBundleManaged(token, key);
+      if (b.status !== 'open') throw new CartError('This is already paid', 409);
+      const shipping = validateShipping(shippingInput);
+      for (const c of b.carts) {
+        const next = { ...c, requester: { ...c.requester, shipping, email: c.requester.email || shipping.email } };
+        if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+        db.event(c.id, 'shipping_set');
+      }
+      return this.loadBundle(token);
+    },
+
+    cancelBundle(token, key) {
+      const b = this.loadBundleManaged(token, key);
+      if (b.status !== 'open') throw new CartError('Only an unpaid ask can be canceled', 409);
+      for (const c of b.carts) if (c.status === 'open') move(c, 'cancel');
+      return this.loadBundle(token);
+    },
+
+    // The payer (from their receipt) or the requester cancels whatever
+    // hasn't been ordered yet; stores already ordering keep going.
+    async refundBundle(token, { p = null, key = null } = {}) {
+      const b = p != null ? this.loadBundle(token) : this.loadBundleManaged(token, key);
+      if (p != null && !this.payerOk(b.token, p)) throw new CartError('Not found', 404);
+      const can = b.carts.filter((c) => ['paid', 'card_issued'].includes(c.status) && !ordering(c));
+      if (!can.length) throw new CartError('Nothing here can be canceled any more', 409);
+      for (const c of can) await this.refundCart(c, { reason: p != null ? 'payer_canceled' : 'requester_canceled', by: p != null ? 'payer' : 'requester' });
+      return this.loadBundle(token);
+    },
+
     sweepExpired() {
       let n = 0;
       for (const id of db.openExpiredIds()) {
@@ -555,6 +771,44 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       return n;
     },
+  };
+}
+
+const MAX_BUNDLE_STORES = 5;
+
+export function bundleStatus(carts) {
+  const s = carts.map((c) => c.status);
+  if (s.every((x) => x === 'open')) return 'open';
+  if (s.every((x) => ['open', 'expired'].includes(x))) return 'expired';
+  if (s.every((x) => ['open', 'expired', 'canceled'].includes(x))) return 'canceled';
+  if (s.every((x) => x === 'refunded')) return 'refunded';
+  if (s.every((x) => ['completed', 'refunded'].includes(x))) return 'completed';
+  return 'paid';
+}
+
+export const storesLabel = (carts) => (carts.length > 2 ? `${carts[0].merchant.name}, ${carts[1].merchant.name} +${carts.length - 2}` : carts.map((c) => c.merchant.name).join(' + '));
+
+// A bundle as anyone with its link may see it.
+export function publicBundle(b) {
+  const sum = (k) => b.carts.reduce((n, c) => n + (c[k] || 0), 0);
+  return {
+    token: b.token,
+    status: b.status,
+    for: b.for,
+    requester: { name: b.requester.name },
+    note: b.note,
+    stores: b.carts.map((c) => ({ ...publicCart(c), requester: undefined, note: undefined })),
+    merchant: { name: storesLabel(b.carts) },
+    items: b.carts.flatMap((c) => c.items),
+    subtotal_cents: sum('subtotal_cents'),
+    extras_cents: sum('extras_cents'),
+    cart_cents: sum('cart_cents'),
+    cushion_cents: sum('cushion_cents'),
+    fee_cents: sum('fee_cents'),
+    total_cents: sum('total_cents'),
+    expires_at: Math.min(...b.carts.map((c) => c.expires_at)),
+    payer_name: b.carts.find((c) => c.payer?.name)?.payer.name || null,
+    built_by: b.carts[0]?.agent ? agentLabel(b.carts[0].agent) : null,
   };
 }
 
@@ -578,9 +832,16 @@ export function publicCart(cart) {
     cart_cents: cart.cart_cents,
     cushion_cents: cart.cushion_cents || 0,
     fee_cents: cart.fee_cents,
+    // Paid on the store's own checkout: can the payer go ahead yet?
+    pay_at_store: cart.settle === 'direct' ? { ready: Boolean(cart.requester.shipping), started: Boolean(cart.direct?.checkout_id), store_total_cents: cart.direct?.total_cents ?? null } : null,
     total_cents: cart.total_cents,
     expires_at: cart.expires_at,
     payer_name: cart.payer?.name || null,
+    // Provenance: which AI put this together, or which store's button sent it.
+    built_by: cart.agent ? agentLabel(cart.agent) : null,
+    source: cart.source ? { kind: cart.source.kind, name: cart.source.name || null, verified: Boolean(cart.source.verified) } : null,
+    // Sent to an approver by the requester's own spending rules.
+    via_approver: Boolean(cart.approver),
   };
 }
 

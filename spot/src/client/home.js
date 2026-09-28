@@ -41,6 +41,25 @@
   let draft = null; // { merchant, items, extras_cents, note }
   let made = null; // { token, key, link, manage, rev }
   let image = null; // { data, media_type, name }
+  // Carts from other stores, waiting to go in the same link (a multi-store ask).
+  let basket = []; // [{ merchant, items, extras_cents }]
+  const goodsOf = (st) => st.items.reduce((n, i) => n + (i.price_cents || 0) * i.quantity, 0) + (st.extras_cents || 0);
+  function renderBasket() {
+    const b = $('#basket');
+    b.hidden = !basket.length;
+    b.innerHTML = basket.length
+      ? '<p class="small muted" style="margin:0 0 6px">In this Spot so far (one link, one payment):</p>' +
+        basket.map((st, i) => '<div class="sum"><span>🛍️ ' + esc(st.merchant.name) + ' · ' + esc(st.items[0].title) + (st.items.length > 1 ? ' +' + (st.items.length - 1) : '') + '</span><span>' + usd(goodsOf(st)) + ' <button class="textlink" data-unbasket="' + i + '" aria-label="Remove">×</button></span></div>').join('') +
+        '<p class="small muted" style="margin:6px 0 0">Paste a link from the next store.</p>'
+      : '';
+  }
+  $('#basket').addEventListener('click', (e) => {
+    const i = e.target.dataset.unbasket;
+    if (i != null) {
+      basket.splice(+i, 1);
+      renderBasket();
+    }
+  });
 
   const show = (id) => {
     for (const s of ['compose', 'check', 'ready']) $('#' + s).hidden = s !== id;
@@ -116,7 +135,7 @@
       draft = { merchant: d.merchant || { name: '', url: null }, items: d.items?.length ? d.items : [blank()], extras_cents: d.extras_cents || 0, note: '' };
       made = null;
       const priced = draft.items.every((i) => i.price_cents > 0);
-      if (!d.needs_review && priced && draft.merchant.name && me.name) {
+      if (!d.needs_review && priced && draft.merchant.name && me.name && !basket.length) {
         await create();
         ready();
       } else {
@@ -143,7 +162,22 @@
     $('#email').value = me.email || '';
     $('#venmo').value = me.venmo ? '@' + me.venmo : '';
     $('#cashtag').value = me.cashtag ? '$' + me.cashtag : '';
-    $('#settle').value = me.settle || 'card';
+    $('#settle').value = me.settle === 'handoff' ? 'handoff' : 'card';
+    // Several stores: paid on Spot in one payment, so no other options.
+    $('#settle').disabled = basket.length > 0;
+    if (basket.length) $('#settle').value = 'card';
+    $('#addStore').hidden = Boolean(made) || basket.length >= 4;
+    // Stores with agent checkout (UCP): the payer can pay the store directly.
+    $('#optDirect').hidden = true;
+    const storeUrl = draft.merchant && (draft.merchant.url || (draft.items.find((i) => i.url) || {}).url);
+    if (storeUrl && !basket.length) {
+      fetch('/v1/stores/check?url=' + encodeURIComponent(storeUrl)).then((r) => r.json()).then((r) => {
+        if (!r.pay_at_store) return;
+        $('#optDirect').hidden = false;
+        if (me.settle !== 'handoff') $('#settle').value = 'direct';
+        totals();
+      }).catch(() => {});
+    }
     $('#note').value = draft.note || '';
     $('#saveCheck').textContent = made ? 'Save changes' : 'Looks good →';
     renderItems();
@@ -189,14 +223,25 @@
   $('#extras').oninput = totals;
   $('#settle').onchange = totals;
 
+  // Same math as the server (cart.js computeTotals), per store: when Spot
+  // buys it, the payer adds the fee and a refundable allowance for tax and
+  // price changes, so "They pay" matches the pay page.
+  const feeOf = (goods) => Math.round((goods * CFG.feeBps) / 10000) + CFG.feeFixed;
+  const cushionOf = (goods) => Math.min(Math.round((goods * CFG.cushionBps) / 10000), CFG.cushionMax);
   function totals() {
     const sub = draft.items.reduce((s, it) => s + (it.price_cents || 0) * it.quantity, 0);
     const cart = sub + (toCents($('#extras').value) || 0);
-    const fee = $('#settle').value === 'handoff' ? 0 : Math.round((cart * CFG.feeBps) / 10000) + CFG.feeFixed;
+    const card = $('#settle').value === 'card';
+    const all = [...basket.map(goodsOf), cart];
+    const goods = all.reduce((n, g) => n + g, 0);
+    const fee = card ? all.reduce((n, g) => n + feeOf(g), 0) : 0;
+    const room = card ? all.reduce((n, g) => n + cushionOf(g), 0) : 0;
+    const prev = basket.length;
     $('#totals').innerHTML =
-      (fee ? '<div class="sum"><span>Items + shipping</span><span>' + usd(cart) + '</span></div><div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee) + '</span></div>' : '') +
-      '<div class="sum total"><span>They pay</span><span>' + usd(cart + fee) + '</span></div>' +
-      (cart > CFG.max ? '<div class="err">Carts are capped at ' + usd(CFG.max) + ' for now.</div>' : '');
+      (prev ? basket.map((st) => '<div class="sum"><span>' + esc(st.merchant.name) + '</span><span>' + usd(goodsOf(st)) + '</span></div>').join('') + '<div class="sum"><span>This store</span><span>' + usd(cart) + '</span></div>' : '') +
+      (card ? '<div class="sum"><span>' + (prev ? 'Everything' : 'Items + shipping') + '</span><span>' + usd(goods) + '</span></div>' + (room ? '<div class="sum"><span>Tax and price changes (unused goes back to them)</span><span>' + usd(room) + '</span></div>' : '') + '<div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee) + '</span></div>' : '') +
+      '<div class="sum total"><span>They pay</span><span>' + usd(goods + fee + room) + '</span></div>' +
+      (goods > CFG.max ? '<div class="err">Spots are capped at ' + usd(CFG.max) + ' for now' + (prev ? ', across all stores' : '') + '.</div>' : '');
   }
 
   $('#saveCheck').onclick = async () => {
@@ -209,7 +254,7 @@
       email: $('#email').value.trim(),
       venmo: $('#venmo').value.trim().replace(/^@/, ''),
       cashtag: $('#cashtag').value.trim().replace(/^\$/, ''),
-      settle: $('#settle').value,
+      settle: basket.length ? me.settle : $('#settle').value,
     };
     save('spot:me', me);
     draft.merchant = { ...draft.merchant, name: $('#merchant').value.trim() };
@@ -239,11 +284,51 @@
       items: draft.items,
       extras_cents: draft.extras_cents,
       settle: me.settle || 'card',
+      ...(me.settle === 'direct' && draft.merchant && !draft.merchant.url ? { merchant: { ...draft.merchant, url: (draft.items.find((i) => i.url) || {}).url } } : {}),
       note: draft.note,
+      // The store's cart as sent; once edited it's just a cart.
+      ...(draft.draft_id && draft.orig === JSON.stringify(draft.items) ? { draft_id: draft.draft_id } : {}),
     };
   }
 
+  // Keep this store's cart and go get the next one.
+  $('#addStore').onclick = () => {
+    $('#checkErr').textContent = '';
+    draft.merchant = { ...draft.merchant, name: $('#merchant').value.trim() };
+    draft.items = draft.items.filter((i) => i.title || i.price_cents);
+    draft.extras_cents = toCents($('#extras').value) || 0;
+    if (!draft.merchant.name) return ($('#checkErr').textContent = 'Which store is this from?');
+    if (!draft.items.length || draft.items.some((i) => !i.title || !(i.price_cents > 0))) return ($('#checkErr').textContent = 'Give every item a name and a price first');
+    // Keep what they typed about themselves for the next store's check.
+    const nm = $('#name').value.trim();
+    if (nm) {
+      me = { ...me, name: nm, email: $('#email').value.trim() || me.email };
+      save('spot:me', me);
+    }
+    draft.note = $('#note').value.trim() || draft.note;
+    basket.push({ merchant: draft.merchant, items: draft.items, extras_cents: draft.extras_cents, note: draft.note });
+    draft = image = null;
+    q.value = '';
+    $('#chip').hidden = true;
+    renderBasket();
+    show('compose');
+    say('got it! what’s from the next store?');
+    q.focus();
+  };
+
   async function create() {
+    if (basket.length) {
+      // One link for every store: Spot buys each store's cart, one payment.
+      const b = body();
+      const r = await api('/v1/bundles', { requester: b.requester, note: b.note || basket.map((st) => st.note).find(Boolean) || '', stores: [...basket, { merchant: draft.merchant, items: draft.items, extras_cents: draft.extras_cents }] });
+      made = { token: r.bundle.token, key: r.manage_key, link: r.link, manage: r.manage_link, rev: 1, total: r.bundle.total_cents, bundle: r.bundle.stores.length };
+      const mine = load('spot:mine', []);
+      mine.unshift({ token: made.token, manage: made.manage, title: r.bundle.items[0].title + ' +' + (r.bundle.items.length - 1), merchant: r.bundle.stores.length + ' stores', total: r.bundle.cart_cents, at: Date.now() });
+      save('spot:mine', mine.slice(0, 20));
+      basket = [];
+      renderBasket();
+      return;
+    }
     const r = await api('/v1/carts', body());
     made = { token: r.cart.token, key: r.manage_key, link: r.link, manage: r.manage_link, rev: r.cart.rev || 1, total: r.cart.total_cents };
     const mine = load('spot:mine', []).filter((m) => m.token !== made.token);
@@ -255,6 +340,7 @@
   const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const message = () => {
     const first = draft.items[0]?.title || 'something';
+    if (made.bundle) return 'psst… can you spot me? 👀 ' + first + ' + more from ' + made.bundle + ' stores\n' + made.link;
     return 'psst… can you spot me? 👀 ' + first + (draft.merchant.name ? ' from ' + draft.merchant.name : '') + '\n' + made.link;
   };
   const sms = (phone) => 'sms:' + (phone || '') + (isIOS ? '&' : '?') + 'body=' + encodeURIComponent(message());
@@ -263,6 +349,9 @@
     $('#card').src = made.link.replace(/^https?:\/\/[^/]+/, '') + '/card.png?v=' + made.rev;
     $('#linkText').textContent = made.link;
     $('#manageLink').href = made.manage;
+    $('#shipNudge').hidden = me.settle !== 'direct' || Boolean(made.bundle);
+    $('#edit').hidden = Boolean(made.bundle);
+    $('#shipLink').href = made.manage;
     renderPeople();
     $('#wa').href = 'https://wa.me/?text=' + encodeURIComponent(message());
     $('#txt').href = sms('');
@@ -332,6 +421,8 @@
   };
   $('#again').onclick = () => {
     draft = made = image = null;
+    basket = [];
+    renderBasket();
     q.value = '';
     $('#chip').hidden = true;
     renderMine();
@@ -371,7 +462,18 @@
   show('compose');
   const p = new URLSearchParams(location.search);
   const incoming = p.get('url') || p.get('text');
-  if (incoming) {
+  if (p.get('draft')) {
+    // From a store's "Ask someone to pay" button: its cart, ready to send.
+    api('/v1/merchant/drafts/' + encodeURIComponent(p.get('draft')))
+      .then((d) => {
+        draft = { merchant: d.merchant, items: d.items, extras_cents: d.extras_cents || 0, note: '', draft_id: p.get('draft'), verified: d.verified, orig: JSON.stringify(d.items) };
+        made = null;
+        check((d.verified ? '✓ ' : '') + 'your ' + d.merchant.name + ' cart. who should pay for it?');
+      })
+      .catch((e) => {
+        $('#capErr').textContent = e.message;
+      });
+  } else if (incoming) {
     q.value = incoming;
     go();
   } else if (me.name) {
