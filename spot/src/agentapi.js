@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CartError, usd } from './cart.js';
-import { ownerCart, publicCart } from './spot.js';
+import { ownerCart, publicBundle, publicCart, storesLabel } from './spot.js';
 import { emailLayout } from './notify.js';
 import { approverOf, checkRules, monthStart } from './rules.js';
 
@@ -36,6 +36,7 @@ function apiKeys(env) {
 }
 
 export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals }) {
+  const approvals_ = approvals;
   const keys = apiKeys(env);
   const selfServe = env.SPOT_OPEN_KEYS !== 'off';
 
@@ -84,7 +85,18 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     if (!rules) return { route: false };
     const approver = flight ? null : approverOf(db, row.user_id);
     const spent = rules.monthly_cents ? db.agentMonthCents(agent, monthStart()) : 0;
-    const v = checkRules(flight ? { ...rules, stores: [] } : rules, { cents, storeUrl, spentThisMonth: spent, hasApprover: Boolean(approver) });
+    const urls = [].concat(storeUrl ?? null);
+    let v = checkRules(flight ? { ...rules, stores: [] } : rules, { cents, storeUrl: urls[0], spentThisMonth: spent, hasApprover: Boolean(approver) });
+    // Every store in a multi-store ask has to be on the list.
+    if (v.ok && !flight && rules.stores?.length) {
+      for (const u of urls.slice(1)) {
+        const w = checkRules({ stores: rules.stores, approver: 'never' }, { cents: 0, storeUrl: u });
+        if (!w.ok) {
+          v = w;
+          break;
+        }
+      }
+    }
     if (!v.ok) {
       note(req, agent, 'blocked_by_rule', { reason: v.reason, merchant: merchant || null, cents });
       throw new CartError(`${v.reason}. Your user set this rule in their Spot account; they can change it there.`, 403);
@@ -93,12 +105,37 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   }
 
   function owned(agent, askId) {
-    const cart = spot.load(askId);
+    let cart;
+    try {
+      cart = spot.load(askId);
+    } catch (e) {
+      // A multi-store ask: its id is the bundle's.
+      const b = e.status === 404 && spot.loadBundle ? (() => { try { return spot.loadBundle(askId); } catch { return null; } })() : null;
+      if (!b || b.carts[0]?.agent !== agent) throw new CartError('Ask not found', 404);
+      return { ...b, __bundle: true };
+    }
     if (cart.agent !== agent) throw new CartError('Ask not found', 404);
     return cart;
   }
 
+  // Tell the approver about an ask their person's rules sent to them.
+  async function sendToApprover(req, agent, g, { token, payLink, who, title, count, store, total }) {
+    const sent = await notifier.send({ email: g.approver.email }, {
+      subject: `${who}’s AI wants to buy ${title || 'something'} (${usd(total)})`,
+      text: `${who}'s AI assistant put this together and ${who}'s rules send it to you: ${g.reason}. Pay for it, or ignore it and nothing is bought: ${payLink}`,
+      html: emailLayout({
+        preheader: `${g.reason}. Nothing is bought unless you pay.`,
+        title: `Approve ${who}’s cart?`,
+        lines: [`🤖 ${esc(who)}’s AI picked <b>${esc(title)}</b>${count > 1 ? ` +${count - 1} more` : ''} from ${esc(store)} · <b>${usd(total)}</b>.`, `Why it came to you: ${esc(g.reason)}.`, 'Pay for it and it ships to them, or ignore this and nothing is bought. Your yes is signed, so there’s a record of what you approved.'],
+        cta: { label: 'Review and approve →', url: payLink },
+        base: env.PUBLIC_URL,
+      }),
+    });
+    note(req, agent, 'message_sent', { ask_id: token, to: 'approver', status: sent.email || 'not_sent' });
+  }
+
   function view(req, cart, extra = {}) {
+    if (cart.__bundle) return bundleView(req, cart, extra);
     const pub = publicCart(cart);
     const own = ownerCart(cart);
     const link = urlFor(req, `/c/${cart.token}`);
@@ -164,6 +201,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   // ─── Core verbs (shared by REST and MCP) ──────────────────────────────────
   async function createAsk(req, agent, input) {
     const b = input || {};
+    if (Array.isArray(b.stores) && b.stores.length) return createBundleAsk(req, agent, b);
     quota(agent, 'asks', QUOTA.asks);
     if (b.for === 'self' && (b.notify?.email || b.notify?.phone)) quota(agent, 'messages', QUOTA.messages);
     let merchant = b.merchant;
@@ -214,20 +252,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         }
       }
       spot.patch(cart.id, (c) => ({ ...c, approver: { name: g.approver.name, email: g.approver.email, reason: g.reason } }), 'sent_to_approver');
-      const payLink = urlFor(req, `/c/${cart.token}`);
-      const who = cart.requester.name;
-      const sent = await notifier.send({ email: g.approver.email }, {
-        subject: `${who}’s AI wants to buy ${cart.items[0]?.title || 'something'} (${usd(cart.total_cents)})`,
-        text: `${who}'s AI assistant put this together and ${who}'s rules send it to you: ${g.reason}. Pay for it, or ignore it and nothing is bought: ${payLink}`,
-        html: emailLayout({
-          preheader: `${g.reason}. Nothing is bought unless you pay.`,
-          title: `Approve ${who}’s cart?`,
-          lines: [`🤖 ${esc(who)}’s AI picked <b>${esc(cart.items[0]?.title)}</b>${cart.items.length > 1 ? ` +${cart.items.length - 1} more` : ''} from ${esc(cart.merchant.name)} · <b>${usd(cart.total_cents)}</b>.`, `Why it came to you: ${esc(g.reason)}.`, 'Pay for it and it ships to them, or ignore this and nothing is bought. Your yes is signed, so there’s a record of what you approved.'],
-          cta: { label: 'Review and approve →', url: payLink },
-          base: env.PUBLIC_URL,
-        }),
-      });
-      note(req, agent, 'message_sent', { ask_id: cart.token, to: 'approver', status: sent.email || 'not_sent' });
+      await sendToApprover(req, agent, g, { token: cart.token, payLink: urlFor(req, `/c/${cart.token}`), who: cart.requester.name, title: cart.items[0]?.title, count: cart.items.length, store: cart.merchant.name, total: cart.total_cents });
     }
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
     const extra = forSelf
@@ -289,8 +314,111 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     return view(req, spot.byId(cart.id), extra);
   }
 
+  // One ask across several stores: one link, one payment, Spot orders
+  // from each store. Always paid on Spot (never at a store directly).
+  async function createBundleAsk(req, agent, b) {
+    quota(agent, 'asks', QUOTA.asks);
+    if (b.for === 'self' && (b.notify?.email || b.notify?.phone)) quota(agent, 'messages', QUOTA.messages);
+    const stores = b.stores.map((st) => ({ merchant: st.merchant, items: st.items, extras_cents: st.extras_cents }));
+    const goods = stores.reduce((n, st) => n + (st.items || []).reduce((m, i) => m + Math.round(Number(i.price_cents) || 0) * (Math.round(Number(i.quantity)) || 1), 0) + (Math.round(Number(st.extras_cents)) || 0), 0);
+    const urls = stores.map((st) => st.merchant?.url || (st.items || []).find((i) => i.url)?.url || null);
+    const g = gate(req, agent, { cents: goods, storeUrl: urls, merchant: stores.map((st) => st.merchant?.name).join(', ') });
+    const user = g.route && req.spotUserId ? db.users.byId(req.spotUserId) : null;
+    const forSelf = b.for === 'self' && !g.route;
+    const requester = g.route ? { ...(b.requester || {}), name: user?.name || b.requester?.name || 'Your family member' } : b.requester;
+    const { bundle, manageKey } = spot.createBundle({ requester, note: b.note, for: forSelf ? 'self' : 'other', stores, expires_minutes: b.expires_minutes }, { ip: req.ip, userId: req.spotUserId });
+    for (const c of bundle.carts) spot.patch(c.id, (x) => ({ ...x, agent }), 'agent_created');
+    const ship = b.ship_to || (g.route ? user?.shipping : null);
+    if (ship) {
+      try {
+        spot.prepareBundle(bundle.token, manageKey, { ...ship, email: ship.email || user?.email });
+      } catch {
+        // They can add it on their page.
+      }
+    }
+    const pub = publicBundle(spot.loadBundle(bundle.token));
+    note(req, agent, g.route ? 'ask_routed' : 'ask_created', { ask_id: bundle.token, item: pub.items[0]?.title, merchant: pub.merchant.name, cents: pub.cart_cents, for: forSelf ? 'self' : 'other', stores: pub.stores.length, ...(g.route ? { reason: g.reason } : {}) });
+    if (g.route) {
+      for (const c of bundle.carts) spot.patch(c.id, (x) => ({ ...x, approver: { name: g.approver.name, email: g.approver.email, reason: g.reason } }), 'sent_to_approver');
+      await sendToApprover(req, agent, g, { token: bundle.token, payLink: urlFor(req, `/b/${bundle.token}`), who: requester.name, title: pub.items[0]?.title, count: pub.items.length, store: `${pub.stores.length} stores`, total: pub.total_cents });
+    }
+    const privateLink = urlFor(req, `/b/${bundle.token}/manage?k=${manageKey}`);
+    const extra = forSelf
+      ? { finish_link: privateLink, finish_link_note: 'Private: send this only to your user. They confirm where it ships, pay once for every store, then place each store’s order.' }
+      : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It is where they add the shipping address and follow each store’s order.' };
+    if (forSelf && (b.notify?.email || b.notify?.phone)) {
+      extra.delivered = await notifier.sendFinishLink({ ...bundle.carts[0], items: pub.items, merchant: pub.merchant, total_cents: pub.total_cents }, privateLink, { email: b.notify.email, phone: b.notify.phone });
+      note(req, agent, 'message_sent', { ask_id: bundle.token, to: 'user', status: extra.delivered });
+    }
+    return bundleView(req, { ...spot.loadBundle(bundle.token), __bundle: true }, extra);
+  }
+
+  function bundleView(req, b, extra = {}) {
+    const pub = publicBundle(b);
+    const link = urlFor(req, `/b/${b.token}`);
+    const n = b.carts.length;
+    const routed = b.carts[0]?.approver;
+    const states = b.carts.map((c) => c.fulfillment?.state || null);
+    const next = {
+      open: routed
+        ? `Sent to ${routed.name || 'your user’s approver'} to approve (${routed.reason}). They pay for it or turn it down; nothing is bought until they do.`
+        : b.for === 'self'
+          ? `Waiting for your user to confirm shipping and pay once for all ${n} stores.`
+          : `Send the link to whoever will pay. One payment covers all ${n} stores. Suggested message: "${shareMessage({ items: pub.items, merchant: { name: `${n} stores` } }, link)}"`,
+      paid: states.includes('needs_you')
+        ? 'Paid. Some stores need a retry: call order_spot_ask again. A store Spot can’t order within 3 days is refunded to the payer; the others go ahead.'
+        : 'Paid. Call order_spot_ask with the shipping address and Spot orders from each store; the requester confirms each one.',
+      completed: 'Done: every store is ordered or refunded.',
+      expired: 'The link expired before anyone paid.',
+      canceled: 'The requester canceled this ask.',
+      refunded: 'The payer was refunded for every store.',
+    }[pub.status];
+    const approvals = approvals_ ? b.carts.flatMap((c) => approvals_.summary(c.id)) : [];
+    return {
+      ask_id: b.token,
+      kind: 'multi_store',
+      for: b.for,
+      status: pub.status,
+      expires_at: new Date(pub.expires_at).toISOString(),
+      link,
+      share_message: shareMessage({ items: pub.items, merchant: { name: `${n} stores` } }, link),
+      merchant: storesLabel(b.carts),
+      stores: b.carts.map((c) => ({
+        merchant: c.merchant.name,
+        status: c.status,
+        items: c.items.map((i) => ({ title: i.title, variant: i.variant, quantity: i.quantity, price_cents: i.price_cents })),
+        cart_cents: c.cart_cents,
+        total_cents: c.total_cents,
+        order: c.fulfillment ? { state: c.fulfillment.state, order_number: c.fulfillment.order_number || null, order_url: c.fulfillment.order_url || null, reason: c.fulfillment.reason || null } : null,
+      })),
+      cart_cents: pub.cart_cents,
+      total_cents: pub.total_cents,
+      payer_name: pub.payer_name,
+      next_step: next,
+      sent_to_approver: routed ? { name: routed.name || null, reason: routed.reason } : undefined,
+      approvals,
+      approval_url: approvals.at(-1)?.url || null,
+      ...extra,
+    };
+  }
+
   async function orderAsk(req, agent, askId, shipping) {
     const cart = owned(agent, askId);
+    if (cart.__bundle) {
+      // Order from every store that's paid and not ordered yet.
+      const ready = cart.carts.filter((c) => c.status === 'card_issued' && !['starting', 'working', 'awaiting_confirm', 'placed'].includes(c.fulfillment?.state));
+      if (!ready.length) throw new CartError(cart.status === 'open' ? 'Nobody has paid yet' : 'Nothing left to order', 409);
+      for (const c of ready) {
+        try {
+          await fulfiller.start(c, shipping);
+          note(req, agent, 'order_started', { ask_id: cart.token, item: c.items[0]?.title, merchant: c.merchant.name, cents: c.cart_cents });
+        } catch (err) {
+          // One store failing doesn't stop the others; its state says why.
+          db?.event?.(c.id, 'order_start_failed', { message: err.message });
+        }
+      }
+      return bundleView(req, { ...spot.loadBundle(cart.token), __bundle: true });
+    }
     if (cart.kind === 'flight') throw new CartError('Flights are booked automatically once paid', 409);
     await fulfiller.start(cart, shipping);
     note(req, agent, 'order_started', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents });
@@ -385,6 +513,12 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
           merchant_name: z.string().optional(),
           merchant_url: z.string().url().optional(),
           items: z.array(itemShape).max(25).optional(),
+          stores: z
+            .array(z.object({ merchant_name: z.string(), merchant_url: z.string().url().optional(), items: z.array(itemShape).min(1).max(25), extras_cents: z.number().int().min(0).optional() }))
+            .min(2)
+            .max(5)
+            .optional()
+            .describe('For a cart across several stores (2–5): one link and one payment, and Spot orders from each store. Use instead of items/merchant. Always paid on Spot.'),
           url: z.string().url().optional().describe('A product or cart page, if you have no item list'),
           text: z.string().optional().describe('A description like "black Salomon XT-6 size 10.5", if you have nothing else'),
           extras_cents: z.number().int().min(0).optional().describe('Estimated shipping + tax in cents'),
@@ -404,6 +538,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
               requester: { name: a.requester_name, email: a.requester_email },
               merchant: a.merchant_name ? { name: a.merchant_name, url: a.merchant_url } : undefined,
               items: a.items,
+              stores: a.stores?.map((st) => ({ merchant: { name: st.merchant_name, url: st.merchant_url }, items: st.items, extras_cents: st.extras_cents })),
               url: a.url,
               text: a.text,
               extras_cents: a.extras_cents,

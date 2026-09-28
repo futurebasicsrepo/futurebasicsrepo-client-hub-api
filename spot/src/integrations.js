@@ -120,6 +120,7 @@ spot-merchant=mer_…   (from your registration)`;
     <div class="top"><div class="ic">🔏</div><h3>Rules, approvals and signatures</h3><span class="badge live">Available</span></div>
     <ol>
       <li><b>Your user’s rules are enforced for you.</b> Keys made from a Spot account carry that person’s limits (per order, per month, allowed stores). Outside them, <code>create_spot_ask</code> returns <code>403</code> with the reason, or sends the ask to their approver and says so in <code>sent_to_approver</code>.</li>
+      <li><b>Several stores, one ask.</b> Pass <code>stores</code> (2–5, each with its own items) instead of <code>items</code>: one link and one payment, and Spot orders from each store. <code>get_spot_ask</code> shows each store’s status and order.</li>
       <li><b>Pay at the store.</b> For stores that support agent checkout (UCP), asks default to <code>pay_at_store</code>: the payer pays the store on its own checkout, and there’s no Spot fee.</li>
       <li><b>Signed approvals.</b> Once a person pays or places the order, <code>get_spot_ask</code> returns <code>approvals</code> and <code>approval_url</code>: an EdDSA-signed JWS of exactly what was approved. Verify it against <a href="/.well-known/spot-keys.json"><code>/.well-known/spot-keys.json</code></a>.</li>
       <li><b>Signed requests.</b> Spot signs its requests to stores with HTTP Message Signatures (RFC 9421, Web Bot Auth). Keys: <a href="/.well-known/http-message-signatures-directory"><code>/.well-known/http-message-signatures-directory</code></a>.</li>

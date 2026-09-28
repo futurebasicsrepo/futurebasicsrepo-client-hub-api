@@ -124,6 +124,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     </div>
   </div>
   <div class="err" id="capErr"></div>
+  <div class="card" id="basket" hidden></div>
   <p class="hint">Someone taps your link, covers it, and you check out with a card that only works at that store.</p>
 </section>
 
@@ -145,6 +146,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
       <p class="small"><button class="textlink" id="notMe" type="button">change my name</button></p>
     </details>
     <button class="btn" id="saveCheck">Looks good →</button>
+    <button class="btn ghost" id="addStore" type="button">+ Add a cart from another store</button>
     <div class="err" id="checkErr"></div>
   </div>
 </section>
@@ -357,18 +359,18 @@ const go=$('#go');if(go&&!go.disabled)go.onclick=async()=>{go.disabled=true;go.t
   catch(e){$('#payErr').textContent=e.message;go.disabled=false;go.textContent='Try again'}};`;
 }
 
-function payScript(cart, provider) {
+function payScript(cart, provider, base = '/v1/carts/') {
   if (provider === 'sandbox') {
-    return `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='spotting…';try{const name=$('#payer').value.trim();await api('/v1/carts/'+${json(cart.token)}+'/sandbox-pay',{payer_name:name});celebrate(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};`;
+    return `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='spotting…';try{const name=$('#payer').value.trim();await api(${json(base)}+${json(cart.token)}+'/sandbox-pay',{payer_name:name});celebrate(name)}catch(e){$('#payErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};`;
   }
   return `(async()=>{try{
-  const T=${json(cart.token)};const c=await api('/v1/carts/'+T+'/pay',{});
+  const T=${json(cart.token)},B=${json(base)};const c=await api(B+T+'/pay',{});
   const stripe=Stripe(c.publishable_key);
   const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
   const settle=async(payer)=>{$('#payErr').textContent='';
     const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
     if(error){$('#payErr').textContent=error.message;return false}
-    for(let i=0;i<20;i++){const r=await api('/v1/carts/'+T);if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
+    for(let i=0;i<20;i++){const r=await api(B+T);if((r.cart||r.bundle).status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
     celebrate(payer||'');return true};
   // Apple Pay / Google Pay / Link: shown only on devices that have one.
   const ex=elements.create('expressCheckout',{buttonHeight:52,buttonTheme:{applePay:'black',googlePay:'black'},buttonType:{applePay:'plain',googlePay:'plain'}});
@@ -578,6 +580,139 @@ async function draw(){
   if(r.can_cancel)h+='<button class="btn ghost" id="cancel">Cancel and get a full refund</button><p class="small muted">Until Spot places the order. The Spot fee is refunded too.</p>';
   $('#app').innerHTML=h;
   const b=$('#cancel');if(b)b.onclick=async()=>{if(!confirm('Cancel this and refund '+usd(c.total_cents)+' to your card?'))return;b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
+  return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+// ─── Multi-store asks (bundles) ─────────────────────────────────────────────
+// One link, one payment; a section per store. Spot buys each store's cart
+// with its own card and orders them separately.
+export function bundlePayPage({ bundle: b, provider, pageUrl, cardUrl }) {
+  const name = b.requester.name;
+  const open = b.status === 'open';
+  const covered = ['paid', 'completed'].includes(b.status);
+  const n = b.stores.length;
+  const ogTitle = covered ? `${b.payer_name || 'Someone'} spotted ${name}! 🎉` : `psst… can you spot ${name}?`;
+  const ogDesc = `${b.items.length} things from ${n} stores · ${usd(b.cart_cents)} · tap to cover it`;
+  const head = `
+<meta property="og:type" content="website"><meta property="og:site_name" content="Spot">
+<meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}">
+<meta property="og:url" content="${esc(pageUrl)}"><meta property="og:image" content="${esc(cardUrl)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="robots" content="noindex">
+<style>${PAY_CSS}.store-h{font-weight:800;margin:14px 0 4px;font-size:15px;color:var(--muted)}</style>
+${provider === 'stripe' && open ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
+  const section = (st) => `<div class="store-h bub">🛍️ ${esc(st.merchant.name)} · ${usd(st.cart_cents)}</div>${st.items
+    .map((i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+<div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `×${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
+<div class="p">${usd(i.price_cents * i.quantity)}</div></div>`)
+    .join('')}`;
+  let lines;
+  if (covered) lines = [`<div class="bub big">${esc(b.payer_name || 'Someone')} already spotted ${esc(name)} 🎉</div>`, `<div class="bub">nothing left to do here. you're all good.</div>`];
+  else if (!open) lines = [`<div class="bub big">oh! ${b.status === 'expired' ? 'this link expired' : 'this one is closed'}.</div>`, `<div class="bub">ask ${esc(name)} for a fresh one 🙂</div>`];
+  else {
+    lines = [
+      `<div class="bub">${esc(name)} put together a cart from <b>${n} stores</b> and is hoping you'll spot them</div>`,
+      b.note ? `<div class="bub quote">“${esc(b.note)}” — ${esc(name)}</div>` : '',
+      b.built_by ? `<div class="bub">🤖 put together by ${esc(name)}’s AI (${esc(b.built_by)})</div>` : '',
+      ...b.stores.map(section),
+      `<div class="bub big">it's ${usd(b.total_cents)} all in, one payment. want to cover it?</div>`,
+    ];
+  }
+  let k = 0;
+  const chat = lines.join('').replace(/class="(pcard |store-h )?bub/g, (m) => `style="animation-delay:${(0.15 + 0.22 * k++).toFixed(2)}s" ${m}`);
+  const who = esc(name);
+  const action = provider === 'sandbox'
+    ? `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (optional)" aria-label="Your name (optional)"></div><button class="btn go" id="go">Spot ${who} ${usd(b.total_cents)}</button><div class="err" id="payErr"></div>`
+    : `<div id="express"></div><div class="or" id="orCard" hidden>or pay with card</div><details id="cardBox"><summary class="btn ghost" style="list-style:none">Pay with card</summary><div id="stripeEl" style="margin-top:12px"></div><button class="btn go" id="go" disabled>Spot ${who} ${usd(b.total_cents)}</button></details><div class="err" id="payErr"></div>`;
+  const details = `<details><summary>how this works</summary>
+<p>You're buying these from Spot as a gift for ${who}, in one payment. Spot orders each store's items from that store and ships them to ${who}. Nobody gets cash or a card. If a store can't be ordered, you get that store's share back automatically. Changed your mind? Cancel for a refund of anything not ordered yet, from the link in your receipt.</p>
+${b.stores.map((st) => `<div class="sum"><span>${esc(st.merchant.name)}</span><span>${usd(st.cart_cents)}</span></div>`).join('')}
+${b.cushion_cents ? `<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to ${usd(b.cushion_cents)}</span></div>` : ''}
+${b.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(b.fee_cents)}</span></div>` : ''}
+<div class="sum"><b>Total</b><b>${usd(b.total_cents)}</b></div></details>`;
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
+<div class="chat" id="chat">${chat}</div>
+${open ? `<div class="act" id="act">${action}</div>` : ''}
+${open && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
+${open ? details : ''}
+<footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
+  const script = `${SHARED_JS}
+function celebrate(payer){
+  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you\\'re the best'+(payer?', '+esc(payer):'')+' 🧡</div><div class="bub" style="animation-delay:.45s">I just told '+${json(esc(name))}+'. Spot orders from each store now.</div>');
+  const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+}
+${open ? payScript(b, provider, '/v1/bundles/') : ''}`;
+  return shell({ title: ogTitle, head, body, script });
+}
+
+// The requester's page for a multi-store ask: shipping once for every
+// store, then each store's own page to follow (and confirm) its order.
+export function bundleManagePage({ token }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Keep this page private. Anyone with it can manage this Spot.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k');
+const ST={open:'Waiting',paid:'Paid, getting ready',card_issued:'Covered! Ready to order',completed:'Ordered',canceled:'Canceled',expired:'Expired',refunding:'Refunding…',refunded:'Refunded'};
+const q='?k='+encodeURIComponent(K||'');
+async function draw(){
+  const r=await api('/v1/bundles/'+TOKEN+'/manage'+q);const b=r.bundle;
+  let h='<h1 style="font-size:30px;margin-top:22px">'+(b.status==='open'?'Your multi-store Spot':b.status==='paid'?'🎉 '+esc(b.payer_name||'Someone')+' spotted you!':b.status==='completed'?'All done 📦':'This Spot is '+esc(b.status))+'</h1>'
+    +'<p class="muted" style="margin:6px 0 0">'+b.stores.length+' stores · '+usd(b.total_cents)+' total</p>'
+    +(b.for==='self'?'':'<section class="card"><p class="small muted" style="margin-top:0">Share this link. One payment covers every store.</p><div class="row"><input readonly value="'+esc(location.origin+'/b/'+TOKEN)+'" id="link"><button class="btn ghost" id="copy" style="width:auto">Copy</button></div></section>');
+  const ship=r.stores[0].requester.shipping;
+  if(b.status==='open'){
+    const s=ship||{};const f=(n,ph,ac,x)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(x||'')+'>';
+    h+='<section class="card"><h2>Ship everything to</h2><form id="ship">'+f('name','Full name','name','required')+'<div style="height:6px"></div>'+f('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+f('line2','Apt, suite (optional)','address-line2')
+      +'<div class="row" style="margin-top:6px">'+f('city','City','address-level2','required')+f('state','State','address-level1','required')+f('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div><div class="row" style="margin-top:6px">'+f('email','Email','email','required type="email"')+f('phone','Phone (optional)','tel','type="tel"')+'</div>'
+      +'<button class="btn" style="margin-top:10px">'+(ship?'Update address':'Save address')+'</button><div class="err" id="shipErr"></div></form></section>';
+    // Your own multi-store cart: pay once for everything, then confirm each store.
+    if(b.for==='self'&&ship)h+='<a class="btn" href="/b/'+esc(TOKEN)+'">Pay '+usd(b.total_cents)+' for all '+b.stores.length+' stores →</a>';
+  }
+  h+=r.stores.map(c=>'<section class="card"><div class="sum"><b>🛍️ '+esc(c.merchant.name)+'</b><span class="pill">'+esc(ST[c.status]||c.status)+'</span></div>'
+    +c.items.map(i=>'<div class="sum"><span>'+esc(i.title)+(i.quantity>1?' ×'+i.quantity:'')+'</span><span>'+usd(i.price_cents*i.quantity)+'</span></div>').join('')
+    +(c.fulfillment&&c.fulfillment.order_number?'<p class="small">Order #'+esc(c.fulfillment.order_number)+'</p>':'')
+    +(c.refund_reason?'<p class="small muted">Refunded to whoever paid.</p>':'')
+    +(['card_issued','paid','completed'].includes(c.status)?'<a class="btn ghost" href="/c/'+esc(c.token)+'/manage'+q+'">'+(c.status==='card_issued'?'Order from '+esc(c.merchant.name)+' →':'Details')+'</a>':'')+'</section>').join('');
+  if(b.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this Spot</button>';
+  if(r.stores.some(c=>['paid','card_issued'].includes(c.status)))h+='<button class="btn ghost" id="refund">Cancel what isn’t ordered yet (refunds the payer)</button>';
+  $('#app').innerHTML=h;
+  if($('#copy'))$('#copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#link').value);$('#copy').textContent='Copied'}catch{}};
+  const sf=$('#ship');if(sf)sf.onsubmit=async e=>{e.preventDefault();try{await api('/v1/bundles/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(sf))});draw()}catch(err){$('#shipErr').textContent=err.message}};
+  const c=$('#cancel');if(c)c.onclick=async()=>{if(!confirm('Cancel this Spot?'))return;await api('/v1/bundles/'+TOKEN+'/manage/cancel',{k:K});draw()};
+  const rf=$('#refund');if(rf)rf.onclick=async()=>{if(!confirm('Cancel everything not ordered yet and refund the payer for it?'))return;try{await api('/v1/bundles/'+TOKEN+'/manage/refund',{k:K})}catch(err){alert(err.message)}draw()};
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});
+setInterval(()=>{if(!document.querySelector('input:focus'))draw().catch(()=>{})},15000);`;
+  return shell({ title: 'Your Spot', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+}
+
+// The payer's receipt for a multi-store ask.
+export function bundleReceiptPage({ token }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Questions or returns: <a href="mailto:${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}">${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}</a><br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},P=new URLSearchParams(location.search).get('p');
+const ST={paid:'Paid, not ordered yet',card_issued:'Paid, not ordered yet',completed:'Ordered',refunding:'Refunding…',refunded:'Refunded'};
+async function draw(){
+  const r=await api('/v1/bundles/'+TOKEN+'/receipt?p='+encodeURIComponent(P));const b=r.bundle;
+  let h='<h1 style="font-size:28px">🧾 Your Spot receipt</h1><p class="muted">A gift for '+esc(b.requester.name)+' from '+b.stores.length+' stores, in one payment. Spot orders each store’s items and ships them to them.</p>';
+  h+=b.stores.map((st,i)=>{const x=r.stores[i];return '<section class="card"><div class="sum"><b>'+esc(st.merchant.name)+'</b><span class="pill">'+esc(ST[x.status]||x.status)+'</span></div>'
+    +st.items.map(it=>'<div class="sum"><span>'+esc(it.title)+(it.quantity>1?' ×'+it.quantity:'')+'</span><span>'+usd(it.price_cents*it.quantity)+'</span></div>').join('')
+    +'<div class="sum total"><span>This store</span><span>'+usd(st.total_cents)+'</span></div>'
+    +(x.ordered?'<p class="small muted">Ordered'+(x.ordered.order_number?' · order #'+esc(x.ordered.order_number):'')+'</p>':'')
+    +(x.status==='refunded'?'<p class="small muted">'+usd(st.total_cents)+' went back to your card.</p>':'')
+    +x.approvals.map(a=>'<p class="small"><a href="'+esc(a.url)+'">✅ signed approval</a></p>').join('')+'</section>'}).join('');
+  h+='<section class="card"><div class="sum total"><span>Paid</span><span>'+usd(b.total_cents)+'</span></div></section>';
+  if(r.stores.some(x=>x.can_cancel))h+='<button class="btn ghost" id="cancel">Cancel what isn’t ordered yet</button><p class="small muted">You get those stores’ share back, Spot fee included.</p>';
+  $('#app').innerHTML=h;
+  const c=$('#cancel');if(c)c.onclick=async()=>{if(!confirm('Cancel everything not ordered yet and get a refund for it?'))return;c.disabled=true;try{await api('/v1/bundles/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
   return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });

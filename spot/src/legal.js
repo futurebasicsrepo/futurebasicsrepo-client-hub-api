@@ -58,6 +58,7 @@ export function termsPage({ origin, env = process.env }) {
 <li><b>Flights.</b> Fares come from airlines through our booking partner. When you pay, Spot buys the ticket from the airline in the traveler’s name. The airline operates the flight, and its fare rules apply (changes, cancellations, baggage, check-in).</li>
 <li><b>Pay the store directly.</b> For stores that support agent checkout (the Universal Commerce Protocol), Spot sets up the store’s own checkout with the cart, shipped to the requester, and the buyer pays the store there. See section 3.</li>
 <li><b>Rules and approvers.</b> If you connect an AI assistant to your Spot account, you can set limits for it and name an approver who pays for, or declines, what falls outside them. Your approver agrees by email first.</li>
+<li><b>Several stores in one Spot.</b> One link can hold carts from up to five stores. The buyer pays once, and Spot buys each store’s cart separately, so each is ordered, refunded and returned on its own (sections 3–5 apply to each store’s cart).</li>
 <li><b>Store buttons.</b> Stores can add an “Ask someone to pay” button that opens their cart in Spot. The cart, prices and store come from the store.</li>
 <li><b>Ordering.</b> Spot fills in the store’s checkout with its own single-use card. It always stops and shows the store’s total first, and only places the order when the requester taps Place order.</li>
 </ul>
@@ -79,6 +80,7 @@ export function termsPage({ origin, env = process.env }) {
 <h2>5. Cancellations, refunds and returns</h2>
 <ul>
 <li><b>Before the order is placed</b>, the buyer can cancel from the link in their receipt, and the requester can cancel from their Spot page. Either way the buyer gets a full refund, Spot fee included.</li>
+<li><b>Several stores:</b> if one store’s cart can’t be ordered, or is canceled, the buyer gets back that store’s share (its items, allowance and Spot fee); the others go ahead.</li>
 <li><b>If Spot can’t order it</b> within 3 days of payment (the store is out of stock, won’t accept the order, or anything else), the buyer is refunded in full automatically.</li>
 <li><b>If the store charges less</b> than the buyer paid for the goods, or cancels, the difference (or everything) goes back to the buyer automatically.</li>
 <li><b>Returns:</b> contact us at <a href="mailto:${email}">${email}</a> within the store’s return window. We arrange the return with the store under its return policy, and when the store refunds Spot, we refund the buyer that amount. The Spot fee is refunded only when the whole order is.</li>

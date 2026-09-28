@@ -7,14 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
 import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
 import { openDb } from './db.js';
-import { approvalPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
+import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { sitePage } from './site.js';
 import { privacyPage, termsPage } from './legal.js';
 import { COMING_SOON, integrationsPage } from './integrations.js';
 import { extensionZip, EXTENSION_VERSION } from './extension.js';
-import { createSpot, ownerCart, publicCart } from './spot.js';
+import { createSpot, ownerCart, publicBundle, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
 import { registerAgentApi } from './agentapi.js';
 import { createNotifier, normalizePhone } from './notify.js';
@@ -260,6 +260,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     } catch {
       return html(reply, notFoundPage(), 404);
     }
+    // One store's part of a multi-store ask: the payer pays for all of it.
+    const bundle = spot.bundleOf(cart);
+    if (bundle) return reply.redirect(`/b/${bundle.token}`, 302);
     return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
   });
 
@@ -381,6 +384,94 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/v1/carts/:token/direct/status', async (req, reply) => {
     reply.header('cache-control', 'no-store');
     return { cart: publicCart(await spot.directSync(req.params.token)) };
+  });
+
+  // ─── Multi-store asks (bundles) ──────────────────────────────────────────
+  app.post('/v1/bundles', async (req, reply) => {
+    limits.create(req);
+    const { bundle, manageKey } = spot.createBundle(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
+    reply.code(201);
+    return { bundle: publicBundle(bundle), link: urlFor(req, `/b/${bundle.token}`), manage_link: urlFor(req, `/b/${bundle.token}/manage?k=${manageKey}`), manage_key: manageKey };
+  });
+  app.get('/v1/bundles/:token', async (req) => ({ bundle: publicBundle(spot.loadBundle(req.params.token)), provider: provider.name }));
+  app.post('/v1/bundles/:token/pay', async (req) => {
+    limits.pay(req);
+    return spot.startBundlePayment(req.params.token);
+  });
+  app.post('/v1/bundles/:token/sandbox-pay', async (req) => {
+    if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
+    limits.pay(req);
+    await spot.startBundlePayment(req.params.token);
+    const b = spot.loadBundle(req.params.token);
+    const name = String(req.body?.payer_name || '').trim().slice(0, 60) || null;
+    const fingerprint = req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null;
+    const total = b.carts.reduce((n, c) => n + c.total_cents, 0);
+    await spot.paymentSucceeded({ paymentRef: b.payment_ref, amountCents: total, payer: { name, fingerprint, email: req.body?.payer_email || null } });
+    return { bundle: publicBundle(spot.loadBundle(req.params.token)) };
+  });
+  const ownerBundle = (req, b) => ({ bundle: publicBundle(b), stores: b.carts.map((c) => ownerCart(c)) });
+  app.get('/v1/bundles/:token/manage', async (req, reply) => {
+    reply.header('cache-control', 'no-store');
+    return ownerBundle(req, spot.loadBundleManaged(req.params.token, keyOf(req)));
+  });
+  app.post('/v1/bundles/:token/manage/prepare', async (req) => ownerBundle(req, spot.prepareBundle(req.params.token, keyOf(req), req.body?.shipping)));
+  app.post('/v1/bundles/:token/manage/cancel', async (req) => ownerBundle(req, spot.cancelBundle(req.params.token, keyOf(req))));
+  app.post('/v1/bundles/:token/manage/refund', async (req) => ownerBundle(req, await spot.refundBundle(req.params.token, { key: keyOf(req) })));
+  app.get('/v1/bundles/:token/receipt', async (req, reply) => {
+    const b = spot.loadBundle(req.params.token);
+    if (!spot.payerOk(b.token, req.query.p)) throw new CartError('Not found', 404);
+    reply.header('cache-control', 'no-store');
+    const orderingNow = (c) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(c.fulfillment?.state);
+    return {
+      bundle: publicBundle(b),
+      stores: b.carts.map((c) => ({
+        token: c.token,
+        status: c.status,
+        ordered: c.fulfillment?.state === 'placed' ? { order_number: c.fulfillment.order_number || null } : null,
+        refunded_cents: c.refunded_cents || 0,
+        refund_reason: c.refund_reason || null,
+        can_cancel: ['paid', 'card_issued'].includes(c.status) && !orderingNow(c),
+        approvals: approvals.summary(c.id),
+      })),
+    };
+  });
+  app.post('/v1/bundles/:token/receipt/cancel', async (req) => ({ bundle: publicBundle(await spot.refundBundle(req.params.token, { p: String(req.body?.p || '') })) }));
+  app.get('/b/:token', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundlePayPage({ bundle: publicBundle(b), provider: provider.name, pageUrl: urlFor(req, `/b/${b.token}`), cardUrl: urlFor(req, `/c/${b.carts[0].token}/card.png`) }));
+  });
+  // Link previews for a multi-store ask use its first store's card.
+  app.get('/b/:token/card.png', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+    } catch {
+      return reply.code(404).send();
+    }
+    return reply.redirect(`/c/${b.carts[0].token}/card.png${req.query.v ? `?v=${encodeURIComponent(req.query.v)}` : ''}`, 302);
+  });
+  app.get('/b/:token/manage', async (req, reply) => {
+    try {
+      spot.loadBundle(req.params.token);
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundleManagePage({ token: req.params.token, provider: provider.name }));
+  });
+  app.get('/b/:token/receipt', async (req, reply) => {
+    let b;
+    try {
+      b = spot.loadBundle(req.params.token);
+      if (!spot.payerOk(b.token, req.query.p)) throw new Error('bad link');
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, bundleReceiptPage({ token: b.token }));
   });
 
   app.post('/v1/carts/:token/pay', async (req) => {

@@ -18,6 +18,10 @@ Spot is the seller of every card cart. (Carts paid at the store directly are dif
 | Refund fails at Stripe | Cart stays `refunding`; retried every 5 min with the same idempotency key | `spot.sweepMoney` |
 | Payer disputes | Card canceled, payer's card fingerprint blocked, flagged on /admin | `spot.dispute` |
 
+## Multi-store asks
+
+One Stripe payment covers several store carts. Each store's cart has its own card, and its `payment_ref` is `<payment>#<n>`. On /admin each store's cart shows as its own row; refunding one refunds only its share (Stripe allows several partial refunds up to the payment). A dispute on the payment stops every store's card and flags every row. In Stripe you'll see one payment with several refunds. That's expected.
+
 ## Daily (5 minutes)
 
 1. Open **/admin**. **Money to check** should say "All square". For each card it lists:

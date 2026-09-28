@@ -55,7 +55,7 @@ Spot is the yes button for AI shopping. Agents can build carts, but a person has
 - **Signed approvals:** every yes comes back as an EdDSA-signed record (`approval_url`) anyone can verify. Spot signs its requests to stores with HTTP Message Signatures (Web Bot Auth).
 
 **Tools:**
-- `create_spot_ask`: items, a link or a description → a pay link for someone else, or (`for_me`) a finish link texted or emailed to your user. `pay_at_store` defaults on for UCP stores
+- `create_spot_ask`: items, a link or a description → a pay link for someone else, or (`for_me`) a finish link texted or emailed to your user. `pay_at_store` defaults on for UCP stores; `stores` puts carts from 2–5 stores in one link and one payment
 - `search_flights`: live fares, cheapest first plus the best nonstop
 - `create_flight_ask`: hold a fare and send your user a link to book it
 - `get_spot_ask`: status, the next step, and signed approvals once someone says yes

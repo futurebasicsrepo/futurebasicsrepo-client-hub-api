@@ -103,7 +103,7 @@ export function stripeProvider(env = process.env) {
           currency: 'usd',
           automatic_payment_methods: { enabled: true },
           description: `Spot cart for ${cart.requester.name} at ${cart.merchant.name}`,
-          metadata: { spot_cart_id: cart.id },
+          metadata: { spot_cart_id: cart.id, ...(cart.bundle ? { spot_bundle: '1' } : {}) },
         },
         { idempotencyKey: `spot-pi-${cart.id}` },
       );
@@ -158,7 +158,8 @@ export function stripeProvider(env = process.env) {
     async refund(cart, amountCents, key) {
       if (!cart.payment_ref) return;
       await stripe.refunds.create(
-        { payment_intent: cart.payment_ref, ...(amountCents ? { amount: amountCents } : {}), metadata: { spot_cart_id: cart.id } },
+        // A bundle's store carts hold "<payment>#<n>"; refunds go to the payment.
+        { payment_intent: String(cart.payment_ref).split('#')[0], ...(amountCents ? { amount: amountCents } : {}), metadata: { spot_cart_id: cart.id } },
         { idempotencyKey: key ? `spot-refund-${cart.id}-${key}` : `spot-refund-${cart.id}` },
       );
     },

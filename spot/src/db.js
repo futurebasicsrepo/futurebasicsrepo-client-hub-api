@@ -173,6 +173,15 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       doc          TEXT NOT NULL,
       expires_at   INTEGER NOT NULL
     );
+    -- One ask across several stores: a cart per store, paid in one go.
+    CREATE TABLE IF NOT EXISTS bundles (
+      id           TEXT PRIMARY KEY,
+      token        TEXT NOT NULL UNIQUE,
+      manage_hash  TEXT NOT NULL,
+      payment_ref  TEXT UNIQUE,
+      doc          TEXT NOT NULL,
+      created_at   INTEGER NOT NULL
+    );
     -- Server-side secrets that must survive restarts (e.g. link signing).
     CREATE TABLE IF NOT EXISTS settings (
       key    TEXT PRIMARY KEY,
@@ -278,6 +287,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at: row.expires_at,
     };
 
+  const bundleRow = (r) => (r ? { id: r.id, token: r.token, manage_hash: r.manage_hash, payment_ref: r.payment_ref, created_at: r.created_at, ...JSON.parse(r.doc) } : null);
   const docOf = (cart) => {
     const { id, token, manage_hash, status, settle, payment_ref, card_ref, created_at, expires_at, ...doc } = cart;
     return JSON.stringify(doc);
@@ -293,6 +303,17 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     byId: (id) => hydrate(q.byId.get(id)),
     byPayment: (ref) => hydrate(q.byPayment.get(ref)),
     byCard: (ref) => hydrate(q.byCard.get(ref)),
+    // Every cart a Stripe payment paid for: one, or each store's cart in a
+    // bundle (their refs are "<payment>#<n>").
+    byPaymentAll: (ref) => db.prepare("SELECT * FROM carts WHERE payment_ref = ? OR payment_ref LIKE ? ESCAPE '\\' ORDER BY payment_ref").all(ref, `${String(ref).replace(/[\\%_]/g, (c) => `\\${c}`)}#%`).map(hydrate),
+    bundles: {
+      insert: (b) => db.prepare('INSERT INTO bundles (id, token, manage_hash, payment_ref, doc, created_at) VALUES (?, ?, ?, NULL, ?, ?)').run(b.id, b.token, b.manage_hash, JSON.stringify(b.doc), b.created_at),
+      byToken: (t) => bundleRow(db.prepare('SELECT * FROM bundles WHERE token = ?').get(String(t))),
+      byId: (id) => bundleRow(db.prepare('SELECT * FROM bundles WHERE id = ?').get(String(id))),
+      byPayment: (ref) => bundleRow(db.prepare('SELECT * FROM bundles WHERE payment_ref = ?').get(String(ref))),
+      setPayment: (id, ref) => db.prepare('UPDATE bundles SET payment_ref = ? WHERE id = ?').run(ref, id),
+      carts: (id) => db.prepare("SELECT * FROM carts WHERE json_extract(doc, '$.bundle_id') = ? ORDER BY json_extract(doc, '$.bundle_index')").all(id).map(hydrate),
+    },
     // Returns true if the write won; false if someone else moved the cart first.
     save(cart, fromStatus) {
       const r = q.update.run(cart.status, docOf(cart), cart.payment_ref ?? null, cart.card_ref ?? null, Date.now(), cart.id, fromStatus);

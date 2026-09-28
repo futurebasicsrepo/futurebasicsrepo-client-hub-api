@@ -167,6 +167,15 @@ Each key's activity (asked, sent to approver, blocked, ordered, messages sent) i
 
 `settle: "direct"` (MCP `pay_at_store`, on by default when the store's `/.well-known/ucp` offers checkout). The requester adds where it ships; then the payer taps Pay, Spot creates the store's checkout session (items, buyer email, ship-to, cheapest shipping) and redirects to its `continue_url`. Spot polls the session until it's `completed` and the cart completes with the store's order number. `GET /v1/stores/check?url=` tells the composer whether a store supports it.
 
+### Multi-store asks (bundles)
+
+One link and one payment for carts from 2–5 stores. `POST /v1/bundles {requester, note, for, stores: [{merchant, items, extras_cents}]}` (the composer's "+ Add a cart from another store", or `stores` on `create_spot_ask`) makes one ordinary card cart per store (`bundle_id`, `bundle_index`), all opened by the same private key, plus a bundle at `/b/:token`.
+
+- **One payment:** the Stripe PaymentIntent is for the bundle's total. Each store's cart holds `"<payment>#<n>"` as its `payment_ref`, and refunds strip the suffix and always name that cart's amount, so one store's refund never touches another's share.
+- **A card per store:** after payment each store's cart gets its own single-use card, locked to that store and amount, and is ordered, captured, refunded and deadlined on its own. If a store can't be ordered within 72h, only its share goes back.
+- **Pages:** `/b/:token` (pay), `/b/:token/manage` (shipping once for every store, then each store's own page to confirm its order), `/b/:token/receipt` (per-store status and cancel whatever isn't ordered).
+- **Limits:** the whole bundle is capped at `SPOT_MAX_CART_CENTS`; always paid on Spot (not handoff or pay-at-store); a dispute stops every store's card. Spending rules check every store against the key's allowlist and the total against its limits.
+
 ### Store button
 
 `POST /v1/merchants {domain, name, email}` returns a publishable key and the snippet. `/embed/button.js` renders the button; on tap it posts the cart (`window.SpotCart()` or `data-items`) to `POST /v1/merchant/asks`, which only answers the store's own origins, and opens `/new?draft=…`. The store's items and prices are used when the cart is created; editing them drops the ✓. A file at `https://<domain>/.well-known/spot-merchant.txt` containing `spot-merchant=<id>` plus `POST /v1/merchants/verify` marks the store verified.
@@ -255,7 +264,7 @@ The payer's name comes from their Apple Pay / Google Pay / card details, and the
 
 ## What's verified and what isn't
 
-- **Verified:** 110+ tests (`npm test`) cover paying the store directly (against a fake UCP store), spending rules and approver routing, signed approvals and request signatures, the store button's origin check and domain verification, and cover validation, fees and the cushion, the state machine, merchant matching, blocked categories, gift-card rules, authorization limits, the refund race, captures, partial refunds, returns, reversals, disputes, the payer cancel link, the order deadline, screenshot masking, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
+- **Verified:** 115+ tests (`npm test`) cover multi-store asks (one payment, a card per store, per-store refunds, disputes, the AI path),  paying the store directly (against a fake UCP store), spending rules and approver routing, signed approvals and request signatures, the store button's origin check and domain verification, and cover validation, fees and the cushion, the state machine, merchant matching, blocked categories, gift-card rules, authorization limits, the refund race, captures, partial refunds, returns, reversals, disputes, the payer cancel link, the order deadline, screenshot masking, link and screenshot parsing, SSRF blocking, and full HTTP flows for the card, handoff, expiry, cancel, refund and failed-issue-retry paths. The Stripe webhook routes are tested with a fake Stripe provider. The full requester → payer → card → checkout loop was clicked through in headless Chromium in sandbox mode.
 - **Not yet run against real Stripe.** The Stripe provider is written against the documented API but hasn't been run with test keys. Issuing also has to be enabled on the Stripe account, which is an application process.
 - **Before live money:**
   - Counsel's sign-off that Spot as the seller isn't money transmission where it launches, a sales-tax view on reselling, and Stripe's approval of the Issuing use case (Spot's own cards to buy what customers bought from Spot).
