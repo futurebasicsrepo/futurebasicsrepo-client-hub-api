@@ -1,0 +1,89 @@
+{%- comment -%}
+  Site-wide entity graph: the shop as an Organization *and* a physical ClothingStore on South
+  Street, plus the WebSite with a SearchAction. Answer engines (Google AI Overviews, ChatGPT,
+  Perplexity, Gemini) resolve "where can I buy X in Philly" and "who owns Ps & Qs" from this.
+  Page-level JSON-LD (Product/ProductGroup, ItemList, BreadcrumbList, FAQPage, Article) lives
+  in the matching sections and links back here by @id.
+{%- endcomment -%}
+{%- liquid
+  assign org_id = request.origin | append: '/#organization'
+  assign store_id = request.origin | append: '/#store'
+  assign wd = settings.hours_weekday | split: '-'
+  assign su = settings.hours_sunday | split: '-'
+  assign founders = settings.founders | split: ','
+  assign alt_names = settings.brand_alt_names | split: ','
+  assign same_as = ''
+  for s in (1..5)
+    case s
+      when 1
+        assign u = settings.social_instagram
+      when 2
+        assign u = settings.social_tiktok
+      when 3
+        assign u = settings.social_facebook
+      when 4
+        assign u = settings.social_x
+      when 5
+        assign u = settings.social_youtube
+    endcase
+    if u != blank
+      assign same_as = same_as | append: u | append: '|'
+    endif
+  endfor
+  assign same_as = same_as | split: '|'
+-%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": {{ org_id | json }},
+      "name": {{ settings.brand_legal_name | default: shop.name | json }},
+      "alternateName": [{% for n in alt_names %}{{ n | strip | json }}{% unless forloop.last %},{% endunless %}{% endfor %}],
+      "url": {{ request.origin | json }},
+      {%- if settings.logo != blank %}"logo": {{ settings.logo | image_url: width: 600 | prepend: 'https:' | json }},{% endif %}
+      "description": {{ settings.brand_summary | json }},
+      {%- if settings.founding_year != blank %}"foundingDate": {{ settings.founding_year | json }},{% endif %}
+      "founder": [{% for f in founders %}{ "@type": "Person", "name": {{ f | strip | json }} }{% unless forloop.last %},{% endunless %}{% endfor %}],
+      "sameAs": {{ same_as | json }}
+    },
+    {
+      "@type": "ClothingStore",
+      "@id": {{ store_id | json }},
+      "name": {{ settings.brand_legal_name | default: shop.name | json }},
+      "parentOrganization": { "@id": {{ org_id | json }} },
+      "url": {{ request.origin | json }},
+      "telephone": {{ settings.phone | json }},
+      "priceRange": "$$",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": {{ settings.street | json }},
+        "addressLocality": {{ settings.city | json }},
+        "addressRegion": {{ settings.region | json }},
+        "postalCode": {{ settings.postal | json }},
+        "addressCountry": "US"
+      },
+      {%- if settings.maps_url != blank %}"hasMap": {{ settings.maps_url | json }},{% endif %}
+      "openingHoursSpecification": [
+        {%- if wd.size == 2 %}{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"], "opens": {{ wd[0] | strip | json }}, "closes": {{ wd[1] | strip | json }} }{% endif -%}
+        {%- if wd.size == 2 and su.size == 2 %},{% endif -%}
+        {%- if su.size == 2 %}{ "@type": "OpeningHoursSpecification", "dayOfWeek": "Sunday", "opens": {{ su[0] | strip | json }}, "closes": {{ su[1] | strip | json }} }{% endif %}
+      ],
+      "sameAs": {{ same_as | json }}
+    },
+    {
+      "@type": "WebSite",
+      "@id": {{ request.origin | append: '/#website' | json }},
+      "url": {{ request.origin | json }},
+      "name": {{ shop.name | json }},
+      "publisher": { "@id": {{ org_id | json }} },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": { "@type": "EntryPoint", "urlTemplate": {{ request.origin | append: routes.search_url | append: '?q={search_term_string}' | json }} },
+        "query-input": "required name=search_term_string"
+      }
+    }
+  ]
+}
+</script>

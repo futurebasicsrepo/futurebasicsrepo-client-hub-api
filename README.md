@@ -114,3 +114,7 @@ SHOPIFY_STORE=fkgwpw-8u SHOPIFY_ADMIN_TOKEN=shpat_... \
 ```
 
 Products are created as drafts; add `--active` to publish them.
+
+## Ps & Qs storefront theme
+
+`themes/ps-and-qs` is a standalone Online Store 2.0 theme for [psandqs.com](https://psandqs.com). It has no API dependency. See [its README](themes/ps-and-qs/README.md) for setup, SEO/AI coverage and the channel playbook, and [DESIGN.md](themes/ps-and-qs/DESIGN.md) for the concept. `scripts/psandqs-catalog-audit.mjs` (same `SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ADMIN_ACCESS_TOKEN` env vars) creates the metafields the theme reads, reports channel-readiness gaps per product, and with `--apply` normalises the house vendor spelling and fills missing image alt text.

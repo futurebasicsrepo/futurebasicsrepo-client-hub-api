@@ -1,0 +1,48 @@
+{%- comment -%}
+  "My sizes" dialog. Opened by any [data-fit-open]. Saved sizes live in localStorage (pq:fit)
+  and drive: the "In my size" switch on collections, "In your size" flags on cards, size
+  pre-selection on product pages, and the "In your size" rail on the homepage.
+{%- endcomment -%}
+{%- if settings.fit_enabled -%}
+<dialog class="fit" id="FitProfile" data-fit-dialog aria-labelledby="FitProfileTitle">
+  <form method="dialog" class="fit__inner" data-fit-form>
+    <header class="fit__head">
+      <p class="mono kicker">{{ 'fit.kicker' | t }}</p>
+      <h2 class="h3" id="FitProfileTitle">{{ 'fit.title' | t }}</h2>
+      <p class="small">{{ 'fit.subtitle' | t }}</p>
+      <button class="icon-btn fit__close" value="cancel" aria-label="{{ 'accessibility.close' | t }}">{% render 'icon', name: 'close' %}</button>
+    </header>
+    {%- assign groups = 'tops,bottoms,shoes' | split: ',' -%}
+    {%- for g in groups -%}
+      {%- liquid
+        case g
+          when 'tops'
+            assign list = settings.fit_tops
+          when 'bottoms'
+            assign list = settings.fit_bottoms
+          when 'shoes'
+            assign list = settings.fit_shoes
+        endcase
+        assign values = list | split: ','
+        assign label_key = 'fit.' | append: g
+      -%}
+      {%- if values.size > 0 -%}
+      <fieldset class="fit__group">
+        <legend class="mono">{{ label_key | t }}</legend>
+        <div class="fit__chips">
+          {%- for v in values -%}
+            {%- assign vv = v | strip -%}
+            <label class="chip-toggle"><input type="checkbox" name="{{ g }}" value="{{ vv | escape }}"><span>{{ vv }}</span></label>
+          {%- endfor -%}
+        </div>
+      </fieldset>
+      {%- endif -%}
+    {%- endfor -%}
+    <footer class="fit__foot">
+      <button type="button" class="btn btn--ghost btn--sm" data-fit-clear>{{ 'fit.clear' | t }}</button>
+      <button type="submit" class="btn btn--primary" value="save" data-fit-save>{{ 'fit.save' | t }}</button>
+    </footer>
+  </form>
+</dialog>
+<script type="application/json" data-fit-config>{{ settings.fit_option_name | default: 'Size' | json }}</script>
+{%- endif -%}

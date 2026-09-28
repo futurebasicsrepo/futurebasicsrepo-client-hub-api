@@ -1,0 +1,29 @@
+{%- comment -%}
+  Shopify's recommendation engine, two ways:
+  - intent "complementary": "Complete the fit" — the pairings set in Search & Discovery
+  - intent "related": what people who viewed this also bought/viewed
+  Loaded after the page with /recommendations/products?section_id=…&product_id=…&intent=…
+{%- endcomment -%}
+<section class="rail section recs" data-recs data-url="{{ routes.product_recommendations_url }}?section_id={{ section.id }}&product_id={{ product.id }}&limit={{ section.settings.limit }}&intent={{ section.settings.intent }}">
+  {%- if recommendations.performed and recommendations.products_count > 0 -%}
+    <div class="page-width">
+      <header class="section__head"><div><p class="mono kicker">{{ section.settings.kicker }}</p><h2 class="h3 offreg" data-offreg>{{ section.settings.heading }}</h2></div></header>
+    </div>
+    <div class="rail__track">
+      {%- for product in recommendations.products -%}{% render 'product-card', product: product, lazy: true, index: forloop.index %}{%- endfor -%}
+    </div>
+  {%- endif -%}
+</section>
+{% schema %}
+{
+  "name": "Product recommendations",
+  "settings": [
+    { "type": "select", "id": "intent", "label": "Type", "options": [ { "value": "complementary", "label": "Complete the fit (complementary)" }, { "value": "related", "label": "You might also like (related)" } ], "default": "related" },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Keep going" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "You might also like" },
+    { "type": "range", "id": "limit", "label": "Products", "min": 2, "max": 12, "step": 1, "default": 8 },
+    { "type": "paragraph", "content": "Set complementary pairings in Shopify admin → Apps → Search & Discovery → Product recommendations." }
+  ],
+  "presets": [ { "name": "Product recommendations" } ]
+}
+{% endschema %}

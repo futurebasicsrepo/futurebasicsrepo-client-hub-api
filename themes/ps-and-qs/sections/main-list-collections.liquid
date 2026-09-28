@@ -1,0 +1,20 @@
+<section class="section page-width">
+  <h1 class="h1 offreg" data-offreg>{{ 'sections.collections.title' | t }}</h1>
+  <ul class="case__grid case__grid--list">
+    {%- for c in collections -%}
+      {%- if c.all_products_count > 0 and c.handle != 'vendors' and c.handle != 'types' -%}
+        {%- assign img = c.featured_image | default: c.products.first.featured_media -%}
+        <li class="case__cell case__cell--sm reveal" style="--i: {{ forloop.index | modulo: 8 }}">
+          <a class="case__link" href="{{ c.url }}">
+            {%- if img -%}{{ img | image_url: width: 600 | image_tag: class: 'case__img', loading: 'lazy', widths: '300, 600', sizes: '(min-width: 990px) 25vw, 50vw', alt: '' }}{%- endif -%}
+            <span class="case__sort" aria-hidden="true"><span>{{ c.title | slice: 0 }}</span></span>
+            <span class="case__label"><span class="case__title">{{ c.title }}</span><span class="mono small case__count">{{ c.all_products_count }}</span></span>
+          </a>
+        </li>
+      {%- endif -%}
+    {%- endfor -%}
+  </ul>
+</section>
+{% schema %}
+{ "name": "Collections list", "settings": [] }
+{% endschema %}

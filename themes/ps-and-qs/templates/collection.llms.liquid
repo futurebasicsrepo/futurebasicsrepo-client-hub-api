@@ -1,0 +1,46 @@
+{%- layout none -%}
+{%- comment -%}
+  Markdown catalog for AI assistants: /collections/{handle}?view=llms (supports sort_by and
+  page). It carries no canonical of its own; the HTML collection page stays the one that
+  ranks, and this view is linked from /pages/llms for assistants that read plain text.
+{%- endcomment -%}
+{%- assign origin = request.origin -%}
+{%- paginate collection.products by 250 -%}
+# {{ collection.title }} — {{ settings.brand_legal_name | default: shop.name }}, {{ settings.city }}
+
+{% if collection.description != blank %}{{ collection.description | strip_html | strip_newlines }}
+
+{% endif -%}
+{{ collection.all_products_count }} products. Prices in {{ cart.currency.iso_code }}. Page {{ paginate.current_page }} of {{ paginate.pages }}.
+{%- if paginate.next %} Next page: {{ origin }}{{ paginate.next.url }}&view=llms{% endif %}
+
+{% for product in collection.products -%}
+{%- liquid
+  assign sizes = ''
+  assign size_idx = -1
+  for opt in product.options_with_values
+    assign oname = opt.name | downcase
+    if oname contains 'size'
+      assign size_idx = forloop.index0
+    endif
+  endfor
+  if size_idx > -1
+    for v in product.variants
+      if v.available
+        assign sizes = sizes | append: v.options[size_idx] | append: ', '
+      endif
+    endfor
+  endif
+-%}
+## [{{ product.title }}]({{ origin }}{{ product.url }})
+- Brand: {{ product.vendor }}{% if product.type != blank %} · Type: {{ product.type }}{% endif %}
+- Price: {{ product.price | money_without_currency }}{% if product.price_varies %}–{{ product.price_max | money_without_currency }}{% endif %}{% if product.compare_at_price > product.price %} (was {{ product.compare_at_price | money_without_currency }}){% endif %}
+- Availability: {% if product.available %}in stock{% if sizes != '' %} — sizes {{ sizes | remove_last: ', ' }}{% endif %}{% else %}sold out{% endif %}
+{%- if product.metafields.custom.fit_notes != blank %}
+- Fit: {{ product.metafields.custom.fit_notes }}{% endif %}
+{%- if product.metafields.custom.material != blank %}
+- Material: {{ product.metafields.custom.material }}{% endif %}
+- About: {{ product.description | strip_html | strip_newlines | truncatewords: 45 }}
+
+{% endfor -%}
+{%- endpaginate -%}

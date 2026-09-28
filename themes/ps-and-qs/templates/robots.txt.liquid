@@ -1,0 +1,44 @@
+{%- comment -%}
+  Shopify's default rules stay intact (checkout, cart, account, filtered/sorted duplicates).
+  Additions:
+  - Explicitly welcome AI search/answer crawlers so products can be cited and recommended
+  - Keep crawl budget off thin auto-generated URLs and the card fragment
+{%- endcomment -%}
+{%- for group in robots.default_groups -%}
+  {{- group.user_agent }}
+  {%- for rule in group.rules %}
+{{ rule }}
+  {%- endfor -%}
+  {%- if group.user_agent.value == '*' %}
+Disallow: /collections/vendors
+Disallow: /collections/types
+Disallow: /*view=card
+  {%- endif -%}
+  {%- if group.sitemap != blank %}
+{{ group.sitemap }}
+  {%- endif %}
+
+{% endfor -%}
+# AI search and assistant crawlers: welcome. Product pages, collections and the
+# assistant catalog (?view=llms) are here to be read, cited and recommended.
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: GPTBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+Allow: /products/
+Allow: /collections/
+Allow: /pages/
+Allow: /blogs/
+Disallow: /checkout
+Disallow: /cart
+Disallow: /account
+Disallow: /search
+Disallow: /collections/*+*
+Disallow: /*filter.*filter.
+Disallow: /*view=card

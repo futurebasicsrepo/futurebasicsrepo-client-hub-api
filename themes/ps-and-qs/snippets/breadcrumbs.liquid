@@ -1,0 +1,22 @@
+{%- comment -%}
+  Visible breadcrumbs + BreadcrumbList JSON-LD from the same data.
+  Usage: {% render 'breadcrumbs', parent: collection, current: product.title %}
+{%- endcomment -%}
+<nav class="crumbs mono" aria-label="Breadcrumbs">
+  <ol>
+    <li><a href="{{ routes.root_url }}">{{ shop.name }}</a></li>
+    {%- if parent -%}<li><a href="{{ parent.url }}">{{ parent.title }}</a></li>{%- endif -%}
+    <li aria-current="page">{{ current }}</li>
+  </ol>
+</nav>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": {{ shop.name | json }}, "item": {{ request.origin | append: routes.root_url | json }} }
+    {%- if parent %},{ "@type": "ListItem", "position": 2, "name": {{ parent.title | json }}, "item": {{ request.origin | append: parent.url | json }} }{% endif %},
+    { "@type": "ListItem", "position": {% if parent %}3{% else %}2{% endif %}, "name": {{ current | json }} }
+  ]
+}
+</script>

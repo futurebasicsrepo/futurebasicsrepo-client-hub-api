@@ -1,0 +1,13 @@
+<section class="section page-width notfound">
+  <p class="notfound__glyphs" aria-hidden="true"><span>4</span><span class="notfound__q">q</span><span>4</span></p>
+  <h1 class="h2">{{ 'general.404.title' | t }}</h1>
+  <p>{{ 'general.404.subtext' | t }}</p>
+  <form action="{{ routes.search_url }}" method="get" role="search" class="search__row notfound__search">
+    <input type="search" name="q" placeholder="{{ 'general.search.placeholder' | t }}" aria-label="{{ 'general.search.title' | t }}">
+    <button class="btn btn--primary" type="submit">{{ 'general.search.submit' | t }}</button>
+  </form>
+  <a class="link-arrow" href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }} {% render 'icon', name: 'arrow' %}</a>
+</section>
+{% schema %}
+{ "name": "404", "settings": [] }
+{% endschema %}

@@ -1,0 +1,120 @@
+{%- comment -%}
+  Usage: {% render 'product-card', product: product, lazy: true, index: forloop.index %}
+
+  data-sizes lists the in-stock sizes so fit.js can flag "In your size" without another request.
+  When size is the product's only option, the size chips double as one-tap add-to-bag buttons.
+{%- endcomment -%}
+{%- liquid
+  assign new_days = settings.badge_new_days | default: '14' | plus: 0
+  assign now_s = 'now' | date: '%s' | plus: 0
+  assign created_s = product.created_at | date: '%s' | plus: 0
+  assign age_days = now_s | minus: created_s | divided_by: 86400
+  assign is_new = false
+  if age_days <= new_days
+    assign is_new = true
+  endif
+  assign on_sale = false
+  if product.compare_at_price > product.price
+    assign on_sale = true
+  endif
+  assign is_house = false
+  if settings.house_vendor != blank and product.vendor == settings.house_vendor
+    assign is_house = true
+  endif
+  assign is_collab = false
+  for tag in product.tags
+    assign tl = tag | downcase
+    if tl contains 'collab'
+      assign is_collab = true
+      break
+    endif
+  endfor
+  assign hover_img = product.media[1]
+
+  assign size_name = settings.fit_option_name | default: 'Size' | downcase
+  assign size_idx = -1
+  for opt in product.options_with_values
+    assign oname = opt.name | downcase
+    if oname == size_name or oname contains 'size'
+      assign size_idx = forloop.index0
+      break
+    endif
+  endfor
+  assign in_stock_sizes = '|'
+  if size_idx > -1
+    for v in product.variants
+      if v.available
+        assign in_stock_sizes = in_stock_sizes | append: v.options[size_idx] | append: '|'
+      endif
+    endfor
+  endif
+  assign one_tap = false
+  if settings.card_quick_add and size_idx > -1 and product.options.size == 1 and product.available
+    assign one_tap = true
+  endif
+
+  assign loading = 'lazy'
+  if lazy == false
+    assign loading = 'eager'
+  endif
+-%}
+<article class="card reveal{% unless product.available %} card--soldout{% endunless %}" data-card data-sizes="{{ in_stock_sizes | escape }}" {% if index %}style="--i: {{ index | modulo: 8 }}"{% endif %}>
+  <a class="card__media" href="{{ product.url }}" tabindex="-1" aria-hidden="true">
+    {%- if product.featured_media -%}
+      <img
+        class="card__img card__img--primary"
+        src="{{ product.featured_media | image_url: width: 640 }}"
+        srcset="{{ product.featured_media | image_url: width: 360 }} 360w, {{ product.featured_media | image_url: width: 640 }} 640w, {{ product.featured_media | image_url: width: 960 }} 960w"
+        sizes="(min-width: 1200px) 24vw, (min-width: 750px) 32vw, 48vw"
+        width="{{ product.featured_media.width }}" height="{{ product.featured_media.height }}"
+        alt="{{ product.featured_media.alt | default: product.title | escape }}"
+        loading="{{ loading }}"{% if lazy == false and index == 1 %} fetchpriority="high"{% endif %}>
+      {%- if settings.enable_hover_swap and hover_img -%}
+        <img class="card__img card__img--hover" src="{{ hover_img | image_url: width: 640 }}" width="{{ hover_img.width }}" height="{{ hover_img.height }}" alt="" loading="lazy">
+      {%- endif -%}
+    {%- else -%}
+      <div class="card__placeholder">{{ 'apparel-1' | placeholder_svg_tag: 'placeholder-svg' }}</div>
+    {%- endif -%}
+    <span class="card__stamps">
+      {%- if product.available == false -%}
+        {%- assign t = 'products.product.sold_out' | t -%}{% render 'stamp', text: t, tone: 'ink' %}
+      {%- elsif on_sale -%}
+        {%- assign t = 'products.product.on_sale' | t -%}{% render 'stamp', text: t, tone: 'red' %}
+      {%- elsif is_collab -%}
+        {% render 'stamp', text: 'Collab', tone: 'gold' %}
+      {%- elsif is_new -%}
+        {%- assign t = 'products.product.new' | t -%}{% render 'stamp', text: t, tone: 'red' %}
+      {%- endif -%}
+      {%- if is_house -%}{% render 'stamp', text: 'Made in Philly', tone: 'jade' %}{%- endif -%}
+    </span>
+    <span class="card__fit" data-fit-flag hidden>{{ 'products.product.in_your_size' | t }}</span>
+  </a>
+  <div class="card__info">
+    {%- if settings.card_show_vendor and product.vendor != blank -%}
+      <p class="card__vendor mono">{{ product.vendor }}</p>
+    {%- endif -%}
+    <h3 class="card__title"><a href="{{ product.url }}">{{ product.title }}</a></h3>
+    {% render 'price', product: product %}
+    {%- if settings.card_show_sizes and size_idx > -1 and product.available -%}
+      {%- assign size_values = product.options_with_values[size_idx].values -%}
+      {%- if one_tap -%}
+        <form method="post" action="{{ routes.cart_add_url }}" class="card__sizes" data-quick-add aria-label="{{ 'products.product.quick_add' | t }} — {{ product.title | escape }}">
+          {%- for v in product.variants -%}
+            <button type="submit" name="id" value="{{ v.id }}" class="card__size" data-size="{{ v.options[size_idx] | escape }}" {% unless v.available %}disabled aria-disabled="true"{% endunless %} aria-label="{{ 'products.product.add_size' | t: size: v.options[size_idx] }}">{{ v.options[size_idx] }}</button>
+          {%- endfor -%}
+        </form>
+      {%- else -%}
+        <p class="card__sizes card__sizes--list">
+          {%- for value in size_values -%}
+            {%- assign probe = '|' | append: value | append: '|' -%}
+            <span class="card__size{% unless in_stock_sizes contains probe %} is-out{% endunless %}" data-size="{{ value | escape }}">{{ value }}</span>
+          {%- endfor -%}
+        </p>
+      {%- endif -%}
+    {%- elsif settings.card_quick_add and product.available and product.has_only_default_variant -%}
+      <form method="post" action="{{ routes.cart_add_url }}" class="card__sizes" data-quick-add>
+        <button type="submit" name="id" value="{{ product.selected_or_first_available_variant.id }}" class="card__size card__size--add">{{ 'products.product.quick_add' | t }} +</button>
+      </form>
+    {%- endif -%}
+  </div>
+</article>

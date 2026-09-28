@@ -1,0 +1,8 @@
+{
+  "type": "footer",
+  "name": "Footer group",
+  "sections": {
+    "footer": { "type": "footer", "blocks": { "menu": { "type": "menu", "settings": { "menu": "footer" } }, "news": { "type": "newsletter", "settings": {} } }, "block_order": ["menu", "news"], "settings": {} }
+  },
+  "order": ["footer"]
+}

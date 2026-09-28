@@ -1,0 +1,2 @@
+{%- comment -%} Rubber-stamp label. Usage: {% render 'stamp', text: 'New', tone: 'red' %} (red | jade | ink | gold) {%- endcomment -%}
+<span class="stamp stamp--{{ tone | default: 'red' }}">{{ text }}</span>

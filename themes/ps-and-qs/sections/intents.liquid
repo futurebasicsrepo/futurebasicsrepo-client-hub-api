@@ -1,0 +1,31 @@
+{%- comment -%}
+  Shop by intent: short, high-intent entry points (a budget, an occasion, a fit) instead of
+  making everyone start at a category. Each chip is just a link, so it can point at a filtered
+  collection URL, e.g. /collections/all?filter.v.price.lte=75 or a tag collection.
+{%- endcomment -%}
+<section class="intents section" aria-labelledby="Intents-{{ section.id }}">
+  <div class="page-width intents__inner">
+    <h2 class="h3" id="Intents-{{ section.id }}">{{ section.settings.heading }}</h2>
+    <ul class="intents__list">
+      {%- if settings.fit_enabled -%}
+        <li><button type="button" class="intent intent--fit" data-fit-open><span class="intent__glyph" aria-hidden="true">{% render 'icon', name: 'ruler' %}</span><span data-fit-label data-label-set="{{ 'fit.edit_sizes' | t }}" data-label-empty="{{ 'fit.set_sizes' | t }}">{{ 'fit.set_sizes' | t }}</span></button></li>
+      {%- endif -%}
+      {%- for block in section.blocks -%}
+        <li {{ block.shopify_attributes }}><a class="intent" href="{{ block.settings.link }}"><span class="intent__glyph" aria-hidden="true">{{ block.settings.glyph }}</span><span>{{ block.settings.label }}</span></a></li>
+      {%- endfor -%}
+    </ul>
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Shop by intent",
+  "settings": [ { "type": "text", "id": "heading", "label": "Heading", "default": "I'm looking for…" } ],
+  "max_blocks": 10,
+  "blocks": [ { "type": "intent", "name": "Intent", "settings": [
+    { "type": "text", "id": "label", "label": "Label", "default": "A gift under $75" },
+    { "type": "text", "id": "glyph", "label": "Glyph (1–2 characters)", "default": "$" },
+    { "type": "url", "id": "link", "label": "Link" }
+  ] } ],
+  "presets": [ { "name": "Shop by intent", "blocks": [ { "type": "intent" } ] } ]
+}
+{% endschema %}

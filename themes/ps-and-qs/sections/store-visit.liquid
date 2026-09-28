@@ -1,0 +1,50 @@
+{%- comment -%}
+  The physical shop as a channel. Live open/closed state from the hours in Theme settings,
+  one-tap directions and call, and the pickup promise. Pairs with the ClothingStore JSON-LD
+  and Google Business Profile so "streetwear store open now near South Street" finds it.
+{%- endcomment -%}
+<section class="visit section" data-visit data-hours-weekday="{{ settings.hours_weekday }}" data-hours-sunday="{{ settings.hours_sunday }}" data-t-open="{{ 'sections.visit.open_now' | t: time: '%t' | escape }}" data-t-closed="{{ 'sections.visit.closed_now' | t: time: '%t' | escape }}">
+  <div class="page-width visit__grid">
+    <div class="visit__media reveal">
+      {%- if section.settings.image -%}
+        {{ section.settings.image | image_url: width: 1400 | image_tag: loading: 'lazy', widths: '600, 1000, 1400', sizes: '(min-width: 990px) 50vw, 100vw', alt: section.settings.image.alt | default: section.settings.heading }}
+      {%- else -%}
+        <div class="visit__placeholder" aria-hidden="true"><span>{{ settings.street | split: ' ' | first }}</span></div>
+      {%- endif -%}
+      <span class="visit__status mono" data-open-status hidden><span class="visit__dot"></span><span data-open-text></span></span>
+    </div>
+    <div class="visit__info">
+      <p class="mono kicker">{{ section.settings.kicker }}</p>
+      <h2 class="h2 offreg" data-offreg>{{ section.settings.heading }}</h2>
+      <div class="rte">{{ section.settings.text }}</div>
+      <address class="visit__address">
+        <span class="h4">{{ settings.street }}</span><br>{{ settings.city }}, {{ settings.region }} {{ settings.postal }}
+      </address>
+      <dl class="visit__hours mono small">
+        <div><dt>{{ 'sections.footer.mon_sat' | t }}</dt><dd>{{ settings.hours_weekday | replace: '-', ' – ' }}</dd></div>
+        <div><dt>{{ 'sections.footer.sun' | t }}</dt><dd>{{ settings.hours_sunday | replace: '-', ' – ' }}</dd></div>
+      </dl>
+      <div class="visit__ctas">
+        {%- if settings.maps_url != blank -%}<a class="btn btn--primary" href="{{ settings.maps_url }}" target="_blank" rel="noopener">{% render 'icon', name: 'pin' %} {{ 'sections.footer.directions' | t }}</a>{%- endif -%}
+        {%- if settings.phone != blank -%}<a class="btn btn--ghost" href="tel:{{ settings.phone | remove: '-' | remove: ' ' }}">{{ 'sections.visit.call' | t }}</a>{%- endif -%}
+      </div>
+      <ul class="visit__perks small">
+        <li>{% render 'icon', name: 'store' %} {{ 'sections.visit.pickup' | t }}</li>
+        <li>{% render 'icon', name: 'check' %} {{ 'sections.visit.exchanges' | t: days: settings.exchange_days }}</li>
+        <li>{% render 'icon', name: 'check' %} {{ 'sections.visit.shipping' | t: amount: settings.free_shipping_over }}</li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Visit the shop",
+  "settings": [
+    { "type": "image_picker", "id": "image", "label": "Storefront photo" },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Come through" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "820 South Street" },
+    { "type": "richtext", "id": "text", "label": "Text", "default": "<p>Between 8th and 9th since 2012. Try it on, talk to Ky, Rick or Jackson, stay for the music. Order online and pick it up the same day.</p>" }
+  ],
+  "presets": [ { "name": "Visit the shop" } ]
+}
+{% endschema %}

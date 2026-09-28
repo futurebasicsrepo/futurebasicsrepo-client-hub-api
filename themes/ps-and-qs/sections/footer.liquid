@@ -1,0 +1,75 @@
+<footer class="footer">
+  <div class="footer__top page-width">
+    <div class="footer__visit">
+      <p class="mono kicker">{{ 'sections.footer.visit' | t }}</p>
+      <address class="footer__address">
+        <span class="h3">{{ settings.street }}</span>
+        <span>{{ settings.city }}, {{ settings.region }} {{ settings.postal }}</span>
+      </address>
+      <dl class="footer__hours mono small">
+        <div><dt>{{ 'sections.footer.mon_sat' | t }}</dt><dd>{{ settings.hours_weekday | replace: '-', ' – ' }}</dd></div>
+        <div><dt>{{ 'sections.footer.sun' | t }}</dt><dd>{{ settings.hours_sunday | replace: '-', ' – ' }}</dd></div>
+      </dl>
+      <p class="footer__links">
+        {%- if settings.phone != blank -%}<a href="tel:{{ settings.phone | remove: '-' | remove: ' ' }}">{{ settings.phone | remove_first: '+1-' }}</a>{%- endif -%}
+        {%- if settings.maps_url != blank -%} · <a href="{{ settings.maps_url }}" target="_blank" rel="noopener">{{ 'sections.footer.directions' | t }}</a>{%- endif -%}
+      </p>
+    </div>
+
+    {%- for block in section.blocks -%}
+      {%- case block.type -%}
+        {%- when 'menu' -%}
+          <nav class="footer__menu" {{ block.shopify_attributes }} aria-label="{{ block.settings.menu.title | escape }}">
+            <p class="mono kicker">{{ block.settings.menu.title }}</p>
+            <ul>{%- for link in block.settings.menu.links -%}<li><a href="{{ link.url }}">{{ link.title }}</a></li>{%- endfor -%}</ul>
+          </nav>
+        {%- when 'newsletter' -%}
+          <div class="footer__news" {{ block.shopify_attributes }}>
+            <p class="mono kicker">{{ block.settings.kicker }}</p>
+            <p class="h4">{{ block.settings.heading }}</p>
+            {%- form 'customer', class: 'news-form', id: 'FooterNews' -%}
+              <input type="hidden" name="contact[tags]" value="newsletter,footer">
+              {%- if form.posted_successfully? -%}<p class="form__success small">{{ 'sections.newsletter.success' | t }}</p>{%- endif -%}
+              {%- if form.errors -%}<p class="form__error small">{{ form.errors.translated_fields.email | capitalize }} {{ form.errors.messages.email }}</p>{%- endif -%}
+              <label class="visually-hidden" for="FooterNewsEmail">{{ 'sections.newsletter.email' | t }}</label>
+              <div class="news-form__row">
+                <input id="FooterNewsEmail" type="email" name="contact[email]" autocomplete="email" placeholder="{{ 'sections.newsletter.email' | t }}" required>
+                <button type="submit" class="btn btn--primary">{{ 'sections.newsletter.submit' | t }}</button>
+              </div>
+            {%- endform -%}
+          </div>
+      {%- endcase -%}
+    {%- endfor -%}
+  </div>
+
+  <div class="footer__mark" aria-hidden="true" data-mirror-scrub>
+    <span class="footer__glyph footer__glyph--p">p</span><span class="footer__glyph footer__glyph--q">q</span>
+  </div>
+
+  <div class="footer__base page-width">
+    <p class="mono small">&copy; {{ 'now' | date: '%Y' }} {{ settings.brand_legal_name | default: shop.name }} · {{ 'sections.footer.family' | t: year: settings.founding_year }}</p>
+    <ul class="footer__social">
+      {%- if settings.social_instagram != blank -%}<li><a href="{{ settings.social_instagram }}" target="_blank" rel="noopener" aria-label="Instagram">{% render 'icon', name: 'instagram' %}</a></li>{%- endif -%}
+      {%- if settings.social_tiktok != blank -%}<li><a href="{{ settings.social_tiktok }}" target="_blank" rel="noopener" aria-label="TikTok">{% render 'icon', name: 'tiktok' %}</a></li>{%- endif -%}
+      {%- if settings.social_facebook != blank -%}<li><a href="{{ settings.social_facebook }}" target="_blank" rel="noopener" aria-label="Facebook">{% render 'icon', name: 'facebook' %}</a></li>{%- endif -%}
+      {%- if settings.social_x != blank -%}<li><a href="{{ settings.social_x }}" target="_blank" rel="noopener" aria-label="X">{% render 'icon', name: 'x' %}</a></li>{%- endif -%}
+      {%- if settings.social_youtube != blank -%}<li><a href="{{ settings.social_youtube }}" target="_blank" rel="noopener" aria-label="YouTube">{% render 'icon', name: 'youtube' %}</a></li>{%- endif -%}
+    </ul>
+    <ul class="footer__pay" aria-label="{{ 'sections.footer.payment' | t }}">
+      {%- for type in shop.enabled_payment_types -%}<li>{{ type | payment_type_svg_tag: class: 'pay-icon' }}</li>{%- endfor -%}
+    </ul>
+  </div>
+</footer>
+{% schema %}
+{
+  "name": "Footer",
+  "blocks": [
+    { "type": "menu", "name": "Menu", "settings": [ { "type": "link_list", "id": "menu", "label": "Menu", "default": "footer" } ] },
+    { "type": "newsletter", "name": "Newsletter", "limit": 1, "settings": [
+      { "type": "text", "id": "kicker", "label": "Kicker", "default": "The Ps & Qs letter" },
+      { "type": "text", "id": "heading", "label": "Heading", "default": "Drops, collabs and shop hangs. First." }
+    ] }
+  ],
+  "default": { "blocks": [ { "type": "menu" }, { "type": "newsletter" } ] }
+}
+{% endschema %}

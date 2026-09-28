@@ -1,0 +1,54 @@
+{%- comment -%}
+  Every indexable page gets a specific description. Shopify's page_description falls back to the
+  shop description on every page, which is why the same sentence shows up as the snippet for the
+  homepage, FAQ and every collection today. Here, blank descriptions are generated from real data.
+{%- endcomment -%}
+{%- liquid
+  assign shop_desc = shop.description | default: settings.brand_summary
+  assign desc = page_description
+  if desc == shop_desc or desc == blank
+    assign desc = blank
+  endif
+  if desc == blank
+    case request.page_type
+      when 'product'
+        assign sizes = ''
+        for opt in product.options_with_values
+          assign oname = opt.name | downcase
+          if oname contains 'size'
+            assign sizes = opt.values | join: ', '
+          endif
+        endfor
+        capture desc
+          echo product.title
+          if product.vendor != blank
+            echo ' by ' | append: product.vendor
+          endif
+          echo ' — ' | append: product.price | money_without_trailing_zeros
+          if sizes != ''
+            echo ' in sizes ' | append: sizes
+          endif
+          echo '. ' | append: product.description | strip_html | strip_newlines | truncate: 90, ''
+          echo ' Shop online or pick up at ' | append: settings.brand_legal_name | append: ', ' | append: settings.street | append: ', ' | append: settings.city | append: '.'
+        endcapture
+      when 'collection'
+        assign vendors = collection.all_vendors | join: ', ' | truncate: 90
+        capture desc
+          echo 'Shop ' | append: collection.title | append: ' at ' | append: settings.brand_legal_name
+          echo ', Philadelphia — ' | append: collection.all_products_count | append: ' pieces'
+          if vendors != blank
+            echo ' from ' | append: vendors
+          endif
+          echo '. Free shipping over $' | append: settings.free_shipping_over | append: ', in-store pickup on South Street.'
+        endcapture
+      when 'index'
+        assign desc = settings.brand_summary
+      when 'article'
+        assign desc = article.excerpt_or_content | strip_html | strip_newlines | truncate: 158
+      else
+        assign desc = shop_desc
+    endcase
+  endif
+  assign desc = desc | strip_html | strip_newlines | strip | truncate: 160
+-%}
+<meta name="description" content="{{ desc | escape }}">

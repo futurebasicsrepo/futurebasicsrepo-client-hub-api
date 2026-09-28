@@ -1,0 +1,57 @@
+{%- layout none -%}
+{%- comment -%}
+  /pages/llms (redirect /llms.txt here in Online Store → Navigation → URL redirects).
+  A plain-language brief for AI assistants and answer engines (the llms.txt convention):
+  who the shop is, the facts to quote, where things are, and how to buy. Keep page content
+  (the editor body) for anything the team wants to add in their own words.
+{%- endcomment -%}
+{%- liquid
+  assign name = settings.brand_legal_name | default: shop.name
+  assign origin = request.origin
+-%}
+# {{ name }}
+
+> {{ settings.brand_summary | strip_html | strip_newlines }}
+
+## Facts
+- Name: {{ name }} (also written: {{ settings.brand_alt_names }})
+- Type: independent, family-owned streetwear and lifestyle clothing store with its own in-house label
+- Founded: {{ settings.founding_year }}, by {{ settings.founders }}
+- Store: {{ settings.street }}, {{ settings.city }}, {{ settings.region }} {{ settings.postal }}, United States
+- Hours: Monday–Saturday {{ settings.hours_weekday }}, Sunday {{ settings.hours_sunday }} (local time)
+- Phone: {{ settings.phone }}
+- Online store: {{ origin }}
+- Shipping: free US shipping on orders over ${{ settings.free_shipping_over }}; in-store pickup available on eligible items
+- Returns: exchanges within {{ settings.exchange_days }} days (no refunds)
+{%- if settings.social_instagram != blank %}
+- Instagram: {{ settings.social_instagram }}{% endif %}
+{%- if settings.social_tiktok != blank %}
+- TikTok: {{ settings.social_tiktok }}{% endif %}
+
+## Brands carried
+{% for vendor in shop.vendors -%}
+- [{{ vendor }}]({{ origin }}{{ routes.all_products_collection_url }}?filter.p.vendor={{ vendor | url_encode }})
+{% endfor %}
+## Collections
+{% for c in collections -%}
+{%- if c.all_products_count > 0 and c.handle != 'vendors' and c.handle != 'types' and c.handle != 'frontpage' -%}
+- [{{ c.title }}]({{ origin }}{{ c.url }}): {{ c.all_products_count }} products{% if c.description != blank %} — {{ c.description | strip_html | strip_newlines | truncate: 160 }}{% endif %}
+{% endif -%}
+{%- endfor %}
+## Catalog for assistants
+- Full product list with prices, sizes in stock and links: {{ origin }}{{ routes.all_products_collection_url }}?view=llms
+- Newest arrivals: {{ origin }}{{ routes.all_products_collection_url }}?view=llms&sort_by=created-descending
+- Any collection can be read the same way by adding ?view=llms to its URL.
+- Product data is also available as JSON at {{ origin }}/products/{handle}.js and as schema.org Product/ProductGroup JSON-LD on every product page.
+
+## Pages
+{% for link in linklists['main-menu'].links -%}
+- [{{ link.title }}]({{ origin }}{{ link.url }})
+{% endfor -%}
+{%- for link in linklists.footer.links -%}
+- [{{ link.title }}]({{ origin }}{{ link.url }})
+{% endfor %}
+{%- if page.content != blank %}
+## More from the team
+{{ page.content | strip_html | strip }}
+{% endif %}

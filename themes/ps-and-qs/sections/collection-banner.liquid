@@ -1,0 +1,34 @@
+{%- liquid
+  assign letter = collection.title | slice: 0 | downcase
+-%}
+<section class="cbanner">
+  <div class="page-width cbanner__inner">
+    {% render 'breadcrumbs', current: collection.title %}
+    <span class="cbanner__sort" aria-hidden="true" data-mirror-scrub>{{ letter }}</span>
+    <h1 class="cbanner__title offreg" data-offreg>{{ collection.title }}</h1>
+    <p class="mono small cbanner__count">{{ 'sections.collection.product_count' | t: count: collection.all_products_count }}{% if collection.all_vendors.size > 1 %} · {{ collection.all_vendors.size }} {{ 'sections.collection.brands' | t }}{% endif %}</p>
+    {%- if collection.description != blank and section.settings.show_description -%}
+      <details class="cbanner__desc rte">
+        <summary>{{ collection.description | strip_html | truncatewords: 26 }} <span class="link">{{ 'general.read_more' | t }}</span></summary>
+        {{ collection.description }}
+      </details>
+    {%- endif -%}
+    {%- if section.settings.show_siblings and section.settings.menu != blank -%}
+      <nav class="chips cbanner__chips" aria-label="{{ 'sections.collection.related' | t }}">
+        {%- for link in section.settings.menu.links -%}
+          <a class="chip{% if link.active %} chip--active{% endif %}" href="{{ link.url }}"{% if link.active %} aria-current="page"{% endif %}>{{ link.title }}</a>
+        {%- endfor -%}
+      </nav>
+    {%- endif -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Collection banner",
+  "settings": [
+    { "type": "checkbox", "id": "show_description", "label": "Show collection description", "info": "Write 80–200 words per collection: what it is, brands, fit notes. It's what search engines and AI assistants quote.", "default": true },
+    { "type": "checkbox", "id": "show_siblings", "label": "Show quick-jump chips", "default": true },
+    { "type": "link_list", "id": "menu", "label": "Quick-jump menu", "info": "Usually the same menu as the Shop dropdown." }
+  ]
+}
+{% endschema %}

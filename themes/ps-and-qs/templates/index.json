@@ -1,0 +1,445 @@
+{
+  "sections": {
+    "hero": {
+      "type": "hero-mirror",
+      "settings": {}
+    },
+    "stick": {
+      "type": "marquee",
+      "blocks": {
+        "item1": {
+          "type": "item",
+          "settings": {
+            "text": "Carhartt WIP"
+          }
+        },
+        "item2": {
+          "type": "item",
+          "settings": {
+            "text": "Stüssy"
+          }
+        },
+        "item3": {
+          "type": "item",
+          "settings": {
+            "text": "New Balance"
+          }
+        },
+        "item4": {
+          "type": "item",
+          "settings": {
+            "text": "Pendleton"
+          }
+        },
+        "item5": {
+          "type": "item",
+          "settings": {
+            "text": "Universal Works"
+          }
+        },
+        "item6": {
+          "type": "item",
+          "settings": {
+            "text": "Norse Projects"
+          }
+        },
+        "item7": {
+          "type": "item",
+          "settings": {
+            "text": "Paratodo"
+          }
+        },
+        "item8": {
+          "type": "item",
+          "settings": {
+            "text": "Students"
+          }
+        },
+        "item9": {
+          "type": "item",
+          "settings": {
+            "text": "thisisneverthat"
+          }
+        },
+        "item10": {
+          "type": "item",
+          "settings": {
+            "text": "Patagonia"
+          }
+        },
+        "item11": {
+          "type": "item",
+          "settings": {
+            "text": "Publish"
+          }
+        },
+        "item12": {
+          "type": "item",
+          "settings": {
+            "text": "Ps & Qs"
+          }
+        }
+      },
+      "block_order": [
+        "item1",
+        "item2",
+        "item3",
+        "item4",
+        "item5",
+        "item6",
+        "item7",
+        "item8",
+        "item9",
+        "item10",
+        "item11",
+        "item12"
+      ],
+      "settings": {}
+    },
+    "intents": {
+      "type": "intents",
+      "blocks": {
+        "intent1": {
+          "type": "intent",
+          "settings": {
+            "label": "Just landed this week",
+            "glyph": "N",
+            "link": "/collections/all?sort_by=created-descending"
+          }
+        },
+        "intent2": {
+          "type": "intent",
+          "settings": {
+            "label": "A gift under $75",
+            "glyph": "$",
+            "link": "/collections/all?filter.v.price.lte=75"
+          }
+        },
+        "intent3": {
+          "type": "intent",
+          "settings": {
+            "label": "Made in Philly",
+            "glyph": "P",
+            "link": "/collections/ps-qs"
+          }
+        },
+        "intent4": {
+          "type": "intent",
+          "settings": {
+            "label": "Workwear that lasts",
+            "glyph": "W",
+            "link": "/collections/carhartt-work-in-progress"
+          }
+        },
+        "intent5": {
+          "type": "intent",
+          "settings": {
+            "label": "Something for my head",
+            "glyph": "H",
+            "link": "/collections/headwear"
+          }
+        },
+        "intent6": {
+          "type": "intent",
+          "settings": {
+            "label": "Pants that fit",
+            "glyph": "32",
+            "link": "/collections/mens-bottoms"
+          }
+        }
+      },
+      "block_order": [
+        "intent1",
+        "intent2",
+        "intent3",
+        "intent4",
+        "intent5",
+        "intent6"
+      ],
+      "settings": {}
+    },
+    "new": {
+      "type": "product-rail",
+      "settings": {
+        "collection": "all",
+        "kicker": "Fresh off the press",
+        "heading": "Just printed",
+        "sort": "created-descending",
+        "limit": 12
+      }
+    },
+    "case": {
+      "type": "type-case",
+      "blocks": {
+        "drawer1": {
+          "type": "drawer",
+          "settings": {
+            "collection": "new-arrivals",
+            "label": "New arrivals",
+            "letter": "n",
+            "size": "lg"
+          }
+        },
+        "drawer2": {
+          "type": "drawer",
+          "settings": {
+            "collection": "ps-qs",
+            "label": "Ps & Qs house line",
+            "letter": "p",
+            "size": "tall"
+          }
+        },
+        "drawer3": {
+          "type": "drawer",
+          "settings": {
+            "collection": "mens-bottoms",
+            "label": "Pants",
+            "letter": "b",
+            "size": "sm"
+          }
+        },
+        "drawer4": {
+          "type": "drawer",
+          "settings": {
+            "collection": "headwear",
+            "label": "Headwear",
+            "letter": "h",
+            "size": "sm"
+          }
+        },
+        "drawer5": {
+          "type": "drawer",
+          "settings": {
+            "collection": "carhartt-work-in-progress",
+            "label": "Carhartt WIP",
+            "letter": "c",
+            "size": "md"
+          }
+        },
+        "drawer6": {
+          "type": "drawer",
+          "settings": {
+            "collection": "accessories-1",
+            "label": "Accessories",
+            "letter": "a",
+            "size": "sm"
+          }
+        },
+        "drawer7": {
+          "type": "drawer",
+          "settings": {
+            "collection": "totes",
+            "label": "Totes",
+            "letter": "t",
+            "size": "sm"
+          }
+        }
+      },
+      "block_order": [
+        "drawer1",
+        "drawer2",
+        "drawer3",
+        "drawer4",
+        "drawer5",
+        "drawer6",
+        "drawer7"
+      ],
+      "settings": {}
+    },
+    "fit": {
+      "type": "product-rail",
+      "settings": {
+        "collection": "all",
+        "kicker": "Set to your sizes",
+        "heading": "In your size",
+        "mode": "fit",
+        "limit": 16
+      }
+    },
+    "house": {
+      "type": "image-with-text",
+      "settings": {
+        "kicker": "The house line",
+        "heading": "Made in Philly, worn everywhere",
+        "text": "<p>Ps & Qs is our own label: heavyweight fleece, logo tees and one-off capsules with neighbors like the Philadelphia Union and Pat's King of Steaks. Designed on South Street, made for the city.</p>",
+        "button_label": "Shop Ps & Qs",
+        "button_link": "/collections/ps-qs"
+      }
+    },
+    "block": {
+      "type": "the-block",
+      "blocks": {
+        "moment1": {
+          "type": "moment",
+          "settings": {
+            "year": "2008",
+            "partner": "Chinatown",
+            "title": "Before Ps & Qs: Abakus Takeout",
+            "text": "<p>The first shop: 227 N 10th St, dressed as a Chinese takeout — tees packed in takeout boxes.</p>"
+          }
+        },
+        "moment2": {
+          "type": "moment",
+          "settings": {
+            "year": "2012",
+            "partner": "South Street",
+            "title": "Doors open at 820 South St",
+            "text": "<p>Brothers Ky and Rick Cao and their friend Jackson Fu open Ps & Qs. The name comes from the Philly saying: get your Ps and Qs in order.</p>"
+          }
+        },
+        "moment3": {
+          "type": "moment",
+          "settings": {
+            "year": "2015",
+            "partner": "Tretorn × Publish",
+            "title": "The \"Better Days\" Nylite",
+            "text": "<p>A three-way sneaker collab in suede tan and perforated white leather.</p>",
+            "link": "/products/tretorn-x-publish-x-ps-and-qs-nylite-suede"
+          }
+        },
+        "moment4": {
+          "type": "moment",
+          "settings": {
+            "year": "2016",
+            "partner": "Antique Row",
+            "title": "Ps & Qs For Her on Pine Street",
+            "text": "<p>A sister shop at 1018 Pine St — later named Best of Philly's best sister shop.</p>"
+          }
+        },
+        "moment5": {
+          "type": "moment",
+          "settings": {
+            "year": "2019",
+            "partner": "Ubiq × Lapstone & Hammer",
+            "title": "Seven years, three shops, one capsule",
+            "text": "<p>Philly's sneaker shops teamed up on an anniversary tee drop instead of competing.</p>"
+          }
+        },
+        "moment6": {
+          "type": "moment",
+          "settings": {
+            "year": "2020",
+            "partner": "Philadelphia Suns",
+            "title": "Fight The Virus, Not The People",
+            "text": "<p>A response to anti-Asian hate. 25% of proceeds went to the Chinatown youth nonprofit. Sold out.</p>"
+          }
+        },
+        "moment7": {
+          "type": "moment",
+          "settings": {
+            "year": "2025",
+            "partner": "Philadelphia Union",
+            "title": "Year of the Snake",
+            "text": "<p>A Lunar New Year and AAPI Heritage Month capsule for the Union's Philly Crafted series.</p>",
+            "link": "/blogs/news/dear-philadelphia-union"
+          }
+        },
+        "moment8": {
+          "type": "moment",
+          "settings": {
+            "year": "2026",
+            "partner": "Hat Club",
+            "title": "The Group Chat Pack",
+            "text": "<p>Phillies fitteds with friends of the shop, launched at a South Street pop-up.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "moment1",
+        "moment2",
+        "moment3",
+        "moment4",
+        "moment5",
+        "moment6",
+        "moment7",
+        "moment8"
+      ],
+      "settings": {}
+    },
+    "visit": {
+      "type": "store-visit",
+      "settings": {}
+    },
+    "faq": {
+      "type": "faq",
+      "blocks": {
+        "qa1": {
+          "type": "qa",
+          "settings": {
+            "question": "Where is Ps & Qs?",
+            "answer": "<p>820 South Street, Philadelphia, PA 19147 — between 8th and 9th. We've been on South Street since 2012.</p>"
+          }
+        },
+        "qa2": {
+          "type": "qa",
+          "settings": {
+            "question": "What are your hours?",
+            "answer": "<p>Monday to Saturday 12–7pm, Sunday 12–6pm.</p>"
+          }
+        },
+        "qa3": {
+          "type": "qa",
+          "settings": {
+            "question": "Can I order online and pick up in store?",
+            "answer": "<p>Yes. Choose store pickup at checkout and we'll let you know when it's ready, usually the same day.</p>"
+          }
+        },
+        "qa4": {
+          "type": "qa",
+          "settings": {
+            "question": "Do you ship, and is it free?",
+            "answer": "<p>We ship across the US, free on orders over $250.</p>"
+          }
+        },
+        "qa5": {
+          "type": "qa",
+          "settings": {
+            "question": "What's your return policy?",
+            "answer": "<p>We do exchanges within 30 days for unworn items with tags. We don't offer refunds.</p>"
+          }
+        },
+        "qa6": {
+          "type": "qa",
+          "settings": {
+            "question": "What brands do you carry?",
+            "answer": "<p>Carhartt WIP, Stüssy, New Balance, Pendleton, Universal Works, Norse Projects, Paratodo, Students, thisisneverthat and more — plus our own Ps & Qs line, designed in Philly.</p>"
+          }
+        },
+        "qa7": {
+          "type": "qa",
+          "settings": {
+            "question": "Who owns Ps & Qs?",
+            "answer": "<p>It's family owned: brothers Ky and Rick Cao and their friend Jackson Fu started it in 2012.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "qa1",
+        "qa2",
+        "qa3",
+        "qa4",
+        "qa5",
+        "qa6",
+        "qa7"
+      ],
+      "settings": {}
+    },
+    "recent": {
+      "type": "recently-viewed",
+      "settings": {}
+    }
+  },
+  "order": [
+    "hero",
+    "stick",
+    "intents",
+    "new",
+    "case",
+    "fit",
+    "house",
+    "block",
+    "visit",
+    "faq",
+    "recent"
+  ]
+}

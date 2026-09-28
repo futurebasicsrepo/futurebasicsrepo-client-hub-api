@@ -1,0 +1,14 @@
+{
+  "current": {
+    "social_instagram": "https://www.instagram.com/psqsshop",
+    "social_facebook": "https://www.facebook.com/psqsshop",
+    "social_x": "https://x.com/psqsshop"
+  },
+  "presets": {
+    "Default": {
+      "social_instagram": "https://www.instagram.com/psqsshop",
+      "social_facebook": "https://www.facebook.com/psqsshop",
+      "social_x": "https://x.com/psqsshop"
+    }
+  }
+}

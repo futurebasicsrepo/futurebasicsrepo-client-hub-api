@@ -1,0 +1,25 @@
+<article class="section page-width page--narrow article">
+  {% render 'breadcrumbs', parent: blog, current: article.title %}
+  <p class="mono small"><time datetime="{{ article.published_at | date: '%Y-%m-%d' }}">{{ article.published_at | date: '%B %d, %Y' }}</time>{% if article.author != blank %} · {{ article.author }}{% endif %}</p>
+  <h1 class="h1 offreg" data-offreg>{{ article.title }}</h1>
+  {%- if article.image -%}<div class="article__hero">{{ article.image | image_url: width: 1600 | image_tag: loading: 'eager', fetchpriority: 'high', widths: '800, 1200, 1600', sizes: '(min-width: 990px) 760px, 100vw', alt: article.image.alt | default: article.title }}</div>{%- endif -%}
+  <div class="rte article__body">{{ article.content }}</div>
+  {%- if article.tags.size > 0 -%}<p class="chips">{%- for tag in article.tags -%}<a class="chip" href="{{ blog.url }}/tagged/{{ tag | handle }}">{{ tag }}</a>{%- endfor -%}</p>{%- endif -%}
+  <a class="link-arrow" href="{{ blog.url }}">{{ 'blogs.article.back' | t }} {% render 'icon', name: 'arrow' %}</a>
+</article>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org", "@type": "Article",
+  "headline": {{ article.title | truncate: 110 | json }},
+  "datePublished": {{ article.published_at | date: '%Y-%m-%dT%H:%M:%S%z' | json }},
+  "dateModified": {{ article.updated_at | default: article.published_at | date: '%Y-%m-%dT%H:%M:%S%z' | json }},
+  {%- if article.image %}"image": [{{ article.image | image_url: width: 1600 | prepend: 'https:' | json }}],{% endif %}
+  "author": { "@type": "Organization", "name": {{ article.author | default: shop.name | json }} },
+  "publisher": { "@id": {{ request.origin | append: '/#organization' | json }} },
+  "mainEntityOfPage": {{ request.origin | append: article.url | json }},
+  "description": {{ article.excerpt_or_content | strip_html | truncate: 200 | json }}
+}
+</script>
+{% schema %}
+{ "name": "Article", "settings": [] }
+{% endschema %}

@@ -1,0 +1,16 @@
+{%- liquid
+  assign threshold = settings.free_shipping_over | default: '0' | plus: 0 | times: 100
+  assign remaining = threshold | minus: cart.total_price
+  assign pct = 100
+  if threshold > 0 and remaining > 0
+    assign pct = cart.total_price | times: 100 | divided_by: threshold
+  endif
+-%}
+{%- if threshold > 0 -%}
+<div class="ship-meter" style="--pct: {{ pct }}%">
+  <p class="small">
+    {%- if remaining > 0 -%}{{ 'sections.cart.ship_remaining_html' | t: amount: remaining | money_without_trailing_zeros }}{%- else -%}{{ 'sections.cart.ship_unlocked' | t }}{%- endif -%}
+  </p>
+  <span class="ship-meter__track" aria-hidden="true"><span class="ship-meter__fill"></span></span>
+</div>
+{%- endif -%}

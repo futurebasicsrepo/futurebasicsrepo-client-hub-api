@@ -1,0 +1,9 @@
+{
+  "sections": {
+    "main": { "type": "main-product", "blocks": { "ship": { "type": "accordion", "settings": {} } }, "block_order": ["ship"], "settings": {} },
+    "complete": { "type": "product-recommendations", "settings": { "intent": "complementary", "kicker": "Wear it with", "heading": "Complete the fit", "limit": 4 } },
+    "related": { "type": "product-recommendations", "settings": { "intent": "related", "kicker": "Keep going", "heading": "You might also like", "limit": 8 } },
+    "recent": { "type": "recently-viewed", "settings": {} }
+  },
+  "order": ["main", "complete", "related", "recent"]
+}

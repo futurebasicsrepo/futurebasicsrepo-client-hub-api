@@ -1,0 +1,22 @@
+<section class="richtext section{% if section.settings.big %} richtext--big{% endif %}">
+  <div class="page-width richtext__inner">
+    {%- if section.settings.kicker != blank -%}<p class="mono kicker">{{ section.settings.kicker }}</p>{%- endif -%}
+    {%- if section.settings.heading != blank -%}<h2 class="h2 offreg" data-offreg>{{ section.settings.heading }}</h2>{%- endif -%}
+    <div class="rte">{{ section.settings.text }}</div>
+    {%- if section.settings.button_label != blank -%}<a class="btn btn--ghost" href="{{ section.settings.button_link }}">{{ section.settings.button_label }}</a>{%- endif -%}
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Rich text",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Talk about your brand" },
+    { "type": "richtext", "id": "text", "label": "Text", "default": "<p>Share the story.</p>" },
+    { "type": "checkbox", "id": "big", "label": "Large editorial type", "default": false },
+    { "type": "text", "id": "button_label", "label": "Button" },
+    { "type": "url", "id": "button_link", "label": "Button link" }
+  ],
+  "presets": [ { "name": "Rich text" } ]
+}
+{% endschema %}

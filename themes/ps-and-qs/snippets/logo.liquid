@@ -1,0 +1,15 @@
+{%- comment -%}
+  Typeset wordmark. The P and the Q are cast as metal sorts: hover presses them, and at full
+  motion they mirror-flip — a lowercase p is a q seen backwards, which is where
+  "mind your p's and q's" comes from (typesetters reading reversed type).
+{%- endcomment -%}
+{%- if settings.logo != blank -%}
+  {%- assign logo_h = settings.logo_width | divided_by: settings.logo.aspect_ratio | round -%}
+  {{ settings.logo | image_url: width: 480 | image_tag: width: settings.logo_width, height: logo_h, alt: shop.name, class: 'logo__img', loading: 'eager' }}
+{%- else -%}
+  <span class="wm" aria-label="{{ shop.name | escape }}">
+    <span class="wm__sort wm__sort--p" aria-hidden="true">P</span><span class="wm__s" aria-hidden="true">s</span>
+    <span class="wm__amp" aria-hidden="true">&amp;</span>
+    <span class="wm__sort wm__sort--q" aria-hidden="true">Q</span><span class="wm__s" aria-hidden="true">s</span>
+  </span>
+{%- endif -%}

@@ -1,0 +1,376 @@
+{
+  "accessibility": {
+    "skip_to_content": "Skip to content",
+    "refresh_page": "Choosing a selection results in a full page refresh.",
+    "close": "Close",
+    "open_menu": "Open menu",
+    "open_cart": "Open cart",
+    "open_search": "Search",
+    "loading": "Loading"
+  },
+  "general": {
+    "search": {
+      "placeholder": "Search kicks, tees, hats…",
+      "submit": "Search",
+      "results_with_count": {
+        "one": "{{ count }} result for “{{ terms }}”",
+        "other": "{{ count }} results for “{{ terms }}”"
+      },
+      "no_results": "Nothing found for “{{ terms }}”. Try a brand, a size, or a colorway.",
+      "title": "Search"
+    },
+    "pagination": {
+      "previous": "Prev",
+      "next": "Next",
+      "page": "Page {{ number }}",
+      "label": "Pagination"
+    },
+    "newsletter": {
+      "label": "Email",
+      "placeholder": "you@email.com",
+      "submit": "Sign me up",
+      "success": "You're on the list. Drops hit your inbox first.",
+      "error": "Please enter a valid email."
+    },
+    "social": {
+      "instagram": "Instagram",
+      "facebook": "Facebook",
+      "tiktok": "TikTok"
+    },
+    "continue_shopping": "Keep shopping",
+    "back_home": "Back to home",
+    "view_all": "Shop all",
+    "not_found": {
+      "title": "404 — page not found",
+      "text": "That page walked out the door already. Here's the shop instead."
+    },
+    "password": {
+      "title": "Setting type. Back soon.",
+      "text": "We're locking up the new shop. Get on the list and we'll let you in first.",
+      "placeholder": "Password",
+      "submit": "Enter",
+      "owner": "Store owner? ",
+      "login": "Log in here"
+    },
+    "read_more": "Read more",
+    "slider": {
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "404": {
+      "title": "This page got its p's and q's mixed up.",
+      "subtext": "It moved, sold out, or never existed. Try a search or head back to the shop."
+    }
+  },
+  "sections": {
+    "header": {
+      "menu": "Menu",
+      "cart_count": {
+        "one": "{{ count }} item",
+        "other": "{{ count }} items"
+      },
+      "shop_all": "Shop all",
+      "account": "Account",
+      "log_in": "Log in",
+      "shop": "Shop",
+      "new": "New arrivals",
+      "by_type": "By type",
+      "by_brand": "By brand",
+      "home": "Home",
+      "search": "Search",
+      "cart": "Bag",
+      "announcement": "Announcements"
+    },
+    "cart": {
+      "title": "Your bag",
+      "empty": "Your bag's empty. Here's where to start:",
+      "checkout": "Checkout",
+      "view_cart": "View bag",
+      "subtotal": "Subtotal",
+      "remove": "Remove",
+      "quantity": "Quantity",
+      "update": "Update",
+      "taxes_and_shipping": "Taxes and shipping calculated at checkout.",
+      "note": "Order note",
+      "continue": "Keep shopping",
+      "item_count": {
+        "one": "{{ count }} item",
+        "other": "{{ count }} items"
+      },
+      "ship_remaining_html": "You're <strong>{{ amount }}</strong> away from free shipping.",
+      "ship_unlocked": "Free shipping unlocked.",
+      "pickup_note": "Or choose free pickup at {{ street }} at checkout.",
+      "decrease": "Decrease quantity",
+      "increase": "Increase quantity"
+    },
+    "collection": {
+      "shop_all": "Shop all",
+      "all_products": "All products",
+      "product_count": {
+        "one": "{{ count }} item",
+        "other": "{{ count }} items"
+      },
+      "empty": "Nothing set in this drawer yet. Clear a filter or check back after the next drop.",
+      "filter": "Filter",
+      "filters": "Filters",
+      "sort_by": "Sort",
+      "clear": "Clear",
+      "clear_all": "Clear all",
+      "apply": "Show results",
+      "from": "From",
+      "to": "To",
+      "max_price": "The highest price is {{ price }}",
+      "active_filters": "Active filters",
+      "results": "Results",
+      "in_stock_only": "In stock only",
+      "shop_all_in": "Shop all {{ collection }}",
+      "brands": "brands",
+      "related": "Related collections"
+    },
+    "footer": {
+      "newsletter_heading": "Drops, restocks, in-store events.",
+      "menu": "Menu",
+      "hours": "Hours",
+      "location": "Location",
+      "visit": "Visit",
+      "mon_sat": "Mon–Sat",
+      "sun": "Sun",
+      "directions": "Directions",
+      "open_daily": "Open daily from noon",
+      "family": "Family owned on South Street since {{ year }}",
+      "payment": "Payment methods"
+    },
+    "search": {
+      "try": "Try",
+      "suggestions": "Suggestions",
+      "collections": "Collections",
+      "products": "Products",
+      "no_results": "Nothing for “{{ terms }}” — try a brand or a type.",
+      "view_all": "See all results for “{{ terms }}”"
+    },
+    "collections": {
+      "all": "All drawers",
+      "title": "The type case"
+    },
+    "newsletter": {
+      "email": "Email",
+      "submit": "Sign up",
+      "success": "You're on the list."
+    },
+    "visit": {
+      "call": "Call the shop",
+      "pickup": "Order online, pick up in store",
+      "exchanges": "Exchanges within {{ days }} days",
+      "shipping": "Free US shipping over ${{ amount }}",
+      "open_now": "Open now · until {{ time }}",
+      "closed_now": "Closed · opens {{ time }}"
+    }
+  },
+  "products": {
+    "product": {
+      "add_to_cart": "Add to bag",
+      "adding": "Adding…",
+      "added": "Added ✓",
+      "sold_out": "Sold out",
+      "unavailable": "Unavailable",
+      "quantity": "Quantity",
+      "description": "Details",
+      "shipping": "Shipping & returns",
+      "vendor": "Brand",
+      "sku": "SKU",
+      "size_guide": "Size guide",
+      "on_sale": "Sale",
+      "new": "New",
+      "regular_price": "Regular price",
+      "sale_price": "Sale price",
+      "from": "From",
+      "share": "Share",
+      "view_details": "View details",
+      "quick_add": "Add to bag",
+      "choose_options": "Choose options",
+      "in_stock": "In stock",
+      "media_alt": "Product image",
+      "you_may_also_like": "Also in your size",
+      "back_to_collection": "Back to {{ collection }}",
+      "in_your_size": "In your size",
+      "add_size": "Add size {{ size }} to bag",
+      "zoom": "Zoom image",
+      "story": "The story",
+      "material": "Material & care"
+    },
+    "facets": {
+      "vendor": "Brand",
+      "product_type": "Type",
+      "size": "Size",
+      "price": "Price",
+      "availability": "Availability",
+      "color": "Color",
+      "tag": "Tag"
+    },
+    "pickup": {
+      "available_html": "Pickup available at <strong>{{ location }}</strong>.",
+      "unavailable_html": "Pickup currently unavailable at <strong>{{ location }}</strong>.",
+      "other_locations": "Other locations",
+      "not_available": "not available"
+    }
+  },
+  "blogs": {
+    "article": {
+      "posted_on": "Posted on",
+      "by": "by",
+      "read_more": "Read more",
+      "back": "Back to blog"
+    },
+    "blog": {
+      "empty": "No posts yet.",
+      "kicker": "Notes from South Street"
+    }
+  },
+  "customer": {
+    "account": {
+      "title": "Account",
+      "details": "Account details",
+      "view_addresses": "View addresses",
+      "log_out": "Log out",
+      "orders": "Order history",
+      "no_orders": "You haven't placed any orders yet."
+    },
+    "login": {
+      "title": "Log in",
+      "email": "Email",
+      "password": "Password",
+      "forgot_password": "Forgot your password?",
+      "sign_in": "Sign in",
+      "guest_title": "Continue as a guest",
+      "guest_continue": "Continue",
+      "create_account": "Create account",
+      "cancel": "Cancel"
+    },
+    "recover_password": {
+      "title": "Reset your password",
+      "subtext": "We'll send you an email to reset your password.",
+      "submit": "Submit",
+      "success": "We've sent you an email with a link to update your password."
+    },
+    "reset_password": {
+      "title": "Reset account password",
+      "subtext": "Enter a new password",
+      "password": "Password",
+      "password_confirm": "Confirm password",
+      "submit": "Reset password"
+    },
+    "activate_account": {
+      "title": "Activate account",
+      "subtext": "Create your password to activate your account.",
+      "password": "Password",
+      "password_confirm": "Confirm password",
+      "submit": "Activate account",
+      "cancel": "Decline invitation"
+    },
+    "register": {
+      "title": "Create account",
+      "first_name": "First name",
+      "last_name": "Last name",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Create"
+    },
+    "addresses": {
+      "title": "Addresses",
+      "default": "Default",
+      "add_new": "Add a new address",
+      "edit_address": "Edit address",
+      "first_name": "First name",
+      "last_name": "Last name",
+      "company": "Company",
+      "address1": "Address 1",
+      "address2": "Address 2",
+      "city": "City",
+      "country": "Country/Region",
+      "province": "Province",
+      "zip": "Postal/ZIP code",
+      "phone": "Phone",
+      "set_default": "Set as default address",
+      "add": "Add address",
+      "update": "Update address",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_confirm": "Are you sure you wish to delete this address?"
+    },
+    "order": {
+      "title": "Order {{ name }}",
+      "date_html": "Placed on {{ date }}",
+      "cancelled_html": "Order Cancelled on {{ date }}",
+      "cancelled_reason": "Reason: {{ reason }}",
+      "billing_address": "Billing Address",
+      "payment_status": "Payment Status",
+      "shipping_address": "Shipping Address",
+      "fulfillment_status": "Fulfillment Status",
+      "discount": "Discount",
+      "shipping": "Shipping",
+      "tax": "Tax",
+      "product": "Product",
+      "sku": "SKU",
+      "price": "Price",
+      "quantity": "Quantity",
+      "total": "Total",
+      "fulfilled_at_html": "Fulfilled {{ date }}",
+      "track_shipment": "Track shipment",
+      "subtotal": "Subtotal"
+    },
+    "orders": {
+      "title": "Order history",
+      "order_number": "Order",
+      "date": "Date",
+      "payment_status": "Payment status",
+      "fulfillment_status": "Fulfillment status",
+      "total": "Total",
+      "none": "You haven't placed any orders yet."
+    }
+  },
+  "gift_cards": {
+    "issued": {
+      "title": "Here's your {{ value }} gift card for {{ shop }}!",
+      "subtext": "Your gift card",
+      "gift_card_code": "Gift card code",
+      "shop_link": "Visit online store",
+      "remaining_html": "Remaining {{ balance }}",
+      "add_to_apple_wallet": "Add to Apple Wallet",
+      "qr_image_alt": "QR code — scan to redeem gift card",
+      "copy_code": "Copy code",
+      "expired": "Expired",
+      "copy_code_success": "Code copied successfully",
+      "print_gift_card": "Print"
+    }
+  },
+  "contact": {
+    "form": {
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "comment": "Message",
+      "send": "Send",
+      "post_success": "Thanks — we'll get back to you soon.",
+      "error_heading": "Please fix the following:"
+    }
+  },
+  "fit": {
+    "kicker": "Fit profile",
+    "title": "Your sizes",
+    "subtitle": "Pick every size you wear. We'll flag what fits across the shop. Saved on this device only.",
+    "tops": "Tops",
+    "bottoms": "Waist",
+    "shoes": "Shoes",
+    "clear": "Clear",
+    "save": "Save my sizes",
+    "set_sizes": "Set my sizes",
+    "my_sizes": "My sizes",
+    "edit_sizes": "Edit my sizes",
+    "shop_my_sizes": "Shopping my sizes",
+    "in_my_size": "In my size",
+    "rail_note": "Showing pieces in your sizes.",
+    "rail_empty": "and this rail fills with pieces that fit.",
+    "show_everything": "Show everything"
+  }
+}
