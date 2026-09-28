@@ -1,5 +1,6 @@
 // /signin and /account pages. Data comes from /v1/auth/* and /v1/me.
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
+import { PASSKEY_JS } from './passkeys.js';
 
 const CSS = `
 .acct{padding:40px 0 90px}
@@ -42,6 +43,11 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .sso-b.google{background:#fff;color:#1f1f1f;border-color:#dadce0}
 .sso-b.facebook{background:#1877F2;color:#fff;border-color:#1877F2}
 .sso-b:focus-visible{outline:3px solid var(--spot);outline-offset:2px}
+.pk-b{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px}.pk-b[hidden]{display:none}
+.meth{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.meth:last-child{border-bottom:0}.meth .ic{font-size:20px;width:28px;text-align:center}.meth small{display:block;color:var(--muted);font-size:13px}
+.addf{display:grid;gap:8px;padding:10px 0 4px}.addf[hidden]{display:none}.addf .row{display:grid;grid-template-columns:1fr auto;gap:8px}
+.addf input{font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
 
@@ -77,14 +83,15 @@ export function signinPage({ origin, providers = {} }) {
   <h1 style="font-size:38px">Sign in</h1>
   <p class="sub" id="lead">We’ll send you a 6-digit code. No password needed.</p>
   <div class="seg" role="tablist" aria-label="Send the code by" id="seg"><button type="button" role="tab" aria-selected="true" data-mode="email">Email</button><button type="button" role="tab" aria-selected="false" data-mode="phone">Text</button></div>
-  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>Msg &amp; data rates may apply. Reply STOP to opt out.</p></form>
+  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>Msg &amp; data rates may apply. Reply STOP to opt out.</p></form>
   <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
-  ${Object.keys(providers).length ? `<div class="or" id="or"><span>or</span></div><div class="sso" id="sso">${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>` : ''}
+  <div class="or" id="or"><span>or</span></div><div class="sso" id="sso"><button type="button" class="btn ghost pk-b" id="pkBtn" hidden>🔑 Use Face ID or a passkey</button>${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>
   <p class="err" id="err"></p>
   <p class="sub" style="font-size:13px;margin:14px 0 0">By continuing you agree to Spot’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
 </div>`,
-    script: `
+    script: `${PASSKEY_JS}
 const ERRORS=${JSON.stringify(ERRORS)};
+let pkAbort=null;
 const q=new URLSearchParams(location.search);if(ERRORS[q.get('error')])$('#err').textContent=ERRORS[q.get('error')];
 const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';return n.startsWith('/')&&!n.startsWith('//')?n:'/account'})();
 let mode='email',who='';
@@ -93,9 +100,9 @@ const setMode=m=>{mode=m;document.querySelectorAll('#seg button').forEach(b=>b.s
   $('#sendBtn').textContent=ph?'Text me a code':'Email me a code';(ph?$('#phone'):$('#email')).focus();try{localStorage.setItem('spot:signin',m)}catch{}};
 $('#seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode)});
 try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}
-$('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#sendBtn');b.disabled=true;
+$('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';if(pkAbort){pkAbort.abort();pkAbort=null}const b=$('#sendBtn');b.disabled=true;
   try{who=(mode==='phone'?$('#phone'):$('#email')).value.trim();const r=await post('/v1/auth/start',mode==='phone'?{phone:who}:{email:who});
-    $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;if($('#or')){$('#or').hidden=true;$('#sso').hidden=true}$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
+    $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;$('#or').hidden=true;$('#sso').hidden=true;$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
     if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no '+(mode==='phone'?'texting':'email')+' service yet): your code is '+r.code;$('#code').value=r.code}
     $('#code').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=e.target.querySelector('button');b.disabled=true;
@@ -104,7 +111,17 @@ $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
 if('OTPCredential' in window){const ac=new AbortController();$('#codeForm').addEventListener('submit',()=>ac.abort());
   $('#emailForm').addEventListener('submit',()=>{if(mode==='phone')navigator.credentials.get({otp:{transport:['sms']},signal:ac.signal}).then(o=>{if(o&&o.code){$('#code').value=o.code;$('#codeForm').requestSubmit()}}).catch(()=>{})})}
 document.querySelectorAll('.sso-b').forEach(a=>{a.href='/auth/'+a.dataset.p+'/start?next='+encodeURIComponent(next)});
-$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;if($('#or')){$('#or').hidden=false;$('#sso').hidden=false}$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
+// Passkeys: a button, plus the browser's autofill offering saved passkeys
+// right in the email box (conditional UI).
+const pkDone=()=>{location.href=next};
+if(pkOK()){$('#pkBtn').hidden=false;
+  $('#pkBtn').onclick=async()=>{$('#err').textContent='';if(pkAbort)pkAbort.abort();pkAbort=null;
+    try{await pkSignIn();pkDone()}catch(err){if(err.name!=='NotAllowedError'&&err.name!=='AbortError'&&err.message!=='cancelled')$('#err').textContent=err.message}};
+  (async()=>{try{if(!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return;pkAbort=new AbortController();
+    await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){if(err.name!=='AbortError'&&err.name!=='NotAllowedError'&&err.message!=='cancelled')$('#err').textContent=err.message}})()}
+const altOK=()=>!$('#pkBtn').hidden||Boolean(document.querySelector('.sso-b'));
+$('#or').hidden=!altOK();
+$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=!altOK();$('#sso').hidden=false;$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
   });
 }
 
@@ -131,23 +148,40 @@ export function accountPage({ origin }) {
     <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><input name="born_on" type="date" aria-label="Date of birth"><select name="gender" aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f">Female</option><option value="m">Male</option></select></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
   </div>
 </section>
+<section id="signinSec"><h2>Sign-in methods</h2><p class="sub">Every way you can get into this account. Add your phone and email so either one works.</p>
+  <div class="box"><div id="methods"></div>
+    <form class="addf" id="addForm" hidden><label class="sub" id="addLabel" for="addVal" style="margin:0"></label><div class="row"><input id="addVal" aria-describedby="addLabel"><button class="btn primary" id="addSend">Send code</button></div></form>
+    <form class="addf" id="addCode" hidden><p class="hint" id="addDev" hidden></p><label class="sub" id="addCodeLabel" for="addCodeVal" style="margin:0"></label><div class="row"><input id="addCodeVal" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••"><button class="btn primary">Verify</button></div><button type="button" class="linkbtn" id="addCancel" style="justify-self:start">Cancel</button></form>
+    <p class="ok-msg" id="addOk"></p>
+  </div>
+  <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
+    <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
+</section>
 <section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="newKey">Connect a new AI</button></div><div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div></div>
 </section>
 <p class="err" id="err"></p>`,
-    script: `
+    script: `${PASSKEY_JS}
 const usd=c=>'$'+(c/100).toFixed(2);
+const fmtPhone=p=>{const m=/^\\+1(\\d{3})(\\d{3})(\\d{4})$/.exec(p||'');return m?'('+m[1]+') '+m[2]+'-'+m[3]:p};
 const LABEL={open:['waiting',''],paid:['paid','warn'],card_issued:['paid','ok'],completed:['done','ok'],canceled:['canceled',''],expired:['expired',''],refunded:['refunded','']};
 let me=null;
 async function load(){
   const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/account';return}
   me=await r.json();const u=me.user;
-  $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||u.phone);
+  $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
   $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
   $('#carts').innerHTML=me.carts.length?me.carts.map(c=>{const [l,t]=LABEL[c.status]||[c.status,''];return '<a class="item" href="'+esc(c.manage_url)+'"><span>'+esc(c.items[0]?.title||'Cart')+(c.items.length>1?' +'+(c.items.length-1):'')+'<span class="st '+(c.held?'warn':t)+'">'+(c.held?'checking':l)+'</span><small>'+esc(c.merchant.name)+(c.for==='self'?' · for you':' · '+(c.payer_name?esc(c.payer_name)+' spotted you':'someone else pays'))+' · '+new Date(c.created_at).toLocaleDateString()+'</small></span><span class="amt">'+usd(c.total_cents)+'</span></a>'}).join(''):'<p class="sub" style="margin:0">No Spots yet. <a href="/new">Make one</a>, or ask your AI.</p>';
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
+  const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
+  const NAMES={google:'Google',facebook:'Facebook'};
+  $('#methods').innerHTML=row('✉️',u.email?esc(u.email):'Email',u.email?'Sign-in codes and receipts':'Not added yet',u.email?'<button class="linkbtn" data-add="email">Change</button>':'<button class="btn ghost" data-add="email">Add email</button>')
+    +row('📱',u.phone?esc(fmtPhone(u.phone)):'Phone',u.phone?'Sign-in codes by text':'Not added yet',u.phone?'<button class="linkbtn" data-add="phone">Change</button>':'<button class="btn ghost" data-add="phone">Add phone</button>')
+    +me.linked.map(p=>row(p==='google'?'🟢':'🔵',esc(NAMES[p]||p),'Connected','')).join('');
+  $('#pks').innerHTML=me.passkeys.map(k=>'<div class="trav"><span>🔑 '+esc(k.name||'Passkey')+' <small class="sub">· added '+new Date(k.created_at).toLocaleDateString()+(k.used_at?', last used '+new Date(k.used_at).toLocaleDateString():'')+'</small></span><button class="linkbtn" data-pk="'+esc(k.id)+'">Remove</button></div>').join('');
+  $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
   $('#keys').innerHTML=me.keys.length?me.keys.map(k=>'<div class="trav"><span>'+esc(k.name)+' <small class="sub">· '+(k.revoked?'disconnected':'connected '+new Date(k.created_at).toLocaleDateString())+'</small></span>'+(k.revoked?'':'<button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button>')+'</div>').join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
 }
 // Spots made on this device before signing in join the account.
@@ -162,6 +196,26 @@ document.addEventListener('click',async e=>{const rm=e.target.closest('[data-rm]
     if(rv){await post('/v1/me/keys/'+encodeURIComponent(rv.dataset.revoke)+'/revoke');load()}}catch(err){$('#err').textContent=err.message}});
 $('#newKey').onclick=async()=>{try{const k=await post('/v1/me/keys',{agent_name:'my-ai'});$('#cfg').textContent=JSON.stringify({mcpServers:{spot:{url:k.mcp_url,headers:{Authorization:'Bearer '+k.api_key}}}},null,2);$('#newKeyOut').hidden=false;load()}catch(err){$('#err').textContent=err.message}};
 $('#copyCfg').onclick=async()=>{try{await navigator.clipboard.writeText($('#cfg').textContent);$('#copyCfg').textContent='Copied'}catch{}};
+// Adding an email or phone: send a code to it, then type the code.
+let adding=null,addWhat='';
+const addReset=()=>{adding=null;$('#addForm').hidden=true;$('#addCode').hidden=true;$('#addDev').hidden=true};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;adding=b.dataset.add;$('#addOk').textContent='';$('#addCode').hidden=true;
+  const ph=adding==='phone',v=$('#addVal');v.type=ph?'tel':'email';v.autocomplete=ph?'tel':'email';v.inputMode=ph?'tel':'email';v.placeholder=ph?'Mobile number':'you@email.com';v.value='';
+  $('#addLabel').textContent=ph?'We’ll text a code to confirm it’s yours. Msg & data rates may apply. Reply STOP to opt out.':'We’ll email a code to confirm it’s yours.';
+  $('#addForm').hidden=false;v.focus()});
+$('#addForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#addSend');b.disabled=true;
+  try{addWhat=$('#addVal').value.trim();const r=await post('/v1/me/link/start',{[adding]:addWhat});$('#addForm').hidden=true;$('#addCode').hidden=false;
+    $('#addCodeLabel').textContent='Enter the code we '+(adding==='phone'?'texted to ':'sent to ')+addWhat+'.';
+    if(r.code){$('#addDev').hidden=false;$('#addDev').textContent='Test mode: your code is '+r.code;$('#addCodeVal').value=r.code}else $('#addCodeVal').value='';
+    $('#addCodeVal').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
+$('#addCode').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';
+  try{const r=await post('/v1/me/link/verify',{[adding]:addWhat,code:$('#addCodeVal').value});const what=adding==='phone'?'Phone':'Email';addReset();
+    $('#addOk').textContent=r.merged?what+' added. It had its own Spot account, so we moved everything from it into this one.':what+' added. You can sign in with it now.';load()}catch(err){$('#err').textContent=err.message}});
+$('#addCancel').onclick=addReset;
+$('#addPk').onclick=async()=>{$('#err').textContent='';try{await pkRegister(pkDeviceName());$('#addOk').textContent='';load()}
+  catch(err){if(err.name==='InvalidStateError')$('#err').textContent='This device already has a Spot passkey.';else if(err.name!=='NotAllowedError'&&err.name!=='AbortError')$('#err').textContent=err.message}};
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-pk]');if(!b)return;if(!confirm('Remove this passkey? You can still sign in with a code.'))return;
+  try{await post('/v1/me/passkeys/'+encodeURIComponent(b.dataset.pk)+'/remove');load()}catch(err){$('#err').textContent=err.message}});
 $('#out').onclick=async()=>{await post('/v1/auth/logout');location.href='/'};
 claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
   });

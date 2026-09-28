@@ -155,6 +155,10 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const extra = forSelf
       ? { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` }
       : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It shows their card and is where they confirm the order.' };
+    // Remember how to reach the user for later updates (booked, ordered…).
+    if (forSelf && (b.notify?.email || b.notify?.phone)) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
+    // An account's own AI with no delivery asked for: email the account.
+    if (forSelf && req.spotUserId && !b.notify?.email && !b.notify?.phone) spot.emit('ready', cart.id);
     if (forSelf && (b.notify?.email || b.notify?.phone)) {
       extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
     }
@@ -194,6 +198,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
     const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
+    if (b.notify?.email || b.notify?.phone) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
+    else if (req.spotUserId) spot.emit('ready', cart.id);
     if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
     return view(req, spot.byId(cart.id), extra);
   }

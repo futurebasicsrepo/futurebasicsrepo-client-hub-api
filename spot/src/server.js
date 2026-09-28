@@ -23,6 +23,8 @@ import { registerAdmin } from './admin.js';
 import { registerAccounts } from './accounts.js';
 import { accountPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
+import { createEvents } from './events.js';
+import { registerPasskeys } from './passkeys.js';
 import { platformProfile } from './fulfill/ucp.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }) } = {}) {
@@ -59,6 +61,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   app.addHook('onClose', async () => fulfiller.close());
   const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
+  spot.emit = (kind, id, extra) => events.emit(kind, id, extra);
   const baseUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${baseUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const captureUrl = capture.fromUrl || captureFromUrl;
@@ -364,6 +368,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   registerAdmin(app, { db, spot, env, urlFor });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
+  registerPasskeys(app, { db, urlFor });
   const oauth = registerOAuth(app, { db, env, urlFor, log: app.log, ...(oauthFetch ? { fetchImpl: oauthFetch } : {}) });
 
   // ─── Inbound texts (Twilio) ───────────────────────────────────────────────

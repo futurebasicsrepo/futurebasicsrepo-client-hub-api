@@ -71,13 +71,38 @@ Once a cart is paid and its card exists, the requester can have Spot place the o
 
 ## Accounts
 
-Sign in at `/signin` with a 6-digit code, sent by email (Resend) or by text (Twilio). There are no passwords. This is the first option on the page, with an Email | Text switch. Texted codes end with a WebOTP line (`@host #code`), so phones can offer to autofill them. Numbers that replied STOP are refused. A text-only account has no email until one is added for receipts. **Continue with Google** and **Continue with Facebook** sit below it, and each appears once its keys are set. The Google and Facebook buttons use the standard authorization-code flow (Google with PKCE). The state rides in a signed, 10-minute cookie. Accounts are matched by the provider's user ID, then by a verified email, so every sign-in method with the same email reaches one account. When no email service is configured, test mode shows the code on screen. `/account` has four parts:
+Sign in at `/signin` with a 6-digit code, sent by email (Resend) or by text (Twilio). There are no passwords. This is the first option on the page, with an Email | Text switch. Texted codes end with a WebOTP line (`@host #code`), so phones can offer to autofill them. Numbers that replied STOP are refused. A text-only account has no email until one is added for receipts. **Continue with Google** and **Continue with Facebook** sit below it, and each appears once its keys are set. The Google and Facebook buttons use the standard authorization-code flow (Google with PKCE). The state rides in a signed, 10-minute cookie. Accounts are matched by the provider's user ID, then by a verified email, so every sign-in method with the same email reaches one account. When no email service is configured, test mode shows the code on screen.
+
+**Passkeys (Face ID, Touch ID, Windows Hello).** After the first sign-in, you can add a passkey from `/account`. After that, the sign-in page offers it two ways: in the email box's autofill (conditional UI), and on a "Use Face ID or a passkey" button. Passkeys are discoverable, so there's no email to type first. Verification uses `@simplewebauthn/server`. Only the public key and signature counter are stored, and challenges are single use and expire after 5 minutes. A passkey only works on the domain it was made on, so ones made on the Railway address won't carry over to spotmeplease.com.
+
+`/account` has five parts:
 - **Ready for you:** carts and flights your AI handed back to you.
 - **Your Spots:** every Spot you made, on any device. Spots made on a device before signing in are claimed with their private keys.
 - **Saved details:** your name, shipping address and travelers, which pre-fill checkout.
+- **Sign-in methods:** your email, your phone, connected Google or Facebook, and passkeys. Add or change an email or phone with a code sent to it. If that email or phone already had its own Spot account, which happens when you once signed in by text and once by email, the code proves you own both. The two accounts then merge into one: Spots, AI keys, sign-in methods, passkeys and open sessions move over, and blank profile fields are filled in. Link codes are tied to the signed-in account and can't be used to sign in.
 - **Your AI:** API keys tied to the account, which you can connect or disconnect.
 
 A signed-in owner opens their own Spots without the private key. Codes and sessions are stored hashed. The session cookie is `HttpOnly; SameSite=Lax`, and account writes are JSON-only.
+
+## Notifications
+
+`src/events.js` tells people when something happens. It uses email (Resend) and text (Twilio), with a branded email layout (`emailLayout` in `notify.js`).
+
+| Event | Who | How |
+|---|---|---|
+| covered | requester | email + text |
+| confirm_needed (tap Place order, 10 min) | requester | email + text |
+| needs_you | requester | email |
+| ordered | requester, and the payer (thank-you) | email |
+| booked | traveler | email + text |
+| booking_failed | traveler | email |
+| ready (your account's AI handed you a cart and didn't send it) | account | email |
+
+- **Who gets it:** the requester's account first, then the email or phone given on the cart.
+- **Links:** they open the requester's private page with an HMAC signature. The secret is stored in the database, since the manage key is only kept hashed.
+- **Sent once:** each message goes out once per cart (the `notices` table).
+- **STOP:** texts skip numbers that replied STOP.
+- **Never blocks:** sending never blocks or breaks the flow that triggered it.
 
 ## Spot for AI agents (REST + MCP)
 

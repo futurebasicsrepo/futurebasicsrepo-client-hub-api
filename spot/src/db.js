@@ -84,6 +84,25 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at  INTEGER NOT NULL,
       attempts    INTEGER NOT NULL DEFAULT 0
     );
+    -- Passkeys (WebAuthn credentials) for Face ID / Touch ID sign-in.
+    CREATE TABLE IF NOT EXISTS passkeys (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      public_key  TEXT NOT NULL,
+      counter     INTEGER NOT NULL DEFAULT 0,
+      transports  TEXT,
+      name        TEXT,
+      created_at  INTEGER NOT NULL,
+      used_at     INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS passkeys_user ON passkeys (user_id);
+    -- One-time WebAuthn challenges (5 minutes).
+    CREATE TABLE IF NOT EXISTS challenges (
+      id          TEXT PRIMARY KEY,
+      challenge   TEXT NOT NULL,
+      user_id     TEXT,
+      expires_at  INTEGER NOT NULL
+    );
     -- Google / Facebook accounts linked to a Spot account.
     CREATE TABLE IF NOT EXISTS identities (
       provider    TEXT NOT NULL,
@@ -98,6 +117,20 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at  INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS carts_user ON carts (json_extract(doc, '$.user_id'), created_at);
+    -- Messages sent about a cart: one row per (cart, message), so nobody is
+    -- told the same thing twice.
+    CREATE TABLE IF NOT EXISTS notices (
+      cart_id  TEXT NOT NULL,
+      key      TEXT NOT NULL,
+      result   TEXT,
+      at       INTEGER NOT NULL,
+      PRIMARY KEY (cart_id, key)
+    );
+    -- Server-side secrets that must survive restarts (e.g. link signing).
+    CREATE TABLE IF NOT EXISTS settings (
+      key    TEXT PRIMARY KEY,
+      value  TEXT NOT NULL
+    );
     -- Numbers that replied STOP to a Spot text.
     CREATE TABLE IF NOT EXISTS sms_optouts (
       phone  TEXT PRIMARY KEY,
@@ -244,6 +277,18 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       keys: () => q.keys.all(),
       revokeKey: (name) => q.revokeKey.run(name).changes === 1,
     },
+    notices: {
+      claim: (cartId, key) => db.prepare('INSERT OR IGNORE INTO notices (cart_id, key, at) VALUES (?, ?, ?)').run(cartId, key, Date.now()).changes === 1,
+      result: (cartId, key, out) => db.prepare('UPDATE notices SET result = ? WHERE cart_id = ? AND key = ?').run(JSON.stringify(out), cartId, key),
+      list: (cartId) => db.prepare('SELECT key, result, at FROM notices WHERE cart_id = ? ORDER BY at').all(cartId).map((r) => ({ ...r, result: r.result ? JSON.parse(r.result) : null })),
+    },
+    // A stored value, made once by `make` on first use.
+    setting(key, make) {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+      if (row) return row.value;
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(key, make());
+      return db.prepare('SELECT value FROM settings WHERE key = ?').get(key).value;
+    },
     optouts: {
       add: (phone) => q.optOut.run(phone, Date.now()),
       remove: (phone) => q.optIn.run(phone),
@@ -261,6 +306,31 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       carts: (id, limit = 100) => q.cartsByUser.all(id, limit).map(hydrate),
       keys: (id) => q.keysByUser.all(id),
       revokeKey: (id, name) => q.revokeUserKey.run(name, id).changes === 1,
+      setEmail: (id, email) => db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, id),
+      // Fold account `fromId` into `intoId`: its Spots, AI keys, sign-in
+      // methods, passkeys and open sessions move over, blank profile fields
+      // are filled from it, and it is deleted. One transaction.
+      merge(fromId, intoId) {
+        const from = userRow(q.userById.get(fromId));
+        const into = userRow(q.userById.get(intoId));
+        if (!from || !into || fromId === intoId) return;
+        const pick = ({ phone, name, shipping, travelers }) => ({ phone: phone || null, name: name || null, shipping: shipping || null, travelers: travelers || [] });
+        const a = pick(into);
+        const b = pick(from);
+        const doc = { phone: a.phone || b.phone, name: a.name || b.name, shipping: a.shipping || b.shipping, travelers: a.travelers.length ? a.travelers : b.travelers };
+        db.exec('BEGIN');
+        try {
+          db.prepare("UPDATE carts SET doc = json_set(doc, '$.user_id', ?) WHERE json_extract(doc, '$.user_id') = ?").run(intoId, fromId);
+          for (const t of ['api_keys', 'identities', 'passkeys', 'sessions']) db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).run(intoId, fromId);
+          db.prepare('DELETE FROM users WHERE id = ?').run(fromId);
+          if (!into.email && from.email) db.prepare('UPDATE users SET email = ? WHERE id = ?').run(from.email, intoId);
+          q.userSave.run(JSON.stringify(doc), intoId);
+          db.exec('COMMIT');
+        } catch (err) {
+          db.exec('ROLLBACK');
+          throw err;
+        }
+      },
     },
     codes: {
       put: (email, hash, expiresAt) => q.codePut.run(email, hash, expiresAt),
@@ -268,10 +338,31 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       attempt: (email) => q.codeTry.run(email),
       remove: (email) => q.codeDel.run(email),
     },
+    passkeys: {
+      add: (p) => db.prepare('INSERT INTO passkeys (id, user_id, public_key, counter, transports, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(p.id, p.user_id, p.public_key, p.counter, p.transports, p.name, Date.now()),
+      get: (id) => db.prepare('SELECT * FROM passkeys WHERE id = ?').get(id) || null,
+      ofUser: (userId) => db.prepare('SELECT id, name, transports, created_at, used_at FROM passkeys WHERE user_id = ? ORDER BY created_at').all(userId),
+      used: (id, counter) => db.prepare('UPDATE passkeys SET counter = ?, used_at = ? WHERE id = ?').run(counter, Date.now(), id),
+      remove: (userId, id) => db.prepare('DELETE FROM passkeys WHERE user_id = ? AND id = ?').run(userId, id).changes === 1,
+    },
+    challenges: {
+      put: (id, challenge, userId) => {
+        db.prepare('DELETE FROM challenges WHERE expires_at < ?').run(Date.now());
+        db.prepare('INSERT INTO challenges (id, challenge, user_id, expires_at) VALUES (?, ?, ?, ?)').run(id, challenge, userId ?? null, Date.now() + 5 * 60_000);
+      },
+      // Single use: read and delete in one go.
+      take: (id) => {
+        const row = db.prepare('SELECT * FROM challenges WHERE id = ? AND expires_at > ?').get(id, Date.now());
+        db.prepare('DELETE FROM challenges WHERE id = ?').run(id);
+        return row || null;
+      },
+    },
     identities: {
       userId: (provider, subject) => q.idGet.get(provider, subject)?.user_id || null,
       add: (provider, subject, userId) => q.idAdd.run(provider, subject, userId, Date.now()),
       providersOf: (userId) => q.idsOf.all(userId).map((r) => r.provider),
+      remove: (provider, subject) => db.prepare('DELETE FROM identities WHERE provider = ? AND subject = ?').run(provider, subject),
+      ofUser: (userId) => db.prepare('SELECT provider, subject FROM identities WHERE user_id = ?').all(userId),
     },
     sessions: {
       create: (hash, userId, expiresAt) => q.sessPut.run(hash, userId, expiresAt),
