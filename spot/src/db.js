@@ -98,6 +98,20 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at  INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS carts_user ON carts (json_extract(doc, '$.user_id'), created_at);
+    -- Messages sent about a cart: one row per (cart, message), so nobody is
+    -- told the same thing twice.
+    CREATE TABLE IF NOT EXISTS notices (
+      cart_id  TEXT NOT NULL,
+      key      TEXT NOT NULL,
+      result   TEXT,
+      at       INTEGER NOT NULL,
+      PRIMARY KEY (cart_id, key)
+    );
+    -- Server-side secrets that must survive restarts (e.g. link signing).
+    CREATE TABLE IF NOT EXISTS settings (
+      key    TEXT PRIMARY KEY,
+      value  TEXT NOT NULL
+    );
     -- Numbers that replied STOP to a Spot text.
     CREATE TABLE IF NOT EXISTS sms_optouts (
       phone  TEXT PRIMARY KEY,
@@ -243,6 +257,18 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       statusCounts: () => Object.fromEntries(q.statusCounts.all().map((r) => [r.status, r.n])),
       keys: () => q.keys.all(),
       revokeKey: (name) => q.revokeKey.run(name).changes === 1,
+    },
+    notices: {
+      claim: (cartId, key) => db.prepare('INSERT OR IGNORE INTO notices (cart_id, key, at) VALUES (?, ?, ?)').run(cartId, key, Date.now()).changes === 1,
+      result: (cartId, key, out) => db.prepare('UPDATE notices SET result = ? WHERE cart_id = ? AND key = ?').run(JSON.stringify(out), cartId, key),
+      list: (cartId) => db.prepare('SELECT key, result, at FROM notices WHERE cart_id = ? ORDER BY at').all(cartId).map((r) => ({ ...r, result: r.result ? JSON.parse(r.result) : null })),
+    },
+    // A stored value, made once by `make` on first use.
+    setting(key, make) {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+      if (row) return row.value;
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(key, make());
+      return db.prepare('SELECT value FROM settings WHERE key = ?').get(key).value;
     },
     optouts: {
       add: (phone) => q.optOut.run(phone, Date.now()),

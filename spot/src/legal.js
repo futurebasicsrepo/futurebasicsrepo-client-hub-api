@@ -139,7 +139,7 @@ export function privacyPage({ origin, env = process.env }) {
 <ul>
 <li><b>Carts:</b> the store, items, prices, product links and images, and any note you add. If you share a screenshot, we read it to find the items.</li>
 <li><b>Requesters:</b> your name, and when needed your email, phone number, shipping address, and a billing address for the one-time card. Venmo or Cash App handles if you add them.</li>
-<li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the amount and whether it succeeded. We never see or store the payer’s card number.</li>
+<li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the email on the payment (used only to tell you when the gift was ordered), the amount and whether it succeeded. We never see or store the payer’s card number.</li>
 <li><b>One-time cards:</b> the card is held by Stripe. We show its details only on the requester’s private page and use them only to check out at that store.</li>
 <li><b>Flights:</b> each traveler’s name, date of birth and gender as on their ID, plus a contact email and phone, which airlines require.</li>
 <li><b>Accounts:</b> if you sign in by text, your mobile number. If you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>

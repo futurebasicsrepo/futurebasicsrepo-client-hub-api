@@ -1,13 +1,17 @@
 // The service layer: every cart state change goes through here, so the
 // rules in cart.js are enforced the same way for HTTP routes, webhooks and
 // the sandbox simulator.
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CartError, computeTotals, config, decideAuthorization, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
 
 export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
+  // Private links in notifications: an HMAC of the token stands in for the
+  // manage key (which Spot only keeps hashed). The secret lives in the DB.
+  const linkSecret = db.setting ? db.setting('link_secret', () => randomBytes(32).toString('hex')) : randomBytes(32).toString('hex');
+  const manageSig = (token) => `s${createHmac('sha256', linkSecret).update(`manage:${token}`).digest('base64url').slice(0, 32)}`;
 
   function load(token) {
     const cart = db.byToken(String(token || ''));
@@ -22,10 +26,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     const cart = load(token);
     const auth = key && typeof key === 'object' ? key : { k: key };
     if (auth.userId && cart.user_id && cart.user_id === auth.userId) return cart;
-    const a = Buffer.from(hash(String(auth.k || '')));
+    const k = String(auth.k || '');
+    const a = Buffer.from(hash(k));
     const b = Buffer.from(cart.manage_hash);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw new CartError('Cart not found', 404);
-    return cart;
+    if (a.length === b.length && timingSafeEqual(a, b)) return cart;
+    const sig = Buffer.from(manageSig(cart.token));
+    const got = Buffer.from(k);
+    if (sig.length === got.length && timingSafeEqual(sig, got)) return cart;
+    throw new CartError('Cart not found', 404);
   }
 
   // Applies a state transition and persists it. Throws if another request
@@ -149,14 +157,18 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const started = this.patch(cart.id, (c) => ({ ...c, flight: { ...c.flight, booking_started: Date.now() } }), 'booking_started');
       try {
         const booking = await flights.book(started.flight);
-        return move(started, 'book', { flight: { ...started.flight, booking } }, { booking_reference: booking.booking_reference });
+        const booked = move(started, 'book', { flight: { ...started.flight, booking } }, { booking_reference: booking.booking_reference });
+        this.emit('booked', booked.id);
+        return booked;
       } catch (err) {
         log.error?.({ err, cart: cart.id }, 'flight booking failed');
         const reason = err.status === 410 ? 'The airline released the fare before it could be booked.' : `The airline couldn't book it: ${err.message}`;
         db.event(cart.id, 'booking_failed', { code: err.code || null, message: err.message });
         try {
           await provider.refund(started);
-          return move(started, 'refund', { refunded_at: Date.now(), flight: { ...started.flight, error: reason } });
+          const refunded = move(started, 'refund', { refunded_at: Date.now(), flight: { ...started.flight, error: reason } });
+          this.emit('booking_failed', refunded.id);
+          return refunded;
         } catch (e) {
           log.error?.({ err: e, cart: cart.id }, 'refund after failed booking failed');
           return this.patch(cart.id, (c) => ({ ...c, flight: { ...c.flight, error: `${reason} Your refund is being processed by hand.` } }), 'refund_failed');
@@ -208,6 +220,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     load,
     loadManaged,
+    // The requester's private page, for messages sent to the requester.
+    privatePath: (cart) => `/c/${cart.token}/manage?k=${manageSig(cart.token)}`,
+    // Set by the server: tells people when something happens (events.js).
+    emit: () => {},
 
     // Attach a Spot made before signing in (proved by its private key).
     claim(token, key, userId) {
@@ -258,7 +274,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         db.event(cart.id, 'amount_mismatch', { expected: cart.total_cents, got: amountCents });
         throw new CartError('Payment amount does not match cart', 409);
       }
-      const paid = move(cart, 'pay', { paid_at: Date.now(), payer: payer?.name ? { name: payer.name } : null }, { amount_cents: amountCents });
+      // The payer's email is kept only to say thanks when the gift is ordered;
+      // it is never shown to the requester.
+      const paid = move(cart, 'pay', { paid_at: Date.now(), payer: payer?.name ? { name: payer.name } : null, payer_contact: payer?.email ? { email: String(payer.email).toLowerCase() } : null }, { amount_cents: amountCents });
       const verdict = risk ? risk.assessPayment(paid, payer || {}) : { action: 'ok' };
       if (verdict.action === 'refund') {
         db.event(cart.id, 'risk_refund', { reason: verdict.reason });
@@ -268,6 +286,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (verdict.action === 'hold') {
         return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
       }
+      if (paid.kind !== 'flight' && paid.for !== 'self') this.emit('covered', paid.id);
       return paid.kind === 'flight' ? this.bookFlight(paid) : this.issue(paid);
     },
 
@@ -276,6 +295,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = db.byId(cartId);
       if (!cart?.hold || cart.status !== 'paid') throw new CartError('Nothing held on this cart', 409);
       const next = this.patch(cart.id, (c) => ({ ...c, hold: null, released_at: Date.now() }), 'released');
+      if (next.kind !== 'flight' && next.for !== 'self') this.emit('covered', next.id);
       return next.kind === 'flight' ? this.bookFlight(next) : this.issue(next);
     },
 

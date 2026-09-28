@@ -77,13 +77,19 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       timer.unref?.();
       pending.set(cartId, { resolve, timer });
       update(cartId, { state: 'awaiting_confirm', total_cents, summary, has_shot: Boolean(screenshot) }, 'order_awaiting_confirm');
+      spot.emit?.('confirm_needed', cartId);
     });
   }
 
   function finish(cartId, outcome) {
-    if (outcome.status === 'placed') update(cartId, { state: 'placed', order_number: outcome.order_number, order_url: outcome.order_url || null, placed_at: Date.now() }, 'order_placed');
-    else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
-    else update(cartId, { state: 'needs_you', reason: outcome.reason, ...(outcome.manual_url ? { manual_url: outcome.manual_url } : {}) }, 'order_needs_you');
+    if (outcome.status === 'placed') {
+      update(cartId, { state: 'placed', order_number: outcome.order_number, order_url: outcome.order_url || null, placed_at: Date.now() }, 'order_placed');
+      spot.emit?.('ordered', cartId);
+    } else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
+    else {
+      update(cartId, { state: 'needs_you', reason: outcome.reason, ...(outcome.manual_url ? { manual_url: outcome.manual_url } : {}) }, 'order_needs_you');
+      spot.emit?.('needs_you', cartId);
+    }
   }
 
   const ucpStore = (cart) => {
