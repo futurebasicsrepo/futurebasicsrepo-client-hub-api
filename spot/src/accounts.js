@@ -28,6 +28,23 @@ export function sessionUserId(db, req) {
   return m ? db.sessions.userId(sha(m[1])) : null;
 }
 
+// The account for a verified email, made on first sign-in.
+export function userForEmail(db, email) {
+  let user = db.users.byEmail(email);
+  if (!user) {
+    db.users.create(randomUUID(), email);
+    user = db.users.byEmail(email);
+  }
+  return user;
+}
+
+export function startSession(db, req, reply, urlFor, userId) {
+  const token = randomBytes(32).toString('base64url');
+  db.sessions.create(sha(token), userId, Date.now() + SESSION_TTL);
+  const secure = urlFor(req, '').startsWith('https:') ? '; Secure' : '';
+  reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}${secure}`);
+}
+
 export function registerAccounts(app, { db, env, notifier, provider, urlFor, spot }) {
   const hits = new Map();
   const limit = (key, max, windowMs) => {
@@ -77,15 +94,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw wrong();
     db.codes.remove(email);
 
-    let user = db.users.byEmail(email);
-    if (!user) {
-      db.users.create(randomUUID(), email);
-      user = db.users.byEmail(email);
-    }
-    const token = randomBytes(32).toString('base64url');
-    db.sessions.create(sha(token), user.id, Date.now() + SESSION_TTL);
-    const secure = urlFor(req, '').startsWith('https:') ? '; Secure' : '';
-    reply.header('set-cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL / 1000}${secure}`);
+    const user = userForEmail(db, email);
+    startSession(db, req, reply, urlFor, user.id);
     return { user: profile(user) };
   });
 

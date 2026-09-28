@@ -142,7 +142,7 @@ export function privacyPage({ origin, env = process.env }) {
 <li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the amount and whether it succeeded. We never see or store the payer’s card number.</li>
 <li><b>One-time cards:</b> the card is held by Stripe. We show its details only on the requester’s private page and use them only to check out at that store.</li>
 <li><b>Flights:</b> each traveler’s name, date of birth and gender as on their ID, plus a contact email and phone, which airlines require.</li>
-<li><b>Accounts:</b> your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
+<li><b>Accounts:</b> if you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
 <li><b>Agents and developers:</b> your email and API key usage.</li>
 <li><b>Technical:</b> IP address, browser type and basic logs, for security and to keep Spot working.</li>
 </ul>
@@ -168,9 +168,10 @@ export function privacyPage({ origin, env = process.env }) {
 <h2>6. How long we keep it</h2>
 <p>Cart and order records are kept for as long as needed for refunds, disputes, fraud prevention and accounting (generally up to 7 years for payment records). Screenshots are used to read the cart and aren’t kept. You can ask us to delete your information sooner where the law allows.</p>
 
-<h2>7. Your choices</h2>
+<h2 id="delete">7. Your choices, and deleting your data</h2>
 <ul>
 <li>Reply <b>STOP</b> to any Spot text to stop texts to that number.</li>
+<li>To delete your account and data, including anything received from Google or Facebook, email <a href="mailto:${email}">${email}</a> from the address on your account with the subject “Delete my Spot account”. We confirm and delete within 30 days, keeping only payment records the law requires. You can also remove Spot from your Google or Facebook account settings at any time.</li>
 <li>Email <a href="mailto:${email}">${email}</a> to access, correct or delete your information, or to ask a question. Depending on where you live (for example California or the EU/UK) you may have further rights, and we’ll honor them.</li>
 </ul>
 

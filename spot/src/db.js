@@ -84,6 +84,14 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       expires_at  INTEGER NOT NULL,
       attempts    INTEGER NOT NULL DEFAULT 0
     );
+    -- Google / Facebook accounts linked to a Spot account.
+    CREATE TABLE IF NOT EXISTS identities (
+      provider    TEXT NOT NULL,
+      subject     TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      PRIMARY KEY (provider, subject)
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       hash        TEXT PRIMARY KEY,
       user_id     TEXT NOT NULL,
@@ -152,6 +160,9 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     codeGet: db.prepare('SELECT * FROM login_codes WHERE email = ?'),
     codeTry: db.prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?'),
     codeDel: db.prepare('DELETE FROM login_codes WHERE email = ?'),
+    idGet: db.prepare('SELECT user_id FROM identities WHERE provider = ? AND subject = ?'),
+    idAdd: db.prepare('INSERT OR IGNORE INTO identities (provider, subject, user_id, created_at) VALUES (?, ?, ?, ?)'),
+    idsOf: db.prepare('SELECT provider FROM identities WHERE user_id = ?'),
     sessPut: db.prepare('INSERT INTO sessions (hash, user_id, expires_at) VALUES (?, ?, ?)'),
     sessGet: db.prepare('SELECT user_id FROM sessions WHERE hash = ? AND expires_at > ?'),
     sessDel: db.prepare('DELETE FROM sessions WHERE hash = ?'),
@@ -246,6 +257,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       get: (email) => q.codeGet.get(email) || null,
       attempt: (email) => q.codeTry.run(email),
       remove: (email) => q.codeDel.run(email),
+    },
+    identities: {
+      userId: (provider, subject) => q.idGet.get(provider, subject)?.user_id || null,
+      add: (provider, subject, userId) => q.idAdd.run(provider, subject, userId, Date.now()),
+      providersOf: (userId) => q.idsOf.all(userId).map((r) => r.provider),
     },
     sessions: {
       create: (hash, userId, expiresAt) => q.sessPut.run(hash, userId, expiresAt),

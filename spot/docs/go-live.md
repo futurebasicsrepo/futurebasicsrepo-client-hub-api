@@ -20,6 +20,38 @@ Work through it in order. Each step says where to click and exactly what to set.
    - `SPOT_CONTACT_EMAIL` = `hello@spotmeplease.com` (or whatever you'll read)
 5. **Make that inbox real.** Use Cloudflare Email Routing (free) or your registrar's email forwarding to send hello@spotmeplease.com to your inbox.
 
+## 1a. Sign in with Google and Facebook (20 minutes)
+
+Email-code sign-in works as soon as Resend is set up (step 5). These two buttons are optional, and each one appears once its keys are set.
+
+**Google**
+1. console.cloud.google.com → create a project called "Spot".
+2. APIs & Services → OAuth consent screen:
+   - User type: External
+   - App name: Spot
+   - Support email: yours
+   - Authorized domain: `spotmeplease.com`
+   - Privacy link: https://spotmeplease.com/privacy
+   - Terms link: https://spotmeplease.com/terms
+   - Scopes: `openid`, `email`, `profile`
+   - Publish the app.
+3. Credentials → Create credentials → OAuth client ID → Web application. Authorized redirect URI: `https://spotmeplease.com/auth/google/callback`.
+4. Set the Railway variables `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+
+**Facebook (Meta)**
+1. developers.facebook.com → My Apps → Create app. Use case: "Authenticate and request data from users with Facebook Login".
+2. Facebook Login → Settings → Valid OAuth Redirect URIs: `https://spotmeplease.com/auth/facebook/callback`.
+3. App settings → Basic:
+   - App domain: `spotmeplease.com`
+   - Privacy Policy URL: https://spotmeplease.com/privacy
+   - Terms: https://spotmeplease.com/terms
+   - User data deletion → Instructions URL: https://spotmeplease.com/privacy#delete
+   - Pick a category and add an icon.
+4. Permissions: `email` and `public_profile` (standard access is enough). Switch the app to **Live**.
+5. Set the Railway variables `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`.
+
+**Both:** set `SPOT_SESSION_SECRET` to the output of `openssl rand -hex 32`, so a redeploy doesn't cancel sign-ins in progress.
+
 ## 1b. Admin page (2 minutes)
 
 1. Make a long random token on your computer: `openssl rand -hex 24`.

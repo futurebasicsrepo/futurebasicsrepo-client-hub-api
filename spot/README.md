@@ -71,7 +71,7 @@ Once a cart is paid and its card exists, the requester can have Spot place the o
 
 ## Accounts
 
-Sign in at `/signin` with a 6-digit code sent to your email by Resend. There are no passwords. When no email service is configured, test mode shows the code on screen. `/account` has four parts:
+Sign in at `/signin` with a 6-digit code sent to your email by Resend. There are no passwords. This is the first option on the page. **Continue with Google** and **Continue with Facebook** sit below it, and each appears once its keys are set. The Google and Facebook buttons use the standard authorization-code flow (Google with PKCE). The state rides in a signed, 10-minute cookie. Accounts are matched by the provider's user ID, then by a verified email, so every sign-in method with the same email reaches one account. When no email service is configured, test mode shows the code on screen. `/account` has four parts:
 - **Ready for you:** carts and flights your AI handed back to you.
 - **Your Spots:** every Spot you made, on any device. Spots made on a device before signing in are claimed with their private keys.
 - **Saved details:** your name, shipping address and travelers, which pre-fill checkout.
@@ -146,6 +146,9 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_MAX_FLIGHT_CENTS` | `200000` | Cap per flight |
 | `SPOT_LEGAL_NAME` | `the Spot team` | Who runs Spot, named on `/terms` and `/privacy` |
 | `SPOT_CONTACT_EMAIL` | `hello@spotmeplease.com` | Contact address on the legal pages |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | | Turns on "Continue with Google". Redirect URI: `<PUBLIC_URL>/auth/google/callback` |
+| `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` | | Turns on "Continue with Facebook". Redirect URI: `<PUBLIC_URL>/auth/facebook/callback` |
+| `SPOT_SESSION_SECRET` | random per start | Signs the short sign-in cookie. Set it so a restart doesn't cancel sign-ins in progress |
 | `SPOT_ADMIN_TOKEN` | | 16+ random characters. Turns on `/admin` (held payments, recent carts, block list, API keys, signups) |
 | `SPOT_MAX_LINKS_PER_IP_DAY` | `30` | Links one network can make per day |
 | `SPOT_MAX_PAYMENTS_PER_CARD_DAY` / `SPOT_MAX_CARD_CENTS_DAY` | `3` / `100000` | One card paying more Spots, or more money, in 24h is held for review |
