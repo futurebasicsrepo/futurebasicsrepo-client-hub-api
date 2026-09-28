@@ -250,6 +250,10 @@ Anyone signed in can **report** a clip, comment, thread, reply, chat message, ma
 - **Bans** sign the account out everywhere (tokens are checked against a ban list on every request) and block sign-in.
 - **Roles:** `ADMIN_HANDLES` (comma-separated, env) are admins; admins make moderators from the Team tab. Moderators can't ban admins or moderators. Every action lands in `mod_actions` (the Team & log tab).
 
+## Private preview gate
+
+While `GATE_EMAILS` and/or `GATE_HANDLES` (comma-separated) and `GATE_SECRET` are set on the **web** (Vercel) project, every page redirects to `/gate` until someone signs in with an incha.tv account whose email or handle is on the list. `web/proxy.ts` checks a signed, httpOnly cookie (HMAC-SHA256, 30 days) on each request; `/api/gate` checks the password against the API and issues it. Remove both lists (and redeploy) to open the site to everyone. The API itself stays reachable, so the gate hides the site, not the raw API.
+
 ## World scores
 
 `/scores` shows pro and international football from around the world: every league on ESPN's public soccer scoreboard, usually 40+ competitions and 300+ games on a Saturday. It has Yesterday, Today and Tomorrow views, a live-only filter, team and league search, and leagues you can follow, which pin to the top on that device. The home screen gets an "Around the world" strip, and the score ticker adds live pro games after the grassroots ones.
