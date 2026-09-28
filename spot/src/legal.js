@@ -5,7 +5,7 @@
 //   SPOT_CONTACT_EMAIL   where people write (default hello@spotmeplease.com)
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
 
-export const UPDATED = 'September 27, 2026';
+export const UPDATED = 'September 28, 2026';
 
 const CSS = `
 .legal{padding:64px 0 90px}
@@ -41,41 +41,45 @@ export function termsPage({ origin, env = process.env }) {
     origin,
     path: '/terms',
     title: 'Terms · Spot',
-    desc: 'The terms for using Spot: cart links, one-time cards, flights, the AI agent API and text messages.',
+    desc: 'The terms for using Spot: buying carts through Spot, flights, refunds and returns, the AI agent API and text messages.',
     body: `
 <p class="kicker">Legal</p>
 <h1>Terms of Service</h1>
 <p class="upd">Last updated ${UPDATED}</p>
-<div class="sum"><p><b>The short version.</b> Spot turns a cart into a link. Whoever opens it can pay, and the money goes onto a one-time card that only works at that store for about that amount. For flights, Spot books with the airline once you pay. Nothing is ever ordered without a person saying yes. The store or airline sells you the thing; Spot helps you pay for it.</p></div>
+<div class="sum"><p><b>The short version.</b> Spot turns a cart into a link. Whoever opens it can buy that cart from Spot, as a gift or for themselves. Spot then orders exactly those items from the store with its own card and ships them to the person the link is for. Nobody gets cash or a card. Nothing is ordered without a person saying yes, and if Spot can’t order it, the buyer gets a full refund.</p></div>
 
 <h2>1. Who we are</h2>
 <p>Spot is run by ${name} (“Spot”, “we”). These terms cover spotmeplease.com, Spot links, the Spot browser extension, and the Spot API and MCP server. By using any of them you agree to these terms.</p>
 
 <h2>2. What Spot does</h2>
 <ul>
-<li><b>Spot me.</b> You (the <i>requester</i>) make a link for a cart. Someone else (the <i>payer</i>) opens it and pays. That money goes onto a single-use virtual card locked to that store and capped near the cart total, which you or Spot’s checkout assistant then use to buy the cart.</li>
-<li><b>Finish for me.</b> An AI assistant builds a cart or finds a flight for you and sends you a private link. You check it and pay yourself.</li>
-<li><b>Flights.</b> Fares come from airlines through our booking partner. When you pay, Spot books the ticket in your name. The airline’s fare rules apply (changes, cancellations, baggage, check-in).</li>
-<li><b>Checkout assistant.</b> Spot can fill in a store’s checkout for you. It always stops and shows you the total, and it only places the order when you tap Place order.</li>
+<li><b>Spot me.</b> You (the <i>requester</i>) make a link for a cart from an online store. Someone else (the <i>buyer</i>, who we also call the payer) opens it and buys that cart from Spot as a gift for you. Spot orders exactly those items from the store and has them shipped to you.</li>
+<li><b>Finish for me.</b> An AI assistant builds a cart or finds a flight for you and sends you a private link. You check it and buy it from Spot yourself.</li>
+<li><b>Flights.</b> Fares come from airlines through our booking partner. When you pay, Spot buys the ticket from the airline in the traveler’s name. The airline operates the flight, and its fare rules apply (changes, cancellations, baggage, check-in).</li>
+<li><b>Ordering.</b> Spot fills in the store’s checkout with its own single-use card. It always stops and shows the store’s total first, and only places the order when the requester taps Place order.</li>
 </ul>
 
-<h2>3. Spot isn’t the store</h2>
-<p>The store or airline is the seller. It is responsible for the product, prices, taxes, shipping, returns, warranties and the ticket. Questions about an order or a trip go to them first; we’ll help where we can.</p>
+<h2>3. Spot is the seller</h2>
+<p>When you pay for a cart on Spot, you’re buying it from Spot, and your receipt comes from Spot. Spot buys the items from the store and has the store ship them to the requester’s address. The store is responsible for the product itself (its quality, warranty and safety) and for delivery; Spot handles your order, cancellations, refunds and returns. Handoff links that send money straight to Venmo or Cash App are different: that money goes directly to the requester, and Spot isn’t part of that transaction.</p>
 
 <h2>4. Payments and fees</h2>
 <ul>
-<li>Card, Apple Pay and Google Pay payments are processed by Stripe. One-time cards are issued through Stripe’s card-issuing partner banks. Spot never sees or stores the payer’s card number.</li>
-<li>The payer pays a Spot fee (currently 4%), always shown before paying. Handoff links that send money straight to Venmo or Cash App go outside Spot and carry no Spot fee.</li>
-<li>Prices can change between making a link and checking out. The one-time card allows a small cushion (up to 5%, at most $15) for tax and shipping changes; anything above it is declined.</li>
-<li>Money on a one-time card can only be spent at that store. It can’t be withdrawn, transferred or turned into cash.</li>
+<li>Card, Apple Pay and Google Pay payments are processed by Stripe. Spot never sees or stores the buyer’s card number.</li>
+<li>The price is the cart (items plus the estimated shipping and tax), plus a Spot fee (currently 4%), plus a small allowance for tax and price changes at the store (5% of the cart, at most $15). All of it is shown before you pay. Whatever part of the allowance the store doesn’t charge is refunded to you automatically.</li>
+<li>Spot buys the cart with its own single-use card, limited to that store and to what you paid for the goods. Nobody receives cash, a card or store credit, and the card can’t be used anywhere else.</li>
+<li>Spot doesn’t sell gift cards, prepaid cards, crypto, money orders or other cash equivalents, and won’t order them.</li>
+<li>Handoff links that send money straight to Venmo or Cash App carry no Spot fee.</li>
 </ul>
 
-<h2>5. Refunds and cancellations</h2>
+<h2>5. Cancellations, refunds and returns</h2>
 <ul>
-<li>Until the card is used, the requester can refund the payer in full from their Spot page.</li>
+<li><b>Before the order is placed</b>, the buyer can cancel from the link in their receipt, and the requester can cancel from their Spot page. Either way the buyer gets a full refund, Spot fee included.</li>
+<li><b>If Spot can’t order it</b> within 3 days of payment (the store is out of stock, won’t accept the order, or anything else), the buyer is refunded in full automatically.</li>
+<li><b>If the store charges less</b> than the buyer paid for the goods, or cancels, the difference (or everything) goes back to the buyer automatically.</li>
+<li><b>Returns:</b> contact us at <a href="mailto:${email}">${email}</a> within the store’s return window. We arrange the return with the store under its return policy, and when the store refunds Spot, we refund the buyer that amount. The Spot fee is refunded only when the whole order is.</li>
+<li><b>Flights:</b> if the airline can’t issue a ticket you paid for, you’re refunded in full automatically. Once a ticket is issued, changes and refunds follow the airline’s fare rules.</li>
 <li>If a link expires or is canceled before anyone pays, nothing is charged.</li>
-<li>If an airline can’t book a fare you paid for, you’re refunded in full automatically.</li>
-<li>After an order is placed or a ticket is issued, refunds follow the store’s or airline’s policy. The Spot fee is refunded only when the whole payment is.</li>
+<li>Refunds go back to the original card or wallet and usually appear within 5–10 business days.</li>
 </ul>
 
 <h2>6. Your responsibilities</h2>
@@ -84,7 +88,7 @@ export function termsPage({ origin, env = process.env }) {
 <h2>7. What you can’t use Spot for</h2>
 <ul>
 <li>Fraud, stolen cards, or asking people for money under false pretenses.</li>
-<li>Cash or cash equivalents: gift cards, prepaid cards, crypto, money transfers, or anything bought to resell for cash.</li>
+<li>Getting cash or cash equivalents: gift cards, prepaid cards, crypto, money transfers, or anything bought to resell for cash.</li>
 <li>Anything illegal where you or the store are, or anything Stripe or its partner banks prohibit (for example weapons, drugs, adult content, gambling).</li>
 <li>Harassing people with requests, or texting or emailing links to people who didn’t ask for them.</li>
 <li>Interfering with Spot, getting around its limits, or scraping it.</li>
@@ -94,7 +98,7 @@ export function termsPage({ origin, env = process.env }) {
 <h2>8. AI agents and the API</h2>
 <ul>
 <li>API keys are for you and your app. Keep them secret. Free keys have daily limits; we may change limits or revoke keys used for abuse.</li>
-<li>Your agent may only send a Spot link, text or email to a person who asked for it, such as its own user. It must not buy anything, or state that something is bought, without the person completing payment on Spot.</li>
+<li>Your agent may only send a Spot link, text or email to a person who asked for it, such as its own user. It must not buy anything, or state that something is bought, without the person completing payment on Spot. Spot, not the agent, is the seller of anything bought through Spot.</li>
 <li>Agents act for their users, not for Spot. You’re responsible for what your agent tells people.</li>
 </ul>
 
@@ -138,9 +142,9 @@ export function privacyPage({ origin, env = process.env }) {
 <h2>2. What we collect</h2>
 <ul>
 <li><b>Carts:</b> the store, items, prices, product links and images, and any note you add. If you share a screenshot, we read it to find the items.</li>
-<li><b>Requesters:</b> your name, and when needed your email, phone number, shipping address, and a billing address for the one-time card. Venmo or Cash App handles if you add them.</li>
-<li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the email on the payment (used only to tell you when the gift was ordered), the amount and whether it succeeded. We never see or store the payer’s card number.</li>
-<li><b>One-time cards:</b> the card is held by Stripe. We show its details only on the requester’s private page and use them only to check out at that store.</li>
+<li><b>Requesters:</b> your name, and when needed your email, phone number and shipping address. Venmo or Cash App handles if you add them.</li>
+<li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the email on the payment (used for Spot’s receipt, refunds, and to tell you when the gift was ordered), a fingerprint of the card used (to stop fraud), the amount and whether it succeeded. We never see or store the payer’s card number.</li>
+<li><b>Spot’s cards:</b> Spot buys each cart with its own single-use card, issued to Spot by Stripe’s partner banks. Its details are used only by Spot’s checkout at that store, never shown to anyone, and never stored by Spot.</li>
 <li><b>Flights:</b> each traveler’s name, date of birth and gender as on their ID, plus a contact email and phone, which airlines require.</li>
 <li><b>Accounts:</b> if you sign in by text, your mobile number. If you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). If you add a passkey (Face ID, Touch ID or similar), only its public key: your fingerprint or face never leaves your device. Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
 <li><b>Agents and developers:</b> your email and API key usage.</li>
@@ -148,12 +152,12 @@ export function privacyPage({ origin, env = process.env }) {
 </ul>
 
 <h2>3. How we use it</h2>
-<p>To create and show your links, take payments, issue one-time cards, place orders and book flights, send the messages you asked for, prevent fraud and abuse, provide support, and meet legal obligations.</p>
+<p>To create and show your links, take payments, buy and ship the carts you pay for and book flights, handle refunds and returns, send the messages you asked for, prevent fraud and abuse, provide support, and meet legal obligations.</p>
 
 <h2>4. Who we share it with</h2>
 <ul>
-<li><b>Stripe</b>, for payments and one-time cards.</li>
-<li><b>Stores</b> you’re buying from, when Spot checks out for you (name, shipping address, email, phone and the one-time card).</li>
+<li><b>Stripe</b>, for payments, refunds and Spot’s cards.</li>
+<li><b>Stores</b> Spot buys from, to ship your order (the requester’s name, shipping address, email and phone). Spot pays with its own card.</li>
 <li><b>Airlines and our flight-booking partner (Duffel)</b>, for traveler details and payment for your booking.</li>
 <li><b>Anthropic</b>, which provides the AI that reads screenshots and fills in store checkouts. Card numbers are never sent to it.</li>
 <li><b>Twilio and Resend</b>, to deliver texts and emails you asked for.</li>

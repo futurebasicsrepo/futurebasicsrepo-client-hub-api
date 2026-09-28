@@ -138,7 +138,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <div id="nameRow"><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="so they know who's asking"></div>
     <details class="more"><summary>more options</summary>
       <label for="settle">How the money reaches you</label>
-      <select id="settle"><option value="card">One-time card for this store</option><option value="handoff">Straight to my Venmo / Cash App</option></select>
+      <select id="settle"><option value="card">Spot buys it and ships it to me</option><option value="handoff">Straight to my Venmo / Cash App</option></select>
       <div class="row"><div><label for="venmo">Venmo</label><input id="venmo" placeholder="@handle"></div><div><label for="cashtag">Cash App</label><input id="cashtag" placeholder="$cashtag"></div></div>
       <label for="note">Note for them</label><input id="note" maxlength="280" placeholder="birthday list 🎂">
       <label for="email">Email (optional, for updates)</label><input id="email" type="email" autocomplete="email">
@@ -316,9 +316,10 @@ function actionBox(cart, links, provider, total) {
 function detailsBox(cart) {
   const card = cart.settle === 'card';
   return `<details><summary>how this works</summary>
-<p>${card ? `Your money goes onto a one-time card that ${esc(cart.requester.name)} can only use at ${esc(cart.merchant.name)}, for this amount. It can't be cashed out, and if it isn't used you get refunded.` : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
+<p>${card ? (cart.kind === 'flight' ? `You're buying this ticket from Spot, and Spot books it with ${esc(cart.merchant.name)}.` : `You're buying this from Spot as a gift for ${esc(cart.requester.name)}. Spot orders exactly these items from ${esc(cart.merchant.name)} and ships them to ${esc(cart.requester.name)}. Nobody gets cash or a card. Changed your mind? Cancel for a full refund until it's ordered, from the link in your receipt.`) : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
 <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
 ${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+${cart.cushion_cents ? `<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to ${usd(cart.cushion_cents)}</span></div>` : ''}
 ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
 <div class="sum"><b>Total</b><b>${usd(card ? cart.total_cents : cart.cart_cents)}</b></div></details>`;
 }
@@ -351,13 +352,12 @@ export function managePage({ token, provider }) {
   const body = `
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
 <div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
-<footer>Keep this page private. Anyone with it can see your card.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+<footer>Keep this page private. Anyone with it can manage this Spot.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
   const script = `${SHARED_JS}
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
-const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! setting up your card…','warn'],card_issued:['Covered! Your card is ready','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
-let reveal=null;
+const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Covered! Ready to order','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
-const SELF_STATUS={open:['Ready for you',''],paid:['Paid! setting up your card…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Done','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Refunded','']};
+const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 let tick=null,PROFILE=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
@@ -380,7 +380,7 @@ function finishPanel(c,notice){
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
-    +'<p class="small muted">After you pay, Spot fills in '+esc(c.merchant.name)+'’s checkout with a one-time card and shows you the total. Nothing is ordered until you tap Place order.</p></section>'
+    +'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>'
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
@@ -436,14 +436,14 @@ function orderBox(c,f,agentOn){
     +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
   if(st==='starting'||st==='working')return '<h2><span class="spin"></span> Ordering at '+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
   const s=Object.assign({name:c.requester.name,email:c.requester.email||''},PROFILE?.shipping||{},c.requester.shipping||saved());
-  const note=st==='needs_you'?'<p class="small" style="color:var(--warn);margin-top:0">'+esc(f.reason||'This one needs you.')+'</p>'+(f.manual_url?'<a class="btn dark" href="'+esc(f.manual_url)+'" target="_blank" rel="noopener">Open checkout at '+esc(c.merchant.name)+'</a><p class="small muted">'+(f.method==='shopify'||f.method==='ucp'?'Your cart and address are already filled in. ':'')+'Pay with your one-time card below.</p>':''):(st==='cancelled'?'<p class="small muted" style="margin-top:0">Nothing was ordered. Start again whenever you’re ready.</p>':'');
+  const note=st==='needs_you'?'<p class="small" style="color:var(--warn);margin-top:0">'+esc(f.reason||'Spot couldn’t place this one automatically.')+'</p><p class="small muted">Try again below. If Spot can’t order it within 3 days, '+(c.for==='self'?'you’re':esc(c.payer_name||'the payer')+' is')+' refunded in full automatically.</p>':(st==='cancelled'?'<p class="small muted" style="margin-top:0">Nothing was ordered. Start again whenever you’re ready.</p>':'');
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
-  return '<h2>'+(agentOn?'Want Spot to order it for you?':'Ship it to you')+'</h2>'+note
+  return '<h2>Where should it ship?</h2>'+note
     +'<form id="shipForm">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
-    +'<button class="btn">'+(agentOn?'Order it for me':'Get my checkout link')+'</button><div class="err" id="shipErr"></div></form>'
-    +(agentOn?'<p class="small muted">Spot fills in '+esc(c.merchant.name)+'’s checkout with your one-time card, then shows you the total. Nothing is placed until you tap Place order.</p>':'');
+    +'<button class="btn">'+(st==='needs_you'||st==='cancelled'?'Try again':'Order it')+'</button><div class="err" id="shipErr"></div></form>'
+    +'<p class="small muted">Spot buys it from '+esc(c.merchant.name)+' with its own card and ships it to you. You see the store’s total first; nothing is placed until you tap Place order.</p>';
 }
 async function draw(){
   const r=await api('/v1/carts/'+TOKEN+'/manage'+(K?'?k='+encodeURIComponent(K):''));const c=r.cart;PROFILE=r.profile||null;
@@ -459,40 +459,41 @@ async function draw(){
   if(fl&&c.status==='completed')h+='<section class="card booked"><div class="small muted">Confirmation code</div><div class="pnr">'+esc(fl.booking_reference)+'</div><h2 style="margin-top:6px">✈️ You’re booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' will email your e-ticket to '+esc(c.contact?.email||'you')+'. Use the code to check in.</p></section>';
   if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
-  if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Card limit':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
-  if(r.needs_billing){
-    h+='<section class="card"><h2>'+(c.status==='paid'?'🎉 '+esc(c.payer_name||'Someone')+' spotted you!':'One thing for your card')+'</h2><p class="small muted" style="margin-top:0">'+(c.status==='paid'?'Add your billing address and your card is ready right away.':'Add your billing address now so your card is ready the moment someone pays.')+'</p><form id="bill"><input id="b1" placeholder="Street" autocomplete="address-line1" required><div class="row" style="margin-top:6px"><input id="b2" placeholder="City" autocomplete="address-level2" required><input id="b3" placeholder="State" autocomplete="address-level1" required><input id="b4" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" required></div><button class="btn">'+(c.status==='paid'?'Get my card':'Save')+'</button><div class="err" id="billErr"></div></form></section>';
-  }
+  if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   const f=c.fulfillment;
   if(c.status==='card_issued'||(f&&f.state==='placed')){
     h+='<section class="card" id="orderBox">'+orderBox(c,f,r.agent_enabled)+'</section>';
   }
-  if(c.status==='card_issued'&&c.card){
-    h+='<section class="card"><h2>Check out at '+esc(c.merchant.name)+'</h2><div class="cc"><div>SPOT · one-time</div><div class="n" id="ccn">•••• •••• •••• '+esc(c.card.last4)+'</div><div class="meta"><span>'+esc(c.requester.name)+'</span><span>'+String(c.card.exp_month).padStart(2,'0')+'/'+String(c.card.exp_year).slice(-2)+'</span><span id="cvc">CVC •••</span></div></div>';
-    h+='<button class="btn dark" id="rev">Show card number</button><p class="small muted">Works once, only at '+esc(c.merchant.name)+', up to '+usd(c.cart_cents)+' plus a little for tax changes.</p></section>';
-    if(MODE==='sandbox')h+='<section class="card"><h2>Test checkout</h2><p class="small muted" style="margin-top:0">Simulate the store charging your card.</p><label>Merchant name as the card network sees it</label><input id="sm" value="'+esc(c.merchant.name.toUpperCase())+'"><label>Amount</label><input id="sa" inputmode="decimal" value="'+(c.cart_cents/100).toFixed(2)+'"><button class="btn" id="sim">Run test charge</button><div id="simOut" class="err"></div></section>';
+  if(MODE==='sandbox'&&!fl&&['card_issued','completed'].includes(c.status)){
+    h+='<section class="card"><h2>Test the store’s side</h2><p class="small muted" style="margin-top:0">Sandbox only: play what the store does with Spot’s card.</p>'
+      +(c.status==='card_issued'?'<label>Merchant name as the card network sees it</label><input id="sm" value="'+esc(c.merchant.name.toUpperCase())+'"><label>Amount</label><input id="sa" inputmode="decimal" value="'+(c.cart_cents/100).toFixed(2)+'"><button class="btn" id="sim">Run test charge</button>'
+        :'<label>Amount</label><input id="sa" inputmode="decimal" value="'+((c.spent_cents||c.cart_cents)/100).toFixed(2)+'"><div class="row"><button class="btn" id="cap">Store captures</button><button class="btn ghost" id="ret">Store refunds a return</button></div><button class="btn ghost" id="rel">Store releases the charge</button>')
+      +'<div id="simOut" class="err"></div></section>';
   }
-  if(c.status==='completed'&&!fl){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">'+(c.spent_cents?'Card used at '+esc(c.spent_merchant)+' for '+usd(c.spent_cents)+'.':'Marked as received.')+'</p></section>'}
+  if(c.status==='completed'&&!fl&&c.settle==='handoff'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">Marked as received.</p></section>'}
+  if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+' refunded '+usd(c.total_cents)+'.</p></section>';
+  if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
   if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
-  if(c.status==='card_issued')h+='<button class="btn ghost" id="refund">Refund the payer</button>';
+  const busy=f&&['starting','working','awaiting_confirm','placed'].includes(f.state);
+  if(['paid','card_issued'].includes(c.status)&&!busy&&!fl)h+='<button class="btn ghost" id="refund">Cancel and refund '+(c.for==='self'?'me':esc(c.payer_name||'the payer'))+'</button>';
   h+='<section class="card"><h2>Activity</h2>'+r.events.map(e=>'<div class="sum"><span>'+esc(e.kind.replace(/_/g,' '))+'</span><span>'+new Date(e.at).toLocaleString()+'</span></div>').join('')+'</section>';
   $('#app').innerHTML=h;
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
-  on('rev',async()=>{try{reveal=reveal||await api('/v1/carts/'+TOKEN+'/manage/reveal',{k:K});$('#ccn').textContent=reveal.number.replace(/(.{4})/g,'$1 ').trim();$('#cvc').textContent='CVC '+reveal.cvc;$('#rev').textContent='Copy number';$('#rev').onclick=()=>navigator.clipboard.writeText(reveal.number)}catch(e){alert(e.message)}});
+  const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
+  on('cap',()=>sim('capture'));on('ret',()=>sim('refund'));on('rel',()=>sim('closed'));
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
   const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
   on('placeIt',async()=>{$('#placeIt').disabled=true;$('#placeIt').textContent='placing…';await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:true});draw()});
   on('notYet',async()=>{await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:false});draw()});
-  const bill=$('#bill');if(bill)bill.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/billing',{k:K,billing:{line1:$('#b1').value,city:$('#b2').value,state:$('#b3').value,postal_code:$('#b4').value}});draw()}catch(err){$('#billErr').textContent=err.message}};
   on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});
   on('cancel',async()=>{if(confirm('Cancel this link?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
-  on('refund',async()=>{if(confirm('Refund the payer and cancel your card?')){await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K});draw()}});
+  on('refund',async()=>{if(confirm('Cancel this order and refund the payment in full?')){try{await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K})}catch(e){alert(e.message)}draw()}});
   // keep watching for payment, but never redraw under someone typing
   const live=f&&['starting','working','awaiting_confirm'].includes(f.state);
-  if(['open','paid'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT'||[...document.querySelectorAll('#bill input')].some(i=>i.value);typing?setTimeout(again,4000):draw()},live?2000:4000);
+  if(['open','paid','refunding'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT';typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'<section class="card"><h2>Sign in to see this Spot</h2><p class="muted">It’s in your Spot account.</p><a class="btn" href="/signin?next='+encodeURIComponent(location.pathname)+'">Sign in</a></section>'});`;
   return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
@@ -503,6 +504,37 @@ draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'
 .dob{flex:1;display:flex;flex-direction:column;font-size:12px;color:var(--muted);min-width:0}.dob input{margin-top:2px}
 .trav input,.trav select{height:48px}
 .booked .pnr{font:800 44px/1 ui-monospace,monospace;letter-spacing:.12em;margin-top:4px}</style>` });
+}
+
+// The payer's receipt from Spot, linked from their receipt email. Spot is
+// the seller, so this is where a payer cancels (until it's ordered).
+export function receiptPage({ token }) {
+  const body = `
+<a class="brand" href="/"><span class="dot"></span>Spot</a>
+<div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
+<footer>Questions or returns: <a href="mailto:${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}">${esc(process.env.SPOT_CONTACT_EMAIL || 'hello@spotmeplease.com')}</a><br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
+  const script = `${SHARED_JS}
+const TOKEN=${json(token)},P=new URLSearchParams(location.search).get('p');
+const WHY={payer_canceled:'You canceled it before it was ordered.',requester_canceled:'It was canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:'The store canceled the charge.',store_released:'The store didn’t charge for it.',store_never_charged:'The store never charged for it.'};
+async function draw(){
+  const r=await api('/v1/carts/'+TOKEN+'/receipt?p='+encodeURIComponent(P));const c=r.cart;
+  const status=c.status==='refunded'?'Refunded':c.status==='refunding'?'Refunding…':r.ordered||c.status==='completed'?(c.kind==='flight'?'Booked':'Ordered'):['paid','card_issued'].includes(c.status)?'Paid, not ordered yet':c.status;
+  let h='<h1 style="font-size:28px">🧾 Your Spot receipt</h1><span class="pill">'+esc(status)+'</span>'
+    +'<section class="card"><p class="muted" style="margin-top:0">'+(c.kind==='flight'?'You bought this ticket from Spot.':'You bought this from Spot as a gift for '+esc(c.requester.name)+'. Spot orders it from '+esc(c.merchant.name)+' and ships it to them.')+'</p>'
+    +c.items.map(i=>'<div class="sum"><span>'+esc(i.title)+(i.quantity>1?' ×'+i.quantity:'')+'</span><span>'+usd(i.price_cents*i.quantity)+'</span></div>').join('')
+    +(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')
+    +(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>'+usd(c.cushion_cents)+'</span></div>':'')
+    +'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div><div class="sum total"><span>Paid</span><span>'+usd(c.total_cents)+'</span></div>'
+    +(r.ordered?'<p class="small muted">Ordered'+(r.ordered.order_number?' · order #'+esc(r.ordered.order_number):'')+'. Returns go through Spot: reply to your receipt email.</p>':'')
+    +'</section>';
+  if(c.status==='refunded')h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+(WHY[c.refund_reason]||'')+' '+usd(c.total_cents)+' went back to your card. It usually shows in 5–10 business days.</p></section>';
+  if(r.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+r.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
+  if(r.can_cancel)h+='<button class="btn ghost" id="cancel">Cancel and get a full refund</button><p class="small muted">Until Spot places the order. The Spot fee is refunded too.</p>';
+  $('#app').innerHTML=h;
+  const b=$('#cancel');if(b)b.onclick=async()=>{if(!confirm('Cancel this and refund '+usd(c.total_cents)+' to your card?'))return;b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
+}
+draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
+  return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
 }
 
 export function notFoundPage() {

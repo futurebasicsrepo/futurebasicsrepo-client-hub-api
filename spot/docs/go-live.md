@@ -70,18 +70,33 @@ Spot backs up its database every day by itself. These two steps put copies somew
 
 **To restore:** set `SPOT_RESTORE_FROM` = `latest` (or a backup's name from the bucket's Files tab), redeploy, check the site, then delete the variable. The database from before the restore is kept on the volume as `spot.db.before-restore-…`.
 
-## 2. Stripe (about 30 minutes, plus Stripe's review)
+## 2. Stripe (about 45 minutes, plus Stripe's review)
+
+Spot is the seller: the payer buys the cart from Spot, and Spot buys it from the store with its own single-use card and ships it to the requester. Describe it to Stripe exactly that way.
 
 1. **Create and activate an account** at dashboard.stripe.com. Enter your business details and bank account. Use https://spotmeplease.com as the website, and https://spotmeplease.com/terms and /privacy for the policy links.
-2. **Apply for Issuing** under Dashboard → Issuing → Get started. Stripe has to approve this. Describe it like this: *"Single-use virtual cards funded by a customer's payment, locked to one merchant and capped at the cart amount, used to buy that cart."*
+2. **Apply for Issuing** under Dashboard → Issuing → Get started. Stripe has to approve this. Describe it like this: *"Spot sells online-store carts to its customers and fulfils each order by buying the goods from the retailer with a single-use virtual card issued to Spot itself (one company cardholder), locked to that retailer and capped at the order amount, shipped to the recipient. Cards are used only by Spot's own checkout; no card is ever given to a consumer."*
+   - Once approved, **create the company cardholder**: Issuing → Cardholders → Create → Company. Use Spot's legal name and business address. Copy its id (`ich_…`).
+   - **Fund the Issuing balance** (Balances → Issuing → Add funds). Cards spend from it, while payer money lands in your payments balance, so keep a buffer (for example a week of orders). /admin → Money to check flags anything that doesn't add up.
+   - In Issuing settings, set the **authorization default** (used if Spot's webhook doesn't answer in time) to **decline**.
 3. **Register the Apple Pay and Google Pay domains** under Settings → Payment method domains. Add `spotmeplease.com` and `www.spotmeplease.com`.
 4. **Add the webhook** under Developers → Webhooks → Add endpoint:
    - URL: `https://spotmeplease.com/v1/webhooks/stripe`
-   - Events: `payment_intent.succeeded` and `issuing_authorization.request`
+   - Events: `payment_intent.succeeded`, `issuing_authorization.request`, `issuing_authorization.updated`, `issuing_transaction.created` and `charge.dispute.created`
    - Copy the signing secret.
 5. **Turn on real-time card authorizations** in Issuing settings, pointed at the same endpoint. This is how Spot declines a card used at the wrong store.
 6. **Tighten Radar** under Radar → Rules. Spot's own rules (see /admin) catch patterns across links. Radar catches bad cards. Turn on "Block if CVC verification fails" and "Block if postal code verification fails", and review payments Radar scores as elevated risk.
-7. **Set the Railway variables** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET`. Start with the **test** keys (`sk_test_…`, `pk_test_…`) and do step 8 first. Swap to live keys once it all works.
+7. **Set the Railway variables:**
+   - `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET`
+   - `STRIPE_ISSUING_CARDHOLDER` = the company cardholder id (`ich_…`)
+   - `SPOT_CARD_BILLING` = the cardholder's billing address as `street|city|state|zip`
+
+   Start with the **test** keys (`sk_test_…`, `pk_test_…`) and do step 8 first.
+8. **Before live keys** (not code, but they gate going live):
+   - A short memo from fintech counsel that Spot as the seller isn't money transmission in your launch states.
+   - An accountant's view on sales tax when Spot resells retail goods.
+   - A PCI DSS assessment. Spot's checkout handles its own card number in memory at the payment step, which is in scope (likely SAQ D).
+   - Stripe's approval of the Issuing use case above.
 
 ## 3. AI (5 minutes)
 
@@ -92,7 +107,7 @@ Spot backs up its database every day by itself. These two steps put copies somew
 
 1. **Sign up** at duffel.com, then Developers → Access tokens → create a **test** token.
 2. **Set the Railway variable** `DUFFEL_ACCESS_TOKEN` = `duffel_test_…`. This uses Duffel's test airline, so no real tickets are booked.
-3. **Before real tickets:** complete Duffel's go-live verification, top up the Duffel balance (it pays the airlines), then swap in the `duffel_live_…` token.
+3. **Before real tickets:** decide how Spot sells flights. Paying airlines from Spot's Duffel balance makes Spot a seller of travel, which needs registration in some states (California, Florida, Washington and others). The alternative is Duffel's customer-card method, where the airline is the merchant of record. Until then, flights are refused with live Stripe keys. Once decided, complete Duffel's go-live verification, top up the Duffel balance (it pays the airlines), swap in the `duffel_live_…` token, and set `SPOT_FLIGHTS_LIVE` = `on`.
 
 ## 5. Email (15 minutes)
 
@@ -130,8 +145,10 @@ Follow `docs/mcp-listing.md`. In short: make the signing key on your computer, s
 
 1. Open https://spotmeplease.com and make a Spot from a real product link.
 2. Open the link on your phone and pay with Stripe's test card `4242 4242 4242 4242`.
-3. On your private page, add a billing address. A card should appear. Then try "Order it for me".
-4. Ask your AI (with Spot connected at /integrations#mcp) for a flight, and finish it from the link.
-5. Text STOP to the Twilio number. The next text to that number should come back as `opted_out`.
+3. On your private page, enter a shipping address and tap "Order it". You'll see the store's total with the card fields blacked out; tap Place order (use a store with a cheap item, or cancel at the confirm step).
+4. Open the receipt link from the payer's email and cancel a second test Spot: the payer should be refunded in full.
+5. In /admin, check "Money to check" is empty, and Backups is green.
+6. Ask your AI (with Spot connected at /integrations#mcp) for a flight, and finish it from the link.
+7. Text STOP to the Twilio number. The next text to that number should come back as `opted_out`.
 
 Once all of that works, swap in the **live** Stripe keys, and later the live Duffel token.

@@ -44,10 +44,11 @@ test('REST: an agent creates an ask, tracks it, and orders it once paid', async 
   assert.match(paid.next_step, /order_spot_ask/);
   assert.equal(paid.requester_page, undefined, 'the private page is only handed out once');
 
-  // Agent is off on this server, so ordering hands back a prefilled manual path.
+  // Agent is off on this server, so ordering stops for a retry; nobody gets the card.
   const o = (await a.inject({ method: 'POST', url: `/v1/agent/asks/${ask.ask_id}/order`, headers: auth('s3cret-a'), payload: { shipping } })).json();
   assert.equal(o.order.state, 'needs_you');
-  assert.match(o.next_step, /check out themselves/);
+  assert.match(o.next_step, /retry.*refunded in full/);
+  assert.doesNotMatch(JSON.stringify(o), /card_ref|sandbox_secret|"number"/);
 });
 
 test('REST: a description it cannot price comes back as a draft to complete', async (t) => {
@@ -84,7 +85,7 @@ test('MCP: tools are listed and callable over streamable HTTP', async (t) => {
   const created = await c.callTool({ name: 'create_spot_ask', arguments: { requester_name: 'Kyle', merchant_name: 'Nike', merchant_url: 'https://www.nike.com', items, note: 'birthday 🎂' } });
   assert.ok(!created.isError, JSON.stringify(created.content));
   const ask = created.structuredContent;
-  assert.equal(ask.total_cents, 11960);
+  assert.equal(ask.total_cents, 11500 + 575 + 460, 'goods + room for tax changes + fee');
   assert.match(ask.share_card_url, /\/card\.png$/);
 
   const got = await c.callTool({ name: 'get_spot_ask', arguments: { ask_id: ask.ask_id } });
@@ -92,7 +93,7 @@ test('MCP: tools are listed and callable over streamable HTTP', async (t) => {
 
   const early = await c.callTool({ name: 'order_spot_ask', arguments: { ask_id: ask.ask_id, shipping } });
   assert.equal(early.isError, true);
-  assert.match(early.content[0].text, /card has to be ready/);
+  assert.match(early.content[0].text, /Nobody has paid for this yet/);
 
   const other = await connect('s3cret-b');
   const hidden = await other.callTool({ name: 'get_spot_ask', arguments: { ask_id: ask.ask_id } });

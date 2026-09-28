@@ -5,15 +5,19 @@
 //   createPayment(cart)          → { ref, client }   what the pay page needs
 //   issueCard(cart)              → { ref, brand, last4, exp_month, exp_year }
 //   revealCard(cart)             → { number, cvc, exp_month, exp_year }
-//   refund(cart)                 → void
+//                                  (checkout only: never sent to a browser)
+//   cancelCard(cart)             → void
+//   refund(cart, amountCents?, key?) → void   (whole payment when no amount)
+//
+// Spot is the seller of a card cart: the payer buys it from Spot, and Spot
+// orders it from the store with its own single-use virtual card (Stripe
+// Issuing, one company cardholder), shipping to the requester.
 //
 // Sandbox moves no money: it's for demos and tests, and it's what runs when
-// no Stripe keys are set. Stripe uses a PaymentIntent (card, Apple Pay,
-// Google Pay through the Payment Element) to take the payer's money, then
-// Stripe Issuing to mint a single-use virtual card for the requester.
+// no Stripe keys are set.
 import { randomInt } from 'node:crypto';
 import Stripe from 'stripe';
-import { authLimitCents } from './cart.js';
+import { BLOCKED_CATEGORIES, authLimitCents } from './cart.js';
 
 export function pickProvider(env = process.env) {
   if (env.STRIPE_SECRET_KEY) return stripeProvider(env);
@@ -43,7 +47,17 @@ export function sandboxProvider() {
     async revealCard(cart) {
       return { ...cart.card.sandbox_secret, exp_month: cart.card.exp_month, exp_year: cart.card.exp_year };
     },
-    async refund() {},
+    // What would have moved, for tests and the sandbox demo.
+    refunds: [],
+    canceled: [],
+    async cancelCard(cart) {
+      if (cart.card_ref) this.canceled.push(cart.card_ref);
+      this.canceled.splice(0, this.canceled.length - 200);
+    },
+    async refund(cart, amountCents, key) {
+      if (cart.payment_ref) this.refunds.push({ cart: cart.id, amount_cents: amountCents ?? null, key: key || null });
+      this.refunds.splice(0, this.refunds.length - 200);
+    },
   };
 }
 
@@ -67,11 +81,11 @@ function luhnNumber(prefix, length) {
 export function stripeProvider(env = process.env) {
   const stripe = new Stripe(env.STRIPE_SECRET_KEY);
   const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+  const cardholderId = env.STRIPE_ISSUING_CARDHOLDER || null;
 
   return {
     name: 'stripe',
     stripe,
-    needsBilling: true, // Issuing cardholders need a billing address
 
     async createPayment(cart) {
       // Reuse the intent if the payer reloads the page.
@@ -96,33 +110,25 @@ export function stripeProvider(env = process.env) {
       return { ref: pi.id, client: clientFor(pi, env) };
     },
 
+    // One company cardholder (Spot itself), made once in the Stripe dashboard.
+    // Cards are Spot's, used by Spot's checkout to buy what customers bought
+    // from Spot; nobody outside Spot ever sees the number.
     async issueCard(cart) {
-      const b = cart.requester.billing;
-      if (!b) throw new Error('Card carts need the requester billing address in Stripe mode');
-      const cardholder = await stripe.issuing.cardholders.create(
-        {
-          type: 'individual',
-          name: cart.requester.name,
-          email: cart.requester.email || undefined,
-          billing: { address: { line1: b.line1, city: b.city, state: b.state, postal_code: b.postal_code, country: 'US' } },
-          individual: {
-            first_name: cart.requester.name.split(' ')[0],
-            last_name: cart.requester.name.split(' ').slice(1).join(' ') || cart.requester.name,
-            card_issuing: { user_terms_acceptance: { date: Math.floor(cart.created_at / 1000), ip: cart.requester_ip || '0.0.0.0' } },
-          },
-        },
-        { idempotencyKey: `spot-ch-${cart.id}` },
-      );
-      // The network-level cap backs up the real-time merchant lock in the
-      // issuing_authorization.request webhook: even if our webhook is down,
-      // the card can't be run for more than the cart.
+      if (!cardholderId) throw new Error('STRIPE_ISSUING_CARDHOLDER is not set (Spot\'s company cardholder id, ich_…)');
+      // Spending controls are enforced by the network, and back up the
+      // real-time checks in the issuing_authorization.request webhook: even if
+      // our webhook is down, the card can't go over the cart or be used at a
+      // cash-like merchant.
       const card = await stripe.issuing.cards.create(
         {
-          cardholder: cardholder.id,
+          cardholder: cardholderId,
           currency: 'usd',
           type: 'virtual',
           status: 'active',
-          spending_controls: { spending_limits: [{ amount: authLimitCents(cart.cart_cents), interval: 'all_time' }] },
+          spending_controls: {
+            spending_limits: [{ amount: authLimitCents(cart.cart_cents), interval: 'all_time' }],
+            blocked_categories: BLOCKED_CATEGORIES,
+          },
           metadata: { spot_cart_id: cart.id },
         },
         { idempotencyKey: `spot-card-${cart.id}` },
@@ -130,16 +136,31 @@ export function stripeProvider(env = process.env) {
       return { ref: card.id, brand: card.brand, last4: card.last4, exp_month: card.exp_month, exp_year: card.exp_year };
     },
 
+    // For Spot's own checkout only, at the moment it pays. The number passes
+    // through this server's memory (PCI DSS scope); it is never logged,
+    // stored, or sent to a browser.
     async revealCard(cart) {
-      // Test mode can expand the full number. Live mode must show it with
-      // Stripe Issuing Elements instead, so card data never touches this server.
       const card = await stripe.issuing.cards.retrieve(cart.card_ref, { expand: ['number', 'cvc'] });
       return { number: card.number, cvc: card.cvc, exp_month: card.exp_month, exp_year: card.exp_year };
     },
 
-    async refund(cart) {
-      if (cart.payment_ref) await stripe.refunds.create({ payment_intent: cart.payment_ref }, { idempotencyKey: `spot-refund-${cart.id}` });
-      if (cart.card_ref) await stripe.issuing.cards.update(cart.card_ref, { status: 'canceled' });
+    async cancelCard(cart) {
+      if (!cart.card_ref) return;
+      try {
+        await stripe.issuing.cards.update(cart.card_ref, { status: 'canceled' });
+      } catch (err) {
+        // Already canceled is fine.
+        if (!/cancel/i.test(err.message || '')) throw err;
+      }
+    },
+
+    // The whole payment, or part of it (unused cushion, a store return).
+    async refund(cart, amountCents, key) {
+      if (!cart.payment_ref) return;
+      await stripe.refunds.create(
+        { payment_intent: cart.payment_ref, ...(amountCents ? { amount: amountCents } : {}), metadata: { spot_cart_id: cart.id } },
+        { idempotencyKey: key ? `spot-refund-${cart.id}-${key}` : `spot-refund-${cart.id}` },
+      );
     },
 
     // Apple Pay / Google Pay / card forms carry the payer's name, so the pay

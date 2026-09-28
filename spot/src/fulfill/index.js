@@ -8,8 +8,12 @@
 //   Shopify store  → cart + checkout built from the store's own product
 //                    data (no AI), then the agent does the payment step
 //   any other store → the agent starts from the product page
-//   agent off / stuck → "needs you": a prefilled checkout link + the card
+//   agent off / stuck → "needs you": Spot retries, or refunds the payer when
+//                    it can't order in time (spot.sweepMoney). The card is
+//                    Spot's and is never shown to anyone.
 //
+// The card number is fetched only at the payment step (getCard) and never
+// logged, stored or sent to a browser; screenshots mask card fields.
 // Job state lives on the cart (cart.fulfillment) so the requester's page and
 // the agent API can both read it. The live browser session and the pending
 // confirmation live in memory: a restart mid-checkout ends that attempt and
@@ -46,6 +50,13 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
   let running = 0;
   const maxJobs = Number(env.SPOT_AGENT_MAX || 2);
   const agentOn = () => env.SPOT_AGENT === 'on' && Boolean(client || env.ANTHROPIC_API_KEY);
+  // The card's billing address: Spot's business address, as on the company
+  // cardholder ("line1|city|state|zip"). Stores check it against the card.
+  const billing = (() => {
+    const [line1, city, state, postal_code] = String(env.SPOT_CARD_BILLING || '').split('|').map((x) => x.trim());
+    return line1 && city && state && postal_code ? { name: env.SPOT_LEGAL_NAME || 'Spot', line1, city, state, postal_code } : null;
+  })();
+  const cardFor = (cartId) => () => provider.revealCard(spot.byId(cartId));
 
   const launchBrowser =
     launch ||
@@ -110,8 +121,16 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
   return {
     agentEnabled: agentOn,
 
+    // Can Spot buy at this cart's store at all? (Checked before taking the
+    // payer's money.) UCP stores work without the browser agent.
+    async canOrder(cart) {
+      if (agentOn()) return true;
+      return Boolean(await Promise.resolve(ucpStore(cart)).catch(() => null));
+    },
+
     async start(cart, shippingInput) {
-      if (cart.status !== 'card_issued') throw Object.assign(new Error('The card has to be ready before ordering'), { status: 409 });
+      if (cart.status !== 'card_issued') throw Object.assign(new Error(cart.status === 'open' ? 'Nobody has paid for this yet' : 'Spot’s card for this order isn’t ready yet'), { status: 409 });
+      if (cart.dispute) throw Object.assign(new Error('This payment is disputed, so Spot won’t order it'), { status: 409 });
       const f = cart.fulfillment;
       if (f && ['starting', 'working', 'awaiting_confirm'].includes(f.state)) throw Object.assign(new Error('Already ordering'), { status: 409 });
       if (f?.state === 'placed') throw Object.assign(new Error('Already ordered'), { status: 409 });
@@ -128,10 +147,10 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
 
       if (!p.start_url) return update(cart.id, { state: 'needs_you', method: p.method, reason: 'No store link to start from', manual_url: null, steps: [] }, 'order_needs_you');
       if (!agentOn()) {
-        return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Automatic checkout is off, so check out with your card below', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
+        return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Automatic ordering is off right now', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
       }
       if (running >= maxJobs) {
-        return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Spot is busy, so try again in a minute or check out yourself', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
+        return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Spot is busy. Try again in a minute', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
       }
 
       const started = update(cart.id, { state: 'working', method: p.method, manual_url: p.manual_url, reason: p.note, steps: [{ text: p.method === 'shopify' ? 'Built your cart at the store' : 'Opening the store', at: Date.now() }], started_at: Date.now() }, 'order_started');
@@ -145,12 +164,12 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     async _runUcp(cartId, store, ship) {
       try {
         const cart = spot.byId(cartId);
-        const card = await provider.revealCard(cart);
         const outcome = await runUcpCheckout({
           discovery: store,
           cart,
           shipping: ship,
-          card,
+          getCard: cardFor(cartId),
+          billing,
           profileUrl: typeof ucp.profileUrl === 'function' ? ucp.profileUrl() : ucp.profileUrl || `${env.PUBLIC_URL || 'http://localhost:3000'}/.well-known/ucp`,
           limit: authLimitCents(cart.cart_cents),
           fetchImpl: ucp.fetchImpl,
@@ -161,14 +180,14 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
         if (outcome) return finish(cartId, outcome);
         const p = await plan(cart, ship);
         if (!agentOn() || !p.start_url) {
-          return update(cartId, { state: 'needs_you', method: p.method, reason: p.start_url ? 'Automatic checkout is off, so check out with your card below' : 'No store link to start from', manual_url: p.manual_url }, 'order_needs_you');
+          return update(cartId, { state: 'needs_you', method: p.method, reason: p.start_url ? 'Automatic ordering is off right now' : 'No store link to start from', manual_url: p.manual_url }, 'order_needs_you');
         }
         step(cartId, 'Ordering through the store page instead');
         update(cartId, { method: p.method, manual_url: p.manual_url });
         return await this._run(cartId, p, ship);
       } catch (err) {
         log.error?.({ err, cart: cartId }, 'ucp checkout failed');
-        update(cartId, { state: 'needs_you', reason: 'Automatic checkout hit a problem, so check out with your card below' }, 'order_needs_you');
+        update(cartId, { state: 'needs_you', reason: 'Automatic ordering hit a problem. Try again' }, 'order_needs_you');
       } finally {
         const w = pending.get(cartId);
         if (w) {
@@ -182,7 +201,6 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       let browser;
       try {
         const cart = spot.byId(cartId);
-        const card = await provider.revealCard(cart);
         browser = await launchBrowser();
         browsers.add(browser);
         // Narrow window: stores serve their compact layout, and the confirm
@@ -193,7 +211,8 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           page,
           cart,
           shipping: ship,
-          card,
+          getCard: cardFor(cartId),
+          billing,
           startUrl: p.start_url,
           client,
           progress: (t) => step(cartId, t),
@@ -202,7 +221,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
         finish(cartId, outcome);
       } catch (err) {
         log.error?.({ err, cart: cartId }, 'checkout agent failed');
-        update(cartId, { state: 'needs_you', reason: 'Automatic checkout hit a problem, so check out with your card below' }, 'order_needs_you');
+        update(cartId, { state: 'needs_you', reason: 'Automatic ordering hit a problem. Try again' }, 'order_needs_you');
       } finally {
         const w = pending.get(cartId);
         if (w) {

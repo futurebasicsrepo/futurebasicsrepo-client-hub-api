@@ -1,13 +1,13 @@
 import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
 import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
 import { openDb } from './db.js';
-import { homePage, managePage, notFoundPage, payPage } from './pages.js';
+import { homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
 import { sitePage } from './site.js';
@@ -61,11 +61,15 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const profileUrl = () => `${env.PUBLIC_URL?.replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000'}/.well-known/ucp`;
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, ...(fulfill.ucp || {}) } });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
+  // Card payments are only taken for carts Spot can actually buy. The
+  // sandbox has no real stores, so everything is orderable there.
+  spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
   app.addHook('onClose', async () => fulfiller.close());
   const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
   // Nightly database backups (started from the entry point, not in tests).
   const backups = createBackups({ db, env, dir: backupDir || join(dirname(env.SPOT_DB || './data/spot.db'), 'backups'), notifier, log: app.log, ...(backupFetch ? { fetchImpl: backupFetch } : {}) });
   app.decorate('backups', backups);
+  app.decorate('spot', spot);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
   spot.emit = (kind, id, extra) => events.emit(kind, id, extra);
   const baseUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -111,12 +115,15 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     create: limit('create', Number(process.env.SPOT_CREATE_PER_10M || 20), 600_000),
     pay: limit('pay', 60, 600_000),
   };
+  let sweeps = 0;
   const sweeper = setInterval(() => {
     const now = Date.now();
     for (const [k, h] of hits) if (h.reset < now) hits.delete(k);
     spot.sweepExpired();
     risk.sweep();
     db.sessions.prune();
+    // Retries stuck refunds, refunds carts Spot couldn't order in time.
+    if (++sweeps % 5 === 0) spot.sweepMoney().catch((err) => app.log.error({ err }, 'money sweep failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -217,6 +224,34 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
   });
 
+  // The payer's receipt from Spot (linked from their receipt email): what
+  // they bought, its status, and cancel-for-a-refund until it's ordered.
+  app.get('/c/:token/receipt', async (req, reply) => {
+    let cart;
+    try {
+      cart = spot.load(req.params.token);
+      if (!spot.payerOk(cart.token, req.query.p)) throw new Error('bad link');
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    return html(reply, receiptPage({ token: cart.token }));
+  });
+  app.get('/v1/carts/:token/receipt', async (req, reply) => {
+    const cart = spot.load(req.params.token);
+    if (!spot.payerOk(cart.token, req.query.p)) throw new CartError('Cart not found', 404);
+    reply.header('cache-control', 'no-store');
+    const ordering = ['starting', 'working', 'awaiting_confirm', 'placed'].includes(cart.fulfillment?.state);
+    return {
+      cart: publicCart(cart),
+      paid_at: cart.paid_at || null,
+      ordered: cart.fulfillment?.state === 'placed' ? { order_number: cart.fulfillment.order_number || null, at: cart.fulfillment.placed_at || null } : null,
+      refunded_cents: cart.refunded_cents || 0,
+      refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
+      can_cancel: ['paid', 'card_issued'].includes(cart.status) && cart.kind !== 'flight' && !ordering,
+    };
+  });
+  app.post('/v1/carts/:token/receipt/cancel', async (req) => ({ cart: publicCart(await spot.payerCancel(req.params.token, req.body?.p)) }));
+
   // Share-card image for link previews. Cached per cart state: it only
   // changes when the cart does (e.g. flips to "covered").
   const cards = new Map();
@@ -310,7 +345,6 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (cart.status === 'paid') cart = await spot.issue(cart); // retry a failed issue
     return {
       cart: ownerCart(cart),
-      needs_billing: spot.needsBilling(cart),
       agent_enabled: fulfiller.agentEnabled(),
       events: spot.events(cart).map(({ kind, at }) => ({ kind, at })),
       provider: provider.name,
@@ -324,18 +358,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     };
   });
 
-  app.post('/v1/carts/:token/manage/reveal', async (req) => {
-    const cart = spot.loadManaged(req.params.token, keyOf(req));
-    return spot.revealCard(cart);
-  });
-
   app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
   app.post('/v1/carts/:token/manage/travelers', async (req) => {
     const { cart, price_changed } = await spot.setTravelers(req.params.token, keyOf(req), req.body || {});
     return { cart: ownerCart(cart), price_changed };
   });
   app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
-  app.post('/v1/carts/:token/manage/billing', async (req) => ({ cart: ownerCart(await spot.addBilling(req.params.token, keyOf(req), req.body?.billing)) }));
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/cancel', async (req) => ({ cart: ownerCart(await spot.cancel(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));
@@ -359,13 +387,28 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, capture: { url: captureUrl, text: captureText } });
 
+  // Sandbox only: what the store does with Spot's card after checkout: charge
+  // it (capture), refund a return, or release / reverse the authorization.
+  app.post('/v1/sandbox/issuing', async (req) => {
+    if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
+    const cart = spot.loadManaged(req.body?.token, keyOf(req));
+    const type = String(req.body?.type || '');
+    const amount = Number(req.body?.amount_cents) || 0;
+    const id = `sbx_${type}_${randomBytes(6).toString('hex')}`;
+    let next;
+    if (type === 'capture' || type === 'refund') next = await spot.recordIssuingTxn({ id, card: cart.card_ref, authorization: 'sbx_auth', type, amount: type === 'capture' ? -amount : amount, merchant: cart.merchant.name });
+    else if (['closed', 'reversed', 'expired'].includes(type)) next = await spot.authorizationClosed({ id: 'sbx_auth', card: cart.card_ref, status: type, approved: true, transactions: [] });
+    else throw new CartError('type is capture, refund, closed, reversed or expired');
+    return { cart: ownerCart(next) };
+  });
+
   app.post('/v1/sandbox/authorize', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
     const cart = spot.loadManaged(req.body?.token, keyOf(req));
     const decision = spot.authorize(cart.card_ref, {
       amount_cents: Number(req.body?.amount_cents),
       currency: 'usd',
-      merchant: { name: String(req.body?.merchant_name || ''), url: req.body?.merchant_url ? String(req.body.merchant_url) : null },
+      merchant: { name: String(req.body?.merchant_name || ''), url: req.body?.merchant_url ? String(req.body.merchant_url) : null, category_code: req.body?.mcc ? String(req.body.mcc) : null },
     });
     return { ...decision, cart: ownerCart(spot.load(cart.token)) };
   });
@@ -432,11 +475,38 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
         const decision = spot.authorize(obj.card?.id, {
           amount_cents: obj.pending_request?.amount ?? obj.amount,
           currency: obj.pending_request?.currency ?? obj.currency,
-          merchant: { name: obj.merchant_data?.name, url: obj.merchant_data?.url },
+          merchant: { name: obj.merchant_data?.name, url: obj.merchant_data?.url, category: obj.merchant_data?.category, category_code: obj.merchant_data?.category_code },
         });
         await provider.answerAuthorization(obj.id, decision.approved);
         break;
       }
+      // The store charged Spot's card, or refunded a return onto it.
+      case 'issuing_transaction.created':
+        await spot.recordIssuingTxn({
+          id: obj.id,
+          card: typeof obj.card === 'string' ? obj.card : obj.card?.id,
+          authorization: typeof obj.authorization === 'string' ? obj.authorization : obj.authorization?.id || null,
+          type: obj.type,
+          amount: obj.amount,
+          merchant: obj.merchant_data?.name || null,
+        });
+        break;
+      // An authorization finished: captured, released, reversed or expired.
+      case 'issuing_authorization.updated':
+        if (['closed', 'reversed', 'expired'].includes(obj.status)) {
+          await spot.authorizationClosed({
+            id: obj.id,
+            card: typeof obj.card === 'string' ? obj.card : obj.card?.id,
+            status: obj.status,
+            approved: Boolean(obj.approved),
+            transactions: (obj.transactions || []).map((t) => ({ id: t.id, type: t.type, amount: t.amount, merchant: t.merchant_data?.name || null })),
+          });
+        }
+        break;
+      // The payer disputed their payment with their bank.
+      case 'charge.dispute.created':
+        if (obj.payment_intent) await spot.dispute(typeof obj.payment_intent === 'string' ? obj.payment_intent : obj.payment_intent.id, obj.reason || null);
+        break;
       default:
         break;
     }

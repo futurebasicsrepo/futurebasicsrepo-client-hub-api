@@ -2,7 +2,7 @@
 // rules in cart.js are enforced the same way for HTTP routes, webhooks and
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { CartError, computeTotals, config, decideAuthorization, transition, validateCart } from './cart.js';
+import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
 
@@ -12,6 +12,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   // manage key (which Spot only keeps hashed). The secret lives in the DB.
   const linkSecret = db.setting ? db.setting('link_secret', () => randomBytes(32).toString('hex')) : randomBytes(32).toString('hex');
   const manageSig = (token) => `s${createHmac('sha256', linkSecret).update(`manage:${token}`).digest('base64url').slice(0, 32)}`;
+  // The payer's receipt link (in their receipt email): lets them cancel for a
+  // full refund until Spot places the order.
+  const payerSig = (token) => `p${createHmac('sha256', linkSecret).update(`payer:${token}`).digest('base64url').slice(0, 32)}`;
+  const HOUR = 3600_000;
+  const orderDeadlineMs = Number(process.env.SPOT_ORDER_DEADLINE_HOURS || 72) * HOUR;
+  // Once Spot is placing the order (or has), a cancel could race the store charge.
+  const ordering = (cart) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(cart.fulfillment?.state);
 
   function load(token) {
     const cart = db.byToken(String(token || ''));
@@ -60,10 +67,6 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     create(input, { ip, userId } = {}, limits = cfg) {
       const v = validateCart(input, limits);
       risk?.checkCreate(ip);
-      // The billing address is only needed to issue the card, which happens
-      // after someone pays, so creating a link never asks for it.
-      const billing = input?.requester?.billing;
-      if (billing && hasBilling(billing)) v.requester.billing = cleanBilling(billing);
       const now = Date.now();
       const manageKey = randomBytes(24).toString('base64url');
       const cart = {
@@ -98,6 +101,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
           items: [{ title: flightTitle(offer), variant: flightVariant(offer), quantity: 1, price_cents: offer.total_cents }],
           note: input.note,
           settle: 'card',
+          kind: 'flight',
           for: 'self',
           expires_minutes: Math.max(5, minutes),
         },
@@ -131,7 +135,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const was = cart.total_cents;
       if (fresh.total_cents !== cart.flight.offer.total_cents) {
         const items = [{ ...next.items[0], price_cents: fresh.total_cents }];
-        const totals = computeTotals(items, 0, 'card', cfg);
+        const totals = computeTotals(items, 0, 'card', cfg, { cushion: false });
         if (totals.cart_cents > (cfg.maxFlightCents ?? cfg.maxCartCents)) throw new CartError('The fare went up past what Spot can take for now', 409);
         next = { ...next, items, ...totals, rev: (next.rev || 1) + 1, flight: { ...next.flight, offer: { ...fresh, passengers: next.flight.offer.passengers } } };
         if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
@@ -165,8 +169,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         const reason = err.status === 410 ? 'The airline released the fare before it could be booked.' : `The airline couldn't book it: ${err.message}`;
         db.event(cart.id, 'booking_failed', { code: err.code || null, message: err.message });
         try {
-          await provider.refund(started);
-          const refunded = move(started, 'refund', { refunded_at: Date.now(), flight: { ...started.flight, error: reason } });
+          const noted = this.patch(started.id, (c) => ({ ...c, flight: { ...c.flight, error: reason } }));
+          const refunded = await this.refundCart(noted, { reason: 'booking_failed', quiet: true });
           this.emit('booking_failed', refunded.id);
           return refunded;
         } catch (e) {
@@ -182,7 +186,6 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = loadManaged(token, key);
       if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
       const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
-      v.requester.billing = cart.requester.billing;
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'edited');
@@ -192,36 +195,31 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     onCardIssued,
 
     // "For me" carts: the requester confirms where it ships before paying.
-    // Their shipping address doubles as the card's billing address.
     prepare(token, key, shippingInput) {
       const cart = loadManaged(token, key);
       if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
       if (cart.kind === 'flight') throw new CartError('Flights don\'t ship. Add who\'s flying instead.', 400);
       const shipping = validateShipping(shippingInput);
-      const billing = cart.requester.billing || { line1: shipping.line1, city: shipping.city, state: shipping.state, postal_code: shipping.postal_code };
-      const next = { ...cart, requester: { ...cart.requester, shipping, billing, email: cart.requester.email || shipping.email } };
+      const next = { ...cart, requester: { ...cart.requester, shipping, email: cart.requester.email || shipping.email } };
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'shipping_set');
       return next;
-    },
-
-    needsBilling: (cart) => Boolean(provider.needsBilling && cart.settle === 'card' && cart.kind !== 'flight' && !cart.requester.billing),
-
-    // Requester adds their billing address after being paid; issues the card.
-    async addBilling(token, key, billing) {
-      const cart = loadManaged(token, key);
-      if (!hasBilling(billing)) throw new CartError('Street, city, state and ZIP are all needed');
-      if (!['open', 'paid'].includes(cart.status)) throw new CartError('Your card is already set up', 409);
-      const next = { ...cart, requester: { ...cart.requester, billing: cleanBilling(billing) } };
-      if (!db.save(next, cart.status)) throw new CartError('Cart changed, try again', 409);
-      db.event(cart.id, 'billing_added');
-      return next.status === 'paid' ? this.issue(next) : next;
     },
 
     load,
     loadManaged,
     // The requester's private page, for messages sent to the requester.
     privatePath: (cart) => `/c/${cart.token}/manage?k=${manageSig(cart.token)}`,
+    // The payer's receipt page, for the payer's receipt email.
+    payerPath: (cart) => `/c/${cart.token}/receipt?p=${payerSig(cart.token)}`,
+    payerOk(token, p) {
+      const a = Buffer.from(payerSig(String(token)));
+      const b = Buffer.from(String(p || ''));
+      return a.length === b.length && timingSafeEqual(a, b);
+    },
+    // Set by the server: can Spot place orders at this cart's store? Card
+    // payments are only taken for carts Spot can actually buy.
+    canOrder: async () => true,
     // Set by the server: tells people when something happens (events.js).
     emit: () => {},
 
@@ -257,6 +255,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.settle !== 'card') throw new CartError('This cart is paid directly by Venmo or Cash App', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already covered', 409);
       if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
+      if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
+        throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take a card payment for this cart.${cart.requester.venmo || cart.requester.cashtag ? ' Send it straight to them on Venmo or Cash App instead.' : ''}`, 409);
+      }
       const { ref, client } = await provider.createPayment(cart);
       if (ref !== cart.payment_ref) {
         const next = { ...cart, payment_ref: ref };
@@ -280,9 +281,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const verdict = risk ? risk.assessPayment(paid, payer || {}) : { action: 'ok' };
       if (verdict.action === 'refund') {
         db.event(cart.id, 'risk_refund', { reason: verdict.reason });
-        await provider.refund(paid);
-        return move(paid, 'refund', { refunded_at: Date.now(), risk: verdict });
+        const noted = this.patch(paid.id, (c) => ({ ...c, risk: verdict }));
+        return this.refundCart(noted, { reason: 'risk', quiet: true });
       }
+      // Spot is the seller: the payer gets a receipt from Spot, with a link
+      // to cancel for a full refund until the order is placed.
+      this.emit('receipt', paid.id);
       if (verdict.action === 'hold') {
         return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
       }
@@ -299,26 +303,193 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return next.kind === 'flight' ? this.bookFlight(next) : this.issue(next);
     },
 
-    // From /admin: refund the payer (paid or card issued) and cancel the card.
+    // From /admin: refund whatever the payer hasn't had back yet and cancel
+    // the card. Also retries a refund stuck in `refunding`.
     async adminRefund(cartId) {
       const cart = db.byId(cartId);
       if (!cart) throw new CartError('Cart not found', 404);
-      if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
-      await provider.refund(cart);
-      return move(cart, 'refund', { refunded_at: Date.now(), hold: null }, { by: 'admin' });
+      if (!['paid', 'card_issued', 'completed', 'refunding'].includes(cart.status) || !cart.payment_ref) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
+      return this.refundCart(cart, { reason: 'admin', by: 'admin' });
+    },
+
+    // ─── Refunds ─────────────────────────────────────────────────────────
+    // Refund the payer everything not yet refunded and cancel Spot's card.
+    // The cart moves to `refunding` BEFORE any money moves, so a card
+    // authorization arriving meanwhile is declined (it needs card_issued);
+    // the card is canceled before the payment is refunded. If Stripe fails,
+    // the cart stays `refunding` and the sweeper (or /admin) retries; the
+    // idempotency key makes a retry safe.
+    async refundCart(cart, { reason = 'refund', by = null, quiet = false } = {}) {
+      const cur = cart.status === 'refunding' ? cart : move(cart, 'begin_refund', { refund_reason: reason, refund_started_at: Date.now() }, { reason, by });
+      const already = cur.refunded_cents || 0;
+      try {
+        await provider.cancelCard(cur);
+        if (cur.total_cents - already > 0) await provider.refund(cur, already ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
+      } catch (err) {
+        log.error?.({ err, cart: cur.id }, 'refund failed');
+        db.event(cur.id, 'refund_failed', { message: err.message });
+        throw new CartError('The refund didn’t go through just now. It’s queued and will be retried.', 502);
+      }
+      const done = move(cur, 'refund', { refunded_at: Date.now(), refunded_cents: cur.total_cents, card_canceled: cur.card_ref ? Date.now() : null }, { amount_cents: cur.total_cents - already });
+      if (!quiet) this.emit('refunded', done.id);
+      return done;
+    },
+
+    // Give back part of the goods money (unused cushion, a store return)
+    // without changing the cart's state. Never more than the payer paid for
+    // the goods: the fee is only refunded with the whole payment. `key`
+    // makes it happen once however often the triggering webhook arrives.
+    async refundPart(cartId, amountCents, key, reason) {
+      const cart = db.byId(cartId);
+      if (!cart?.payment_ref || cart.status === 'refunded' || cart.status === 'refunding') return cart;
+      if ((cart.refunds || []).some((r) => r.key === key)) return cart;
+      const amount = Math.min(Math.round(amountCents), goodsCents(cart) - (cart.refunded_cents || 0));
+      if (amount <= 0) return cart;
+      // Record first, so a second delivery can't refund twice; then move money.
+      const claimed = this.patch(cart.id, (c) => ({ ...c, refunded_cents: (c.refunded_cents || 0) + amount, refunds: [...(c.refunds || []), { key, reason, amount_cents: amount, at: Date.now(), state: 'pending' }] }), 'partial_refund');
+      return this._sendPart(claimed, key);
+    },
+
+    async _sendPart(cart, key) {
+      const r = (cart.refunds || []).find((x) => x.key === key);
+      const mark = (state, extra) => this.patch(cart.id, (c) => ({ ...c, refunds: (c.refunds || []).map((x) => (x.key === key ? { ...x, state, ...extra } : x)) }));
+      try {
+        await provider.refund(cart, r.amount_cents, key);
+        const done = mark('done', { done_at: Date.now() });
+        this.emit('refunded_part', done.id, { amount_cents: r.amount_cents, reason: r.reason, key });
+        return done;
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'partial refund failed');
+        db.event(cart.id, 'refund_failed', { message: err.message, key });
+        return mark('failed', { error: err.message });
+      }
+    },
+
+    // ─── Issuing money events (Stripe webhooks, or the sandbox) ─────────
+    // A store charge (capture) or store refund on Spot's card.
+    async recordIssuingTxn({ id, card, authorization = null, type, amount, merchant = null }) {
+      const cart = db.byCard(card);
+      if (!cart) return null;
+      const cents = Math.abs(Math.round(amount));
+      if (!db.issuing.add({ id, cart_id: cart.id, authorization, type, amount_cents: cents, merchant })) return cart;
+      db.event(cart.id, type === 'refund' ? 'store_refund' : 'store_charged', { amount_cents: cents, merchant });
+      if (type === 'capture') {
+        let cur = cart;
+        if (cur.status === 'card_issued') {
+          // Charged without an authorization we approved (a "force capture").
+          try {
+            cur = move(cur, 'spend', { spent_at: Date.now(), spent_cents: cents, spent_merchant: merchant });
+          } catch {
+            cur = db.byId(cart.id);
+          }
+          db.event(cart.id, 'force_capture', { amount_cents: cents });
+        }
+        if (['refunding', 'refunded'].includes(cur.status)) {
+          // Money left Spot's card after the payer was refunded: a human looks.
+          return this.patch(cart.id, (c) => ({ ...c, alert: { kind: 'charged_after_refund', amount_cents: cents, at: Date.now() } }), 'charged_after_refund');
+        }
+        // Single use: once the store has charged, nothing else can.
+        return this._cancelOnce(cur);
+      }
+      if (type === 'refund') {
+        const next = await this.refundPart(cart.id, cents, `return_${id}`, 'store_refund');
+        return next;
+      }
+      return cart;
+    },
+
+    async _cancelOnce(cart) {
+      if (cart.card_canceled || !cart.card_ref) return cart;
+      try {
+        await provider.cancelCard(cart);
+        return this.patch(cart.id, (c) => ({ ...c, card_canceled: Date.now() }), 'card_canceled');
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'card cancel failed');
+        return cart;
+      }
+    },
+
+    // The store's authorization finished. Whatever it didn't charge goes back
+    // to the payer: all of it if the store reversed it, the unused part
+    // otherwise. An expired authorization can still be captured for a while,
+    // so that refund waits (see sweep).
+    async authorizationClosed({ id, card, status, approved, transactions = [] }) {
+      const cart = db.byCard(card);
+      if (!cart || !approved || !['closed', 'reversed', 'expired'].includes(status)) return cart;
+      for (const t of transactions) await this.recordIssuingTxn({ ...t, card, authorization: id });
+      let cur = db.byId(cart.id);
+      if (cur.status !== 'completed') return cur;
+      cur = await this._cancelOnce(cur);
+      const { captured } = db.issuing.totals(cur.id);
+      if (!captured) {
+        if (status === 'expired') return this.patch(cur.id, (c) => ({ ...c, release_after: Date.now() + 30 * 24 * HOUR }), 'authorization_expired');
+        return this.refundCart(cur, { reason: status === 'reversed' ? 'store_reversed' : 'store_released' });
+      }
+      const unused = goodsCents(cur) - captured;
+      return unused > 0 ? this.refundPart(cur.id, unused, `unused_${id}`, 'unused') : cur;
+    },
+
+    // The payer disputed their payment with their bank. Stop the card, block
+    // the payer's card from Spot, and flag it for a human.
+    async dispute(paymentRef, reason = null) {
+      const cart = db.byPayment(paymentRef);
+      if (!cart) return null;
+      let cur = this.patch(cart.id, (c) => ({ ...c, dispute: { at: Date.now(), reason } }), 'disputed');
+      cur = await this._cancelOnce(cur);
+      const fp = db.risk?.paymentFor?.(cart.id)?.fingerprint;
+      if (fp && db.blocks) db.blocks.add('card', fp, `Disputed a payment (cart ${cart.token})`);
+      return cur;
+    },
+
+    // The payer cancels from their receipt, until Spot places the order.
+    async payerCancel(token, p) {
+      if (!this.payerOk(token, p)) throw new CartError('Cart not found', 404);
+      const cart = load(token);
+      if (cart.kind === 'flight') throw new CartError('Flights are booked right away, so they can’t be canceled here. Contact us.', 409);
+      if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(cart.status === 'refunded' ? 'This was already refunded' : 'This order can no longer be canceled', 409);
+      if (ordering(cart)) throw new CartError('Spot is placing this order right now, so it can’t be canceled. Contact us about a return.', 409);
+      return this.refundCart(cart, { reason: 'payer_canceled', by: 'payer' });
+    },
+
+    // Housekeeping, run from the server's sweeper:
+    //  - retry refunds stuck in `refunding` and partial refunds that failed
+    //  - refund carts Spot couldn't order within the deadline
+    //  - refund authorizations that expired without a charge, after 30 days
+    async sweepMoney(now = Date.now()) {
+      const done = [];
+      for (const id of db.idsForMoneySweep()) {
+        const cart = db.byId(id);
+        try {
+          if (cart.status === 'refunding' && now - (cart.refund_started_at || 0) > 5 * 60_000) done.push(await this.refundCart(cart, { reason: cart.refund_reason || 'retry' }));
+          else if (['paid', 'card_issued'].includes(cart.status) && cart.kind !== 'flight' && !cart.hold && !cart.dispute && !ordering(cart) && now - (cart.issued_at || cart.paid_at || now) > orderDeadlineMs) {
+            done.push(await this.refundCart(cart, { reason: 'not_ordered' }));
+          } else if (cart.status === 'completed' && cart.release_after) {
+            // An expired authorization: a late capture settles it (refund the
+            // unused part); none within 30 days means a full refund.
+            const { captured } = db.issuing.totals(cart.id);
+            if (captured) {
+              const settled = this.patch(cart.id, (c) => ({ ...c, release_after: null }));
+              const unused = goodsCents(settled) - captured;
+              if (unused > 0) done.push(await this.refundPart(cart.id, unused, 'unused_late', 'unused'));
+            } else if (now > cart.release_after) {
+              done.push(await this.refundCart(this.patch(cart.id, (c) => ({ ...c, release_after: null })), { reason: 'store_never_charged' }));
+            }
+          }
+          for (const r of cart.refunds || []) if (r.state === 'failed' && now - r.at > 5 * 60_000) done.push(await this._sendPart(db.byId(id), r.key));
+        } catch (err) {
+          log.error?.({ err, cart: id }, 'money sweep failed');
+        }
+      }
+      return done.length;
     },
 
     // Issue the merchant-locked card. Safe to retry: a failed issue leaves
     // the cart `paid`, and the requester page retries on the next view.
     async issue(cart) {
-      if (cart.status !== 'paid' || cart.kind === 'flight' || cart.hold) return cart;
-      if (this.needsBilling(cart)) {
-        if (!db.events(cart.id).some((e) => e.kind === 'needs_billing')) db.event(cart.id, 'needs_billing');
-        return cart;
-      }
+      if (cart.status !== 'paid' || cart.kind === 'flight' || cart.hold || cart.dispute) return cart;
       try {
         const card = await provider.issueCard(cart);
-        const issued = move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined } }, { last4: card.last4 });
+        const issued = move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined }, issued_at: Date.now() }, { last4: card.last4 });
         // "For me" carts go straight on to ordering once the card exists.
         try {
           await this.onCardIssued(issued);
@@ -333,15 +504,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
     },
 
-    async revealCard(cart) {
-      if (cart.status !== 'card_issued') throw new CartError('No active card on this cart', 409);
-      return provider.revealCard(cart);
-    },
-
     // Real-time authorization of a charge on an issued card.
     authorize(cardRef, auth) {
       const cart = db.byCard(cardRef);
-      const decision = decideAuthorization(cart, auth);
+      const decision = cart?.dispute ? { approved: false, reason: 'disputed' } : decideAuthorization(cart, auth);
       if (cart) {
         db.event(cart.id, decision.approved ? 'auth_approved' : 'auth_declined', {
           reason: decision.reason,
@@ -369,11 +535,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return move(cart, 'cancel');
     },
 
+    // The requester cancels and gives the payer their money back, until Spot
+    // places the order.
     async refund(token, key) {
       const cart = loadManaged(token, key);
       if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
-      await provider.refund(cart);
-      return move(cart, 'refund', { refunded_at: Date.now() });
+      if (ordering(cart)) throw new CartError('Spot is placing this order right now. Try again if it stops.', 409);
+      return this.refundCart(cart, { reason: 'requester_canceled', by: 'requester' });
     },
 
     sweepExpired() {
@@ -390,17 +558,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   };
 }
 
-// What anyone holding the public link may see. No emails, no billing address,
+// What anyone holding the public link may see. No emails, no addresses,
 // no card data.
-function hasBilling(b) {
-  return Boolean(b) && [b.line1, b.city, b.state, b.postal_code].every((x) => typeof x === 'string' && x.trim());
-}
-
-function cleanBilling(b) {
-  const f = (x, n) => String(x).trim().slice(0, n);
-  return { line1: f(b.line1, 120), city: f(b.city, 60), state: f(b.state, 30), postal_code: f(b.postal_code, 12) };
-}
-
 export function publicCart(cart) {
   return {
     token: cart.token,
@@ -417,6 +576,7 @@ export function publicCart(cart) {
     subtotal_cents: cart.subtotal_cents,
     extras_cents: cart.extras_cents,
     cart_cents: cart.cart_cents,
+    cushion_cents: cart.cushion_cents || 0,
     fee_cents: cart.fee_cents,
     total_cents: cart.total_cents,
     expires_at: cart.expires_at,
@@ -428,13 +588,18 @@ export function ownerCart(cart) {
   return {
     ...publicCart(cart),
     requester: { ...cart.requester, billing: undefined },
-    card: cart.card ? { brand: cart.card.brand, last4: cart.card.last4, exp_month: cart.card.exp_month, exp_year: cart.card.exp_year } : null,
+    // Spot's card is Spot's: the requester only learns that ordering can start.
+    card_ready: Boolean(cart.card_ref),
     paid_at: cart.paid_at || null,
     spent_at: cart.spent_at || null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
     fulfillment: cart.fulfillment || null,
     held: Boolean(cart.hold),
+    disputed: Boolean(cart.dispute),
+    refund_reason: cart.refund_reason || null,
+    refunded_cents: cart.refunded_cents || 0,
+    refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
     travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender }) => ({ given_name, family_name, born_on, gender })) || null,
     contact: cart.flight?.contact || null,
   };

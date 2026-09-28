@@ -40,7 +40,7 @@ test('a blocked card is refunded at once and nothing is issued', async (t) => {
   await pay(c.token, 'fp_stolen');
   const cart = await mine(c);
   assert.equal(cart.status, 'refunded');
-  assert.equal(cart.card, null);
+  assert.equal(cart.card_ready, false);
 });
 
 test('a card paying too many Spots is held until someone releases or refunds it', async (t) => {
@@ -54,7 +54,7 @@ test('a card paying too many Spots is held until someone releases or refunds it'
   let cart = await mine(second);
   assert.equal(cart.status, 'paid');
   assert.equal(cart.held, true);
-  assert.equal(cart.card, null, 'no card while held');
+  assert.equal(cart.card_ready, false, 'no card while held');
 
   const third = await make();
   await pay(third.token, 'fp_busy');

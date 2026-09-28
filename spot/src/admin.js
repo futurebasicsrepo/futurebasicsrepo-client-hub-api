@@ -83,7 +83,32 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
       fingerprint: pay?.fingerprint || null,
       payer_email: pay?.payer_email || null,
       requester_ip: c.requester_ip || null,
+      refunded_cents: c.refunded_cents || 0,
     };
+  };
+
+  // Carts whose money needs a human: a refund stuck mid-way, a dispute, a
+  // charge after a refund, an order Spot couldn't place, or a ledger that
+  // doesn't add up (store charged more than the payer paid for the goods,
+  // or more refunded than paid).
+  const moneyChecks = () => {
+    const out = [];
+    for (const id of db.idsForMoneySweep().concat(db.idsByStatus(['completed', 'refunded']).slice(-500))) {
+      const c = db.byId(id);
+      if (!c || c.settle !== 'card' || c.kind === 'flight') continue;
+      const { captured, returned } = db.issuing.totals(c.id);
+      const goods = c.cart_cents + (c.cushion_cents || 0);
+      const why = [];
+      if (c.status === 'refunding') why.push('Refund stuck: retrying every 5 minutes');
+      if (c.dispute) why.push(`Payer disputed the payment${c.dispute.reason ? ` (${c.dispute.reason})` : ''}`);
+      if (c.alert?.kind === 'charged_after_refund') why.push(`Store charged ${(c.alert.amount_cents / 100).toFixed(2)} after the payer was refunded`);
+      if (c.fulfillment?.state === 'needs_you') why.push(`Order needs a retry: ${c.fulfillment.reason || 'stopped'}`);
+      if ((c.refunds || []).some((r) => r.state === 'failed')) why.push('A partial refund failed: retrying');
+      if (captured > goods) why.push(`Store charged ${(captured / 100).toFixed(2)}, more than the ${(goods / 100).toFixed(2)} paid for the goods`);
+      if ((c.refunded_cents || 0) > c.total_cents) why.push('Refunded more than was paid');
+      if (why.length) out.push({ ...summary(c), captured_cents: captured, returned_cents: returned, why });
+    }
+    return [...new Map(out.map((x) => [x.id, x])).values()].slice(0, 100);
   };
 
   app.get('/v1/admin/overview', async (req, reply) => {
@@ -100,6 +125,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
       signups: signups.slice(0, 300),
       signup_total: signups.length,
       backups: backups?.status() || null,
+      money: moneyChecks(),
     };
   });
 
@@ -192,6 +218,7 @@ document.getElementById('login').addEventListener('submit',async e=>{e.preventDe
   <div class="bar"><h1>Spot admin</h1><div class="row"><button class="ab" id="refresh">Refresh</button><button class="ab" id="logout">Sign out</button></div></div>
   <div class="stats" id="stats"></div>
   <section class="panel"><h2>Needs you</h2><div class="held" id="held"><p class="muted">Loading…</p></div></section>
+  <section class="panel"><h2>Money to check</h2><p class="muted" style="margin-top:0">Refunds in flight, disputes, stuck orders and anything that doesn’t add up. Spot retries refunds by itself; refund here to give back whatever’s left.</p><div class="held" id="money"></div></section>
   <section class="panel"><h2>Recent carts</h2><div class="tw"><table><thead><tr><th>When</th><th>Status</th><th>What</th><th>Store</th><th>Requester</th><th>Payer</th><th class="num">Total</th><th>Notes</th><th></th></tr></thead><tbody id="recent"></tbody></table></div></section>
   <section class="panel"><h2>Block list</h2>
     <form class="inline" id="blockForm"><select name="kind" aria-label="What to block"><option value="card">Card fingerprint</option><option value="email">Payer email</option><option value="ip">IP address</option><option value="phone">Phone</option></select><input name="value" placeholder="Value" required aria-label="Value"><input name="reason" placeholder="Reason (optional)" aria-label="Reason"><button class="ab no">Block</button></form>
@@ -209,8 +236,9 @@ async function load(){
   const r=await fetch('/v1/admin/overview');if(r.status===401)return location.reload();const d=await r.json();
   const c=d.counts,n=k=>c[k]||0;
   $('#stats').innerHTML=[['Needs you',d.held.length],['Open',n('open')],['Paid',n('paid')+n('card_issued')],['Done',n('completed')],['Refunded',n('refunded')],['Signups',d.signup_total]].map(([l,v])=>'<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>').join('');
+  $('#money').innerHTML=d.money.length?d.money.map(m=>'<div class="hcard"><div class="why">'+m.why.map(esc).join('<br>')+'</div><div><b>'+usd(m.total_cents)+'</b> paid · '+esc(m.item||'cart')+' at '+esc(m.merchant)+' · <span class="pill '+esc(m.status)+'">'+esc(m.status)+'</span></div><div class="meta">store charged '+usd(m.captured_cents)+(m.returned_cents?' · store refunded '+usd(m.returned_cents):'')+' · refunded to payer '+usd(m.refunded_cents)+(m.payer_email?' · '+esc(m.payer_email):'')+' · '+when(m.created_at)+'</div>'+(['paid','card_issued','completed','refunding'].includes(m.status)&&m.refunded_cents<m.total_cents?'<div class="row"><button class="ab no" data-act="refund" data-id="'+m.id+'">Refund the rest</button></div>':'')+'</div>').join(''):'<p class="muted">All square. ✅</p>';
   $('#held').innerHTML=d.held.length?d.held.map(h=>'<div class="hcard"><div class="why">'+esc(h.hold)+'</div><div><b>'+usd(h.total_cents)+'</b> · '+esc(h.item||'cart')+' at '+esc(h.merchant)+'</div><div class="meta">'+esc(h.requester)+' asked'+(h.payer?' · '+esc(h.payer)+' paid':'')+' · '+when(h.created_at)+(h.fingerprint?' · card '+esc(h.fingerprint):'')+(h.payer_email?' · '+esc(h.payer_email):'')+'</div><div class="row"><button class="ab go" data-act="release" data-id="'+h.id+'">Looks fine, release</button><button class="ab no" data-act="refund" data-id="'+h.id+'">Refund</button>'+(h.fingerprint?'<button class="ab" data-act="blockcard" data-v="'+esc(h.fingerprint)+'" data-id="'+h.id+'">Refund + block card</button>':'')+'</div></div>').join(''):'<p class="muted">Nothing held. 🎉</p>';
-  $('#recent').innerHTML=d.recent.map(x=>'<tr><td>'+when(x.created_at)+'</td><td><span class="pill '+(x.hold&&x.status==='paid'?'hold':x.status)+'">'+(x.hold&&x.status==='paid'?'held':x.status.replace('_',' '))+'</span></td><td>'+(x.kind==='flight'?'✈️ ':'')+esc(x.item||'')+(x.items>1?' +'+(x.items-1):'')+'</td><td>'+esc(x.merchant)+'</td><td>'+esc(x.requester)+(x.agent?' <span class="muted">via '+esc(x.agent)+'</span>':'')+'</td><td>'+esc(x.payer||'')+'</td><td class="num">'+usd(x.total_cents)+'</td><td>'+esc([x.for==='self'?'for me':'',x.order,x.booking,x.risk].filter(Boolean).join(' · '))+'</td><td>'+(['paid','card_issued'].includes(x.status)?'<button class="ab no" data-act="refund" data-id="'+x.id+'">Refund</button>':'')+'</td></tr>').join('')||'<tr><td colspan="9" class="muted">No carts yet.</td></tr>';
+  $('#recent').innerHTML=d.recent.map(x=>'<tr><td>'+when(x.created_at)+'</td><td><span class="pill '+(x.hold&&x.status==='paid'?'hold':x.status)+'">'+(x.hold&&x.status==='paid'?'held':x.status.replace('_',' '))+'</span></td><td>'+(x.kind==='flight'?'✈️ ':'')+esc(x.item||'')+(x.items>1?' +'+(x.items-1):'')+'</td><td>'+esc(x.merchant)+'</td><td>'+esc(x.requester)+(x.agent?' <span class="muted">via '+esc(x.agent)+'</span>':'')+'</td><td>'+esc(x.payer||'')+'</td><td class="num">'+usd(x.total_cents)+'</td><td>'+esc([x.for==='self'?'for me':'',x.order,x.booking,x.risk].filter(Boolean).join(' · '))+'</td><td>'+(['paid','card_issued','refunding'].includes(x.status)?'<button class="ab no" data-act="refund" data-id="'+x.id+'">Refund</button>':'')+'</td></tr>').join('')||'<tr><td colspan="9" class="muted">No carts yet.</td></tr>';
   $('#blocks').innerHTML=d.blocks.map(b=>'<tr><td>'+esc(b.kind)+'</td><td>'+esc(b.value)+'</td><td>'+esc(b.reason||'')+'</td><td>'+when(b.at)+'</td><td><button class="ab" data-act="unblock" data-k="'+esc(b.kind)+'" data-v="'+esc(b.value)+'">Remove</button></td></tr>').join('')||'<tr><td colspan="5" class="muted">Nothing blocked.</td></tr>';
   $('#keys').innerHTML=d.keys.map(k=>'<tr><td>'+esc(k.name)+'</td><td>'+esc(k.email)+'</td><td>'+when(k.created_at)+'</td><td>'+(k.revoked?'revoked':'active')+'</td><td>'+(k.revoked?'':'<button class="ab no" data-act="revoke" data-v="'+esc(k.name)+'">Revoke</button>')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No self-serve keys yet.</td></tr>';
   const bk=d.backups,ok=bk&&bk.last_ok,last=bk&&bk.last,ago=t=>{const h=(Date.now()-t)/36e5;return h<1?Math.max(1,Math.round(h*60))+' min ago':h<48?Math.round(h)+' h ago':Math.round(h/24)+' days ago'},kb=b=>b>1e6?(b/1e6).toFixed(1)+' MB':Math.max(1,Math.round(b/1e3))+' KB';

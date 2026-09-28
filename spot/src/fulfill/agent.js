@@ -14,6 +14,15 @@ import { authLimitCents, dollarsToCents, usd } from '../cart.js';
 import { isPaymentField, locate, snapshot } from './snapshot.js';
 
 export const MAX_STEPS = 45;
+// Everything that could show card details on a checkout page.
+export const CARD_FIELDS = [
+  'input[autocomplete^="cc-"]',
+  'input[name*="card" i]', 'input[id*="card" i]', 'input[name*="cvc" i]', 'input[name*="cvv" i]', 'input[name*="expir" i]',
+  'input[aria-label*="card" i]', 'input[placeholder*="card" i]', 'input[placeholder*="•••"]',
+  'iframe[src*="stripe" i]', 'iframe[src*="braintree" i]', 'iframe[src*="adyen" i]', 'iframe[src*="checkout.com" i]', 'iframe[src*="paypal" i]',
+  'iframe[src*="shopifycs" i]', 'iframe[src*="card" i]', 'iframe[name*="card" i]', 'iframe[title*="card" i]', 'iframe[title*="payment" i]',
+].join(', ');
+
 // Top-level pages may only be on these (plus the store); iframes like card fields or CAPTCHAs aren't limited.
 const CHECKOUT_HOSTS = ['myshopify.com', 'shopify.com', 'shopifycs.com', 'shop.app', 'checkout.stripe.com'];
 
@@ -85,7 +94,7 @@ const TOOLS = [
   },
 ];
 
-export function systemPrompt(cart, shipping) {
+export function systemPrompt(cart, shipping, billing = null) {
   const items = cart.items.map((i) => `- ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${usd(i.price_cents)} each${i.url ? `\n  ${i.url}` : ''}`).join('\n');
   return `You complete an online checkout on behalf of ${cart.requester.name}, whose friend has already paid for this cart. Work like a careful person doing guest checkout.
 
@@ -98,12 +107,12 @@ ${shipping.line1}${shipping.line2 ? `, ${shipping.line2}` : ''}
 ${shipping.city}, ${shipping.state} ${shipping.postal_code}, United States
 Email: ${shipping.email}${shipping.phone ? `\nPhone: ${shipping.phone}` : ''}
 
-The payment card is a one-time card limited to ${usd(authLimitCents(cart.cart_cents))} in total.
+The payment card is Spot's one-time card, limited to ${usd(authLimitCents(cart.cart_cents))} in total.
 
 Rules:
 - Put exactly the cart above into the store's cart (right size/colour/quantity), then check out as a guest. Never create an account, log in, or tick marketing / newsletter / SMS opt-ins.
 - Use the cheapest standard shipping. No gift wrap, protection plans, tips, donations or add-ons. Don't enter coupon codes.
-- Payment: always use fill_payment for card fields; never type card details. If the store asks for a billing address, use the same as shipping.
+- Payment: always use fill_payment for card fields; never type card details. ${billing ? `If the store asks for a billing address, use the card's: ${billing.line1}, ${billing.city}, ${billing.state} ${billing.postal_code}, United States (uncheck "same as shipping").` : 'If the store asks for a billing address, use the same as shipping.'}
 - When only the final place-order / pay button is left, call ready_to_place_order with the exact total shown. Never click that button yourself.
 - If the total is above the card limit, an item is unavailable or different, a CAPTCHA or login blocks you, or anything is unclear, call need_human with a short reason.
 - Dismiss cookie banners and popups when they get in the way. Each tool result shows the current page; refs change after every action, so always use refs from the latest ELEMENTS list.`;
@@ -111,7 +120,7 @@ Rules:
 
 // Runs one checkout. `confirm(summary)` resolves true/false when the
 // requester answers; `progress(step)` streams short status lines.
-export async function runCheckoutAgent({ page, cart, shipping, card, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model }) {
+export async function runCheckoutAgent({ page, cart, shipping, getCard, billing = null, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model }) {
   const anthropic = client ?? new Anthropic();
   const hosts = allowedHosts(cart, [startUrl && new URL(startUrl).hostname].filter(Boolean));
   const limit = authLimitCents(cart.cart_cents);
@@ -134,7 +143,7 @@ export async function runCheckoutAgent({ page, cart, shipping, card, startUrl, c
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: 'medium' },
-      system: systemPrompt(cart, shipping),
+      system: systemPrompt(cart, shipping, billing),
       tools: TOOLS,
       messages,
     });
@@ -153,7 +162,7 @@ export async function runCheckoutAgent({ page, cart, shipping, card, startUrl, c
       let text;
       let isError = false;
       try {
-        const r = await act(call, { page, card, cart, shipping, hosts, limit, confirm, progress });
+        const r = await act(call, { page, getCard, cart, shipping, hosts, limit, confirm, progress });
         if (r.outcome) outcome = r.outcome;
         text = r.text;
       } catch (e) {
@@ -174,7 +183,7 @@ export async function runCheckoutAgent({ page, cart, shipping, card, startUrl, c
 }
 
 async function act(call, ctx) {
-  const { page, card, cart, shipping, hosts, limit, confirm, progress } = ctx;
+  const { page, getCard, cart, shipping, hosts, limit, confirm, progress } = ctx;
   const a = call.input || {};
   switch (call.name) {
     case 'navigate': {
@@ -203,7 +212,9 @@ async function act(call, ctx) {
       return { text: 'Selected.' };
     }
     case 'fill_payment': {
-      progress('Adding your one-time card');
+      progress('Adding Spot’s one-time card');
+      // Fetched only now, at the payment step, and dropped when this returns.
+      const card = await getCard();
       const mm = String(card.exp_month).padStart(2, '0');
       const yy = String(card.exp_year).slice(-2);
       const fill = async (ref, value) => {
@@ -243,7 +254,9 @@ async function act(call, ctx) {
       }
       locate(page, a.place_order_ref); // validates the ref now, before we bother the requester
       progress('Waiting for you to confirm');
-      const shot = await page.screenshot({ fullPage: false, type: 'png' }).catch(() => null);
+      // The requester sees this screenshot, so card fields (and card iframes
+      // from payment processors) are painted over first.
+      const shot = await page.screenshot({ fullPage: false, type: 'png', mask: [page.locator(CARD_FIELDS)], maskColor: '#1b1712' }).catch(() => null);
       const ok = await confirm({ total_cents: total, summary: String(a.summary || '').slice(0, 300), screenshot: shot });
       if (!ok) return { outcome: { status: 'cancelled', reason: 'You chose not to place the order' }, text: 'The requester declined.' };
       progress('Placing your order');

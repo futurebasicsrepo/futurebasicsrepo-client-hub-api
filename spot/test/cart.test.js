@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  authLimitCents, computeTotals, decideAuthorization, dollarsToCents, handoffLinks,
+  BLOCKED_CATEGORIES, authLimitCents, computeTotals, goodsCents, decideAuthorization, dollarsToCents, handoffLinks,
   merchantMatches, transition, validateCart,
 } from '../src/cart.js';
 
@@ -13,10 +13,17 @@ const base = () => ({
   extras_cents: 1200,
 });
 
-test('totals: fee is on items + extras, zero for handoff', () => {
+test('totals: fee is on items + extras; the payer also covers the cushion (unused comes back); zero for handoff', () => {
   const items = [{ price_cents: 2500, quantity: 2 }];
-  assert.deepEqual(computeTotals(items, 500, 'card', cfg), { subtotal_cents: 5000, extras_cents: 500, cart_cents: 5500, fee_cents: 220, total_cents: 5720 });
-  assert.equal(computeTotals(items, 0, 'handoff', cfg).fee_cents, 0);
+  assert.deepEqual(computeTotals(items, 500, 'card', cfg), { subtotal_cents: 5000, extras_cents: 500, cart_cents: 5500, cushion_cents: 275, fee_cents: 220, total_cents: 5995 });
+  assert.equal(computeTotals(items, 500, 'card', cfg, { cushion: false }).total_cents, 5720, 'flights: exact fare, no cushion');
+  const h = computeTotals(items, 0, 'handoff', cfg);
+  assert.equal(h.fee_cents, 0);
+  assert.equal(h.cushion_cents, 0);
+  // The card can never spend more than the payer paid for the goods.
+  const big = computeTotals([{ price_cents: 100000, quantity: 1 }], 0, 'card', cfg);
+  assert.equal(big.cushion_cents, 1500);
+  assert.equal(authLimitCents(big.cart_cents), goodsCents(big));
 });
 
 test('validate: normalises a good cart', () => {
@@ -24,7 +31,8 @@ test('validate: normalises a good cart', () => {
   assert.equal(v.settle, 'card');
   assert.equal(v.requester.venmo, 'kyle-b');
   assert.equal(v.cart_cents, 15200);
-  assert.equal(v.total_cents, 15200 + 608);
+  assert.equal(v.cushion_cents, 760);
+  assert.equal(v.total_cents, 15200 + 760 + 608);
 });
 
 test('validate: rejects bad input', () => {
@@ -62,6 +70,34 @@ test('merchant matching handles messy network names', () => {
   assert.ok(!merchantMatches(nike, { name: 'BEST BUY 00123' }));
   assert.ok(!merchantMatches(nike, { name: 'AMAZON MKTPL' }));
   assert.ok(!merchantMatches({ name: 'The Shop' }, { name: 'THE SHOP ANYWHERE' }), 'stopwords alone never match');
+  // Never on one generic word of the store's name.
+  assert.ok(!merchantMatches({ name: 'Blue Bottle Coffee' }, { name: 'STARBUCKS COFFEE 1234' }));
+  assert.ok(!merchantMatches({ name: 'Blue Bottle Coffee' }, { name: 'BLUE APRON' }));
+  // How big stores show up on statements.
+  assert.ok(merchantMatches({ name: 'Amazon', url: 'https://www.amazon.com' }, { name: 'AMZN Mktp US' }));
+  assert.ok(merchantMatches({ name: 'Walmart' }, { name: 'WM SUPERCENTER #123' }));
+  assert.ok(merchantMatches({ name: 'Gap', url: 'https://www.gap.com' }, { name: 'GAP US 1234' }), 'short names match as a whole word');
+  assert.ok(!merchantMatches({ name: 'Gap', url: 'https://www.gap.com' }, { name: 'SINGAPORE AIR' }));
+});
+
+test('authorization: cash-like merchants are declined by category', () => {
+  const cart = { status: 'card_issued', cart_cents: 10000, merchant: { name: 'Target', url: 'https://target.com' } };
+  const at = (merchant) => decideAuthorization(cart, { amount_cents: 5000, currency: 'usd', merchant: { name: 'TARGET 1234', ...merchant } });
+  assert.equal(at({}).reason, 'ok');
+  assert.equal(at({ category_code: '6540' }).reason, 'blocked_category', 'stored value load');
+  assert.equal(at({ category_code: '6051' }).reason, 'blocked_category', 'quasi-cash');
+  assert.equal(at({ category: 'wires_money_orders' }).reason, 'blocked_category');
+  assert.ok(BLOCKED_CATEGORIES.includes('non_fi_stored_value_card_purchase_load'));
+});
+
+test('validate: card carts refuse gift cards and other cash equivalents', () => {
+  const withItem = (title, settle = 'card') => validateCart({ ...base(), settle, items: [{ title, price_cents: 5000 }] }, cfg);
+  for (const t of ['Target GiftCard $50', 'Amazon eGift Card', 'Vanilla Visa Gift Card', 'Prepaid Visa $100', 'Apple Gift Card', 'Bitcoin voucher']) {
+    assert.throws(() => withItem(t), /gift cards|cash equivalents/, t);
+  }
+  assert.ok(withItem('Gift wrap ribbon set'), 'not a gift card');
+  assert.ok(withItem('Nike Air Max 90'));
+  assert.ok(withItem('Amazon eGift Card', 'handoff'), 'money never goes through Spot for handoff');
 });
 
 test('authorization: single use, merchant locked, capped', () => {
@@ -89,4 +125,11 @@ test('dollarsToCents', () => {
   assert.equal(dollarsToCents('84.99'), 8499);
   assert.equal(dollarsToCents(19.99), 1999);
   assert.equal(dollarsToCents(''), null);
+});
+
+test('state machine: every full refund passes through `refunding`', () => {
+  for (const from of ['paid', 'card_issued', 'completed']) assert.equal(transition(from, 'begin_refund', 'card'), 'refunding');
+  assert.equal(transition('refunding', 'refund', 'card'), 'refunded');
+  assert.throws(() => transition('card_issued', 'refund', 'card'), /Can't refund/, 'no shortcut past refunding');
+  assert.throws(() => transition('refunding', 'spend', 'card'), /Can't spend/, 'no charge once a refund has started');
 });

@@ -70,8 +70,8 @@ test('an agent finds a flight, texts the link, and the traveler books it on thei
   assert.equal(paid.statusCode, 200);
   const done = (await a.inject({ method: 'GET', url: `/v1/carts/${token}/manage?k=${k}` })).json();
   assert.equal(done.cart.status, 'completed');
-  assert.equal(done.needs_billing, false);
-  assert.equal(done.cart.card, null, 'no one-time card for flights');
+  assert.equal(done.cart.card_ready, false, 'no card for flights');
+  assert.equal(done.cart.cushion_cents, 0, 'flights are the exact fare');
   assert.match(done.cart.flight.booking_reference, /^[A-Z0-9]{6}$/);
 
   const view = (await a.inject({ method: 'GET', url: `/v1/agent/asks/${token}`, headers: auth('s3cret-a') })).json();
@@ -194,4 +194,16 @@ test('search and traveler validation', () => {
   assert.throws(() => validateTravelers(pax, [kyle], contact), /all 2 travelers/);
   assert.throws(() => validateTravelers([{ id: 'p1' }], [kyle], { ...contact, phone: '12' }), /phone/);
   assert.throws(() => validateTravelers([{ id: 'p1' }], [{ ...kyle, given_name: '<b>' }], contact), /name/);
+});
+
+test('with live Stripe keys, flights stay off until SPOT_FLIGHTS_LIVE=on (seller-of-travel decision)', async (t) => {
+  const ask = async (extraEnv) => {
+    const a = app(t, { env: { ...env, STRIPE_SECRET_KEY: 'sk_live_x', ...extraEnv } });
+    const offers = (await a.inject({ method: 'POST', url: '/v1/agent/flights/search', headers: auth('s3cret-a'), payload: { origin: 'AUS', destination: 'SFO', departure_date: inDays(20) } })).json().offers;
+    return a.inject({ method: 'POST', url: '/v1/agent/flights/asks', headers: auth('s3cret-a'), payload: { offer_id: offers[0].offer_id, requester: { name: 'Kyle' } } });
+  };
+  const off = await ask({});
+  assert.equal(off.statusCode, 403);
+  assert.match(off.json().error, /Flights aren’t available/);
+  assert.equal((await ask({ SPOT_FLIGHTS_LIVE: 'on' })).statusCode, 201);
 });
