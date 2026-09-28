@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { API_URL } from '@/lib/api';
-import { GATE_COOKIE, GATE_DAYS, gateEmails, gateOn, signGate } from '@/lib/gate';
+import { GATE_COOKIE, GATE_DAYS, gateIdentity, gateOn, signGate } from '@/lib/gate';
 
 // Signs in against the API with the account's normal email/handle and password, and lets the
-// person through only if that account's email is on the preview list.
+// person through only if that account's email (GATE_EMAILS) or handle (GATE_HANDLES) is on the list.
 export async function POST(request: Request) {
   if (!gateOn()) return NextResponse.json({ ok: true, open: true });
   const body = await request.json().catch(() => ({}));
@@ -18,12 +18,12 @@ export async function POST(request: Request) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return NextResponse.json({ error: data.error || 'Wrong email or password.' }, { status: res.status === 429 ? 429 : 401 });
-  const email = String(data.user?.email || '').toLowerCase();
-  if (!gateEmails().includes(email)) {
+  const identity = gateIdentity(data.user ?? {});
+  if (!identity) {
     return NextResponse.json({ error: 'incha.tv is in private preview. This account isn’t on the list yet.' }, { status: 403 });
   }
   const out = NextResponse.json({ ok: true, token: data.token, user: data.user });
-  out.cookies.set(GATE_COOKIE, await signGate(email), {
+  out.cookies.set(GATE_COOKIE, await signGate(identity), {
     httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: GATE_DAYS * 86_400
   });
   return out;
