@@ -174,6 +174,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           limit: authLimitCents(cart.cart_cents),
           fetchImpl: ucp.fetchImpl,
           allowPrivate: ucp.allowPrivate,
+          sign: ucp.sign,
           progress: (t) => step(cartId, t),
           confirm: (c) => askConfirm(cartId, c),
         });
@@ -246,6 +247,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       clearTimeout(w.timer);
       pending.delete(cart.id);
       update(cart.id, { state: place ? 'working' : 'cancelled', ...(place ? {} : { reason: 'You chose not to place the order' }) });
+      if (place) spot.emit?.('approved', cart.id, { by: 'requester', how: 'placed_order', amount_cents: cart.fulfillment?.total_cents });
       w.resolve(Boolean(place));
       return spot.byId(cart.id);
     },

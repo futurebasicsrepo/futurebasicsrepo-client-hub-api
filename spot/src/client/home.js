@@ -143,7 +143,18 @@
     $('#email').value = me.email || '';
     $('#venmo').value = me.venmo ? '@' + me.venmo : '';
     $('#cashtag').value = me.cashtag ? '$' + me.cashtag : '';
-    $('#settle').value = me.settle || 'card';
+    $('#settle').value = me.settle === 'handoff' ? 'handoff' : 'card';
+    // Stores with agent checkout (UCP): the payer can pay the store directly.
+    $('#optDirect').hidden = true;
+    const storeUrl = draft.merchant && (draft.merchant.url || (draft.items.find((i) => i.url) || {}).url);
+    if (storeUrl) {
+      fetch('/v1/stores/check?url=' + encodeURIComponent(storeUrl)).then((r) => r.json()).then((r) => {
+        if (!r.pay_at_store) return;
+        $('#optDirect').hidden = false;
+        if (me.settle !== 'handoff') $('#settle').value = 'direct';
+        totals();
+      }).catch(() => {});
+    }
     $('#note').value = draft.note || '';
     $('#saveCheck').textContent = made ? 'Save changes' : 'Looks good →';
     renderItems();
@@ -192,7 +203,7 @@
   function totals() {
     const sub = draft.items.reduce((s, it) => s + (it.price_cents || 0) * it.quantity, 0);
     const cart = sub + (toCents($('#extras').value) || 0);
-    const fee = $('#settle').value === 'handoff' ? 0 : Math.round((cart * CFG.feeBps) / 10000) + CFG.feeFixed;
+    const fee = $('#settle').value === 'card' ? Math.round((cart * CFG.feeBps) / 10000) + CFG.feeFixed : 0;
     $('#totals').innerHTML =
       (fee ? '<div class="sum"><span>Items + shipping</span><span>' + usd(cart) + '</span></div><div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee) + '</span></div>' : '') +
       '<div class="sum total"><span>They pay</span><span>' + usd(cart + fee) + '</span></div>' +
@@ -239,6 +250,7 @@
       items: draft.items,
       extras_cents: draft.extras_cents,
       settle: me.settle || 'card',
+      ...(me.settle === 'direct' && draft.merchant && !draft.merchant.url ? { merchant: { ...draft.merchant, url: (draft.items.find((i) => i.url) || {}).url } } : {}),
       note: draft.note,
     };
   }
@@ -263,6 +275,8 @@
     $('#card').src = made.link.replace(/^https?:\/\/[^/]+/, '') + '/card.png?v=' + made.rev;
     $('#linkText').textContent = made.link;
     $('#manageLink').href = made.manage;
+    $('#shipNudge').hidden = me.settle !== 'direct';
+    $('#shipLink').href = made.manage;
     renderPeople();
     $('#wa').href = 'https://wa.me/?text=' + encodeURIComponent(message());
     $('#txt').href = sms('');

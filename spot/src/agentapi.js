@@ -23,6 +23,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CartError, usd } from './cart.js';
 import { ownerCart, publicCart } from './spot.js';
+import { emailLayout } from './notify.js';
+import { approverOf, checkRules, monthStart } from './rules.js';
 
 function apiKeys(env) {
   const out = [];
@@ -33,7 +35,7 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals }) {
   const keys = apiKeys(env);
   const selfServe = env.SPOT_OPEN_KEYS !== 'off';
 
@@ -64,6 +66,32 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   }
   const QUOTA = { asks: Number(env.SPOT_KEY_ASKS_PER_DAY || 100), messages: Number(env.SPOT_KEY_MESSAGES_PER_DAY || 20), searches: Number(env.SPOT_KEY_SEARCHES_PER_DAY || 200) };
 
+  // The AI activity log its owner sees on their account page.
+  const note = (req, agent, kind, detail) => {
+    try {
+      db?.agentEvents?.add(agent, req.spotUserId, kind, detail);
+    } catch {
+      // Logging never blocks an ask.
+    }
+  };
+
+  // The account's spending rules for this key (rules.js): refuse, or send
+  // the ask to the account's approver instead of the user.
+  function gate(req, agent, { cents, storeUrl, merchant, flight = false }) {
+    if (!agent.startsWith('key:') || !db?.keyRules) return { route: false };
+    const row = db.keyRules.get(agent.slice(4));
+    const rules = row?.rules;
+    if (!rules) return { route: false };
+    const approver = flight ? null : approverOf(db, row.user_id);
+    const spent = rules.monthly_cents ? db.agentMonthCents(agent, monthStart()) : 0;
+    const v = checkRules(flight ? { ...rules, stores: [] } : rules, { cents, storeUrl, spentThisMonth: spent, hasApprover: Boolean(approver) });
+    if (!v.ok) {
+      note(req, agent, 'blocked_by_rule', { reason: v.reason, merchant: merchant || null, cents });
+      throw new CartError(`${v.reason}. Your user set this rule in their Spot account; they can change it there.`, 403);
+    }
+    return v.route ? { route: true, reason: v.reason, approver } : { route: false };
+  }
+
   function owned(agent, askId) {
     const cart = spot.load(askId);
     if (cart.agent !== agent) throw new CartError('Ask not found', 404);
@@ -86,7 +114,13 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       canceled: 'Your user passed on this one.',
       refunded: `Not booked, and your user was refunded. ${fl.error || ''}`.trim(),
     }[cart.status] : {
-      open: cart.for === 'self'
+      open: cart.approver
+        ? `Sent to ${cart.approver.name || 'your user’s approver'} to approve (${cart.approver.reason}). They pay for it or turn it down; nothing is bought until they do.`
+        : cart.settle === 'direct'
+        ? (cart.for === 'self'
+          ? `Waiting for your user to confirm shipping and pay ${cart.merchant.name} directly on its own checkout.`
+          : cart.requester.shipping ? `Send the link to whoever will pay. They pay ${cart.merchant.name} directly on its own checkout; no Spot fee. Suggested message: "${shareMessage(cart, urlFor(req, `/c/${cart.token}`))}"` : 'The requester needs to add where it ships (on their private page) before anyone can pay.')
+        : cart.for === 'self'
         ? 'Waiting for the requester to finish on their phone: confirm shipping, pay, then tap Place order.'
         : `Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`,
       paid: 'Paid. Spot is getting ready to order; check back shortly.',
@@ -119,6 +153,10 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       flight: fl ? { ...fl, error: undefined } : undefined,
       order: f ? { state: f.state, method: f.method, order_number: f.order_number || null, order_url: f.order_url || null, reason: f.reason || null, total_cents: f.total_cents ?? null } : null,
       next_step: next,
+      sent_to_approver: cart.approver ? { name: cart.approver.name || null, reason: cart.approver.reason } : undefined,
+      // Signed proof a person said yes (verify with /.well-known/spot-keys.json).
+      approvals: approvals ? approvals.summary(cart.id) : undefined,
+      approval_url: approvals?.summary(cart.id).at(-1)?.url || null,
       ...extra,
     };
   }
@@ -145,23 +183,63 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         throw err;
       }
     }
-    const forSelf = b.for === 'self';
+    const goods = items.reduce((n, i) => n + Math.round(Number(i.price_cents) || 0) * (Math.round(Number(i.quantity)) || 1), 0) + (Math.round(Number(extras)) || 0);
+    const gateUrl = merchant?.url || items.find((i) => i.url)?.url || null;
+    const g = gate(req, agent, { cents: goods, storeUrl: gateUrl, merchant: merchant?.name });
+    const user = g.route && req.spotUserId ? db.users.byId(req.spotUserId) : null;
+    const forSelf = b.for === 'self' && !g.route;
+    if (g.route) b.requester = { ...(b.requester || {}), name: user?.name || b.requester?.name || 'Your family member' };
+    // Prefer the store as the seller: if it takes agent checkout (UCP), the
+    // payer pays it directly and Spot never holds the money.
+    const storeUrl = merchant?.url || items.find((i) => i.url)?.url;
+    const direct = b.settle === 'direct' || (b.settle == null && storeUrl && (await spot.direct?.supports(storeUrl)));
+    if (direct && !merchant?.url && storeUrl) merchant = { ...merchant, url: new URL(storeUrl).origin };
+    const settle = direct ? 'direct' : forSelf ? 'card' : b.settle;
     const { cart, manageKey } = spot.create(
-      { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle: forSelf ? 'card' : b.settle, for: forSelf ? 'self' : 'other', expires_minutes: b.expires_minutes },
+      { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle, for: forSelf ? 'self' : 'other', expires_minutes: b.expires_minutes },
       { ip: req.ip, userId: req.spotUserId },
     );
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
     if (forSelf && b.ship_to) spot.prepare(cart.token, manageKey, b.ship_to);
+    note(req, agent, g.route ? 'ask_routed' : 'ask_created', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents, for: forSelf ? 'self' : 'other', ...(g.route ? { reason: g.reason } : {}) });
+    if (g.route) {
+      // Ship to the user (their saved address, or what the AI gave), then
+      // hand the approver the pay link.
+      const ship = b.ship_to || user?.shipping;
+      if (ship) {
+        try {
+          spot.prepare(cart.token, manageKey, { ...ship, email: ship.email || user?.email });
+        } catch {
+          // They can add it on their page.
+        }
+      }
+      spot.patch(cart.id, (c) => ({ ...c, approver: { name: g.approver.name, email: g.approver.email, reason: g.reason } }), 'sent_to_approver');
+      const payLink = urlFor(req, `/c/${cart.token}`);
+      const who = cart.requester.name;
+      const sent = await notifier.send({ email: g.approver.email }, {
+        subject: `${who}’s AI wants to buy ${cart.items[0]?.title || 'something'} (${usd(cart.total_cents)})`,
+        text: `${who}'s AI assistant put this together and ${who}'s rules send it to you: ${g.reason}. Pay for it, or ignore it and nothing is bought: ${payLink}`,
+        html: emailLayout({
+          preheader: `${g.reason}. Nothing is bought unless you pay.`,
+          title: `Approve ${who}’s cart?`,
+          lines: [`🤖 ${esc(who)}’s AI picked <b>${esc(cart.items[0]?.title)}</b>${cart.items.length > 1 ? ` +${cart.items.length - 1} more` : ''} from ${esc(cart.merchant.name)} · <b>${usd(cart.total_cents)}</b>.`, `Why it came to you: ${esc(g.reason)}.`, 'Pay for it and it ships to them, or ignore this and nothing is bought. Your yes is signed, so there’s a record of what you approved.'],
+          cta: { label: 'Review and approve →', url: payLink },
+          base: env.PUBLIC_URL,
+        }),
+      });
+      note(req, agent, 'message_sent', { ask_id: cart.token, to: 'approver', status: sent.email || 'not_sent' });
+    }
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
     const extra = forSelf
       ? { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` }
-      : { requester_page: privateLink, requester_page_note: 'Private: give this only to the requester. It shows their card and is where they confirm the order.' };
+      : { requester_page: privateLink, requester_page_note: settle === 'direct' ? 'Private: give this only to the requester. They add where it ships there, which unlocks the link for whoever pays.' : 'Private: give this only to the requester. It is where they add the shipping address and confirm the order.' };
     // Remember how to reach the user for later updates (booked, ordered…).
     if (forSelf && (b.notify?.email || b.notify?.phone)) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
     // An account's own AI with no delivery asked for: email the account.
     if (forSelf && req.spotUserId && !b.notify?.email && !b.notify?.phone) spot.emit('ready', cart.id);
     if (forSelf && (b.notify?.email || b.notify?.phone)) {
       extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+      note(req, agent, 'message_sent', { ask_id: cart.token, to: 'user', status: extra.delivered });
     }
     return view(req, spot.byId(cart.id), extra);
   }
@@ -195,12 +273,14 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     if (String(env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') && env.SPOT_FLIGHTS_LIVE !== 'on') throw new CartError('Flights aren’t available on Spot yet.', 403);
     if (!b.offer_id) throw new CartError('offer_id is required (from search_flights)');
     const offer = await flights.offer(String(b.offer_id));
+    gate(req, agent, { cents: offer.total_cents, merchant: offer.airline?.name, flight: true });
     const { cart, manageKey } = spot.createFlight(
       offer,
       { requester: b.requester, note: b.note, expires_minutes: b.expires_minutes, travelers: b.travelers, contact: b.contact },
       { ip: req.ip, userId: req.spotUserId },
     );
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
+    note(req, agent, 'flight_ask', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents });
     const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
     const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's flying, pay, and Spot books it.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
     if (b.notify?.email || b.notify?.phone) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
@@ -213,6 +293,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const cart = owned(agent, askId);
     if (cart.kind === 'flight') throw new CartError('Flights are booked automatically once paid', 409);
     await fulfiller.start(cart, shipping);
+    note(req, agent, 'order_started', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents });
     return view(req, spot.byId(cart.id));
   }
 
@@ -297,7 +378,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -309,6 +390,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
           extras_cents: z.number().int().min(0).optional().describe('Estimated shipping + tax in cents'),
           note: z.string().max(280).optional().describe('A short note shown to the payer'),
           for_me: z.boolean().optional().describe('Your user pays for this themselves and finishes on their phone'),
+          pay_at_store: z.boolean().optional().describe('Default: true when the store supports agent checkout (UCP). The payer pays the store directly; set false to have Spot buy it instead'),
           send_to_email: z.string().optional().describe('for_me: email the finish link here'),
           send_to_phone: z.string().optional().describe("for_me: text the finish link to this phone number. Only your user's own number, with their OK; they can reply STOP"),
           ship_to: shippingShape.optional().describe('for_me: shipping address, if you already know it (they can change it)'),
@@ -327,6 +409,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
               extras_cents: a.extras_cents,
               note: a.note,
               for: a.for_me ? 'self' : 'other',
+              settle: a.pay_at_store === false ? 'card' : a.pay_at_store === true ? 'direct' : undefined,
               notify: { email: a.send_to_email, phone: a.send_to_phone },
               ship_to: a.ship_to,
               expires_minutes: a.expires_minutes,
@@ -462,3 +545,5 @@ export function shareMessage(cart, link) {
   const first = cart.items[0]?.title || 'something';
   return `psst… can you spot me? 👀 ${first}${cart.merchant?.name ? ` from ${cart.merchant.name}` : ''}\n${link}`;
 }
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);

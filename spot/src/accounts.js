@@ -8,6 +8,9 @@
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
+//   POST /v1/me/keys/:name/rules { max_order_cents, monthly_cents, stores, approver }
+//   POST /v1/me/approver  { email, name }   → they confirm by email (POST /v1/approver/confirm)
+//   POST /v1/me/approver/remove
 //   POST /v1/me/link/start  { email } | { phone }         → code to that address
 //   POST /v1/me/link/verify { email | phone, code }       → it's now on this account
 //
@@ -21,7 +24,10 @@ import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 
 import { CartError } from './cart.js';
 import { validateShipping } from './fulfill/index.js';
 import { ownerCart } from './spot.js';
-import { normalizePhone } from './notify.js';
+import { emailLayout, normalizePhone } from './notify.js';
+import { approverOf, monthStart, normalizeRules } from './rules.js';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 export const SESSION_COOKIE = 'spot_session';
 const CODE_TTL = 10 * 60_000;
@@ -168,7 +174,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       user: profile(user),
       ready: carts.filter((c) => c.for === 'self' && c.status === 'open'),
       carts,
-      keys: db.users.keys(user.id),
+      keys: keysOf(user.id),
+      approver: approverView(user.id),
       passkeys: db.passkeys.ofUser(user.id),
       linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
@@ -263,15 +270,87 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const key = `spot_${randomBytes(24).toString('base64url')}`;
     db.addKey(sha(key), name, user.email || user.phone || 'unknown', user.id);
     reply.code(201);
-    return { api_key: key, name, mcp_url: urlFor(req, '/mcp'), keys: db.users.keys(user.id) };
+    return { api_key: key, name, mcp_url: urlFor(req, '/mcp'), keys: keysOf(user.id) };
   });
 
   app.post('/v1/me/keys/:name/revoke', async (req) => {
     json(req);
     const user = me(req);
     if (!db.users.revokeKey(user.id, req.params.name)) throw new CartError('No key with that name', 404);
-    return { keys: db.users.keys(user.id) };
+    db.agentEvents.add(`key:${req.params.name}`, user.id, 'disconnected', null);
+    return { keys: keysOf(user.id) };
   });
+
+  // Spending rules for one of this account's AI keys (see rules.js).
+  app.post('/v1/me/keys/:name/rules', async (req) => {
+    json(req);
+    const user = me(req);
+    const rules = normalizeRules(req.body || {});
+    if (rules && rules.approver !== 'never' && !approverOf(db, user.id)) throw new CartError('Add an approver first, and have them confirm by email', 409);
+    if (!db.keyRules.set(user.id, req.params.name, rules)) throw new CartError('No key with that name', 404);
+    db.agentEvents.add(`key:${req.params.name}`, user.id, 'rules_changed', { rules });
+    return { keys: keysOf(user.id) };
+  });
+
+  // The approver: someone who pays for (or says no to) what this account's
+  // AI asks for when the rules say so. They confirm by email first.
+  app.post('/v1/me/approver', async (req) => {
+    json(req);
+    const user = me(req);
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200);
+    if (!EMAIL.test(email)) throw new CartError('That email looks wrong');
+    if (email === user.email) throw new CartError('Your approver has to be someone else', 400);
+    const name = String(req.body?.name || '').trim().slice(0, 60) || null;
+    limit(`approver:${user.id}`, 5, 86400_000);
+    const token = randomBytes(24).toString('base64url');
+    db.state.set(`approver:${user.id}`, { email, name, token_hash: sha(token), asked_at: Date.now(), confirmed_at: null });
+    const who = user.name || user.email || 'Someone';
+    const link = urlFor(req, `/approver/confirm?u=${encodeURIComponent(user.id)}&t=${token}`);
+    const out = await notifier.send({ email }, {
+      subject: `${who} wants you to approve what their AI buys`,
+      text: `${who} named you as the approver for purchases their AI assistant asks for on Spot. You'd get an email to pay for or turn down each one. Nothing is charged unless you pay. Agree here: ${link}`,
+      html: emailLayout({
+        preheader: 'Nothing is charged unless you pay',
+        title: `Be ${who}’s approver?`,
+        lines: [`${esc(who)} named you as the approver for purchases their AI assistant asks for on Spot.`, 'When their rules say so, you get an email with exactly what the AI picked. You pay for it, or turn it down. Nothing is charged unless you pay, and every yes is signed.'],
+        cta: { label: 'Yes, I’ll approve →', url: link },
+        note: 'Not expecting this? Ignore it; nothing happens.',
+        base: env.PUBLIC_URL,
+      }),
+    });
+    return { approver: approverView(user.id), sent: out.email || 'not_sent', ...(showCode() ? { confirm_link: link } : {}) };
+  });
+  app.post('/v1/me/approver/remove', async (req) => {
+    json(req);
+    const user = me(req);
+    db.state.set(`approver:${user.id}`, null);
+    // Keys that routed to the approver fall back to refusing.
+    for (const k of db.users.keys(user.id)) if (k.rules && k.rules.approver !== 'never') db.keyRules.set(user.id, k.name, { ...k.rules, approver: 'never' });
+    return { approver: null, keys: keysOf(user.id) };
+  });
+  // The approver's yes (from the button on /approver/confirm, not the GET,
+  // so email link scanners can't agree for them).
+  app.post('/v1/approver/confirm', async (req) => {
+    json(req);
+    limit(`approver-confirm:${req.ip}`, 20, 3600_000);
+    const uid = String(req.body?.u || '');
+    const a = db.state.get(`approver:${uid}`);
+    const t = String(req.body?.t || '');
+    if (!a || !t || a.token_hash !== sha(t)) throw new CartError('This link has expired or was replaced', 404);
+    if (!a.confirmed_at) db.state.set(`approver:${uid}`, { ...a, confirmed_at: Date.now() });
+    const u = db.users.byId(uid);
+    return { ok: true, for: u?.name || u?.email || 'them' };
+  });
+
+  function approverView(userId) {
+    const a = db.state.get(`approver:${userId}`);
+    return a ? { email: a.email, name: a.name, confirmed: Boolean(a.confirmed_at) } : null;
+  }
+  // Keys, with their rules, this month's asks and recent activity.
+  function keysOf(userId) {
+    const since = monthStart();
+    return db.users.keys(userId).map((k) => ({ ...k, month_cents: db.agentMonthCents(`key:${k.name}`, since), activity: db.agentEvents.recent(`key:${k.name}`, 8) }));
+  }
 
   return { userIdOf: (req) => sessionUserId(db, req) };
 }

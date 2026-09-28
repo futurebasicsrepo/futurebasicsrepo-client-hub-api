@@ -74,7 +74,7 @@ test('card flow: create → pay → Spot’s card issued → merchant-locked sin
   assert.equal(mine.body.cart.card_ready, true);
   assert.equal(mine.body.cart.card, undefined, 'no card details, not even the last 4');
   assert.doesNotMatch(JSON.stringify(mine.body), /sandbox_secret|"number"|cvc/);
-  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'issue']);
+  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'approval_signed', 'issue']);
 
   // Wrong store, then over the limit: declined, card still live.
   const auth = (merchant_name, amount_cents) => call('POST', '/v1/sandbox/authorize', { token: cart.token, k, merchant_name, amount_cents });

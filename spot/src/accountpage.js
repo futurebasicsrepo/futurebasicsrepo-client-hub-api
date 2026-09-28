@@ -27,6 +27,7 @@ const CSS = `
 .f input,.f select{font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);min-width:0;width:100%}
 .btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
 .ok-msg{color:var(--ok);font-weight:600;font-size:14px}.err{color:var(--spot);font-weight:600;font-size:14px;min-height:1.2em}
+.keyc{padding:10px 0;border-bottom:1px solid var(--line)}.keyc:last-child{border-bottom:0}.acts{margin:6px 0 0;padding-left:18px;font-size:14px}.acts li{margin:4px 0}details.more summary{cursor:pointer;font-weight:600;color:var(--muted);font-size:14px}
 .trav{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .linkbtn{background:none;border:0;color:var(--spot);font:600 14px Bricolage,system-ui,sans-serif;cursor:pointer;padding:4px}
 pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overflow-x:auto;font-size:13px}
@@ -157,8 +158,13 @@ export function accountPage({ origin }) {
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
     <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
 </section>
-<section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”.</p>
+<section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="newKey">Connect a new AI</button></div><div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div></div>
+</section>
+<section><h2>Your approver</h2><p class="sub">Someone who pays for, or turns down, what your AI asks for when your rules say so: a parent, a partner, your finance inbox. They agree by email first.</p>
+  <div class="box"><div id="apv"></div>
+    <form class="f" id="apvForm" style="margin-top:10px"><div class="two"><input name="name" placeholder="Their name" aria-label="Approver name"><input name="email" type="email" placeholder="Their email" required aria-label="Approver email"></div><div class="btnrow"><button class="btn primary">Ask them</button><span class="ok-msg" id="apvOk"></span></div></form>
+  </div>
 </section>
 <p class="err" id="err"></p>`,
     script: `${PASSKEY_JS}
@@ -182,8 +188,30 @@ async function load(){
     +me.linked.map(p=>row(p==='google'?'🟢':'🔵',esc(NAMES[p]||p),'Connected','')).join('');
   $('#pks').innerHTML=me.passkeys.map(k=>'<div class="trav"><span>🔑 '+esc(k.name||'Passkey')+' <small class="sub">· added '+new Date(k.created_at).toLocaleDateString()+(k.used_at?', last used '+new Date(k.used_at).toLocaleDateString():'')+'</small></span><button class="linkbtn" data-pk="'+esc(k.id)+'">Remove</button></div>').join('');
   $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
-  $('#keys').innerHTML=me.keys.length?me.keys.map(k=>'<div class="trav"><span>'+esc(k.name)+' <small class="sub">· '+(k.revoked?'disconnected':'connected '+new Date(k.created_at).toLocaleDateString())+'</small></span>'+(k.revoked?'':'<button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button>')+'</div>').join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
+  $('#keys').innerHTML=me.keys.length?me.keys.map(keyRow).join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
+  const a=me.approver;
+  $('#apv').innerHTML=a?'<div class="trav"><span>'+esc(a.name||a.email)+' <small class="sub">· '+esc(a.email)+' · '+(a.confirmed?'confirmed':'waiting for them to agree')+'</small></span><button class="linkbtn" id="apvRm">Remove</button></div>':'<p class="sub" style="margin:0">No approver yet.</p>';
+  $('#apvForm').hidden=Boolean(a&&a.confirmed);
+  const rm=$('#apvRm');if(rm)rm.onclick=async()=>{if(!confirm('Remove your approver? AI keys that sent asks to them will refuse instead.'))return;try{await post('/v1/me/approver/remove');load()}catch(err){$('#err').textContent=err.message}};
 }
+// One AI key: its rules, this month, what it did, and the off switch.
+const ACT={ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected'};
+const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
+function keyRow(k){
+  const r=k.rules||{};
+  const rules=[r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':'',r.monthly_cents?usd(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'only '+r.stores.join(', '):'',r.approver&&r.approver!=='never'?(r.approver==='always'?'every ask goes to your approver':'over the limit goes to your approver'):''].filter(Boolean).join(' · ')||'No rules yet';
+  const acts=(k.activity||[]).map(e=>{const d=e.detail||{};return '<li><b>'+esc(ACT[e.kind]||e.kind)+'</b> '+esc([d.item,d.merchant,d.cents!=null?usd(d.cents):'',d.reason].filter(Boolean).join(' · '))+' <small class="sub">'+new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</small></li>'}).join('');
+  if(k.revoked)return '<div class="trav"><span>'+esc(k.name)+' <small class="sub">· disconnected</small></span></div>';
+  return '<div class="keyc"><div class="trav" style="border:0"><span><b>🤖 '+esc(k.name)+'</b> <small class="sub">· connected '+new Date(k.created_at).toLocaleDateString()+' · '+usd(k.month_cents||0)+' asked this month</small></span><button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button></div>'
+    +'<p class="sub" style="margin:0 0 6px">'+esc(rules)+'</p>'
+    +'<details class="more"><summary>Rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
+    +(acts?'<details class="more"><summary>Activity</summary><ul class="acts">'+acts+'</ul></details>':'<p class="sub" style="margin:0">No activity yet.</p>')+'</div>';
+}
+document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rules]');if(!f)return;e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(f));
+  const c=x=>x.trim()?Math.round(parseFloat(x.replace(/[$,]/g,''))*100):null;
+  try{await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:c(v.max),monthly_cents:c(v.month),stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver});load()}catch(err){$('#err').textContent=err.message}});
+$('#apvForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
+  try{const r=await post('/v1/me/approver',v);$('#apvOk').textContent=r.confirm_link?'Test mode: they would get this link by email.':'Sent. They need to tap Yes in the email.';if(r.confirm_link)console.log(r.confirm_link);e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 // Spots made on this device before signing in join the account.
 async function claimLocal(){let mine=[];try{mine=JSON.parse(localStorage.getItem('spot:mine'))||[]}catch{}
   const links=mine.map(m=>{try{const u=new URL(m.manage,location.origin);return {token:u.pathname.split('/')[2],k:u.searchParams.get('k')}}catch{return null}}).filter(l=>l&&l.k);
@@ -193,7 +221,7 @@ $('#shipForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
 $('#travForm').addEventListener('submit',async e=>{e.preventDefault();const t=Object.fromEntries(new FormData(e.target));try{await post('/v1/me',{travelers:[...me.user.travelers,t]});e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 document.addEventListener('click',async e=>{const rm=e.target.closest('[data-rm]'),rv=e.target.closest('[data-revoke]');
   try{if(rm){await post('/v1/me',{travelers:me.user.travelers.filter((_,i)=>i!==+rm.dataset.rm)});load()}
-    if(rv){await post('/v1/me/keys/'+encodeURIComponent(rv.dataset.revoke)+'/revoke');load()}}catch(err){$('#err').textContent=err.message}});
+    if(rv){if(!confirm('Disconnect this AI? It stops working right away.'))return;await post('/v1/me/keys/'+encodeURIComponent(rv.dataset.revoke)+'/revoke');load()}}catch(err){$('#err').textContent=err.message}});
 $('#newKey').onclick=async()=>{try{const k=await post('/v1/me/keys',{agent_name:'my-ai'});$('#cfg').textContent=JSON.stringify({mcpServers:{spot:{url:k.mcp_url,headers:{Authorization:'Bearer '+k.api_key}}}},null,2);$('#newKeyOut').hidden=false;load()}catch(err){$('#err').textContent=err.message}};
 $('#copyCfg').onclick=async()=>{try{await navigator.clipboard.writeText($('#cfg').textContent);$('#copyCfg').textContent='Copied'}catch{}};
 // Adding an email or phone: send a code to it, then type the code.
@@ -218,5 +246,22 @@ document.addEventListener('click',async e=>{const b=e.target.closest('[data-pk]'
   try{await post('/v1/me/passkeys/'+encodeURIComponent(b.dataset.pk)+'/remove');load()}catch(err){$('#err').textContent=err.message}});
 $('#out').onclick=async()=>{await post('/v1/auth/logout');location.href='/'};
 claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
+  });
+}
+
+// The approver's "yes" page, from the email. A button, so link scanners
+// that open emails can't agree on someone's behalf.
+export function approverConfirmPage({ origin }) {
+  return page({
+    origin,
+    path: '/approver/confirm',
+    title: 'Be an approver · Spot',
+    body: `<div style="max-width:560px">
+<h1>Be the approver?</h1>
+<p class="sub">When their rules say so, their AI’s picks come to you by email: exactly what it chose, from which store, for how much. You pay for it, or turn it down. Nothing is charged unless you pay, and every yes is signed so there’s a record of who agreed to what.</p>
+<div class="btnrow"><button class="btn primary" id="yes">Yes, I’ll approve</button></div>
+<p class="ok-msg" id="ok"></p><p class="err" id="err"></p></div>`,
+    script: `const q=new URLSearchParams(location.search);
+$('#yes').onclick=async()=>{try{const r=await post('/v1/approver/confirm',{u:q.get('u'),t:q.get('t')});$('#ok').textContent='Done. You’re '+r.for+'’s approver. Each ask comes by email, and you can say no to any of them.';$('#yes').hidden=true}catch(e){$('#err').textContent=e.message}};`,
   });
 }

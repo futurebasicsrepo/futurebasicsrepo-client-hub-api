@@ -2,6 +2,7 @@
 // rules in cart.js are enforced the same way for HTTP routes, webhooks and
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { agentLabel } from './approvals.js';
 import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
@@ -286,6 +287,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       }
       // Spot is the seller: the payer gets a receipt from Spot, with a link
       // to cancel for a full refund until the order is placed.
+      // Sign the approval first so the receipt can link it.
+      this.emit('approved', paid.id, { by: paid.for === 'self' ? 'requester' : 'payer', how: 'paid_spot', amount_cents: amountCents });
       this.emit('receipt', paid.id);
       if (verdict.action === 'hold') {
         return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
@@ -310,6 +313,65 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (!cart) throw new CartError('Cart not found', 404);
       if (!['paid', 'card_issued', 'completed', 'refunding'].includes(cart.status) || !cart.payment_ref) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
       return this.refundCart(cart, { reason: 'admin', by: 'admin' });
+    },
+
+    // ─── Pay the store directly (settle 'direct', see direct.js) ─────────
+    // Set by the server: the UCP client that builds and follows store checkouts.
+    direct: null,
+
+    // The payer taps "Pay <store>": build the store's checkout (reused for 30
+    // minutes) and send them to it. Spot never takes this payment.
+    async directStart(token, { email = null, name = null } = {}) {
+      const cart = load(token);
+      if (cart.settle !== 'direct') throw new CartError('This cart isn’t paid at the store', 409);
+      if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already taken care of', 409);
+      if (!this.direct) throw new CartError('Paying the store directly isn’t available right now', 503);
+      const d = cart.direct;
+      if (d?.checkout_id && Date.now() - d.started_at < 30 * 60_000) {
+        const now = await this.directSync(token);
+        if (now.status !== 'open') throw new CartError('This cart is already taken care of', 409);
+        if (now.direct?.checkout_id) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
+      }
+      const started = await this.direct.start(cart, { email });
+      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
+      return { continue_url: started.continue_url, total_cents: started.total_cents };
+    },
+
+    // Ask the store how its checkout is going. When the store says it's
+    // completed, the cart completes with the store's order.
+    async directSync(token, { force = false } = {}) {
+      const cart = load(token);
+      const d = cart.direct;
+      if (cart.settle !== 'direct' || cart.status !== 'open' || !d?.checkout_id || !this.direct) return cart;
+      if (!force && d.checked_at && Date.now() - d.checked_at < 5000) return cart;
+      let st;
+      try {
+        st = await this.direct.status(d);
+      } catch (err) {
+        log.warn?.({ err, cart: cart.id }, 'store checkout status failed');
+        return this.patch(cart.id, (c) => ({ ...c, direct: { ...c.direct, checked_at: Date.now() } }));
+      }
+      if (st.status === 'completed') {
+        const done = move(db.byId(cart.id), 'store_paid', {
+          paid_at: Date.now(),
+          payer: cart.payer || (d.payer_name ? { name: d.payer_name } : null),
+          payer_contact: d.payer_email ? { email: d.payer_email } : cart.payer_contact || null,
+          fulfillment: { state: 'placed', method: 'direct', order_number: st.order_number, order_url: st.order_url, total_cents: st.total_cents, placed_at: Date.now() },
+        }, { order_number: st.order_number });
+        this.emit('approved', done.id, { by: cart.for === 'self' ? 'requester' : 'payer', amount_cents: st.total_cents, how: 'paid_at_store' });
+        this.emit('ordered', done.id);
+        return done;
+      }
+      if (st.status === 'canceled') return this.patch(cart.id, (c) => ({ ...c, direct: null }), 'store_checkout_canceled');
+      return this.patch(cart.id, (c) => ({ ...c, direct: { ...c.direct, checked_at: Date.now(), total_cents: st.total_cents ?? c.direct.total_cents } }));
+    },
+
+    // Follow open store checkouts (from the server's sweeper).
+    async sweepDirect() {
+      for (const id of db.idsDirectOpen()) {
+        const cart = db.byId(id);
+        if (cart) await this.directSync(cart.token, { force: true }).catch(() => {});
+      }
     },
 
     // ─── Refunds ─────────────────────────────────────────────────────────
@@ -578,9 +640,16 @@ export function publicCart(cart) {
     cart_cents: cart.cart_cents,
     cushion_cents: cart.cushion_cents || 0,
     fee_cents: cart.fee_cents,
+    // Paid on the store's own checkout: can the payer go ahead yet?
+    pay_at_store: cart.settle === 'direct' ? { ready: Boolean(cart.requester.shipping), started: Boolean(cart.direct?.checkout_id), store_total_cents: cart.direct?.total_cents ?? null } : null,
     total_cents: cart.total_cents,
     expires_at: cart.expires_at,
     payer_name: cart.payer?.name || null,
+    // Provenance: which AI put this together, or which store's button sent it.
+    built_by: cart.agent ? agentLabel(cart.agent) : null,
+    source: cart.source ? { kind: cart.source.kind, name: cart.source.name || null, verified: Boolean(cart.source.verified) } : null,
+    // Sent to an approver by the requester's own spending rules.
+    via_approver: Boolean(cart.approver),
   };
 }
 
