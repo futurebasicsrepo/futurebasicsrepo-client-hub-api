@@ -79,6 +79,13 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
       }).catch(() => 'failed');
     },
 
+    // Sign-in code by text. The last line lets phones offer the code as
+    // autofill (WebOTP, iOS one-time-code) bound to Spot's own domain.
+    async sendSignInText(phone, code, host) {
+      const bound = host ? `\n\n@${host} #${code}` : '';
+      return sms(phone, `Spot: ${code} is your sign-in code. It works for 10 minutes. Don't share it.${SMS_FOOTER}${bound}`).catch(() => 'failed');
+    },
+
     // Returns { email?: status, text?: status } for the channels asked for.
     async sendFinishLink(cart, link, { email: to, phone } = {}) {
       const msg = finishMessage(cart, link);

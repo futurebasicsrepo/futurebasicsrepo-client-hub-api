@@ -74,7 +74,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     -- Accounts: email sign-in with one-time codes; sessions by cookie.
     CREATE TABLE IF NOT EXISTS users (
       id          TEXT PRIMARY KEY,
-      email       TEXT NOT NULL UNIQUE,
+      email       TEXT UNIQUE,
       doc         TEXT NOT NULL DEFAULT '{}',
       created_at  INTEGER NOT NULL
     );
@@ -112,6 +112,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       revoked     INTEGER NOT NULL DEFAULT 0
     );
   `);
+  // Accounts made by text-message sign-in have no email: make it optional
+  // on databases created before that.
+  if (db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'email' && c.notnull)) {
+    db.exec(`BEGIN;
+      CREATE TABLE users_new (id TEXT PRIMARY KEY, email TEXT UNIQUE, doc TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+      INSERT INTO users_new (id, email, doc, created_at) SELECT id, email, doc, created_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      COMMIT;`);
+  }
   // api_keys gained an owner when accounts arrived.
   if (!db.prepare('PRAGMA table_info(api_keys)').all().some((c) => c.name === 'user_id')) db.exec('ALTER TABLE api_keys ADD COLUMN user_id TEXT');
 

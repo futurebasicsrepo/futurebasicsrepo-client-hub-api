@@ -31,6 +31,11 @@ const CSS = `
 pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overflow-x:auto;font-size:13px}
 .signin{max-width:460px;margin:30px auto 0}
 .code{letter-spacing:.4em;font:800 28px ui-monospace,monospace!important;text-align:center}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1.5px solid var(--line);border-radius:999px;padding:4px;margin:14px 0 10px}.seg[hidden]{display:none}
+.seg button{font:600 15px Bricolage,system-ui,sans-serif;border:0;background:none;color:var(--muted);padding:9px;border-radius:999px;cursor:pointer}
+.seg button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 4px rgba(27,23,18,.12)}
+.seg button:focus-visible{outline:3px solid var(--spot);outline-offset:1px}
+.f input[hidden]{display:none}
 .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;margin:18px 0 12px}.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .sso{display:grid;gap:10px}.sso[hidden],.or[hidden]{display:none}
 .sso-b{display:flex;align-items:center;justify-content:center;gap:10px;min-height:50px;border-radius:999px;font-weight:600;font-size:16px;text-decoration:none;border:1.5px solid var(--line)}
@@ -70,9 +75,10 @@ export function signinPage({ origin, providers = {} }) {
     title: 'Sign in · Spot',
     body: `<div class="signin box">
   <h1 style="font-size:38px">Sign in</h1>
-  <p class="sub" id="lead">We’ll email you a 6-digit code. No password needed.</p>
-  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email" aria-label="Email"><button class="btn primary">Email me a code</button></form>
-  <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Use a different email</button></form>
+  <p class="sub" id="lead">We’ll send you a 6-digit code. No password needed.</p>
+  <div class="seg" role="tablist" aria-label="Send the code by" id="seg"><button type="button" role="tab" aria-selected="true" data-mode="email">Email</button><button type="button" role="tab" aria-selected="false" data-mode="phone">Text</button></div>
+  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>Msg &amp; data rates may apply. Reply STOP to opt out.</p></form>
+  <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
   ${Object.keys(providers).length ? `<div class="or" id="or"><span>or</span></div><div class="sso" id="sso">${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>` : ''}
   <p class="err" id="err"></p>
   <p class="sub" style="font-size:13px;margin:14px 0 0">By continuing you agree to Spot’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
@@ -81,16 +87,24 @@ export function signinPage({ origin, providers = {} }) {
 const ERRORS=${JSON.stringify(ERRORS)};
 const q=new URLSearchParams(location.search);if(ERRORS[q.get('error')])$('#err').textContent=ERRORS[q.get('error')];
 const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';return n.startsWith('/')&&!n.startsWith('//')?n:'/account'})();
-let email='';
-$('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=e.target.querySelector('button');b.disabled=true;
-  try{email=$('#email').value.trim();const r=await post('/v1/auth/start',{email});
-    $('#emailForm').hidden=true;$('#codeForm').hidden=false;if($('#or')){$('#or').hidden=true;$('#sso').hidden=true}$('#lead').textContent='Enter the code we sent to '+email+'.';
-    if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no email service yet): your code is '+r.code;$('#code').value=r.code}
+let mode='email',who='';
+const setMode=m=>{mode=m;document.querySelectorAll('#seg button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.mode===m)));
+  const ph=m==='phone';$('#email').hidden=ph;$('#email').required=!ph;$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsNote').hidden=!ph;
+  $('#sendBtn').textContent=ph?'Text me a code':'Email me a code';(ph?$('#phone'):$('#email')).focus();try{localStorage.setItem('spot:signin',m)}catch{}};
+$('#seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode)});
+try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}
+$('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#sendBtn');b.disabled=true;
+  try{who=(mode==='phone'?$('#phone'):$('#email')).value.trim();const r=await post('/v1/auth/start',mode==='phone'?{phone:who}:{email:who});
+    $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;if($('#or')){$('#or').hidden=true;$('#sso').hidden=true}$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
+    if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no '+(mode==='phone'?'texting':'email')+' service yet): your code is '+r.code;$('#code').value=r.code}
     $('#code').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=e.target.querySelector('button');b.disabled=true;
-  try{await post('/v1/auth/verify',{email,code:$('#code').value});location.href=next}catch(err){$('#err').textContent=err.message;b.disabled=false}});
+  try{await post('/v1/auth/verify',{[mode==='phone'?'phone':'email']:who,code:$('#code').value});location.href=next}catch(err){$('#err').textContent=err.message;b.disabled=false}});
+// Phones that support it fill the code straight from the text (WebOTP).
+if('OTPCredential' in window){const ac=new AbortController();$('#codeForm').addEventListener('submit',()=>ac.abort());
+  $('#emailForm').addEventListener('submit',()=>{if(mode==='phone')navigator.credentials.get({otp:{transport:['sms']},signal:ac.signal}).then(o=>{if(o&&o.code){$('#code').value=o.code;$('#codeForm').requestSubmit()}}).catch(()=>{})})}
 document.querySelectorAll('.sso-b').forEach(a=>{a.href='/auth/'+a.dataset.p+'/start?next='+encodeURIComponent(next)});
-$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#emailForm').hidden=false;if($('#or')){$('#or').hidden=false;$('#sso').hidden=false}$('#lead').textContent='We’ll email you a 6-digit code. No password needed.'};`,
+$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;if($('#or')){$('#or').hidden=false;$('#sso').hidden=false}$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
   });
 }
 
@@ -110,6 +124,7 @@ export function accountPage({ origin }) {
     <input name="line2" placeholder="Apt, suite (optional)" autocomplete="address-line2" aria-label="Apt or suite">
     <div class="three"><input name="city" placeholder="City" autocomplete="address-level2" aria-label="City"><input name="state" placeholder="State" autocomplete="address-level1" aria-label="State"><input name="postal_code" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" aria-label="ZIP"></div>
     <input name="phone" type="tel" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone">
+    <input name="email" type="email" placeholder="Email for receipts" autocomplete="email" aria-label="Email for receipts">
     <div class="btnrow"><button class="btn primary">Save address</button><span class="ok-msg" id="shipOk"></span></div>
   </form>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
@@ -127,11 +142,11 @@ let me=null;
 async function load(){
   const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/account';return}
   me=await r.json();const u=me.user;
-  $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+u.email;
+  $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||u.phone);
   $('#readySec').hidden=!me.ready.length;
   $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
   $('#carts').innerHTML=me.carts.length?me.carts.map(c=>{const [l,t]=LABEL[c.status]||[c.status,''];return '<a class="item" href="'+esc(c.manage_url)+'"><span>'+esc(c.items[0]?.title||'Cart')+(c.items.length>1?' +'+(c.items.length-1):'')+'<span class="st '+(c.held?'warn':t)+'">'+(c.held?'checking':l)+'</span><small>'+esc(c.merchant.name)+(c.for==='self'?' · for you':' · '+(c.payer_name?esc(c.payer_name)+' spotted you':'someone else pays'))+' · '+new Date(c.created_at).toLocaleDateString()+'</small></span><span class="amt">'+usd(c.total_cents)+'</span></a>'}).join(''):'<p class="sub" style="margin:0">No Spots yet. <a href="/new">Make one</a>, or ask your AI.</p>';
-  const s=Object.assign({name:u.name||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
+  const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   $('#keys').innerHTML=me.keys.length?me.keys.map(k=>'<div class="trav"><span>'+esc(k.name)+' <small class="sub">· '+(k.revoked?'disconnected':'connected '+new Date(k.created_at).toLocaleDateString())+'</small></span>'+(k.revoked?'':'<button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button>')+'</div>').join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
 }

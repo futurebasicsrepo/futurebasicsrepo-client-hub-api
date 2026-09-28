@@ -100,7 +100,7 @@ export function termsPage({ origin, env = process.env }) {
 
 <h2 id="texts">9. Text messages</h2>
 <ul>
-<li><b>Program:</b> Spot order and trip messages. When you (or an assistant acting at your request) ask Spot to send a link to your phone, we text you that link and updates about that cart or trip. We don’t send marketing texts.</li>
+<li><b>Program:</b> Spot sign-in codes, and order and trip messages. When you ask to sign in by text, we text you a one-time code. When you (or an assistant acting at your request) ask Spot to send a link to your phone, we text you that link and updates about that cart or trip. We don’t send marketing texts.</li>
 <li><b>Frequency:</b> varies; usually one to three messages per request.</li>
 <li><b>Cost:</b> message and data rates may apply.</li>
 <li><b>Opt out:</b> reply <b>STOP</b> at any time and we won’t text that number again. Reply <b>START</b> to opt back in, or <b>HELP</b> for help. You can also email <a href="mailto:${email}">${email}</a>.</li>
@@ -142,7 +142,7 @@ export function privacyPage({ origin, env = process.env }) {
 <li><b>Payers:</b> Stripe collects the card or wallet details; we receive only the payer’s first name, the amount and whether it succeeded. We never see or store the payer’s card number.</li>
 <li><b>One-time cards:</b> the card is held by Stripe. We show its details only on the requester’s private page and use them only to check out at that store.</li>
 <li><b>Flights:</b> each traveler’s name, date of birth and gender as on their ID, plus a contact email and phone, which airlines require.</li>
-<li><b>Accounts:</b> if you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
+<li><b>Accounts:</b> if you sign in by text, your mobile number. If you sign in with Google or Facebook, we receive your name, email address and an account ID from them, and nothing else (no contacts, posts or friends). Your email, and anything you choose to save (your name, shipping address, travelers’ names and dates of birth), plus which Spots and AI connections belong to your account.</li>
 <li><b>Agents and developers:</b> your email and API key usage.</li>
 <li><b>Technical:</b> IP address, browser type and basic logs, for security and to keep Spot working.</li>
 </ul>

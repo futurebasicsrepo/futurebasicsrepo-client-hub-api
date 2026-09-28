@@ -97,3 +97,55 @@ test('an account holds your Spots, saved details, and asks from your own AI', as
   await call('POST', '/v1/auth/logout', {}, H);
   assert.equal((await call('GET', '/v1/me', undefined, H)).status, 401);
 });
+
+test('sign in with a texted code: its own account, autofill line, STOP respected', async (t) => {
+  const texts = [];
+  const notifyFetch = async (url, init) => {
+    texts.push(new URLSearchParams(String(init.body)).get('Body'));
+    return new Response('{}', { status: 200 });
+  };
+  const twilio = { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15125550000', PUBLIC_URL: 'https://spotmeplease.com' };
+  const { call } = app(t, { notifyFetch, env: twilio });
+
+  assert.equal((await call('POST', '/v1/auth/start', { phone: '12' })).status, 400);
+  const start = await call('POST', '/v1/auth/start', { phone: '(512) 555-0100' });
+  assert.deepEqual(start.body, { sent: 'text' }, 'the code is never in the response when texting works');
+  const code = texts[0].match(/^Spot: (\d{6}) is your sign-in code/)[1];
+  assert.match(texts[0], /Reply STOP to opt out\./);
+  assert.ok(texts[0].endsWith(`@spotmeplease.com #${code}`), 'WebOTP line binds the code to the domain');
+
+  const v = await call('POST', '/v1/auth/verify', { phone: '+1 512 555 0100', code });
+  assert.equal(v.status, 200);
+  const H = { cookie: v.headers['set-cookie'].split(';')[0] };
+  let me = (await call('GET', '/v1/me', undefined, H)).body;
+  assert.equal(me.user.phone, '+15125550100');
+  assert.equal(me.user.email, null);
+
+  // Receipts need an email: a phone-only account adds one with the address.
+  const ship = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' };
+  assert.equal((await call('POST', '/v1/me', { shipping: ship }, H)).status, 400);
+  assert.equal((await call('POST', '/v1/me', { shipping: { ...ship, email: 'kyle@example.com' } }, H)).status, 200);
+  me = (await call('GET', '/v1/me', undefined, H)).body;
+  assert.equal(me.user.phone, '+15125550100', 'phone kept after saving');
+  assert.equal((await call('POST', '/v1/me/keys', {}, H)).status, 201);
+
+  // The same number later: the same account.
+  await call('POST', '/v1/auth/start', { phone: '5125550100' });
+  const again = await call('POST', '/v1/auth/verify', { phone: '5125550100', code: texts.at(-1).match(/(\d{6})/)[1] });
+  const H2 = { cookie: again.headers['set-cookie'].split(';')[0] };
+  assert.equal((await call('GET', '/v1/me', undefined, H2)).body.user.shipping.postal_code, '78701');
+
+});
+
+test('texted code in test mode shows on screen; opted-out numbers are refused', async (t) => {
+  const db = openDb(':memory:');
+  const { call } = app(t, { db });
+  const r = await call('POST', '/v1/auth/start', { phone: '5125550100' });
+  assert.equal(r.body.sent, 'screen');
+  assert.match(r.body.code, /^\d{6}$/);
+  // STOP normally arrives through the Twilio webhook.
+  db.optouts.add('+15125550177');
+  const stopped = await call('POST', '/v1/auth/start', { phone: '512-555-0177' });
+  assert.equal(stopped.status, 409);
+  assert.match(stopped.body.error, /replied STOP/);
+});

@@ -95,11 +95,12 @@ US texting needs an approved **A2P 10DLC** brand and campaign. Until they're app
 
 1. **Buy a number:** twilio.com → Phone Numbers → Buy a number (a US local number).
 2. **Register the brand:** Messaging → Regulatory compliance → A2P 10DLC. You'll need your legal business name, EIN and address.
-3. **Register the campaign.** Use case: *Account notifications* (or *Customer care*). Paste this:
-   - **Description:** Spot sends transactional texts only to people who ask for them: a private link to review and pay for a shopping cart or flight that their AI assistant prepared for them, and updates about that order or trip. No marketing.
+3. **Register the campaign.** Use case: *Mixed* (sign-in codes plus account notifications). Paste this:
+   - **Description:** Spot sends transactional texts only to people who ask for them: one-time sign-in codes when they choose to sign in by text, and a private link to review and pay for a shopping cart or flight that their AI assistant prepared for them, with updates about that order or trip. No marketing.
+   - **Sample 0 (sign-in):** `Spot: 482913 is your sign-in code. It works for 10 minutes. Don't share it. Reply STOP to opt out.`
    - **Sample 1:** `Spot: Your cart is ready 🛒 Dunk Low from Nike, $119.60. Finish on your phone: https://spotmeplease.com/c/Ab12Cd34Ef56/manage?k=… Reply STOP to opt out.`
    - **Sample 2:** `Spot: Your flight is ready ✈️ AUS → SFO · Fri, Oct 17, Delta, $258.96. The fare only holds for a bit. Finish on your phone: https://spotmeplease.com/c/Gh78Ij90Kl12/manage?k=… Reply STOP to opt out.`
-   - **How people opt in:** A user asks their AI assistant, which is connected to Spot, to text them a link, and gives their own mobile number in that request. Spot's terms only allow agents to text a user's own number with their permission (https://spotmeplease.com/terms#texts). Every message names Spot and says how to opt out.
+   - **How people opt in:** For sign-in codes, a user types their own mobile number on https://spotmeplease.com/signin, chooses Text, and taps "Text me a code". The page shows "Msg & data rates may apply. Reply STOP to opt out." and links the Terms. For links, a user asks their AI assistant, which is connected to Spot, to text them a link, and gives their own mobile number in that request. Spot's terms only allow agents to text a user's own number with their permission (https://spotmeplease.com/terms#texts). Every message names Spot and says how to opt out.
    - **Opt-out message:** `Spot: You're unsubscribed and won't get more texts. Reply START to resubscribe.`
    - **Help message:** `Spot: order and trip texts you asked for. Help: hello@spotmeplease.com. Msg & data rates may apply. Reply STOP to opt out.`
    - **Privacy and terms links:** https://spotmeplease.com/privacy and https://spotmeplease.com/terms
