@@ -78,6 +78,8 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   const issueToken = user => new SignJWT({ handle: user.handle })
     .setProtectedHeader({ alg: 'HS256' }).setSubject(String(user.id)).setIssuedAt().setExpirationTime('30d').sign(jwtSecret);
   const userView = row => ({ id: Number(row.id), handle: row.handle, displayName: row.display_name, bio: row.bio, createdAt: row.created_at });
+  // Your own account also carries your email (never shown on public profiles).
+  const ownView = row => ({ ...userView(row), email: row.email });
 
   const baseUrl = req => (process.env.PUBLIC_API_URL || `${req.protocol}://${req.host}`).replace(/\/$/, '');
   const mediaUrl = (req, key, open) => {
@@ -234,7 +236,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
       const { rows } = await pool.query(
         `insert into users (email, handle, display_name, password_hash) values ($1, $2, $3, $4) returning *`,
         [email, handle, displayName, await hashPassword(password)]);
-      return reply.code(201).send({ token: await issueToken(rows[0]), user: userView(rows[0]) });
+      return reply.code(201).send({ token: await issueToken(rows[0]), user: ownView(rows[0]) });
     } catch (error) {
       if (error.code === '23505') return fail(reply, 409, error.constraint?.includes('handle') ? 'That handle is taken.' : 'That email already has an account.');
       throw error;
@@ -248,13 +250,13 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     const ok = rows[0] && await verifyPassword(String(req.body?.password || ''), rows[0].password_hash);
     if (!ok) return fail(reply, 401, 'Wrong email/handle or password.');
     if (rows[0].banned_at) return fail(reply, 403, 'This account has been suspended for breaking the community rules.');
-    return { token: await issueToken(rows[0]), user: userView(rows[0]) };
+    return { token: await issueToken(rows[0]), user: ownView(rows[0]) };
   });
 
   app.get('/v1/me', { preHandler: requireUser }, async (req, reply) => {
     const { rows } = await pool.query(`select * from users where id = $1`, [req.user.id]);
     if (!rows[0]) return fail(reply, 401, 'Sign in to continue.');
-    return { user: { ...userView(rows[0]), role: await moderation.roleOf(req.user) } };
+    return { user: { ...ownView(rows[0]), role: await moderation.roleOf(req.user) } };
   });
 
   app.patch('/v1/me', { preHandler: requireUser }, async (req, reply) => {
@@ -264,7 +266,7 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     const { rows } = await pool.query(
       `update users set display_name = coalesce($2, display_name), bio = coalesce($3, bio) where id = $1 returning *`,
       [req.user.id, displayName, bio]);
-    return { user: userView(rows[0]) };
+    return { user: ownView(rows[0]) };
   });
 
   // ---------- discovery ----------
