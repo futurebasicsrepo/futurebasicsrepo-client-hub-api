@@ -218,6 +218,22 @@ Other people's profiles show their Posts and the public matches they kept score 
 - **Co-scorekeepers:** the match creator can add up to 3 people by handle to run the scoreboard with them. Handy when the scorekeeper is also filming. Co-keepers can step down themselves.
 - Setup: set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` on the API (generate them with `npx web-push generate-vapid-keys`). Without them, follows still work and alerts are simply off.
 
+## Squads
+
+Whoever first names a team (by starting a match or entering a tournament) owns it and can add up to 5 managers from the team page (`/t/:slug`). Managers keep the squad: name, shirt number (unique per team), and position. Scorekeepers see both squads as chips under the Goal and card buttons: tap a player, then tap Goal, and the event carries their name and counts toward their goals on the team page. Removing a player keeps their name on past timelines. A team that has played a youth match (or is switched to youth) shows its squad only to its managers.
+
+API: `GET /v1/teams/:slug` (squad, managers, `canManage`), `GET /v1/me/teams`, `POST|PATCH|DELETE /v1/teams/:slug/players[/:id]`, `POST|DELETE /v1/teams/:slug/managers[/:handle]`, `PATCH /v1/teams/:slug {youth}`. Goals and cards take an optional `playerId` from the side's squad.
+
+## Tournaments
+
+Single-elimination cups at `/tournaments`. The organizer sets capacity (2–64), half length, venue, date, and whether sign-ups need approval or are first come, first in. Team managers enter a team they run, or a new name, which creates the team with them as owner. An existing team can only be entered by its managers.
+
+The organizer approves entries, then draws the bracket, either randomly or seeded by entry order. Brackets round up to the next power of two, and the top seeds get byes. Each tie becomes an ordinary match, which the organizer scorekeeps and can add co-scorekeepers to. At full time the winner moves on automatically, and the next tie's match is created as soon as both sides are known.
+
+A result can still change until the next tie kicks off, for example through an undone goal or an auto-ended match being resumed. After that kick-off the bracket holds. A draw at full time waits for the organizer to pick the penalty winner. A tie that won't be played can be settled as a walkover. The final's winner is crowned champion. Youth tournaments are unlisted, and their teams become youth teams.
+
+API: `GET|POST /v1/tournaments` (`?filter=open|running|finished|mine`), `GET|PATCH /v1/tournaments/:id`, `POST /v1/tournaments/:id/teams`, `PATCH|DELETE /v1/tournaments/:id/teams/:slug`, `POST /v1/tournaments/:id/start {shuffle}`, `POST /v1/tournaments/:id/slots/:slotId/winner {side, note}`. Bracket rules are in `api/src/bracket.js`.
+
 ## Fandom communities
 
 A fandom (`/f/:slug`) is a community: part Discord server, part subreddit.

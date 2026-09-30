@@ -286,6 +286,71 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists matches_live on matches (period_started_at) where period in ('1h','ht','2h');
+
+    -- Rosters: a team's managers keep its squad list; scorekeepers pick scorers from it.
+    alter table teams add column if not exists youth boolean not null default false;
+    create table if not exists team_managers (
+      team_id bigint not null references teams(id) on delete cascade,
+      user_id bigint not null references users(id) on delete cascade,
+      added_by bigint references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      primary key (team_id, user_id)
+    );
+    create table if not exists team_players (
+      id bigserial primary key,
+      team_id bigint not null references teams(id) on delete cascade,
+      name text not null,
+      number integer check (number between 0 and 99),
+      position text not null default '' check (position in ('','GK','DF','MF','FW')),
+      created_at timestamptz not null default now()
+    );
+    create index if not exists team_players_team on team_players (team_id);
+    alter table match_events add column if not exists player_id bigint references team_players(id) on delete set null;
+
+    -- Tournaments: team registration, then a single-elimination bracket whose slots become matches.
+    create table if not exists tournaments (
+      id text primary key,
+      name text not null,
+      description text not null default '',
+      status text not null default 'registration' check (status in ('registration','running','finished')),
+      capacity integer not null default 8 check (capacity between 2 and 64),
+      approval text not null default 'manual' check (approval in ('manual','auto')),
+      half_length integer not null default 20 check (half_length between 5 and 60),
+      venue text not null default '',
+      starts_at timestamptz not null default now(),
+      youth boolean not null default false,
+      visibility text not null default 'public' check (visibility in ('public','unlisted')),
+      rounds integer,
+      champion_team_id bigint references teams(id) on delete set null,
+      created_by bigint not null references users(id) on delete cascade,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists tournaments_starts on tournaments (starts_at desc);
+    create table if not exists tournament_teams (
+      tournament_id text not null references tournaments(id) on delete cascade,
+      team_id bigint not null references teams(id) on delete cascade,
+      status text not null default 'pending' check (status in ('pending','approved','rejected')),
+      seed integer,
+      note text not null default '',
+      registered_by bigint references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      primary key (tournament_id, team_id)
+    );
+    create table if not exists bracket_slots (
+      id bigserial primary key,
+      tournament_id text not null references tournaments(id) on delete cascade,
+      round integer not null,
+      slot integer not null,
+      home_team_id bigint references teams(id) on delete set null,
+      away_team_id bigint references teams(id) on delete set null,
+      winner_team_id bigint references teams(id) on delete set null,
+      match_id text unique references matches(id) on delete set null,
+      bye boolean not null default false,
+      decided text check (decided in ('score','penalties','walkover','bye')),
+      note text not null default '',
+      unique (tournament_id, round, slot)
+    );
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());

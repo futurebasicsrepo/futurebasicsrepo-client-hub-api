@@ -8,6 +8,8 @@ import * as storage from './storage.js';
 import { registerMatches } from './matches.js';
 import { registerCommunity } from './community.js';
 import { registerModeration } from './moderation.js';
+import { registerTeams } from './teams.js';
+import { registerTournaments } from './tournaments.js';
 import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
@@ -172,6 +174,9 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
     }
   });
   hooks.fulltime = matchId => reels.enqueue(matchId);
+  const teams = registerTeams(app, { pool, fail, requireUser, MATCH_SELECT: matchCentre.MATCH_SELECT });
+  const tournaments = registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT: matchCentre.MATCH_SELECT, teams, teamId: matchCentre.teamId });
+  hooks.matchChanged = matchId => tournaments.settle(matchId);
   app.decorate('reels', reels);
   app.decorate('sweepStaleMatches', matchCentre.sweepStaleMatches);
   live = registerLive(app, { pool, fail, requireUser, matchCentre, baseUrl, log: app.log, notifier });

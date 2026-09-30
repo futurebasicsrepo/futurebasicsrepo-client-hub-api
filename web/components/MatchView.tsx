@@ -35,6 +35,8 @@ export default function MatchView({ id }: { id: string }) {
   const [snap, setSnap] = useState<MatchSnapshot | null>(null);
   const [missing, setMissing] = useState(false);
   const [player, setPlayer] = useState('');
+  // A squad member picked for the next goal or card on their side.
+  const [picked, setPicked] = useState<{ side: 'home' | 'away'; id: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -62,7 +64,8 @@ export default function MatchView({ id }: { id: string }) {
     source.addEventListener('update', event => {
       const data = JSON.parse((event as MessageEvent).data) as MatchSnapshot;
       skew.current = Date.parse(data.serverTime) - Date.now();
-      setSnap({ ...data, match: { ...data.match, ...viewer.current } });
+      // The stream is anonymous, so it carries no squads; keep the ones this scorekeeper already has.
+      setSnap(prev => ({ ...data, rosters: data.rosters ?? prev?.rosters, match: { ...data.match, ...viewer.current } }));
       setConnected(true);
     });
     source.addEventListener('crowd', event => setWatching(JSON.parse((event as MessageEvent).data).watching));
@@ -144,8 +147,10 @@ export default function MatchView({ id }: { id: string }) {
     setBusy(true);
     setError('');
     try {
-      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/events`, { method: 'POST', body: { ...body, player: player || undefined } }));
+      const scorer = picked && picked.side === body.side && body.type !== 'note' ? picked.id : undefined;
+      adopt(await api<MatchSnapshot>(`/v1/matches/${id}/events`, { method: 'POST', body: { ...body, playerId: scorer, player: scorer ? undefined : player || undefined } }));
       setPlayer('');
+      setPicked(null);
       if (navigator.vibrate) navigator.vibrate(30);
     } catch (err) {
       setError((err as Error).message);
@@ -236,7 +241,9 @@ export default function MatchView({ id }: { id: string }) {
       <ViewTransition name={`match-${id}`} share="morph" default="none">
       <section className={`scoreboard${goal ? ' shake' : ''}`}>
         <div className="scoreboard-meta">
-          <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>
+          {match.tournament
+            ? <Link href={`/tournaments/${match.tournament.id}`} className="mono scoreboard-cup">🏆 {match.tournament.name} · {match.tournament.round}{match.venue ? ` · ${match.venue}` : ''}</Link>
+            : <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>}
           {match.youth && <span className="badge sky">Youth · unlisted</span>}
         </div>
         <div className="scoreboard-main">
@@ -280,7 +287,7 @@ export default function MatchView({ id }: { id: string }) {
           )}
           {match.period !== 'pre' && (
             <>
-              <input className="input" value={player} onChange={e => setPlayer(e.target.value)} maxLength={60} placeholder="Player or note (optional)" aria-label="Player" />
+              <input className="input" value={player} onChange={e => setPlayer(e.target.value)} maxLength={60} placeholder={snap.rosters && (snap.rosters.home.length || snap.rosters.away.length) ? 'Not in the squad? Type a name or note' : 'Player or note (optional)'} aria-label="Player" disabled={Boolean(picked)} />
               <div className="keeper-grid">
                 {(['home', 'away'] as const).map(side => (
                   <div key={side} className="stack" style={{ gap: 8 }}>
@@ -290,6 +297,18 @@ export default function MatchView({ id }: { id: string }) {
                       <button className="btn btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => send({ type: 'yellow', side })}>🟨</button>
                       <button className="btn btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => send({ type: 'red', side })}>🟥</button>
                     </div>
+                    {snap.rosters?.[side].length ? (
+                      <div className="squad-chips" role="group" aria-label={`${match[side].name} squad`}>
+                        {snap.rosters[side].map(p => {
+                          const on = picked?.side === side && picked.id === p.id;
+                          return (
+                            <button key={p.id} type="button" className="squad-chip" aria-pressed={on} onClick={() => setPicked(on ? null : { side, id: p.id })}>
+                              {p.number != null && <b>{p.number}</b>}{p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : snap.rosters && <Link href={`/t/${match[side].slug}`} className="hint">+ Add a squad</Link>}
                   </div>
                 ))}
               </div>
