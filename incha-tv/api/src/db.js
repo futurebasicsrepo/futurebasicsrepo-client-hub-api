@@ -351,6 +351,31 @@ export async function migrate() {
       note text not null default '',
       unique (tournament_id, round, slot)
     );
+
+    -- Entry fees, paid through incha's Shopify store (see src/payments.js) or recorded by hand.
+    alter table tournaments add column if not exists entry_fee_cents integer not null default 0 check (entry_fee_cents between 0 and 100000);
+    alter table tournaments add column if not exists currency text not null default 'USD';
+    alter table tournament_teams add column if not exists payment_status text not null default 'none'
+      check (payment_status in ('none','unpaid','pending','paid','waived','refunded'));
+    alter table tournament_teams add column if not exists payment_ref text unique;
+    alter table tournament_teams add column if not exists amount_cents integer;
+    alter table tournament_teams add column if not exists checkout_url text;
+    alter table tournament_teams add column if not exists checkout_at timestamptz;
+    alter table tournament_teams add column if not exists order_id text;
+    alter table tournament_teams add column if not exists order_name text;
+    alter table tournament_teams add column if not exists paid_at timestamptz;
+    alter table tournament_teams add column if not exists payment_note text not null default '';
+    create table if not exists payment_events (
+      id bigserial primary key,
+      provider text not null,
+      external_id text not null,
+      topic text not null,
+      reference text,
+      outcome text not null default '',
+      payload jsonb,
+      created_at timestamptz not null default now(),
+      unique (provider, external_id)
+    );
   `);
   const values = SEED_FANDOMS.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(',');
   await pool.query(`insert into fandoms (slug, name) values ${values} on conflict (slug) do nothing`, SEED_FANDOMS.flat());
