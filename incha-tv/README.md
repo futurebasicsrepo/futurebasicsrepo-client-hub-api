@@ -277,6 +277,22 @@ While `GATE_EMAILS` and/or `GATE_HANDLES` (comma-separated) and `GATE_SECRET` ar
 - The API fetches the feed once for everyone (`GET /v1/world/scores?date=YYYY-MM-DD`). It caches for 20 seconds while games are live and 2 minutes otherwise. League names are looked up once a day. If the feed fails, the API keeps serving the last good scores, flagged as `stale`.
 - **Licensing:** the ESPN feed is public but unofficial, with no SLA, and it may change. It's fine for a v1, but move to a licensed provider (for example API-Football or Sportradar) before relying on it commercially. Everything provider-specific lives in `api/src/worldscores.js`, so a new provider only needs to return the same shape. Team crests aren't shown, to stay clear of trademark issues.
 
+### Odds and trends
+
+World scorecards show the bookmaker's lines when the feed has them. ESPN carries DraftKings' lines for these games; incha.tv doesn't fetch sportsbook data directly.
+- Each team line shows its moneyline, and the row below shows the draw price, goals total and spread.
+- Lines are shown before kick-off and, labelled "pre-match", during play. They're dropped after full time. Sportsbook links in the feed are stripped out.
+- Tapping **Trends** opens a market read computed in `web/lib/odds.ts`:
+  - implied chances with the bookmaker's margin removed
+  - line movement since the line opened
+  - which side of the goals total the market leans to
+  - last-5 form and form gaps
+  - a flag when the market favours the side in worse form
+
+Fans can hide odds with the "Odds" toggle, which is remembered on the device. A note under the list says odds are for information only, with a 21+ and 1-800-GAMBLER line.
+
+Odds never appear on grassroots or youth matches. Those games have no bookmaker lines, and betting content doesn't belong next to amateur and kids' games.
+
 ## Next steps (not in v1)
 
 

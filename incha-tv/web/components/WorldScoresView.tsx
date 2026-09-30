@@ -7,6 +7,7 @@ import WorldMatchRow from './WorldMatchRow';
 import MatchesSwitch from './MatchesSwitch';
 
 const FOLLOW_KEY = 'incha.followedLeagues';
+const ODDS_KEY = 'incha.showOdds';
 const localDay = (offset: number) => {
   const d = new Date(Date.now() + offset * 86400_000);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -19,6 +20,13 @@ export default function WorldScoresView() {
   const [query, setQuery] = useState('');
   const [followed, setFollowed] = useState<string[]>([]);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Odds are on by default; fans who don't bet can hide them (remembered on this device).
+  const [showOdds, setShowOdds] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem(ODDS_KEY) === 'off') setShowOdds(false); } catch { /* storage unavailable */ } }, []);
+  const toggleOdds = () => setShowOdds(v => {
+    try { localStorage.setItem(ODDS_KEY, v ? 'off' : 'on'); } catch { /* storage unavailable */ }
+    return !v;
+  });
   const { data, error } = useWorldScores(offset === 0 ? undefined : localDay(offset), offset === 0);
 
   // Followed leagues are a per-device convenience.
@@ -63,6 +71,7 @@ export default function WorldScoresView() {
             <i aria-hidden="true" />Live{data ? ` · ${data.live}` : ''}
           </button>
         )}
+        <button className={`chip${showOdds ? ' active' : ''}`} aria-pressed={showOdds} onClick={toggleOdds}>Odds</button>
         <input className="input world-search" type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Find a team or league" aria-label="Find a team or league" />
       </div>
 
@@ -91,11 +100,17 @@ export default function WorldScoresView() {
                 </button>
                 <button className={`world-star${following ? ' on' : ''}`} onClick={() => toggleFollow(league.slug)} aria-pressed={following} aria-label={following ? `Unfollow ${league.name}` : `Follow ${league.name}`}>{following ? '★' : '☆'}</button>
               </header>
-              {expanded && <div className="world-matches">{league.matches.map(m => <WorldMatchRow key={m.id} match={m} />)}</div>}
+              {expanded && <div className="world-matches">{league.matches.map(m => <WorldMatchRow key={m.id} match={m} odds={showOdds} />)}</div>}
             </section>
           );
         })}
       </div>
+      {showOdds && (
+        <p className="hint world-credit odds-note">
+          Odds are the bookmaker’s current prices (DraftKings via ESPN), shown for information only; they change quickly and may differ from your sportsbook.
+          Trends are arithmetic on those prices and recent results, not predictions. 21+ where legal. Gambling problem? Call 1-800-GAMBLER.
+        </p>
+      )}
       <p className="hint world-credit">Pro and international scores via ESPN, updated every 20 seconds while games are live. Grassroots scores are kept by fans on incha.tv.</p>
     </div>
   );

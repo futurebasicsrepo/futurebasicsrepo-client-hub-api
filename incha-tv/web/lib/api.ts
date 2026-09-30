@@ -174,7 +174,19 @@ export interface BracketRound { round: number; name: string; slots: BracketSlot[
 export interface TournamentView { tournament: Tournament; teams: TournamentEntry[]; bracket: BracketRound[] | null; serverTime: string }
 
 // Pro & international football (see api/src/worldscores.js).
-export interface WorldSide { name: string; short: string; abbr: string; score: number | null; winner: boolean }
+export interface WorldSide {
+  name: string; short: string; abbr: string; score: number | null; winner: boolean;
+  /** Last-five form ("WDLWW") and season record ("W-D-L"), when the feed has them. */
+  form?: { form: string | null; record: string | null } | null;
+}
+/** American odds (+140, -170). `open` is the opening line; the rest are current. */
+export interface WorldOdds {
+  provider: string | null;
+  moneyline: { home: number | null; draw: number | null; away: number | null };
+  open: { home: number | null; draw: number | null; away: number | null } | null;
+  total: { line: number; over: number | null; under: number | null } | null;
+  spread: { home: number; homeOdds: number | null; awayOdds: number | null } | null;
+}
 export interface WorldMatch {
   id: string;
   league: { slug: string; name: string };
@@ -184,6 +196,7 @@ export interface WorldMatch {
   home: WorldSide;
   away: WorldSide;
   venue: string | null;
+  odds?: WorldOdds | null;
 }
 export interface WorldLeague { slug: string; name: string; live: number; matches: WorldMatch[] }
 export interface WorldScores { updatedAt: string; live: number; total: number; leagues: WorldLeague[]; stale?: boolean }
