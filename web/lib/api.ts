@@ -155,6 +155,7 @@ export type TournamentStatus = 'registration' | 'running' | 'finished';
 export interface TournamentCard {
   id: string; name: string; status: TournamentStatus; capacity: number; approved: number; venue: string; startsAt: string; youth: boolean;
   organizer: { handle: string; displayName: string }; champion: Team | null;
+  entryFeeCents?: number; currency?: string;
 }
 export interface Tournament {
   id: string; name: string; description: string; status: TournamentStatus; capacity: number; approval: 'manual' | 'auto';
@@ -163,9 +164,21 @@ export interface Tournament {
   champion: Team | null;
   isOrganizer: boolean;
   counts: { approved: number; pending: number };
+  /** Entry fee per team, in cents (0 = free). */
+  entryFeeCents: number;
+  currency: string;
+  /** Teams can pay online through Shopify; otherwise the organizer records payments by hand. */
+  payOnline: boolean;
+  /** Organizer only: total paid so far, in cents. */
+  collectedCents?: number;
   createdAt: string;
 }
-export interface TournamentEntry { slug: string; name: string; status: 'pending' | 'approved' | 'rejected'; seed: number | null; players: number; mine: boolean; note?: string }
+export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'waived' | 'refunded';
+export interface TournamentEntry {
+  slug: string; name: string; status: 'pending' | 'approved' | 'rejected'; seed: number | null; players: number; mine: boolean; note?: string;
+  /** Organizer and the team's own managers only; null for free tournaments. */
+  payment?: { status: PaymentStatus; amountCents: number | null; orderName: string | null; paidAt: string | null; note: string } | null;
+}
 export interface BracketSlot {
   id: number; slot: number; home: Team | null; away: Team | null; winner: 'home' | 'away' | null; bye: boolean;
   decided: 'score' | 'penalties' | 'walkover' | 'bye' | null; note: string; match: Match | null; awaitingDecision: boolean;

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api, type TournamentCard } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import MatchesSwitch from '@/components/MatchesSwitch';
-import { cupDate } from '@/components/TournamentView';
+import { cupDate, money } from '@/components/TournamentView';
 
 type Tab = 'open' | 'running' | 'finished' | 'mine';
 const LABELS: Record<Tab, string> = { open: 'Open to enter', running: 'In progress', finished: 'Finished', mine: 'Mine' };
@@ -58,7 +58,7 @@ export default function TournamentsPage() {
                   <i style={{ width: `${Math.min(100, (t.approved / t.capacity) * 100)}%` }} />
                 </div>
               )}
-              <span className="muted" style={{ fontSize: 13 }}>{t.approved}/{t.capacity} teams{t.venue ? ` · ${t.venue}` : ''} · by @{t.organizer.handle}</span>
+              <span className="muted" style={{ fontSize: 13 }}>{t.approved}/{t.capacity} teams{t.entryFeeCents ? ` · ${money(t.entryFeeCents, t.currency)} entry` : ''}{t.venue ? ` · ${t.venue}` : ''} · by @{t.organizer.handle}</span>
             </Link>
           ))}
         </div>

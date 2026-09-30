@@ -4,12 +4,16 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type TournamentView } from '@/lib/api';
 import { useRequireUser } from '@/lib/useRequireUser';
+import { useAuth } from '@/lib/auth';
 
 // datetime-local wants local time without a zone.
 const localSoon = () => { const d = new Date(Date.now() + 7 * 86_400_000); d.setHours(10, 0, 0, 0); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 
 export default function NewTournamentPage() {
   const user = useRequireUser();
+  const { user: me } = useAuth();
+  // Fees go to incha's own Shopify store, so only incha staff can set one.
+  const staff = me?.role === 'admin';
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -26,7 +30,8 @@ export default function NewTournamentPage() {
         body: {
           name: form.name, description: form.description, venue: form.venue,
           capacity: Number(form.capacity), halfLength: Number(form.halfLength), approval: form.approval,
-          startsAt: new Date(form.startsAt).toISOString(), youth, visibility: form.visibility
+          startsAt: new Date(form.startsAt).toISOString(), youth, visibility: form.visibility,
+          ...(staff && form.entryFee ? { entryFee: form.entryFee } : {})
         }
       });
       router.push(`/tournaments/${tournament.id}`);
@@ -69,6 +74,13 @@ export default function NewTournamentPage() {
             </select>
           </div>
         </div>
+        {staff && (
+          <div className="field">
+            <label htmlFor="entryFee">Entry fee per team (USD)</label>
+            <input id="entryFee" name="entryFee" className="input" inputMode="decimal" pattern="[0-9]*([.][0-9]{1,2})?" placeholder="0 = free" />
+            <span className="hint">Paid through the incha Shopify store. A team is only in once it has paid (or you mark it paid or waived).</span>
+          </div>
+        )}
         <label className="check">
           <input type="checkbox" checked={youth} onChange={e => setYouth(e.target.checked)} />
           <span><strong>Youth tournament (under 18)</strong><br /><span className="muted">Kept off public lists, matches are unlisted, and squads are only visible to their managers.</span></span>

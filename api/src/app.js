@@ -10,6 +10,7 @@ import { registerCommunity } from './community.js';
 import { registerModeration } from './moderation.js';
 import { registerTeams } from './teams.js';
 import { registerTournaments } from './tournaments.js';
+import { createShopifyGateway } from './payments.js';
 import { registerLive } from './live.js';
 import { createTranscoder } from './transcoder.js';
 import { ffmpegAvailable } from './media.js';
@@ -36,7 +37,7 @@ function originAllowed(origin, allowed) {
   });
 }
 
-export async function buildApp({ logger = true, worldScores, pushSender } = {}) {
+export async function buildApp({ logger = true, worldScores, pushSender, payments } = {}) {
   const app = Fastify({ logger, bodyLimit: 1_000_000, trustProxy: true });
   const jwtSecret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
   const mediaSecret = process.env.MEDIA_SECRET || process.env.JWT_SECRET || randomBytes(32).toString('hex');
@@ -175,7 +176,12 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   });
   hooks.fulltime = matchId => reels.enqueue(matchId);
   const teams = registerTeams(app, { pool, fail, requireUser, MATCH_SELECT: matchCentre.MATCH_SELECT });
-  const tournaments = registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT: matchCentre.MATCH_SELECT, teams, teamId: matchCentre.teamId });
+  const tournaments = registerTournaments(app, {
+    pool, fail, requireUser, MATCH_SELECT: matchCentre.MATCH_SELECT, teams, teamId: matchCentre.teamId,
+    roleOf: user => moderation.roleOf(user),
+    payments: payments ?? createShopifyGateway(),
+    siteUrl: (process.env.SITE_URL || 'https://incha.tv').replace(/\/$/, '')
+  });
   hooks.matchChanged = matchId => tournaments.settle(matchId);
   app.decorate('reels', reels);
   app.decorate('sweepStaleMatches', matchCentre.sweepStaleMatches);
