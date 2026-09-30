@@ -2,7 +2,7 @@
 import { AUTO_END, applyEvent, autoFullTime, matchStatus, normalizeMatchInput } from './match.js';
 import { createLimiter, randomId, slugify, POST_ID_RE } from './lib.js';
 
-const MATCH_SELECT = `
+export const MATCH_SELECT = `
   select m.*, ht.name as home_name, ht.slug as home_slug, aw.name as away_name, aw.slug as away_slug,
     u.handle as keeper_handle, u.display_name as keeper_name,
     (select count(*)::int from streams s where s.match_id = m.id and s.status = 'live') as live_streams,
@@ -32,12 +32,14 @@ export const matchRow = row => ({
   reelStatus: row.reel_status ?? null,
   reelPostId: row.reel_post_id ?? null,
   autoEnded: Boolean(row.auto_ended_from),
+  tournamentId: row.tournament_id ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
 
 const eventView = row => ({
-  id: Number(row.id), type: row.type, side: row.side, minute: row.minute, stoppage: row.stoppage, player: row.player, createdAt: row.created_at
+  id: Number(row.id), type: row.type, side: row.side, minute: row.minute, stoppage: row.stoppage, player: row.player,
+  playerId: row.player_id == null ? null : Number(row.player_id), createdAt: row.created_at
 });
 
 const MAX_CO_KEEPERS = 3;
@@ -46,7 +48,7 @@ export const CHEERS = ['flare', 'clap', 'wow'];
 // The match's creator and anyone they've added can run the scoreboard.
 export const canKeep = (row, user) => Boolean(user && (Number(row.created_by) === user.id || (row.keeper_ids || []).includes(String(user.id))));
 
-export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, hooks = {}, sweepMs = 60_000 }) {
+export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, rosters = null, hooks = {}, sweepMs = 60_000 }) {
   const matchLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
   const subscribers = new Map(); // matchId -> Set<{ raw, req }>
 
@@ -75,10 +77,15 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
         ? pool.query(`select exists(select 1 from match_follows where user_id = $1 and match_id = $2) as following`, [req.user.id, row.id])
         : Promise.resolve({ rows: [{ following: false }] })
     ]);
+    const canScore = canKeep(row, req.user);
+    // Scorekeepers get both rosters to tag goals and cards to players.
+    const lineups = canScore && rosters
+      ? { home: await rosters.players(row.home_team_id), away: await rosters.players(row.away_team_id) }
+      : undefined;
     return {
       match: {
         ...matchRow(row),
-        canScore: canKeep(row, req.user),
+        canScore,
         isOwner: Boolean(req.user && Number(row.created_by) === req.user.id),
         following: Boolean(follow[0]?.following),
         keepers: keepers.map(k => ({ handle: k.handle, displayName: k.display_name }))
@@ -86,9 +93,13 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       events: events.map(eventView),
       clips: clips.map(clip => postView(req, clip)),
       streams: streams.map(stream => streamView(req, stream)),
+      ...(lineups ? { rosters: lineups } : {}),
       serverTime: new Date().toISOString()
     };
   }
+
+  // A result was decided or changed (full time, or a goal undone after it): tournaments move winners on.
+  const resultChanged = (matchId, log) => Promise.resolve(hooks.result?.(matchId)).catch(err => log.error(err));
 
   // ---- the crowd: who's watching, and cheers that float up everyone's screen ----
   const send = (matchId, event, data) => {
@@ -195,6 +206,13 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     const state = { period: row.period, periodStartedAt: row.period_started_at, halfLength: row.half_length, homeScore: row.home_score, awayScore: row.away_score };
     const { error, event, patch } = applyEvent(state, req.body || {});
     if (error) return fail(reply, 400, error);
+    if (rosters && ['goal', 'yellow', 'red'].includes(event.type)) {
+      const teamId = event.side === 'home' ? row.home_team_id : row.away_team_id;
+      const tagged = await rosters.resolveEventPlayer(teamId, { playerId: req.body?.playerId, typed: event.player });
+      if (tagged.error) return fail(reply, 400, tagged.error);
+      event.playerId = tagged.playerId;
+      event.player = tagged.label;
+    }
     const client = await pool.connect();
     try {
       await client.query('begin');
@@ -202,8 +220,8 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       const { rows: [locked] } = await client.query(`select period from matches where id = $1 for update`, [row.id]);
       if (locked.period !== row.period) { await client.query('rollback'); return fail(reply, 409, 'The match changed. Try again.'); }
       await client.query(
-        `insert into match_events (match_id, type, side, minute, stoppage, player, created_by) values ($1, $2, $3, $4, $5, $6, $7)`,
-        [row.id, event.type, event.side, event.minute, event.stoppage, event.player, req.user.id]);
+        `insert into match_events (match_id, type, side, minute, stoppage, player, player_id, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [row.id, event.type, event.side, event.minute, event.stoppage, event.player, event.playerId ?? null, req.user.id]);
       await client.query(
         `update matches set period = $2, period_started_at = $3, home_score = home_score + $4, away_score = away_score + $5, updated_at = now() where id = $1`,
         [row.id, patch.period ?? row.period, 'periodStartedAt' in patch ? patch.periodStartedAt : row.period_started_at,
@@ -218,7 +236,10 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     notify(row.id).catch(err => req.log.error(err));
     const updated = await loadMatch(row.id);
     notifier?.matchEvent(updated, event, req.user.id).catch(err => req.log.error(err));
-    if (event.type === 'fulltime') Promise.resolve(hooks.fulltime?.(row.id)).catch(err => req.log.error(err));
+    if (event.type === 'fulltime') {
+      Promise.resolve(hooks.fulltime?.(row.id)).catch(err => req.log.error(err));
+      await resultChanged(row.id, req.log);
+    }
     return reply.code(201).send(await snapshot(req, updated));
   });
 
@@ -232,6 +253,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     await pool.query(`delete from match_events where id = $1`, [event.id]);
     if (event.type === 'goal') {
       await pool.query(`update matches set ${event.side === 'home' ? 'home_score' : 'away_score'} = greatest(${event.side === 'home' ? 'home_score' : 'away_score'} - 1, 0), updated_at = now() where id = $1`, [row.id]);
+      if (row.period === 'ft') await resultChanged(row.id, req.log);
     }
     notify(row.id).catch(err => req.log.error(err));
     return snapshot(req, await loadMatch(row.id));
@@ -340,6 +362,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       `update matches set period = auto_ended_from, auto_ended_from = null, resumed_at = now(), updated_at = now() where id = $1 and period = 'ft' and auto_ended_from is not null`, [row.id]);
     if (!rowCount) return fail(reply, 409, 'The match changed. Try again.');
     if (ended) await pool.query(`delete from match_events where id = $1`, [ended.id]);
+    await resultChanged(row.id, req.log);
     notify(row.id).catch(err => req.log.error(err));
     return snapshot(req, await loadMatch(row.id));
   });
@@ -369,6 +392,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       const updated = await loadMatch(row.id);
       notifier?.matchEvent(updated, event, null).catch(err => app.log.error(err));
       await Promise.resolve(hooks.fulltime?.(row.id)).catch(err => app.log.error(err));
+      await resultChanged(row.id, app.log);
     }
     if (ended.length) app.log.info({ matches: ended }, 'called full time on quiet matches');
     return ended;
@@ -400,7 +424,8 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       record.played++; record.goalsFor += gf; record.goalsAgainst += ga;
       if (gf > ga) record.won++; else if (gf === ga) record.drawn++; else record.lost++;
     }
-    return { team: { slug: team.slug, name: team.name }, following, record, matches, serverTime: new Date().toISOString() };
+    const roster = rosters ? await rosters.teamRoster(team, req.user) : {};
+    return { team: { slug: team.slug, name: team.name, youth: team.youth }, following, record, matches, ...roster, serverTime: new Date().toISOString() };
   });
 
   app.addHook('onClose', async () => {

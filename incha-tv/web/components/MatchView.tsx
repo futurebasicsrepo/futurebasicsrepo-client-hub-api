@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, ViewTransition } from 'react';
 import Link from 'next/link';
-import { api, API_URL, SITE_URL, type Match, type MatchEvent, type MatchSnapshot, type Post } from '@/lib/api';
+import { api, API_URL, SITE_URL, playerLabel, type Match, type MatchEvent, type MatchSnapshot, type Post } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { matchClock, scoreline } from '@/lib/clock';
 import { useNow } from '@/lib/useNow';
@@ -42,6 +42,8 @@ export default function MatchView({ id }: { id: string }) {
   const [angle, setAngle] = useState<string | null>(null);
   const [keeperHandle, setKeeperHandle] = useState('');
   const [watching, setWatching] = useState(0);
+  // Both rosters, for scorekeepers (the anonymous live stream doesn't carry them).
+  const [rosters, setRosters] = useState<MatchSnapshot['rosters']>();
   const crowd = useRef<CrowdHandle>(null);
   // What only this viewer's own requests know (scorekeeper rights, following); the live stream is anonymous.
   const viewer = useRef<Pick<Match, 'canScore' | 'isOwner' | 'following'>>({});
@@ -49,6 +51,7 @@ export default function MatchView({ id }: { id: string }) {
   const adopt = (data: MatchSnapshot) => {
     viewer.current = { canScore: data.match.canScore, isOwner: data.match.isOwner, following: data.match.following };
     skew.current = Date.parse(data.serverTime) - Date.now();
+    setRosters(data.rosters);
     setSnap(data);
   };
 
@@ -237,6 +240,7 @@ export default function MatchView({ id }: { id: string }) {
       <section className={`scoreboard${goal ? ' shake' : ''}`}>
         <div className="scoreboard-meta">
           <span className="mono">{match.competition || 'Friendly'}{match.venue ? ` · ${match.venue}` : ''}</span>
+          {match.tournamentId && <Link href={`/tournaments/${match.tournamentId}`} className="badge">🏆 Bracket</Link>}
           {match.youth && <span className="badge sky">Youth · unlisted</span>}
         </div>
         <div className="scoreboard-main">
@@ -280,7 +284,13 @@ export default function MatchView({ id }: { id: string }) {
           )}
           {match.period !== 'pre' && (
             <>
-              <input className="input" value={player} onChange={e => setPlayer(e.target.value)} maxLength={60} placeholder="Player or note (optional)" aria-label="Player" />
+              <input className="input" value={player} onChange={e => setPlayer(e.target.value)} maxLength={60} list={rosters ? 'match-players' : undefined}
+                placeholder={rosters && (rosters.home.length || rosters.away.length) ? 'Player name or # (optional)' : 'Player or note (optional)'} aria-label="Player" />
+              {rosters && (
+                <datalist id="match-players">
+                  {(['home', 'away'] as const).flatMap(side => rosters[side].map(p => <option key={`${side}${p.id}`} value={playerLabel(p)} label={match[side].name} />))}
+                </datalist>
+              )}
               <div className="keeper-grid">
                 {(['home', 'away'] as const).map(side => (
                   <div key={side} className="stack" style={{ gap: 8 }}>

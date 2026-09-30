@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { api, type Match } from '@/lib/api';
+import { api, type Match, type TeamRoster } from '@/lib/api';
 import MatchCard from '@/components/MatchCard';
 import FollowButton from '@/components/FollowButton';
+import RosterPanel from '@/components/RosterPanel';
 
-interface TeamPage { team: { name: string; slug: string }; following: boolean; record: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }; matches: Match[] }
+interface TeamPage extends TeamRoster { team: { name: string; slug: string; youth: boolean }; following: boolean; record: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }; matches: Match[] }
 
 export default function TeamPageView() {
   const { slug } = useParams<{ slug: string }>();
@@ -32,6 +33,7 @@ export default function TeamPageView() {
           ))}
         </div>
       </section>
+      <RosterPanel slug={team.slug} youth={team.youth} roster={data} onChange={({ team: changed, ...roster }) => setData(d => (d ? { ...d, ...roster, team: { ...d.team, youth: changed?.youth ?? d.team.youth } } : d))} />
       <h2 className="display" style={{ fontSize: 28, margin: '24px 0 12px' }}>Matches</h2>
       {matches.length ? <div className="match-grid" style={{ paddingBottom: 48 }}>{matches.map(m => <MatchCard key={m.id} match={m} />)}</div>
         : <div className="empty"><p>No public matches yet.</p></div>}

@@ -127,7 +127,16 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | DELETE | `/v1/matches/:id/events/:eventId` | scorekeeper | undo a goal, card or note |
 | POST | `/v1/matches/:id/resume` | scorekeeper or co-keeper | undo an automatic full time (within 2 hours) |
 | POST | `/v1/matches/:id/cheer` | – | `{ kind: flare\|clap\|wow }` while live; pooled every 400 ms and sent to the stream as `event: cheer` (25 per viewer per 10 s) |
-| GET | `/v1/teams/:slug` | – | team, W/D/L record, matches |
+| GET | `/v1/teams/:slug` | – | team, W/D/L record, matches, roster with goals/cards, managers |
+| POST | `/v1/teams/:slug/claim` | ✓ | manage a team nobody manages yet |
+| PATCH | `/v1/teams/:slug` | manager | `{ youth }`: youth rosters are private to managers |
+| POST/PATCH/DELETE | `/v1/teams/:slug/players[/:id]` | manager | roster: `{ name, number, position }` |
+| POST/DELETE | `/v1/teams/:slug/managers[/:handle]` | manager | add a manager / remove one (or step down) |
+| GET/POST | `/v1/tournaments` | –/✓ | public tournaments (`?mine=1` for yours) / create one |
+| GET/PATCH/DELETE | `/v1/tournaments/:id` | –/organizer | detail with teams and bracket / edit / delete before the draw |
+| POST/DELETE | `/v1/tournaments/:id/teams[/:slug]` | ✓ | register `{ name, players }` / withdraw |
+| POST | `/v1/tournaments/:id/start` | organizer | close registration and draw: `{ seeding: random \| registration \| order, order? }` |
+| POST | `/v1/tournaments/:id/fixtures/:fid/winner` | organizer | settle a draw or forfeit: `{ team }`; `{ team: null }` goes back to the score |
 | POST/DELETE | `/v1/matches/:id/follow`, `/v1/teams/:slug/follow` | ✓ | follow / unfollow |
 | GET | `/v1/me/follows` | ✓ | followed teams and match ids |
 | GET | `/v1/me/matches` | ✓ | `matches` you run (with `role`) + `following` matches |
@@ -144,6 +153,22 @@ Config-as-code (`railway.json`) is deprecated on Railway, so the service's build
 | GET | `/live/:id/index.m3u8`, `/live/:id/segNNNNN.ts` | – | HLS for viewers |
 
 Clips join a match via `PATCH /v1/posts/:id { matchId, matchMinute }`. Youth matches are always unlisted, never appear in lists, and their clips can't be published publicly.
+
+## Rosters and tournaments
+
+Teams are shared by name, so typing a team into a match doesn't make you its manager. Anyone can claim a
+team nobody manages; after that its managers add each other (moderators can manage any team). Managers
+keep the roster (name, shirt number, position). Scorekeepers get both rosters as a picker: typing `9` or
+`#9 Diego` tags the goal or card to that player, and the team page adds them up. Removed players keep their
+history. Youth teams show their roster only to managers.
+
+Tournaments are single elimination. Teams register with a roster (the registrant becomes the team's
+manager; an existing team needs one of its managers to register it). Drawing the bracket pads the field
+to a power of two, gives the top seeds the byes, and creates a match for every fixture whose two teams are
+known, run by the organizer (add co-scorekeepers per match to run games at once). At full time the winner
+moves on and the next match is created; a draw waits for the organizer to pick the winner (penalties).
+Undoing a goal or resuming an auto-ended match re-checks the result and swaps the team in the next match,
+as long as that match hasn't kicked off. Youth tournaments are unlisted, as are their matches.
 
 ## Match centre
 
