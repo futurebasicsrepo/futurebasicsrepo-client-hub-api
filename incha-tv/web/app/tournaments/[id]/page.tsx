@@ -9,7 +9,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const data = await fetchPublicTournament(id);
   if (!data) return { title: 'Tournament', robots: { index: false } };
   const { tournament: t } = data;
-  const state = t.champion ? `Won by ${t.champion.name}` : t.status === 'registration' ? `Sign-ups open · ${t.counts.approved}/${t.capacity} teams` : 'Knockout in progress';
+  const fee = t.entryFeeCents ? ` · ${(t.entryFeeCents / 100).toLocaleString('en-US', { style: 'currency', currency: t.currency || 'USD' })} per team` : '';
+  const state = t.champion ? `Won by ${t.champion.name}` : t.status === 'registration' ? `Sign-ups open · ${t.counts.approved}/${t.capacity} teams${fee}` : 'Knockout in progress';
   return {
     title: t.name,
     description: [state, t.venue, 'on incha.tv'].filter(Boolean).join(' · '),

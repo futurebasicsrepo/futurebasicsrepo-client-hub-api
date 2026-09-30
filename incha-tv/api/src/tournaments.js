@@ -4,6 +4,10 @@ import { buildBracket, matchWinner, nextSlot, roundName, MAX_TEAMS, MIN_TEAMS } 
 import { matchRow } from './matches.js';
 import { createLimiter, randomId, slugify, POST_ID_RE } from './lib.js';
 
+export const MAX_ENTRY_FEE_CENTS = 100_000;
+// Entries that owe a fee: unpaid (nothing started), pending (checkout opened). Settled: paid or waived.
+const SETTLED = ['paid', 'waived'];
+
 const clean = (value, max) => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
 
 /** Validates the organizer's form. `partial` accepts a subset of fields (for edits). */
@@ -30,6 +34,12 @@ export function normalizeTournamentInput(body = {}, partial = false) {
     values.startsAt = body.startsAt ? new Date(body.startsAt) : new Date();
     if (Number.isNaN(values.startsAt.getTime())) errors.push('Start date is not a valid date.');
   }
+  if (has('entryFee') && body.entryFee !== undefined) {
+    // Dollars in ("25", 25, "12.50"), cents stored.
+    const cents = body.entryFee === '' || body.entryFee === null ? 0 : Math.round(Number(body.entryFee) * 100);
+    if (!Number.isInteger(cents) || cents < 0 || cents > MAX_ENTRY_FEE_CENTS) errors.push(`Entry fee must be $0–${MAX_ENTRY_FEE_CENTS / 100}.`);
+    else values.entryFeeCents = cents;
+  }
   if (!partial) {
     values.youth = Boolean(body.youth);
     values.visibility = values.youth ? 'unlisted' : body.visibility === 'unlisted' ? 'unlisted' : 'public';
@@ -39,7 +49,7 @@ export function normalizeTournamentInput(body = {}, partial = false) {
 
 const SIDE_COLUMN = { home: 'home_team_id', away: 'away_team_id' };
 
-export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT, teams, teamId }) {
+export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT, teams, teamId, roleOf = async () => 'user', payments = null, siteUrl = '' }) {
   const createLimit = createLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
   const registerLimit = createLimiter({ windowMs: 60 * 60 * 1000, max: 30 });
 
@@ -173,11 +183,20 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
     // The public sees who's in; organizers (and each team's own managers) also see pending and turned-down entries.
     const teams = entries
       .filter(e => e.status === 'approved' || organizer || myTeamIds.has(String(e.team_id)))
-      .map(e => ({
-        slug: e.slug, name: e.name, status: e.status, seed: e.seed, players: e.players,
-        mine: myTeamIds.has(String(e.team_id)),
-        ...(organizer || myTeamIds.has(String(e.team_id)) ? { note: e.note } : {})
-      }));
+      .map(e => {
+        const insider = organizer || myTeamIds.has(String(e.team_id));
+        return {
+          slug: e.slug, name: e.name, status: e.status, seed: e.seed, players: e.players,
+          mine: myTeamIds.has(String(e.team_id)),
+          ...(insider ? {
+            note: e.note,
+            // Payment state is between the team and the organizer.
+            payment: e.payment_status === 'none' ? null : {
+              status: e.payment_status, amountCents: e.amount_cents, orderName: e.order_name, paidAt: e.paid_at, note: e.payment_note
+            }
+          } : {})
+        };
+      });
     return {
       tournament: {
         id: t.id, name: t.name, description: t.description, status: t.status, capacity: t.capacity, approval: t.approval,
@@ -186,6 +205,11 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
         champion: teamView(champion),
         isOrganizer: organizer,
         counts: { approved: entries.filter(e => e.status === 'approved').length, pending: entries.filter(e => e.status === 'pending').length },
+        entryFeeCents: t.entry_fee_cents,
+        currency: t.currency,
+        // Whether "Pay now" can send teams to Shopify; otherwise the organizer records payments by hand.
+        payOnline: Boolean(t.entry_fee_cents > 0 && payments?.configured),
+        ...(organizer ? { collectedCents: entries.filter(e => e.payment_status === 'paid').reduce((sum, e) => sum + (e.amount_cents || 0), 0) } : {}),
         createdAt: t.created_at
       },
       teams,
@@ -200,7 +224,7 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
     from tournaments t join users u on u.id = t.created_by left join teams c on c.id = t.champion_team_id`;
   const cardView = r => ({
     id: r.id, name: r.name, status: r.status, capacity: r.capacity, approved: r.approved, venue: r.venue, startsAt: r.starts_at,
-    youth: r.youth, organizer: { handle: r.handle, displayName: r.display_name }, champion: r.champion_slug ? { slug: r.champion_slug, name: r.champion_name } : null
+    youth: r.youth, entryFeeCents: r.entry_fee_cents, currency: r.currency, organizer: { handle: r.handle, displayName: r.display_name }, champion: r.champion_slug ? { slug: r.champion_slug, name: r.champion_name } : null
   });
 
   // ---- routes ----
@@ -226,11 +250,13 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
     if (!createLimit(`tournament:${req.user.id}`)) return fail(reply, 429, 'Tournament limit reached. Try again later.');
     const { errors, values } = normalizeTournamentInput(req.body || {});
     if (errors.length) return fail(reply, 400, errors.join(' '));
+    // Fees are paid into incha's own Shopify store, so only incha admins can charge them.
+    if (values.entryFeeCents && (await roleOf(req.user)) !== 'admin') return fail(reply, 403, 'Only incha staff can charge an entry fee.');
     const id = randomId(10);
     await pool.query(
-      `insert into tournaments (id, name, description, capacity, approval, half_length, venue, starts_at, youth, visibility, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [id, values.name, values.description, values.capacity, values.approval, values.halfLength, values.venue, values.startsAt, values.youth, values.visibility, req.user.id]);
+      `insert into tournaments (id, name, description, capacity, approval, half_length, venue, starts_at, youth, visibility, entry_fee_cents, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, values.name, values.description, values.capacity, values.approval, values.halfLength, values.venue, values.startsAt, values.youth, values.visibility, values.entryFeeCents ?? 0, req.user.id]);
     return reply.code(201).send(await view(req, await loadTournament(id)));
   });
 
@@ -247,17 +273,31 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
     if (errors.length) return fail(reply, 400, errors.join(' '));
     if (t.status !== 'registration') {
       // Once the bracket exists its shape is fixed; the words around it can still change.
-      for (const key of ['capacity', 'approval', 'halfLength']) if (key in values) return fail(reply, 400, 'The bracket has started; only the name, description, venue and date can change.');
+      for (const key of ['capacity', 'approval', 'halfLength', 'entryFeeCents']) if (key in values) return fail(reply, 400, 'The bracket has started; only the name, description, venue and date can change.');
+    }
+    if ('entryFeeCents' in values && values.entryFeeCents !== t.entry_fee_cents) {
+      if (values.entryFeeCents && (await roleOf(req.user)) !== 'admin') return fail(reply, 403, 'Only incha staff can charge an entry fee.');
+      const { rows: [{ n }] } = await pool.query(`select count(*)::int as n from tournament_teams where tournament_id = $1 and payment_status in ('pending','paid')`, [t.id]);
+      if (n) return fail(reply, 400, 'Teams have already started paying. The fee can’t change now.');
     }
     if ('capacity' in values) {
       const { rows: [{ n }] } = await pool.query(`select count(*)::int as n from tournament_teams where tournament_id = $1 and status = 'approved'`, [t.id]);
       if (values.capacity < n) return fail(reply, 400, `${n} teams are already in. Capacity can’t go below that.`);
     }
-    const columns = { name: 'name', description: 'description', capacity: 'capacity', approval: 'approval', halfLength: 'half_length', venue: 'venue', startsAt: 'starts_at' };
+    const columns = { name: 'name', description: 'description', capacity: 'capacity', approval: 'approval', halfLength: 'half_length', venue: 'venue', startsAt: 'starts_at', entryFeeCents: 'entry_fee_cents' };
     const keys = Object.keys(values);
     if (keys.length) {
       await pool.query(`update tournaments set ${keys.map((k, i) => `${columns[k]} = $${i + 2}`).join(', ')}, updated_at = now() where id = $1`,
         [t.id, ...keys.map(k => values[k])]);
+      // Entries still owing follow the new fee (or stop owing when it's dropped).
+      if ('entryFeeCents' in values) {
+        await pool.query(`
+          update tournament_teams set
+            payment_status = case when $2::int > 0 then 'unpaid' else 'none' end,
+            amount_cents = nullif($2::int, 0), checkout_url = null, checkout_at = null,
+            payment_ref = case when $2::int > 0 then coalesce(payment_ref, md5(random()::text || clock_timestamp()::text)) else null end
+          where tournament_id = $1 and payment_status in ('none','unpaid')`, [t.id, values.entryFeeCents]);
+      }
     }
     return view(req, await loadTournament(t.id));
   });
@@ -283,9 +323,13 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
       const count = s => counts.find(c => c.status === s)?.n ?? 0;
       if (t.approval === 'auto' && count('approved') >= t.capacity) return { error: [400, 'The tournament is full.'] };
       if (count('pending') >= t.capacity * 2) return { error: [400, 'Too many teams are waiting for approval. Try again later.'] };
+      // With a fee, nobody is in until they've paid: auto-approval happens when the payment lands.
+      const fee = t.entry_fee_cents > 0;
       const { rowCount } = await db.query(
-        `insert into tournament_teams (tournament_id, team_id, status, note, registered_by) values ($1, $2, $3, $4, $5) on conflict do nothing`,
-        [t.id, id, t.approval === 'auto' ? 'approved' : 'pending', note, req.user.id]);
+        `insert into tournament_teams (tournament_id, team_id, status, note, registered_by, payment_status, payment_ref, amount_cents)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing`,
+        [t.id, id, t.approval === 'auto' && !fee ? 'approved' : 'pending', note, req.user.id,
+          fee ? 'unpaid' : 'none', fee ? randomId(16) : null, fee ? t.entry_fee_cents : null]);
       if (!rowCount) return { error: [409, 'That team is already entered.'] };
       return {};
     });
@@ -305,6 +349,11 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
       if (status === 'approved') {
         const { rows: [{ n }] } = await db.query(`select count(*)::int as n from tournament_teams where tournament_id = $1 and status = 'approved'`, [t.id]);
         if (n >= t.capacity) return { error: [400, `The tournament is full (${t.capacity} teams).`] };
+        const { rows: [entry] } = await db.query(
+          `select tt.payment_status from tournament_teams tt join teams tm on tm.id = tt.team_id where tt.tournament_id = $1 and tm.slug = $2`, [t.id, slugify(req.params.slug)]);
+        if (entry && entry.payment_status !== 'none' && !SETTLED.includes(entry.payment_status)) {
+          return { error: [400, 'This team hasn’t paid the entry fee yet. Mark it paid or waived first.'] };
+        }
       }
       const { rowCount } = await db.query(
         `update tournament_teams tt set status = $3 from teams tm where tm.id = tt.team_id and tt.tournament_id = $1 and tm.slug = $2`, [t.id, slugify(req.params.slug), status]);
@@ -321,9 +370,163 @@ export function registerTournaments(app, { pool, fail, requireUser, MATCH_SELECT
     const team = await teams.loadTeam(req.params.slug);
     if (!team || !(isOrganizer(t, req.user) || (await teams.canManage(team, req.user)))) return fail(reply, 404, 'That team isn’t entered.');
     if (t.status !== 'registration') return fail(reply, 400, 'The bracket has been drawn. Ask the organizer to settle it as a walkover.');
+    // A paid entry keeps its record: the organizer declines it and refunds it in Shopify instead.
+    const { rows: [entry] } = await pool.query(`select payment_status from tournament_teams where tournament_id = $1 and team_id = $2`, [t.id, team.id]);
+    if (entry?.payment_status === 'paid' || entry?.payment_status === 'pending') {
+      return fail(reply, 400, isOrganizer(t, req.user)
+        ? 'This team has paid (or is paying). Decline it instead, and refund it in Shopify.'
+        : 'Your entry fee is paid or in progress. Ask the organizer to take you out and refund you.');
+    }
     await pool.query(`delete from tournament_teams where tournament_id = $1 and team_id = $2`, [t.id, team.id]);
     return view(req, t);
   });
+
+  // ---- entry fees ----
+
+  /** Marks an entry paid (from the webhook or the organizer) and lets it in if sign-ups are first come, first in. */
+  async function settlePayment(db, t, entry, fields) {
+    await db.query(`
+      update tournament_teams set payment_status = $3, paid_at = coalesce(paid_at, now()), order_id = coalesce($4, order_id),
+        order_name = coalesce($5, order_name), payment_note = coalesce($6, payment_note)
+      where tournament_id = $1 and team_id = $2`,
+    [t.id, entry.team_id, fields.status, fields.orderId ?? null, fields.orderName ?? null, fields.note ?? null]);
+    if (t.approval === 'auto' && t.status === 'registration' && entry.status === 'pending') {
+      const { rows: [{ n }] } = await db.query(`select count(*)::int as n from tournament_teams where tournament_id = $1 and status = 'approved'`, [t.id]);
+      // Full by the time the money arrived: stays pending so the organizer sees it and can refund.
+      if (n < t.capacity) await db.query(`update tournament_teams set status = 'approved' where tournament_id = $1 and team_id = $2`, [t.id, entry.team_id]);
+    }
+  }
+
+  const entryFor = (db, t, slug, lock = false) => db.query(`
+    select tt.*, tm.slug, tm.name from tournament_teams tt join teams tm on tm.id = tt.team_id
+    where tt.tournament_id = $1 and tm.slug = $2${lock ? ' for update of tt' : ''}`, [t.id, slugify(String(slug))]).then(r => r.rows[0] || null);
+
+  // A team's manager starts (or resumes) paying the entry fee: returns the Shopify checkout to send them to.
+  app.post('/v1/tournaments/:id/teams/:slug/checkout', { preHandler: requireUser }, async (req, reply) => {
+    const t = await loadTournament(req.params.id);
+    const team = t && (await teams.loadTeam(req.params.slug));
+    if (!t || !team || !(await teams.canManage(team, req.user))) return fail(reply, 404, 'That team isn’t entered.');
+    const entry = await entryFor(pool, t, team.slug);
+    if (!entry) return fail(reply, 404, 'That team isn’t entered.');
+    if (t.status !== 'registration') return fail(reply, 400, 'Registration is closed.');
+    if (entry.payment_status === 'none') return fail(reply, 400, 'There’s no entry fee to pay.');
+    if (SETTLED.includes(entry.payment_status)) return fail(reply, 409, 'Your entry fee is already settled.');
+    if (entry.status === 'rejected') return fail(reply, 400, 'The organizer declined this entry.');
+    if (!payments?.configured) return fail(reply, 503, 'Online payment isn’t set up yet. The organizer can take the fee another way and mark you paid.');
+    // Reuse a recent checkout so a double tap doesn't create two orders.
+    if (entry.checkout_url && entry.checkout_at && Date.now() - new Date(entry.checkout_at).getTime() < 24 * 3600_000) {
+      return { url: entry.checkout_url, reused: true };
+    }
+    const { rows: [me] } = await pool.query(`select email from users where id = $1`, [req.user.id]);
+    let checkout;
+    try {
+      checkout = await payments.createCheckout({
+        reference: entry.payment_ref,
+        title: `${t.name} · entry for ${team.name}`,
+        amountCents: entry.amount_cents ?? t.entry_fee_cents,
+        currency: t.currency,
+        email: me?.email,
+        note: `incha.tv tournament entry\n${siteUrl}/tournaments/${t.id}\nTeam: ${team.name} (${team.slug})\nEntered by @${req.user.handle}`
+      });
+    } catch (err) {
+      req.log.error({ err }, 'shopify checkout failed');
+      return fail(reply, err.statusCode || 502, err.message);
+    }
+    await pool.query(`update tournament_teams set payment_status = 'pending', checkout_url = $3, checkout_at = now() where tournament_id = $1 and team_id = $2`,
+      [t.id, entry.team_id, checkout.url]);
+    return { url: checkout.url };
+  });
+
+  // The organizer records a payment by hand: cash at the field, a comped team, or a refund done in Shopify.
+  app.post('/v1/tournaments/:id/teams/:slug/payment', { preHandler: requireUser }, async (req, reply) => {
+    const t = await loadTournament(req.params.id);
+    if (!t || !isOrganizer(t, req.user)) return fail(reply, 404, 'Tournament not found.');
+    const status = req.body?.status;
+    if (!['paid', 'waived', 'unpaid', 'refunded'].includes(status)) return fail(reply, 400, 'Status must be paid, waived, unpaid or refunded.');
+    const note = clean(req.body?.note, 120);
+    const result = await tx(async db => {
+      const locked = await loadTournament(t.id, db, true);
+      const entry = await entryFor(db, locked, req.params.slug, true);
+      if (!entry) return { error: [404, 'That team isn’t entered.'] };
+      if (entry.payment_status === 'none') return { error: [400, 'This tournament has no entry fee for that team.'] };
+      if (status === 'paid' || status === 'waived') {
+        await settlePayment(db, locked, entry, { status, note: note || (status === 'paid' ? 'Recorded by organizer' : 'Waived by organizer') });
+      } else {
+        await db.query(`update tournament_teams set payment_status = $3, payment_note = $4, checkout_url = null, checkout_at = null where tournament_id = $1 and team_id = $2`,
+          [t.id, entry.team_id, status, note]);
+      }
+      return {};
+    });
+    if (result.error) return fail(reply, ...result.error);
+    return view(req, await loadTournament(t.id));
+  });
+
+  // Shopify calls this when an order is paid, cancelled or refunded. Signed with SHOPIFY_WEBHOOK_SECRET.
+  app.register(async scope => {
+    scope.addContentTypeParser('application/json', { parseAs: 'buffer', bodyLimit: 1024 * 1024 }, (_req, body, done) => done(null, body));
+    scope.post('/v1/payments/shopify/webhook', async (req, reply) => {
+      if (!payments?.verifyWebhook(req.body, req.headers['x-shopify-hmac-sha256'])) return fail(reply, 401, 'Bad signature.');
+      const topic = String(req.headers['x-shopify-topic'] || '');
+      let order;
+      try { order = JSON.parse(req.body.toString('utf8')); } catch { return fail(reply, 400, 'Bad JSON.'); }
+      // refunds/create sends a refund (pointing at its order); the other topics send the order itself.
+      const info = topic === 'refunds/create'
+        ? { reference: null, orderId: order?.order_id != null ? String(order.order_id) : null, refund: true }
+        : payments.parseOrder(order);
+      const eventId = String(req.headers['x-shopify-webhook-id'] || req.headers['x-shopify-event-id'] || `${topic}:${info.orderId}`);
+      // Shopify retries deliveries; each one is handled once.
+      const { rowCount } = await pool.query(
+        `insert into payment_events (provider, external_id, topic, reference, payload) values ('shopify', $1, $2, $3, $4) on conflict do nothing`,
+        [eventId, topic, info.reference, order]);
+      if (!rowCount) return { ok: true, duplicate: true };
+      let outcome;
+      try {
+        outcome = await handleOrderEvent(topic, info);
+      } catch (err) {
+        // Forget the delivery so Shopify's retry is processed rather than skipped as a duplicate.
+        await pool.query(`delete from payment_events where provider = 'shopify' and external_id = $1`, [eventId]).catch(() => {});
+        req.log.error({ err }, 'shopify webhook failed');
+        throw err;
+      }
+      await pool.query(`update payment_events set outcome = $3 where provider = 'shopify' and external_id = $1 and topic = $2`, [eventId, topic, outcome]);
+      return { ok: true, outcome };
+    });
+  });
+
+  async function handleOrderEvent(topic, info) {
+    let link;
+    if (info.reference) {
+      ({ rows: [link] } = await pool.query(`select tournament_id, team_id from tournament_teams where payment_ref = $1`, [info.reference]));
+    } else if (info.refund && info.orderId) {
+      // Orders are stored by their GraphQL id; refunds point at the numeric one.
+      ({ rows: [link] } = await pool.query(`select tournament_id, team_id from tournament_teams where order_id = $1 or order_id = $2`,
+        [info.orderId, `gid://shopify/Order/${info.orderId}`]));
+    } else {
+      return 'ignored: not an incha entry';
+    }
+    if (!link) return 'ignored: unknown reference';
+    return tx(async db => {
+      const t = await loadTournament(link.tournament_id, db, true);
+      const { rows: [entry] } = await db.query(`select * from tournament_teams where tournament_id = $1 and team_id = $2 for update`, [link.tournament_id, link.team_id]);
+      if (topic === 'orders/paid') {
+        if (entry.payment_status === 'paid') return 'already paid';
+        const owed = entry.amount_cents ?? t.entry_fee_cents;
+        if (info.currency && info.currency !== t.currency) return `held: paid in ${info.currency}, expected ${t.currency}`;
+        if (info.amountCents !== null && info.amountCents < owed) return `held: paid ${info.amountCents} of ${owed}`;
+        await settlePayment(db, t, entry, { status: 'paid', orderId: info.orderId, orderName: info.orderName, note: 'Paid online' });
+        return 'paid';
+      }
+      if (topic === 'orders/cancelled' || topic === 'refunds/create') {
+        if (entry.payment_status !== 'paid' && entry.payment_status !== 'pending') return 'ignored: nothing to refund';
+        await db.query(`update tournament_teams set payment_status = 'refunded', payment_note = $3,
+          status = case when status = 'approved' and $4 = 'registration' then 'pending' else status end
+          where tournament_id = $1 and team_id = $2`,
+        [t.id, entry.team_id, topic === 'orders/cancelled' ? 'Order cancelled in Shopify' : 'Refunded in Shopify', t.status]);
+        return 'refunded';
+      }
+      return `ignored: ${topic}`;
+    });
+  }
 
   // Close registration and draw the bracket: seeded in the order teams entered, or shuffled.
   app.post('/v1/tournaments/:id/start', { preHandler: requireUser }, async (req, reply) => {

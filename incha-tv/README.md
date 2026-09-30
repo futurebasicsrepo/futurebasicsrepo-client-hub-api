@@ -234,6 +234,35 @@ A result can still change until the next tie kicks off, for example through an u
 
 API: `GET|POST /v1/tournaments` (`?filter=open|running|finished|mine`), `GET|PATCH /v1/tournaments/:id`, `POST /v1/tournaments/:id/teams`, `PATCH|DELETE /v1/tournaments/:id/teams/:slug`, `POST /v1/tournaments/:id/start {shuffle}`, `POST /v1/tournaments/:id/slots/:slotId/winner {side, note}`. Bracket rules are in `api/src/bracket.js`.
 
+## Paid tournament entry (Shopify)
+
+incha staff (`ADMIN_HANDLES`) can set an entry fee when creating a tournament. The money goes to incha's own Shopify store, which is why only staff can set a fee.
+
+How an entry goes:
+1. A team enters and is shown as **Fee due**.
+2. Its manager taps **Pay $X**. The API creates a Shopify draft order: one custom line item, no shipping, no tax, and tags `incha-tournament` and `incha-entry-<ref>`. The draft also carries an `incha_entry` attribute set to the same reference.
+3. The manager is sent to the draft order's invoice checkout.
+4. Shopify calls `POST /v1/payments/shopify/webhook`.
+   - The request is signed with `X-Shopify-Hmac-Sha256`, and each delivery is processed once.
+   - `orders/paid` marks the entry paid. It is held if the amount or currency is wrong. First-come tournaments let the team in at this point.
+   - `orders/cancelled` and `refunds/create` mark the entry refunded.
+
+Without Shopify configured, the fee still shows and organizers record payments by hand (**Mark paid**, **Waive**, **Refunded**). Organizers also get an **Invite teams** panel with a ready-made message, and copy, WhatsApp, text and email buttons.
+
+**To switch on online payment** (nothing else changes in the code):
+1. In Shopify admin, go to **Settings → Apps and sales channels → Develop apps** and create a custom app called "incha.tv tournaments".
+2. Give it the Admin API scopes `write_draft_orders` and `read_orders`, install it, and copy the Admin API access token.
+3. In the same app, add webhooks for `orders/paid`, `orders/cancelled` and `refunds/create`. The format is JSON and the URL is `https://<api-domain>/v1/payments/shopify/webhook`. Copy the webhook signing secret.
+4. On the Railway API service, set these variables and redeploy:
+   - `SHOPIFY_STORE_DOMAIN` (e.g. `incha.myshopify.com`)
+   - `SHOPIFY_ADMIN_TOKEN`
+   - `SHOPIFY_WEBHOOK_SECRET`
+   - optionally `SHOPIFY_API_VERSION` (default `2026-07`)
+   - `SITE_URL` (e.g. `https://incha.tv`, used in order notes)
+5. Test with a $1 staff tournament, and refund the order in Shopify afterwards. Refunding marks the entry refunded here too.
+
+Refunds are done in Shopify, and the webhook keeps incha.tv in sync. A paid entry can't be deleted, only declined, so the payment record stays.
+
 ## Fandom communities
 
 A fandom (`/f/:slug`) is a community: part Discord server, part subreddit.
