@@ -1,12 +1,15 @@
 // Match centre: teams, live matches, scorekeeper events, and a Server-Sent Events stream.
 import { AUTO_END, applyEvent, autoFullTime, matchStatus, normalizeMatchInput } from './match.js';
+import { roundName } from './bracket.js';
 import { createLimiter, randomId, slugify, POST_ID_RE } from './lib.js';
 
 const MATCH_SELECT = `
   select m.*, ht.name as home_name, ht.slug as home_slug, aw.name as away_name, aw.slug as away_slug,
     u.handle as keeper_handle, u.display_name as keeper_name,
     (select count(*)::int from streams s where s.match_id = m.id and s.status = 'live') as live_streams,
-    (select coalesce(array_agg(k.user_id::text), '{}') from match_keepers k where k.match_id = m.id) as keeper_ids
+    (select coalesce(array_agg(k.user_id::text), '{}') from match_keepers k where k.match_id = m.id) as keeper_ids,
+    (select json_build_object('id', t.id, 'name', t.name, 'round', b.round, 'rounds', t.rounds)
+      from bracket_slots b join tournaments t on t.id = b.tournament_id where b.match_id = m.id) as tournament_json
   from matches m
   join teams ht on ht.id = m.home_team_id
   join teams aw on aw.id = m.away_team_id
@@ -32,13 +35,19 @@ export const matchRow = row => ({
   reelStatus: row.reel_status ?? null,
   reelPostId: row.reel_post_id ?? null,
   autoEnded: Boolean(row.auto_ended_from),
+  tournament: row.tournament_json
+    ? { id: row.tournament_json.id, name: row.tournament_json.name, round: roundName(row.tournament_json.round, row.tournament_json.rounds) }
+    : null,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
 
 const eventView = row => ({
-  id: Number(row.id), type: row.type, side: row.side, minute: row.minute, stoppage: row.stoppage, player: row.player, createdAt: row.created_at
+  id: Number(row.id), type: row.type, side: row.side, minute: row.minute, stoppage: row.stoppage, player: row.player,
+  playerId: row.player_id == null ? null : Number(row.player_id), createdAt: row.created_at
 });
+
+export const playerView = row => ({ id: Number(row.id), name: row.name, number: row.number, position: row.position });
 
 const MAX_CO_KEEPERS = 3;
 export const CHEERS = ['flare', 'clap', 'wow'];
@@ -47,6 +56,8 @@ export const CHEERS = ['flare', 'clap', 'wow'];
 export const canKeep = (row, user) => Boolean(user && (Number(row.created_by) === user.id || (row.keeper_ids || []).includes(String(user.id))));
 
 export function registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView, notifier, hooks = {}, sweepMs = 60_000 }) {
+  // Tell listeners (tournament brackets) that a match's score or period moved.
+  const changed = (id, log = app.log) => Promise.resolve(hooks.matchChanged?.(id)).catch(err => log.error(err));
   const matchLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: 20 });
   const subscribers = new Map(); // matchId -> Set<{ raw, req }>
 
@@ -56,15 +67,18 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     return rows[0] || null;
   }
 
-  async function teamId(name, userId) {
+  // A team that has ever played a youth match stays youth: its roster is only shown to its managers.
+  async function teamId(name, userId, youth = false) {
     const { rows } = await pool.query(
-      `insert into teams (slug, name, created_by) values ($1, $2, $3) on conflict (slug) do update set slug = excluded.slug returning id`,
-      [slugify(name) || randomId(8).toLowerCase(), name, userId]);
+      `insert into teams (slug, name, created_by, youth) values ($1, $2, $3, $4)
+       on conflict (slug) do update set youth = teams.youth or excluded.youth returning id`,
+      [slugify(name) || randomId(8).toLowerCase(), name, userId, youth]);
     return rows[0].id;
   }
 
   async function snapshot(req, row) {
-    const [{ rows: events }, { rows: clips }, { rows: streams }, { rows: keepers }, { rows: follow }] = await Promise.all([
+    const keeping = canKeep(row, req.user);
+    const [{ rows: events }, { rows: clips }, { rows: streams }, { rows: keepers }, { rows: follow }, { rows: players }] = await Promise.all([
       pool.query(`select * from match_events where match_id = $1 order by created_at asc`, [row.id]),
       pool.query(`${POST_SELECT} where p.match_id = $2 and p.status = 'published' and p.visibility <> 'private' and p.media_status = 'ready' and not p.is_reel
         order by p.match_minute asc nulls last, p.published_at asc limit 200`, [req.user?.id ?? null, row.id]),
@@ -73,17 +87,23 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       pool.query(`select u.handle, u.display_name from match_keepers k join users u on u.id = k.user_id where k.match_id = $1 order by k.created_at`, [row.id]),
       req.user
         ? pool.query(`select exists(select 1 from match_follows where user_id = $1 and match_id = $2) as following`, [req.user.id, row.id])
-        : Promise.resolve({ rows: [{ following: false }] })
+        : Promise.resolve({ rows: [{ following: false }] }),
+      // Scorekeepers pick scorers from the two squads.
+      keeping
+        ? pool.query(`select * from team_players where team_id = any($1) order by number asc nulls last, name asc`, [[row.home_team_id, row.away_team_id]])
+        : Promise.resolve({ rows: [] })
     ]);
+    const squad = teamId => players.filter(p => String(p.team_id) === String(teamId)).map(playerView);
     return {
       match: {
         ...matchRow(row),
-        canScore: canKeep(row, req.user),
+        canScore: keeping,
         isOwner: Boolean(req.user && Number(row.created_by) === req.user.id),
         following: Boolean(follow[0]?.following),
         keepers: keepers.map(k => ({ handle: k.handle, displayName: k.display_name }))
       },
       events: events.map(eventView),
+      ...(keeping ? { rosters: { home: squad(row.home_team_id), away: squad(row.away_team_id) } } : {}),
       clips: clips.map(clip => postView(req, clip)),
       streams: streams.map(stream => streamView(req, stream)),
       serverTime: new Date().toISOString()
@@ -172,7 +192,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     const { values, errors } = normalizeMatchInput(req.body || {});
     if (errors.length) return fail(reply, 400, errors.join(' '));
     const id = randomId(10);
-    const [home, away] = [await teamId(values.home, req.user.id), await teamId(values.away, req.user.id)];
+    const [home, away] = [await teamId(values.home, req.user.id, values.youth), await teamId(values.away, req.user.id, values.youth)];
     if (home === away) return fail(reply, 400, 'A team can’t play itself.');
     await pool.query(
       `insert into matches (id, home_team_id, away_team_id, half_length, kickoff_at, venue, competition, youth, visibility, created_by)
@@ -193,8 +213,21 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     const row = await loadMatch(req.params.id);
     if (!row || !canKeep(row, req.user)) return fail(reply, 404, 'Match not found.');
     const state = { period: row.period, periodStartedAt: row.period_started_at, halfLength: row.half_length, homeScore: row.home_score, awayScore: row.away_score };
-    const { error, event, patch } = applyEvent(state, req.body || {});
+    const body = { ...(req.body || {}) };
+    // A scorer picked from the squad: their name goes on the event, and the link counts toward their goals.
+    let playerId = null;
+    if (body.playerId != null && body.playerId !== '') {
+      const teamOf = { home: row.home_team_id, away: row.away_team_id }[body.side];
+      const { rows: [picked] } = teamOf
+        ? await pool.query(`select id, name from team_players where id = $1 and team_id = $2`, [Number(body.playerId) || 0, teamOf])
+        : { rows: [] };
+      if (!picked) return fail(reply, 400, 'That player isn’t in this team’s squad.');
+      playerId = picked.id;
+      body.player = picked.name;
+    }
+    const { error, event, patch } = applyEvent(state, body);
     if (error) return fail(reply, 400, error);
+    if (!['goal', 'yellow', 'red'].includes(event.type)) playerId = null;
     const client = await pool.connect();
     try {
       await client.query('begin');
@@ -202,8 +235,8 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       const { rows: [locked] } = await client.query(`select period from matches where id = $1 for update`, [row.id]);
       if (locked.period !== row.period) { await client.query('rollback'); return fail(reply, 409, 'The match changed. Try again.'); }
       await client.query(
-        `insert into match_events (match_id, type, side, minute, stoppage, player, created_by) values ($1, $2, $3, $4, $5, $6, $7)`,
-        [row.id, event.type, event.side, event.minute, event.stoppage, event.player, req.user.id]);
+        `insert into match_events (match_id, type, side, minute, stoppage, player, player_id, created_by) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [row.id, event.type, event.side, event.minute, event.stoppage, event.player, playerId, req.user.id]);
       await client.query(
         `update matches set period = $2, period_started_at = $3, home_score = home_score + $4, away_score = away_score + $5, updated_at = now() where id = $1`,
         [row.id, patch.period ?? row.period, 'periodStartedAt' in patch ? patch.periodStartedAt : row.period_started_at,
@@ -219,6 +252,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     const updated = await loadMatch(row.id);
     notifier?.matchEvent(updated, event, req.user.id).catch(err => req.log.error(err));
     if (event.type === 'fulltime') Promise.resolve(hooks.fulltime?.(row.id)).catch(err => req.log.error(err));
+    if (event.type === 'goal' || event.type === 'fulltime') await changed(row.id, req.log);
     return reply.code(201).send(await snapshot(req, updated));
   });
 
@@ -232,6 +266,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     await pool.query(`delete from match_events where id = $1`, [event.id]);
     if (event.type === 'goal') {
       await pool.query(`update matches set ${event.side === 'home' ? 'home_score' : 'away_score'} = greatest(${event.side === 'home' ? 'home_score' : 'away_score'} - 1, 0), updated_at = now() where id = $1`, [row.id]);
+      await changed(row.id, req.log);
     }
     notify(row.id).catch(err => req.log.error(err));
     return snapshot(req, await loadMatch(row.id));
@@ -340,6 +375,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       `update matches set period = auto_ended_from, auto_ended_from = null, resumed_at = now(), updated_at = now() where id = $1 and period = 'ft' and auto_ended_from is not null`, [row.id]);
     if (!rowCount) return fail(reply, 409, 'The match changed. Try again.');
     if (ended) await pool.query(`delete from match_events where id = $1`, [ended.id]);
+    await changed(row.id, req.log);
     notify(row.id).catch(err => req.log.error(err));
     return snapshot(req, await loadMatch(row.id));
   });
@@ -369,6 +405,7 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
       const updated = await loadMatch(row.id);
       notifier?.matchEvent(updated, event, null).catch(err => app.log.error(err));
       await Promise.resolve(hooks.fulltime?.(row.id)).catch(err => app.log.error(err));
+      await changed(row.id);
     }
     if (ended.length) app.log.info({ matches: ended }, 'called full time on quiet matches');
     return ended;
@@ -383,26 +420,6 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     sweeper.unref();
   });
 
-  app.get('/v1/teams/:slug', async (req, reply) => {
-    const { rows: [team] } = await pool.query(`select * from teams where slug = $1`, [slugify(req.params.slug)]);
-    if (!team) return fail(reply, 404, 'Team not found.');
-    const following = req.user
-      ? (await pool.query(`select exists(select 1 from team_follows where user_id = $1 and team_id = $2) as f`, [req.user.id, team.id])).rows[0].f
-      : false;
-    const { rows } = await pool.query(
-      `${MATCH_SELECT} where (m.home_team_id = $1 or m.away_team_id = $1) and m.visibility = 'public' and not m.youth order by m.kickoff_at desc limit 50`, [team.id]);
-    const matches = rows.map(matchRow);
-    const record = { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0 };
-    for (const m of matches) {
-      if (m.period !== 'ft') continue;
-      const home = m.home.slug === team.slug;
-      const [gf, ga] = home ? [m.homeScore, m.awayScore] : [m.awayScore, m.homeScore];
-      record.played++; record.goalsFor += gf; record.goalsAgainst += ga;
-      if (gf > ga) record.won++; else if (gf === ga) record.drawn++; else record.lost++;
-    }
-    return { team: { slug: team.slug, name: team.name }, following, record, matches, serverTime: new Date().toISOString() };
-  });
-
   app.addHook('onClose', async () => {
     clearInterval(sweeper);
     for (const timer of crowdTimers.values()) clearTimeout(timer);
@@ -411,5 +428,5 @@ export function registerMatches(app, { pool, fail, requireUser, postView, POST_S
     subscribers.clear();
   });
 
-  return { loadMatch, notify, sweepStaleMatches };
+  return { loadMatch, notify, sweepStaleMatches, teamId, MATCH_SELECT };
 }
