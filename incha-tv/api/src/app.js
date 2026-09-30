@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto';
 import { pool } from './db.js';
 import * as storage from './storage.js';
 import { registerMatches } from './matches.js';
+import { createRosters, registerRosters } from './rosters.js';
+import { registerTournaments } from './tournaments.js';
 import { registerCommunity } from './community.js';
 import { registerModeration } from './moderation.js';
 import { registerLive } from './live.js';
@@ -163,7 +165,13 @@ export async function buildApp({ logger = true, worldScores, pushSender } = {}) 
   let live;
   const notifier = createNotifier({ pool, log: app.log, send: pushSender });
   const hooks = {};
-  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row), notifier, hooks });
+  // Moderators and admins can manage any team or tournament (moderation is registered below).
+  const isStaff = async user => Boolean(user && moderation) && (await moderation.roleOf(user)) !== 'user';
+  const rosters = createRosters({ pool, isStaff });
+  const matchCentre = registerMatches(app, { pool, fail, requireUser, postView, POST_SELECT, streamView: (req, row) => live.streamView(req, row), notifier, rosters, hooks });
+  registerRosters(app, { pool, fail, requireUser, rosters });
+  const tournaments = registerTournaments(app, { pool, fail, requireUser, rosters, isStaff, notifyMatch: id => matchCentre.notify(id).catch(() => {}) });
+  hooks.result = matchId => tournaments.onResult(matchId);
   const reels = createReelBuilder({
     pool, log: app.log, loadMatch: matchCentre.loadMatch,
     onReady: (match, postId) => {

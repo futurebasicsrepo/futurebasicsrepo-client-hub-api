@@ -101,6 +101,8 @@ export interface Match {
   keepers?: { handle: string; displayName: string }[];
   /** Your part in the match, on your own match list. */
   role?: 'scorekeeper' | 'co-keeper';
+  /** Set when the match is a tournament fixture. */
+  tournamentId?: string | null;
 }
 export interface LiveStream {
   id: string;
@@ -120,9 +122,48 @@ export interface MatchEvent {
   minute: number | null;
   stoppage: number;
   player: string;
+  /** The roster player the goal or card was tagged to. */
+  playerId?: number | null;
   createdAt: string;
 }
-export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string }
+export interface MatchSnapshot {
+  match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string;
+  /** Both teams' players, for scorekeepers only. */
+  rosters?: { home: Player[]; away: Player[] };
+}
+
+// ---- rosters ----
+export interface Player { id: number; name: string; number: number | null; position: string }
+export interface PlayerStats { goals: number; yellows: number; reds: number; matches: number }
+export interface TeamRoster {
+  canManage: boolean;
+  /** Nobody manages the team yet; you can take it on. */
+  claimable: boolean;
+  managers: { handle: string; displayName: string }[];
+  /** Youth roster: only its managers see the players. */
+  rosterHidden: boolean;
+  players: (Player & { stats: PlayerStats })[];
+}
+export const playerLabel = (p: Pick<Player, 'name' | 'number'>) => (p.number == null ? p.name : `#${p.number} ${p.name}`);
+
+// ---- tournaments ----
+export interface Tournament {
+  id: string; name: string; description: string; venue: string; startsAt: string; halfLength: number;
+  teamLimit: number; teamCount: number; youth: boolean; visibility: 'public' | 'unlisted';
+  status: 'registration' | 'in_progress' | 'finished';
+  champion: Team | null; organizer: { handle: string; displayName: string }; createdAt: string;
+  canManage?: boolean;
+}
+export interface Fixture {
+  id: number; position: number; home: Team | null; away: Team | null; winner: string | null;
+  decided: 'score' | 'organizer' | 'bye' | null; bye: boolean; match: Match | null;
+}
+export interface TournamentDetail {
+  tournament: Tournament & { canManage: boolean };
+  teams: { slug: string; name: string; seed: number | null; players: number; registeredBy: string | null; canWithdraw: boolean }[];
+  rounds: { round: number; name: string; fixtures: Fixture[] }[];
+  serverTime: string;
+}
 
 // Pro & international football (see api/src/worldscores.js).
 export interface WorldSide { name: string; short: string; abbr: string; score: number | null; winner: boolean }

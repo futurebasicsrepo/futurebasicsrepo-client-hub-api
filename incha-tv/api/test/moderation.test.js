@@ -14,7 +14,7 @@ test('moderation: reports, auto-hide, the queue, removals, bans and roles', { sk
   process.env.ADMIN_HANDLES = 'boss';
   const { migrate, pool } = await import('../src/db.js');
   const { buildApp } = await import('../src/app.js');
-  await pool.query('drop table if exists mod_actions, reports, chat_messages, reply_votes, replies, thread_votes, threads, fandom_members, push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
+  await pool.query('drop table if exists tournament_fixtures, tournament_teams, tournaments, team_players, team_managers, mod_actions, reports, chat_messages, reply_votes, replies, thread_votes, threads, fandom_members, push_subscriptions, team_follows, match_follows, match_keepers, streams, match_events, comments, votes, posts, matches, teams, fandoms, users cascade');
   await migrate();
   const app = await buildApp({ logger: false });
   await app.ready();
