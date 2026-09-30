@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorldScores, groupScores, normalizeEvent } from '../src/worldscores.js';
+import { createWorldScores, groupScores, normalizeEvent, normalizeOdds } from '../src/worldscores.js';
 
 const team = (name, abbr) => ({ displayName: name, shortDisplayName: name.split(' ')[0], abbreviation: abbr });
 const event = (id, leagueId, state, { name = `STATUS_${state.toUpperCase()}`, detail = '', home = ['Philadelphia Union', 'PHI', '1'], away = ['Inter Miami CF', 'MIA', '0'], date = '2026-09-26T23:30Z', note } = {}) => ({
@@ -22,7 +22,7 @@ test('normalizeEvent maps live, finished, upcoming and postponed games', () => {
   assert.deepEqual(live.league, { slug: 'usa.1', name: 'MLS' });
   assert.equal(live.state, 'in');
   assert.equal(live.detail, "67'");
-  assert.deepEqual(live.home, { name: 'Philadelphia Union', short: 'Philadelphia', abbr: 'PHI', score: 1, winner: false });
+  assert.deepEqual(live.home, { name: 'Philadelphia Union', short: 'Philadelphia', abbr: 'PHI', score: 1, winner: false, form: null });
   assert.equal(live.venue, 'Subaru Park');
 
   const ft = normalizeEvent(event('2', '700', 'post', { detail: 'FT', name: 'STATUS_FULL_TIME' }), LEAGUES);
@@ -97,4 +97,48 @@ test('createWorldScores caches, coalesces requests and serves stale data when th
   assert.equal(stale.stale, true, 'falls back to the last good board');
   assert.equal(stale.total, 1);
   await assert.rejects(world.scores('2026-09-25'), /503/, 'no stale copy for a new date');
+});
+
+// Trimmed from a real ESPN scoreboard entry (Albania at Finland, DraftKings), sportsbook links removed.
+const DK = {
+  overUnder: 2.5, provider: { id: '100', name: 'DraftKings', displayName: 'DraftKings' }, drawOdds: { moneyLine: 215 },
+  total: { over: { open: { line: 'o2.5', odds: '+130' }, close: { line: 'o2.5', odds: '+135' } }, under: { open: { line: 'u2.5', odds: '-175' }, close: { line: 'u2.5', odds: '-170' } } },
+  pointSpread: { home: { open: { line: '-0.5', odds: '+120' }, close: { line: '-0.5', odds: '+135' } }, away: { open: { line: '+0.5', odds: '-175' }, close: { line: '+0.5', odds: '-185' } } },
+  moneyline: { home: { open: { odds: '+130' }, close: { odds: '+140' } }, away: { open: { odds: '+200' }, close: { odds: '+190' } }, draw: { open: { odds: '+215' }, close: { odds: '+215' } } },
+  details: 'FIN +140',
+  link: { href: 'https://sportsbook.draftkings.com/…' }
+};
+
+test('normalizeOdds keeps the lines and drops sportsbook links', () => {
+  assert.deepEqual(normalizeOdds(DK), {
+    provider: 'DraftKings',
+    moneyline: { home: 140, draw: 215, away: 190 },
+    open: { home: 130, draw: 215, away: 200 },
+    total: { line: 2.5, over: 135, under: -170 },
+    spread: { home: -0.5, homeOdds: 135, awayOdds: -185 }
+  });
+  assert.equal(JSON.stringify(normalizeOdds(DK)).includes('draftkings.com'), false);
+  // Older shape: only per-team moneylines and a total.
+  assert.deepEqual(normalizeOdds({ overUnder: 3, homeTeamOdds: { moneyLine: -150 }, awayTeamOdds: { moneyLine: 400 }, drawOdds: { moneyLine: 260 } }),
+    { provider: null, moneyline: { home: -150, draw: 260, away: 400 }, open: null, total: { line: 3, over: null, under: null }, spread: null });
+  assert.equal(normalizeOdds(null), null);
+  assert.equal(normalizeOdds({ moneyline: { home: { close: { odds: 'OFF' } } } }), null, 'no usable prices');
+});
+
+test('events carry form and odds before and during play, not after', () => {
+  const withOdds = (state, name) => {
+    const e = event('7', '770', state, { name, detail: state === 'in' ? "12'" : 'FT' });
+    e.competitions[0].odds = [DK];
+    e.competitions[0].competitors[0].form = 'DWLLL';
+    e.competitions[0].competitors[0].records = [{ type: 'total', summary: '1-1-0' }];
+    e.competitions[0].competitors[1].form = 'bogus';
+    return normalizeEvent(e, LEAGUES);
+  };
+  const pre = withOdds('pre');
+  assert.equal(pre.odds.moneyline.home, 140);
+  assert.deepEqual(pre.home.form, { form: 'DWLLL', record: '1-1-0' });
+  assert.equal(pre.away.form, null, 'malformed form is dropped');
+  assert.equal(withOdds('in', 'STATUS_FIRST_HALF').odds.total.line, 2.5);
+  assert.equal(withOdds('post', 'STATUS_FULL_TIME').odds, null);
+  assert.equal(withOdds('post', 'STATUS_POSTPONED').odds, null);
 });

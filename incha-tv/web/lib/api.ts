@@ -99,6 +99,8 @@ export interface Match {
   isOwner?: boolean;
   following?: boolean;
   keepers?: { handle: string; displayName: string }[];
+  /** Set when the match is a tie in a tournament bracket. */
+  tournament?: { id: string; name: string; round: string } | null;
   /** Your part in the match, on your own match list. */
   role?: 'scorekeeper' | 'co-keeper';
 }
@@ -120,12 +122,71 @@ export interface MatchEvent {
   minute: number | null;
   stoppage: number;
   player: string;
+  /** Set when the scorer was picked from the squad. */
+  playerId?: number | null;
   createdAt: string;
 }
-export interface MatchSnapshot { match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string }
+export interface MatchSnapshot {
+  match: Match; events: MatchEvent[]; clips: Post[]; streams: LiveStream[]; serverTime: string;
+  /** Both squads, for scorekeepers only. */
+  rosters?: { home: Player[]; away: Player[] };
+}
+
+// Squads (see api/src/teams.js).
+export type Position = '' | 'GK' | 'DF' | 'MF' | 'FW';
+export interface Player { id: number; name: string; number: number | null; position: Position; goals?: number }
+export interface TeamRecord { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }
+export interface TeamPage {
+  team: { name: string; slug: string; youth: boolean };
+  following: boolean;
+  record: TeamRecord;
+  matches: Match[];
+  canManage: boolean;
+  isOwner: boolean;
+  managers: { handle: string; displayName: string; owner: boolean }[];
+  roster: Player[];
+  rosterCount: number;
+  /** A youth squad: names are only shown to its managers. */
+  rosterHidden: boolean;
+}
+
+// Tournaments (see api/src/tournaments.js).
+export type TournamentStatus = 'registration' | 'running' | 'finished';
+export interface TournamentCard {
+  id: string; name: string; status: TournamentStatus; capacity: number; approved: number; venue: string; startsAt: string; youth: boolean;
+  organizer: { handle: string; displayName: string }; champion: Team | null;
+}
+export interface Tournament {
+  id: string; name: string; description: string; status: TournamentStatus; capacity: number; approval: 'manual' | 'auto';
+  halfLength: number; venue: string; startsAt: string; youth: boolean; visibility: 'public' | 'unlisted';
+  organizer: { handle: string; displayName: string } | null;
+  champion: Team | null;
+  isOrganizer: boolean;
+  counts: { approved: number; pending: number };
+  createdAt: string;
+}
+export interface TournamentEntry { slug: string; name: string; status: 'pending' | 'approved' | 'rejected'; seed: number | null; players: number; mine: boolean; note?: string }
+export interface BracketSlot {
+  id: number; slot: number; home: Team | null; away: Team | null; winner: 'home' | 'away' | null; bye: boolean;
+  decided: 'score' | 'penalties' | 'walkover' | 'bye' | null; note: string; match: Match | null; awaitingDecision: boolean;
+}
+export interface BracketRound { round: number; name: string; slots: BracketSlot[] }
+export interface TournamentView { tournament: Tournament; teams: TournamentEntry[]; bracket: BracketRound[] | null; serverTime: string }
 
 // Pro & international football (see api/src/worldscores.js).
-export interface WorldSide { name: string; short: string; abbr: string; score: number | null; winner: boolean }
+export interface WorldSide {
+  name: string; short: string; abbr: string; score: number | null; winner: boolean;
+  /** Last-five form ("WDLWW") and season record ("W-D-L"), when the feed has them. */
+  form?: { form: string | null; record: string | null } | null;
+}
+/** American odds (+140, -170). `open` is the opening line; the rest are current. */
+export interface WorldOdds {
+  provider: string | null;
+  moneyline: { home: number | null; draw: number | null; away: number | null };
+  open: { home: number | null; draw: number | null; away: number | null } | null;
+  total: { line: number; over: number | null; under: number | null } | null;
+  spread: { home: number; homeOdds: number | null; awayOdds: number | null } | null;
+}
 export interface WorldMatch {
   id: string;
   league: { slug: string; name: string };
@@ -135,6 +196,7 @@ export interface WorldMatch {
   home: WorldSide;
   away: WorldSide;
   venue: string | null;
+  odds?: WorldOdds | null;
 }
 export interface WorldLeague { slug: string; name: string; live: number; matches: WorldMatch[] }
 export interface WorldScores { updatedAt: string; live: number; total: number; leagues: WorldLeague[]; stale?: boolean }
@@ -234,6 +296,15 @@ export async function fetchPublicPost(id: string): Promise<Post | null> {
     const res = await fetch(`${API_URL}/v1/posts/${encodeURIComponent(id)}`, { next: { revalidate: 60 } });
     if (!res.ok) return null;
     return (await res.json()).post as Post;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchPublicTournament(id: string): Promise<TournamentView | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/tournaments/${encodeURIComponent(id)}`, { next: { revalidate: 30 } });
+    return res.ok ? ((await res.json()) as TournamentView) : null;
   } catch {
     return null;
   }

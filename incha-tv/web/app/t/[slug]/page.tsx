@@ -3,17 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { api, type Match } from '@/lib/api';
+import { api, type TeamPage } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import MatchCard from '@/components/MatchCard';
 import FollowButton from '@/components/FollowButton';
-
-interface TeamPage { team: { name: string; slug: string }; following: boolean; record: { played: number; won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number }; matches: Match[] }
+import Squad from '@/components/Squad';
 
 export default function TeamPageView() {
   const { slug } = useParams<{ slug: string }>();
+  const { user, ready } = useAuth();
   const [data, setData] = useState<TeamPage | null>(null);
   const [missing, setMissing] = useState(false);
-  useEffect(() => { api<TeamPage>(`/v1/teams/${encodeURIComponent(slug)}`).then(setData).catch(() => setMissing(true)); }, [slug]);
+  useEffect(() => {
+    if (!ready) return;
+    api<TeamPage>(`/v1/teams/${encodeURIComponent(slug)}`).then(setData).catch(() => setMissing(true));
+  }, [slug, ready, user]);
 
   if (missing) return <div className="wrap"><div className="empty" style={{ marginTop: 48 }}><div className="display">Team not found</div><Link href="/matches" className="btn">Browse matches</Link></div></div>;
   if (!data) return <div className="wrap"><div className="skeleton" style={{ height: 160, marginTop: 40 }} /></div>;
@@ -21,7 +25,7 @@ export default function TeamPageView() {
   return (
     <div className="wrap">
       <section className="hero">
-        <span className="mono muted">Team</span>
+        <span className="mono muted">Team{team.youth ? ' · Youth' : ''}</span>
         <h1 className="display">{team.name}</h1>
         <div style={{ marginTop: 12 }}>
           <FollowButton path={`/v1/teams/${team.slug}/follow`} following={data.following} onChange={following => setData(d => (d ? { ...d, following } : d))} label="Follow team" />
@@ -32,6 +36,7 @@ export default function TeamPageView() {
           ))}
         </div>
       </section>
+      <Squad data={data} onChange={setData} />
       <h2 className="display" style={{ fontSize: 28, margin: '24px 0 12px' }}>Matches</h2>
       {matches.length ? <div className="match-grid" style={{ paddingBottom: 48 }}>{matches.map(m => <MatchCard key={m.id} match={m} />)}</div>
         : <div className="empty"><p>No public matches yet.</p></div>}

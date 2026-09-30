@@ -21,6 +21,58 @@ const rank = slug => { const i = PRIORITY.indexOf(slug); return i === -1 ? PRIOR
 
 const STATE_ORDER = { in: 0, pre: 1, post: 2 };
 
+// American odds ("+140", "-175", 215) → number, or null when missing or "OFF".
+const american = value => {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(String(value).replace(/^\+/, ''));
+  return Number.isFinite(n) && n !== 0 && Math.abs(n) >= 100 ? n : null;
+};
+const line = value => {
+  const n = Number(String(value ?? '').replace(/^[ou]/, ''));
+  return value === null || value === undefined || value === '' || !Number.isFinite(n) ? null : n;
+};
+
+/**
+ * The bookmaker's lines for a game (ESPN carries DraftKings'), trimmed to what a scorecard shows:
+ * three-way moneyline (current and opening), the goals total, and the spread. Sportsbook links are dropped.
+ */
+export function normalizeOdds(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const ml = raw.moneyline ?? {};
+  const price = (side, when) => american(ml[side]?.[when]?.odds);
+  const moneyline = {
+    home: price('home', 'close') ?? american(raw.homeTeamOdds?.moneyLine),
+    draw: price('draw', 'close') ?? american(raw.drawOdds?.moneyLine),
+    away: price('away', 'close') ?? american(raw.awayTeamOdds?.moneyLine)
+  };
+  const open = { home: price('home', 'open'), draw: price('draw', 'open'), away: price('away', 'open') };
+  const totalLine = line(raw.total?.over?.close?.line) ?? line(raw.overUnder);
+  const total = totalLine === null ? null : {
+    line: totalLine,
+    over: american(raw.total?.over?.close?.odds),
+    under: american(raw.total?.under?.close?.odds)
+  };
+  const spreadLine = line(raw.pointSpread?.home?.close?.line);
+  const spread = spreadLine === null ? null : {
+    home: spreadLine, homeOdds: american(raw.pointSpread?.home?.close?.odds), awayOdds: american(raw.pointSpread?.away?.close?.odds)
+  };
+  if (moneyline.home === null && moneyline.away === null && !total) return null;
+  return {
+    provider: raw.provider?.displayName || raw.provider?.name || null,
+    moneyline,
+    open: open.home === null && open.away === null ? null : open,
+    total,
+    spread
+  };
+}
+
+// Last-five form ("WDLWW") and the season record ("W-D-L") where the feed has them.
+const formOf = competitor => {
+  const form = /^[WDL]{1,10}$/.test(competitor.form || '') ? competitor.form : null;
+  const record = competitor.records?.find(r => r.type === 'total')?.summary ?? null;
+  return form || record ? { form, record } : null;
+};
+
 export function normalizeEvent(event, leagues) {
   const comp = event.competitions?.[0] ?? {};
   const leagueId = /l:(\d+)/.exec(event.uid || '')?.[1];
@@ -33,7 +85,8 @@ export function normalizeEvent(event, leagues) {
       short: c.team?.shortDisplayName ?? c.team?.displayName ?? 'TBD',
       abbr: c.team?.abbreviation ?? '',
       score: type.state === 'pre' || c.score === undefined ? null : Number(c.score),
-      winner: Boolean(c.winner)
+      winner: Boolean(c.winner),
+      form: formOf(c)
     };
   };
   const postponed = /POSTPONED|CANCELED|SUSPENDED|ABANDONED/.test(type.name || '');
@@ -46,7 +99,9 @@ export function normalizeEvent(event, leagues) {
     kickoffAt: event.date,
     home: side('home'),
     away: side('away'),
-    venue: comp.venue?.fullName ?? null
+    venue: comp.venue?.fullName ?? null,
+    // Lines are shown before and during a game (as the pre-match line), not after it.
+    odds: postponed || type.state === 'post' ? null : normalizeOdds(comp.odds?.[0])
   };
 }
 
