@@ -20,15 +20,12 @@
         <h2 class="h4">Make an offer</h2>
         <button type="button" class="offer-modal__close" data-offer-close aria-label="Close">&times;</button>
       </div>
-      <p class="offer-modal__hint">On <strong>{{ product.title | escape }}</strong> (list {{ current.price | money }}). You'll complete checkout for your offer amount, then we respond within 24 hours. If we decline or miss the window, it's automatically refunded.</p>
+      <p class="offer-modal__hint">On <strong>{{ product.title | escape }}</strong> (list {{ current.price | money }}). Next is Shopify checkout, where you'll pay and give your contact info — we respond within 24 hours, and if we decline or miss the window, it's automatically refunded.</p>
       <div class="form" data-offer-form>
         <label class="offer-modal__amount">Your offer (USD)
           <input type="number" name="amount" inputmode="decimal" min="1" step="1" required placeholder="e.g. 85" data-offer-amount>
         </label>
         <p class="small" data-offer-floor-hint></p>
-        <label>Name<input type="text" name="buyer_name" required maxlength="120" autocomplete="name"></label>
-        <label>Email<input type="email" name="buyer_email" required maxlength="200" autocomplete="email"></label>
-        <label>Phone (optional)<input type="tel" name="buyer_phone" maxlength="40" autocomplete="tel"></label>
         <label>Note to the shop (optional)<textarea name="note" maxlength="600" rows="2" placeholder="Any details that help your case"></textarea></label>
         <input type="text" name="company_fax" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
         <div data-offer-error hidden></div>

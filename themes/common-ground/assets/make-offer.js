@@ -47,7 +47,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           variant_id: variantId, quantity: 1, amount: amountDollars,
-          buyer_name: field('buyer_name'), buyer_email: field('buyer_email'), buyer_phone: field('buyer_phone'),
           note: field('note'), company_fax: field('company_fax')
         })
       })
