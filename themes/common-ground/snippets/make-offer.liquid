@@ -16,8 +16,12 @@
   <div data-make-offer data-api="{{ api }}" data-variant-id="{{ current.id }}" data-product-title="{{ product.title | escape }}" data-min-percent="{{ min_percent }}" data-list-price="{{ current.price }}">
     <button type="button" class="btn product__offer-btn" data-offer-open {% unless current.available %}disabled{% endunless %}>Make an offer</button>
     <dialog data-offer-dialog aria-label="Make an offer on {{ product.title | escape }}">
+      <div class="offer-modal__bezel" aria-hidden="true"><span></span><span></span><span></span></div>
       <div class="offer-modal__head">
-        <h2 class="h4">Make an offer</h2>
+        <div>
+          <span class="kicker offer-modal__kicker">Offer desk</span>
+          <h2 class="h4">Make an offer</h2>
+        </div>
         <button type="button" class="offer-modal__close" data-offer-close aria-label="Close">&times;</button>
       </div>
       <p class="offer-modal__hint">On <strong>{{ product.title | escape }}</strong> (list {{ current.price | money }}). Next is Shopify checkout, where you'll pay and give your contact info — we respond within 24 hours, and if we decline or miss the window, it's automatically refunded.</p>
@@ -28,7 +32,7 @@
         <p class="small" data-offer-floor-hint></p>
         <label>Note to the shop (optional)<textarea name="note" maxlength="600" rows="2" placeholder="Any details that help your case"></textarea></label>
         <input type="text" name="company_fax" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
-        <div data-offer-error hidden></div>
+        <div class="form__error" data-offer-error hidden></div>
         <div class="offer-modal__actions">
           <button type="button" class="btn btn--primary" data-offer-submit>Send offer &amp; continue to checkout</button>
         </div>
