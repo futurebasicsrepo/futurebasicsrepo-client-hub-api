@@ -21,6 +21,7 @@
     var form = root.querySelector('[data-offer-form]');
     var errorBox = root.querySelector('[data-offer-error]');
     var floorHint = root.querySelector('[data-offer-floor-hint]');
+    var submitBtn = root.querySelector('[data-offer-submit]');
     var floorCents = Math.ceil(listPrice * minPercent / 100);
     if (floorHint) floorHint.textContent = 'Offers below ' + money(floorCents) + ' (' + minPercent + '% of ' + money(listPrice) + ') won’t be accepted.';
 
@@ -32,13 +33,12 @@
     root.querySelector('[data-offer-close]').addEventListener('click', function () { dialog.close(); });
     dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
 
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
+    function field(name) { var el = form.querySelector('[name="' + name + '"]'); return el ? el.value : ''; }
+
+    function submitOffer() {
       errorBox.hidden = true;
-      var fd = new FormData(form);
-      var amountDollars = parseFloat(fd.get('amount'));
+      var amountDollars = parseFloat(field('amount'));
       if (!(amountDollars > 0)) { errorBox.hidden = false; errorBox.textContent = 'Enter an offer amount.'; return; }
-      var submitBtn = root.querySelector('[data-offer-submit]');
       submitBtn.disabled = true;
       var originalText = submitBtn.textContent;
       submitBtn.textContent = 'Sending…';
@@ -47,8 +47,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           variant_id: variantId, quantity: 1, amount: amountDollars,
-          buyer_name: fd.get('buyer_name'), buyer_email: fd.get('buyer_email'), buyer_phone: fd.get('buyer_phone'),
-          note: fd.get('note'), company_fax: fd.get('company_fax')
+          note: field('note'), company_fax: field('company_fax')
         })
       })
         .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || 'Something went wrong.'); return d; }); })
@@ -61,6 +60,11 @@
           submitBtn.disabled = false; submitBtn.textContent = originalText;
           errorBox.hidden = false; errorBox.textContent = err.message || 'Something went wrong. Try again.';
         });
+    }
+
+    submitBtn.addEventListener('click', submitOffer);
+    form.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); submitOffer(); }
     });
   }
 
