@@ -789,8 +789,8 @@ body { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.
 .sell__steps { counter-reset: s; display: grid; gap: 12px; margin-top: 10px; }
 .sell__steps li { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: start; }
 .sell__steps li::before { counter-increment: s; content: counter(s, decimal-leading-zero); font-family: var(--font-pixel); font-size: 24px; color: var(--osd-green); line-height: 1; }
-.sell__steps b { display: block; font-family: var(--font-display); text-transform: uppercase; font-size: 14px; }
-.sell__steps span { display: block; font-size: 14px; opacity: .85; }
+.sell__steps b { display: block; grid-column: 2; font-family: var(--font-display); text-transform: uppercase; font-size: 14px; }
+.sell__steps span { display: block; grid-column: 2; font-size: 14px; opacity: .85; }
 .sell__wants .chip { background: transparent; color: var(--vhs-cream); border-color: var(--vhs-cream); }
 .dropzone { display: flex; align-items: center; gap: 16px; padding: 18px; margin-top: 10px; border: 3px dashed var(--c-ink); background: var(--c-bg); cursor: pointer; transition: .15s; }
 .dropzone:hover, .dropzone.is-over { background: var(--c-acid); }
@@ -836,7 +836,9 @@ body { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.
 .ticket__counter label { margin: 0; }
 
 /* ---- Make an offer ----------------------------------------------------- */
-.product__offer-btn { margin-top: 10px; width: 100%; }
+.product__offer-btn { margin-top: 10px; width: 100%; background: var(--turf); color: #fff; border-color: var(--c-ink); }
+.product__offer-btn:hover { background: var(--turf-dark); }
+.product__offer-btn[disabled] { background: var(--c-paper); color: var(--c-ink); }
 dialog[data-offer-dialog] { border: 3px solid var(--c-ink); border-radius: var(--radius); box-shadow: 10px 10px 0 var(--c-ink); background: var(--c-paper); color: var(--c-ink); padding: 24px; width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 64px); }
 dialog[data-offer-dialog]::backdrop { background: rgba(20,20,20,.6); }
 .offer-modal__head { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 4px; }

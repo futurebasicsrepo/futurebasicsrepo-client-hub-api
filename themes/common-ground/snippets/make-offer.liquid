@@ -14,14 +14,14 @@
 -%}
 {%- if accepts_offers -%}
   <div data-make-offer data-api="{{ api }}" data-variant-id="{{ current.id }}" data-product-title="{{ product.title | escape }}" data-min-percent="{{ min_percent }}" data-list-price="{{ current.price }}">
-    <button type="button" class="btn btn--ghost product__offer-btn" data-offer-open {% unless current.available %}disabled{% endunless %}>Make an offer</button>
+    <button type="button" class="btn product__offer-btn" data-offer-open {% unless current.available %}disabled{% endunless %}>Make an offer</button>
     <dialog data-offer-dialog aria-label="Make an offer on {{ product.title | escape }}">
       <div class="offer-modal__head">
         <h2 class="h4">Make an offer</h2>
         <button type="button" class="offer-modal__close" data-offer-close aria-label="Close">&times;</button>
       </div>
       <p class="offer-modal__hint">On <strong>{{ product.title | escape }}</strong> (list {{ current.price | money }}). You'll complete checkout for your offer amount, then we respond within 24 hours. If we decline or miss the window, it's automatically refunded.</p>
-      <form class="form" data-offer-form novalidate>
+      <div class="form" data-offer-form>
         <label class="offer-modal__amount">Your offer (USD)
           <input type="number" name="amount" inputmode="decimal" min="1" step="1" required placeholder="e.g. 85" data-offer-amount>
         </label>
@@ -33,9 +33,9 @@
         <input type="text" name="company_fax" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
         <div data-offer-error hidden></div>
         <div class="offer-modal__actions">
-          <button type="submit" class="btn btn--primary" data-offer-submit>Send offer &amp; continue to checkout</button>
+          <button type="button" class="btn btn--primary" data-offer-submit>Send offer &amp; continue to checkout</button>
         </div>
-      </form>
+      </div>
     </dialog>
   </div>
   <script src="{{ 'make-offer.js' | asset_url }}" defer="defer"></script>
