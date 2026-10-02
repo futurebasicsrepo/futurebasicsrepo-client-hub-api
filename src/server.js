@@ -29,7 +29,9 @@ const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.
 const renderingSig = id => createHash('sha256').update(`rendering:${id}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
 const renderingUrl = id => `${clientHubUrl}/r/${id}/${renderingSig(id)}.jpg`;
 const withRendering = row => row ? { ...row, rendering_url: row.has_rendering ? renderingUrl(row.id) : null } : row;
-const HAS_RENDERING_SQL = `coalesce((select coalesce(jsonb_array_length(coalesce(tp.published_data,tp.data)->'renderings'),0)>0 from tech_packs tp where tp.product_id=p.id),false) has_rendering`;
+// A pack has a cover image when it carries a colour rendering, or — for photo-start drafts — the uploaded reference photo in its first view.
+const PACK_HAS_IMAGE_SQL = tp => `(coalesce(jsonb_array_length(coalesce(${tp}.published_data,${tp}.data)->'renderings'),0)>0 or coalesce(coalesce(${tp}.published_data,${tp}.data)->'sketches'->0->>'image','')<>'')`;
+const HAS_RENDERING_SQL = `coalesce((select ${PACK_HAS_IMAGE_SQL('tp')} from tech_packs tp where tp.product_id=p.id),false) has_rendering`;
 const startProjectUrl = process.env.START_PROJECT_URL || 'https://thefuturebasics.com/pages/contact';
 const intakeNotificationEmail = process.env.INTAKE_NOTIFICATION_EMAIL || 'kyle@thefuturebasics.com';
 const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
@@ -477,7 +479,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     count(distinct pr.id) filter(where pr.archived_at is null and pr.status not in ('archive','archived'))::int project_count,
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
-    (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and coalesce(jsonb_array_length(coalesce(tp.published_data,tp.data)->'renderings'),0)>0 order by tp.updated_at desc limit 1) cover_rendering_product_id,
+    (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and ${PACK_HAS_IMAGE_SQL('tp')} order by tp.updated_at desc limit 1) cover_rendering_product_id,
     (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id left join projects pr on pr.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
@@ -1584,7 +1586,7 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');
   if(!/^[0-9a-f-]{36}$/i.test(id)||sig!==renderingSig(id))return reply.code(404).send({error:'Not found'});
-  const row=(await pool.query(`select coalesce(published_data,data)->'renderings'->0->>'image' image from tech_packs where product_id=$1`,[id])).rows[0];
+  const row=(await pool.query(`select coalesce(coalesce(published_data,data)->'renderings'->0->>'image',coalesce(published_data,data)->'sketches'->0->>'image') image from tech_packs where product_id=$1`,[id])).rows[0];
   const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(row?.image||'');if(!m)return reply.code(404).send({error:'No rendering'});
   return reply.header('cache-control','public, max-age=300').type(m[1]).send(Buffer.from(m[2],'base64'));
 });
