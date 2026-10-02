@@ -14,6 +14,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
+import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -196,6 +197,30 @@ async function sendIntakeNotification(intake,uploads){
   if(!response.ok)throw new Error(`Project intake email delivery failed: ${response.status}`);return true;
 }
 
+// Future Basics hub emails to clients (intake confirmation, room activation). Resend-backed like the login code;
+// without RESEND_API_KEY they log and return false so local runs never block on delivery.
+const hubFromEmail=process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>';
+async function sendHubEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html})});
+  if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
+}
+const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
+const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+async function sendIntakeConfirmation(intake){
+  const d=intake.data,rows=[['Project',d.projectName],['Product',d.productCategory],['Quantity',d.targetQuantity],['Budget',d.budgetRange],['Target date',d.targetDate]].filter(([,v])=>v);
+  return sendHubEmail({to:d.email,subject:`We have your brief — ${d.projectName}`,html:hubEmailShell('We have your brief',
+    `<p>Hi ${emailEscape(d.contactName.split(' ')[0]||d.contactName)},</p><p>Thanks — your brief for <strong>${emailEscape(d.projectName)}</strong> is in. Here is what happens next:</p>
+    <ol><li>We read it and reply within two business days, usually with a few questions.</li><li>You get an email the moment your private project room is ready — one place for the brief, concepts, tech packs, samples, quotes and our shared thread.</li><li>From there every product moves brief → concept → tech pack → sample → production, and you approve each step in the room.</li></ol>
+    <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#717177;margin-top:24px">What you sent</p>${rows.map(([l,v])=>`<p style="margin:4px 0"><strong>${emailEscape(l)}:</strong> ${emailEscape(v)}</p>`).join('')}<p style="margin-top:12px;white-space:pre-wrap">${emailEscape(d.projectBrief)}</p>`)});
+}
+async function clientForEmail(email){
+  const domain=emailDomain(email);
+  return (await pool.query(`select * from clients where status='active' and (($1<>'' and $1=any(email_domains)) or $2=any(allowed_emails))
+    order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
+}
+
 async function storeAssetVersion(asset,userId,part,notes){
   const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
@@ -279,10 +304,11 @@ app.post('/v1/public/intakes',async(req,reply)=>{
   }
   await createIntake();
   if(spam)return reply.code(202).send({ok:true});
-  let notificationEmailSent=false;
+  let notificationEmailSent=false,confirmationEmailSent=false;
   try{notificationEmailSent=await sendIntakeNotification(intake,uploads)}catch(error){app.log.error({error,projectId:intake.project.id,to:intakeNotificationEmail},'Project intake was saved but notification email failed')}
+  try{confirmationEmailSent=await sendIntakeConfirmation(intake)}catch(error){app.log.error({error,projectId:intake.project.id,to:intake.data.email},'Project intake was saved but confirmation email failed')}
   return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
-    notificationEmail:intakeNotificationEmail,notificationEmailSent,
+    notificationEmail:intakeNotificationEmail,notificationEmailSent,confirmationEmailSent,
     message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
@@ -290,12 +316,16 @@ app.post('/v1/auth/code', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const domain = email.split('@')[1];
   if (!domain) return reply.code(400).send({ error: 'Valid email required' });
-  const client = await pool.query("select * from clients where $1 = any(email_domains) and status='active'", [domain]);
-  if (!client.rowCount) return reply.code(403).send({
-    error: "We don't currently have any work from you. Start a project here",
-    code: 'NO_CLIENT_WORK',
-    action: { label: 'Start a project', url: startProjectUrl }
-  });
+  const client = await clientForEmail(email);
+  if (!client) {
+    const lead=(await pool.query(`select id from clients where status='lead' and (lower(contact_email)=$1 or $1=any(allowed_emails)) limit 1`,[email])).rows[0];
+    if(lead)return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'});
+    return reply.code(403).send({
+      error: "We don't currently have any work from you. Start a project here",
+      code: 'NO_CLIENT_WORK',
+      action: { label: 'Start a project', url: startProjectUrl }
+    });
+  }
   const code = String(randomInt(100000, 1000000));
   await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')', [email, hash(code)]);
   await sendCode(email, code);
@@ -312,7 +342,7 @@ app.post('/v1/auth/verify', async (req, reply) => {
   );
   if (!result.rowCount) return reply.code(401).send({ error: 'Invalid or expired code' });
   const domain = email.split('@')[1];
-  const client = (await pool.query("select * from clients where $1=any(email_domains) and status='active'", [domain])).rows[0];
+  const client = await clientForEmail(email);
   if (!client) return reply.code(403).send({ error: 'Client access is no longer active' });
   const role=domain==='thefuturebasics.com'?'admin':'client';
   const user = (await pool.query(
@@ -572,10 +602,10 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
   return {query,count:synced.length,products:synced,customerSynced:Boolean(customer),customerError,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,slug,emailDomains=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
+  const {name,slug,emailDomains=[],allowedEmails=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   const domains=await validateClientDomains(emailDomains);
-  const client=(await pool.query(`insert into clients(name,slug,email_domains,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[name,slug,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
+  const client=(await pool.query(`insert into clients(name,slug,email_domains,allowed_emails,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,[name,slug,domains,normalizeEmails(allowedEmails),contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
   await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
   return client;
 });
@@ -741,7 +771,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -773,13 +803,48 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,emailDomains,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
+  const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
   const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
   return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
     email_domains=coalesce($3,email_domains),contact_name=coalesce($4,contact_name),contact_email=coalesce($5,contact_email),
     contact_phone=coalesce($6,contact_phone),website_url=coalesce($7,website_url),notes=coalesce($8,notes),
-    shopify_customer_id=coalesce($9,shopify_customer_id) where id=$10 returning *`,
-    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id])).rows[0];
+    shopify_customer_id=coalesce($9,shopify_customer_id),allowed_emails=coalesce($11,allowed_emails) where id=$10 returning *`,
+    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id,allowedEmails===undefined?null:normalizeEmails(allowedEmails)])).rows[0];
+});
+// Turn a website lead into an active client room: grant sign-in access (whole domain for company
+// mailboxes, the individual address for personal ones), open their intake projects, and email them the way in.
+app.post('/v1/admin/clients/:id/activate',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const client=(await pool.query(`select * from clients where id=$1 and slug<>'future-basics'`,[req.params.id])).rows[0];
+  if(!client)return reply.code(404).send({error:'Client not found'});
+  const sendWelcome=req.body?.sendWelcome!==false,message=String(req.body?.message||'').trim().slice(0,2000);
+  const domain=emailDomain(client.contact_email);
+  const domainTaken=Boolean(domain)&&(await pool.query(`select 1 from clients where id<>$1 and $2=any(email_domains)`,[client.id,domain])).rowCount>0;
+  const access=planClientAccess(client,{domainTaken});
+  if(!access.emailDomains.length&&!access.allowedEmails.length)return reply.code(400).send({error:'Add a contact email to this client before activating the room'});
+  const db=await pool.connect();let updated,project;
+  try{
+    await db.query('begin');
+    updated=(await db.query(`update clients set status='active',archived_at=null,archive_previous_status=null,email_domains=$2,allowed_emails=$3,activated_at=coalesce(activated_at,now())
+      where id=$1 returning *`,[client.id,access.emailDomains,access.allowedEmails])).rows[0];
+    await db.query(`update projects set status='active',updated_at=now() where client_id=$1 and status='intake'`,[client.id]);
+    project=(await db.query(`select * from projects where client_id=$1 and archived_at is null order by updated_at desc limit 1`,[client.id])).rows[0]||null;
+    await db.query(`insert into activities(client_id,actor_id,type,summary,metadata) values($1,$2,'room-activated',$3,$4)`,
+      [client.id,req.auth.sub,'Your private project room is open',{access:access.summary,sendWelcome}]);
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+  let welcomeSent=false,welcomeError=null;
+  if(sendWelcome&&updated.contact_email){
+    const link=project?`${clientHubUrl}/projects/${project.id}`:clientHubUrl,first=String(updated.contact_name||'').split(' ')[0]||'there';
+    try{
+      welcomeSent=await sendHubEmail({to:updated.contact_email,subject:`Your Future Basics project room is ready${project?' — '+project.name:''}`,html:hubEmailShell('Your project room is ready',
+        `<p>Hi ${emailEscape(first)},</p><p>Your private Future Basics room${project?` for <strong>${emailEscape(project.name)}</strong>`:''} is open. Sign in with <strong>${emailEscape(updated.contact_email)}</strong> — no password, we email you a six-digit code each time.</p>
+        ${hubButton(link,'Open your project room')}${message?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(message)}</p>`:''}
+        <p>Inside you will find your brief, every product as it moves from concept through tech pack, sample and production, quotes and tech packs to approve, and a shared thread with us.</p>
+        <p style="font-size:12px;color:#717177">${emailEscape(access.summary)}.</p>`),replyTo:req.auth.email||intakeNotificationEmail});
+      if(welcomeSent)await pool.query('update clients set welcome_sent_at=now() where id=$1',[client.id]);
+    }catch(error){welcomeError=error.message;app.log.error({error,clientId:client.id},'Room activated but welcome email failed')}
+  }
+  return {client:{...updated,welcome_sent_at:welcomeSent?new Date().toISOString():updated.welcome_sent_at},project,access,welcomeSent,welcomeError,hubUrl:clientHubUrl};
 });
 app.post('/v1/admin/clients/:id/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query(`update clients set archived_at=now(),archive_previous_status=case when status not in ('archive','archived') then status else coalesce(archive_previous_status,'active') end,status='archived'
@@ -1195,6 +1260,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query(`select p.*,
       (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
       (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
+      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
@@ -1396,7 +1462,7 @@ app.post('/v1/requests/:id/files', { preHandler: authenticate }, async (req, rep
 // ---- Tech packs: built in the work console, published to the client hub, shared with factories by link ----
 async function loadAdminTechPack(productId){
   const product=(await pool.query(`select p.id,p.client_id,p.project_id,p.title,p.product_type,p.shopify_handle,p.description_html,p.shopify_image_url,p.shopify_image_alt,p.current_stage,
-    c.name client_name,pr.name project_name from products p join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id where p.id=$1`,[productId])).rows[0];
+    c.name client_name,c.slug client_slug,c.contact_name client_contact_name,c.contact_email client_contact_email,pr.name project_name from products p join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id where p.id=$1`,[productId])).rows[0];
   if(!product)return null;
   const [pack,configuration,brief]=await Promise.all([
     pool.query('select * from tech_packs where product_id=$1',[productId]),
@@ -1407,7 +1473,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1417,7 +1483,7 @@ async function updateVerification(packId,version,mutate){
   if(!row||row.version!==version)return null;
   const verification=normalizeVerification(row.verification,row.version);
   mutate(verification);
-  const locked=Boolean(verification.brandSign&&verification.factorySign);
+  const locked=Boolean(verification.clientSign&&verification.brandSign&&verification.factorySign);
   return (await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
     [packId,version,verification,locked])).rows[0]||null;
 }
@@ -1452,14 +1518,24 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
     await client.query('commit');
-    return {techPack:techPackPayload(row)};
+    let clientNotified=false;
+    if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
+      try{
+        const first=String(ctx.product.client_contact_name||'').split(' ')[0]||'there',link=`${clientHubUrl}/tech-packs/${ctx.product.id}`;
+        clientNotified=await sendHubEmail({to:ctx.product.client_contact_email,subject:`Tech pack v${row.version} is ready for your approval — ${ctx.product.title}`,
+          html:hubEmailShell('A tech pack is ready for your approval',`<p>Hi ${emailEscape(first)},</p><p>Version ${row.version} of the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> is published to your project room. Review the sketches and callouts, measurements, materials, construction, colours and artwork, then approve it in the <strong>Sign</strong> tab — your approval is what releases it to Future Basics and the factory.</p>${hubButton(link,'Review and approve')}${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`),replyTo:req.auth.email||intakeNotificationEmail});
+      }catch(error){app.log.error({error,productId:ctx.product.id},'Tech pack published but client notification failed')}
+    }
+    return {techPack:techPackPayload(row),clientNotified};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
 app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before signing it'});
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to sign'});
-  if(normalizeVerification(ctx.techPack.verification,ctx.techPack.version).brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
+  const current=normalizeVerification(ctx.techPack.verification,ctx.techPack.version);
+  if(current.brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
+  if(!current.clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before Future Basics signs`});
   const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics'}});
   if(!row)return reply.code(409).send({error:'The tech pack changed while you were signing — reload and try again'});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
@@ -1469,6 +1545,7 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
 app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before sharing it with a factory'});
+  if(!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before factory links are created`});
   const label=String(req.body?.label||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
   const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
   const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||0)));
@@ -1489,6 +1566,89 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return publishedTechPackView(row,{audience:'client'});
+});
+// Client-initiated tech packs. A client starts a product and its draft pack from their project, fills it in, and submits it to
+// Future Basics, who finish and publish v1. From there the normal chain runs: client approves → Future Basics signs → factory.
+const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadClientDraft(productId,clientId){
+  return (await pool.query(`select tp.*,p.title,p.product_type,p.project_id,c.name client_name,c.slug client_slug,pr.name project_name
+    from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.initiated_by='client' and tp.published_at is null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[productId,clientId])).rows[0]||null;
+}
+const draftView=row=>({product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
+  techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl});
+app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
+  const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
+  if(!title)return reply.code(400).send({error:'Give the product a name'});
+  const project=(await pool.query(`select pr.id,pr.name,c.name client_name from projects pr join clients c on c.id=pr.client_id
+    where pr.id=$1 and pr.client_id=$2 and pr.archived_at is null and pr.status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const product=(await client.query(`insert into products(client_id,project_id,title,product_type,description_html,source_of_truth) values($1,$2,$3,$4,$5,'hub') returning *`,
+      [req.auth.clientId,project.id,title,productType||null,description?`<p>${escapeHtml(description)}</p>`:null])).rows[0];
+    await client.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+      from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
+    const seed=normalizeTechPack(seedTechPack({product}));seed.style.designer=project.client_name;
+    const pack=(await client.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by) values($1,$2,'draft',$3,$4,'client') returning *`,[product.id,req.auth.clientId,seed,req.auth.sub])).rows[0];
+    await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+      [req.auth.clientId,product.id,req.auth.sub,`${project.client_name} started a tech pack for ${product.title}`,{techPackId:pack.id,initiatedBy:'client'}]);
+    await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[req.auth.clientId,`${project.client_name} started a tech pack for ${product.title} in ${project.name}`,product.id]);
+    await client.query('commit');
+    return reply.code(201).send(draftView({...pack,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}));
+  }catch(e){await client.query('rollback');throw e}finally{client.release()}
+});
+app.get('/v1/products/:id/tech-pack/draft',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client')return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  return draftView(row);
+});
+app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40_000_000},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics — ask them to reopen it if you need changes'});
+  const data=normalizeTechPack(req.body?.data);
+  const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
+  return draftView({...row,...updated,title:data.style.styleName||row.title});
+});
+app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'Already submitted to Future Basics'});
+  const note=String(req.body?.note||'').trim().slice(0,1000);
+  const updated=(await pool.query(`update tech_packs set status='submitted',submitted_at=now(),submitted_by=$2,updated_at=now() where id=$1 returning *`,[row.id,req.auth.sub])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [row.client_id,row.product_id,req.auth.sub,`${row.client_name} submitted their tech pack for ${row.title} to Future Basics`,{techPackId:row.id,note}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} submitted a tech pack for ${row.title} — review and publish v1${note?' · "'+note.slice(0,120)+'"':''}`,row.product_id]);
+  await pool.query(`update products set current_stage='development',updated_at=now() where id=$1 and current_stage='brief'`,[row.product_id]);
+  return draftView({...row,...updated});
+});
+// Future Basics can hand a submitted draft back to the client for more work.
+app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  if(ctx.techPack.initiated_by!=='client'||ctx.techPack.published_at)return reply.code(409).send({error:'Only an unpublished client draft can be reopened'});
+  const row=(await pool.query(`update tech_packs set status='draft',updated_at=now() where id=$1 returning *`,[ctx.techPack.id])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack draft for ${ctx.product.title} reopened for ${ctx.product.client_name}`,{techPackId:row.id}]);
+  return {techPack:techPackPayload(row)};
+});
+// Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
+const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+  from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id`;
+app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client')return reply.code(403).send({error:'Only the client approves their tech pack'});
+  const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to approve'});
+  const row=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  if(normalizeVerification(row.verification,row.version).clientSign)return reply.code(409).send({error:`Version ${row.version} is already approved`});
+  const updated=await updateVerification(row.id,row.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:req.auth.email||''}});
+  if(!updated)return reply.code(409).send({error:'A new version was published — reload to review it'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,`Tech pack v${row.version} approved by ${name}`,{techPackId:row.id,version:row.version}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
+  return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
 });
 // Factory link: resolves a token to the published pack, or the reason it cannot be opened.
 async function loadShareByToken(token){
@@ -1523,6 +1683,7 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to countersign'});
   const readiness=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version));
   if(readiness.factorySign)return reply.code(409).send({error:`Version ${row.version} is already countersigned by ${readiness.factorySign.name}`});
+  if(!readiness.brandSign)return reply.code(409).send({error:'Future Basics signs the tech pack before the factory countersigns'});
   if(readiness.pendingCalloutKeys.length)return reply.code(409).send({error:`Acknowledge every callout before countersigning (${readiness.pendingCalloutKeys.length} pending)`});
   const updated=await updateVerification(row.id,row.version,v=>{v.factorySign={name,at:new Date().toISOString(),by:row.share_label}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
