@@ -23,6 +23,12 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://thefuturebasics.com,https://work.thefuturebasics.com,https://hub.thefuturebasics.com').split(',').map(x => x.trim());
 const workHubUrl = process.env.WORK_HUB_URL || 'https://work.thefuturebasics.com';
 const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.com';
+// Tech pack colour renderings double as the product's visual when there is no Shopify image. They are served through a
+// signed public URL so <img> tags can load them without a bearer token; the signature is derived from the server secret.
+const renderingSig = id => createHash('sha256').update(`rendering:${id}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
+const renderingUrl = id => `${clientHubUrl}/r/${id}/${renderingSig(id)}.jpg`;
+const withRendering = row => row ? { ...row, rendering_url: row.has_rendering ? renderingUrl(row.id) : null } : row;
+const HAS_RENDERING_SQL = `coalesce((select coalesce(jsonb_array_length(coalesce(tp.published_data,tp.data)->'renderings'),0)>0 from tech_packs tp where tp.product_id=p.id),false) has_rendering`;
 const startProjectUrl = process.env.START_PROJECT_URL || 'https://thefuturebasics.com/pages/contact';
 const intakeNotificationEmail = process.env.INTAKE_NOTIFICATION_EMAIL || 'kyle@thefuturebasics.com';
 const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
@@ -466,6 +472,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     count(distinct pr.id) filter(where pr.archived_at is null and pr.status not in ('archive','archived'))::int project_count,
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
+    (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and coalesce(jsonb_array_length(coalesce(tp.published_data,tp.data)->'renderings'),0)>0 order by tp.updated_at desc limit 1) cover_rendering_product_id,
     (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id left join projects pr on pr.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
@@ -485,6 +492,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     order by pr.eta_date nulls last`);
   const collaboration=await pool.query(`select n.*,c.name client_name from notifications n join clients c on c.id=n.client_id
     where n.read_at is null and c.archived_at is null and c.status not in ('archive','archived') order by n.created_at desc limit 30`);
+  for(const c of clients.rows)if(!c.cover_image_url&&c.cover_rendering_product_id)c.cover_image_url=renderingUrl(c.cover_rendering_product_id);
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
@@ -770,7 +778,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
-    pool.query(`select p.*,to_jsonb(b) brief,
+    pool.query(`select p.*,to_jsonb(b) brief,${HAS_RENDERING_SQL},
       (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
@@ -798,7 +806,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
       join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
-  ]);return {client,projects:projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
@@ -1261,6 +1269,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
       (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
       (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
       (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      ${HAS_RENDERING_SQL},
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
@@ -1285,7 +1294,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
   return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
-    productComments:productComments.rows, products: products.rows,
+    productComments:productComments.rows, products: products.rows.map(withRendering),
     approvals: approvals.rows, activities: activities.rows,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
@@ -1328,9 +1337,9 @@ app.get('/v1/project-files/:id/download',{preHandler:authenticate},async(req,rep
 });
 
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
-  const product=(await pool.query(`select p.* from products p where p.id=$1 and p.client_id=$2
+  const product=withRendering((await pool.query(`select p.*,${HAS_RENDERING_SQL} from products p where p.id=$1 and p.client_id=$2
     and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
-      and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
+      and (archived_project.archived_at is not null or archived_project.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0]);
   if(!product)return reply.code(404).send({error:'Product not found'});
   const [brief,milestones,quotes,approvals,files,activity,productionRuns,shipments,assets,assetVersions,comments,configuration,priceTiers]=await Promise.all([
     pool.query('select * from product_briefs where product_id=$1',[product.id]),
@@ -1566,6 +1575,13 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return publishedTechPackView(row,{audience:'client'});
+});
+app.get('/r/:id/:sig',async(req,reply)=>{
+  const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');
+  if(!/^[0-9a-f-]{36}$/i.test(id)||sig!==renderingSig(id))return reply.code(404).send({error:'Not found'});
+  const row=(await pool.query(`select coalesce(published_data,data)->'renderings'->0->>'image' image from tech_packs where product_id=$1`,[id])).rows[0];
+  const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(row?.image||'');if(!m)return reply.code(404).send({error:'No rendering'});
+  return reply.header('cache-control','public, max-age=300').type(m[1]).send(Buffer.from(m[2],'base64'));
 });
 // Client-initiated tech packs. A client starts a product and its draft pack from their project, fills it in, and submits it to
 // Future Basics, who finish and publish v1. From there the normal chain runs: client approves → Future Basics signs → factory.
