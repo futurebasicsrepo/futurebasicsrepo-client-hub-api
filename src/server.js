@@ -783,7 +783,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,${HAS_RENDERING_SQL},
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1486,7 +1486,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1587,6 +1587,44 @@ app.get('/r/:id/:sig',async(req,reply)=>{
   const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(row?.image||'');if(!m)return reply.code(404).send({error:'No rendering'});
   return reply.header('cache-control','public, max-age=300').type(m[1]).send(Buffer.from(m[2],'base64'));
 });
+// Photo-start follow-ups. Someone who uploads a screenshot and then does nothing (no edits, no submit, no message) gets one
+// nudge email with their draft link after FOLLOWUP_AFTER_HOURS (default 3), and the work console gets a notice so Future Basics
+// can reach out personally. Two days later, if still idle, the console gets a second "still idle" notice (no second email).
+const followupAfterHours=Number(process.env.FOLLOWUP_AFTER_HOURS||3),followupStaleAfterHours=Number(process.env.FOLLOWUP_STALE_AFTER_HOURS||48);
+const IDLE_PHOTO_DRAFTS_SQL=`from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=tp.client_id left join projects pr on pr.id=p.project_id
+  where tp.source='photo' and tp.initiated_by='client' and tp.status='draft' and tp.published_at is null and c.archived_at is null
+  and tp.updated_at=tp.created_at
+  and not exists(select 1 from project_messages m where m.project_id=p.project_id and m.author_role='client' and m.created_at>tp.created_at)`;
+async function runPhotoFollowups({hours=followupAfterHours,staleHours=followupStaleAfterHours}={}){
+  const due=(await pool.query(`select tp.id,tp.product_id,tp.created_at,p.title,p.project_id,c.id client_id,c.name client_name,c.contact_name,coalesce(nullif(c.contact_email,''),c.allowed_emails[1]) email
+    ${IDLE_PHOTO_DRAFTS_SQL} and tp.followup_sent_at is null and tp.created_at<now()-make_interval(mins=>$1)`,[Math.round(hours*60)])).rows;
+  let sent=0;
+  for(const d of due){
+    const link=`${clientHubUrl}/tech-packs/${d.product_id}`,first=(d.contact_name||'').split(' ')[0];
+    const hoursAgo=Math.max(1,Math.round((Date.now()-new Date(d.created_at))/36e5));
+    let emailed=false;
+    if(d.email){emailed=await sendHubEmail({to:d.email,subject:`Your ${d.title} tech pack is waiting`,html:hubEmailShell('Still thinking about it?',
+      `<p>Hi${first?' '+emailEscape(first):''},</p><p>You uploaded a photo for <strong>${emailEscape(d.title)}</strong> about ${hoursAgo} hour${hoursAgo===1?'':'s'} ago and your draft is saved. Two easy ways forward:</p>
+       <ol><li><strong>Open the draft</strong> and add a line or two — what you want made, how many, anything to match or change.</li><li><strong>Or just reply to this email</strong> with that, and we will build the tech pack for you.</li></ol>${hubButton(link,'Open your tech pack')}
+       <p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password. Not you, or changed your mind? Ignore this and nothing else happens.</p>`)}).catch(e=>{app.log.warn({err:e.message,techPackId:d.id},'followup email failed');return false})}
+    await pool.query(`update tech_packs set followup_sent_at=now() where id=$1`,[d.id]);
+    await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-followup',$2,'product',$3)`,
+      [d.client_id,`Follow up: ${d.client_name} uploaded a photo for ${d.title} ${hoursAgo}h ago and has not touched it since${emailed?' — nudge emailed':' — no email on file'}`,d.product_id]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[d.client_id,d.product_id,`Follow-up ${emailed?'emailed to '+d.email:'logged (no email)'} — photo draft idle for ${hoursAgo}h`,{techPackId:d.id,emailed}]);
+    sent++;
+  }
+  const stale=(await pool.query(`select tp.id,tp.product_id,p.title,c.id client_id,c.name client_name ${IDLE_PHOTO_DRAFTS_SQL}
+    and tp.followup_sent_at is not null and tp.followup_stale_notified_at is null and tp.followup_sent_at<now()-make_interval(mins=>$1)`,[Math.round(staleHours*60)])).rows;
+  for(const d of stale){
+    await pool.query(`update tech_packs set followup_stale_notified_at=now() where id=$1`,[d.id]);
+    await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-followup',$2,'product',$3)`,[d.client_id,`Still idle: ${d.client_name}'s photo draft for ${d.title} — no response to the nudge; worth a personal note?`,d.product_id]);
+  }
+  return {sent,stale:stale.length};
+}
+app.post('/v1/admin/followups/run',{preHandler:[authenticate,adminOnly]},async(req)=>{
+  const override=process.env.DEV_BYPASS_AUTH==='true'?{hours:Number(req.body?.hours??followupAfterHours),staleHours:Number(req.body?.staleHours??followupStaleAfterHours)}:{};
+  return runPhotoFollowups(override);
+});
 // Client-initiated tech packs. A client starts a product and its draft pack from their project, fills it in, and submits it to
 // Future Basics, who finish and publish v1. From there the normal chain runs: client approves → Future Basics signs → factory.
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1606,7 +1644,7 @@ async function createClientDraft(db,{clientId,clientName,project,title,productTy
   await db.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
   const seed=normalizeTechPack({...seedTechPack({product}),sketches});seed.style.designer=clientName;
-  const pack=(await db.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by) values($1,$2,'draft',$3,$4,'client') returning *`,[product.id,clientId,seed,userId||null])).rows[0];
+  const pack=(await db.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source) values($1,$2,'draft',$3,$4,'client',$5) returning *`,[product.id,clientId,seed,userId||null,source])).rows[0];
   const how=source==='photo'?' from a photo':'';
   await db.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [clientId,product.id,userId||null,`${clientName} started a tech pack for ${product.title}${how}`,{techPackId:pack.id,initiatedBy:'client',source}]);
@@ -2169,5 +2207,6 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 await migrate();
 await repairPendingShopifyLinks();
 setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
+if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();
 runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

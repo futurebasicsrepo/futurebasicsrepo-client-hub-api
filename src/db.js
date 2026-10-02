@@ -424,6 +424,9 @@ export async function migrate() {
     alter table tech_packs add column if not exists initiated_by text not null default 'brand';
     alter table tech_packs add column if not exists submitted_at timestamptz;
     alter table tech_packs add column if not exists submitted_by uuid references users(id);
+    alter table tech_packs add column if not exists source text not null default 'hub';
+    alter table tech_packs add column if not exists followup_sent_at timestamptz;
+    alter table tech_packs add column if not exists followup_stale_notified_at timestamptz;
     create table if not exists tech_pack_shares (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
