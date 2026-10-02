@@ -14,6 +14,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
+import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -196,6 +197,30 @@ async function sendIntakeNotification(intake,uploads){
   if(!response.ok)throw new Error(`Project intake email delivery failed: ${response.status}`);return true;
 }
 
+// Future Basics hub emails to clients (intake confirmation, room activation). Resend-backed like the login code;
+// without RESEND_API_KEY they log and return false so local runs never block on delivery.
+const hubFromEmail=process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>';
+async function sendHubEmail({to,subject,html,replyTo}){
+  if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html})});
+  if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
+}
+const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
+const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+async function sendIntakeConfirmation(intake){
+  const d=intake.data,rows=[['Project',d.projectName],['Product',d.productCategory],['Quantity',d.targetQuantity],['Budget',d.budgetRange],['Target date',d.targetDate]].filter(([,v])=>v);
+  return sendHubEmail({to:d.email,subject:`We have your brief — ${d.projectName}`,html:hubEmailShell('We have your brief',
+    `<p>Hi ${emailEscape(d.contactName.split(' ')[0]||d.contactName)},</p><p>Thanks — your brief for <strong>${emailEscape(d.projectName)}</strong> is in. Here is what happens next:</p>
+    <ol><li>We read it and reply within two business days, usually with a few questions.</li><li>You get an email the moment your private project room is ready — one place for the brief, concepts, tech packs, samples, quotes and our shared thread.</li><li>From there every product moves brief → concept → tech pack → sample → production, and you approve each step in the room.</li></ol>
+    <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#717177;margin-top:24px">What you sent</p>${rows.map(([l,v])=>`<p style="margin:4px 0"><strong>${emailEscape(l)}:</strong> ${emailEscape(v)}</p>`).join('')}<p style="margin-top:12px;white-space:pre-wrap">${emailEscape(d.projectBrief)}</p>`)});
+}
+async function clientForEmail(email){
+  const domain=emailDomain(email);
+  return (await pool.query(`select * from clients where status='active' and (($1<>'' and $1=any(email_domains)) or $2=any(allowed_emails))
+    order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
+}
+
 async function storeAssetVersion(asset,userId,part,notes){
   const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
@@ -279,10 +304,11 @@ app.post('/v1/public/intakes',async(req,reply)=>{
   }
   await createIntake();
   if(spam)return reply.code(202).send({ok:true});
-  let notificationEmailSent=false;
+  let notificationEmailSent=false,confirmationEmailSent=false;
   try{notificationEmailSent=await sendIntakeNotification(intake,uploads)}catch(error){app.log.error({error,projectId:intake.project.id,to:intakeNotificationEmail},'Project intake was saved but notification email failed')}
+  try{confirmationEmailSent=await sendIntakeConfirmation(intake)}catch(error){app.log.error({error,projectId:intake.project.id,to:intake.data.email},'Project intake was saved but confirmation email failed')}
   return reply.code(201).send({ok:true,clientId:intake.client.id,projectId:intake.project.id,requestId:intake.request.id,files:uploads.length,
-    notificationEmail:intakeNotificationEmail,notificationEmailSent,
+    notificationEmail:intakeNotificationEmail,notificationEmailSent,confirmationEmailSent,
     message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
@@ -290,12 +316,16 @@ app.post('/v1/auth/code', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const domain = email.split('@')[1];
   if (!domain) return reply.code(400).send({ error: 'Valid email required' });
-  const client = await pool.query("select * from clients where $1 = any(email_domains) and status='active'", [domain]);
-  if (!client.rowCount) return reply.code(403).send({
-    error: "We don't currently have any work from you. Start a project here",
-    code: 'NO_CLIENT_WORK',
-    action: { label: 'Start a project', url: startProjectUrl }
-  });
+  const client = await clientForEmail(email);
+  if (!client) {
+    const lead=(await pool.query(`select id from clients where status='lead' and (lower(contact_email)=$1 or $1=any(allowed_emails)) limit 1`,[email])).rows[0];
+    if(lead)return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'});
+    return reply.code(403).send({
+      error: "We don't currently have any work from you. Start a project here",
+      code: 'NO_CLIENT_WORK',
+      action: { label: 'Start a project', url: startProjectUrl }
+    });
+  }
   const code = String(randomInt(100000, 1000000));
   await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')', [email, hash(code)]);
   await sendCode(email, code);
@@ -312,7 +342,7 @@ app.post('/v1/auth/verify', async (req, reply) => {
   );
   if (!result.rowCount) return reply.code(401).send({ error: 'Invalid or expired code' });
   const domain = email.split('@')[1];
-  const client = (await pool.query("select * from clients where $1=any(email_domains) and status='active'", [domain])).rows[0];
+  const client = await clientForEmail(email);
   if (!client) return reply.code(403).send({ error: 'Client access is no longer active' });
   const role=domain==='thefuturebasics.com'?'admin':'client';
   const user = (await pool.query(
@@ -572,10 +602,10 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
   return {query,count:synced.length,products:synced,customerSynced:Boolean(customer),customerError,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,slug,emailDomains=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
+  const {name,slug,emailDomains=[],allowedEmails=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   const domains=await validateClientDomains(emailDomains);
-  const client=(await pool.query(`insert into clients(name,slug,email_domains,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[name,slug,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
+  const client=(await pool.query(`insert into clients(name,slug,email_domains,allowed_emails,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,[name,slug,domains,normalizeEmails(allowedEmails),contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
   await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
   return client;
 });
@@ -773,13 +803,48 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,emailDomains,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
+  const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
   const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
   return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
     email_domains=coalesce($3,email_domains),contact_name=coalesce($4,contact_name),contact_email=coalesce($5,contact_email),
     contact_phone=coalesce($6,contact_phone),website_url=coalesce($7,website_url),notes=coalesce($8,notes),
-    shopify_customer_id=coalesce($9,shopify_customer_id) where id=$10 returning *`,
-    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id])).rows[0];
+    shopify_customer_id=coalesce($9,shopify_customer_id),allowed_emails=coalesce($11,allowed_emails) where id=$10 returning *`,
+    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id,allowedEmails===undefined?null:normalizeEmails(allowedEmails)])).rows[0];
+});
+// Turn a website lead into an active client room: grant sign-in access (whole domain for company
+// mailboxes, the individual address for personal ones), open their intake projects, and email them the way in.
+app.post('/v1/admin/clients/:id/activate',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const client=(await pool.query(`select * from clients where id=$1 and slug<>'future-basics'`,[req.params.id])).rows[0];
+  if(!client)return reply.code(404).send({error:'Client not found'});
+  const sendWelcome=req.body?.sendWelcome!==false,message=String(req.body?.message||'').trim().slice(0,2000);
+  const domain=emailDomain(client.contact_email);
+  const domainTaken=Boolean(domain)&&(await pool.query(`select 1 from clients where id<>$1 and $2=any(email_domains)`,[client.id,domain])).rowCount>0;
+  const access=planClientAccess(client,{domainTaken});
+  if(!access.emailDomains.length&&!access.allowedEmails.length)return reply.code(400).send({error:'Add a contact email to this client before activating the room'});
+  const db=await pool.connect();let updated,project;
+  try{
+    await db.query('begin');
+    updated=(await db.query(`update clients set status='active',archived_at=null,archive_previous_status=null,email_domains=$2,allowed_emails=$3,activated_at=coalesce(activated_at,now())
+      where id=$1 returning *`,[client.id,access.emailDomains,access.allowedEmails])).rows[0];
+    await db.query(`update projects set status='active',updated_at=now() where client_id=$1 and status='intake'`,[client.id]);
+    project=(await db.query(`select * from projects where client_id=$1 and archived_at is null order by updated_at desc limit 1`,[client.id])).rows[0]||null;
+    await db.query(`insert into activities(client_id,actor_id,type,summary,metadata) values($1,$2,'room-activated',$3,$4)`,
+      [client.id,req.auth.sub,'Your private project room is open',{access:access.summary,sendWelcome}]);
+    await db.query('commit');
+  }catch(error){await db.query('rollback').catch(()=>{});throw error}finally{db.release()}
+  let welcomeSent=false,welcomeError=null;
+  if(sendWelcome&&updated.contact_email){
+    const link=project?`${clientHubUrl}/projects/${project.id}`:clientHubUrl,first=String(updated.contact_name||'').split(' ')[0]||'there';
+    try{
+      welcomeSent=await sendHubEmail({to:updated.contact_email,subject:`Your Future Basics project room is ready${project?' — '+project.name:''}`,html:hubEmailShell('Your project room is ready',
+        `<p>Hi ${emailEscape(first)},</p><p>Your private Future Basics room${project?` for <strong>${emailEscape(project.name)}</strong>`:''} is open. Sign in with <strong>${emailEscape(updated.contact_email)}</strong> — no password, we email you a six-digit code each time.</p>
+        ${hubButton(link,'Open your project room')}${message?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(message)}</p>`:''}
+        <p>Inside you will find your brief, every product as it moves from concept through tech pack, sample and production, quotes and tech packs to approve, and a shared thread with us.</p>
+        <p style="font-size:12px;color:#717177">${emailEscape(access.summary)}.</p>`),replyTo:req.auth.email||intakeNotificationEmail});
+      if(welcomeSent)await pool.query('update clients set welcome_sent_at=now() where id=$1',[client.id]);
+    }catch(error){welcomeError=error.message;app.log.error({error,clientId:client.id},'Room activated but welcome email failed')}
+  }
+  return {client:{...updated,welcome_sent_at:welcomeSent?new Date().toISOString():updated.welcome_sent_at},project,access,welcomeSent,welcomeError,hubUrl:clientHubUrl};
 });
 app.post('/v1/admin/clients/:id/archive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query(`update clients set archived_at=now(),archive_previous_status=case when status not in ('archive','archived') then status else coalesce(archive_previous_status,'active') end,status='archived'

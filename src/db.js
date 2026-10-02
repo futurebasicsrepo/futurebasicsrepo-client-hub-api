@@ -29,6 +29,9 @@ export async function migrate() {
     alter table clients add column if not exists shopify_synced_at timestamptz;
     alter table clients add column if not exists archived_at timestamptz;
     alter table clients add column if not exists archive_previous_status text;
+    alter table clients add column if not exists allowed_emails text[] not null default '{}';
+    alter table clients add column if not exists activated_at timestamptz;
+    alter table clients add column if not exists welcome_sent_at timestamptz;
     update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
       where status in ('archive','archived');
     create table if not exists users (
