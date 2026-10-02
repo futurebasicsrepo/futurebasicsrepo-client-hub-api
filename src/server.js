@@ -14,6 +14,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage } from './techpack.js';
+import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -1486,7 +1487,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1656,6 +1657,35 @@ const issueClientToken=(user,client,email)=>new SignJWT({sub:user.id,clientId:cl
 // Public, mobile-first entry point: a screenshot plus an email becomes a client room, a project and a tech pack draft with the
 // photo as its first view. A brand-new email gets its own room and a session right away (the room holds only what they just sent);
 // an email we already know gets a sign-in code instead, so nobody can walk into an existing room by typing its address.
+// After a photo-start, the assistant reads the photo and writes the first draft of the pack. It only writes while the
+// draft is still untouched by the client (updated_at = created_at), so a person who starts editing right away never has
+// their work replaced; and it leaves updated_at alone, so the idle follow-up still sees an untouched draft.
+async function enrichPhotoDraft(packId){
+  const row=(await pool.query(`select tp.*,p.title,p.description_html from tech_packs tp join products p on p.id=tp.product_id where tp.id=$1`,[packId])).rows[0];
+  if(!row||row.ai_status!=='pending')return;
+  try{
+    const data=normalizeTechPack(row.data),photos=data.sketches.map(s=>s.image).filter(Boolean);
+    const sizes=data.sizes,sampleSize=data.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
+    const notes=String(row.description_html||'').replace(/<[^>]+>/g,'');
+    const first=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:data.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
+    // re-seed for the classified product type so the measurement template fits (a hoodie should not get footwear POMs)
+    const product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
+    let seed=normalizeTechPack({...seedTechPack({product}),sketches:data.sketches});seed.style.designer=data.style.designer;
+    let draft=first.draft;
+    if(seed.pom.map(r=>r.code).join()!==data.pom.map(r=>r.code).join()){
+      const second=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});
+      draft=second.draft;
+    }
+    const merged=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize,model:first.model}));
+    const updated=await pool.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now() where id=$1 and ai_status='pending' and updated_at=created_at returning product_id`,[packId,merged,first.model]);
+    if(!updated.rowCount){await pool.query(`update tech_packs set ai_status='skipped',ai_error='client edited the draft first' where id=$1 and ai_status='pending'`,[packId]);return}
+    await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from the photo (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements)`,{techPackId:packId,model:first.model,confidence:draft.confidence}]);
+  }catch(e){
+    app.log.warn({err:e.message,packId},'photo draft enrichment failed');
+    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,String(e.message||e).slice(0,500)]).catch(()=>{});
+  }
+}
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const b=req.body||{};
@@ -1688,8 +1718,10 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     let project=(await db.query(`select * from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') and name='Product development' limit 1`,[client.id])).rows[0];
     if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
       on conflict(client_id,name) do update set status='active',updated_at=now() returning *`,[client.id])).rows[0];
-    const {product}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
+    const {product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
+    if(aiEnabled())await db.query(`update tech_packs set ai_status='pending' where id=$1`,[pack.id]);
     await db.query('commit');
+    if(aiEnabled())setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
     let token=null;
     if(fresh)token=await issueClientToken(user,client,email);
@@ -1697,7 +1729,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     const link=`${clientHubUrl}/tech-packs/${product.id}`;
     sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
       `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
-    return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link});
+    return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:aiEnabled()?'pending':'off'});
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 });
 app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply)=>{
