@@ -13,7 +13,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification } from './techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage } from './techpack.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -45,7 +45,7 @@ await app.register(multipart, {
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
-    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     .header('x-content-type-options', 'nosniff')
     .header('referrer-policy', 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
@@ -56,10 +56,11 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
 const allowedExtensions = new Set(['.pdf','.ai','.eps','.png','.jpg','.jpeg','.svg','.zip','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx','.txt']);
 const intakeWindows = new Map();
-function publicIntakeAllowed(ip){
-  const now=Date.now(),key=String(ip||'unknown'),current=intakeWindows.get(key);
+function publicIntakeAllowed(ip,{bucket='intake',limit=5}={}){
+  if(process.env.DEV_BYPASS_AUTH==='true')return true;
+  const now=Date.now(),key=`${bucket}:${ip||'unknown'}`,current=intakeWindows.get(key);
   if(!current||now-current.startedAt>60*60*1000){intakeWindows.set(key,{startedAt:now,count:1});return true}
-  current.count+=1;return current.count<=5;
+  current.count+=1;return current.count<=limit;
 }
 const intakeValue=(fields,name,max=2000)=>String(fields[name]||'').trim().slice(0,max);
 const intakeSlug=value=>String(value||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48)||'client';
@@ -446,6 +447,9 @@ app.get('/hub', sendClientHub);
 app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
 // Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
+const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./start.html',import.meta.url),'utf8'));
+app.get('/start', sendStart);
+app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
 const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./consign.html',import.meta.url),'utf8'));
 app.get('/consign', sendConsign);
@@ -1594,6 +1598,70 @@ async function loadClientDraft(productId,clientId){
 }
 const draftView=row=>({product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
   techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl});
+// Creates the product, its milestones and a seeded client draft inside the caller's transaction. `sketches` lets a
+// reference photo (a screenshot from Instagram or Pinterest, say) become the first view of the pack.
+async function createClientDraft(db,{clientId,clientName,project,title,productType,description,userId,sketches=[],source='hub'}){
+  const product=(await db.query(`insert into products(client_id,project_id,title,product_type,description_html,source_of_truth) values($1,$2,$3,$4,$5,'hub') returning *`,
+    [clientId,project.id,title,productType||null,description?`<p>${escapeHtml(description)}</p>`:null])).rows[0];
+  await db.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+    from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
+  const seed=normalizeTechPack({...seedTechPack({product}),sketches});seed.style.designer=clientName;
+  const pack=(await db.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by) values($1,$2,'draft',$3,$4,'client') returning *`,[product.id,clientId,seed,userId||null])).rows[0];
+  const how=source==='photo'?' from a photo':'';
+  await db.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [clientId,product.id,userId||null,`${clientName} started a tech pack for ${product.title}${how}`,{techPackId:pack.id,initiatedBy:'client',source}]);
+  await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[clientId,`${clientName} started a tech pack for ${product.title}${how} in ${project.name}`,product.id]);
+  return {product,pack};
+}
+const issueClientToken=(user,client,email)=>new SignJWT({sub:user.id,clientId:client.id,client:client.slug,role:user.role,email})
+  .setProtectedHeader({alg:'HS256'}).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
+// Public, mobile-first entry point: a screenshot plus an email becomes a client room, a project and a tech pack draft with the
+// photo as its first view. A brand-new email gets its own room and a session right away (the room holds only what they just sent);
+// an email we already know gets a sign-in code instead, so nobody can walk into an existing room by typing its address.
+app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const b=req.body||{};
+  if(String(b.website||'').trim())return reply.code(202).send({ok:true});                       // honeypot
+  const email=String(b.email||'').trim().toLowerCase(),name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000);
+  const photos=(Array.isArray(b.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
+  if(!/^\S+@\S+\.\S+$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
+  if(!title)return reply.code(400).send({error:'Give the product a name'});
+  if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
+  if(emailDomain(email)==='thefuturebasics.com')return reply.code(400).send({error:'Use the work console to start a tech pack for a client'});
+  const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    let client=await clientForEmail(email),fresh=false;
+    if(!client){
+      const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
+      if(lead){
+        client=(await db.query(`update clients set status='active',allowed_emails=(select array_agg(distinct e) from unnest(allowed_emails||$2::text[]) e),activated_at=coalesce(activated_at,now()),
+          contact_name=coalesce(nullif(contact_name,''),$3) where id=$1 returning *`,[lead.id,[email],name||null])).rows[0];
+      }else{
+        const base=intakeSlug(name||email.split('@')[0]);let slug=base;
+        if((await db.query('select 1 from clients where slug=$1',[slug])).rowCount)slug=`${base.slice(0,43)}-${randomBytes(2).toString('hex')}`;
+        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at) values($1,$2,'active',$3,$4,$5,$6,now()) returning *`,
+          [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`])).rows[0];
+      }
+      fresh=true;
+    }
+    const user=(await db.query(`insert into users(client_id,email,role) values($1,$2,'client') on conflict(email) do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email])).rows[0];
+    let project=(await db.query(`select * from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') and name='Product development' limit 1`,[client.id])).rows[0];
+    if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
+      on conflict(client_id,name) do update set status='active',updated_at=now() returning *`,[client.id])).rows[0];
+    const {product}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
+    await db.query('commit');
+    // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
+    let token=null;
+    if(fresh)token=await issueClientToken(user,client,email);
+    else{const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'start: code email failed'))}
+    const link=`${clientHubUrl}/tech-packs/${product.id}`;
+    sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
+      `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
+    return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link});
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+});
 app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
   const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
@@ -1604,15 +1672,7 @@ app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply
   const client=await pool.connect();
   try{
     await client.query('begin');
-    const product=(await client.query(`insert into products(client_id,project_id,title,product_type,description_html,source_of_truth) values($1,$2,$3,$4,$5,'hub') returning *`,
-      [req.auth.clientId,project.id,title,productType||null,description?`<p>${escapeHtml(description)}</p>`:null])).rows[0];
-    await client.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
-      from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
-    const seed=normalizeTechPack(seedTechPack({product}));seed.style.designer=project.client_name;
-    const pack=(await client.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by) values($1,$2,'draft',$3,$4,'client') returning *`,[product.id,req.auth.clientId,seed,req.auth.sub])).rows[0];
-    await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
-      [req.auth.clientId,product.id,req.auth.sub,`${project.client_name} started a tech pack for ${product.title}`,{techPackId:pack.id,initiatedBy:'client'}]);
-    await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[req.auth.clientId,`${project.client_name} started a tech pack for ${product.title} in ${project.name}`,product.id]);
+    const {product,pack}=await createClientDraft(client,{clientId:req.auth.clientId,clientName:project.client_name,project,title,productType,description,userId:req.auth.sub});
     await client.query('commit');
     return reply.code(201).send(draftView({...pack,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}));
   }catch(e){await client.query('rollback');throw e}finally{client.release()}

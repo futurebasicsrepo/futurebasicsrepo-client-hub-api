@@ -20,6 +20,8 @@ const unit = value => { const n = Number(value); return Number.isFinite(n) ? Mat
 const inches = value => { const n = Number(value); return Number.isFinite(n) && n > 0 && n < 1000 ? Math.round(n * 100) / 100 : null; };
 const list = (value, max, map) => (Array.isArray(value) ? value.slice(0, max).map(map) : []);
 const image = (value, max = MAX_IMAGE_CHARS) => { const v = String(value || ''); return v && v.length <= max && IMAGE_RE.test(v) ? v : ''; };
+// Public check for routes that accept inline images before they reach the pack (e.g. the photo-start funnel).
+export const isInlineImage = (value, max = MAX_IMAGE_CHARS) => Boolean(image(value, max));
 const id = value => str(value, 40).replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 10);
 export const stripHtml = html => String(html || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
