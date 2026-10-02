@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, techPackReadiness, normalizeVerification, emptyVerification, publishedTechPackView, emptyTechPack, pomTemplateFor, calloutKey, DEFAULT_SIZES } from '../src/techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, techPackReadiness, normalizeVerification, emptyVerification, publishedTechPackView, emptyTechPack, pomTemplateFor, calloutKey, DEFAULT_SIZES, FOOTWEAR_SIZES, mockupsComplete } from '../src/techpack.js';
 
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
@@ -86,7 +86,7 @@ const fullPack = () => ({
 test('techPackCompleteness reports what a draft still needs', () => {
   const empty = techPackCompleteness({});
   assert.equal(empty.complete, false);
-  assert.ok(empty.missing.includes('Front and back mockups'));
+  assert.ok(empty.missing.includes('Both mockup views (front + back, or lateral + medial)'));
   assert.ok(empty.missing.includes('Artwork uploaded and Pantone matched'));
   assert.equal(techPackCompleteness(fullPack()).complete, true);
 });
@@ -107,8 +107,12 @@ test('techPackReadiness computes the sign-off checklist from data + factory ackn
   const all = techPackReadiness(data, { version: 1, acks });
   assert.equal(all.ready, true);
   assert.equal(all.locked, false);
-  const signed = techPackReadiness(data, { version: 1, acks, brandSign: { name: 'Kyle', at: 'x' }, factorySign: { name: 'Mill A', at: 'y' } });
+  assert.equal(all.nextSigner, 'client', 'the client approves first');
+  const twoOfThree = techPackReadiness(data, { version: 1, acks, brandSign: { name: 'Kyle', at: 'x' }, factorySign: { name: 'Mill A', at: 'y' } });
+  assert.equal(twoOfThree.locked, false, 'no lock without the client approval');
+  const signed = techPackReadiness(data, { version: 1, acks, clientSign: { name: 'Ana', at: 'c' }, brandSign: { name: 'Kyle', at: 'x' }, factorySign: { name: 'Mill A', at: 'y' } });
   assert.equal(signed.locked, true);
+  assert.equal(signed.nextSigner, null);
   assert.equal(calloutKey({ id: 'f' }, { n: 2 }), 'f:2');
 });
 
@@ -130,4 +134,21 @@ test('publishedTechPackView exposes only the published snapshot, with readiness'
   assert.equal(view.techPack.readiness.ready, false);
   assert.equal(view.techPack.verification.version, 2);
   assert.equal(view.product.clientName, 'Ouster');
+});
+
+test('footwear packs get footwear views, sizes, measurements, BOM and labels', () => {
+  const pack = seedTechPack({ product: { title: 'Court Mid', product_type: 'Footwear — cupsole sneaker' } });
+  assert.deepEqual(pack.sizes, FOOTWEAR_SIZES);
+  assert.equal(pack.style.sampleSize, '10');
+  assert.equal(pack.pom.length, 9);
+  assert.equal(pack.pom[0].name, 'Outsole length');
+  assert.equal(pack.bom[0].component, 'Upper');
+  assert.ok(pack.bom.some(r => r.component === 'Outsole'));
+  assert.ok(pack.labels.some(l => l.item === 'Tongue label'));
+  assert.equal(pomTemplateFor('Denim high-top boot').length, 9, 'footwear wins over the tops keyword inside "high-top"');
+  assert.equal(mockupsComplete([{ view: 'lateral', image: 'x' }, { view: 'medial', image: 'x' }]), true);
+  assert.equal(mockupsComplete([{ view: 'lateral', image: 'x' }, { view: 'back', image: 'x' }]), false);
+  const r = techPackReadiness({ style: { category: 'Footwear' }, sketches: [{ id: 'l', view: 'lateral', image: 'data:image/png;base64,QUJD' }] }, emptyVerification(1));
+  assert.equal(r.checks[0].label, 'Lateral + medial mockups uploaded');
+  assert.match(r.checks[0].detail, /medial view missing/);
 });

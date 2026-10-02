@@ -5,7 +5,10 @@
 // pack from a document into a live sign-off instrument.
 
 export const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
-export const SKETCH_VIEWS = ['front', 'back', 'side', 'detail', 'flat', 'other'];
+export const SKETCH_VIEWS = ['front', 'back', 'side', 'lateral', 'medial', 'top', 'outsole', 'heel', 'detail', 'flat', 'other'];
+export const FOOTWEAR_SIZES = ['7', '8', '9', '10', '11', '12', '13'];
+// Garment packs need front + back; footwear packs need lateral + medial.
+export const mockupsComplete = sketches => { const has = v => sketches.some(s => s.view === v && s.image); return (has('front') && has('back')) || (has('lateral') && has('medial')); };
 const LIMITS = { sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200 };
 const MAX_IMAGE_CHARS = 2_600_000;   // ~1.9MB decoded; the editor downsizes before upload
 const MAX_PHOTO_CHARS = 700_000;     // callout detail photos are small crops
@@ -115,6 +118,17 @@ const BOTTOMS_POM = [
   ['H', 'Leg opening', 'Edge to edge at hem, relaxed', '±0.25'],
   ['I', 'Hip', 'Edge to edge at fullest point of hip', '±0.5']
 ];
+const FOOTWEAR_POM = [
+  ['A', 'Outsole length', 'Toe to heel along the outsole, size run graded', '±0.125'],
+  ['B', 'Forefoot width (outsole)', 'Widest point of the outsole at the ball', '±0.125'],
+  ['C', 'Heel width (outsole)', 'Widest point of the outsole at the heel', '±0.125'],
+  ['D', 'Heel height', 'Ground to footbed at heel centre, outsole + midsole', '±0.0625'],
+  ['E', 'Forefoot stack', 'Ground to footbed at ball of foot', '±0.0625'],
+  ['F', 'Toe spring', 'Ground to underside of toe at rest', '±0.0625'],
+  ['G', 'Collar height (lateral)', 'Footbed to top of collar at lateral ankle', '±0.125'],
+  ['H', 'Topline opening', 'Inside circumference of the collar opening', '±0.25'],
+  ['I', 'Lace length', 'Tip to tip, laced out', '±0.5']
+];
 const HEADWEAR_POM = [
   ['A', 'Crown circumference', 'Inside sweatband, fully around', '±0.25'],
   ['B', 'Crown height', 'Center front sweatband to top button', '±0.25'],
@@ -122,8 +136,10 @@ const HEADWEAR_POM = [
   ['D', 'Visor width', 'Edge to edge at widest point', '±0.25'],
   ['E', 'Sweatband height', 'Bottom edge to top edge of sweatband', '±0.125']
 ];
+export const isFootwear = text => /(shoe|sneaker|trainer|boot|mule|footwear|slide|sandal|loafer|court|runner|cleat|cupsole|clog|moc)/.test(String(text || '').toLowerCase());
 export function pomTemplateFor(text) {
   const t = String(text || '').toLowerCase();
+  if (isFootwear(t)) return FOOTWEAR_POM;
   if (/(cap|hat|beanie|bucket|visor|headwear)/.test(t)) return HEADWEAR_POM;
   if (/(pant|short|trouser|jogger|bottom|denim|jean)/.test(t)) return BOTTOMS_POM;
   if (/(tee|shirt|tank|polo|knit|hoodie|sweat|crew|jacket|shell|top|apparel|dress|vest|fleece|layer)/.test(t)) return TOPS_POM;
@@ -135,8 +151,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   const pack = emptyTechPack();
   const c = configuration || {};
   const descriptor = `${product.title || ''} ${product.product_type || ''} ${c.blank_name || ''}`;
-  const apparel = pomTemplateFor(descriptor);
-  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : (apparel.length ? [...DEFAULT_SIZES] : ['One size']);
+  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM;
+  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length ? [...DEFAULT_SIZES] : ['One size']);
   const month = now.getMonth(), year = String(now.getFullYear()).slice(-2);
   pack.style = {
     styleNumber: String(product.shopify_handle || '').toUpperCase().slice(0, 40),
@@ -152,7 +168,18 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   pack.sizes = sizes;
   pack.pom = apparel.map(([code, name, how, tolerance]) => ({ code, name, how, tolerance, values: Object.fromEntries(sizes.map(s => [s, ''])) }));
   pack.bom = [];
-  if (c.material || c.blank_name) pack.bom.push({ component: 'Main body', material: str(c.material, 200), spec: str(c.blank_name, 300), supplier: str(c.supplier_name, 120), ref: '', color: '', placement: 'Body', qty: '1', unit: 'pc', notes: '' });
+  if (footwear) pack.bom.push(
+    { component: 'Upper', material: str(c.material, 200), spec: str(c.blank_name, 300), supplier: str(c.supplier_name, 120), ref: '', color: '', placement: 'Vamp, quarters, eyestay', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Lining', material: '', spec: 'Breathable textile, DTM', supplier: '', ref: '', color: '', placement: 'Quarter + tongue', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Collar foam', material: 'PU foam', spec: 'Density + thickness TBD', supplier: '', ref: '', color: '', placement: 'Collar', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Tongue', material: '', spec: 'Foam-backed, same as upper', supplier: '', ref: '', color: '', placement: 'Tongue', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Laces', material: 'Flat polyester', spec: 'Width + length per size', supplier: '', ref: '', color: '', placement: 'Eyestay', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Eyelets', material: '', spec: 'Punched or metal, count per side TBD', supplier: '', ref: '', color: '', placement: 'Eyestay', qty: '', unit: 'per side', notes: '' },
+    { component: 'Midsole', material: 'EVA', spec: 'Hardness Asker C TBD', supplier: '', ref: '', color: '', placement: 'Sole unit', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Outsole', material: 'Rubber', spec: 'Hardness Shore A TBD, tread per sketch', supplier: '', ref: '', color: '', placement: 'Sole unit', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Footbed', material: 'Die-cut EVA / PU', spec: 'Removable, top cloth printed', supplier: '', ref: '', color: '', placement: 'Inside', qty: '1', unit: 'pair', notes: '' },
+    { component: 'Heel counter + toe puff', material: 'Thermoplastic', spec: 'Internal, heat-activated', supplier: '', ref: '', color: '', placement: 'Heel, toe', qty: '1', unit: 'set', notes: '' });
+  else if (c.material || c.blank_name) pack.bom.push({ component: 'Main body', material: str(c.material, 200), spec: str(c.blank_name, 300), supplier: str(c.supplier_name, 120), ref: '', color: '', placement: 'Body', qty: '1', unit: 'pc', notes: '' });
   if (c.decoration_method) {
     const size = c.artwork_width_in && c.artwork_height_in ? `${c.artwork_width_in}" × ${c.artwork_height_in}"` : '';
     const locations = Array.isArray(c.decoration_locations) ? c.decoration_locations.join(', ') : '';
@@ -160,7 +187,9 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   }
   if (c.construction) pack.construction.push({ area: 'Overall', detail: str(c.construction, 600) });
   pack.colorways = (Array.isArray(c.colorways) ? c.colorways : []).slice(0, LIMITS.colorways).map(name => ({ name: str(name, 80), code: '', swatch: '', notes: '' }));
-  if (apparel.length) {
+  if (footwear) {
+    pack.labels = [{ item: 'Tongue label', spec: 'Woven, client artwork', placement: 'Tongue, centred below top edge' }, { item: 'Size / country of origin label', spec: 'Printed, size + width + CO + article no.', placement: 'Inside tongue' }, { item: 'Footbed print', spec: 'Pad print on top cloth, client artwork', placement: 'Footbed, heel area' }, { item: 'Heel tab', spec: 'Woven or embossed', placement: 'Heel collar' }];
+  } else if (apparel.length) {
     pack.labels = apparel === HEADWEAR_POM
       ? [{ item: 'Main label', spec: 'Woven, Future Basics / client artwork', placement: 'Inside back crown' }, { item: 'Care / content label', spec: 'Printed satin', placement: 'Inside sweatband' }]
       : [{ item: 'Main label', spec: 'Woven, client artwork', placement: 'Center back neck, inside' }, { item: 'Size label', spec: 'Woven or printed', placement: 'Below main label' }, { item: 'Care / content label', spec: 'Printed satin, fiber content + care + country of origin', placement: 'Inside left side seam' }];
@@ -176,7 +205,7 @@ export function techPackCompleteness(data) {
   const d = normalizeTechPack(data);
   const checks = [
     ['style', 'Style number and name', Boolean(d.style.styleNumber && d.style.styleName)],
-    ['sketches', 'Front and back mockups', d.sketches.some(s => s.view === 'front' && s.image) && d.sketches.some(s => s.view === 'back' && s.image)],
+    ['sketches', 'Both mockup views (front + back, or lateral + medial)', mockupsComplete(d.sketches)],
     ['callouts', 'Callouts placed on the garment', d.sketches.some(s => s.callouts.some(c => c.x != null))],
     ['pom', 'Measurements with spec + tolerance', d.pom.length > 0 && d.pom.every(r => r.tolerance && Object.values(r.values).some(Boolean))],
     ['artwork', 'Artwork uploaded and Pantone matched', d.artwork.length > 0 && d.artwork.every(a => a.image && a.pantones.length)],
@@ -190,7 +219,7 @@ export function techPackCompleteness(data) {
 
 // ---- verification: the acknowledgement chain and signatures for ONE published version ----
 export const calloutKey = (sketch, callout) => `${sketch.id}:${callout.n}`;
-export function emptyVerification(version = 0) { return { version, acks: {}, brandSign: null, factorySign: null }; }
+export function emptyVerification(version = 0) { return { version, acks: {}, clientSign: null, brandSign: null, factorySign: null }; }
 export function normalizeVerification(input, version) {
   const v = input && typeof input === 'object' ? input : {};
   if (Number(v.version) !== Number(version)) return emptyVerification(version);
@@ -199,7 +228,7 @@ export function normalizeVerification(input, version) {
   for (const [key, ack] of Object.entries(v.acks && typeof v.acks === 'object' ? v.acks : {}).slice(0, LIMITS.sketches * LIMITS.callouts)) {
     if (ack && typeof ack === 'object') acks[str(key, 60)] = { by: str(ack.by, 200), at: str(ack.at, 40) };
   }
-  return { version: Number(version) || 0, acks, brandSign: sig(v.brandSign), factorySign: sig(v.factorySign) };
+  return { version: Number(version) || 0, acks, clientSign: sig(v.clientSign), brandSign: sig(v.brandSign), factorySign: sig(v.factorySign) };
 }
 
 // Readiness of a published version: the sign-off checklist from the reel, computed, never hand-ticked.
@@ -210,11 +239,13 @@ export function techPackReadiness(data, verification) {
   const pendingCallouts = callouts.filter(c => !v.acks[c.key]);
   const sample = d.style.sampleSize;
   const incompletePom = d.pom.filter(r => !(r.tolerance && (r.values[sample] || Object.values(r.values).some(Boolean))));
-  const front = d.sketches.some(s => s.view === 'front' && s.image), back = d.sketches.some(s => s.view === 'back' && s.image);
+  const footwear = d.sketches.some(s => ['lateral', 'medial', 'outsole'].includes(s.view)) || isFootwear(`${d.style.category} ${d.style.styleName}`);
+  const viewA = footwear ? 'lateral' : 'front', viewB = footwear ? 'medial' : 'back';
+  const front = d.sketches.some(s => s.view === viewA && s.image), back = d.sketches.some(s => s.view === viewB && s.image);
   const artworkOk = d.artwork.length > 0 && d.artwork.every(a => a.image && a.pantones.length);
   const placed = d.artwork.flatMap(a => a.placements.filter(p => p.widthIn));
   const checks = [
-    { key: 'mockups', label: 'Front + back garment mockups uploaded', ok: front && back, detail: front && back ? 'Both views uploaded' : `${[!front && 'front', !back && 'back'].filter(Boolean).join(' and ')} view missing` },
+    { key: 'mockups', label: footwear ? 'Lateral + medial mockups uploaded' : 'Front + back garment mockups uploaded', ok: front && back, detail: front && back ? 'Both views uploaded' : `${[!front && viewA, !back && viewB].filter(Boolean).join(' and ')} view missing` },
     { key: 'callouts', label: `All ${callouts.length} callout${callouts.length === 1 ? '' : 's'} acknowledged by factory`, ok: callouts.length > 0 && pendingCallouts.length === 0,
       detail: !callouts.length ? 'No callouts placed yet' : pendingCallouts.length ? `${pendingCallouts.length} pending: ${pendingCallouts.map(c => c.label).join(', ')}` : 'Factory acknowledged every callout' },
     { key: 'pom', label: `All ${d.pom.length} POM${d.pom.length === 1 ? '' : 's'} have spec + tolerance`, ok: d.pom.length > 0 && incompletePom.length === 0,
@@ -223,8 +254,10 @@ export function techPackReadiness(data, verification) {
     { key: 'placement', label: 'Artwork placed on garment with spec', ok: placed.length > 0, detail: placed.length ? `${placed.length} placement${placed.length === 1 ? '' : 's'} with width in inches` : 'No placements yet — required for production' }
   ];
   const ready = checks.every(c => c.ok);
-  const locked = Boolean(v.brandSign && v.factorySign);
-  return { version: v.version, checks, ready, pendingCalloutKeys: pendingCallouts.map(c => c.key), callouts, brandSign: v.brandSign, factorySign: v.factorySign, locked };
+  // Sign-off chain: client approves → Future Basics confirms → factory countersigns → locked.
+  const locked = Boolean(v.clientSign && v.brandSign && v.factorySign);
+  const nextSigner = !v.clientSign ? 'client' : !v.brandSign ? 'brand' : !v.factorySign ? 'factory' : null;
+  return { version: v.version, checks, ready, pendingCalloutKeys: pendingCallouts.map(c => c.key), callouts, clientSign: v.clientSign, brandSign: v.brandSign, factorySign: v.factorySign, nextSigner, locked };
 }
 
 // What clients and factories receive: the published snapshot only, never the live draft.

@@ -1461,7 +1461,7 @@ app.post('/v1/requests/:id/files', { preHandler: authenticate }, async (req, rep
 // ---- Tech packs: built in the work console, published to the client hub, shared with factories by link ----
 async function loadAdminTechPack(productId){
   const product=(await pool.query(`select p.id,p.client_id,p.project_id,p.title,p.product_type,p.shopify_handle,p.description_html,p.shopify_image_url,p.shopify_image_alt,p.current_stage,
-    c.name client_name,pr.name project_name from products p join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id where p.id=$1`,[productId])).rows[0];
+    c.name client_name,c.slug client_slug,c.contact_name client_contact_name,c.contact_email client_contact_email,pr.name project_name from products p join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id where p.id=$1`,[productId])).rows[0];
   if(!product)return null;
   const [pack,configuration,brief]=await Promise.all([
     pool.query('select * from tech_packs where product_id=$1',[productId]),
@@ -1482,7 +1482,7 @@ async function updateVerification(packId,version,mutate){
   if(!row||row.version!==version)return null;
   const verification=normalizeVerification(row.verification,row.version);
   mutate(verification);
-  const locked=Boolean(verification.brandSign&&verification.factorySign);
+  const locked=Boolean(verification.clientSign&&verification.brandSign&&verification.factorySign);
   return (await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
     [packId,version,verification,locked])).rows[0]||null;
 }
@@ -1517,14 +1517,24 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
     await client.query('commit');
-    return {techPack:techPackPayload(row)};
+    let clientNotified=false;
+    if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
+      try{
+        const first=String(ctx.product.client_contact_name||'').split(' ')[0]||'there',link=`${clientHubUrl}/tech-packs/${ctx.product.id}`;
+        clientNotified=await sendHubEmail({to:ctx.product.client_contact_email,subject:`Tech pack v${row.version} is ready for your approval — ${ctx.product.title}`,
+          html:hubEmailShell('A tech pack is ready for your approval',`<p>Hi ${emailEscape(first)},</p><p>Version ${row.version} of the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> is published to your project room. Review the sketches and callouts, measurements, materials, construction, colours and artwork, then approve it in the <strong>Sign</strong> tab — your approval is what releases it to Future Basics and the factory.</p>${hubButton(link,'Review and approve')}${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`),replyTo:req.auth.email||intakeNotificationEmail});
+      }catch(error){app.log.error({error,productId:ctx.product.id},'Tech pack published but client notification failed')}
+    }
+    return {techPack:techPackPayload(row),clientNotified};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
 app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before signing it'});
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to sign'});
-  if(normalizeVerification(ctx.techPack.verification,ctx.techPack.version).brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
+  const current=normalizeVerification(ctx.techPack.verification,ctx.techPack.version);
+  if(current.brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
+  if(!current.clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before Future Basics signs`});
   const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics'}});
   if(!row)return reply.code(409).send({error:'The tech pack changed while you were signing — reload and try again'});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
@@ -1534,6 +1544,7 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
 app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before sharing it with a factory'});
+  if(!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before factory links are created`});
   const label=String(req.body?.label||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
   const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
   const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||0)));
@@ -1554,6 +1565,21 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return publishedTechPackView(row,{audience:'client'});
+});
+// Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
+const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+  from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id`;
+app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client')return reply.code(403).send({error:'Only the client approves their tech pack'});
+  const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to approve'});
+  const row=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  if(normalizeVerification(row.verification,row.version).clientSign)return reply.code(409).send({error:`Version ${row.version} is already approved`});
+  const updated=await updateVerification(row.id,row.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:req.auth.email||''}});
+  if(!updated)return reply.code(409).send({error:'A new version was published — reload to review it'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,`Tech pack v${row.version} approved by ${name}`,{techPackId:row.id,version:row.version}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
+  return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
 });
 // Factory link: resolves a token to the published pack, or the reason it cannot be opened.
 async function loadShareByToken(token){
@@ -1588,6 +1614,7 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to countersign'});
   const readiness=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version));
   if(readiness.factorySign)return reply.code(409).send({error:`Version ${row.version} is already countersigned by ${readiness.factorySign.name}`});
+  if(!readiness.brandSign)return reply.code(409).send({error:'Future Basics signs the tech pack before the factory countersigns'});
   if(readiness.pendingCalloutKeys.length)return reply.code(409).send({error:`Acknowledge every callout before countersigning (${readiness.pendingCalloutKeys.length} pending)`});
   const updated=await updateVerification(row.id,row.version,v=>{v.factorySign={name,at:new Date().toISOString(),by:row.share_label}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
