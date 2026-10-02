@@ -771,7 +771,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1260,6 +1260,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query(`select p.*,
       (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
       (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
+      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       (select pt.wholesale_cents from price_tiers pt where pt.product_id=p.id order by pt.min_quantity limit 1) wholesale_cents,
@@ -1472,7 +1473,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1565,6 +1566,74 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return publishedTechPackView(row,{audience:'client'});
+});
+// Client-initiated tech packs. A client starts a product and its draft pack from their project, fills it in, and submits it to
+// Future Basics, who finish and publish v1. From there the normal chain runs: client approves → Future Basics signs → factory.
+const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadClientDraft(productId,clientId){
+  return (await pool.query(`select tp.*,p.title,p.product_type,p.project_id,c.name client_name,c.slug client_slug,pr.name project_name
+    from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.initiated_by='client' and tp.published_at is null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[productId,clientId])).rows[0]||null;
+}
+const draftView=row=>({product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
+  techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl});
+app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
+  const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
+  if(!title)return reply.code(400).send({error:'Give the product a name'});
+  const project=(await pool.query(`select pr.id,pr.name,c.name client_name from projects pr join clients c on c.id=pr.client_id
+    where pr.id=$1 and pr.client_id=$2 and pr.archived_at is null and pr.status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const client=await pool.connect();
+  try{
+    await client.query('begin');
+    const product=(await client.query(`insert into products(client_id,project_id,title,product_type,description_html,source_of_truth) values($1,$2,$3,$4,$5,'hub') returning *`,
+      [req.auth.clientId,project.id,title,productType||null,description?`<p>${escapeHtml(description)}</p>`:null])).rows[0];
+    await client.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
+      from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
+    const seed=normalizeTechPack(seedTechPack({product}));seed.style.designer=project.client_name;
+    const pack=(await client.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by) values($1,$2,'draft',$3,$4,'client') returning *`,[product.id,req.auth.clientId,seed,req.auth.sub])).rows[0];
+    await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+      [req.auth.clientId,product.id,req.auth.sub,`${project.client_name} started a tech pack for ${product.title}`,{techPackId:pack.id,initiatedBy:'client'}]);
+    await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[req.auth.clientId,`${project.client_name} started a tech pack for ${product.title} in ${project.name}`,product.id]);
+    await client.query('commit');
+    return reply.code(201).send(draftView({...pack,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}));
+  }catch(e){await client.query('rollback');throw e}finally{client.release()}
+});
+app.get('/v1/products/:id/tech-pack/draft',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client')return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  return draftView(row);
+});
+app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40_000_000},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics — ask them to reopen it if you need changes'});
+  const data=normalizeTechPack(req.body?.data);
+  const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
+  return draftView({...row,...updated,title:data.style.styleName||row.title});
+});
+app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'Already submitted to Future Basics'});
+  const note=String(req.body?.note||'').trim().slice(0,1000);
+  const updated=(await pool.query(`update tech_packs set status='submitted',submitted_at=now(),submitted_by=$2,updated_at=now() where id=$1 returning *`,[row.id,req.auth.sub])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [row.client_id,row.product_id,req.auth.sub,`${row.client_name} submitted their tech pack for ${row.title} to Future Basics`,{techPackId:row.id,note}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} submitted a tech pack for ${row.title} — review and publish v1${note?' · "'+note.slice(0,120)+'"':''}`,row.product_id]);
+  await pool.query(`update products set current_stage='development',updated_at=now() where id=$1 and current_stage='brief'`,[row.product_id]);
+  return draftView({...row,...updated});
+});
+// Future Basics can hand a submitted draft back to the client for more work.
+app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  if(ctx.techPack.initiated_by!=='client'||ctx.techPack.published_at)return reply.code(409).send({error:'Only an unpublished client draft can be reopened'});
+  const row=(await pool.query(`update tech_packs set status='draft',updated_at=now() where id=$1 returning *`,[ctx.techPack.id])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack draft for ${ctx.product.title} reopened for ${ctx.product.client_name}`,{techPackId:row.id}]);
+  return {techPack:techPackPayload(row)};
 });
 // Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
 const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name

@@ -421,6 +421,9 @@ export async function migrate() {
     );
     alter table tech_packs add column if not exists verification jsonb not null default '{}';
     alter table tech_packs add column if not exists locked_at timestamptz;
+    alter table tech_packs add column if not exists initiated_by text not null default 'brand';
+    alter table tech_packs add column if not exists submitted_at timestamptz;
+    alter table tech_packs add column if not exists submitted_by uuid references users(id);
     create table if not exists tech_pack_shares (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
