@@ -9,7 +9,7 @@ export const SKETCH_VIEWS = ['front', 'back', 'side', 'lateral', 'medial', 'top'
 export const FOOTWEAR_SIZES = ['7', '8', '9', '10', '11', '12', '13'];
 // Garment packs need front + back; footwear packs need lateral + medial.
 export const mockupsComplete = sketches => { const has = v => sketches.some(s => s.view === v && s.image); return (has('front') && has('back')) || (has('lateral') && has('medial')); };
-const LIMITS = { sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200 };
+const LIMITS = { renderings: 6, sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200 };
 const MAX_IMAGE_CHARS = 2_600_000;   // ~1.9MB decoded; the editor downsizes before upload
 const MAX_PHOTO_CHARS = 700_000;     // callout detail photos are small crops
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i;
@@ -32,6 +32,7 @@ export function emptyTechPack() {
     bom: [],
     construction: [],
     colorways: [],
+    renderings: [],
     artwork: [],
     labels: [],
     packaging: { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: '' },
@@ -79,6 +80,7 @@ export function normalizeTechPack(input) {
     })).filter(r => r.component || r.material),
     construction: list(src.construction, LIMITS.construction, r => ({ area: str(r?.area, 120), detail: str(r?.detail, 600) })).filter(r => r.area || r.detail),
     colorways: list(src.colorways, LIMITS.colorways, r => ({ name: str(r?.name, 80), code: str(r?.code, 40), swatch: hex(r?.swatch), notes: str(r?.notes, 300) })).filter(r => r.name),
+    renderings: list(src.renderings, LIMITS.renderings, r => ({ id: id(r?.id), name: str(r?.name, 120), note: str(r?.note, 400), image: image(r?.image) })).filter(r => r.image),
     artwork: list(src.artwork, LIMITS.artwork, a => ({
       id: id(a?.id),
       name: str(a?.name, 120),

@@ -116,6 +116,12 @@ test('techPackReadiness computes the sign-off checklist from data + factory ackn
   assert.equal(calloutKey({ id: 'f' }, { n: 2 }), 'f:2');
 });
 
+test('normalizeTechPack keeps colour renderings with an image and drops empty ones', () => {
+  const t = normalizeTechPack({ renderings: [{ id: 'r1', name: 'Bone / White', note: 'Lead colourway', image: 'data:image/jpeg;base64,AAAA' }, { name: 'no image' }, { image: 'javascript:alert(1)' }] });
+  assert.deepEqual(t.renderings, [{ id: 'r1', name: 'Bone / White', note: 'Lead colourway', image: 'data:image/jpeg;base64,AAAA' }]);
+  assert.deepEqual(normalizeTechPack({}).renderings, []);
+});
+
 test('normalizeVerification resets acknowledgements and signatures from an older version', () => {
   const stale = normalizeVerification({ version: 1, acks: { 'f:1': { by: 'Mill A', at: 'x' } }, brandSign: { name: 'Kyle', at: 'x' } }, 2);
   assert.deepEqual(stale, emptyVerification(2));
