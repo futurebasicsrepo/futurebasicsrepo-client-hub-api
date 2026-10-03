@@ -2,7 +2,10 @@ import pg from 'pg';
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+  // Safety net: a lock wait fails after 15s instead of hanging a request forever, and a transaction left idle (a request
+  // that died mid-way) is killed after 60s so its locks and connection come back. Legitimate waits here are sub-second.
+  options: '-c lock_timeout=15000 -c idle_in_transaction_session_timeout=60000'
 });
 
 export async function migrate() {
