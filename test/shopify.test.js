@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { exactCustomerMatch, CUSTOMER_BY_EMAIL_QUERY, DRAFT_ORDER_STATUS } from '../src/shopify.js';
+import { exactCustomerMatch, CUSTOMER_BY_EMAIL_QUERY, DRAFT_ORDER_STATUS, ORDER_CUSTOMER_QUERY } from '../src/shopify.js';
 
 // Linking a self-serve room to its Shopify customer: only an exact email match may link, never a lookalike from the same domain.
 const nodes = [
@@ -29,5 +29,6 @@ test('any of the room emails may match; empty input links nothing', () => {
 test('the queries ask for what the link needs', () => {
   assert.match(CUSTOMER_BY_EMAIL_QUERY, /customers\(first: \d+, query: \$query\)/);
   assert.match(CUSTOMER_BY_EMAIL_QUERY, /nodes \{ id email/);
-  assert.match(DRAFT_ORDER_STATUS, /order \{[\s\S]*?customer \{ id email \}/);
+  assert.doesNotMatch(DRAFT_ORDER_STATUS, /customer/, 'the paid check must work on a store without read_customers');
+  assert.match(ORDER_CUSTOMER_QUERY, /order\(id: \$id\) \{[^}]*customer \{ id email \}/);
 });
