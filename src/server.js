@@ -17,6 +17,7 @@ import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerVie
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
 import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
+import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -211,10 +212,10 @@ async function sendIntakeNotification(intake,uploads){
 // Future Basics hub emails to clients (intake confirmation, room activation). Resend-backed like the login code;
 // without RESEND_API_KEY they log and return false so local runs never block on delivery.
 const hubFromEmail=process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>';
-async function sendHubEmail({to,subject,html,replyTo}){
+async function sendHubEmail({to,subject,html,replyTo,from,headers}){
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
-    body:JSON.stringify({from:hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html})});
+    body:JSON.stringify({from:from||hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html,...(headers?{headers}:{})})});
   if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
@@ -1669,6 +1670,78 @@ app.post('/v1/admin/followups/run',{preHandler:[authenticate,adminOnly]},async(r
   const override=process.env.DEV_BYPASS_AUTH==='true'?{hours:Number(req.body?.hours??followupAfterHours),staleHours:Number(req.body?.staleHours??followupStaleAfterHours)}:{};
   return runPhotoFollowups(override);
 });
+// Follow-up sequence for self-serve clients (copy and timing in nurture.js). Free track: day 1/3/6/10/16 after the first
+// photo pack until they convert. Paid track: next steps after the first paid pack, membership after the second.
+// Nothing is backfilled: only clients whose first photo pack (or payment) comes after the sweep first ran are emailed.
+// Each step is claimed in nurture_sends before sending, so two instances never send the same email twice.
+const nurtureSecret=process.env.UNSUBSCRIBE_SECRET||process.env.JWT_SECRET||'';
+const nurtureAddress=process.env.MAILING_ADDRESS||'Future Basics · 1134 Sansom St, Philadelphia, PA 19107';
+const unsubscribeUrlFor=clientId=>`${clientHubUrl}/email/unsubscribe?c=${clientId}&t=${unsubscribeToken(clientId,nurtureSecret)}`;
+const NURTURE_CONVERTED_SQL=`(exists(select 1 from tech_packs t where t.client_id=c.id and (t.paid_at is not null or t.submitted_at is not null))
+  or exists(select 1 from quotes q join products p on p.id=q.product_id where p.client_id=c.id)
+  or exists(select 1 from invoices i where i.client_id=c.id and i.status='paid')
+  or exists(select 1 from project_messages m join projects pr on pr.id=m.project_id where pr.client_id=c.id and m.author_role='client')
+  or coalesce(c.membership_active_until>now(),false) or c.tech_pack_comped)`;
+const NURTURE_SENDS_SQL=`(select coalesce(json_agg(json_build_object('step',n.step,'status',n.status,'at',n.sent_at)),'[]'::json) from nurture_sends n where n.client_id=c.id)`;
+async function sendNurtureStep(row,step,ctx){
+  for(const k of step.skip)await pool.query(`insert into nurture_sends(client_id,step,status) values($1,$2,'skipped') on conflict do nothing`,[row.id,k]);
+  const claimed=(await pool.query(`insert into nurture_sends(client_id,step) values($1,$2) on conflict do nothing returning step`,[row.id,step.key])).rowCount===1;
+  if(!claimed)return false;
+  const unsubscribeUrl=unsubscribeUrlFor(row.id),mail=nurtureEmail(step.key,ctx),footer=marketingFooter({unsubscribeUrl,address:nurtureAddress});
+  const html=mail.plain?`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5">${mail.html}${footer}</div>`:hubEmailShell(mail.title,mail.html+footer);
+  const ok=await sendHubEmail({to:row.email,subject:mail.subject,html,from:mail.plain?process.env.NURTURE_FROM_EMAIL||undefined:undefined,replyTo:process.env.NURTURE_REPLY_TO||undefined,
+    headers:{'List-Unsubscribe':`<${unsubscribeUrl}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}}).catch(e=>{app.log.warn({err:e.message,clientId:row.id,step:step.key},'follow-up email failed');return false});
+  if(!ok){await pool.query(`update nurture_sends set status='failed' where client_id=$1 and step=$2`,[row.id,step.key]);return false}
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'email',$3,$4)`,[row.id,row.product_id||null,`Follow-up email sent (${step.key}): ${mail.subject}`,{step:step.key,to:row.email}]);
+  return true;
+}
+async function runNurture({now=new Date()}={}){
+  if(!nurtureSecret){app.log.warn('UNSUBSCRIBE_SECRET/JWT_SECRET missing; follow-up sequence not sent');return {sent:0}}
+  let started=(await getSetting('nurtureStartedAt'))?.at;
+  if(!started){started=now.toISOString();await setSetting('nurtureStartedAt',{at:started});return {sent:0,started}}
+  const caseStudies=parseCaseStudies(process.env.NURTURE_CASE_STUDIES),packDollars=(TECH_PACK_PRICE_CENTS/100).toFixed(0),signer=process.env.NURTURE_SIGNER||'Kyle';
+  const base=r=>({first:(r.contact_name||'').split(' ')[0],productTitle:r.product_title,packLink:`${clientHubUrl}/tech-packs/${r.product_id}`,startLink:`${clientHubUrl}/start`,packDollars,membershipUrl:MEMBERSHIP_URL,signer});
+  let sent=0;
+  const free=(await pool.query(`select c.id,c.contact_name,coalesce(nullif(c.contact_email,''),c.allowed_emails[1]) email,a.anchor_at,f.product_id,f.product_title,${NURTURE_SENDS_SQL} sends,${NURTURE_CONVERTED_SQL} converted
+    from (select client_id,min(created_at) anchor_at from tech_packs where source='photo' and initiated_by='client' group by client_id) a
+    join clients c on c.id=a.client_id
+    cross join lateral (select p.id product_id,p.title product_title from tech_packs tp join products p on p.id=tp.product_id where tp.client_id=c.id and tp.source='photo' and tp.initiated_by='client' order by tp.created_at limit 1) f
+    where a.anchor_at>=$1 and a.anchor_at>now()-interval '30 days' and c.archived_at is null and c.status='active' and c.marketing_opt_out_at is null`,[started])).rows;
+  for(const r of free){
+    if(!r.email)continue;
+    const step=nextFreeStep({anchorAt:r.anchor_at,sends:r.sends,now,converted:r.converted});
+    if(step&&await sendNurtureStep(r,step,{...base(r),caseStudy:pickCaseStudy(r.product_title,caseStudies)}))sent++;
+  }
+  const paid=(await pool.query(`select c.id,c.contact_name,coalesce(nullif(c.contact_email,''),c.allowed_emails[1]) email,pp.first_paid,pp.second_paid,coalesce(c.membership_active_until>now(),false) member,
+      lp.product_id,lp.product_title,${NURTURE_SENDS_SQL} sends
+    from clients c
+    cross join lateral (select min(paid_at) first_paid,(array_agg(paid_at order by paid_at))[2] second_paid from tech_packs where client_id=c.id and paid_at is not null) pp
+    cross join lateral (select p.id product_id,p.title product_title from tech_packs tp join products p on p.id=tp.product_id where tp.client_id=c.id and tp.paid_at is not null order by tp.paid_at desc limit 1) lp
+    where pp.first_paid>=$1 and coalesce(pp.second_paid,pp.first_paid)>now()-interval '30 days' and c.archived_at is null and c.status='active' and c.marketing_opt_out_at is null`,[started])).rows;
+  for(const r of paid){
+    if(!r.email)continue;
+    const step=nextPaidStep({firstPaidAt:r.first_paid,secondPaidAt:r.second_paid,member:r.member,sends:r.sends,now});
+    if(step&&await sendNurtureStep(r,step,base(r)))sent++;
+  }
+  return {sent,started};
+}
+app.post('/v1/admin/nurture/run',{preHandler:[authenticate,adminOnly]},async()=>runNurture());
+// Unsubscribe from the follow-up sequence. GET shows a confirm button (link scanners prefetch GETs); POST opts out, and
+// also answers mail clients' one-click unsubscribe (List-Unsubscribe-Post). Sign-in codes and approvals still send.
+app.addContentTypeParser('application/x-www-form-urlencoded',{parseAs:'string'},(_req,body,done)=>done(null,Object.fromEntries(new URLSearchParams(body))));
+const unsubscribePage=(title,body)=>`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Future Basics</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:520px;margin:64px auto;padding:0 20px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics</p><h1 style="font-size:24px">${title}</h1>${body}</body></html>`;
+app.get('/email/unsubscribe',async(req,reply)=>{
+  const {c,t}=req.query||{};reply.type('text/html').header('cache-control','no-store');
+  if(!/^[0-9a-f-]{36}$/i.test(String(c||''))||!nurtureSecret||!validUnsubscribeToken(c,t,nurtureSecret))return reply.code(400).send(unsubscribePage('Link not recognised','<p>This unsubscribe link is incomplete. Reply to any of our emails and we will take you off the list.</p>'));
+  return unsubscribePage('Unsubscribe',`<p>Stop the follow-up emails about your tech pack? You will still get sign-in codes and anything you ask us for.</p><form method="post" action="/email/unsubscribe?c=${encodeURIComponent(c)}&amp;t=${encodeURIComponent(t)}"><button type="submit" style="padding:14px 22px;border-radius:999px;border:0;background:#141416;color:#fff;font-weight:600;font-size:15px;cursor:pointer">Unsubscribe</button></form>`);
+});
+app.post('/email/unsubscribe',async(req,reply)=>{
+  const {c,t}=req.query||{};reply.type('text/html').header('cache-control','no-store');
+  if(!/^[0-9a-f-]{36}$/i.test(String(c||''))||!nurtureSecret||!validUnsubscribeToken(c,t,nurtureSecret))return reply.code(400).send(unsubscribePage('Link not recognised','<p>This unsubscribe link is incomplete. Reply to any of our emails and we will take you off the list.</p>'));
+  const r=(await pool.query(`update clients set marketing_opt_out_at=coalesce(marketing_opt_out_at,now()) where id=$1 returning id`,[c])).rows[0];
+  if(r)await pool.query(`insert into activities(client_id,type,summary) values($1,'email','Unsubscribed from follow-up emails')`,[c]).catch(()=>{});
+  return unsubscribePage('You are unsubscribed','<p>No more follow-up emails. Your tech packs are still in your room whenever you want them.</p>');
+});
 // Client-initiated tech packs. A client starts a product and its draft pack from their project, fills it in, and submits it to
 // Future Basics, who finish and publish v1. From there the normal chain runs: client approves → Future Basics signs → factory.
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2597,6 +2670,7 @@ await migrate();
 await repairPendingShopifyLinks();
 setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
 if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();
+if(process.env.NURTURE_DISABLED!=='true')setInterval(() => runNurture().catch(error => app.log.error({ error }, 'Follow-up sequence sweep failed')), 15 * 60 * 1000).unref();
 setTimeout(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 15 * 1000).unref();
 setInterval(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 5 * 60 * 1000).unref();
 setInterval(() => runPaymentSweep().catch(error => app.log.error({ error }, 'Tech pack payment sweep failed')), 5 * 60 * 1000).unref();
