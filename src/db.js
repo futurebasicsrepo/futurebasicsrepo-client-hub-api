@@ -35,6 +35,7 @@ export async function migrate() {
     alter table clients add column if not exists tech_pack_comped boolean not null default false;
     alter table clients add column if not exists membership_active_until timestamptz;
     alter table clients add column if not exists membership_checked_at timestamptz;
+    alter table clients add column if not exists acquisition jsonb;
     update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
       where status in ('archive','archived');
     create table if not exists users (
