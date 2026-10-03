@@ -32,6 +32,11 @@ export async function shopifyGraphql(query, variables = {}) {
 }
 
 export const SHOP_CONNECTION_QUERY=`query ClientHubConnection { shop { name myshopifyDomain } }`;
+// The scopes the store has granted this app right now (no scope needed to ask). The status route compares them with what the hub uses.
+export const APP_SCOPES_QUERY=`query ClientHubScopes { currentAppInstallation { accessScopes { handle } } }`;
+export const missingScopes=(granted,required)=>{const have=new Set((granted||[]).map(String));
+  // write_x implies read_x in Shopify, so a granted write covers its read
+  return (required||[]).filter(r=>!have.has(r)&&!have.has(r.replace(/^read_/,'write_')))};
 
 export const PRODUCT_SYNC_QUERY = `query SyncClientProducts($query: String!) {
   products(first: 50, query: $query) {
