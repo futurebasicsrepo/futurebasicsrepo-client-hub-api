@@ -11,6 +11,7 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
+import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -2049,6 +2050,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
     }
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
+    if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(photo,drafted.colorways))}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
     const db=await pool.connect();let merged;
@@ -2266,6 +2268,24 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
+});
+// Colourway tiles on demand: the first photo recoloured to each colourway in the pack, saved as renderings.
+async function colorwayTilesFor(data){const photo=data.sketches.find(s=>s.image)?.image;if(!photo)return {error:'Add a photo under Callouts first — the tiles are made from it'};if(!data.colorways.length)return {error:'Add at least one colourway with a swatch first'};
+  const tiles=await renderColorways(photo,data.colorways);if(!tiles.length)return {error:'Could not separate the product from its background in this photo — try a photo on a plain backdrop'};return {renderings:mergeColorwayTiles(data.renderings,tiles),count:tiles.length}}
+app.post('/v1/products/:id/tech-pack/draft/colorways',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  const data=normalizeTechPack(row.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
+  data.renderings=made.renderings;const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  return {count:made.count,renderings:data.renderings,techPack:draftView({...row,...updated}).techPack};
+});
+app.post('/v1/admin/products/:id/tech-pack/colorways',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
+  const data=normalizeTechPack(ctx.techPack.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
+  data.renderings=made.renderings;const row=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Colourway tiles rendered for ${ctx.product.title} (${made.count})`,{techPackId:row.id,count:made.count}]).catch(()=>{});
+  return {count:made.count,renderings:data.renderings,techPack:techPackPayload(row)};
 });
 app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
