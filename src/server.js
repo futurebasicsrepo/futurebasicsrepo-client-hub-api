@@ -1521,6 +1521,8 @@ app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],
 });
 // Stored translations, keyed by language: { zh: { strings: { en: zh }, model, at } }. Only languages with content are returned.
 const packTranslations=row=>{const t=row?.translations&&typeof row.translations==='object'?row.translations:{};return Object.fromEntries(Object.entries(t).filter(([k,v])=>TRANSLATION_LANGS.includes(k)&&v&&typeof v.strings==='object'&&Object.keys(v.strings).length))};
+// The map is built from the draft AND the published version, so a reader of one version only gets the strings in it (no draft text leaks to a factory).
+const translationsForPack=(row,data)=>{const allowed=new Set(packStrings(data));return Object.fromEntries(Object.entries(packTranslations(row)).map(([lang,v])=>{const strings=Object.fromEntries(Object.entries(v.strings).filter(([src])=>allowed.has(src)));return [lang,{...v,strings,count:Object.keys(strings).length}]}).filter(([,v])=>v.count>0))};
 // Factory language. Future Basics presses the button in the work console; the factory link then renders in that language.
 // Only strings not yet translated are sent to the model, so re-running after an edit is cheap.
 app.post('/v1/admin/products/:id/tech-pack/translate',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1920,7 +1922,7 @@ async function loadShareByToken(token){
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
-  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:packTranslations(row)});
+  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{
