@@ -13,7 +13,7 @@ import { migrate, pool } from './db.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { cutoutEnabled, cutoutFromPhoto, placeCutout } from './cutout.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -1955,7 +1955,10 @@ async function techPackPaymentLanded(row){
   if(!order||!/^PAID$/i.test(order.displayFinancialStatus||''))return false;
   if(Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS){app.log.warn({packId:row.id,orderId:order.id,total:order.totalPriceSet?.shopMoney?.amount},'tech pack order paid below price — not unlocking');return false}
   await pool.query(`update tech_packs set paid_at=now(),pay_order_id=$2,billing='single' where id=$1 and paid_at is null`,[row.id,order.id]);
-  if(order.customer?.id){const c=(await pool.query('select * from clients where id=$1',[row.client_id])).rows[0];await linkShopifyCustomer(c,order.customer.id).catch(()=>{})}
+  // best effort: link the room to the store customer on the order. Needs read_customers; without it the pack still unlocks.
+  try{const cust=(await shopifyGraphql(ORDER_CUSTOMER_QUERY,{id:order.id}))?.order?.customer;
+    if(cust?.id){const c=(await pool.query('select * from clients where id=$1',[row.client_id])).rows[0];if(c)await linkShopifyCustomer(c,cust.id)}}
+  catch(e){app.log.info({err:e.message,packId:row.id},'order customer not linked')}
   await dropPackVariant(row);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;

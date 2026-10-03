@@ -95,10 +95,15 @@ export const DRAFT_ORDER_STATUS = `query SyncDraftOrderStatus($id: ID!) {
   draftOrder(id: $id) {
     id name invoiceUrl status updatedAt
     totalPriceSet { shopMoney { amount currencyCode } }
-    order { id name displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } customer { id email } }
+    order { id name displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } }
   }
 }`;
 
+// The customer on a paid order, asked for separately: it needs the read_customers scope, and a store without that
+// scope must still see its orders as paid. Never fold this into the status query.
+export const ORDER_CUSTOMER_QUERY = `query PaidOrderCustomer($id: ID!) {
+  order(id: $id) { id customer { id email } }
+}`;
 // Find the store customer behind a room by email; exact match only, so a shared domain never links the wrong person.
 export const CUSTOMER_BY_EMAIL_QUERY = `query ClientCustomerByEmail($query: String!) {
   customers(first: 10, query: $query) { nodes { id email displayName } }
