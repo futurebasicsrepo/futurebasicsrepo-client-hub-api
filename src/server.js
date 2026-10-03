@@ -2093,7 +2093,8 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     const apiSide=!user&&(e.status>=400||/"type":"error"|_error"/.test(e.message||''));
     const stored=apiSide?'The assistant could not run just now. This is on our side, not your photo — Future Basics has been notified and will run it for you.':msg;
     app.log.warn({err:e.message,status:e.status,name:e.name,packId,attempt:claimed.ai_attempts},'photo draft enrichment failed');
-    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,stored.slice(0,500)]).catch(()=>{});
+    // our failure does not spend one of the client's three tries
+    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2,ai_attempts=case when $3 then greatest(ai_attempts-1,0) else ai_attempts end where id=$1`,[packId,stored.slice(0,500),apiSide]).catch(()=>{});
     await notifyAiFailure(row,{message:msg,userFacing:Boolean(user),attempt:claimed.ai_attempts}).catch(err=>app.log.warn({err:err.message},'ai failure notice failed'));
   }
 }
