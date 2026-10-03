@@ -115,10 +115,13 @@ test('callout coordinates survive every answer shape, and a draft without positi
   const none = normalizeCallout({ label: 'C', spec: 'x' }); assert.equal(none.x, null, 'missing stays missing, never 0');
   assert.equal(unplacedCallouts([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]), true, 'stacked pins count as unplaced');
   assert.equal(unplacedCallouts([{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }, { x: null, y: null }]), false);
-  const prev = process.env.AI_FIXTURE; process.env.AI_FIXTURE = process.env.AI_FIXTURE || new URL('../' + 'fixtures-missing.json', import.meta.url).pathname;
+  // the fixture draft is written by the test itself, so it runs anywhere
+  const { writeFileSync, mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const fixture = join(mkdtempSync(join(tmpdir(), 'fb-ai-')), 'draft.json');
+  writeFileSync(fixture, JSON.stringify({ ...draft, callouts: ['Heel wrap', 'Tongue', 'Lacing', 'Window', 'Perforations', 'Toe bumper', 'Midsole', 'Pod'].map((label, i) => ({ label, spec: 's', note: '', x: 0.1 + i * 0.1, y: 0.5 })) }));
+  const prev = process.env.AI_FIXTURE;
   try {
     const noisy = `data:image/png;base64,${(await sharp({ create: { width: 300, height: 200, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).png().toBuffer()).toString('base64')}`;
-    const fixture = `/tmp/claude-0/-home-user-futurebasicsrepo-client-hub-api/a5343353-7eaf-5a82-bf6b-4f40f0e4ccc4/scratchpad/fixtures/ai-runner.json`;
     process.env.AI_FIXTURE = fixture;
     const { draft: d } = await draftFromPhotos({ photos: [noisy], title: 'Runner [noxy]', notes: '', pomTemplate: [], sizes: ['9', '10'], sampleSize: '10' });
     const pts = new Set(d.callouts.map(c => `${c.x?.toFixed(2)},${c.y?.toFixed(2)}`));
@@ -126,4 +129,13 @@ test('callout coordinates survive every answer shape, and a draft without positi
     const pack = normalizeTechPack(await applyDraftToPack(normalizeTechPack({ ...seedTechPack({ product: { title: 'Runner', product_type: 'Footwear' } }), sketches: [{ id: 's', view: 'front', label: '', image: noisy, callouts: [] }] }), { ...d, callouts: d.callouts.map(c => ({ ...c, x: null, y: null })) }, { photos: [noisy], sizes: ['9', '10'], sampleSize: '10', model: 't' }));
     assert.ok(pack.sketches[0].callouts.every(c => c.x == null && c.photo === ''), 'unplaced callouts carry no position and no crop');
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});
+
+test('mergeClientEdits unpins leftover corner callouts (0,0 with no crop) instead of keeping them stacked', async () => {
+  const { mergeClientEdits } = await import('../src/techpack.js');
+  const orig = normalizeTechPack({ ...seedTechPack({ product: { title: 'Boot', product_type: 'Footwear' } }), sketches: [{ id: 'p', view: 'front', label: '', image: 'data:image/jpeg;base64,AAAA', callouts: [] }] });
+  const current = structuredClone(orig); current.sketches[0].callouts = [{ n: 1, label: 'Outsole', spec: '', note: '', photo: '', x: 0, y: 0 }, { n: 2, label: 'Real corner pin', spec: '', note: '', photo: 'data:image/jpeg;base64,BBBB', x: 0, y: 0 }];
+  const drafted = structuredClone(orig); drafted.sketches[0].callouts = [{ n: 1, label: 'Collar', spec: '', note: '', photo: '', x: 0.3, y: 0.2 }];
+  const m = mergeClientEdits(orig, current, drafted).sketches[0].callouts;
+  assert.deepEqual(m.map(c => [c.label, c.x, c.y]), [['Outsole', null, null], ['Real corner pin', 0, 0], ['Collar', 0.3, 0.2]]);
 });
