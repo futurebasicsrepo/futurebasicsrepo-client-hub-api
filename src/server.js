@@ -2038,7 +2038,13 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       if(draftLooksEmpty(draft))throw new NoProductError('The assistant could not draft enough from this brief. Add a photo, or more detail to the brief, and run it again.');
       draft.pomResearch={skipped:'no photo to research from'};
     }else{
-      try{where=await locateProduct(original)}catch(e){if(/unsupported image|Input buffer|corrupt|premature|invalid/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');throw e}
+      // Only a decoder failure means the file is bad. An API error carries "invalid_request_error" in its text (a low
+      // credit balance, a bad key) and must surface as what it is, never as "could not open this image".
+      try{where=await locateProduct(original)}catch(e){
+        app.log.warn({err:e.message,status:e.status,name:e.name,packId},'locate product failed');
+        if(!(e.status>=400)&&/unsupported image|Input buffer|corrupt|premature|Invalid base64|No readable photo/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');
+        if(e.status===400&&/could not process image|image.*(too large|exceeds|dimensions)/i.test(e.message||''))throw new NoProductError('The assistant could not take this image. Replace it with a JPG or PNG under 5 MB (Callouts → View settings → Replace image) and try again.');
+        throw e}
       if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
       try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
       const working=structuredClone(data);
@@ -2083,8 +2089,11 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
-    app.log.warn({err:e.message,packId,attempt:claimed.ai_attempts},'photo draft enrichment failed');
-    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,msg.slice(0,500)]).catch(()=>{});
+    // an API-side failure (key, credits, rate limit, outage) is ours: the client is told so, never asked for another photo
+    const apiSide=!user&&(e.status>=400||/"type":"error"|_error"/.test(e.message||''));
+    const stored=apiSide?'The assistant could not run just now. This is on our side, not your photo — Future Basics has been notified and will run it for you.':msg;
+    app.log.warn({err:e.message,status:e.status,name:e.name,packId,attempt:claimed.ai_attempts},'photo draft enrichment failed');
+    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,stored.slice(0,500)]).catch(()=>{});
     await notifyAiFailure(row,{message:msg,userFacing:Boolean(user),attempt:claimed.ai_attempts}).catch(err=>app.log.warn({err:err.message},'ai failure notice failed'));
   }
 }
