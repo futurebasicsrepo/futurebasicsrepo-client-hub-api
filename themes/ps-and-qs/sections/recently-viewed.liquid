@@ -1,0 +1,17 @@
+{%- comment -%} Filled by fit.js from localStorage (pq:recent) via /products/<handle>?view=card. Stays hidden until there's something to show. {%- endcomment -%}
+<section class="rail section" data-recent-rail hidden>
+  <div class="page-width">
+    <header class="section__head"><div><p class="mono kicker">{{ section.settings.kicker }}</p><h2 class="h3">{{ section.settings.heading }}</h2></div></header>
+  </div>
+  <div class="rail__track" data-recent-grid></div>
+</section>
+{% schema %}
+{
+  "name": "Recently viewed",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Back where you left off" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Recently viewed" }
+  ],
+  "presets": [ { "name": "Recently viewed" } ]
+}
+{% endschema %}

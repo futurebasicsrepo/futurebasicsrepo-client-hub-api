@@ -1,0 +1,40 @@
+<section class="section page-width account" data-addresses>
+  <a class="small" href="{{ routes.account_url }}">← {{ 'customer.account.title' | t }}</a>
+  <div class="section__head"><h1 class="h1">{{ 'customer.addresses.title' | t }}</h1><button type="button" class="btn btn--primary" data-address-toggle="AddressNew">{{ 'customer.addresses.add_new' | t }}</button></div>
+
+  <div id="AddressNew" class="account__address-form" hidden>
+    <h2 class="h3">{{ 'customer.addresses.add_new' | t }}</h2>
+    {%- form 'customer_address', customer.new_address, class: 'form' -%}
+      {% render 'address-fields', form: form, id: 'New' %}
+      <button type="submit" class="btn btn--primary">{{ 'customer.addresses.add' | t }}</button>
+      <button type="button" class="btn btn--ghost" data-address-toggle="AddressNew">{{ 'customer.addresses.cancel' | t }}</button>
+    {%- endform -%}
+  </div>
+
+  {%- paginate customer.addresses by 10 -%}
+    <ul class="account__addresses">
+      {%- for address in customer.addresses -%}
+        <li class="account__address">
+          {%- if address == customer.default_address -%}<span class="chip chip--sm">{{ 'customer.addresses.default' | t }}</span>{%- endif -%}
+          {{ address | format_address }}
+          <div class="account__address-actions">
+            <button type="button" class="btn btn--ghost btn--sm" data-address-toggle="EditAddress_{{ address.id }}">{{ 'customer.addresses.edit' | t }}</button>
+            {%- form 'customer_address', address -%}
+              <button type="submit" class="btn btn--ghost btn--sm" name="_method" value="delete" onclick="return confirm('{{ 'customer.addresses.delete_confirm' | t }}')">{{ 'customer.addresses.delete' | t }}</button>
+            {%- endform -%}
+          </div>
+          <div id="EditAddress_{{ address.id }}" class="account__address-form" hidden>
+            {%- form 'customer_address', address, class: 'form' -%}
+              {% render 'address-fields', form: form, id: address.id %}
+              <button type="submit" class="btn btn--primary">{{ 'customer.addresses.update' | t }}</button>
+              <button type="button" class="btn btn--ghost" data-address-toggle="EditAddress_{{ address.id }}">{{ 'customer.addresses.cancel' | t }}</button>
+            {%- endform -%}
+          </div>
+        </li>
+      {%- endfor -%}
+    </ul>
+    {% render 'pagination', paginate: paginate %}
+  {%- endpaginate -%}
+</section>
+<script src="{{ 'customer.js' | asset_url }}" defer="defer"></script>
+{% schema %}{ "name": "Addresses", "settings": [] }{% endschema %}

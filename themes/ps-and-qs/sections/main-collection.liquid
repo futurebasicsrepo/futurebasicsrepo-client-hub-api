@@ -1,0 +1,56 @@
+<section class="collection section page-width" id="ProductGrid" data-collection data-section-id="{{ section.id }}">
+  {%- paginate collection.products by section.settings.per_page -%}
+    <div class="collection__layout collection__layout--{{ section.settings.filter_layout }}">
+      <aside class="collection__facets">
+        {% render 'facets', results: collection, section_id: section.id, results_count: collection.products_count %}
+      </aside>
+      <div class="collection__results" data-results>
+        {%- if collection.products.size == 0 -%}
+          <div class="empty">
+            <p class="empty__glyph" aria-hidden="true">q</p>
+            <p>{{ 'sections.collection.empty' | t }}</p>
+            <a class="btn btn--primary" href="{{ collection.url }}">{{ 'sections.collection.clear_all' | t }}</a>
+          </div>
+        {%- else -%}
+          <div class="grid grid--{{ settings.grid_density }}">
+            {%- for product in collection.products -%}
+              {%- liquid
+                assign lazy = true
+                if forloop.index <= 4
+                  assign lazy = false
+                endif
+              -%}
+              {% render 'product-card', product: product, lazy: lazy, index: forloop.index %}
+            {%- endfor -%}
+          </div>
+          {% render 'pagination', paginate: paginate, anchor: '#ProductGrid' %}
+        {%- endif -%}
+      </div>
+    </div>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org", "@type": "CollectionPage",
+      "name": {{ collection.title | json }}, "url": {{ request.origin | append: collection.url | json }},
+      {%- if collection.description != blank %}"description": {{ collection.description | strip_html | truncate: 300 | json }},{% endif %}
+      "isPartOf": { "@id": {{ request.origin | append: '/#website' | json }} },
+      "mainEntity": {
+        "@type": "ItemList", "numberOfItems": {{ collection.products_count }},
+        "itemListElement": [{% for product in collection.products %}{ "@type": "ListItem", "position": {{ paginate.current_offset | plus: forloop.index }}, "url": {{ request.origin | append: product.url | json }}, "name": {{ product.title | json }} }{% unless forloop.last %},{% endunless %}{% endfor %}]
+      }
+    }
+    </script>
+  {%- endpaginate -%}
+</section>
+<script src="{{ 'facets.js' | asset_url }}" defer="defer"></script>
+{% schema %}
+{
+  "name": "Collection grid",
+  "settings": [
+    { "type": "range", "id": "per_page", "label": "Products per page", "min": 12, "max": 48, "step": 4, "default": 24 },
+    { "type": "select", "id": "filter_layout", "label": "Filters", "options": [
+      { "value": "sidebar", "label": "Sidebar on desktop, drawer on mobile" }, { "value": "drawer", "label": "Drawer everywhere" }
+    ], "default": "sidebar" },
+    { "type": "paragraph", "content": "Which filters appear (Brand, Type, Size, Price, Availability, Color) is set in Shopify admin → Apps → Search & Discovery → Filters. The \"In my size\" switch needs the Size option filter turned on." }
+  ]
+}
+{% endschema %}

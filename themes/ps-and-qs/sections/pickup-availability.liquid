@@ -1,0 +1,17 @@
+{%- comment -%} Rendered via /variants/<id>/?section_id=pickup-availability (product.js). {%- endcomment -%}
+{%- assign pick_up_availabilities = product_variant.store_availabilities | where: 'pick_up_enabled', true -%}
+{%- if pick_up_availabilities.size > 0 -%}
+  <div class="pickup" data-pickup-content>
+    {%- assign first = pick_up_availabilities.first -%}
+    {%- if first.available -%}
+      <p class="pickup__line"><span class="pickup__dot is-on" aria-hidden="true"></span> {{ 'products.pickup.available_html' | t: location: first.location.name }} <span class="small">{{ first.pick_up_time }}</span></p>
+    {%- else -%}
+      <p class="pickup__line"><span class="pickup__dot" aria-hidden="true"></span> {{ 'products.pickup.unavailable_html' | t: location: first.location.name }}</p>
+    {%- endif -%}
+    {%- if pick_up_availabilities.size > 1 -%}
+      <details class="pickup__more small"><summary>{{ 'products.pickup.other_locations' | t }}</summary>
+        <ul>{%- for a in pick_up_availabilities offset: 1 -%}<li>{{ a.location.name }} — {% if a.available %}{{ a.pick_up_time }}{% else %}{{ 'products.pickup.not_available' | t }}{% endif %}</li>{%- endfor -%}</ul>
+      </details>
+    {%- endif -%}
+  </div>
+{%- endif -%}

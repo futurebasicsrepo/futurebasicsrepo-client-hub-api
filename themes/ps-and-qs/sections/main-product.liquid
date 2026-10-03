@@ -1,0 +1,155 @@
+{%- liquid
+  assign current = product.selected_or_first_available_variant
+  assign parent = collection
+  if parent == blank and product.collections.size > 0
+    assign parent = product.collections.first
+  endif
+  assign fit_notes = product.metafields.custom.fit_notes
+  assign material = product.metafields.custom.material
+  assign story = product.metafields.custom.story
+  assign size_name = settings.fit_option_name | default: 'Size' | downcase
+  assign is_house = false
+  if settings.house_vendor != blank and product.vendor == settings.house_vendor
+    assign is_house = true
+  endif
+-%}
+<section class="pdp section page-width" data-product data-section-id="{{ section.id }}" data-recent-product="{{ product.handle }}">
+  {% render 'breadcrumbs', parent: parent, current: product.title %}
+  <div class="pdp__layout">
+    <div class="pdp__gallery" data-gallery>
+      <ul class="pdp__media" data-media-track>
+        {%- for media in product.media -%}
+          {%- liquid
+            assign loading = 'lazy'
+            if forloop.first
+              assign loading = 'eager'
+            endif
+          -%}
+          <li class="pdp__slide" data-media-id="{{ media.id }}">
+            {%- case media.media_type -%}
+              {%- when 'image' -%}
+                <button type="button" class="pdp__zoom" data-zoom aria-label="{{ 'products.product.zoom' | t }}">
+                  {{ media | image_url: width: 1600 | image_tag: widths: '600, 900, 1200, 1600', sizes: '(min-width: 990px) 34vw, 100vw', loading: loading, alt: media.alt | default: product.title }}
+                </button>
+              {%- when 'video' -%}
+                {{ media | video_tag: controls: true, muted: true, loop: true, playsinline: true, autoplay: false }}
+              {%- when 'external_video' -%}
+                {{ media | external_video_tag }}
+              {%- when 'model' -%}
+                {{ media | model_viewer_tag }}
+            {%- endcase -%}
+          </li>
+        {%- else -%}
+          <li class="pdp__slide">{{ 'apparel-1' | placeholder_svg_tag: 'placeholder-svg' }}</li>
+        {%- endfor -%}
+      </ul>
+      {%- if product.media.size > 1 -%}
+        <div class="pdp__dots" aria-hidden="true">{%- for media in product.media -%}<span class="pdp__dot{% if forloop.first %} is-active{% endif %}"></span>{%- endfor -%}</div>
+      {%- endif -%}
+    </div>
+
+    <div class="pdp__info">
+      <div class="pdp__sticky">
+        <p class="pdp__vendor mono">
+          {%- if product.vendor != blank -%}<a href="{{ routes.all_products_collection_url }}?filter.p.vendor={{ product.vendor | url_encode }}">{{ product.vendor }}</a>{%- endif -%}
+          {%- if is_house -%} {% render 'stamp', text: 'Made in Philly', tone: 'jade' %}{%- endif -%}
+        </p>
+        <h1 class="pdp__title">{{ product.title }}</h1>
+        <div class="pdp__price" data-price>{% render 'price', product: product, use_variant: true %}</div>
+
+        {%- form 'product', product, id: 'ProductForm', class: 'pdp__form', data-product-form: '' -%}
+          <input type="hidden" name="id" value="{{ current.id }}" data-variant-id>
+          {%- unless product.has_only_default_variant -%}
+            {%- for option in product.options_with_values -%}
+              {%- assign oname = option.name | downcase -%}
+              {%- assign option_index = forloop.index0 -%}
+              <fieldset class="pdp__option" data-option-index="{{ forloop.index0 }}" data-option-name="{{ option.name | escape }}">
+                <legend class="pdp__option-name">
+                  <span>{{ option.name }}: <strong data-option-value>{{ option.selected_value }}</strong></span>
+                  {%- if oname == size_name or oname contains 'size' -%}
+                    <span class="pdp__option-tools small">
+                      {%- if settings.fit_enabled -%}<button type="button" class="link" data-fit-open>{{ 'fit.my_sizes' | t }}</button>{%- endif -%}
+                      {%- if section.settings.size_guide != blank -%}<a class="link" href="{{ section.settings.size_guide.url }}">{{ 'products.product.size_guide' | t }}</a>{%- endif -%}
+                    </span>
+                  {%- endif -%}
+                </legend>
+                <div class="swatches">
+                  {%- for value in option.values -%}
+                    {%- liquid
+                      assign avail = false
+                      for v in product.variants
+                        if v.options[option_index] == value and v.available
+                          assign avail = true
+                          break
+                        endif
+                      endfor
+                    -%}
+                    <label class="swatch{% unless avail %} swatch--soldout{% endunless %}" data-size="{{ value | escape }}">
+                      <input type="radio" name="option-{{ option_index }}" value="{{ value | escape }}" {% if option.selected_value == value %}checked{% endif %} data-option>
+                      <span>{{ value }}</span>
+                    </label>
+                  {%- endfor -%}
+                </div>
+              </fieldset>
+            {%- endfor -%}
+          {%- endunless -%}
+          {%- if fit_notes != blank -%}<p class="pdp__fitnote small">{% render 'icon', name: 'ruler' %} {{ fit_notes }}</p>{%- endif -%}
+
+          <div class="pdp__buy">
+            <button type="submit" name="add" class="btn btn--primary btn--lg btn--block pdp__atc" data-atc {% unless current.available %}disabled{% endunless %}>
+              <span data-atc-text>{% if current.available %}{{ 'products.product.add_to_cart' | t }}{% else %}{{ 'products.product.sold_out' | t }}{% endif %}</span>
+            </button>
+            {%- if section.settings.show_dynamic_checkout -%}{{ form | payment_button }}{%- endif -%}
+          </div>
+        {%- endform -%}
+
+        <div class="pdp__pickup" data-pickup data-root="{{ routes.root_url }}"></div>
+
+        <ul class="pdp__promise small">
+          <li>{% render 'icon', name: 'check' %} {{ 'sections.visit.shipping' | t: amount: settings.free_shipping_over }}</li>
+          <li>{% render 'icon', name: 'check' %} {{ 'sections.visit.exchanges' | t: days: settings.exchange_days }}</li>
+        </ul>
+
+        <div class="accordion">
+          {%- if product.description != blank -%}
+            <details open><summary>{{ 'products.product.description' | t }} {% render 'icon', name: 'plus' %}</summary><div class="rte">{{ product.description }}</div></details>
+          {%- endif -%}
+          {%- if story != blank -%}
+            <details><summary>{{ 'products.product.story' | t }} {% render 'icon', name: 'plus' %}</summary><div class="rte">{{ story | metafield_tag }}</div></details>
+          {%- endif -%}
+          {%- if material != blank -%}
+            <details><summary>{{ 'products.product.material' | t }} {% render 'icon', name: 'plus' %}</summary><div class="rte"><p>{{ material }}</p></div></details>
+          {%- endif -%}
+          {%- for block in section.blocks -%}
+            <details {{ block.shopify_attributes }}><summary>{{ block.settings.heading }} {% render 'icon', name: 'plus' %}</summary><div class="rte">{{ block.settings.content }}</div></details>
+          {%- endfor -%}
+        </div>
+
+        <p class="pdp__meta mono small">
+          {%- if product.type != blank -%}<a href="{{ routes.all_products_collection_url }}?filter.p.product_type={{ product.type | url_encode }}">{{ product.type }}</a>{%- endif -%}
+          {%- if current.sku != blank -%} · SKU <span data-sku>{{ current.sku }}</span>{%- endif -%}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/json" data-variants>{{ product.variants | json }}</script>
+</section>
+
+<script src="{{ 'product.js' | asset_url }}" defer="defer"></script>
+{% render 'product-schema', product: product %}
+
+{% schema %}
+{
+  "name": "Product",
+  "settings": [
+    { "type": "checkbox", "id": "show_dynamic_checkout", "label": "Show Shop Pay / dynamic checkout button", "default": true },
+    { "type": "page", "id": "size_guide", "label": "Size guide page" }
+  ],
+  "blocks": [ { "type": "accordion", "name": "Accordion", "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Shipping & exchanges" },
+    { "type": "richtext", "id": "content", "label": "Content", "default": "<p>Ships in 1–2 business days. Free shipping over $250. Exchanges within 30 days; we don't offer refunds.</p>" }
+  ] } ],
+  "default": { "blocks": [ { "type": "accordion" } ] }
+}
+{% endschema %}

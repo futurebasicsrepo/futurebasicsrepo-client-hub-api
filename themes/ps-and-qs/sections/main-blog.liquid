@@ -1,0 +1,24 @@
+<section class="section page-width journal">
+  <p class="mono kicker">{{ 'blogs.blog.kicker' | t }}</p>
+  <h1 class="h1 offreg" data-offreg>{{ blog.title }}</h1>
+  {%- paginate blog.articles by 12 -%}
+    <ul class="journal__grid">
+      {%- for article in blog.articles -%}
+        <li class="journal__item reveal{% if forloop.first and paginate.current_page == 1 %} journal__item--lead{% endif %}" style="--i: {{ forloop.index | modulo: 6 }}">
+          <a href="{{ article.url }}" class="journal__link">
+            {%- if article.image -%}{{ article.image | image_url: width: 1200 | image_tag: loading: 'lazy', widths: '400, 800, 1200', sizes: '(min-width: 990px) 33vw, 100vw', alt: article.image.alt | default: article.title }}{%- endif -%}
+            <span class="mono small"><time datetime="{{ article.published_at | date: '%Y-%m-%d' }}">{{ article.published_at | date: '%b %d, %Y' }}</time></span>
+            <span class="h4 journal__title">{{ article.title }}</span>
+            <span class="small">{{ article.excerpt_or_content | strip_html | truncatewords: 24 }}</span>
+          </a>
+        </li>
+      {%- else -%}
+        <li>{{ 'blogs.blog.empty' | t }}</li>
+      {%- endfor -%}
+    </ul>
+    {% render 'pagination', paginate: paginate %}
+  {%- endpaginate -%}
+</section>
+{% schema %}
+{ "name": "Blog", "settings": [] }
+{% endschema %}

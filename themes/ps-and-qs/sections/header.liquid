@@ -1,0 +1,133 @@
+{%- liquid
+  assign menu = section.settings.menu
+-%}
+<header class="header" data-header>
+  <div class="header__bar page-width">
+    <button type="button" class="icon-btn header__burger" data-drawer-open aria-controls="MenuDrawer" aria-expanded="false" aria-label="{{ 'sections.header.menu' | t }}">{% render 'icon', name: 'menu' %}</button>
+
+    <nav class="header__nav" aria-label="{{ 'sections.header.menu' | t }}">
+      <ul class="nav">
+        <li class="nav__item nav__item--mega">
+          <a class="nav__link" href="{{ routes.all_products_collection_url }}" data-mega-trigger aria-haspopup="true" aria-expanded="false">{{ 'sections.header.shop' | t }}</a>
+          <div class="mega" data-mega>
+            <div class="mega__inner page-width">
+              <div class="mega__col">
+                <p class="mono kicker">{{ 'sections.header.by_type' | t }}</p>
+                <ul class="mega__list">
+                  <li><a href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }}</a></li>
+                  <li><a href="{{ routes.all_products_collection_url }}?sort_by=created-descending">{{ 'sections.header.new' | t }}</a></li>
+                  {%- if section.settings.shop_menu != blank -%}
+                    {%- for link in section.settings.shop_menu.links -%}
+                      <li><a href="{{ link.url }}">{{ link.title }}</a></li>
+                    {%- endfor -%}
+                  {%- else -%}
+                    {%- for type in shop.types limit: 12 -%}
+                      {%- if type != blank -%}<li><a href="{{ type | url_for_type }}">{{ type }}</a></li>{%- endif -%}
+                    {%- endfor -%}
+                  {%- endif -%}
+                </ul>
+              </div>
+              <div class="mega__col">
+                <p class="mono kicker">{{ 'sections.header.by_brand' | t }}</p>
+                <ul class="mega__list mega__list--cols">
+                  {%- for vendor in shop.vendors limit: 24 -%}
+                    <li><a href="{{ routes.all_products_collection_url }}?filter.p.vendor={{ vendor | url_encode }}">{{ vendor }}</a></li>
+                  {%- endfor -%}
+                </ul>
+              </div>
+              {%- if section.settings.mega_collection != blank -%}
+                {%- assign mc = section.settings.mega_collection -%}
+                <a class="mega__feature" href="{{ mc.url }}">
+                  {%- if mc.featured_image -%}{{ mc.featured_image | image_url: width: 640 | image_tag: loading: 'lazy', widths: '320, 640', sizes: '320px', alt: mc.title }}{%- endif -%}
+                  <span class="mono kicker">{{ section.settings.mega_kicker }}</span>
+                  <span class="h4">{{ mc.title }}</span>
+                </a>
+              {%- endif -%}
+            </div>
+          </div>
+        </li>
+        {%- for link in menu.links -%}
+          <li class="nav__item"><a class="nav__link{% if link.active %} is-active{% endif %}" href="{{ link.url }}"{% if link.active %} aria-current="page"{% endif %}>{{ link.title }}</a></li>
+        {%- endfor -%}
+      </ul>
+    </nav>
+
+    <a class="header__logo" href="{{ routes.root_url }}" aria-label="{{ shop.name | escape }} — {{ 'sections.header.home' | t }}">
+      {% render 'logo' %}
+    </a>
+
+    <div class="header__tools">
+      <button type="button" class="icon-btn" data-search-open aria-controls="SearchOverlay" aria-expanded="false" aria-label="{{ 'sections.header.search' | t }}">{% render 'icon', name: 'search' %}</button>
+      {%- if settings.fit_enabled -%}
+        <button type="button" class="header__fit" data-fit-open aria-haspopup="dialog">
+          {% render 'icon', name: 'ruler' %}
+          <span class="header__fit-label" data-fit-label data-label-set="{{ 'fit.my_sizes' | t }}" data-label-empty="{{ 'fit.set_sizes' | t }}">{{ 'fit.set_sizes' | t }}</span>
+          <span class="dot-count" data-fit-count hidden></span>
+        </button>
+      {%- endif -%}
+      {%- if shop.customer_accounts_enabled -%}
+        <a class="icon-btn header__account" href="{% if customer %}{{ routes.account_url }}{% else %}{{ routes.account_login_url }}{% endif %}" aria-label="{{ 'sections.header.account' | t }}">{% render 'icon', name: 'account' %}</a>
+      {%- endif -%}
+      <a class="icon-btn header__cart{% if cart.item_count > 0 %} has-items{% endif %}" href="{{ routes.cart_url }}" data-cart-open aria-label="{{ 'sections.header.cart' | t }}">
+        {% render 'icon', name: 'cart' %}
+        <span class="dot-count{% if cart.item_count == 0 %} is-empty{% endif %}" data-cart-count>{{ cart.item_count }}</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="search-overlay" id="SearchOverlay" data-search-overlay hidden>
+    <form action="{{ routes.search_url }}" method="get" role="search" class="search-overlay__form page-width">
+      <label class="visually-hidden" for="SearchInput">{{ 'sections.header.search' | t }}</label>
+      <input id="SearchInput" type="search" name="q" autocomplete="off" placeholder="{{ section.settings.search_placeholder }}" data-search-input aria-controls="PredictiveResults" aria-autocomplete="list">
+      <input type="hidden" name="options[prefix]" value="last">
+      <button type="button" class="icon-btn" data-search-close aria-label="{{ 'accessibility.close' | t }}">{% render 'icon', name: 'close' %}</button>
+    </form>
+    <div class="search-overlay__results page-width" id="PredictiveResults" data-search-results aria-live="polite">
+      {%- if section.settings.search_suggestions != blank -%}
+        <div class="search-overlay__idle">
+          <p class="mono kicker">{{ 'sections.search.try' | t }}</p>
+          <div class="chips">
+            {%- assign sugg = section.settings.search_suggestions | split: ',' -%}
+            {%- for s in sugg -%}<a class="chip" href="{{ routes.search_url }}?q={{ s | strip | url_encode }}">{{ s | strip }}</a>{%- endfor -%}
+          </div>
+        </div>
+      {%- endif -%}
+    </div>
+  </div>
+</header>
+
+<div class="drawer" id="MenuDrawer" data-menu-drawer aria-hidden="true">
+  <div class="drawer__panel">
+    <div class="drawer__head">
+      {% render 'logo' %}
+      <button type="button" class="icon-btn" data-drawer-close aria-label="{{ 'accessibility.close' | t }}">{% render 'icon', name: 'close' %}</button>
+    </div>
+    <nav class="drawer__nav" aria-label="{{ 'sections.header.menu' | t }}">
+      <a class="drawer__link drawer__link--big" href="{{ routes.all_products_collection_url }}">{{ 'sections.header.shop_all' | t }}</a>
+      <a class="drawer__link" href="{{ routes.all_products_collection_url }}?sort_by=created-descending">{{ 'sections.header.new' | t }}</a>
+      {%- if section.settings.shop_menu != blank -%}
+        {%- for link in section.settings.shop_menu.links -%}<a class="drawer__link" href="{{ link.url }}">{{ link.title }}</a>{%- endfor -%}
+      {%- endif -%}
+      <hr>
+      {%- for link in menu.links -%}<a class="drawer__link" href="{{ link.url }}">{{ link.title }}</a>{%- endfor -%}
+      {%- if settings.fit_enabled -%}<button type="button" class="btn btn--ghost drawer__fit" data-fit-open>{% render 'icon', name: 'ruler' %} {{ 'fit.set_sizes' | t }}</button>{%- endif -%}
+    </nav>
+    <p class="drawer__foot mono small">{{ settings.street }}, {{ settings.city }} · {{ 'sections.footer.open_daily' | t }}</p>
+  </div>
+  <div class="drawer__scrim" data-drawer-close></div>
+</div>
+
+{% schema %}
+{
+  "name": "Header",
+  "class": "header-section",
+  "settings": [
+    { "type": "link_list", "id": "menu", "label": "Main menu (right of Shop)", "default": "main-menu" },
+    { "type": "link_list", "id": "shop_menu", "label": "Shop dropdown: categories", "info": "Optional. Without it the dropdown lists your product types automatically." },
+    { "type": "collection", "id": "mega_collection", "label": "Shop dropdown: featured collection" },
+    { "type": "text", "id": "mega_kicker", "label": "Featured collection kicker", "default": "Just printed" },
+    { "type": "text", "id": "search_placeholder", "label": "Search placeholder", "default": "Search Carhartt WIP, fleece, size 32, Phillies…" },
+    { "type": "text", "id": "search_suggestions", "label": "Search suggestions (comma separated)", "default": "Carhartt WIP, Stüssy, New Balance, Hoodies, Pants, Ps & Qs, Hats, Gifts" }
+  ]
+}
+{% endschema %}

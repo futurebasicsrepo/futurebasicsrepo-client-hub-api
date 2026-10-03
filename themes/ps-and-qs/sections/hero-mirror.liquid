@@ -1,0 +1,53 @@
+{%- comment -%}
+  THE MIRROR. A lowercase p is a q turned around; typesetters read metal type backwards, so
+  "mind your p's and q's" was the warning. Two giant glyphs are windows onto photography.
+  Scrolling turns them: the p mirrors into a q and the q into a p, while the headline sets
+  itself line by line like a composing stick. Pointer drifts the photos inside the letterforms.
+{%- endcomment -%}
+{%- liquid
+  assign img_p = section.settings.image_p
+  assign img_q = section.settings.image_q | default: img_p
+-%}
+<section class="mirror" data-mirror style="--mirror-dark: {{ section.settings.darken | divided_by: 100.0 }}">
+  <div class="mirror__stage">
+    <div class="mirror__glyphs" aria-hidden="true">
+      <span class="mirror__glyph mirror__glyph--p" data-glyph="p"{% if img_p %} style="--img: url('{{ img_p | image_url: width: 1800 }}')"{% endif %}>p</span>
+      <span class="mirror__amp">&amp;</span>
+      <span class="mirror__glyph mirror__glyph--q" data-glyph="q"{% if img_q %} style="--img: url('{{ img_q | image_url: width: 1800 }}')"{% endif %}>q</span>
+    </div>
+    <div class="mirror__copy page-width">
+      <p class="mono kicker mirror__kicker">{{ section.settings.kicker }}</p>
+      <h1 class="mirror__title" data-set-type>{{ section.settings.heading }}</h1>
+      <div class="mirror__foot">
+        <p class="mirror__sub">{{ section.settings.subheading }}</p>
+        <div class="mirror__ctas">
+          {%- if section.settings.button_label != blank -%}<a class="btn btn--primary btn--lg" href="{{ section.settings.button_link | default: routes.all_products_collection_url }}">{{ section.settings.button_label }} {% render 'icon', name: 'arrow' %}</a>{%- endif -%}
+          {%- if settings.fit_enabled and section.settings.show_fit -%}<button type="button" class="btn btn--ghost btn--lg" data-fit-open>{% render 'icon', name: 'ruler' %} <span data-fit-label data-label-set="{{ 'fit.shop_my_sizes' | t }}" data-label-empty="{{ 'fit.set_sizes' | t }}">{{ 'fit.set_sizes' | t }}</span></button>{%- endif -%}
+        </div>
+      </div>
+    </div>
+    <p class="mirror__coords mono small" aria-hidden="true">{{ settings.street | upcase }} · {{ settings.city | upcase }} · EST. {{ settings.founding_year }}</p>
+  </div>
+  {%- if img_p -%}
+    {%- comment -%} Real image for LCP, crawlers and screen readers; the glyphs reuse it as a background. {%- endcomment -%}
+    {{ img_p | image_url: width: 1800 | image_tag: class: 'mirror__lcp', widths: '750, 1200, 1800', sizes: '100vw', fetchpriority: 'high', loading: 'eager', alt: section.settings.image_alt }}
+  {%- endif -%}
+</section>
+{% schema %}
+{
+  "name": "Mirror hero",
+  "settings": [
+    { "type": "image_picker", "id": "image_p", "label": "Photo inside the p", "info": "Portrait works best: the shop, a fit, a crew shot." },
+    { "type": "image_picker", "id": "image_q", "label": "Photo inside the q" },
+    { "type": "text", "id": "image_alt", "label": "Photo description (alt text)", "default": "Inside Ps & Qs on South Street, Philadelphia" },
+    { "type": "range", "id": "darken", "label": "Photo darken", "min": 0, "max": 60, "step": 5, "unit": "%", "default": 10 },
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "South Street, Philadelphia — since 2012" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Get your Ps & Qs in order." },
+    { "type": "textarea", "id": "subheading", "label": "Subheading", "default": "Family-owned by the Cao brothers and Jackson Fu. Hand-picked streetwear, workwear and our own Philly-made line — bought like it's our own closet." },
+    { "type": "text", "id": "button_label", "label": "Button", "default": "Shop the shop" },
+    { "type": "url", "id": "button_link", "label": "Button link", "default": "/collections/all" },
+    { "type": "checkbox", "id": "show_fit", "label": "Show \"Set my sizes\" button", "default": true }
+  ],
+  "presets": [ { "name": "Mirror hero" } ]
+}
+{% endschema %}

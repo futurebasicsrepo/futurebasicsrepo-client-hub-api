@@ -1,0 +1,182 @@
+{
+  "sections": {
+    "intro": {
+      "type": "rich-text",
+      "settings": {
+        "kicker": "Our story",
+        "heading": "A personal closet on South Street",
+        "big": true,
+        "text": "<p>“Ps and Qs is like our personal closet. There's no formula. We buy what we like and what we would wear.” — Ky Cao</p><p>Ps & Qs is a family-owned shop at 820 South Street, started in 2012 by brothers Ky and Rick Cao and their friend Jackson Fu, Philly natives who first ran Abakus Takeout in Chinatown. The name comes from the Philly saying: get your Ps and Qs in order.</p>"
+      }
+    },
+    "main": {
+      "type": "main-page",
+      "settings": {}
+    },
+    "block": {
+      "type": "the-block",
+      "blocks": {
+        "moment1": {
+          "type": "moment",
+          "settings": {
+            "year": "2008",
+            "partner": "Chinatown",
+            "title": "Before Ps & Qs: Abakus Takeout",
+            "text": "<p>The first shop: 227 N 10th St, dressed as a Chinese takeout — tees packed in takeout boxes.</p>"
+          }
+        },
+        "moment2": {
+          "type": "moment",
+          "settings": {
+            "year": "2012",
+            "partner": "South Street",
+            "title": "Doors open at 820 South St",
+            "text": "<p>Brothers Ky and Rick Cao and their friend Jackson Fu open Ps & Qs. The name comes from the Philly saying: get your Ps and Qs in order.</p>"
+          }
+        },
+        "moment3": {
+          "type": "moment",
+          "settings": {
+            "year": "2015",
+            "partner": "Tretorn × Publish",
+            "title": "The \"Better Days\" Nylite",
+            "text": "<p>A three-way sneaker collab in suede tan and perforated white leather.</p>",
+            "link": "/products/tretorn-x-publish-x-ps-and-qs-nylite-suede"
+          }
+        },
+        "moment4": {
+          "type": "moment",
+          "settings": {
+            "year": "2016",
+            "partner": "Antique Row",
+            "title": "Ps & Qs For Her on Pine Street",
+            "text": "<p>A sister shop at 1018 Pine St — later named Best of Philly's best sister shop.</p>"
+          }
+        },
+        "moment5": {
+          "type": "moment",
+          "settings": {
+            "year": "2019",
+            "partner": "Ubiq × Lapstone & Hammer",
+            "title": "Seven years, three shops, one capsule",
+            "text": "<p>Philly's sneaker shops teamed up on an anniversary tee drop instead of competing.</p>"
+          }
+        },
+        "moment6": {
+          "type": "moment",
+          "settings": {
+            "year": "2020",
+            "partner": "Philadelphia Suns",
+            "title": "Fight The Virus, Not The People",
+            "text": "<p>A response to anti-Asian hate. 25% of proceeds went to the Chinatown youth nonprofit. Sold out.</p>"
+          }
+        },
+        "moment7": {
+          "type": "moment",
+          "settings": {
+            "year": "2025",
+            "partner": "Philadelphia Union",
+            "title": "Year of the Snake",
+            "text": "<p>A Lunar New Year and AAPI Heritage Month capsule for the Union's Philly Crafted series.</p>",
+            "link": "/blogs/news/dear-philadelphia-union"
+          }
+        },
+        "moment8": {
+          "type": "moment",
+          "settings": {
+            "year": "2026",
+            "partner": "Hat Club",
+            "title": "The Group Chat Pack",
+            "text": "<p>Phillies fitteds with friends of the shop, launched at a South Street pop-up.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "moment1",
+        "moment2",
+        "moment3",
+        "moment4",
+        "moment5",
+        "moment6",
+        "moment7",
+        "moment8"
+      ],
+      "settings": {}
+    },
+    "visit": {
+      "type": "store-visit",
+      "settings": {}
+    },
+    "faq": {
+      "type": "faq",
+      "blocks": {
+        "qa1": {
+          "type": "qa",
+          "settings": {
+            "question": "Where is Ps & Qs?",
+            "answer": "<p>820 South Street, Philadelphia, PA 19147 — between 8th and 9th. We've been on South Street since 2012.</p>"
+          }
+        },
+        "qa2": {
+          "type": "qa",
+          "settings": {
+            "question": "What are your hours?",
+            "answer": "<p>Monday to Saturday 12–7pm, Sunday 12–6pm.</p>"
+          }
+        },
+        "qa3": {
+          "type": "qa",
+          "settings": {
+            "question": "Can I order online and pick up in store?",
+            "answer": "<p>Yes. Choose store pickup at checkout and we'll let you know when it's ready, usually the same day.</p>"
+          }
+        },
+        "qa4": {
+          "type": "qa",
+          "settings": {
+            "question": "Do you ship, and is it free?",
+            "answer": "<p>We ship across the US, free on orders over $250.</p>"
+          }
+        },
+        "qa5": {
+          "type": "qa",
+          "settings": {
+            "question": "What's your return policy?",
+            "answer": "<p>We do exchanges within 30 days for unworn items with tags. We don't offer refunds.</p>"
+          }
+        },
+        "qa6": {
+          "type": "qa",
+          "settings": {
+            "question": "What brands do you carry?",
+            "answer": "<p>Carhartt WIP, Stüssy, New Balance, Pendleton, Universal Works, Norse Projects, Paratodo, Students, thisisneverthat and more — plus our own Ps & Qs line, designed in Philly.</p>"
+          }
+        },
+        "qa7": {
+          "type": "qa",
+          "settings": {
+            "question": "Who owns Ps & Qs?",
+            "answer": "<p>It's family owned: brothers Ky and Rick Cao and their friend Jackson Fu started it in 2012.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "qa1",
+        "qa2",
+        "qa3",
+        "qa4",
+        "qa5",
+        "qa6",
+        "qa7"
+      ],
+      "settings": {}
+    }
+  },
+  "order": [
+    "intro",
+    "main",
+    "block",
+    "visit",
+    "faq"
+  ]
+}

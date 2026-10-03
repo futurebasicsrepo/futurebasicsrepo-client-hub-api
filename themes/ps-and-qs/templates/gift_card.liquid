@@ -1,0 +1,35 @@
+{% layout none %}
+{%- assign gc_value = gift_card.initial_value | money_with_currency -%}
+<!doctype html>
+<html lang="{{ request.locale.iso_code }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ 'gift_cards.issued.title' | t: value: gc_value, shop: shop.name }}</title>
+  <style>
+    @font-face { font-family: 'Fraunces'; src: url('{{ 'fraunces.woff2' | asset_url }}') format('woff2-variations'); font-weight: 100 900; font-display: swap; }
+    @font-face { font-family: 'DM Mono'; src: url('{{ 'dm-mono.woff2' | asset_url }}') format('woff2'); font-weight: 500; font-display: swap; }
+    body { font-family: system-ui, sans-serif; background: {{ settings.color_paper }}; color: {{ settings.color_ink }}; margin: 0; padding: 48px 16px; text-align: center; }
+    .card { max-width: 460px; margin: 0 auto; background: {{ settings.color_sheet }}; border: 1px solid {{ settings.color_ink }}; padding: 40px 28px; position: relative; overflow: hidden; }
+    .glyph { position: absolute; right: -20px; top: -60px; font: 900 220px/1 'Fraunces', serif; color: {{ settings.color_red }}; opacity: .12; transform: scaleX(-1); }
+    h1 { font: 700 30px/1.05 'Fraunces', serif; margin: 0 0 12px; letter-spacing: -.02em; }
+    .code { font: 500 22px 'DM Mono', monospace; letter-spacing: .12em; padding: 14px; border: 1px dashed {{ settings.color_ink }}; margin: 20px 0; }
+    .muted { font: 500 12px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .1em; }
+    a.btn { display: inline-block; margin-top: 20px; padding: 14px 22px; background: {{ settings.color_red }}; color: #fff; text-decoration: none; font-weight: 700; }
+    @media print { a.btn { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="glyph" aria-hidden="true">q</span>
+    <p class="muted">{{ settings.brand_legal_name | default: shop.name }} · {{ settings.street }}</p>
+    <h1>{{ 'gift_cards.issued.title' | t: value: gc_value, shop: shop.name }}</h1>
+    {% if gift_card.enabled == false or gift_card.expired %}<p><strong>{{ 'gift_cards.issued.expired' | t }}</strong></p>{% endif %}
+    <p class="code">{{ gift_card.code | format_code }}</p>
+    <p>{{ 'gift_cards.issued.remaining_html' | t: balance: gift_card.balance | money }}</p>
+    {%- if gift_card.pass_url -%}<p><a href="{{ gift_card.pass_url }}">{{ 'gift_cards.issued.add_to_apple_wallet' | t }}</a></p>{%- endif -%}
+    <a class="btn" href="{{ shop.url }}">{{ 'gift_cards.issued.shop_link' | t }}</a>
+  </div>
+</body>
+</html>

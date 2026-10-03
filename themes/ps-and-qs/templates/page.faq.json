@@ -1,0 +1,84 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-page",
+      "settings": {}
+    },
+    "faq": {
+      "type": "faq",
+      "blocks": {
+        "qa1": {
+          "type": "qa",
+          "settings": {
+            "question": "Where is Ps & Qs?",
+            "answer": "<p>820 South Street, Philadelphia, PA 19147 — between 8th and 9th. We've been on South Street since 2012.</p>"
+          }
+        },
+        "qa2": {
+          "type": "qa",
+          "settings": {
+            "question": "What are your hours?",
+            "answer": "<p>Monday to Saturday 12–7pm, Sunday 12–6pm.</p>"
+          }
+        },
+        "qa3": {
+          "type": "qa",
+          "settings": {
+            "question": "Can I order online and pick up in store?",
+            "answer": "<p>Yes. Choose store pickup at checkout and we'll let you know when it's ready, usually the same day.</p>"
+          }
+        },
+        "qa4": {
+          "type": "qa",
+          "settings": {
+            "question": "Do you ship, and is it free?",
+            "answer": "<p>We ship across the US, free on orders over $250.</p>"
+          }
+        },
+        "qa5": {
+          "type": "qa",
+          "settings": {
+            "question": "What's your return policy?",
+            "answer": "<p>We do exchanges within 30 days for unworn items with tags. We don't offer refunds.</p>"
+          }
+        },
+        "qa6": {
+          "type": "qa",
+          "settings": {
+            "question": "What brands do you carry?",
+            "answer": "<p>Carhartt WIP, Stüssy, New Balance, Pendleton, Universal Works, Norse Projects, Paratodo, Students, thisisneverthat and more — plus our own Ps & Qs line, designed in Philly.</p>"
+          }
+        },
+        "qa7": {
+          "type": "qa",
+          "settings": {
+            "question": "Who owns Ps & Qs?",
+            "answer": "<p>It's family owned: brothers Ky and Rick Cao and their friend Jackson Fu started it in 2012.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "qa1",
+        "qa2",
+        "qa3",
+        "qa4",
+        "qa5",
+        "qa6",
+        "qa7"
+      ],
+      "settings": {
+        "kicker": "FAQ",
+        "heading": "Mind your questions"
+      }
+    },
+    "visit": {
+      "type": "store-visit",
+      "settings": {}
+    }
+  },
+  "order": [
+    "main",
+    "faq",
+    "visit"
+  ]
+}

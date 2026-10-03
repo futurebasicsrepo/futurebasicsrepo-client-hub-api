@@ -1,0 +1,40 @@
+{%- comment -%} Rendered by /search/suggest?section_id=predictive-search (see assets/search.js). {%- endcomment -%}
+{%- if predictive_search.performed -%}
+  {%- assign res = predictive_search.resources -%}
+  <div class="predictive" data-predictive>
+    {%- if res.queries.size > 0 or res.collections.size > 0 -%}
+      <div class="predictive__col">
+        {%- if res.queries.size > 0 -%}
+          <p class="mono kicker">{{ 'sections.search.suggestions' | t }}</p>
+          <ul class="predictive__list">
+            {%- for q in res.queries -%}<li><a href="{{ q.url }}">{{ q.styled_text }}</a></li>{%- endfor -%}
+          </ul>
+        {%- endif -%}
+        {%- if res.collections.size > 0 -%}
+          <p class="mono kicker">{{ 'sections.search.collections' | t }}</p>
+          <ul class="predictive__list">
+            {%- for c in res.collections -%}<li><a href="{{ c.url }}">{{ c.title }}</a></li>{%- endfor -%}
+          </ul>
+        {%- endif -%}
+      </div>
+    {%- endif -%}
+    <div class="predictive__products">
+      {%- if res.products.size > 0 -%}
+        <p class="mono kicker">{{ 'sections.search.products' | t }}</p>
+        <ul class="predictive__grid">
+          {%- for p in res.products limit: 6 -%}
+            <li>
+              <a class="predictive__product" href="{{ p.url }}">
+                {%- if p.featured_media -%}{{ p.featured_media | image_url: width: 160 | image_tag: loading: 'lazy', alt: p.title, width: 80, height: 100 }}{%- endif -%}
+                <span><span class="mono small">{{ p.vendor }}</span><span class="predictive__title">{{ p.title }}</span>{% render 'price', product: p %}</span>
+              </a>
+            </li>
+          {%- endfor -%}
+        </ul>
+      {%- else -%}
+        <p>{{ 'sections.search.no_results' | t: terms: predictive_search.terms }}</p>
+      {%- endif -%}
+      <a class="btn btn--ghost btn--sm" href="{{ routes.search_url }}?q={{ predictive_search.terms | url_encode }}&options[prefix]=last">{{ 'sections.search.view_all' | t: terms: predictive_search.terms }}</a>
+    </div>
+  </div>
+{%- endif -%}

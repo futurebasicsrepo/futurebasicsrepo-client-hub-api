@@ -1,0 +1,15 @@
+{
+  "type": "header",
+  "name": "Header group",
+  "sections": {
+    "announcement-bar": { "type": "announcement-bar", "blocks": {
+      "t1": { "type": "text", "settings": { "text": "820 South St · Open daily from noon" } },
+      "t2": { "type": "text", "settings": { "text": "Free shipping over $250" } },
+      "t3": { "type": "text", "settings": { "text": "Order online, pick up in store" } },
+      "t4": { "type": "text", "settings": { "text": "Family owned since 2012" } },
+      "t5": { "type": "text", "settings": { "text": "30-day exchanges" } }
+    }, "block_order": ["t1","t2","t3","t4","t5"], "settings": {} },
+    "header": { "type": "header", "settings": {} }
+  },
+  "order": ["announcement-bar", "header"]
+}

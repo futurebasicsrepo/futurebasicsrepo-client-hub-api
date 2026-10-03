@@ -1,0 +1,107 @@
+{%- comment -%}
+  Product structured data for Google Shopping / free listings, Bing, and AI shopping agents.
+  Multi-size products are a ProductGroup (variesBy size/color) with one Product per variant,
+  each with its own GTIN/SKU, price, availability, shipping and exchange policy — the shape
+  Google's merchant listing docs ask for. Single-variant products are a plain Product.
+{%- endcomment -%}
+{%- liquid
+  assign org_id = request.origin | append: '/#organization'
+  assign threshold = settings.free_shipping_over | default: '0'
+  assign desc = product.description | strip_html | strip_newlines | truncate: 5000
+  assign varies = ''
+  for opt in product.options
+    assign o = opt | downcase
+    if o contains 'size'
+      assign varies = varies | append: 'https://schema.org/size|'
+    elsif o contains 'color' or o contains 'colour'
+      assign varies = varies | append: 'https://schema.org/color|'
+    endif
+  endfor
+  assign varies = varies | split: '|'
+  assign material = product.metafields.custom.material
+  assign gender = product.metafields.custom.gender
+-%}
+{%- capture offer_common -%}
+  "priceCurrency": {{ cart.currency.iso_code | json }},
+  "itemCondition": "https://schema.org/NewCondition",
+  "seller": { "@id": {{ org_id | json }} },
+  "hasMerchantReturnPolicy": {
+    "@type": "MerchantReturnPolicy",
+    "applicableCountry": "US",
+    "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "merchantReturnDays": {{ settings.exchange_days | default: '30' | plus: 0 }},
+    "refundType": "https://schema.org/ExchangeRefund",
+    "returnMethod": ["https://schema.org/ReturnByMail", "https://schema.org/ReturnInStore"]
+  }
+{%- endcapture -%}
+{%- capture ship_free -%}
+  "shippingDetails": {
+    "@type": "OfferShippingDetails",
+    "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "US" },
+    "shippingRate": { "@type": "MonetaryAmount", "currency": {{ cart.currency.iso_code | json }}, "value": 0 },
+    "description": {{ 'Free shipping on orders over $' | append: threshold | json }}
+  },
+{%- endcapture -%}
+{%- assign threshold_cents = threshold | plus: 0 | times: 100 -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+{%- if product.has_only_default_variant -%}
+  {%- assign v = product.selected_or_first_available_variant %}
+  "@type": "Product",
+  "@id": {{ request.origin | append: product.url | append: '#product' | json }},
+  "name": {{ product.title | json }},
+  "url": {{ request.origin | append: product.url | json }},
+  "description": {{ desc | json }},
+  "brand": { "@type": "Brand", "name": {{ product.vendor | json }} },
+  {%- if product.type != blank %}"category": {{ product.type | json }},{% endif %}
+  {%- if material != blank %}"material": {{ material | json }},{% endif %}
+  {%- if v.sku != blank %}"sku": {{ v.sku | json }},{% endif %}
+  {%- if v.barcode != blank %}"gtin": {{ v.barcode | json }},{% endif %}
+  "image": [{% for m in product.images limit: 6 %}{{ m | image_url: width: 1600 | prepend: 'https:' | json }}{% unless forloop.last %},{% endunless %}{% endfor %}],
+  "offers": {
+    "@type": "Offer",
+    "url": {{ request.origin | append: v.url | json }},
+    "price": {{ v.price | divided_by: 100.0 | json }},
+    "availability": "https://schema.org/{% if v.available %}InStock{% else %}OutOfStock{% endif %}",
+    {% if threshold_cents > 0 and v.price >= threshold_cents %}{{ ship_free }}{% endif %}
+    {{ offer_common }}
+  }
+{%- else %}
+  "@type": "ProductGroup",
+  "@id": {{ request.origin | append: product.url | append: '#product' | json }},
+  "name": {{ product.title | json }},
+  "url": {{ request.origin | append: product.url | json }},
+  "description": {{ desc | json }},
+  "brand": { "@type": "Brand", "name": {{ product.vendor | json }} },
+  "productGroupID": {{ product.id | json }},
+  {%- if product.type != blank %}"category": {{ product.type | json }},{% endif %}
+  {%- if material != blank %}"material": {{ material | json }},{% endif %}
+  {%- if gender != blank %}"audience": { "@type": "PeopleAudience", "suggestedGender": {{ gender | json }} },{% endif %}
+  "variesBy": {{ varies | json }},
+  "hasVariant": [
+    {%- for v in product.variants %}
+    {
+      "@type": "Product",
+      "name": {{ product.title | append: ' — ' | append: v.title | json }},
+      {%- if v.sku != blank %}"sku": {{ v.sku | json }},{% endif %}
+      {%- if v.barcode != blank %}"gtin": {{ v.barcode | json }},{% endif %}
+      "image": {{ v.featured_media | default: product.featured_media | image_url: width: 1600 | prepend: 'https:' | json }},
+      {%- for opt in product.options %}
+        {%- assign o = opt | downcase -%}
+        {%- if o contains 'size' %}"size": {{ v.options[forloop.index0] | json }},{% elsif o contains 'color' or o contains 'colour' %}"color": {{ v.options[forloop.index0] | json }},{% endif -%}
+      {%- endfor %}
+      "offers": {
+        "@type": "Offer",
+        "url": {{ request.origin | append: v.url | json }},
+        "price": {{ v.price | divided_by: 100.0 | json }},
+        "availability": "https://schema.org/{% if v.available %}InStock{% else %}OutOfStock{% endif %}",
+        {% if threshold_cents > 0 and v.price >= threshold_cents %}{{ ship_free }}{% endif %}
+        {{ offer_common }}
+      }
+    }{% unless forloop.last %},{% endunless %}
+    {%- endfor %}
+  ]
+{%- endif %}
+}
+</script>

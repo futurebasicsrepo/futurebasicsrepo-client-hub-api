@@ -1,0 +1,52 @@
+{%- comment -%}
+  THE BLOCK. The community is the brand: collabs with neighbors, rivals and institutions.
+  A horizontal proof sheet of dated moments. Each entry can link to its product or story, so
+  collab pages get internal links (and answer engines get a dated, citable history).
+{%- endcomment -%}
+<section class="block-sheet section" aria-labelledby="Block-{{ section.id }}">
+  <div class="page-width">
+    <header class="section__head">
+      <div>
+        <p class="mono kicker">{{ section.settings.kicker }}</p>
+        <h2 class="h2 offreg" id="Block-{{ section.id }}" data-offreg>{{ section.settings.heading }}</h2>
+      </div>
+      <p class="block-sheet__intro">{{ section.settings.intro }}</p>
+    </header>
+  </div>
+  <ol class="block-sheet__track" data-drag-scroll tabindex="0">
+    {%- for block in section.blocks -%}
+      <li class="proof reveal" style="--i: {{ forloop.index }}" {{ block.shopify_attributes }}>
+        <span class="proof__year" aria-hidden="true">{{ block.settings.year }}</span>
+        <div class="proof__frame">
+          {%- if block.settings.image -%}
+            {{ block.settings.image | image_url: width: 800 | image_tag: loading: 'lazy', widths: '400, 800', sizes: '(min-width: 750px) 380px, 80vw', alt: block.settings.title }}
+          {%- else -%}
+            <span class="proof__blank" aria-hidden="true">{% cycle 'p', 'q' %}</span>
+          {%- endif -%}
+        </div>
+        <p class="mono small proof__meta"><time>{{ block.settings.year }}</time>{% if block.settings.partner != blank %} · {{ block.settings.partner }}{% endif %}</p>
+        <h3 class="h4 proof__title">{% if block.settings.link != blank %}<a href="{{ block.settings.link }}">{{ block.settings.title }}</a>{% else %}{{ block.settings.title }}{% endif %}</h3>
+        <div class="proof__text small">{{ block.settings.text }}</div>
+      </li>
+    {%- endfor -%}
+  </ol>
+</section>
+{% schema %}
+{
+  "name": "The Block (community)",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Proof sheet" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Made with the block" },
+    { "type": "textarea", "id": "intro", "label": "Intro", "default": "Philly shops don't compete, they collaborate. A few of the people, teams and neighbors we've made things with." }
+  ],
+  "blocks": [ { "type": "moment", "name": "Moment", "settings": [
+    { "type": "text", "id": "year", "label": "Year", "default": "2012" },
+    { "type": "text", "id": "partner", "label": "With" },
+    { "type": "text", "id": "title", "label": "Title", "default": "Doors open on South Street" },
+    { "type": "richtext", "id": "text", "label": "Text" },
+    { "type": "image_picker", "id": "image", "label": "Image" },
+    { "type": "url", "id": "link", "label": "Link (product, collection or blog post)" }
+  ] } ],
+  "presets": [ { "name": "The Block", "blocks": [ { "type": "moment" }, { "type": "moment" }, { "type": "moment" } ] } ]
+}
+{% endschema %}

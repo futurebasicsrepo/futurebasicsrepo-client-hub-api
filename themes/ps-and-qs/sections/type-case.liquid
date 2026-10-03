@@ -1,0 +1,57 @@
+{%- comment -%}
+  THE TYPE CASE. Collections laid out like a printer's California job case: compartments of
+  different sizes, each holding one cast sort. Metal type reads backwards, so every sort shows
+  its letter mirrored — hover (or scroll it into the middle of the screen on touch) and the
+  sort "prints": it flips to read correctly and the collection photo inks in behind it.
+{%- endcomment -%}
+<section class="case section" data-section-id="{{ section.id }}">
+  <div class="page-width">
+    <header class="section__head">
+      <div>
+        <p class="mono kicker">{{ section.settings.kicker }}</p>
+        <h2 class="h2 offreg" data-offreg>{{ section.settings.heading }}</h2>
+      </div>
+      <a class="link-arrow" href="{{ routes.collections_url }}">{{ 'sections.collections.all' | t }} {% render 'icon', name: 'arrow' %}</a>
+    </header>
+    <ul class="case__grid">
+      {%- for block in section.blocks -%}
+        {%- liquid
+          assign c = block.settings.collection
+          assign label = block.settings.label | default: c.title | default: 'Collection'
+          assign letter = block.settings.letter | default: label | slice: 0 | default: 'p'
+          assign img = block.settings.image | default: c.featured_image | default: c.products.first.featured_media
+        -%}
+        <li class="case__cell case__cell--{{ block.settings.size }} reveal" style="--i: {{ forloop.index }}" {{ block.shopify_attributes }}>
+          <a class="case__link" href="{{ c.url | default: routes.all_products_collection_url }}">
+            {%- if img -%}{{ img | image_url: width: 900 | image_tag: class: 'case__img', loading: 'lazy', widths: '360, 600, 900', sizes: '(min-width: 990px) 33vw, 50vw', alt: '' }}{%- endif -%}
+            <span class="case__sort" aria-hidden="true"><span>{{ letter }}</span></span>
+            <span class="case__label">
+              <span class="case__title">{{ label }}</span>
+              {%- if c.all_products_count -%}<span class="mono small case__count">{{ c.all_products_count }}</span>{%- endif -%}
+            </span>
+          </a>
+        </li>
+      {%- endfor -%}
+    </ul>
+  </div>
+</section>
+{% schema %}
+{
+  "name": "Type case (collections)",
+  "settings": [
+    { "type": "text", "id": "kicker", "label": "Kicker", "default": "Pick a drawer" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "The type case" }
+  ],
+  "max_blocks": 12,
+  "blocks": [ { "type": "drawer", "name": "Compartment", "settings": [
+    { "type": "collection", "id": "collection", "label": "Collection" },
+    { "type": "text", "id": "label", "label": "Label (defaults to collection title)" },
+    { "type": "text", "id": "letter", "label": "Sort letter (defaults to first letter)" },
+    { "type": "image_picker", "id": "image", "label": "Image (defaults to collection image)" },
+    { "type": "select", "id": "size", "label": "Compartment size", "options": [
+      { "value": "sm", "label": "Small" }, { "value": "md", "label": "Wide" }, { "value": "lg", "label": "Big" }, { "value": "tall", "label": "Tall" }
+    ], "default": "sm" }
+  ] } ],
+  "presets": [ { "name": "Type case", "blocks": [ { "type": "drawer", "settings": { "size": "lg" } }, { "type": "drawer" }, { "type": "drawer" }, { "type": "drawer", "settings": { "size": "tall" } }, { "type": "drawer", "settings": { "size": "md" } } ] } ]
+}
+{% endschema %}
