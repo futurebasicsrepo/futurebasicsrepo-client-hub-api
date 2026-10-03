@@ -73,7 +73,45 @@ function parseDraft(text) {
   const start = t.indexOf('{'), end = t.lastIndexOf('}');
   const obj = JSON.parse(start >= 0 ? t.slice(start, end + 1) : t);
   if (!obj || typeof obj !== 'object' || !Array.isArray(obj.callouts)) throw new Error('Draft is not in the expected shape');
+  obj.callouts = obj.callouts.map(normalizeCallout);
   return obj;
+}
+// A coordinate as a fraction of the image, from a number, a numeric string or a percentage; null when absent.
+const frac = v => { if (v == null || v === '') return null; const n = Number(String(v).replace('%', '')); if (!Number.isFinite(n)) return null; const f = n > 1 && n <= 100 ? n / 100 : n; return f >= 0 && f <= 1 ? f : null; };
+// Models that ignore the schema still describe a position somehow: x/y, position {x,y} or [x,y], left/top, cx/cy, xPct/yPct.
+export function normalizeCallout(c) {
+  const o = c && typeof c === 'object' ? c : {};
+  const pos = o.position ?? o.pos ?? o.point ?? o.location ?? o.coords ?? null;
+  const px = Array.isArray(pos) ? pos[0] : pos?.x ?? pos?.left, py = Array.isArray(pos) ? pos[1] : pos?.y ?? pos?.top;
+  const x = frac(o.x ?? o.left ?? o.cx ?? o.xPct ?? o.x_pct ?? px), y = frac(o.y ?? o.top ?? o.cy ?? o.yPct ?? o.y_pct ?? py);
+  return { label: String(o.label ?? o.name ?? o.title ?? '').trim(), spec: String(o.spec ?? o.specification ?? o.material ?? '').trim(), note: String(o.note ?? o.notes ?? o.factoryNote ?? '').trim(), x: x != null && y != null ? x : null, y: x != null && y != null ? y : null };
+}
+// Callouts that all sit on one spot are not placed either (the symptom of a draft without coordinates).
+export function unplacedCallouts(callouts) {
+  const placed = callouts.filter(c => c.x != null && c.y != null);
+  const distinct = new Set(placed.map(c => `${c.x.toFixed(2)},${c.y.toFixed(2)}`));
+  return placed.length < Math.ceil(callouts.length / 2) || (callouts.length > 1 && distinct.size <= 1);
+}
+// Second pass when the draft came back without positions: show the photo and the labels, ask only for where each one is.
+const PLACE_SCHEMA = { type: 'object', additionalProperties: false, required: ['points'], properties: { points: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['i', 'x', 'y'], properties: { i: { type: 'integer' }, x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } } } } } };
+export async function locateCallouts(photoDataUrl, labels) {
+  if (!labels.length) return [];
+  if (process.env.AI_FIXTURE) {
+    // fixture: spread the pins over the busy part of the image so tests can see distinct crops
+    const where = await locateProduct(photoDataUrl); const b = where.found ? where.box : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    const cols = Math.ceil(Math.sqrt(labels.length));
+    return labels.map((_, i) => ({ i, x: b.x + b.w * ((i % cols) + 0.5) / cols, y: b.y + b.h * (Math.floor(i / cols) + 0.5) / Math.ceil(labels.length / cols) }));
+  }
+  const client = new Anthropic();
+  const image = dataUrlToImageBlock(photoDataUrl); if (!image) return [];
+  const base = { model: AI_MODEL, max_tokens: 1500, system: 'You mark positions on a product photo for a tech pack. For each numbered detail, return the point on the image where that detail is, as fractions of the image width (x) and height (y). Spread points over the product; never stack them.',
+    messages: [{ role: 'user', content: [image, { type: 'text', text: 'Details:\n' + labels.map((l, i) => `${i}: ${l}`).join('\n') }] }] };
+  let response;
+  try { response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low', format: { type: 'json_schema', schema: PLACE_SCHEMA } } }); }
+  catch (e) { if (!(e instanceof Anthropic.BadRequestError)) throw e; response = await client.messages.create({ ...base, system: base.system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(PLACE_SCHEMA) }); }
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const obj = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+  return (Array.isArray(obj.points) ? obj.points : []).map(p => ({ i: Number(p.i), x: frac(p.x), y: frac(p.y) })).filter(p => Number.isInteger(p.i) && p.x != null && p.y != null);
 }
 
 const dataUrlToImageBlock = (dataUrl) => {
@@ -84,7 +122,15 @@ const dataUrlToImageBlock = (dataUrl) => {
 
 // Returns { draft, model, usage } or throws. `photos` are data URLs; the first is the main reference.
 export async function draftFromPhotos({ photos, title, notes, pomTemplate, sizes, sampleSize }) {
-  if (process.env.AI_FIXTURE) { await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0))); return { draft: JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8')), model: 'fixture', usage: null }; }
+  if (process.env.AI_FIXTURE) {
+    await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0)));
+    const draft = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8'));
+    // "[noxy]" in the title simulates a model that answered without positions
+    if (/\[noxy\]/.test(title || '')) draft.callouts = draft.callouts.map(({ x, y, ...rest }) => rest);
+    draft.callouts = draft.callouts.map(normalizeCallout);
+    await placeMissing(draft, photos[0]);
+    return { draft, model: 'fixture', usage: null };
+  }
   const client = new Anthropic();
   const images = photos.map(dataUrlToImageBlock).filter(Boolean);
   if (!images.length) throw new Error('No readable photo');
@@ -104,7 +150,19 @@ export async function draftFromPhotos({ photos, title, notes, pomTemplate, sizes
   if (response.stop_reason === 'refusal') throw new Error(`Model declined (${response.stop_details?.category || 'policy'})`);
   if (response.stop_reason === 'max_tokens') throw new Error('Draft was cut off (max_tokens)');
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  return { draft: parseDraft(text), model: response.model || AI_MODEL, usage: response.usage || null };
+  const draft = parseDraft(text);
+  if (response.model && response.model !== AI_MODEL) console.warn(JSON.stringify({ level: 'warn', msg: 'draft served by a fallback model', model: response.model }));
+  await placeMissing(draft, photos[0]);
+  return { draft, model: response.model || AI_MODEL, usage: response.usage || null };
+}
+// If the draft lacks positions (schema not honoured), ask for them; whatever is still unplaced stays unplaced.
+async function placeMissing(draft, photo) {
+  if (!Array.isArray(draft.callouts) || !draft.callouts.length || !unplacedCallouts(draft.callouts)) return;
+  try {
+    const points = await locateCallouts(photo, draft.callouts.map(c => c.label || c.spec || 'detail'));
+    for (const p of points) if (draft.callouts[p.i]) { draft.callouts[p.i].x = p.x; draft.callouts[p.i].y = p.y; }
+  } catch (e) { console.warn(JSON.stringify({ level: 'warn', msg: 'callout placement failed', err: e.message })); }
+  if (unplacedCallouts(draft.callouts)) for (const c of draft.callouts) { c.x = null; c.y = null; }
 }
 
 // Square detail crop around a callout, matching the editor's own 480px thumbnails, with a soft ring on the spot.
@@ -134,8 +192,9 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
   if (pack.sketches[0]) {
     const sk = pack.sketches[0], callouts = [];
     for (const [i, c] of (draft.callouts || []).slice(0, 12).entries()) {
-      const x = Math.min(1, Math.max(0, Number(c.x) || 0)), y = Math.min(1, Math.max(0, Number(c.y) || 0));
-      let photo = ''; try { photo = await calloutCrop(photos[0], x, y); } catch { photo = ''; }
+      const placed = Number.isFinite(Number(c.x)) && Number.isFinite(Number(c.y)) && c.x != null && c.y != null;
+      const x = placed ? Math.min(1, Math.max(0, Number(c.x))) : null, y = placed ? Math.min(1, Math.max(0, Number(c.y))) : null;
+      let photo = ''; if (placed) { try { photo = await calloutCrop(photos[0], x, y); } catch { photo = ''; } }
       callouts.push({ n: i + 1, label: String(c.label || '').slice(0, 80), spec: String(c.spec || '').slice(0, 300), note: String(c.note || '').slice(0, 300), photo, x, y });
     }
     sk.callouts = callouts;
