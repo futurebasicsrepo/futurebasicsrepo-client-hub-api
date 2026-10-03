@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Start a tech pack — Future Basics</title><link rel="icon" href="/icons/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#141416"><meta name="apple-mobile-web-app-title" content="Future Basics"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="description" content="Turn a screenshot into a tech pack. Add a photo, tell us what you want made, and open your draft.">
+  <meta name="description" content="Turn any image into a factory-ready tech pack. Add your design, sketch, photo or screenshot, tell us what you want made, and open your draft.">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
     :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ease:cubic-bezier(.22,1,.36,1)}
@@ -45,22 +45,22 @@
   <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><span class="meta" style="color:#aaa">Step 1 of 1</span></header>
   <main>
     <span class="meta">Product development</span>
-    <h1>Turn a screenshot into a tech pack.</h1>
-    <p class="lede">Saw it on Instagram or Pinterest? Add the screenshot, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</p>
+    <h1>Turn any image into a tech pack.</h1>
+    <p class="lede">A finished render, a flat sketch, a photo of a sample or a screenshot you saved. Add it, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</p>
 
     <form id="startForm" class="card" novalidate>
       <div id="drop" class="drop">
         <input id="photos" type="file" accept="image/*" multiple aria-label="Add photos">
         <span class="ic" aria-hidden="true">+</span>
-        <b>Add a screenshot or photo</b>
-        <span class="meta">Camera roll · screenshots · up to 4 images</span>
+        <b>Add your design, sketch or photo</b>
+        <span class="meta">Renders · sketches · photos · screenshots · up to 4 images</span>
       </div>
       <div id="shots" class="shots hidden"></div>
       <div id="addMore" class="add-more hidden"><span class="meta" id="shotCount"></span><label class="sbtn">+ Add another<input type="file" accept="image/*" multiple id="photosMore"></label></div>
 
       <div class="fields">
         <label class="f"><span>What is it?</span><input class="t" id="title" name="title" required maxlength="200" placeholder="Chunky runner · Court sneaker · Hoodie · Cap" autocomplete="off"></label>
-        <label class="f"><span>What do you want made? Anything we should match or change?</span><textarea class="t" id="notes" name="notes" maxlength="3000" placeholder="Same shape as the photo, leather instead of mesh, our colours, 300 pairs…"></textarea></label>
+        <label class="f"><span>What do you want made? Anything we should match or change?</span><textarea class="t" id="notes" name="notes" maxlength="3000" placeholder="Same shape as the image, leather instead of mesh, our colours, 300 pairs…"></textarea></label>
         <div class="row2">
           <label class="f"><span>Your email</span><input class="t" id="email" name="email" type="email" inputmode="email" autocomplete="email" required placeholder="you@brand.com"></label>
           <label class="f"><span>Your name</span><input class="t" id="name" name="name" autocomplete="name" maxlength="140" placeholder="Jordan Lee"></label>
@@ -80,7 +80,7 @@
     </section>
 
     <div class="steps" aria-label="How it works">
-      <div class="step"><b>01</b>Your photo becomes the first page of a tech pack draft.</div>
+      <div class="step"><b>01</b>Your image becomes the first page of a tech pack draft.</div>
       <div class="step"><b>02</b>Pin callouts on it, add sizes, materials, colours — or leave it to us.</div>
       <div class="step"><b>03</b>Submit. We finish it, you approve, then it goes to a factory.</div>
     </div>
@@ -95,7 +95,7 @@
     const MAX=4;
     async function api(p,body){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;throw e}return d}
     const {loadImage,toCanvas,autoTrim,jpeg,prepare,isImageFile}=window.PhotoPrep;
-    async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say('That file is not an image — add a screenshot or photo (JPG, PNG or HEIC).','err');if(!list.length)return;
+    async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say('That file is not an image. Add a design, sketch, photo or screenshot (JPG, PNG or HEIC).','err');if(!list.length)return;
       for(const f of list){if(shots.length>=MAX){say(`Up to ${MAX} images — remove one to add another.`,'err');break}
         try{shots.push(await prepare(f))}catch(e){say(e.message,'err')}}
       render()}
@@ -114,7 +114,7 @@
     let pending=null;
     $('#startForm').addEventListener('submit',async e=>{e.preventDefault();say('');
       const title=$('#title').value.trim(),email=$('#email').value.trim(),name=$('#name').value.trim(),notes=$('#notes').value.trim();
-      if(!shots.length)return say('Add a screenshot or photo first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
+      if(!shots.length)return say('Add an image of your design first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
       const go=$('#go');go.disabled=true;$('#goLabel').textContent='Building your draft…';
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original),attribution});
         if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
