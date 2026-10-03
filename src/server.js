@@ -350,20 +350,26 @@ app.post('/v1/auth/code', async (req, reply) => {
 app.post('/v1/auth/verify', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const code = String(req.body?.code || '');
-  const result = await pool.query(
-    `update login_codes set consumed_at=now() where id=(
-      select id from login_codes where email=$1 and code_hash=$2 and consumed_at is null and expires_at>now()
-      order by created_at desc limit 1) returning id`, [email, hash(code)]
-  );
-  if (!result.rowCount) return reply.code(401).send({ error: 'Invalid or expired code' });
-  const domain = email.split('@')[1];
-  const client = await clientForEmail(email);
-  if (!client) return reply.code(403).send({ error: 'Client access is no longer active' });
-  const role=domain==='thefuturebasics.com'?'admin':'client';
-  const user = (await pool.query(
-    `insert into users(client_id,email,role) values($1,$2,$3) on conflict(email)
-     do update set client_id=excluded.client_id,role=excluded.role returning *`, [client.id, email, role]
-  )).rows[0];
+  // One transaction: the code is only spent once the user row is written. If that write fails or waits out
+  // (a lock held elsewhere), the rollback hands the code back instead of burning it on a request that never answered.
+  const c = await pool.connect(); let user, client;
+  try {
+    await c.query('begin');
+    const result = await c.query(
+      `update login_codes set consumed_at=now() where id=(
+        select id from login_codes where email=$1 and code_hash=$2 and consumed_at is null and expires_at>now()
+        order by created_at desc limit 1) returning id`, [email, hash(code)]
+    );
+    if (!result.rowCount) { await c.query('rollback'); return reply.code(401).send({ error: 'Invalid or expired code' }); }
+    client = await clientForEmail(email);
+    if (!client) { await c.query('rollback'); return reply.code(403).send({ error: 'Client access is no longer active' }); }
+    const role = email.split('@')[1] === 'thefuturebasics.com' ? 'admin' : 'client';
+    user = (await c.query(
+      `insert into users(client_id,email,role) values($1,$2,$3) on conflict(email)
+       do update set client_id=excluded.client_id,role=excluded.role returning *`, [client.id, email, role]
+    )).rows[0];
+    await c.query('commit');
+  } catch (e) { await c.query('rollback').catch(() => {}); throw e; } finally { c.release(); }
   const token = await new SignJWT({ sub: user.id, clientId: client.id, client: client.slug, role: user.role, email })
     .setProtectedHeader({ alg: 'HS256' }).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
   return { token, user: { id: user.id, email, role: user.role }, client: { id: client.id, slug: client.slug, name: client.name } };
