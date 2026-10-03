@@ -31,8 +31,10 @@ const DRAFT_SCHEMA = {
           x: { type: 'number', minimum: 0, maximum: 1, description: 'Horizontal position of the detail on photo 1, 0 = left edge, 1 = right edge' },
           y: { type: 'number', minimum: 0, maximum: 1, description: 'Vertical position on photo 1, 0 = top, 1 = bottom' } } }
     },
-    pom: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'sample', 'step', 'basis'],
-      properties: { code: { type: 'string', description: 'Code from the measurement template given in the prompt' }, sample: { type: 'number', description: 'Value for the sample size, in inches' }, step: { type: 'number', description: 'Change per size step, in inches (0 if it does not grade)' }, basis: { type: 'string', description: 'Where the value comes from: measured from the photo at scale, a published industry reference, or an assumption' } } } },
+    pom: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'name', 'how', 'tolerance', 'sample', 'step', 'basis'],
+      properties: { code: { type: 'string', description: 'Code from the measurement template given in the prompt, or a new letter code for a point of measure you propose when the template is missing or does not fit' },
+        name: { type: 'string', description: 'Empty for a template code; the name of the point of measure when you propose one' }, how: { type: 'string', description: 'Empty for a template code; how to measure it when you propose one' }, tolerance: { type: 'string', description: 'Empty for a template code; e.g. "±0.25" when you propose one' },
+        sample: { type: 'number', description: 'Value for the sample size, in inches' }, step: { type: 'number', description: 'Change per size step, in inches (0 if it does not grade)' }, basis: { type: 'string', description: 'Where the value comes from: measured from the photo at scale, a published industry reference, or an assumption' } } } },
     bom: { type: 'array', minItems: 3, maxItems: 20, items: { type: 'object', additionalProperties: false, required: ['component', 'material', 'spec', 'placement'],
       properties: { component: { type: 'string' }, material: { type: 'string' }, spec: { type: 'string' }, placement: { type: 'string' } } } },
     construction: { type: 'array', minItems: 2, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['area', 'detail'], properties: { area: { type: 'string' }, detail: { type: 'string' } } } },
@@ -50,7 +52,7 @@ function systemPrompt() {
 How to work:
 - Identify the product type and describe what you see: silhouette, panels, closures, construction, visible materials and finishes, branding placements (describe them generically — never name or copy another brand's logo or trademark; this is a reference for an original product).
 - Callouts: pick the 6–12 details a factory must get right. Place each at the exact spot on the photo where that detail is, as fractions of the image width and height. Spread them over the product; do not stack them.
-- Measurements: fill the template codes given with values for the sample size in inches. Measure proportions from the photo where you can and anchor them to published category norms (size charts, lab-measured stack heights, standard trims). Say which in "basis". Never invent precision you do not have — round sensibly.
+- Measurements: fill the template codes given with values for the sample size in inches. Measure proportions from the photo where you can and anchor them to published category norms (size charts, lab-measured stack heights, standard trims). Say which in "basis". Never invent precision you do not have — round sensibly. If no template is given, or it does not fit the product, propose the industry-standard points of measure for it instead (6–12 rows with letter codes, name, how to measure and tolerance). Leave out any row you cannot anchor to the photo or to a reference you know: a second pass researches comparable styles online for whatever you leave out, and a blank is better than a guess.
 - Materials and construction: name the most common, best-practice materials and methods for this product type when the photo cannot tell you (e.g. full-grain leather 1.4–1.6 mm for a court sneaker upper; 400 gsm brushed-back fleece for a heavyweight hoodie). Mark them as defaults to confirm.
 - Colours: list the colours you observe (with a hex you estimate and the closest Pantone TCX if you are confident) and up to two suggested alternatives marked observed=false.
 - Notes: be explicit about assumptions, what the photo does not show (medial side, interior, sole), and the questions the customer must answer. End with a short "Spec basis" list naming the references you leaned on.
@@ -62,8 +64,7 @@ function userPrompt({ title, notes, pomTemplate, sizes, sampleSize }) {
   return `Customer says it is: ${title || '(no name given)'}
 Customer notes: ${notes || '(none)'}
 Size run: ${sizes.join(', ')} · sample size ${sampleSize}
-Measurement template codes to fill (code — name — how to measure):
-${pomTemplate.map(r => `${r.code} — ${r.name} — ${r.how}`).join('\n')}
+${pomTemplate.length ? `Measurement template codes to fill (code — name — how to measure):\n${pomTemplate.map(r => `${r.code} — ${r.name} — ${r.how}`).join('\n')}` : 'Measurement template: none for this product type — propose the standard points of measure.'}
 
 Photo 1 is the main reference; later photos are extra views if present. Draft the tech pack now.`;
 }
@@ -127,6 +128,8 @@ export async function draftFromPhotos({ photos, title, notes, pomTemplate, sizes
     const draft = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8'));
     // "[noxy]" in the title simulates a model that answered without positions
     if (/\[noxy\]/.test(title || '')) draft.callouts = draft.callouts.map(({ x, y, ...rest }) => rest);
+    // "[other]" simulates a product no template fits, answered with bare codes (the case the research pass exists for)
+    if (/\[other\]/.test(title || '')) { draft.productType = 'accessory'; draft.category = 'Accessory — small leather goods'; draft.pom = draft.pom.slice(0, 2).map(({ name, how, tolerance, ...rest }) => rest); }
     draft.callouts = draft.callouts.map(normalizeCallout);
     await placeMissing(draft, photos[0]);
     return { draft, model: 'fixture', usage: null };
@@ -199,14 +202,18 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
     }
     sk.callouts = callouts;
   }
-  // measurements: template rows filled for the sample size and graded by step
-  const byCode = new Map((draft.pom || []).map(r => [String(r.code || '').toUpperCase(), r]));
-  pack.pom = pack.pom.map(row => {
-    const r = byCode.get(String(row.code).toUpperCase()); if (!r || !Number.isFinite(Number(r.sample))) return row;
-    const values = Object.fromEntries(sizes.map((s, i) => [s, num(Number(r.sample) + (i - sampleIdx) * (Number(r.step) || 0))]));
-    return { ...row, values };
-  });
-  const pomBasis = (draft.pom || []).filter(r => r.basis).map(r => `• ${r.code} — ${r.basis}`).join('\n');
+  // measurements: template rows filled for the sample size and graded by step; rows the model proposed (named, not in
+  // the template) are appended, so a product without a template still gets a measurement table
+  const grade = r => Object.fromEntries(sizes.map((s, i) => [s, num(inches(r.sample) + (i - sampleIdx) * (inches(r.step) || 0))]));
+  const byCode = new Map((draft.pom || []).filter(r => inches(r.sample) != null && String(r.code || '').trim()).map(r => [String(r.code).trim().toUpperCase(), r]));
+  const used = new Set();
+  pack.pom = pack.pom.map(row => { const key = String(row.code).toUpperCase(), r = byCode.get(key); if (!r) return row; used.add(key); return { ...row, values: grade(r) }; });
+  for (const [code, r] of byCode) {
+    if (used.has(code) || !String(r.name || '').trim() || pack.pom.length >= 80) continue;
+    pack.pom.push({ code: code.slice(0, 8), name: String(r.name).slice(0, 160), how: String(r.how || '').slice(0, 400), tolerance: String(r.tolerance || '±0.25').slice(0, 24), values: grade(r) });
+  }
+  const pomBasis = (draft.pom || []).filter(r => r.basis).map(r => `• ${r.code}${r.researched ? ' (researched)' : ''} — ${r.basis}`).join('\n');
+  const research = researchNote(draft.pomResearch);
   // materials: the model's rows, keeping the seed's qty/unit conventions where components match
   if (Array.isArray(draft.bom) && draft.bom.length) {
     pack.bom = draft.bom.slice(0, 20).map(r => { const s = seed.bom.find(x => x.component.toLowerCase() === String(r.component || '').toLowerCase());
@@ -216,12 +223,137 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
   if (Array.isArray(draft.colorways) && draft.colorways.length) pack.colorways = draft.colorways.slice(0, 6).filter(c => HEX_OK.test(c.hex || '')).map(c => ({ name: String(c.name || '').slice(0, 80), code: String(c.pantone || '').slice(0, 40), swatch: c.hex.toLowerCase(), notes: `${c.role ? c.role + ' · ' : ''}${c.observed ? 'Seen in the photo' : 'Suggested alternative'} — client to confirm` }));
   if (draft.care?.fiber || draft.care?.instructions) pack.care = { ...pack.care, fiber: String(draft.care.fiber || pack.care.fiber).slice(0, 300), instructions: String(draft.care.instructions || pack.care.instructions).slice(0, 1500) };
   pack.notes = [`AI DRAFT — written from the uploaded photo by the Future Basics assistant (${model}); confidence ${draft.confidence || 'medium'}. Every value is a starting point for the client and Future Basics to confirm; nothing here is released to a factory until all three signatures are in.`,
-    String(draft.notes || '').slice(0, 4000), pomBasis ? `MEASUREMENT BASIS\n${pomBasis}` : ''].filter(Boolean).join('\n\n').slice(0, 6000);
+    String(draft.notes || '').slice(0, 2500), pomBasis ? `MEASUREMENT BASIS\n${pomBasis}`.slice(0, 1800) : '', research].filter(Boolean).join('\n\n').slice(0, 6000);
   return pack;
 }
 
 export function productTypeLabel(draft) {
   return String(draft.category || '').slice(0, 120) || ({ footwear: 'Footwear', top: 'Apparel — top', bottom: 'Apparel — bottom', outerwear: 'Apparel — outerwear', headwear: 'Headwear', bag: 'Bag', accessory: 'Accessory' }[draft.productType] || 'Product');
+}
+
+// ---- Points of measure: research pass ----
+// "11.5", "11.5 in", "11 1/2", "29.2 cm" or 740 mm → inches; null when there is no number in it.
+export function inches(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const m = /(-?\d+(?:[.,]\d+)?)(?:\s+(\d+)\/(\d+))?\s*(mm|cm|in\b|inch|inches|")?/i.exec(String(v).trim());
+  if (!m) return null;
+  let n = Number(m[1].replace(',', '.')); if (m[2] && Number(m[3])) n += Number(m[2]) / Number(m[3]);
+  if (!Number.isFinite(n)) return null;
+  const u = (m[4] || '').toLowerCase(); if (u === 'mm') n /= 25.4; else if (u === 'cm') n /= 2.54;
+  return n;
+}
+// Codes of the draft rows that will become table rows: a template code with a value, or a named row with a value.
+const usableCodes = (draft, pomTemplate) => {
+  const tpl = new Set((pomTemplate || []).map(r => String(r.code).toUpperCase()));
+  return new Set((draft?.pom || []).filter(r => inches(r.sample) != null && String(r.code || '').trim()).map(r => String(r.code).trim().toUpperCase()).filter((c, i, a) => tpl.has(c) || String(draft.pom.find(r => String(r.code || '').trim().toUpperCase() === c)?.name || '').trim()));
+};
+// Template rows the draft left without a usable value — and, when the product has no template, whether it still needs rows.
+export function missingMeasurements(draft, pomTemplate) {
+  const filled = usableCodes(draft, pomTemplate);
+  const missing = (pomTemplate || []).filter(r => !filled.has(String(r.code).toUpperCase()));
+  return { missing, needsRows: !(pomTemplate || []).length && filled.size < 3 };
+}
+const RESEARCH_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['identified', 'comparables', 'rows', 'notes'],
+  properties: {
+    identified: { type: 'string', description: 'What the product is, as a retailer would list it — brand and style name when the photo makes them clear, otherwise the generic style' },
+    comparables: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, required: ['name', 'url', 'what'], properties: { name: { type: 'string' }, url: { type: 'string' }, what: { type: 'string', description: 'Which measurements this page gave, with the listed figures and units' } } } },
+    rows: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['code', 'name', 'how', 'tolerance', 'sample', 'step', 'basis', 'sources'],
+      properties: { code: { type: 'string' }, name: { type: 'string' }, how: { type: 'string' }, tolerance: { type: 'string' }, sample: { type: 'number', description: 'Value for the sample size, in inches' }, step: { type: 'number', description: 'Change per size step in inches, 0 if it does not grade' },
+        basis: { type: 'string', description: 'Which comparable gave it, the listed figure and unit, and how it was adapted to this product' }, sources: { type: 'array', items: { type: 'string' }, description: 'URLs the figure came from' } } } },
+    notes: { type: 'string', description: 'What could not be found, and what the client should confirm' }
+  }
+};
+// Looks the product up online (retailer listings, size charts, lab measurements of the same or comparable styles) and
+// returns values for the rows the draft could not fill. Live path: Claude with web search + fetch. Fixture path: the
+// fixture file's "research" object, or synthetic rows so the flow can be exercised without a key.
+export async function researchMeasurements({ photo, product = {}, rows = [], proposeRows = false, sizes = [], sampleSize = '' }) {
+  if (process.env.AI_FIXTURE) {
+    const fx = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8')).research;
+    if (fx) return { ...fx, consulted: fx.consulted || [], model: 'fixture' };
+    const list = rows.length ? rows : proposeRows ? [{ code: 'A', name: 'Length', how: 'Edge to edge at the longest point', tolerance: '±0.25' }, { code: 'B', name: 'Width', how: 'Edge to edge at the widest point', tolerance: '±0.25' }, { code: 'C', name: 'Height', how: 'Base to top edge', tolerance: '±0.25' }] : [];
+    return { identified: 'fixture product', comparables: [{ name: 'Comparable listing', url: 'https://example.com/size-guide', what: 'Listed dimensions' }], consulted: ['https://example.com/size-guide'],
+      rows: list.map((r, i) => ({ code: String(r.code).toUpperCase(), name: r.name || '', how: r.how || '', tolerance: r.tolerance || '±0.25', sample: 10 + i, step: 0.25, basis: 'Listed on a comparable style (fixture)', sources: ['https://example.com/size-guide'] })), notes: 'Fixture research.', model: 'fixture' };
+  }
+  const client = new Anthropic();
+  const image = dataUrlToImageBlock(photo); if (!image) throw new Error('No readable photo');
+  const system = `You research points of measure for a product-development studio's tech packs. A customer uploaded a photo of a product they want made, and the first draft could not give values for some of its measurements. Find them from the same or comparable styles online.
+
+How to work:
+1. Identify the product from the photo as a shopper would search for it: type, silhouette and, when the photo makes them clear, brand and style name.
+2. Search for its listed measurements: retailer product pages ("dimensions", "measurements", "fit details"), the brand's size chart, lab measurements (e.g. shoe stack heights), resale listings with measured dimensions. Open the useful pages and read the numbers. Prefer the exact style, then the same brand and category, then close comparables from other brands; use two or more where they disagree.
+3. Fill the requested rows for the sample size in inches (convert cm and mm). Grade by size step where the category grades. In "basis" say which comparable gave the figure, the listed number and unit, and how you adapted it. List each row's source URLs.
+4. ${proposeRows ? 'No measurement template exists for this product: propose the industry-standard points of measure for it (6–12 rows with letter codes, name, how to measure, tolerance) and fill them the same way.' : 'Fill only the rows requested and keep their codes; name/how/tolerance stay empty for them.'}
+Leave a row out when nothing defensible turns up — never invent a figure. Brand and style names are for lookup only; the pack describes an original product.`;
+  const text = `Product: ${product.title || '(untitled)'}${product.category ? ` — ${product.category}` : ''}
+${product.description ? `Draft description: ${String(product.description).slice(0, 600)}\n` : ''}${product.fabricSummary ? `Materials: ${product.fabricSummary}\n` : ''}Size run: ${sizes.join(', ')} · sample size ${sampleSize}
+${rows.length ? `Rows to fill (code — name — how to measure):\n${rows.map(r => `${r.code} — ${r.name} — ${r.how}`).join('\n')}` : 'Rows to fill: propose them.'}
+
+Research comparable styles and return the measurements.`;
+  const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }, { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 }];
+  const first = [{ role: 'user', content: [image, { type: 'text', text }] }];
+  const base = { model: AI_MODEL, max_tokens: 12000, system, tools };
+  // server tools can pause a long turn: hand the partial turn back until the model finishes
+  const run = async (structured) => {
+    const params = structured ? { ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema: RESEARCH_SCHEMA } } }
+      : { ...base, system: base.system + '\n\nFinish with a single JSON object matching this JSON schema and nothing after it:\n' + JSON.stringify(RESEARCH_SCHEMA) };
+    let messages = first, res;
+    for (let i = 0; i < 4; i++) {
+      res = structured ? await client.beta.messages.create({ ...params, messages }) : await client.messages.create({ ...params, messages });
+      if (res.stop_reason !== 'pause_turn') break;
+      messages = [...messages, { role: 'assistant', content: res.content }];
+    }
+    return res;
+  };
+  let response;
+  try { response = await run(true); } catch (e) { if (!(e instanceof Anthropic.BadRequestError)) throw e; response = await run(false); }
+  if (response.stop_reason === 'refusal') return { identified: '', comparables: [], consulted: [], rows: [], notes: 'The assistant declined to research this product.', model: response.model || AI_MODEL };
+  if (response.stop_reason === 'max_tokens') throw new Error('Research was cut off (max_tokens)');
+  const consulted = new Set();
+  for (const b of response.content) {
+    if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) for (const r of b.content) if (r.url) consulted.add(r.url);
+    if (b.type === 'text' && Array.isArray(b.citations)) for (const c of b.citations) if (c.url) consulted.add(c.url);
+  }
+  const textOut = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const start = textOut.lastIndexOf('{"'), s2 = textOut.indexOf('{');
+  let obj = {};
+  try { obj = JSON.parse(textOut.slice(s2 >= 0 ? s2 : 0, textOut.lastIndexOf('}') + 1)); } catch { if (start >= 0) obj = JSON.parse(textOut.slice(start, textOut.lastIndexOf('}') + 1)); }
+  const url = u => /^https?:\/\//i.test(String(u || '')) ? String(u).slice(0, 300) : '';
+  const rowsOut = (Array.isArray(obj.rows) ? obj.rows : []).map(r => ({ code: String(r.code || '').trim().toUpperCase().slice(0, 8), name: String(r.name || '').trim(), how: String(r.how || '').trim(), tolerance: String(r.tolerance || '').trim(),
+    sample: inches(r.sample), step: inches(r.step) || 0, basis: String(r.basis || '').trim().slice(0, 400), sources: (Array.isArray(r.sources) ? r.sources : []).map(url).filter(Boolean).slice(0, 4) })).filter(r => r.code && r.sample != null);
+  const comparables = (Array.isArray(obj.comparables) ? obj.comparables : []).map(c => ({ name: String(c.name || '').slice(0, 120), url: url(c.url), what: String(c.what || '').slice(0, 300) })).filter(c => c.name || c.url).slice(0, 8);
+  if (response.model && response.model !== AI_MODEL) console.warn(JSON.stringify({ level: 'warn', msg: 'research served by a fallback model', model: response.model }));
+  return { identified: String(obj.identified || '').slice(0, 200), comparables, consulted: [...consulted].slice(0, 20), rows: rowsOut, notes: String(obj.notes || '').slice(0, 1200), model: response.model || AI_MODEL, usage: response.usage || null };
+}
+// Fills what the draft left blank by researching comparable styles. Adds the rows to draft.pom and puts the summary on
+// draft.pomResearch (which applyDraftToPack writes into the notes). Returns null when nothing was missing.
+export async function completeMeasurements(draft, { photo, pomTemplate = [], product = {}, sizes = [], sampleSize = '' }) {
+  const { missing, needsRows } = missingMeasurements(draft, pomTemplate);
+  if (!missing.length && !needsRows) return null;
+  const research = await researchMeasurements({ photo, product, rows: missing, proposeRows: needsRows, sizes, sampleSize });
+  const have = usableCodes(draft, pomTemplate);
+  const added = [];
+  for (const r of research.rows) {
+    if (have.has(r.code)) continue;
+    const t = pomTemplate.find(x => String(x.code).toUpperCase() === r.code);
+    if (!t && !r.name) continue; // a code that is neither in the template nor named cannot become a row
+    have.add(r.code);
+    added.push({ code: r.code, name: t ? '' : r.name, how: t ? '' : r.how, tolerance: t ? '' : r.tolerance, sample: r.sample, step: r.step, basis: `${r.basis}${r.sources.length ? ` [${r.sources.join(' · ')}]` : ''}`, researched: true });
+  }
+  draft.pom = [...(draft.pom || []), ...added];
+  const requested = missing.map(r => String(r.code).toUpperCase());
+  draft.pomResearch = { identified: research.identified, comparables: research.comparables, consulted: research.consulted || [], requested, proposed: needsRows, filled: added.map(r => r.code), stillMissing: requested.filter(c => !have.has(c)), notes: research.notes, model: research.model };
+  return draft.pomResearch;
+}
+function researchNote(rs) {
+  if (!rs) return '';
+  if (rs.error) return `MEASUREMENT RESEARCH\nThe photo could not give every measurement and the online cross-reference could not run (${rs.error}). Blank rows are for Future Basics to fill from comparable styles.`;
+  const what = rs.requested?.length ? `rows ${rs.requested.join(', ')}` : 'the measurements';
+  const lines = [`MEASUREMENT RESEARCH\nThe photo could not give ${what}${rs.proposed ? ', and no standard template fits this product' : ''}, so comparable styles were cross-referenced online.${rs.identified ? ` Identified as: ${rs.identified}.` : ''}${rs.filled?.length ? ` Filled from listings: ${rs.filled.join(', ')}.` : ' Nothing defensible was found.'}${rs.stillMissing?.length ? ` Still open: ${rs.stillMissing.join(', ')}.` : ''} Confirm every researched value against a physical sample.`];
+  if (rs.comparables?.length) lines.push(rs.comparables.map(c => `• ${c.name}${c.what ? ` — ${c.what}` : ''}${c.url ? ` — ${c.url}` : ''}`).join('\n'));
+  if (rs.notes) lines.push(rs.notes);
+  return lines.join('\n').slice(0, 1800);
 }
 
 // ---- Factory-language translation ----
@@ -330,7 +462,7 @@ export async function cropToBox(photoDataUrl, box, { pad = 0.07, max = 1600 } = 
 // A draft that would leave the pack empty is a failure, not a result.
 export function draftLooksEmpty(draft) {
   const callouts = Array.isArray(draft?.callouts) ? draft.callouts.filter(c => c.label).length : 0;
-  const pom = Array.isArray(draft?.pom) ? draft.pom.filter(r => Number.isFinite(Number(r.sample))).length : 0;
+  const pom = Array.isArray(draft?.pom) ? draft.pom.filter(r => inches(r.sample) != null).length : 0;
   const bom = Array.isArray(draft?.bom) ? draft.bom.length : 0;
   return callouts < 3 && pom === 0 && bom === 0;
 }
