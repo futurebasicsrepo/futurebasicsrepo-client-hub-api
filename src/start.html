@@ -112,7 +112,7 @@
       if(!shots.length)return say('Add a screenshot or photo first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
       const go=$('#go');go.disabled=true;$('#goLabel').textContent='Building your draft…';
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original)});
-        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Reading your photo…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
+        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
       }catch(err){say(/fetch|network|load failed/i.test(err.message||'')?'Could not reach Future Basics — check your connection and try again. If your photos are very large, remove one.':err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const btn=e.target.querySelector('button');btn.disabled=true;

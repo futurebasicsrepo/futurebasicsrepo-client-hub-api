@@ -160,3 +160,14 @@ export const CUSTOMER_MEMBERSHIP_QUERY = `query ClientMembership($id: ID!, $quer
     }
   }
 }`;
+
+// --- Tech pack checkout product: one hidden product, a variant per pack so checkout shows the client's own photo ---
+export const VARIANTS_BULK_CREATE = `mutation CreatePackVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+  productVariantsBulkCreate(productId: $productId, variants: $variants) { productVariants { id } userErrors { field message } }
+}`;
+export const VARIANTS_BULK_UPDATE = `mutation UpdatePackVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+  productVariantsBulkUpdate(productId: $productId, variants: $variants) { productVariants { id } userErrors { field message } }
+}`;
+export const VARIANTS_BULK_DELETE = `mutation DeletePackVariant($productId: ID!, $variantsIds: [ID!]!) {
+  productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) { userErrors { field message } }
+}`;
