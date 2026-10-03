@@ -96,11 +96,13 @@ export function draftOrderLinesForProducts(products, quotes, currency) {
   for (const product of products) {
     const terms = productCommercials(product, quotes);
     if (!terms.priced) { skipped.push({ productId: product.id, title: product.title, reason: 'No units and wholesale price yet' }); continue; }
-    const main = { quantity: terms.units, priceOverride: { amount: (terms.unitPriceCents / 100).toFixed(2), currencyCode: currency } };
-    if (product.shopify_variant_id) main.variantId = product.shopify_variant_id; else { main.title = product.title; main.requiresShipping = true; }
+    // Shopify prices a variant line through priceOverride; a custom (title-only) line only through originalUnitPriceWithCurrency.
+    const money = cents => ({ amount: (cents / 100).toFixed(2), currencyCode: currency });
+    const main = product.shopify_variant_id ? { variantId: product.shopify_variant_id, quantity: terms.units, priceOverride: money(terms.unitPriceCents) }
+      : { title: product.title, quantity: terms.units, requiresShipping: true, originalUnitPriceWithCurrency: money(terms.unitPriceCents) };
     lineItems.push(main);
-    if (terms.setupCents > 0) lineItems.push({ title: `Setup — ${product.title}`, quantity: 1, requiresShipping: false, priceOverride: { amount: (terms.setupCents / 100).toFixed(2), currencyCode: currency } });
-    if (terms.freightCents > 0) lineItems.push({ title: `Freight — ${product.title}`, quantity: 1, requiresShipping: false, priceOverride: { amount: (terms.freightCents / 100).toFixed(2), currencyCode: currency } });
+    if (terms.setupCents > 0) lineItems.push({ title: `Setup — ${product.title}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(terms.setupCents) });
+    if (terms.freightCents > 0) lineItems.push({ title: `Freight — ${product.title}`, quantity: 1, requiresShipping: false, originalUnitPriceWithCurrency: money(terms.freightCents) });
     amountCents += terms.lineTotalCents;
     summary.push({
       productId: product.id, title: product.title, units: terms.units, unitPriceCents: terms.unitPriceCents,

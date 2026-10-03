@@ -94,8 +94,13 @@ export const DRAFT_INVOICE_SEND = `mutation SendClientDraftInvoice($id: ID!, $em
 export const DRAFT_ORDER_STATUS = `query SyncDraftOrderStatus($id: ID!) {
   draftOrder(id: $id) {
     id name invoiceUrl status updatedAt
-    order { id name displayFinancialStatus displayFulfillmentStatus }
+    totalPriceSet { shopMoney { amount currencyCode } }
+    order { id name displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } }
   }
+}`;
+
+export const DRAFT_ORDER_DELETE = `mutation DeleteClientDraftOrder($input: DraftOrderDeleteInput!) {
+  draftOrderDelete(input: $input) { deletedId userErrors { field message } }
 }`;
 
 export function requireNoUserErrors(payload) {
