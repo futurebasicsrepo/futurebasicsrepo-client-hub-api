@@ -10,6 +10,7 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
+import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -487,6 +488,7 @@ app.post('/v1/admin/clients/:id/preview-session',{preHandler:[authenticate,admin
   return {url:`${hubUrl}#client-preview=${encodeURIComponent(code)}`,expiresInSeconds:300,sessionMinutes:15,client};
 });
 app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>{
+  const learning=aggregateDiffs(await learningRows(300).catch(()=>[]));
   const clients=await pool.query(`select c.*,
     count(distinct p.id) filter(where not exists(select 1 from projects archived_product_project where archived_product_project.id=p.project_id
       and (archived_product_project.archived_at is not null or archived_product_project.status in ('archive','archived'))))::int product_count,
@@ -517,7 +519,7 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   for(const c of clients.rows)if(!c.cover_image_url&&c.cover_rendering_product_id)c.cover_image_url=renderingUrl(c.cover_rendering_product_id);
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
-  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
+  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
@@ -1560,6 +1562,38 @@ app.post('/v1/admin/products/:id/tech-pack/translate',{preHandler:[authenticate,
   if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${lang==='zh'?'Mandarin':lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
   return {lang,...entry,translated:missing.length};
 });
+// Learning loop: at each milestone, diff the assistant's snapshot against the pack people kept and store the result.
+async function recordDraftEdits(packId,stage){
+  try{
+    const row=(await pool.query('select id,product_id,client_id,version,data,published_data,ai_draft from tech_packs where id=$1',[packId])).rows[0];
+    if(!row||!row.ai_draft)return null;
+    const current=['published','approved','countersigned'].includes(stage)&&row.published_data?row.published_data:row.data;
+    const sampleSize=normalizeTechPack(current).style.sampleSize||'';
+    const stats=draftDiff(row.ai_draft,current,{sampleSize});
+    await pool.query(`insert into tech_pack_edit_stats(tech_pack_id,product_id,client_id,stage,version,stats) values($1,$2,$3,$4,$5,$6)
+      on conflict(tech_pack_id,stage,version) do update set stats=excluded.stats,created_at=now()`,[row.id,row.product_id,row.client_id,stage,row.version||0,JSON.stringify(stats)]);
+    return stats;
+  }catch(e){app.log.warn({err:e.message,packId,stage},'draft edit stats not recorded');return null}
+}
+const STAGE_ORDER=['submitted','published','approved','countersigned'];
+async function learningRows(limit=300){
+  // the furthest milestone each pack reached, so a pack counts once
+  return (await pool.query(`select distinct on (s.tech_pack_id) s.*,p.title product_title,c.name client_name from tech_pack_edit_stats s join products p on p.id=s.product_id join clients c on c.id=s.client_id
+    order by s.tech_pack_id,array_position($1::text[],s.stage) desc nulls last,s.version desc,s.created_at desc limit $2`,[STAGE_ORDER,limit])).rows;
+}
+app.get('/v1/admin/products/:id/tech-pack/learning',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=(await pool.query('select id,version,data,published_data,ai_draft,ai_draft_at,ai_model,ai_status from tech_packs where product_id=$1',[req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  const stages=(await pool.query('select stage,version,stats,created_at from tech_pack_edit_stats where tech_pack_id=$1 order by created_at',[row.id])).rows;
+  if(!row.ai_draft)return {hasDraft:false,aiStatus:row.ai_status||null,stages};
+  const sampleSize=normalizeTechPack(row.data).style.sampleSize||'';
+  return {hasDraft:true,draftAt:row.ai_draft_at,model:row.ai_model,aiStatus:row.ai_status||null,version:row.version,current:draftDiff(row.ai_draft,row.data,{sampleSize}),
+    published:row.published_data?draftDiff(row.ai_draft,row.published_data,{sampleSize}):null,stages};
+});
+app.get('/v1/admin/learning',{preHandler:[authenticate,adminOnly]},async()=>{
+  const rows=await learningRows(500);
+  return {summary:aggregateDiffs(rows),packs:rows.map(r=>({techPackId:r.tech_pack_id,productId:r.product_id,productTitle:r.product_title,clientName:r.client_name,stage:r.stage,version:r.version,keptRate:r.stats?.keptRate??null,at:r.created_at}))};
+});
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
@@ -1575,6 +1609,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
     await client.query('commit');
+    recordDraftEdits(row.id,'published').catch(()=>{});
     let clientNotified=false;
     if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
       try{
@@ -1975,7 +2010,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       const currentForMerge=structuredClone(current);if(crop&&currentForMerge.sketches[0]&&currentForMerge.sketches[0].image===original)currentForMerge.sketches[0].image=photo;
       const origForMerge=structuredClone(origSeed);if(crop&&origForMerge.sketches[0])origForMerge.sketches[0].image=photo;
       merged=mergeClientEdits(origForMerge,currentForMerge,drafted);
-      await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null where id=$1`,[packId,merged,first.model]); // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
+      await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null,ai_draft=$4,ai_draft_at=now() where id=$1`,[packId,merged,first.model,JSON.stringify(draftSnapshot(drafted))]); // the assistant's own output is kept so later edits can be measured against it // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
@@ -2197,6 +2232,7 @@ app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req
   }
   const note=String(req.body?.note||'').trim().slice(0,1000);
   const updated=(await pool.query(`update tech_packs set status='submitted',submitted_at=now(),submitted_by=$2,updated_at=now() where id=$1 returning *`,[row.id,req.auth.sub])).rows[0];
+  await recordDraftEdits(row.id,'submitted');
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [row.client_id,row.product_id,req.auth.sub,`${row.client_name} submitted their tech pack for ${row.title} to Future Basics`,{techPackId:row.id,note}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} submitted a tech pack for ${row.title} — review and publish v1${note?' · "'+note.slice(0,120)+'"':''}`,row.product_id]);
@@ -2222,6 +2258,7 @@ app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(re
   if(normalizeVerification(row.verification,row.version).clientSign)return reply.code(409).send({error:`Version ${row.version} is already approved`});
   const updated=await updateVerification(row.id,row.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:req.auth.email||''}});
   if(!updated)return reply.code(409).send({error:'A new version was published — reload to review it'});
+  recordDraftEdits(row.id,'approved').catch(()=>{});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,`Tech pack v${row.version} approved by ${name}`,{techPackId:row.id,version:row.version}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
   return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
@@ -2263,6 +2300,7 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   if(readiness.pendingCalloutKeys.length)return reply.code(409).send({error:`Acknowledge every callout before countersigning (${readiness.pendingCalloutKeys.length} pending)`});
   const updated=await updateVerification(row.id,row.version,v=>{v.factorySign={name,at:new Date().toISOString(),by:row.share_label}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
+  recordDraftEdits(row.id,'countersigned').catch(()=>{});
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,
     [row.client_id,row.product_id,`Tech pack v${row.version} countersigned by ${row.share_label} (${name})${updated.locked_at?' — locked for production':''}`,{techPackId:row.id,version:row.version,locked:Boolean(updated.locked_at)}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "eval:export": "node scripts/eval-export.mjs",
+    "eval": "node scripts/eval-run.mjs"
   },
   "engines": {
     "node": ">=22"

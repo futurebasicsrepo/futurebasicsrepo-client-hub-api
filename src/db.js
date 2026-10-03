@@ -444,6 +444,19 @@ export async function migrate() {
     alter table tech_packs add column if not exists pay_invoice_url text;
     alter table tech_packs add column if not exists pay_order_id text;
     alter table tech_packs add column if not exists paid_at timestamptz;
+    alter table tech_packs add column if not exists ai_draft jsonb;
+    alter table tech_packs add column if not exists ai_draft_at timestamptz;
+    create table if not exists tech_pack_edit_stats (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid references products(id) on delete cascade,
+      client_id uuid references clients(id) on delete cascade,
+      stage text not null,
+      version int not null default 0,
+      stats jsonb not null default '{}',
+      created_at timestamptz not null default now(),
+      unique(tech_pack_id,stage,version)
+    );
     alter table tech_packs add column if not exists pay_variant_id text;
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
     create table if not exists nurture_sends (
