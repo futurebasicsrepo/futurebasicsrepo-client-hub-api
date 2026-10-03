@@ -36,6 +36,7 @@ export async function migrate() {
     alter table clients add column if not exists membership_active_until timestamptz;
     alter table clients add column if not exists membership_checked_at timestamptz;
     alter table clients add column if not exists acquisition jsonb;
+    alter table clients add column if not exists marketing_opt_out_at timestamptz;
     update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
       where status in ('archive','archived');
     create table if not exists users (
@@ -445,6 +446,13 @@ export async function migrate() {
     alter table tech_packs add column if not exists paid_at timestamptz;
     alter table tech_packs add column if not exists pay_variant_id text;
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
+    create table if not exists nurture_sends (
+      client_id uuid not null references clients(id) on delete cascade,
+      step text not null,
+      status text not null default 'sent',
+      sent_at timestamptz not null default now(),
+      primary key(client_id, step)
+    );
     create table if not exists tech_pack_shares (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
