@@ -11,6 +11,8 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
+import { renderColorways, mergeColorwayTiles } from './colorway.js';
+import { cutoutEnabled, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -1537,7 +1539,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled()};
+  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
@@ -1792,7 +1794,7 @@ async function loadClientDraft(productId,clientId){
     where tp.product_id=$1 and tp.client_id=$2 and tp.initiated_by='client' and tp.published_at is null
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[productId,clientId])).rows[0]||null;
 }
-const draftView=row=>({product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
+const draftView=row=>({cutoutEnabled:cutoutEnabled(),product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
   techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl,pricing:row.ai_status==='locked'?techPackPricing():null});
 // Creates the product, its milestones and a seeded client draft inside the caller's transaction. `sketches` lets a
 // reference photo (a screenshot from Instagram or Pinterest, say) become the first view of the pack.
@@ -2013,7 +2015,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     const original=data.sketches.find(s=>s.image)?.image;
     const briefText=await productBriefText(row.product_id,row.description_html);
     if(!original&&!briefText)throw new NoProductError('There is no photo or brief on this product yet — add a photo under Callouts or write the brief, then run the assistant again.');
-    let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null;
+    let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null,cutout=null;
     if(!original){
       // no photo: draft from the brief and category norms; callouts stay unpinned until a sketch or photo lands
       const working=structuredClone(data);if(!working.sketches.length)working.sketches.push({id:`view-${Date.now().toString(36)}`,view:'front',label:'Front view — add a sketch or photo',image:'',garmentWidthIn:null,callouts:[]});
@@ -2032,6 +2034,8 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
         if(crop.coverage<0.85&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
       photos=working.sketches.map(s=>s.image).filter(Boolean);
+      // background removed as an extra view for the cover and the colourway tiles; the assistant still reads the real photo
+      if(cutoutEnabled()){try{const c=await cutoutFromPhoto(photo);if(c.image){cutout=c;placeCutout(working,c)}else app.log.info({packId,quality:c.quality},'cut-out below the quality bar — crop kept')}catch(e){app.log.warn({err:e.message,packId},'cut-out failed')}}
       const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
       const notes=String(row.description_html||'').replace(/<[^>]+>/g,'');
       // 1. draft against the current template, then re-seed for the classified product type so the measurements fit
@@ -2049,6 +2053,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
     }
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
+    if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
     const db=await pool.connect();let merged;
@@ -2266,6 +2271,43 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
+});
+// Colourway tiles on demand: the first photo recoloured to each colourway in the pack, saved as renderings.
+async function colorwayTilesFor(data){const photo=data.sketches.find(s=>s.image)?.image;if(!photo)return {error:'Add a photo under Callouts first — the tiles are made from it'};if(!data.colorways.length)return {error:'Add at least one colourway with a swatch first'};
+  const tiles=await renderColorways(photo,data.colorways);if(!tiles.length)return {error:'Could not separate the product from its background in this photo — try a photo on a plain backdrop'};return {renderings:mergeColorwayTiles(data.renderings,tiles),count:tiles.length}}
+// Cut-out on demand: background removed from the first photo, placed as a view and the cover rendering, tiles re-made from it.
+async function cutoutForPack(data){if(!cutoutEnabled())return {error:'Background removal is not set up on the service yet'};const photo=data.sketches.find(s=>s.image&&!/^cutout-/.test(s.id))?.image;if(!photo)return {error:'Add a photo under Callouts first'};
+  const c=await cutoutFromPhoto(photo);if(!c.image)return {error:`The cut-out was not clean enough to use (${c.quality.reasons.join('; ')}) — try a photo with the product on a plainer backdrop`,quality:c.quality};
+  placeCutout(data,c);if(data.colorways.length){try{data.renderings=[data.renderings[0],...mergeColorwayTiles(data.renderings.slice(1),await renderColorways(c.image,data.colorways))].slice(0,6)}catch{}}return {quality:c.quality,provider:c.provider}}
+app.post('/v1/products/:id/tech-pack/draft/cutout',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  const data=normalizeTechPack(row.data),made=await cutoutForPack(data);if(made.error)return reply.code(400).send({error:made.error,quality:made.quality||null});
+  const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  return {quality:made.quality,provider:made.provider,sketches:data.sketches,renderings:data.renderings,techPack:draftView({...row,...updated}).techPack};
+});
+app.post('/v1/admin/products/:id/tech-pack/cutout',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
+  const data=normalizeTechPack(ctx.techPack.data),made=await cutoutForPack(data);if(made.error)return reply.code(400).send({error:made.error,quality:made.quality||null});
+  const row=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Background removed from the reference photo for ${ctx.product.title}`,{techPackId:row.id,quality:made.quality,provider:made.provider}]).catch(()=>{});
+  return {quality:made.quality,provider:made.provider,sketches:data.sketches,renderings:data.renderings,techPack:techPackPayload(row)};
+});
+app.post('/v1/products/:id/tech-pack/draft/colorways',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  const data=normalizeTechPack(row.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
+  data.renderings=made.renderings;const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
+  return {count:made.count,renderings:data.renderings,techPack:draftView({...row,...updated}).techPack};
+});
+app.post('/v1/admin/products/:id/tech-pack/colorways',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
+  const data=normalizeTechPack(ctx.techPack.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
+  data.renderings=made.renderings;const row=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Colourway tiles rendered for ${ctx.product.title} (${made.count})`,{techPackId:row.id,count:made.count}]).catch(()=>{});
+  return {count:made.count,renderings:data.renderings,techPack:techPackPayload(row)};
 });
 app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
