@@ -58,8 +58,10 @@ export async function cutoutQuality(png) {
 export async function cutoutOnWhite(png, { max = 1600, quality = 88 } = {}) {
   let trimmed; try { trimmed = await sharp(png).trim({ threshold: 10 }).png().toBuffer(); } catch { trimmed = png; }
   const meta = await sharp(trimmed).metadata(), pad = Math.max(8, Math.round(Math.max(meta.width || 0, meta.height || 0) * 0.06));
-  const jpg = await sharp(trimmed).extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 255, g: 255, b: 255, alpha: 0 } })
-    .flatten({ background: '#ffffff' }).resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true }).jpeg({ quality }).toBuffer();
+  // two passes: flatten onto white first, then pad — in one pipeline sharp pads before it flattens and the air comes out black
+  const onWhite = await sharp(trimmed).flatten({ background: '#ffffff' }).png().toBuffer();
+  const jpg = await sharp(onWhite).extend({ top: pad, bottom: pad, left: pad, right: pad, background: '#ffffff' })
+    .resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true }).jpeg({ quality }).toBuffer();
   return `data:image/jpeg;base64,${jpg.toString('base64')}`;
 }
 export async function cutoutFromPhoto(photoDataUrl) {
