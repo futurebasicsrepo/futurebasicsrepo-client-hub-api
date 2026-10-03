@@ -1702,6 +1702,8 @@ const AI_MAX_ATTEMPTS=3,AI_STALE_MINUTES=4;
 // forced with TECH_PACK_BILLING=on for tests; off, every draft runs free as before.
 const TECH_PACK_PRICE_CENTS=Number(process.env.TECH_PACK_PRICE_CENTS||4800),MEMBERSHIP_PRICE_CENTS=Number(process.env.MEMBERSHIP_PRICE_CENTS||10000);
 const MEMBERSHIP_URL=process.env.MEMBERSHIP_CHECKOUT_URL||'',MEMBERSHIP_PRODUCT_ID=process.env.SHOPIFY_MEMBERSHIP_PRODUCT_ID||'',MEMBERSHIP_GRACE_DAYS=35;
+const TECH_PACK_VARIANT_ID=process.env.SHOPIFY_TECH_PACK_VARIANT_ID||''; // optional: a real "Tech pack from a photo" product, so checkout shows its image and description
+const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
 const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
 const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
 // A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
@@ -1758,7 +1760,11 @@ async function techPackCheckout(row,{email}){
     throw Object.assign(new Error('Payments are not set up yet — message Future Basics and we will unlock the pack for you'),{statusCode:503});
   }
   const client=(await pool.query('select shopify_customer_id,slug from clients where id=$1',[row.client_id])).rows[0];
-  const input={lineItems:[{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:{amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'}}],
+  const money={amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'};
+  const customAttributes=[{key:'Product',value:String(row.title||'').slice(0,120)},{key:'What you get',value:TECH_PACK_INCLUDES},{key:'Tech pack',value:`${clientHubUrl}/tech-packs/${row.product_id}`}];
+  const line=TECH_PACK_VARIANT_ID?{variantId:TECH_PACK_VARIANT_ID,quantity:1,priceOverride:money,customAttributes}
+    :{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:money,customAttributes};
+  const input={lineItems:[line],
     customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
     note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
