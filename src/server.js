@@ -13,8 +13,8 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage } from './techpack.js';
-import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL } from './ai.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings } from './techpack.js';
+import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -1509,7 +1509,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl};
+  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack)};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
@@ -1518,6 +1518,25 @@ app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
     on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
   return {techPack:techPackPayload(row),completeness:techPackCompleteness(data)};
+});
+// Stored translations, keyed by language: { zh: { strings: { en: zh }, model, at } }. Only languages with content are returned.
+const packTranslations=row=>{const t=row?.translations&&typeof row.translations==='object'?row.translations:{};return Object.fromEntries(Object.entries(t).filter(([k,v])=>TRANSLATION_LANGS.includes(k)&&v&&typeof v.strings==='object'&&Object.keys(v.strings).length))};
+// Factory language. Future Basics presses the button in the work console; the factory link then renders in that language.
+// Only strings not yet translated are sent to the model, so re-running after an edit is cheap.
+app.post('/v1/admin/products/:id/tech-pack/translate',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const lang=String(req.body?.lang||'zh');if(!TRANSLATION_LANGS.includes(lang))return reply.code(400).send({error:'Unsupported language'});
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before translating it'});
+  if(!aiEnabled())return reply.code(503).send({error:'Translation needs the assistant — add ANTHROPIC_API_KEY to the service'});
+  const row=ctx.techPack,current=[...new Set([...packStrings(row.data),...(row.published_data?packStrings(row.published_data):[])])];
+  const cached=packTranslations(row)[lang]?.strings||{},missing=current.filter(s=>!cached[s]);
+  let model=packTranslations(row)[lang]?.model||null;
+  if(missing.length){try{const r=await translateStrings(missing,{lang});Object.assign(cached,r.map);model=r.model}catch(e){req.log.error({err:e},'translate failed');return reply.code(502).send({error:'Translation failed — '+e.message})}}
+  const strings=Object.fromEntries(current.filter(s=>cached[s]).map(s=>[s,cached[s]]));
+  const entry={strings,model,at:new Date().toISOString(),count:Object.keys(strings).length};
+  await pool.query(`update tech_packs set translations=jsonb_set(coalesce(translations,'{}'::jsonb),$2::text[],$3::jsonb) where id=$1`,[row.id,[lang],JSON.stringify(entry)]);
+  if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${lang==='zh'?'Mandarin':lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
+  return {lang,...entry,translated:missing.length};
 });
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
@@ -1784,7 +1803,7 @@ app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adm
   return {techPack:techPackPayload(row)};
 });
 // Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
-const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
   from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id`;
 app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client')return reply.code(403).send({error:'Only the client approves their tech pack'});
@@ -1800,7 +1819,7 @@ app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(re
 });
 // Factory link: resolves a token to the published pack, or the reason it cannot be opened.
 async function loadShareByToken(token){
-  const row=(await pool.query(`select s.id share_id,s.label share_label,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,
+  const row=(await pool.query(`select s.id share_id,s.label share_label,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
     p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
@@ -1812,7 +1831,7 @@ async function loadShareByToken(token){
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
-  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label});
+  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:packTranslations(row)});
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{

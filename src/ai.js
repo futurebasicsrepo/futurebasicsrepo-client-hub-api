@@ -164,3 +164,41 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
 export function productTypeLabel(draft) {
   return String(draft.category || '').slice(0, 120) || ({ footwear: 'Footwear', top: 'Apparel — top', bottom: 'Apparel — bottom', outerwear: 'Apparel — outerwear', headwear: 'Headwear', bag: 'Bag', accessory: 'Accessory' }[draft.productType] || 'Product');
 }
+
+// ---- Factory-language translation ----
+// Translates the pack's human-written strings into Simplified Chinese for the factory. Codes, numbers, units, Pantone
+// references and brand names are kept as they are. Returns { map: { source: translation }, model }.
+const TRANSLATE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['i', 't'], properties: { i: { type: 'integer' }, t: { type: 'string' } } } } }
+};
+const LANG_NAMES = { zh: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China' };
+export const TRANSLATION_LANGS = Object.keys(LANG_NAMES);
+
+export async function translateStrings(strings, { lang = 'zh' } = {}) {
+  const list = [...new Set(strings.map(s => String(s ?? '').trim()).filter(Boolean))];
+  if (!LANG_NAMES[lang]) throw new Error(`Unsupported language ${lang}`);
+  if (!list.length) return { map: {}, model: null };
+  if (process.env.AI_FIXTURE) { await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0))); return { map: Object.fromEntries(list.map(s => [s, `中文：${s}`])), model: 'fixture' }; }
+  const client = new Anthropic();
+  const system = `You translate garment and footwear tech packs from English into ${LANG_NAMES[lang]}. The reader is a factory's technical and production team, so use the standard industry terms they use (e.g. 面料, 里布, 鞋面, 中底, 大底, 针距, 色号, 公差, 唛头). Keep measurement codes, numbers, units, tolerances, Pantone/TCX codes, style numbers, supplier references and brand names (Future Basics) exactly as written. Keep line breaks. Do not add explanations. Translate every item; return each item's index with its translation.`;
+  const map = {}; let model = AI_MODEL;
+  for (let start = 0; start < list.length; start += 80) {
+    const chunk = list.slice(start, start + 80);
+    const base = { model: AI_MODEL, max_tokens: 12000, system, messages: [{ role: 'user', content: JSON.stringify({ items: chunk.map((t, i) => ({ i, en: t })) }) }] };
+    let response;
+    try {
+      response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema: TRANSLATE_SCHEMA } } });
+    } catch (e) {
+      if (!(e instanceof Anthropic.BadRequestError)) throw e;
+      response = await client.messages.create({ ...base, system: system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(TRANSLATE_SCHEMA) });
+    }
+    if (response.stop_reason === 'refusal') throw new Error(`Model declined (${response.stop_details?.category || 'policy'})`);
+    if (response.stop_reason === 'max_tokens') throw new Error('Translation was cut off (max_tokens)');
+    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const obj = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+    for (const it of Array.isArray(obj.items) ? obj.items : []) { const src = chunk[Number(it.i)]; const t = String(it.t ?? '').trim(); if (src && t) map[src] = t; }
+    model = response.model || AI_MODEL;
+  }
+  return { map, model };
+}

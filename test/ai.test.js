@@ -43,3 +43,28 @@ test('calloutCrop returns a 480px JPEG and tolerates edge positions', async () =
   }
   assert.equal(await calloutCrop('not-a-data-url', 0.5, 0.5), '');
 });
+
+test('packStrings collects every human-written string once and skips codes and numbers', async () => {
+  const { packStrings } = await import('../src/techpack.js');
+  const pack = normalizeTechPack({ style: { styleName: 'Layer Runner', category: 'Footwear', description: 'A runner.', season: 'FW26', sampleSize: '10' },
+    sketches: [{ id: 's1', view: 'front', label: 'Reference photo', image: '', callouts: [{ n: 1, label: 'Heel wrap', spec: 'TPU 1.5 mm', note: '', x: 0.1, y: 0.1 }, { n: 2, label: 'Heel wrap', spec: '', note: 'Bond + stitch', x: 0.2, y: 0.2 }] }],
+    pom: [{ code: 'A', name: 'Outsole length', how: 'Toe to heel', tolerance: '±0.125', values: { 10: '11.5' } }],
+    bom: [{ component: 'Upper', material: 'Mesh', spec: '260 gsm', supplier: 'TBD', ref: 'X-1', color: '', placement: '', qty: '1', unit: 'pair', notes: '' }],
+    colorways: [{ name: 'Grey', code: '15-4101 TCX', swatch: '#999999', notes: '' }], notes: 'Sample first.' });
+  const strings = packStrings(pack);
+  assert.ok(strings.includes('Layer Runner') && strings.includes('Heel wrap') && strings.includes('Bond + stitch') && strings.includes('Outsole length') && strings.includes('Sample first.'));
+  assert.equal(strings.filter(s => s === 'Heel wrap').length, 1, 'deduplicated');
+  assert.ok(!strings.includes('FW26') && !strings.includes('10') && !strings.includes('±0.125') && !strings.includes('X-1') && !strings.includes('15-4101 TCX'), 'codes and numbers are not sent for translation');
+  assert.ok(strings.includes('pair') && strings.includes('TBD'), 'short words still travel');
+});
+
+test('translateStrings uses the fixture path without a key and maps every source string', async () => {
+  const { translateStrings } = await import('../src/ai.js');
+  const prev = process.env.AI_FIXTURE; process.env.AI_FIXTURE = process.env.AI_FIXTURE || 'fixture';
+  try {
+    const { map, model } = await translateStrings(['Heel wrap', ' Heel wrap ', 'Outsole length', ''], { lang: 'zh' });
+    assert.equal(model, 'fixture');
+    assert.deepEqual(map, { 'Heel wrap': '中文：Heel wrap', 'Outsole length': '中文：Outsole length' });
+    await assert.rejects(translateStrings(['x'], { lang: 'fr' }), /Unsupported language/);
+  } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});

@@ -277,7 +277,30 @@ export function publishedTechPackView(row, extra = {}) {
       data,
       verification,
       readiness: techPackReadiness(data, verification),
-      revisions: (Array.isArray(row.revisions) ? row.revisions : []).slice(-LIMITS.revisions)
+      revisions: (Array.isArray(row.revisions) ? row.revisions : []).slice(-LIMITS.revisions),
+      translations: extra.translations || {}
     }
   };
+}
+
+// ---- translation: every human-written string in a pack, deduplicated, for the factory-language pass ----
+// Numbers, codes and empty values are skipped; the result is an ordered list of distinct source strings.
+const TRANSLATABLE_MIN = /[a-z]{2,}/i;
+export function packStrings(data) {
+  const d = normalizeTechPack(data);
+  const out = new Set();
+  const add = v => { const s = String(v ?? '').trim(); if (s && TRANSLATABLE_MIN.test(s)) out.add(s); };
+  ['styleName', 'category', 'description', 'fabricSummary', 'fitBlock'].forEach(k => add(d.style[k])); // designer is a person's name: left as written
+  d.renderings.forEach(r => { add(r.name); add(r.note); });
+  d.sketches.forEach(s => { add(s.label); s.callouts.forEach(c => { add(c.label); add(c.spec); add(c.note); }); });
+  d.pom.forEach(r => { add(r.name); add(r.how); });
+  d.bom.forEach(r => ['component', 'material', 'spec', 'supplier', 'color', 'placement', 'unit', 'notes'].forEach(k => add(r[k])));
+  d.construction.forEach(r => { add(r.area); add(r.detail); });
+  d.colorways.forEach(c => { add(c.name); add(c.notes); });
+  d.labels.forEach(r => { add(r.item); add(r.spec); add(r.placement); });
+  Object.values(d.packaging).forEach(add);
+  Object.values(d.care).forEach(add);
+  d.artwork.forEach(a => { add(a.name); a.pantones.forEach(p => add(p.name)); a.placements.forEach(p => add(p.label)); });
+  add(d.notes);
+  return [...out];
 }
