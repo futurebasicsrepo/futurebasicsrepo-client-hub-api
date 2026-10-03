@@ -2056,6 +2056,15 @@ app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
   if(row.status!=='draft')return reply.code(409).send({error:'Already submitted to Future Basics'});
+  // nothing reaches the review queue unpaid after the first pack: a locked pack (or a hand-made one past the free pack) must be unlocked first
+  if(billingOn()){
+    let ent=await techPackEntitlement(row.client_id,row.id);
+    if(ent==='locked'&&await techPackPaymentLanded(row))ent='single';
+    if(ent==='locked'){if(row.ai_status!=='locked')await pool.query(`update tech_packs set ai_status='locked' where id=$1 and (ai_status is null or ai_status='failed')`,[row.id]);
+      return reply.code(402).send({error:'Unlock this tech pack before submitting it — your first pack was on us',aiStatus:'locked',pricing:techPackPricing(),checkoutUrl:row.pay_invoice_url||null})}
+    if(row.ai_status==='locked')await unlockTechPack(row); // paid or covered meanwhile: let the assistant read it as it goes to review
+    else if(!row.billing)await pool.query(`update tech_packs set billing=$2 where id=$1`,[row.id,ent]);
+  }
   const note=String(req.body?.note||'').trim().slice(0,1000);
   const updated=(await pool.query(`update tech_packs set status='submitted',submitted_at=now(),submitted_by=$2,updated_at=now() where id=$1 returning *`,[row.id,req.auth.sub])).rows[0];
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
