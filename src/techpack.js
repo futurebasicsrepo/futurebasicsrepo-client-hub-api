@@ -304,3 +304,43 @@ export function packStrings(data) {
   add(d.notes);
   return [...out];
 }
+
+// ---- Merging an assistant draft into a pack the client may already have touched ----
+// `orig` is the pack as it was created, `current` is what is saved now, `drafted` is the assistant's version built from
+// the original. Anything the client changed wins; everything else comes from the draft. Client callouts and rows are kept
+// and the assistant's are appended, so nobody's work is thrown away.
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+export function mergeClientEdits(orig, current, drafted) {
+  const o = normalizeTechPack(orig), c = normalizeTechPack(current), d = normalizeTechPack(drafted);
+  if (same(o, c)) return d; // untouched: the draft is the pack
+  const out = structuredClone(d);
+  for (const k of Object.keys(o.style)) if (c.style[k] !== o.style[k]) out.style[k] = c.style[k];
+  if (!same(c.sizes, o.sizes)) { out.sizes = c.sizes; out.pom = out.pom.map(r => ({ ...r, values: Object.fromEntries(c.sizes.map(s => [s, r.values[s] ?? ''])) })); }
+  // sketches: the client's first view may carry its own callouts (or a replaced image); extra views are theirs
+  const cs0 = c.sketches[0], os0 = o.sketches[0], ds0 = out.sketches[0];
+  if (cs0 && ds0) {
+    const replaced = cs0.image !== os0?.image;
+    if (replaced) { ds0.image = cs0.image; ds0.callouts = ds0.callouts.map(k => ({ ...k, x: null, y: null, photo: '' })); }
+    if (cs0.label !== os0?.label) ds0.label = cs0.label; if (cs0.view !== os0?.view) ds0.view = cs0.view; if (cs0.garmentWidthIn !== os0?.garmentWidthIn) ds0.garmentWidthIn = cs0.garmentWidthIn;
+    const mine = cs0.callouts.filter(k => k.label || k.spec || k.note || k.x != null);
+    ds0.callouts = [...mine, ...ds0.callouts].slice(0, LIMITS.callouts).map((k, i) => ({ ...k, n: i + 1 }));
+  }
+  const extraViews = c.sketches.slice(Math.max(1, o.sketches.length));
+  out.sketches = [...out.sketches, ...extraViews].slice(0, LIMITS.sketches);
+  // measurements: the client's typed values and tolerances win per cell; rows they added are appended
+  const oRows = new Map(o.pom.map(r => [r.code, r])), dRows = new Map(out.pom.map(r => [r.code, r]));
+  for (const r of c.pom) {
+    const orow = oRows.get(r.code), drow = dRows.get(r.code);
+    if (!orow) { if (!drow) out.pom.push(r); continue; }
+    if (!drow) continue;
+    for (const [s, v] of Object.entries(r.values)) if (v && v !== (orow.values[s] ?? '')) drow.values[s] = v;
+    if (r.tolerance !== orow.tolerance) drow.tolerance = r.tolerance; if (r.name !== orow.name) drow.name = r.name; if (r.how !== orow.how) drow.how = r.how;
+  }
+  const keep = (key, by) => { if (!same(c[key], o[key])) { const seen = new Set(c[key].map(by)); out[key] = [...c[key], ...out[key].filter(r => !seen.has(by(r)))].slice(0, LIMITS[key] || 50); } };
+  keep('bom', r => r.component.toLowerCase()); keep('construction', r => r.area.toLowerCase()); keep('colorways', r => r.name.toLowerCase()); keep('labels', r => r.item.toLowerCase());
+  for (const k of Object.keys(o.packaging)) if (c.packaging[k] !== o.packaging[k]) out.packaging[k] = c.packaging[k];
+  for (const k of Object.keys(o.care)) if (c.care[k] !== o.care[k]) out.care[k] = c.care[k];
+  if (c.notes !== o.notes) out.notes = [c.notes, out.notes].filter(Boolean).join('\n\n');
+  out.renderings = c.renderings.length ? c.renderings : out.renderings; out.artwork = c.artwork.length ? c.artwork : out.artwork;
+  return normalizeTechPack(out);
+}

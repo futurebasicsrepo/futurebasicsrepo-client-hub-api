@@ -13,8 +13,8 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings } from './techpack.js';
-import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS } from './ai.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
+import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -786,7 +786,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,${HAS_RENDERING_SQL},
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at,'ai_status',tp.ai_status) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1489,7 +1489,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1509,7 +1509,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack)};
+  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
@@ -1681,32 +1681,121 @@ const issueClientToken=(user,client,email)=>new SignJWT({sub:user.id,clientId:cl
 // After a photo-start, the assistant reads the photo and writes the first draft of the pack. It only writes while the
 // draft is still untouched by the client (updated_at = created_at), so a person who starts editing right away never has
 // their work replaced; and it leaves updated_at alone, so the idle follow-up still sees an untouched draft.
-async function enrichPhotoDraft(packId){
-  const row=(await pool.query(`select tp.*,p.title,p.description_html from tech_packs tp join products p on p.id=tp.product_id where tp.id=$1`,[packId])).rows[0];
-  if(!row||row.ai_status!=='pending')return;
+// Reads the photo and writes the draft. Runs in the background after /start, from the recovery sweep, and on demand
+// from the console or the client (re-run). Steps: locate the product and crop to it → draft → re-seed for the classified
+// product type → merge with whatever the client has typed meanwhile (their edits win, nothing is discarded).
+const AI_MAX_ATTEMPTS=3,AI_STALE_MINUTES=4;
+const aiUserMessage=e=>e?.userFacing?e.message:'';
+async function enrichPhotoDraft(packId,{force=false}={}){
+  const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+1,ai_error=null
+    where id=$1 and (ai_status='pending' or $2) returning *`,[packId,force])).rows[0];
+  if(!claimed)return;
+  const row=(await pool.query(`select tp.*,p.title,p.product_type,p.description_html from tech_packs tp join products p on p.id=tp.product_id where tp.id=$1`,[packId])).rows[0];
+  if(!row)return;
   try{
-    const data=normalizeTechPack(row.data),photos=data.sketches.map(s=>s.image).filter(Boolean);
-    const sizes=data.sizes,sampleSize=data.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
+    const data=normalizeTechPack(row.data);
+    const original=data.sketches.find(s=>s.image)?.image;
+    if(!original)throw new NoProductError('There is no photo on this draft yet — add one under Callouts and run the assistant again.');
+    // 0. where is the product?
+    const where=await locateProduct(original);
+    if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
+    let photo=original,crop=null;
+    try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
+    const working=structuredClone(data);
+    if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
+      if(crop.coverage<0.85&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
+    const photos=working.sketches.map(s=>s.image).filter(Boolean);
+    const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
     const notes=String(row.description_html||'').replace(/<[^>]+>/g,'');
-    const first=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:data.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
-    // re-seed for the classified product type so the measurement template fits (a hoodie should not get footwear POMs)
+    // 1. draft against the current template, then re-seed for the classified product type so the measurements fit
+    const first=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
     const product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
-    let seed=normalizeTechPack({...seedTechPack({product}),sketches:data.sketches});seed.style.designer=data.style.designer;
+    let seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;
     let draft=first.draft;
-    if(seed.pom.map(r=>r.code).join()!==data.pom.map(r=>r.code).join()){
+    if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){
       const second=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});
       draft=second.draft;
     }
-    const merged=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize,model:first.model}));
-    const updated=await pool.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now() where id=$1 and ai_status='pending' and updated_at=created_at returning product_id`,[packId,merged,first.model]);
-    if(!updated.rowCount){await pool.query(`update tech_packs set ai_status='skipped',ai_error='client edited the draft first' where id=$1 and ai_status='pending'`,[packId]);return}
+    if(draftLooksEmpty(draft))throw new NoProductError(`The assistant could not read enough detail from this photo${where.product?` (it saw: ${where.product})`:''}. Try a larger, sharper picture of the product on its own.`);
+    const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize,model:first.model}));
+    // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
+    const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
+    const db=await pool.connect();let merged;
+    try{
+      await db.query('begin');
+      const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];
+      const current=normalizeTechPack(live.data);
+      // the client's view of the photo is the original; the draft's is the crop — line them up before merging
+      const currentForMerge=structuredClone(current);if(crop&&currentForMerge.sketches[0]&&currentForMerge.sketches[0].image===original)currentForMerge.sketches[0].image=photo;
+      const origForMerge=structuredClone(origSeed);if(crop&&origForMerge.sketches[0])origForMerge.sketches[0].image=photo;
+      merged=mergeClientEdits(origForMerge,currentForMerge,drafted);
+      await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null where id=$1`,[packId,merged,first.model]); // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
+      await db.query('commit');
+    }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from the photo (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements)`,{techPackId:packId,model:first.model,confidence:draft.confidence}]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from the photo (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where.product,coverage:crop?.coverage??1}]);
   }catch(e){
-    app.log.warn({err:e.message,packId},'photo draft enrichment failed');
-    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,String(e.message||e).slice(0,500)]).catch(()=>{});
+    const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
+    app.log.warn({err:e.message,packId,attempt:claimed.ai_attempts},'photo draft enrichment failed');
+    await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1`,[packId,msg.slice(0,500)]).catch(()=>{});
+    await notifyAiFailure(row,{message:msg,userFacing:Boolean(user),attempt:claimed.ai_attempts}).catch(err=>app.log.warn({err:err.message},'ai failure notice failed'));
   }
 }
+// Tells Future Basics every time, and the client when the photo itself was the problem (so they can send a better one).
+async function notifyAiFailure(row,{message,userFacing,attempt}){
+  const c=(await pool.query(`select c.id,c.name,c.contact_name,coalesce(nullif(c.contact_email,''),c.allowed_emails[1]) email from clients c where c.id=$1`,[row.client_id])).rows[0];
+  const link=`${clientHubUrl}/tech-packs/${row.product_id}`;
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-ai',$2,'product',$3)`,
+    [row.client_id,userFacing?`Assistant could not read ${c?.name||'the client'}'s photo for ${row.title} — ${message} ${c?.email?'The client has been asked for a clearer photo.':''}`:`Assistant failed on ${c?.name||'the client'}'s ${row.title} (attempt ${attempt}): ${message}. Re-run it from the tech pack, or draft it by hand.`,row.product_id]);
+  if(!userFacing||!c?.email||row.initiated_by!=='client')return;
+  const first=(c.contact_name||'').split(' ')[0];
+  await sendHubEmail({to:c.email,subject:`We couldn't read your photo for ${row.title}`,html:hubEmailShell('One more photo, please',
+    `<p>Hi${first?' '+emailEscape(first):''},</p><p>Thanks for starting a tech pack for <strong>${emailEscape(row.title)}</strong>. ${emailEscape(message)}</p>
+     <p>Open your draft, replace the photo under <strong>Callouts → View settings</strong>, and press <strong>Try again</strong> — or simply reply to this email with a better picture and we will take it from there.</p>${hubButton(link,'Open your tech pack')}
+     <p style="color:#717177;font-size:13px">A clear photo of the product on its own, filling most of the frame, works best.</p>`)});
+}
+// Deploys and restarts kill background runs. Anything still "pending" after a few minutes is picked up again, up to a limit.
+async function runAiRecovery(){
+  if(!aiEnabled())return 0;
+  const stuck=(await pool.query(`select id,ai_attempts from tech_packs where ai_status='pending' and coalesce(ai_started_at,created_at)<now()-make_interval(mins=>$1)`,[AI_STALE_MINUTES])).rows;
+  let restarted=0;
+  for(const r of stuck){
+    if(r.ai_attempts>=AI_MAX_ATTEMPTS){
+      const row=(await pool.query(`update tech_packs set ai_status='failed',ai_error=$2 where id=$1 returning tech_packs.*,(select title from products p where p.id=tech_packs.product_id) title`,[r.id,`The assistant did not finish after ${AI_MAX_ATTEMPTS} attempts.`])).rows[0];
+      if(row)await notifyAiFailure(row,{message:row.ai_error,userFacing:false,attempt:r.ai_attempts}).catch(()=>{});
+      continue;
+    }
+    restarted++;setImmediate(()=>enrichPhotoDraft(r.id).catch(e=>app.log.warn({err:e.message},'ai recovery run failed')));
+  }
+  if(stuck.length)app.log.info({stuck:stuck.length,restarted},'ai recovery sweep');
+  return restarted;
+}
+// Re-run on demand. The console can always re-run; a client may retry a failed read up to the attempt limit.
+async function startAiRun(row,{force=true}={}){
+  await pool.query(`update tech_packs set ai_status='pending',ai_error=null where id=$1`,[row.id]);
+  setImmediate(()=>enrichPhotoDraft(row.id,{force}).catch(e=>app.log.warn({err:e.message},'ai re-run failed')));
+}
+app.post('/v1/admin/ai/recover',{preHandler:[authenticate,adminOnly]},async()=>({restarted:await runAiRecovery()}));
+app.post('/v1/admin/products/:id/tech-pack/ai',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!aiEnabled())return reply.code(503).send({error:'The assistant needs ANTHROPIC_API_KEY on the service'});
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
+  if(ctx.techPack.ai_status==='pending'&&new Date(ctx.techPack.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already running on this pack'});
+  if(!normalizeTechPack(ctx.techPack.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo or sketch first — the assistant reads the first view'});
+  await startAiRun(ctx.techPack);
+  return {aiStatus:'pending'};
+});
+app.post('/v1/products/:id/tech-pack/draft/ai',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  if(!aiEnabled())return reply.code(503).send({error:'The assistant is not available right now'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  if(row.ai_status==='pending'&&new Date(row.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already reading your photo'});
+  if((row.ai_attempts||0)>=AI_MAX_ATTEMPTS)return reply.code(429).send({error:'The assistant has tried three times — submit the draft and Future Basics will finish it with you'});
+  if(!normalizeTechPack(row.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo first (Callouts → View settings → Replace image)'});
+  await startAiRun(row);
+  return {aiStatus:'pending'};
+});
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const b=req.body||{};
@@ -1740,7 +1829,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
       on conflict(client_id,name) do update set status='active',updated_at=now() returning *`,[client.id])).rows[0];
     const {product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
-    if(aiEnabled())await db.query(`update tech_packs set ai_status='pending' where id=$1`,[pack.id]);
+    if(aiEnabled())await db.query(`update tech_packs set ai_status='pending',ai_started_at=now() where id=$1`,[pack.id]);
     await db.query('commit');
     if(aiEnabled())setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
@@ -2261,5 +2350,7 @@ await migrate();
 await repairPendingShopifyLinks();
 setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
 if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();
+setTimeout(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 15 * 1000).unref();
+setInterval(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 5 * 60 * 1000).unref();
 runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

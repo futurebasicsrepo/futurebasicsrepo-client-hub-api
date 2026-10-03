@@ -202,3 +202,76 @@ export async function translateStrings(strings, { lang = 'zh' } = {}) {
   }
   return { map, model };
 }
+
+// ---- Step 0: find the product in the photo ----
+// Screenshots carry app chrome, captions, other items. Before drafting, ask where the product is and crop to it, so
+// callout positions, detail crops and the cover image all refer to the product rather than the whole screen.
+const LOCATE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['found', 'product', 'box', 'issues'],
+  properties: {
+    found: { type: 'boolean', description: 'true when a physical product (garment, footwear, bag, accessory…) is clearly visible and could be manufactured from this reference' },
+    product: { type: 'string', description: 'Short name of the main product, e.g. "chunky running shoe", or empty' },
+    box: { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], description: 'Bounding box of the main product as fractions of the image: x,y top-left; w,h size. Whole image when unsure.',
+      properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, w: { type: 'number', minimum: 0, maximum: 1 }, h: { type: 'number', minimum: 0, maximum: 1 } } },
+    issues: { type: 'string', description: 'What limits the reference: tiny, blurry, cropped, only a logo, several products, a person with no clear garment… Empty when fine.' }
+  }
+};
+export class NoProductError extends Error { constructor(message) { super(message); this.name = 'NoProductError'; this.userFacing = true; } }
+
+export async function locateProduct(photoDataUrl) {
+  if (process.env.AI_FIXTURE) {
+    // Fixture: a flat, featureless image has no product in it; anything with detail is the product, full frame.
+    const img = dataUrlToImageBlock(photoDataUrl); if (!img) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'unreadable image' };
+    const buf = Buffer.from(img.source.data, 'base64');
+    const stats = await sharp(buf).stats();
+    if (stats.channels.every(c => c.stdev < 2)) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'the image is blank' };
+    const { data, info } = await sharp(buf).greyscale().resize({ width: 160, fit: 'inside' }).raw().toBuffer({ resolveWithObject: true });
+    const W = info.width, H = info.height, busyRow = new Array(H).fill(false), busyCol = new Array(W).fill(false);
+    const sd = vals => { const m = vals.reduce((a, b) => a + b, 0) / vals.length; return Math.sqrt(vals.reduce((a, b) => a + (b - m) ** 2, 0) / vals.length); };
+    for (let y = 0; y < H; y++) busyRow[y] = sd(Array.from(data.subarray(y * W, y * W + W))) > 6;
+    for (let x = 0; x < W; x++) { const col = []; for (let y = 0; y < H; y++) col.push(data[y * W + x]); busyCol[x] = sd(col) > 6; }
+    // the product is the longest run of busy rows (app chrome is busy too, but in short bands); columns likewise within it
+    const longestRun = flags => { let best = [-1, -1], start = -1, gap = 0; for (let i = 0; i <= flags.length; i++) { const on = i < flags.length && flags[i]; if (on) { if (start < 0) start = i; gap = 0; } else if (start >= 0 && (++gap > 2 || i === flags.length)) { const end = i - gap; if (end - start > best[1] - best[0]) best = [start, end]; start = -1; gap = 0; } } return best; };
+    const [y0, y1] = longestRun(busyRow);
+    if (y0 < 0) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'no detail in the image' };
+    for (let x = 0; x < W; x++) { const col = []; for (let y = y0; y <= y1; y++) col.push(data[y * W + x]); busyCol[x] = sd(col) > 6; }
+    const [x0, x1] = longestRun(busyCol);
+    if (x0 < 0) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'no detail in the image' };
+    return { found: true, product: 'product', box: { x: x0 / W, y: y0 / H, w: (x1 - x0 + 1) / W, h: (y1 - y0 + 1) / H }, issues: '' };
+  }
+  const client = new Anthropic();
+  const image = dataUrlToImageBlock(photoDataUrl); if (!image) throw new Error('No readable photo');
+  const base = { model: AI_MODEL, max_tokens: 600, system: 'You prepare customer photos for a product-development studio. Find the one physical product the customer most likely wants made (a garment, shoe, bag, hat or accessory). Return its bounding box as fractions of the image, generous enough to include the whole item. Ignore app chrome, captions, hands and background. If there is no manufacturable product in view, say so.',
+    messages: [{ role: 'user', content: [image, { type: 'text', text: 'Locate the product.' }] }] };
+  let response;
+  try { response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low', format: { type: 'json_schema', schema: LOCATE_SCHEMA } } }); }
+  catch (e) { if (!(e instanceof Anthropic.BadRequestError)) throw e; response = await client.messages.create({ ...base, system: base.system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(LOCATE_SCHEMA) }); }
+  if (response.stop_reason === 'refusal') return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'declined' };
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
+  const obj = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
+  const n = v => Math.min(1, Math.max(0, Number(v) || 0));
+  return { found: Boolean(obj.found), product: String(obj.product || '').slice(0, 80), box: { x: n(obj.box?.x), y: n(obj.box?.y), w: n(obj.box?.w) || 1, h: n(obj.box?.h) || 1 }, issues: String(obj.issues || '').slice(0, 300) };
+}
+
+// Crops the photo to the located box with some air around it. Returns the crop as a JPEG data URL and how much of
+// the original it covers (1 = nothing removed). Degenerate boxes fall back to the full image.
+export async function cropToBox(photoDataUrl, box, { pad = 0.07, max = 1600 } = {}) {
+  const img = dataUrlToImageBlock(photoDataUrl); if (!img) throw new Error('No readable photo');
+  const buf = Buffer.from(img.source.data, 'base64');
+  const meta = await sharp(buf).metadata(); const W = meta.width || 0, H = meta.height || 0;
+  if (!W || !H) throw new Error('Photo has no dimensions');
+  let x0 = Math.max(0, box.x - pad), y0 = Math.max(0, box.y - pad), x1 = Math.min(1, box.x + box.w + pad), y1 = Math.min(1, box.y + box.h + pad);
+  if (box.w < 0.1 || box.h < 0.1 || x1 - x0 < 0.15 || y1 - y0 < 0.15) { x0 = 0; y0 = 0; x1 = 1; y1 = 1; }
+  const left = Math.round(x0 * W), top = Math.round(y0 * H), width = Math.max(1, Math.round((x1 - x0) * W)), height = Math.max(1, Math.round((y1 - y0) * H));
+  const coverage = (width * height) / (W * H);
+  const out = await sharp(buf).extract({ left, top, width, height }).resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+  return { image: `data:image/jpeg;base64,${out.toString('base64')}`, coverage, box: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+}
+
+// A draft that would leave the pack empty is a failure, not a result.
+export function draftLooksEmpty(draft) {
+  const callouts = Array.isArray(draft?.callouts) ? draft.callouts.filter(c => c.label).length : 0;
+  const pom = Array.isArray(draft?.pom) ? draft.pom.filter(r => Number.isFinite(Number(r.sample))).length : 0;
+  const bom = Array.isArray(draft?.bom) ? draft.bom.length : 0;
+  return callouts < 3 && pom === 0 && bom === 0;
+}
