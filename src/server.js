@@ -10,7 +10,7 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, DRAFT_ORDER_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -1097,13 +1097,12 @@ app.post('/v1/admin/products/:id/shopify-draft-order',{preHandler:[authenticate,
   if(!row)return reply.code(404).send({error:'Quote not found'});
   if(row.shopify_draft_order_id)return reply.code(409).send({error:'This quote already has a Shopify draft order'});
   const unitCents=row.wholesale_cents||row.unit_cost_cents;
-  const line={quantity:row.quantity,priceOverride:{amount:(unitCents/100).toFixed(2),currencyCode:row.currency}};
-  if(row.shopify_variant_id)line.variantId=row.shopify_variant_id;else{line.title=row.product_title;line.requiresShipping=true;}
+  // a variant line is priced through priceOverride; a custom (title-only) line only through originalUnitPriceWithCurrency
+  const money=cents=>({amount:(Number(cents)/100).toFixed(2),currencyCode:row.currency});
+  const line=row.shopify_variant_id?{variantId:row.shopify_variant_id,quantity:row.quantity,priceOverride:money(unitCents)}:{title:row.product_title,quantity:row.quantity,requiresShipping:true,originalUnitPriceWithCurrency:money(unitCents)};
   const lineItems=[line];
-  if(Number(row.tooling_cents)>0)lineItems.push({title:`Tooling / setup — ${row.product_title}`,quantity:1,requiresShipping:false,
-    priceOverride:{amount:(Number(row.tooling_cents)/100).toFixed(2),currencyCode:row.currency}});
-  if(Number(row.freight_cents)>0)lineItems.push({title:`Freight — ${row.product_title}`,quantity:1,requiresShipping:false,
-    priceOverride:{amount:(Number(row.freight_cents)/100).toFixed(2),currencyCode:row.currency}});
+  if(Number(row.tooling_cents)>0)lineItems.push({title:`Tooling / setup — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.tooling_cents)});
+  if(Number(row.freight_cents)>0)lineItems.push({title:`Freight — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.freight_cents)});
   const input={lineItems,email:req.body?.email||undefined,customerId:row.shopify_customer_id||undefined,
     note:req.body?.note||`Future Basics client hub quote v${row.version}`,tags:['future-basics-client-hub',`client-${row.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
@@ -1744,13 +1743,22 @@ async function gateNewPhotoDraft(db,{clientId,packId}){
 }
 // Shopify checkout for a single pack: one draft order per pack, reused on later clicks.
 async function techPackCheckout(row,{email}){
-  if(row.pay_invoice_url&&row.pay_draft_order_id)return {checkoutUrl:row.pay_invoice_url,draftOrderId:row.pay_draft_order_id};
+  if(row.pay_invoice_url&&row.pay_draft_order_id){
+    // reuse the open checkout — unless its total is not the pack price (an earlier bug priced custom lines at $0): then replace it
+    let stale=false;
+    if(shopifyConfigured()){try{const d=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:row.pay_draft_order_id})).draftOrder;
+      stale=!d||(d.status!=='COMPLETED'&&Math.round(Number(d.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS);
+      if(stale&&d){await shopifyGraphql(DRAFT_ORDER_DELETE,{input:{id:d.id}}).catch(e=>app.log.warn({err:e.message,packId:row.id},'stale draft order not deleted'))}
+    }catch(e){app.log.warn({err:e.message,packId:row.id},'draft order check failed')}}
+    if(!stale)return {checkoutUrl:row.pay_invoice_url,draftOrderId:row.pay_draft_order_id};
+    await pool.query(`update tech_packs set pay_draft_order_id=null,pay_invoice_url=null where id=$1`,[row.id]);
+  }
   if(!shopifyConfigured()){
     if(process.env.DEV_BYPASS_AUTH==='true')return {checkoutUrl:null,dev:true};
     throw Object.assign(new Error('Payments are not set up yet — message Future Basics and we will unlock the pack for you'),{statusCode:503});
   }
   const client=(await pool.query('select shopify_customer_id,slug from clients where id=$1',[row.client_id])).rows[0];
-  const input={lineItems:[{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,priceOverride:{amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'}}],
+  const input={lineItems:[{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:{amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'}}],
     customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
     note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
@@ -1764,6 +1772,7 @@ async function techPackPaymentLanded(row){
   if(!row.pay_draft_order_id||!shopifyConfigured())return false;
   const order=await pollDraftOrderPaid(row.pay_draft_order_id);
   if(!order||!/^PAID$/i.test(order.displayFinancialStatus||''))return false;
+  if(Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS){app.log.warn({packId:row.id,orderId:order.id,total:order.totalPriceSet?.shopMoney?.amount},'tech pack order paid below price — not unlocking');return false}
   await pool.query(`update tech_packs set paid_at=now(),pay_order_id=$2,billing='single' where id=$1 and paid_at is null`,[row.id,order.id]);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;
