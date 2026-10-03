@@ -10,7 +10,7 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -596,6 +596,7 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
   const project=(await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress')
     on conflict(client_id,name) do update set updated_at=now() returning *`,[client.id])).rows[0];
   let customer=null,customerError=null;
+  if(!client.shopify_customer_id)await linkShopifyCustomer(client).catch(()=>{});
   if(client.shopify_customer_id){
     try{
       customer=(await shopifyGraphql(CUSTOMER_SYNC_QUERY,{id:client.shopify_customer_id})).customer;
@@ -1745,10 +1746,21 @@ const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK
 const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
 // A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
 // against Shopify at most hourly per client; the result is cached on the client row.
+// A self-serve room has no Shopify customer until the person buys something. Link it by the room's exact email so a membership bought on the storefront is recognised; the id is written only when the room has none, so a hand-set link is never replaced.
+async function linkShopifyCustomer(client,knownId=null){
+  if(!client)return null;if(client.shopify_customer_id)return client.shopify_customer_id;if(!shopifyConfigured())return null;
+  let id=knownId||null;
+  if(!id){const emails=[client.contact_email,...(client.allowed_emails||[])].map(e=>String(e||'').trim().toLowerCase()).filter(Boolean);
+    for(const email of [...new Set(emails)].slice(0,5)){try{const data=await shopifyGraphql(CUSTOMER_BY_EMAIL_QUERY,{query:`email:${JSON.stringify(email)}`});const hit=exactCustomerMatch(data?.customers?.nodes,[email]);if(hit){id=hit.id;break}}catch(e){app.log.warn({err:e.message,clientId:client.id},'customer lookup failed');break}}}
+  if(!id)return null;
+  const r=await pool.query('update clients set shopify_customer_id=$2 where id=$1 and shopify_customer_id is null returning shopify_customer_id',[client.id,id]).catch(()=>({rows:[]}));
+  client.shopify_customer_id=r.rows[0]?.shopify_customer_id||client.shopify_customer_id||id;return client.shopify_customer_id;
+}
 async function membershipActive(client){
   if(client.membership_active_until&&new Date(client.membership_active_until)>new Date())return true;
-  if(!client.shopify_customer_id||!shopifyConfigured()||!(MEMBERSHIP_PRODUCT_ID||MEMBERSHIP_URL))return false;
+  if(!shopifyConfigured()||!(MEMBERSHIP_PRODUCT_ID||MEMBERSHIP_URL))return false;
   if(client.membership_checked_at&&new Date(client.membership_checked_at)>new Date(Date.now()-3600e3))return false;
+  if(!client.shopify_customer_id&&!(await linkShopifyCustomer(client))){await pool.query('update clients set membership_checked_at=now() where id=$1',[client.id]).catch(()=>{});return false}
   let until=null;
   try{
     const data=await shopifyGraphql(CUSTOMER_MEMBERSHIP_QUERY,{id:client.shopify_customer_id,query:'financial_status:paid'});
@@ -1819,6 +1831,7 @@ async function techPackPaymentLanded(row){
   if(!order||!/^PAID$/i.test(order.displayFinancialStatus||''))return false;
   if(Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS){app.log.warn({packId:row.id,orderId:order.id,total:order.totalPriceSet?.shopMoney?.amount},'tech pack order paid below price — not unlocking');return false}
   await pool.query(`update tech_packs set paid_at=now(),pay_order_id=$2,billing='single' where id=$1 and paid_at is null`,[row.id,order.id]);
+  if(order.customer?.id){const c=(await pool.query('select * from clients where id=$1',[row.client_id])).rows[0];await linkShopifyCustomer(c,order.customer.id).catch(()=>{})}
   await dropPackVariant(row);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;

@@ -95,9 +95,19 @@ export const DRAFT_ORDER_STATUS = `query SyncDraftOrderStatus($id: ID!) {
   draftOrder(id: $id) {
     id name invoiceUrl status updatedAt
     totalPriceSet { shopMoney { amount currencyCode } }
-    order { id name displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } }
+    order { id name displayFinancialStatus displayFulfillmentStatus totalPriceSet { shopMoney { amount currencyCode } } customer { id email } }
   }
 }`;
+
+// Find the store customer behind a room by email; exact match only, so a shared domain never links the wrong person.
+export const CUSTOMER_BY_EMAIL_QUERY = `query ClientCustomerByEmail($query: String!) {
+  customers(first: 10, query: $query) { nodes { id email displayName } }
+}`;
+export function exactCustomerMatch(nodes, emails) {
+  const want = new Set((emails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean));
+  if (!want.size) return null;
+  return (nodes || []).find(n => n && n.id && want.has(String(n.email || '').trim().toLowerCase())) || null;
+}
 
 export const DRAFT_ORDER_DELETE = `mutation DeleteClientDraftOrder($input: DraftOrderDeleteInput!) {
   draftOrderDelete(input: $input) { deletedId userErrors { field message } }
