@@ -452,6 +452,7 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./start.html',import.meta.url),'utf8'));
 app.get('/start', sendStart);
+app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
 const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./consign.html',import.meta.url),'utf8'));
@@ -1844,20 +1845,47 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:aiEnabled()?'pending':'off'});
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 });
-app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate},async(req,reply)=>{
-  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
+// Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
+// without photos they get the blank template. `project` is an existing project row or null to use/create "Product development".
+const photosFromBody=b=>(Array.isArray(b?.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
+async function startHubDraft(req,reply,{project,newProjectName}){
   const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
+  const photos=photosFromBody(req.body);
   if(!title)return reply.code(400).send({error:'Give the product a name'});
-  const project=(await pool.query(`select pr.id,pr.name,c.name client_name from projects pr join clients c on c.id=pr.client_id
-    where pr.id=$1 and pr.client_id=$2 and pr.archived_at is null and pr.status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];
-  if(!project)return reply.code(404).send({error:'Project not found'});
+  const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
   const client=await pool.connect();
   try{
     await client.query('begin');
-    const {product,pack}=await createClientDraft(client,{clientId:req.auth.clientId,clientName:project.client_name,project,title,productType,description,userId:req.auth.sub});
+    if(!project){
+      const name=String(newProjectName||'Product development').trim().slice(0,120)||'Product development';
+      const c=(await client.query('select name from clients where id=$1',[req.auth.clientId])).rows[0];
+      project=(await client.query(`insert into projects(client_id,name,status,milestone) values($1,$2,'active','Development — tech pack')
+        on conflict(client_id,name) do update set status='active',archived_at=null,updated_at=now() returning *`,[req.auth.clientId,name])).rows[0];
+      project.client_name=c?.name||'';
+    }
+    const {product,pack}=await createClientDraft(client,{clientId:req.auth.clientId,clientName:project.client_name,project,title,productType,description,userId:req.auth.sub,sketches,source:photos.length?'photo':'hub'});
+    const ai=photos.length&&aiEnabled();
+    if(ai)await client.query(`update tech_packs set ai_status='pending',ai_started_at=now() where id=$1`,[pack.id]);
     await client.query('commit');
-    return reply.code(201).send(draftView({...pack,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}));
+    if(ai)setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
+    return reply.code(201).send({...draftView({...pack,ai_status:ai?'pending':null,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}),ai:ai?'pending':'off',project:{id:project.id,name:project.name}});
   }catch(e){await client.query('rollback');throw e}finally{client.release()}
+}
+app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate,bodyLimit:16_000_000},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
+  const project=(await pool.query(`select pr.*,c.name client_name from projects pr join clients c on c.id=pr.client_id
+    where pr.id=$1 and pr.client_id=$2 and pr.archived_at is null and pr.status not in ('archive','archived')`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  return startHubDraft(req,reply,{project});
+});
+// From the hub home: pick an existing project or name a new one.
+app.post('/v1/tech-packs',{preHandler:authenticate,bodyLimit:16_000_000},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Sign in to your client hub to start a tech pack'});
+  const projectId=String(req.body?.projectId||'').trim();let project=null;
+  if(projectId&&!/^[0-9a-f-]{36}$/i.test(projectId))return reply.code(404).send({error:'Project not found'});
+  if(projectId){project=(await pool.query(`select pr.*,c.name client_name from projects pr join clients c on c.id=pr.client_id
+    where pr.id=$1 and pr.client_id=$2 and pr.archived_at is null and pr.status not in ('archive','archived')`,[projectId,req.auth.clientId])).rows[0];if(!project)return reply.code(404).send({error:'Project not found'})}
+  return startHubDraft(req,reply,{project,newProjectName:req.body?.newProject});
 });
 app.get('/v1/products/:id/tech-pack/draft',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client')return reply.code(403).send({error:'Client drafts are edited from the client hub'});

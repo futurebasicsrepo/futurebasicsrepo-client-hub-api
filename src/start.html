@@ -87,30 +87,17 @@
     <p class="fine">Already have a room? <a href="/">Sign in to the client hub</a>. By continuing you agree we may contact you about this product.</p>
   </main>
 
+  <script src="/photo-prep.js"></script>
   <script>
     "use strict";
     const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const KEY='fb.client.token',shots=[];                           // {src, trimmed, original, name}
-    const MAX=4,LONG_EDGE=1600;
+    const MAX=4;
     async function api(p,body){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;throw e}return d}
-    function loadImage(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{URL.revokeObjectURL(url);res(img)};img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('That file is not an image we can read'))};img.src=url})}
-    function toCanvas(img){const r=Math.min(1,LONG_EDGE/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*r));c.height=Math.max(1,Math.round(img.naturalHeight*r));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c}
-    // Screenshots carry app chrome: status bar, Instagram/Pinterest header, caption, tab bar. Those rows are mostly one flat
-    // colour (with sparse text), while the picture itself is not. Keep the longest run of picture rows, then tighten the sides.
-    function autoTrim(c){const w=c.width,h=c.height,d=c.getContext('2d').getImageData(0,0,w,h).data;
-      const flatness=(idx,n,step)=>{const r0=d[idx*4],g0=d[idx*4+1],b0=d[idx*4+2];let same=0;for(let k=0;k<n;k++){const i=(idx+k*step)*4;if(Math.abs(d[i]-r0)+Math.abs(d[i+1]-g0)+Math.abs(d[i+2]-b0)<30)same++}return same/n};
-      const longest=(isPic,len,gap)=>{let best=[0,-1],s=-1,miss=0;for(let i=0;i<len;i++){if(isPic(i)){if(s<0)s=i;miss=0;if(i-s>best[1]-best[0])best=[s,i]}else if(s>=0&&++miss>gap){s=-1;miss=0}}return best};
-      const rowPic=new Array(h);for(let y=0;y<h;y++)rowPic[y]=flatness(y*w,w,1)<0.88;
-      let [top,bot]=longest(y=>rowPic[y],h,Math.round(h*0.02));if(bot-top<h*0.1)return null;
-      const colPic=new Array(w);for(let x=0;x<w;x++){let k=0,n=0;for(let y=top;y<=bot;y+=2){n++;const i=(y*w+x)*4,j=(y*w)*4;if(Math.abs(d[i]-d[j])+Math.abs(d[i+1]-d[j+1])+Math.abs(d[i+2]-d[j+2])>=30)k++}colPic[x]=k/n>0.12}
-      let [left,right]=longest(x=>colPic[x],w,Math.round(w*0.02));if(right-left<w*0.3){left=0;right=w-1}
-      const my=Math.round(h*0.012),mx=Math.round(w*0.012);top=Math.max(0,top-my);bot=Math.min(h-1,bot+my);left=Math.max(0,left-mx);right=Math.min(w-1,right+mx);
-      if(top<8&&h-1-bot<8&&left<8&&w-1-right<8)return null;                 // nothing worth trimming
-      const o=document.createElement('canvas');o.width=right-left+1;o.height=bot-top+1;o.getContext('2d').drawImage(c,left,top,o.width,o.height,0,0,o.width,o.height);return o}
-    const jpeg=c=>c.toDataURL('image/jpeg',0.86);
-    async function addFiles(files){const list=[...files].filter(f=>f.type.startsWith('image/')||/\.(heic|heif)$/i.test(f.name));if(!list.length)return;
+    const {loadImage,toCanvas,autoTrim,jpeg,prepare,isImageFile}=window.PhotoPrep;
+    async function addFiles(files){const list=[...files].filter(isImageFile);if(!list.length)return;
       for(const f of list){if(shots.length>=MAX){say(`Up to ${MAX} images — remove one to add another.`,'err');break}
-        try{const img=await loadImage(f),c=toCanvas(img),t=autoTrim(c);shots.push({name:f.name,original:jpeg(c),trimmed:t?jpeg(t):null,useTrim:Boolean(t)})}catch(e){say(e.message,'err')}}
+        try{shots.push(await prepare(f))}catch(e){say(e.message,'err')}}
       render()}
     function render(){const has=shots.length>0;$('#drop').classList.toggle('hidden',has);$('#shots').classList.toggle('hidden',!has);$('#addMore').classList.toggle('hidden',!has||shots.length>=MAX);$('#shotCount').textContent=`${shots.length} of ${MAX} images`;
       $('#shots').innerHTML=shots.map((s,i)=>`<figure class="shot" data-i="${i}"><div class="pic"><img src="${s.useTrim&&s.trimmed?s.trimmed:s.original}" alt=""></div><div class="bar"><span>${i===0?'Main view':'Detail '+(i+1)}</span>${s.trimmed?`<button type="button" class="${s.useTrim?'on':''}" data-act="trim" title="Toggle trimming of app bars">${s.useTrim?'✓ Trimmed':'Trim bars'}</button>`:''}<button type="button" class="rm" data-act="rm" aria-label="Remove">✕</button></div></figure>`).join('')}
