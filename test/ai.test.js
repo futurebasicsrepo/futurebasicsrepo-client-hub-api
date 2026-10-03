@@ -191,3 +191,18 @@ test('bags get their own measurement template and a one-size run', async () => {
   assert.deepEqual(pack.sizes, ['One size']); assert.equal(pack.pom[3].name, 'Handle drop'); assert.match(pack.labels[0].placement, /Inside body/);
   assert.equal(pomTemplateFor('Sleeping bag liner hoodie').length, 6, 'bag wins when both words appear'); assert.equal(pomTemplateFor('Baggy jeans').map(r => r[1])[4], 'Inseam', '"baggy" is not a bag');
 });
+
+test('a brief-only draft carries the same shape, unpinned callouts and low confidence', async () => {
+  const { draftFromBrief } = await import('../src/ai.js');
+  const { writeFileSync, mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const fixture = join(mkdtempSync(join(tmpdir(), 'fb-ai-')), 'draft.json');
+  writeFileSync(fixture, JSON.stringify({ ...draft, confidence: 'high', callouts: ['Collar', 'Cuff', 'Hem', 'Shoulder', 'Side seam'].map((label, i) => ({ label, spec: 's', note: '', x: 0.1 + i * 0.1, y: 0.5 })) }));
+  const prev = process.env.AI_FIXTURE;
+  try {
+    process.env.AI_FIXTURE = fixture;
+    const { draft: d, model } = await draftFromBrief({ title: 'Box tee', notes: 'heavyweight', brief: 'Objective: merch for a tour', pomTemplate: [], sizes: ['S', 'M', 'L'], sampleSize: 'M' });
+    assert.equal(model, 'fixture');
+    assert.equal(d.callouts.length, 5); assert.ok(d.callouts.every(c => c.x == null && c.y == null), 'no positions without a photo');
+    assert.equal(d.confidence, 'low'); assert.ok(d.pom.length >= 1 && d.bom.length >= 1);
+  } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});

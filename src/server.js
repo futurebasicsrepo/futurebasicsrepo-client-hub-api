@@ -16,7 +16,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
-import { aiEnabled, draftFromPhotos, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -648,16 +648,20 @@ app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,rep
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,projectId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
+  const referencePhotos=(Array.isArray(req.body?.referencePhotos)?req.body.referencePhotos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
+  if(referencePhotos.length){const bad=await unreadablePhoto(referencePhotos);if(bad)return reply.code(400).send({error:`Reference photo ${bad} could not be opened — re-save it as a JPG or PNG`})}
   const client=(await pool.query(`select id from clients where id=$1 and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Active client room not found'});
   const project=projectId?(await pool.query(`select id from projects where id=$1 and client_id=$2
     and archived_at is null and status not in ('archive','archived')`,[projectId,req.params.id])).rows[0]:null;
   if(projectId&&!project)return reply.code(400).send({error:'Select a valid project'});
-  const p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
+  let p=(await pool.query(`insert into products(client_id,project_id,title,shopify_handle,shopify_product_id,description_html,vendor,product_type,template_suffix)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[req.params.id,project?.id||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
   await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
-  return p;
+  if((shopifyProductId||handle)&&shopifyConfigured()){try{p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||null,handle||null))||p}catch(e){app.log.warn({err:e.message,productId:p.id},'linked Shopify product not hydrated at creation')}}
+  const autoDraft=await autoDraftProduct(p,{photos:referencePhotos,actorId:req.auth.sub,reason:'created'}).catch(e=>{app.log.warn({err:e.message,productId:p.id},'auto draft failed');return {ai:'error'}});
+  return {...p,autoDraft};
 });
 app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {stage,riskLevel,owner,targetDate,shopifyProductId,shopifyHandle,descriptionHtml,vendor,productType,templateSuffix}=req.body||{};
@@ -787,7 +791,9 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
     packaging=excluded.packaging,fulfillment=excluded.fulfillment,notes=excluded.notes,status=excluded.status,updated_at=now() returning *`,
     [product.id,objective||null,audience||null,targetQuantity||null,targetBudgetCents||null,deliveryDate||null,decoration||null,packaging||null,fulfillment||null,notes||null,status])).rows[0];
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'brief','Updated product brief']);
-  return brief;
+  const full=(await pool.query('select * from products where id=$1',[product.id])).rows[0];
+  const autoDraft=await autoDraftProduct(full,{actorId:req.auth.sub,reason:'brief'}).catch(e=>{app.log.warn({err:e.message,productId:product.id},'auto draft failed');return {ai:'error'}});
+  return {...brief,autoDraft};
 });
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
@@ -1963,6 +1969,39 @@ async function runPaymentSweep(){
   return n;
 }
 const aiUserMessage=e=>e?.userFacing?e.message:'';
+// The words a product carries without a photo: its description and brief. Empty when neither says anything.
+async function productBriefText(productId,descriptionHtml=''){
+  const b=(await pool.query('select * from product_briefs where product_id=$1',[productId])).rows[0];
+  const parts=[String(descriptionHtml||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()];
+  if(b)parts.push(...[['Objective',b.objective],['Audience',b.audience],['Target quantity',b.target_quantity],['Target budget',b.target_budget_cents?`$${(b.target_budget_cents/100).toFixed(0)}`:''],['Delivery',b.delivery_date],['Decoration',b.decoration],['Packaging',b.packaging],['Fulfilment',b.fulfillment],['Notes',b.notes]].filter(([,v])=>v!=null&&String(v).trim()).map(([k,v])=>`${k}: ${String(v).trim()}`));
+  return parts.filter(Boolean).join('\n').slice(0,6000);
+}
+// Every product gets a tech pack and a first draft without anyone pressing a button: from reference photos when the
+// console gives them, from the linked Shopify image, or from the brief alone. Never re-drafts a pack the assistant
+// already worked on, and never touches a client's own draft.
+async function autoDraftProduct(product,{photos=[],actorId=null,reason='created'}={}){
+  if(!aiEnabled())return {ai:'off'};
+  let pack=(await pool.query('select * from tech_packs where product_id=$1',[product.id])).rows[0];
+  if(pack&&(pack.ai_status||pack.initiated_by==='client'||pack.published_at))return {ai:'kept',techPackId:pack.id};
+  let data=pack?normalizeTechPack(pack.data):null;
+  const hasImage=data?.sketches.some(s=>s.image);
+  let images=photos.filter(x=>isInlineImage(x)).slice(0,4);
+  if(!hasImage&&!images.length&&product.shopify_image_url){const buf=await productImageBuffer(product.shopify_image_url);if(buf){try{const jpg=await sharp(buf).rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true}).jpeg({quality:86}).toBuffer();images=[`data:image/jpeg;base64,${jpg.toString('base64')}`]}catch{}}}
+  const briefText=await productBriefText(product.id,product.description_html);
+  if(!hasImage&&!images.length&&!briefText)return {ai:'nothing-to-draft-from',techPackId:pack?.id||null};
+  const sketches=images.map((image,i)=>({id:`photo-${Date.now().toString(36)}-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
+  if(!pack){
+    const seed=normalizeTechPack({...seedTechPack({product}),sketches});
+    pack=(await pool.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source,billing) values($1,$2,'draft',$3,$4,'brand',$5,'admin') returning *`,[product.id,product.client_id,seed,actorId,images.length?'photo':'brief'])).rows[0];
+  }else if(!hasImage&&sketches.length){
+    data.sketches=[...sketches,...data.sketches].slice(0,12);
+    pack=(await pool.query(`update tech_packs set data=$2,billing=coalesce(billing,'admin'),updated_at=now() where id=$1 returning *`,[pack.id,data])).rows[0];
+  }else if(!pack.billing)await pool.query(`update tech_packs set billing='admin' where id=$1`,[pack.id]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
+    [product.client_id,product.id,actorId,`Assistant drafting the tech pack for ${product.title} from ${images.length||hasImage?'the photo':'the brief'}`,{techPackId:pack.id,auto:true,reason}]).catch(()=>{});
+  await startAiRun(pack);
+  return {ai:'pending',techPackId:pack.id,from:images.length||hasImage?'photo':'brief'};
+}
 async function enrichPhotoDraft(packId,{force=false}={}){
   const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+1,ai_error=null
     where id=$1 and (ai_status='pending' or $2) returning *`,[packId,force])).rows[0];
@@ -1972,33 +2011,44 @@ async function enrichPhotoDraft(packId,{force=false}={}){
   try{
     const data=normalizeTechPack(row.data);
     const original=data.sketches.find(s=>s.image)?.image;
-    if(!original)throw new NoProductError('There is no photo on this draft yet — add one under Callouts and run the assistant again.');
-    // 0. where is the product?
-    let where;try{where=await locateProduct(original)}catch(e){if(/unsupported image|Input buffer|corrupt|premature|invalid/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');throw e}
-    if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
-    let photo=original,crop=null;
-    try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
-    const working=structuredClone(data);
-    if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
-      if(crop.coverage<0.85&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
-    const photos=working.sketches.map(s=>s.image).filter(Boolean);
-    const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
-    const notes=String(row.description_html||'').replace(/<[^>]+>/g,'');
-    // 1. draft against the current template, then re-seed for the classified product type so the measurements fit
-    const first=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
-    const product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
-    let seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;
-    let draft=first.draft;
-    if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){
-      const second=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});
-      draft=second.draft;
+    const briefText=await productBriefText(row.product_id,row.description_html);
+    if(!original&&!briefText)throw new NoProductError('There is no photo or brief on this product yet — add a photo under Callouts or write the brief, then run the assistant again.');
+    let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null;
+    if(!original){
+      // no photo: draft from the brief and category norms; callouts stay unpinned until a sketch or photo lands
+      const working=structuredClone(data);if(!working.sketches.length)working.sketches.push({id:`view-${Date.now().toString(36)}`,view:'front',label:'Front view — add a sketch or photo',image:'',garmentWidthIn:null,callouts:[]});
+      const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
+      first=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefText,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
+      product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
+      seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;draft=first.draft;
+      if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){const second=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefText,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});draft=second.draft}
+      if(draftLooksEmpty(draft))throw new NoProductError('The assistant could not draft enough from this brief. Add a photo, or more detail to the brief, and run it again.');
+      draft.pomResearch={skipped:'no photo to research from'};
+    }else{
+      try{where=await locateProduct(original)}catch(e){if(/unsupported image|Input buffer|corrupt|premature|invalid/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');throw e}
+      if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
+      try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
+      const working=structuredClone(data);
+      if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
+        if(crop.coverage<0.85&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
+      photos=working.sketches.map(s=>s.image).filter(Boolean);
+      const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
+      const notes=String(row.description_html||'').replace(/<[^>]+>/g,'');
+      // 1. draft against the current template, then re-seed for the classified product type so the measurements fit
+      first=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
+      product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
+      seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;
+      draft=first.draft;
+      if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){
+        const second=await draftFromPhotos({photos,title:row.title,notes,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});
+        draft=second.draft;
+      }
+      if(draftLooksEmpty(draft))throw new NoProductError(`The assistant could not read enough detail from this photo${where.product?` (it saw: ${where.product})`:''}. Try a larger, sharper picture of the product on its own.`);
+      // 1b. measurements the photo could not give: cross-reference the same or comparable styles online
+      try{research=await completeMeasurements(draft,{photo,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary},sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize})}
+      catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
     }
-    if(draftLooksEmpty(draft))throw new NoProductError(`The assistant could not read enough detail from this photo${where.product?` (it saw: ${where.product})`:''}. Try a larger, sharper picture of the product on its own.`);
-    // 1b. measurements the photo could not give: cross-reference the same or comparable styles online
-    let research=null;
-    try{research=await completeMeasurements(draft,{photo,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary},sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize})}
-    catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
-    const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize,model:first.model}));
+    const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
     const db=await pool.connect();let merged;
@@ -2014,7 +2064,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from the photo (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where.product,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
     app.log.warn({err:e.message,packId,attempt:claimed.ai_attempts},'photo draft enrichment failed');
