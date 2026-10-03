@@ -32,6 +32,9 @@ export async function migrate() {
     alter table clients add column if not exists allowed_emails text[] not null default '{}';
     alter table clients add column if not exists activated_at timestamptz;
     alter table clients add column if not exists welcome_sent_at timestamptz;
+    alter table clients add column if not exists tech_pack_comped boolean not null default false;
+    alter table clients add column if not exists membership_active_until timestamptz;
+    alter table clients add column if not exists membership_checked_at timestamptz;
     update clients set archived_at=coalesce(archived_at,now()),archive_previous_status=coalesce(archive_previous_status,'active'),status='archived'
       where status in ('archive','archived');
     create table if not exists users (
@@ -434,6 +437,11 @@ export async function migrate() {
     alter table tech_packs add column if not exists translations jsonb not null default '{}';
     alter table tech_packs add column if not exists ai_attempts int not null default 0;
     alter table tech_packs add column if not exists ai_started_at timestamptz;
+    alter table tech_packs add column if not exists billing text;
+    alter table tech_packs add column if not exists pay_draft_order_id text;
+    alter table tech_packs add column if not exists pay_invoice_url text;
+    alter table tech_packs add column if not exists pay_order_id text;
+    alter table tech_packs add column if not exists paid_at timestamptz;
     create table if not exists tech_pack_shares (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,

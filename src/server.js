@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -825,13 +825,14 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};
+  const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};
   const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
+  const comped=techPackComped===undefined||techPackComped===null||techPackComped===''?null:(techPackComped===true||techPackComped==='true');
   return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
     email_domains=coalesce($3,email_domains),contact_name=coalesce($4,contact_name),contact_email=coalesce($5,contact_email),
     contact_phone=coalesce($6,contact_phone),website_url=coalesce($7,website_url),notes=coalesce($8,notes),
-    shopify_customer_id=coalesce($9,shopify_customer_id),allowed_emails=coalesce($11,allowed_emails) where id=$10 returning *`,
-    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id,allowedEmails===undefined?null:normalizeEmails(allowedEmails)])).rows[0];
+    shopify_customer_id=coalesce($9,shopify_customer_id),allowed_emails=coalesce($11,allowed_emails),tech_pack_comped=coalesce($12,tech_pack_comped) where id=$10 returning *`,
+    [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id,allowedEmails===undefined?null:normalizeEmails(allowedEmails),comped])).rows[0];
 });
 // Turn a website lead into an active client room: grant sign-in access (whole domain for company
 // mailboxes, the individual address for personal ones), open their intake projects, and email them the way in.
@@ -1496,7 +1497,7 @@ async function loadAdminTechPack(productId){
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
 }
@@ -1666,7 +1667,7 @@ async function loadClientDraft(productId,clientId){
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[productId,clientId])).rows[0]||null;
 }
 const draftView=row=>({product:{id:row.product_id,title:row.title,product_type:row.product_type,client_id:row.client_id,project_id:row.project_id,client_name:row.client_name,client_slug:row.client_slug,project_name:row.project_name},
-  techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl});
+  techPack:techPackPayload(row),completeness:techPackCompleteness(normalizeTechPack(row.data)),editable:row.status==='draft',clientHubUrl,pricing:row.ai_status==='locked'?techPackPricing():null});
 // Creates the product, its milestones and a seeded client draft inside the caller's transaction. `sketches` lets a
 // reference photo (a screenshot from Instagram or Pinterest, say) become the first view of the pack.
 async function createClientDraft(db,{clientId,clientName,project,title,productType,description,userId,sketches=[],source='hub'}){
@@ -1694,6 +1695,93 @@ const issueClientToken=(user,client,email)=>new SignJWT({sub:user.id,clientId:cl
 // from the console or the client (re-run). Steps: locate the product and crop to it → draft → re-seed for the classified
 // product type → merge with whatever the client has typed meanwhile (their edits win, nothing is discarded).
 const AI_MAX_ATTEMPTS=3,AI_STALE_MINUTES=4;
+// ---- Tech pack billing: the first photo draft is free; after that a pack is paid for singly, or covered by the studio
+// membership, a paid sample deposit, or a comped room. Payment runs through Shopify (draft-order checkout for a single
+// pack, the membership product's selling plan for the subscription). Billing is on when Shopify can take payment, or
+// forced with TECH_PACK_BILLING=on for tests; off, every draft runs free as before.
+const TECH_PACK_PRICE_CENTS=Number(process.env.TECH_PACK_PRICE_CENTS||4800),MEMBERSHIP_PRICE_CENTS=Number(process.env.MEMBERSHIP_PRICE_CENTS||10000);
+const MEMBERSHIP_URL=process.env.MEMBERSHIP_CHECKOUT_URL||'',MEMBERSHIP_PRODUCT_ID=process.env.SHOPIFY_MEMBERSHIP_PRODUCT_ID||'',MEMBERSHIP_GRACE_DAYS=35;
+const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
+const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
+// A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
+// against Shopify at most hourly per client; the result is cached on the client row.
+async function membershipActive(client){
+  if(client.membership_active_until&&new Date(client.membership_active_until)>new Date())return true;
+  if(!client.shopify_customer_id||!shopifyConfigured()||!(MEMBERSHIP_PRODUCT_ID||MEMBERSHIP_URL))return false;
+  if(client.membership_checked_at&&new Date(client.membership_checked_at)>new Date(Date.now()-3600e3))return false;
+  let until=null;
+  try{
+    const data=await shopifyGraphql(CUSTOMER_MEMBERSHIP_QUERY,{id:client.shopify_customer_id,query:'financial_status:paid'});
+    const isMembership=li=>(MEMBERSHIP_PRODUCT_ID&&li.product?.id===MEMBERSHIP_PRODUCT_ID)||/membership/i.test(`${li.title||''} ${li.sellingPlan?.name||''}`);
+    const latest=(data?.customer?.orders?.nodes||[]).filter(o=>(o.lineItems?.nodes||[]).some(isMembership)).map(o=>new Date(o.createdAt)).sort((a,b)=>b-a)[0];
+    if(latest)until=new Date(latest.getTime()+MEMBERSHIP_GRACE_DAYS*864e5);
+  }catch(e){app.log.warn({err:e.message,clientId:client.id},'membership check failed')}
+  await pool.query('update clients set membership_checked_at=now(),membership_active_until=$2 where id=$1',[client.id,until]).catch(()=>{});
+  return Boolean(until&&until>new Date());
+}
+// Why this client may run the assistant on this pack: 'free' (first photo draft, or billing off), 'comped', 'client'
+// (a paid invoice in the room), 'member', or 'locked' (the pack must be paid for).
+async function techPackEntitlement(clientId,packId){
+  if(!billingOn())return 'free';
+  const client=(await pool.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return 'locked';
+  if(client.tech_pack_comped)return 'comped';
+  const prior=(await pool.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','failed','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
+  if(prior===0)return 'free';
+  if((await pool.query(`select 1 from invoices where client_id=$1 and status='paid' limit 1`,[clientId])).rowCount)return 'client';
+  if(await membershipActive(client))return 'member';
+  return 'locked';
+}
+// Starts the assistant on a new photo draft when the client is entitled, otherwise parks the pack as 'locked' with the
+// price list. Called inside the creating transaction; returns the ai state for the response.
+async function gateNewPhotoDraft(db,{clientId,packId}){
+  const ent=await techPackEntitlement(clientId,packId);
+  if(ent==='locked'){await db.query(`update tech_packs set ai_status='locked' where id=$1`,[packId]);return {ai:'locked',billing:null}}
+  await db.query(`update tech_packs set ai_status='pending',ai_started_at=now(),billing=$2 where id=$1`,[packId,ent]);
+  return {ai:'pending',billing:ent};
+}
+// Shopify checkout for a single pack: one draft order per pack, reused on later clicks.
+async function techPackCheckout(row,{email}){
+  if(row.pay_invoice_url&&row.pay_draft_order_id)return {checkoutUrl:row.pay_invoice_url,draftOrderId:row.pay_draft_order_id};
+  if(!shopifyConfigured()){
+    if(process.env.DEV_BYPASS_AUTH==='true')return {checkoutUrl:null,dev:true};
+    throw Object.assign(new Error('Payments are not set up yet — message Future Basics and we will unlock the pack for you'),{statusCode:503});
+  }
+  const client=(await pool.query('select shopify_customer_id,slug from clients where id=$1',[row.client_id])).rows[0];
+  const input={lineItems:[{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,priceOverride:{amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'}}],
+    customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
+    note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
+  const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
+  await pool.query(`update tech_packs set pay_draft_order_id=$2,pay_invoice_url=$3 where id=$1`,[row.id,draft.id,draft.invoiceUrl]);
+  return {checkoutUrl:draft.invoiceUrl,draftOrderId:draft.id};
+}
+// Has the single-pack draft order been paid? Marks the pack paid and returns true.
+async function techPackPaymentLanded(row){
+  if(row.paid_at)return true;
+  if(!row.pay_draft_order_id||!shopifyConfigured())return false;
+  const order=await pollDraftOrderPaid(row.pay_draft_order_id);
+  if(!order||!/^PAID$/i.test(order.displayFinancialStatus||''))return false;
+  await pool.query(`update tech_packs set paid_at=now(),pay_order_id=$2,billing='single' where id=$1 and paid_at is null`,[row.id,order.id]);
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
+  return true;
+}
+// Unlocks a locked pack when it has been paid for or the client has become entitled; starts the assistant. Returns the ai state.
+async function unlockTechPack(row){
+  if(row.ai_status!=='locked')return row.ai_status||null;
+  let billing=await techPackEntitlement(row.client_id,row.id);
+  if(billing==='locked'&&await techPackPaymentLanded(row))billing='single';
+  if(billing==='locked')return 'locked';
+  await pool.query(`update tech_packs set billing=$2,ai_status='pending',ai_error=null where id=$1`,[row.id,billing]);
+  setImmediate(()=>enrichPhotoDraft(row.id,{force:true}).catch(e=>app.log.warn({err:e.message},'unlocked run failed')));
+  return 'pending';
+}
+// Every few minutes: locked packs with a checkout started in the last two weeks are checked for payment, so a client
+// who paid and closed the tab still gets their draft.
+async function runPaymentSweep(){
+  if(!shopifyConfigured())return 0;
+  const rows=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.ai_status='locked' and tp.pay_draft_order_id is not null and tp.paid_at is null and tp.created_at>now()-interval '14 days' order by tp.created_at desc limit 50`)).rows;
+  let n=0;for(const r of rows){try{if(await techPackPaymentLanded(r)){await unlockTechPack({...r});n++}}catch(e){app.log.warn({err:e.message,packId:r.id},'payment sweep failed')}}
+  return n;
+}
 const aiUserMessage=e=>e?.userFacing?e.message:'';
 async function enrichPhotoDraft(packId,{force=false}={}){
   const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+1,ai_error=null
@@ -1795,6 +1883,7 @@ app.post('/v1/admin/products/:id/tech-pack/ai',{preHandler:[authenticate,adminOn
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
   if(ctx.techPack.ai_status==='pending'&&new Date(ctx.techPack.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already running on this pack'});
   if(!normalizeTechPack(ctx.techPack.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo or sketch first — the assistant reads the first view'});
+  if(ctx.techPack.ai_status==='locked'||!ctx.techPack.billing)await pool.query(`update tech_packs set billing='admin' where id=$1`,[ctx.techPack.id]);
   await startAiRun(ctx.techPack);
   return {aiStatus:'pending'};
 });
@@ -1806,8 +1895,31 @@ app.post('/v1/products/:id/tech-pack/draft/ai',{preHandler:authenticate},async(r
   if(row.ai_status==='pending'&&new Date(row.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already reading your photo'});
   if((row.ai_attempts||0)>=AI_MAX_ATTEMPTS)return reply.code(429).send({error:'The assistant has tried three times — submit the draft and Future Basics will finish it with you'});
   if(!normalizeTechPack(row.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo first (Callouts → View settings → Replace image)'});
+  if(row.ai_status==='locked'){const st=await unlockTechPack(row);if(st==='locked')return reply.code(402).send({error:'This tech pack is waiting for payment',aiStatus:'locked',pricing:techPackPricing(),checkoutUrl:row.pay_invoice_url||null});return {aiStatus:st}}
+  if(row.ai_status==null&&billingOn()){const ent=await techPackEntitlement(row.client_id,row.id);if(ent==='locked'){await pool.query(`update tech_packs set ai_status='locked' where id=$1`,[row.id]);return reply.code(402).send({error:'This tech pack is waiting for payment',aiStatus:'locked',pricing:techPackPricing(),checkoutUrl:null})}await pool.query(`update tech_packs set billing=$2 where id=$1`,[row.id,ent])}
   await startAiRun(row);
   return {aiStatus:'pending'};
+});
+// Single-pack payment: opens (or reuses) the Shopify checkout for this pack.
+app.post('/v1/products/:id/tech-pack/checkout',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.ai_status!=='locked')return reply.code(409).send({error:'This tech pack does not need payment',aiStatus:row.ai_status||null});
+  const out=await techPackCheckout(row,{email:req.auth.email});
+  return {...out,amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'};
+});
+// After paying (or joining): re-check and start the assistant.
+app.post('/v1/products/:id/tech-pack/unlock',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  const st=await unlockTechPack(row);
+  return {aiStatus:st,pricing:st==='locked'?techPackPricing():null,checkoutUrl:st==='locked'?row.pay_invoice_url||null:null};
+});
+// Test rig only: marks a pack paid without Shopify.
+app.post('/v1/dev/pay/:packId',async(req,reply)=>{
+  if(process.env.DEV_BYPASS_AUTH!=='true')return reply.code(404).send({error:'Not found'});
+  const r=await pool.query(`update tech_packs set paid_at=now(),pay_order_id='dev',billing='single' where id=$1 and ai_status='locked' returning id`,[req.params.packId]);
+  return {paid:r.rowCount===1};
 });
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
@@ -1842,17 +1954,17 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
       on conflict(client_id,name) do update set status='active',updated_at=now() returning *`,[client.id])).rows[0];
     const {product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
-    if(aiEnabled())await db.query(`update tech_packs set ai_status='pending',ai_started_at=now() where id=$1`,[pack.id]);
+    const ai=aiEnabled()?(await gateNewPhotoDraft(db,{clientId:client.id,packId:pack.id})).ai:null;
     await db.query('commit');
-    if(aiEnabled())setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
+    if(ai==='pending')setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
     let token=null;
     if(fresh)token=await issueClientToken(user,client,email);
     else{const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'start: code email failed'))}
     const link=`${clientHubUrl}/tech-packs/${product.id}`;
     sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
-      `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
-    return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:aiEnabled()?'pending':'off'});
+      `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>${ai==='locked'?`Your photo is saved on a new tech pack draft for <strong>${emailEscape(product.title)}</strong>. Your first pack was on us; open this one to have the assistant draft it for $${(TECH_PACK_PRICE_CENTS/100).toFixed(0)}${MEMBERSHIP_URL?` or join the studio membership`:''} — or fill it in yourself, which is always free.`:`We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.`}</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
+    return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:ai||'off'});
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 });
 // Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
@@ -1874,11 +1986,10 @@ async function startHubDraft(req,reply,{project,newProjectName}){
       project.client_name=c?.name||'';
     }
     const {product,pack}=await createClientDraft(client,{clientId:req.auth.clientId,clientName:project.client_name,project,title,productType,description,userId:req.auth.sub,sketches,source:photos.length?'photo':'hub'});
-    const ai=photos.length&&aiEnabled();
-    if(ai)await client.query(`update tech_packs set ai_status='pending',ai_started_at=now() where id=$1`,[pack.id]);
+    const gate=photos.length&&aiEnabled()?await gateNewPhotoDraft(client,{clientId:req.auth.clientId,packId:pack.id}):{ai:null,billing:null},ai=gate.ai;
     await client.query('commit');
-    if(ai)setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
-    return reply.code(201).send({...draftView({...pack,ai_status:ai?'pending':null,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}),ai:ai?'pending':'off',project:{id:project.id,name:project.name}});
+    if(ai==='pending')setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
+    return reply.code(201).send({...draftView({...pack,ai_status:ai,billing:gate.billing,title:product.title,product_type:product.product_type,project_id:project.id,client_name:project.client_name,project_name:project.name}),ai:ai||'off',project:{id:project.id,name:project.name}});
   }catch(e){await client.query('rollback');throw e}finally{client.release()}
 }
 app.post('/v1/projects/:id/tech-packs',{preHandler:authenticate,bodyLimit:16_000_000},async(req,reply)=>{
@@ -2392,5 +2503,6 @@ setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer
 if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();
 setTimeout(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 15 * 1000).unref();
 setInterval(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 5 * 60 * 1000).unref();
+setInterval(() => runPaymentSweep().catch(error => app.log.error({ error }, 'Tech pack payment sweep failed')), 5 * 60 * 1000).unref();
 runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

@@ -146,3 +146,12 @@ export const ORDER_CANCEL = `mutation CancelOfferOrder($orderId: ID!, $refund: B
     orderCancelUserErrors { field message }
   }
 }`;
+
+// --- Studio membership: the client's recent paid orders, to see whether a membership renewal is current ---
+export const CUSTOMER_MEMBERSHIP_QUERY = `query ClientMembership($id: ID!, $query: String!) {
+  customer(id: $id) {
+    orders(first: 10, sortKey: CREATED_AT, reverse: true, query: $query) {
+      nodes { id name createdAt displayFinancialStatus lineItems(first: 20) { nodes { title product { id } sellingPlan { name } } } }
+    }
+  }
+}`;
