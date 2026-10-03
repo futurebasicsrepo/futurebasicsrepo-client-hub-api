@@ -95,7 +95,7 @@
     const MAX=4;
     async function api(p,body){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;throw e}return d}
     const {loadImage,toCanvas,autoTrim,jpeg,prepare,isImageFile}=window.PhotoPrep;
-    async function addFiles(files){const list=[...files].filter(isImageFile);if(!list.length)return;
+    async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say('That file is not an image — add a screenshot or photo (JPG, PNG or HEIC).','err');if(!list.length)return;
       for(const f of list){if(shots.length>=MAX){say(`Up to ${MAX} images — remove one to add another.`,'err');break}
         try{shots.push(await prepare(f))}catch(e){say(e.message,'err')}}
       render()}
@@ -114,7 +114,7 @@
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original)});
         if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Reading your photo…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
-      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
+      }catch(err){say(/fetch|network|load failed/i.test(err.message||'')?'Could not reach Future Basics — check your connection and try again. If your photos are very large, remove one.':err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const btn=e.target.querySelector('button');btn.disabled=true;
       try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href=`/tech-packs/${pending.product.id}`}
       catch(err){m.textContent=err.message;m.className='msg err';btn.disabled=false}});

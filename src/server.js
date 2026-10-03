@@ -8,6 +8,7 @@ import { unlink } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
+import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -1605,6 +1606,7 @@ app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]
   return {share:shareRow(row)};
 });
 app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=>{
+  if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
   const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
     from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
@@ -1721,20 +1723,21 @@ async function membershipActive(client){
 }
 // Why this client may run the assistant on this pack: 'free' (first photo draft, or billing off), 'comped', 'client'
 // (a paid invoice in the room), 'member', or 'locked' (the pack must be paid for).
-async function techPackEntitlement(clientId,packId){
+async function techPackEntitlement(clientId,packId,q=pool){
   if(!billingOn())return 'free';
-  const client=(await pool.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return 'locked';
+  const client=(await q.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return 'free'; // a room being created in this very transaction: its first pack
   if(client.tech_pack_comped)return 'comped';
-  const prior=(await pool.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','failed','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
+  // a failed read does not use up the free pack — the client is asked for a better photo, not for money
+  const prior=(await q.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
   if(prior===0)return 'free';
-  if((await pool.query(`select 1 from invoices where client_id=$1 and status='paid' limit 1`,[clientId])).rowCount)return 'client';
+  if((await q.query(`select 1 from invoices where client_id=$1 and status='paid' limit 1`,[clientId])).rowCount)return 'client';
   if(await membershipActive(client))return 'member';
   return 'locked';
 }
 // Starts the assistant on a new photo draft when the client is entitled, otherwise parks the pack as 'locked' with the
 // price list. Called inside the creating transaction; returns the ai state for the response.
 async function gateNewPhotoDraft(db,{clientId,packId}){
-  const ent=await techPackEntitlement(clientId,packId);
+  const ent=await techPackEntitlement(clientId,packId,db);
   if(ent==='locked'){await db.query(`update tech_packs set ai_status='locked' where id=$1`,[packId]);return {ai:'locked',billing:null}}
   await db.query(`update tech_packs set ai_status='pending',ai_started_at=now(),billing=$2 where id=$1`,[packId,ent]);
   return {ai:'pending',billing:ent};
@@ -1751,7 +1754,8 @@ async function techPackCheckout(row,{email}){
     customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
     note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
-  await pool.query(`update tech_packs set pay_draft_order_id=$2,pay_invoice_url=$3 where id=$1`,[row.id,draft.id,draft.invoiceUrl]);
+  const saved=(await pool.query(`update tech_packs set pay_draft_order_id=$2,pay_invoice_url=$3 where id=$1 and pay_draft_order_id is null returning pay_draft_order_id,pay_invoice_url`,[row.id,draft.id,draft.invoiceUrl])).rows[0];
+  if(!saved){const cur=(await pool.query('select pay_draft_order_id,pay_invoice_url from tech_packs where id=$1',[row.id])).rows[0];return {checkoutUrl:cur.pay_invoice_url,draftOrderId:cur.pay_draft_order_id}} // a parallel click got there first
   return {checkoutUrl:draft.invoiceUrl,draftOrderId:draft.id};
 }
 // Has the single-pack draft order been paid? Marks the pack paid and returns true.
@@ -1770,16 +1774,16 @@ async function unlockTechPack(row){
   let billing=await techPackEntitlement(row.client_id,row.id);
   if(billing==='locked'&&await techPackPaymentLanded(row))billing='single';
   if(billing==='locked')return 'locked';
-  await pool.query(`update tech_packs set billing=$2,ai_status='pending',ai_error=null where id=$1`,[row.id,billing]);
-  setImmediate(()=>enrichPhotoDraft(row.id,{force:true}).catch(e=>app.log.warn({err:e.message},'unlocked run failed')));
+  const won=(await pool.query(`update tech_packs set billing=$2,ai_status='pending',ai_error=null where id=$1 and ai_status='locked' returning id`,[row.id,billing])).rowCount===1;
+  if(won)setImmediate(()=>enrichPhotoDraft(row.id,{force:true}).catch(e=>app.log.warn({err:e.message},'unlocked run failed')));
   return 'pending';
 }
 // Every few minutes: locked packs with a checkout started in the last two weeks are checked for payment, so a client
 // who paid and closed the tab still gets their draft.
 async function runPaymentSweep(){
-  if(!shopifyConfigured())return 0;
-  const rows=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.ai_status='locked' and tp.pay_draft_order_id is not null and tp.paid_at is null and tp.created_at>now()-interval '14 days' order by tp.created_at desc limit 50`)).rows;
-  let n=0;for(const r of rows){try{if(await techPackPaymentLanded(r)){await unlockTechPack({...r});n++}}catch(e){app.log.warn({err:e.message,packId:r.id},'payment sweep failed')}}
+  const rows=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.ai_status='locked' and tp.status='draft' and tp.created_at>now()-interval '14 days' order by tp.created_at desc limit 50`)).rows;
+  let n=0;for(const r of rows){try{if(await unlockTechPack(r)==='pending')n++}catch(e){app.log.warn({err:e.message,packId:r.id},'locked pack sweep failed')}}
+  if(n)app.log.info({unlocked:n},'locked pack sweep');
   return n;
 }
 const aiUserMessage=e=>e?.userFacing?e.message:'';
@@ -1794,7 +1798,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     const original=data.sketches.find(s=>s.image)?.image;
     if(!original)throw new NoProductError('There is no photo on this draft yet — add one under Callouts and run the assistant again.');
     // 0. where is the product?
-    const where=await locateProduct(original);
+    let where;try{where=await locateProduct(original)}catch(e){if(/unsupported image|Input buffer|corrupt|premature|invalid/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');throw e}
     if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
     let photo=original,crop=null;
     try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
@@ -1904,6 +1908,7 @@ app.post('/v1/products/:id/tech-pack/draft/ai',{preHandler:authenticate},async(r
 app.post('/v1/products/:id/tech-pack/checkout',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics — we will finish it with you',aiStatus:row.ai_status||null});
   if(row.ai_status!=='locked')return reply.code(409).send({error:'This tech pack does not need payment',aiStatus:row.ai_status||null});
   const out=await techPackCheckout(row,{email:req.auth.email});
   return {...out,amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'};
@@ -1912,6 +1917,7 @@ app.post('/v1/products/:id/tech-pack/checkout',{preHandler:authenticate},async(r
 app.post('/v1/products/:id/tech-pack/unlock',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics',aiStatus:row.ai_status||null});
   const st=await unlockTechPack(row);
   return {aiStatus:st,pricing:st==='locked'?techPackPricing():null,checkoutUrl:st==='locked'?row.pay_invoice_url||null:null};
 });
@@ -1930,11 +1936,13 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!/^\S+@\S+\.\S+$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
   if(!title)return reply.code(400).send({error:'Give the product a name'});
   if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
+  {const badPhoto=await unreadablePhoto(photos);if(badPhoto)return reply.code(400).send({error:`Photo ${badPhoto} could not be opened — re-save it as a JPG or PNG and try again`})}
   if(emailDomain(email)==='thefuturebasics.com')return reply.code(400).send({error:'Use the work console to start a tech pack for a client'});
   const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
   const db=await pool.connect();
   try{
     await db.query('begin');
+    await db.query('select pg_advisory_xact_lock(hashtext($1))',[email]); // a double-tap sends two of these at once: the second waits and finds the room the first made
     let client=await clientForEmail(email),fresh=false;
     if(!client){
       const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
@@ -1970,10 +1978,17 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
 // Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
 // without photos they get the blank template. `project` is an existing project row or null to use/create "Product development".
 const photosFromBody=b=>(Array.isArray(b?.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
+// A data URL with an image prefix can still hold bytes no decoder can open (a renamed file, a truncated upload).
+async function unreadablePhoto(photos){
+  for(const [i,p] of photos.entries()){const m=/^data:image\/[a-z+]+;base64,(.+)$/i.exec(p);if(!m)return i+1;
+    try{const meta=await sharp(Buffer.from(m[1],'base64')).metadata();if(!meta.width||!meta.height)return i+1}catch{return i+1}}
+  return 0;
+}
 async function startHubDraft(req,reply,{project,newProjectName}){
   const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
   const photos=photosFromBody(req.body);
   if(!title)return reply.code(400).send({error:'Give the product a name'});
+  {const badPhoto=await unreadablePhoto(photos);if(badPhoto)return reply.code(400).send({error:`Photo ${badPhoto} could not be opened — re-save it as a JPG or PNG and try again`})}
   const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
   const client=await pool.connect();
   try{
