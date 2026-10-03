@@ -1863,20 +1863,22 @@ const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'
 // A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
 // against Shopify at most hourly per client; the result is cached on the client row.
 // A self-serve room has no Shopify customer until the person buys something. Link it by the room's exact email so a membership bought on the storefront is recognised; the id is written only when the room has none, so a hand-set link is never replaced.
-async function linkShopifyCustomer(client,knownId=null){
+async function linkShopifyCustomer(client,knownId=null,q=pool){
   if(!client)return null;if(client.shopify_customer_id)return client.shopify_customer_id;if(!shopifyConfigured())return null;
   let id=knownId||null;
   if(!id){const emails=[client.contact_email,...(client.allowed_emails||[])].map(e=>String(e||'').trim().toLowerCase()).filter(Boolean);
     for(const email of [...new Set(emails)].slice(0,5)){try{const data=await shopifyGraphql(CUSTOMER_BY_EMAIL_QUERY,{query:`email:${JSON.stringify(email)}`});const hit=exactCustomerMatch(data?.customers?.nodes,[email]);if(hit){id=hit.id;break}}catch(e){app.log.warn({err:e.message,clientId:client.id},'customer lookup failed');break}}}
   if(!id)return null;
-  const r=await pool.query('update clients set shopify_customer_id=$2 where id=$1 and shopify_customer_id is null returning shopify_customer_id',[client.id,id]).catch(()=>({rows:[]}));
+  const r=await q.query('update clients set shopify_customer_id=$2 where id=$1 and shopify_customer_id is null returning shopify_customer_id',[client.id,id]).catch(()=>({rows:[]}));
   client.shopify_customer_id=r.rows[0]?.shopify_customer_id||client.shopify_customer_id||id;return client.shopify_customer_id;
 }
-async function membershipActive(client){
+// `q` is the caller's connection: inside a transaction that already holds the client row, a write from the pool would wait on
+// that row forever (the transaction cannot commit while it awaits the write) — the hang seen on /start in production.
+async function membershipActive(client,q=pool){
   if(client.membership_active_until&&new Date(client.membership_active_until)>new Date())return true;
   if(!shopifyConfigured()||!(MEMBERSHIP_PRODUCT_ID||MEMBERSHIP_URL))return false;
   if(client.membership_checked_at&&new Date(client.membership_checked_at)>new Date(Date.now()-3600e3))return false;
-  if(!client.shopify_customer_id&&!(await linkShopifyCustomer(client))){await pool.query('update clients set membership_checked_at=now() where id=$1',[client.id]).catch(()=>{});return false}
+  if(!client.shopify_customer_id&&!(await linkShopifyCustomer(client,null,q))){await q.query('update clients set membership_checked_at=now() where id=$1',[client.id]).catch(()=>{});return false}
   let until=null;
   try{
     const data=await shopifyGraphql(CUSTOMER_MEMBERSHIP_QUERY,{id:client.shopify_customer_id,query:'financial_status:paid'});
@@ -1884,7 +1886,7 @@ async function membershipActive(client){
     const latest=(data?.customer?.orders?.nodes||[]).filter(o=>(o.lineItems?.nodes||[]).some(isMembership)).map(o=>new Date(o.createdAt)).sort((a,b)=>b-a)[0];
     if(latest)until=new Date(latest.getTime()+MEMBERSHIP_GRACE_DAYS*864e5);
   }catch(e){app.log.warn({err:e.message,clientId:client.id},'membership check failed')}
-  await pool.query('update clients set membership_checked_at=now(),membership_active_until=$2 where id=$1',[client.id,until]).catch(()=>{});
+  await q.query('update clients set membership_checked_at=now(),membership_active_until=$2 where id=$1',[client.id,until]).catch(()=>{});
   return Boolean(until&&until>new Date());
 }
 // Why this client may run the assistant on this pack: 'free' (first photo draft, or billing off), 'comped', 'client'
@@ -1897,7 +1899,7 @@ async function techPackEntitlement(clientId,packId,q=pool){
   const prior=(await q.query(`select count(*)::int n from tech_packs where client_id=$1 and id<>$2 and (ai_status in ('pending','done','skipped') or paid_at is not null)`,[clientId,packId])).rows[0].n;
   if(prior===0)return 'free';
   if((await q.query(`select 1 from invoices where client_id=$1 and status='paid' limit 1`,[clientId])).rowCount)return 'client';
-  if(await membershipActive(client))return 'member';
+  if(await membershipActive(client,q))return 'member';
   return 'locked';
 }
 // Starts the assistant on a new photo draft when the client is entitled, otherwise parks the pack as 'locked' with the
