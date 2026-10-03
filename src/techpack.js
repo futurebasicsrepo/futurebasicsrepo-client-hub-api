@@ -323,7 +323,8 @@ export function mergeClientEdits(orig, current, drafted) {
     const replaced = cs0.image !== os0?.image;
     if (replaced) { ds0.image = cs0.image; ds0.callouts = ds0.callouts.map(k => ({ ...k, x: null, y: null, photo: '' })); }
     if (cs0.label !== os0?.label) ds0.label = cs0.label; if (cs0.view !== os0?.view) ds0.view = cs0.view; if (cs0.garmentWidthIn !== os0?.garmentWidthIn) ds0.garmentWidthIn = cs0.garmentWidthIn;
-    const mine = cs0.callouts.filter(k => k.label || k.spec || k.note || k.x != null);
+    // a pin at exactly 0,0 with no crop is the old corner-stacking artefact, not a placement: keep the text, drop the position
+    const mine = cs0.callouts.filter(k => k.label || k.spec || k.note || k.x != null).map(k => (k.x === 0 && k.y === 0 && !k.photo ? { ...k, x: null, y: null } : k));
     ds0.callouts = [...mine, ...ds0.callouts].slice(0, LIMITS.callouts).map((k, i) => ({ ...k, n: i + 1 }));
   }
   const extraViews = c.sketches.slice(Math.max(1, o.sketches.length));

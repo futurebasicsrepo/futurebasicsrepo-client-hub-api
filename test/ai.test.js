@@ -130,3 +130,12 @@ test('callout coordinates survive every answer shape, and a draft without positi
     assert.ok(pack.sketches[0].callouts.every(c => c.x == null && c.photo === ''), 'unplaced callouts carry no position and no crop');
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
 });
+
+test('mergeClientEdits unpins leftover corner callouts (0,0 with no crop) instead of keeping them stacked', async () => {
+  const { mergeClientEdits } = await import('../src/techpack.js');
+  const orig = normalizeTechPack({ ...seedTechPack({ product: { title: 'Boot', product_type: 'Footwear' } }), sketches: [{ id: 'p', view: 'front', label: '', image: 'data:image/jpeg;base64,AAAA', callouts: [] }] });
+  const current = structuredClone(orig); current.sketches[0].callouts = [{ n: 1, label: 'Outsole', spec: '', note: '', photo: '', x: 0, y: 0 }, { n: 2, label: 'Real corner pin', spec: '', note: '', photo: 'data:image/jpeg;base64,BBBB', x: 0, y: 0 }];
+  const drafted = structuredClone(orig); drafted.sketches[0].callouts = [{ n: 1, label: 'Collar', spec: '', note: '', photo: '', x: 0.3, y: 0.2 }];
+  const m = mergeClientEdits(orig, current, drafted).sketches[0].callouts;
+  assert.deepEqual(m.map(c => [c.label, c.x, c.y]), [['Outsole', null, null], ['Real corner pin', 0, 0], ['Collar', 0.3, 0.2]]);
+});
