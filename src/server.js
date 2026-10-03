@@ -452,6 +452,12 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./start.html',import.meta.url),'utf8'));
 app.get('/start', sendStart);
+// Client guide: how the hub works, with screenshots and an FAQ, plus the same guide as a PDF.
+const helpAssets=new URL('./help-assets/',import.meta.url);
+app.get('/help',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./help.html',import.meta.url),'utf8')));
+app.get('/how-it-works',(_req,reply)=>reply.redirect('/help'));
+app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','public, max-age=300').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
+app.get('/help/assets/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(jpg|png|webp)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=86400').type(f.endsWith('.png')?'image/png':f.endsWith('.webp')?'image/webp':'image/jpeg').send(readFileSync(new URL(f,helpAssets)))}catch{return reply.code(404).send({error:'Not found'})}});
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
