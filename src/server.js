@@ -1702,6 +1702,8 @@ const AI_MAX_ATTEMPTS=3,AI_STALE_MINUTES=4;
 // forced with TECH_PACK_BILLING=on for tests; off, every draft runs free as before.
 const TECH_PACK_PRICE_CENTS=Number(process.env.TECH_PACK_PRICE_CENTS||4800),MEMBERSHIP_PRICE_CENTS=Number(process.env.MEMBERSHIP_PRICE_CENTS||10000);
 const MEMBERSHIP_URL=process.env.MEMBERSHIP_CHECKOUT_URL||'',MEMBERSHIP_PRODUCT_ID=process.env.SHOPIFY_MEMBERSHIP_PRODUCT_ID||'',MEMBERSHIP_GRACE_DAYS=35;
+const TECH_PACK_VARIANT_ID=process.env.SHOPIFY_TECH_PACK_VARIANT_ID||''; // optional: a real "Tech pack from a photo" product, so checkout shows its image and description
+const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
 const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
 const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
 // A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
@@ -1758,7 +1760,11 @@ async function techPackCheckout(row,{email}){
     throw Object.assign(new Error('Payments are not set up yet — message Future Basics and we will unlock the pack for you'),{statusCode:503});
   }
   const client=(await pool.query('select shopify_customer_id,slug from clients where id=$1',[row.client_id])).rows[0];
-  const input={lineItems:[{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:{amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'}}],
+  const money={amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'};
+  const customAttributes=[{key:'Product',value:String(row.title||'').slice(0,120)},{key:'What you get',value:TECH_PACK_INCLUDES},{key:'Tech pack',value:`${clientHubUrl}/tech-packs/${row.product_id}`}];
+  const line=TECH_PACK_VARIANT_ID?{variantId:TECH_PACK_VARIANT_ID,quantity:1,priceOverride:money,customAttributes}
+    :{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:money,customAttributes};
+  const input={lineItems:[line],
     customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
     note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
@@ -2050,6 +2056,15 @@ app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
   if(row.status!=='draft')return reply.code(409).send({error:'Already submitted to Future Basics'});
+  // nothing reaches the review queue unpaid after the first pack: a locked pack (or a hand-made one past the free pack) must be unlocked first
+  if(billingOn()){
+    let ent=await techPackEntitlement(row.client_id,row.id);
+    if(ent==='locked'&&await techPackPaymentLanded(row))ent='single';
+    if(ent==='locked'){if(row.ai_status!=='locked')await pool.query(`update tech_packs set ai_status='locked' where id=$1 and (ai_status is null or ai_status='failed')`,[row.id]);
+      return reply.code(402).send({error:'Unlock this tech pack before submitting it — your first pack was on us',aiStatus:'locked',pricing:techPackPricing(),checkoutUrl:row.pay_invoice_url||null})}
+    if(row.ai_status==='locked')await unlockTechPack(row); // paid or covered meanwhile: let the assistant read it as it goes to review
+    else if(!row.billing)await pool.query(`update tech_packs set billing=$2 where id=$1`,[row.id,ent]);
+  }
   const note=String(req.body?.note||'').trim().slice(0,1000);
   const updated=(await pool.query(`update tech_packs set status='submitted',submitted_at=now(),submitted_by=$2,updated_at=now() where id=$1 returning *`,[row.id,req.auth.sub])).rows[0];
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
