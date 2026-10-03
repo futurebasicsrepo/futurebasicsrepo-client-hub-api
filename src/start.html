@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Start a tech pack — Future Basics</title>
+  <title>Start a tech pack — Future Basics</title><link rel="icon" href="/icons/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#141416"><meta name="apple-mobile-web-app-title" content="Future Basics"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="description" content="Turn a screenshot into a tech pack. Add a photo, tell us what you want made, and open your draft.">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
@@ -106,12 +106,17 @@
     const drop=$('#drop');['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');if(ev==='drop')addFiles(e.dataTransfer.files)}));
     document.addEventListener('paste',e=>{const files=[...(e.clipboardData?.files||[])];if(files.length)addFiles(files)});
     $('#shots').addEventListener('click',e=>{const b=e.target.closest('button[data-act]');if(!b)return;const i=+b.closest('.shot').dataset.i;if(b.dataset.act==='rm')shots.splice(i,1);else shots[i].useTrim=!shots[i].useTrim;render()});
+    // Where this visit came from: utm_* on the ad link, the referrer and the landing path. First touch is kept so a return visit does not overwrite the ad that brought them.
+    const attribution=(()=>{let saved=null;try{saved=JSON.parse(localStorage.getItem('fb.attr')||'null')}catch{}const q=new URLSearchParams(location.search),g=k=>(q.get(k)||'').trim().slice(0,120)||undefined;
+      const fresh={source:g('utm_source')||g('ref')||g('source'),medium:g('utm_medium'),campaign:g('utm_campaign'),content:g('utm_content'),term:g('utm_term'),referrer:document.referrer&&!document.referrer.startsWith(location.origin)?document.referrer.slice(0,120):undefined,landing:(location.pathname+location.search).slice(0,120),firstSeenAt:new Date().toISOString()};
+      Object.keys(fresh).forEach(k=>fresh[k]===undefined&&delete fresh[k]);const any=fresh.source||fresh.campaign||fresh.medium||fresh.referrer;
+      const out=saved&&(saved.source||saved.campaign||saved.referrer)?saved:(any?fresh:saved||fresh);try{localStorage.setItem('fb.attr',JSON.stringify(out))}catch{}return out})();
     let pending=null;
     $('#startForm').addEventListener('submit',async e=>{e.preventDefault();say('');
       const title=$('#title').value.trim(),email=$('#email').value.trim(),name=$('#name').value.trim(),notes=$('#notes').value.trim();
       if(!shots.length)return say('Add a screenshot or photo first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
       const go=$('#go');go.disabled=true;$('#goLabel').textContent='Building your draft…';
-      try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original)});
+      try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original),attribution});
         if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
       }catch(err){say(/fetch|network|load failed/i.test(err.message||'')?'Could not reach Future Basics — check your connection and try again. If your photos are very large, remove one.':err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});

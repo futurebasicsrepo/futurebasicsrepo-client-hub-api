@@ -459,6 +459,12 @@ app.get('/help',(_req,reply)=>reply.header('cache-control','no-store, max-age=0'
 app.get('/how-it-works',(_req,reply)=>reply.redirect('/help'));
 app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','public, max-age=300').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
 app.get('/help/assets/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(jpg|png|webp)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=86400').type(f.endsWith('.png')?'image/png':f.endsWith('.webp')?'image/webp':'image/jpeg').send(readFileSync(new URL(f,helpAssets)))}catch{return reply.code(404).send({error:'Not found'})}});
+// Home-screen icon and web app manifest: the hub installs as a standalone app, the work console keeps opening in the browser so Google sign-in round-trips cleanly.
+const iconDir=new URL('./icons/',import.meta.url);
+app.get('/manifest.webmanifest',(req,reply)=>{const work=/^work\./i.test(String(req.headers.host||''));return reply.header('cache-control','public, max-age=3600').type('application/manifest+json').send({name:work?'Future Basics Work':'Future Basics',short_name:work?'FB Work':'Future Basics',start_url:'/',scope:'/',display:work?'browser':'standalone',background_color:'#141416',theme_color:'#141416',icons:[{src:'/icons/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icons/icon-512.png',sizes:'512x512',type:'image/png'},{src:'/icons/icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]})});
+app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(png|svg)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=604800').type(f.endsWith('.svg')?'image/svg+xml':'image/png').send(readFileSync(new URL(f,iconDir)))}catch{return reply.code(404).send({error:'Not found'})}});
+app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
+app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
@@ -1976,12 +1982,16 @@ app.post('/v1/dev/pay/:packId',async(req,reply)=>{
   const r=await pool.query(`update tech_packs set paid_at=now(),pay_order_id='dev',billing='single' where id=$1 and ai_status='locked' returning id`,[req.params.packId]);
   return {paid:r.rowCount===1};
 });
+// Where a self-serve room came from: utm_* from the ad link, the referrer and the landing path, captured once on /start. First touch wins; the console shows it on the room.
+function cleanAttribution(a){if(!a||typeof a!=='object')return null;const pick=k=>{const v=String(a[k]??'').trim().slice(0,120);return v||undefined};
+  const out={source:pick('source'),medium:pick('medium'),campaign:pick('campaign'),content:pick('content'),term:pick('term'),referrer:pick('referrer'),landing:pick('landing'),firstSeenAt:pick('firstSeenAt')};
+  Object.keys(out).forEach(k=>out[k]===undefined&&delete out[k]);if(out.referrer&&!/^https?:\/\//.test(out.referrer))delete out.referrer;return Object.keys(out).length?{...out,recordedAt:new Date().toISOString()}:null}
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const b=req.body||{};
   if(String(b.website||'').trim())return reply.code(202).send({ok:true});                       // honeypot
   const email=String(b.email||'').trim().toLowerCase(),name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000);
-  const photos=(Array.isArray(b.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
+  const photos=(Array.isArray(b.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4),attribution=cleanAttribution(b.attribution);
   if(!/^\S+@\S+\.\S+$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
   if(!title)return reply.code(400).send({error:'Give the product a name'});
   if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
@@ -1997,15 +2007,15 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
       const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
       if(lead){
         client=(await db.query(`update clients set status='active',allowed_emails=(select array_agg(distinct e) from unnest(allowed_emails||$2::text[]) e),activated_at=coalesce(activated_at,now()),
-          contact_name=coalesce(nullif(contact_name,''),$3) where id=$1 returning *`,[lead.id,[email],name||null])).rows[0];
+          contact_name=coalesce(nullif(contact_name,''),$3),acquisition=coalesce(acquisition,$4::jsonb) where id=$1 returning *`,[lead.id,[email],name||null,attribution?JSON.stringify(attribution):null])).rows[0];
       }else{
         const base=intakeSlug(name||email.split('@')[0]);let slug=base;
         if((await db.query('select 1 from clients where slug=$1',[slug])).rowCount)slug=`${base.slice(0,43)}-${randomBytes(2).toString('hex')}`;
-        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at) values($1,$2,'active',$3,$4,$5,$6,now()) returning *`,
-          [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`])).rows[0];
+        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at,acquisition) values($1,$2,'active',$3,$4,$5,$6,now(),$7::jsonb) returning *`,
+          [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`,attribution?JSON.stringify(attribution):null])).rows[0];
       }
       fresh=true;
-    }
+    }else if(attribution&&!client.acquisition){client=(await db.query(`update clients set acquisition=$2::jsonb where id=$1 and acquisition is null returning *`,[client.id,JSON.stringify(attribution)])).rows[0]||client}
     const user=(await db.query(`insert into users(client_id,email,role) values($1,$2,'client') on conflict(email) do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email])).rows[0];
     let project=(await db.query(`select * from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') and name='Product development' limit 1`,[client.id])).rows[0];
     if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
