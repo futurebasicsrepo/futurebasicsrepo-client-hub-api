@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { exactCustomerMatch, CUSTOMER_BY_EMAIL_QUERY, DRAFT_ORDER_STATUS, ORDER_CUSTOMER_QUERY } from '../src/shopify.js';
+import { exactCustomerMatch, CUSTOMER_BY_EMAIL_QUERY, DRAFT_ORDER_STATUS, ORDER_CUSTOMER_QUERY, APP_SCOPES_QUERY, missingScopes } from '../src/shopify.js';
 
 // Linking a self-serve room to its Shopify customer: only an exact email match may link, never a lookalike from the same domain.
 const nodes = [
@@ -31,4 +31,13 @@ test('the queries ask for what the link needs', () => {
   assert.match(CUSTOMER_BY_EMAIL_QUERY, /nodes \{ id email/);
   assert.doesNotMatch(DRAFT_ORDER_STATUS, /customer/, 'the paid check must work on a store without read_customers');
   assert.match(ORDER_CUSTOMER_QUERY, /order\(id: \$id\) \{[^}]*customer \{ id email \}/);
+});
+
+test('missing scopes: what the hub needs minus what the store granted, a write covering its read', () => {
+  assert.match(APP_SCOPES_QUERY, /currentAppInstallation \{ accessScopes \{ handle \} \}/);
+  const need = ['read_products', 'read_customers', 'write_draft_orders', 'read_draft_orders', 'read_orders'];
+  assert.deepEqual(missingScopes(['read_products', 'write_draft_orders', 'read_orders'], need), ['read_customers']);
+  assert.deepEqual(missingScopes(['read_products', 'write_customers', 'write_draft_orders', 'read_orders'], need), []);
+  assert.deepEqual(missingScopes([], ['read_orders']), ['read_orders']);
+  assert.deepEqual(missingScopes(undefined, undefined), []);
 });
