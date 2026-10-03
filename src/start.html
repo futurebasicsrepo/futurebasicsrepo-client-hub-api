@@ -11,7 +11,7 @@
     *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh;-webkit-font-smoothing:antialiased}
     button,input,textarea{font:inherit}.hidden{display:none!important}
     header{height:60px;background:var(--ink);color:#fff;padding:0 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-    .wordmark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em}
+    .wordmark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;white-space:nowrap}header .meta{white-space:nowrap}@media(max-width:460px){.wordmark span{display:none}.wordmark img{height:14px}}
     .meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:var(--dim)}
     main{max-width:560px;margin:0 auto;padding:22px 16px calc(40px + env(safe-area-inset-bottom))}
     h1{font-weight:500;letter-spacing:-.04em;line-height:.95;font-size:clamp(38px,11vw,56px);margin:10px 0 12px;text-wrap:balance}
@@ -112,7 +112,7 @@
       if(!shots.length)return say('Add a screenshot or photo first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
       const go=$('#go');go.disabled=true;$('#goLabel').textContent='Building your draft…';
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original)});
-        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Reading your photo…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
+        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
       }catch(err){say(/fetch|network|load failed/i.test(err.message||'')?'Could not reach Future Basics — check your connection and try again. If your photos are very large, remove one.':err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const btn=e.target.querySelector('button');btn.disabled=true;

@@ -10,7 +10,7 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, DRAFT_ORDER_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, CUSTOMER_MEMBERSHIP_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -512,8 +512,12 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
   return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows};
 });
+app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
+  return ensureTechPackProduct();
+});
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
-  const result={configured:shopifyConfigured(),connected:false,storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
+  const result={configured:shopifyConfigured(),connected:false,techPackProduct:await techPackProductId().catch(()=>''),storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
     apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',authentication:process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?'legacy-token':'client-credentials',
     requiredScopes:['read_products','write_products','read_inventory','read_customers','write_draft_orders','read_draft_orders','read_orders']};
   if(!result.configured)return result;
@@ -1702,7 +1706,34 @@ const AI_MAX_ATTEMPTS=3,AI_STALE_MINUTES=4;
 // forced with TECH_PACK_BILLING=on for tests; off, every draft runs free as before.
 const TECH_PACK_PRICE_CENTS=Number(process.env.TECH_PACK_PRICE_CENTS||4800),MEMBERSHIP_PRICE_CENTS=Number(process.env.MEMBERSHIP_PRICE_CENTS||10000);
 const MEMBERSHIP_URL=process.env.MEMBERSHIP_CHECKOUT_URL||'',MEMBERSHIP_PRODUCT_ID=process.env.SHOPIFY_MEMBERSHIP_PRODUCT_ID||'',MEMBERSHIP_GRACE_DAYS=35;
-const TECH_PACK_VARIANT_ID=process.env.SHOPIFY_TECH_PACK_VARIANT_ID||''; // optional: a real "Tech pack from a photo" product, so checkout shows its image and description
+const TECH_PACK_VARIANT_ID=process.env.SHOPIFY_TECH_PACK_VARIANT_ID||''; // optional fallback variant (generic image) when no per-pack variant can be made
+// Small key/value settings kept in the database (things set up from the console rather than env).
+const settingsCache=new Map();
+async function getSetting(key){if(settingsCache.has(key))return settingsCache.get(key);const row=(await pool.query('select value from app_settings where key=$1',[key])).rows[0];const v=row?row.value:null;settingsCache.set(key,v);return v}
+async function setSetting(key,value){await pool.query(`insert into app_settings(key,value,updated_at) values($1,$2,now()) on conflict(key) do update set value=excluded.value,updated_at=now()`,[key,JSON.stringify(value)]);settingsCache.set(key,value)}
+// The hidden Shopify product behind the $48 checkout. Each pack gets its own variant carrying the client's photo, so the
+// checkout line shows what they uploaded; the variant is removed once the order is paid.
+const techPackProductId=async()=>process.env.SHOPIFY_TECH_PACK_PRODUCT_ID||(await getSetting('techPackProduct'))?.productId||'';
+async function ensureTechPackProduct(){
+  const existing=await getSetting('techPackProduct');if(existing?.productId)return {...existing,created:false};
+  const product=requireNoUserErrors((await shopifyGraphql(PRODUCT_CREATE,{product:{title:'Tech pack from a photo',descriptionHtml:`<p>${TECH_PACK_INCLUDES}</p>`,productType:'Service',vendor:'Future Basics',status:'ACTIVE',tags:['fb-tech-pack','hub-service'],productOptions:[{name:'Pack',values:[{name:'Base'}]}]}})).productCreate).product;
+  const baseVariantId=product.variants?.nodes?.[0]?.id||null;
+  if(baseVariantId)requireNoUserErrors((await shopifyGraphql(VARIANTS_BULK_UPDATE,{productId:product.id,variants:[{id:baseVariantId,price:asMoney(TECH_PACK_PRICE_CENTS),inventoryPolicy:'CONTINUE',taxable:false,inventoryItem:{tracked:false,requiresShipping:false}}]})).productVariantsBulkUpdate);
+  const value={productId:product.id,handle:product.handle,baseVariantId,createdAt:new Date().toISOString()};await setSetting('techPackProduct',value);
+  return {...value,created:true};
+}
+async function packVariantFor(row){
+  const productId=await techPackProductId();if(!productId)return null;
+  try{
+    const res=requireNoUserErrors((await shopifyGraphql(VARIANTS_BULK_CREATE,{productId,variants:[{optionValues:[{optionName:'Pack',name:`${String(row.title||'Tech pack').slice(0,60)} · ${String(row.id).slice(0,8)}`}],price:asMoney(TECH_PACK_PRICE_CENTS),inventoryPolicy:'CONTINUE',taxable:false,inventoryItem:{tracked:false,requiresShipping:false},mediaSrc:[renderingUrl(row.product_id)]}]})).productVariantsBulkCreate);
+    return res.productVariants?.[0]?.id||null;
+  }catch(e){app.log.warn({err:e.message,packId:row.id},'pack variant not created — custom line instead');return null}
+}
+async function dropPackVariant(row){
+  const productId=await techPackProductId();if(!productId||!row.pay_variant_id)return;
+  try{await shopifyGraphql(VARIANTS_BULK_DELETE,{productId,variantsIds:[row.pay_variant_id]})}catch(e){app.log.warn({err:e.message,packId:row.id},'pack variant not deleted')}
+  await pool.query('update tech_packs set pay_variant_id=null where id=$1',[row.id]).catch(()=>{});
+}
 const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
 const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
 const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
@@ -1750,7 +1781,7 @@ async function techPackCheckout(row,{email}){
     let stale=false;
     if(shopifyConfigured()){try{const d=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:row.pay_draft_order_id})).draftOrder;
       stale=!d||(d.status!=='COMPLETED'&&Math.round(Number(d.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS);
-      if(stale&&d){await shopifyGraphql(DRAFT_ORDER_DELETE,{input:{id:d.id}}).catch(e=>app.log.warn({err:e.message,packId:row.id},'stale draft order not deleted'))}
+      if(stale&&d){await shopifyGraphql(DRAFT_ORDER_DELETE,{input:{id:d.id}}).catch(e=>app.log.warn({err:e.message,packId:row.id},'stale draft order not deleted'));await dropPackVariant(row)}
     }catch(e){app.log.warn({err:e.message,packId:row.id},'draft order check failed')}}
     if(!stale)return {checkoutUrl:row.pay_invoice_url,draftOrderId:row.pay_draft_order_id};
     await pool.query(`update tech_packs set pay_draft_order_id=null,pay_invoice_url=null where id=$1`,[row.id]);
@@ -1762,8 +1793,10 @@ async function techPackCheckout(row,{email}){
   const client=(await pool.query('select shopify_customer_id,slug from clients where id=$1',[row.client_id])).rows[0];
   const money={amount:asMoney(TECH_PACK_PRICE_CENTS),currencyCode:'USD'};
   const customAttributes=[{key:'Product',value:String(row.title||'').slice(0,120)},{key:'What you get',value:TECH_PACK_INCLUDES},{key:'Tech pack',value:`${clientHubUrl}/tech-packs/${row.product_id}`}];
-  const line=TECH_PACK_VARIANT_ID?{variantId:TECH_PACK_VARIANT_ID,quantity:1,priceOverride:money,customAttributes}
+  const packVariant=await packVariantFor(row),variantId=packVariant||TECH_PACK_VARIANT_ID;
+  const line=variantId?{variantId,quantity:1,priceOverride:money,customAttributes}
     :{title:`Tech pack from a photo — ${row.title}`.slice(0,255),quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:money,customAttributes};
+  if(packVariant)await pool.query('update tech_packs set pay_variant_id=$2 where id=$1',[row.id,packVariant]);
   const input={lineItems:[line],
     customerId:client?.shopify_customer_id||undefined,email:client?.shopify_customer_id?undefined:(email||undefined),
     note:`Future Basics — single tech pack · ${row.title}`,tags:['future-basics-client-hub','fb-tech-pack',`client-${String(client?.slug||'').toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
@@ -1780,6 +1813,7 @@ async function techPackPaymentLanded(row){
   if(!order||!/^PAID$/i.test(order.displayFinancialStatus||''))return false;
   if(Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)<TECH_PACK_PRICE_CENTS){app.log.warn({packId:row.id,orderId:order.id,total:order.totalPriceSet?.shopMoney?.amount},'tech pack order paid below price — not unlocking');return false}
   await pool.query(`update tech_packs set paid_at=now(),pay_order_id=$2,billing='single' where id=$1 and paid_at is null`,[row.id,order.id]);
+  await dropPackVariant(row);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;
 }

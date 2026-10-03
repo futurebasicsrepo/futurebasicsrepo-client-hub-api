@@ -12,7 +12,8 @@
     body{margin:0;color:var(--ink);background:var(--fog);font:400 16px/1.55 'Space Grotesk',system-ui,sans-serif}
     a{color:inherit}
     .meta{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-    header{height:64px;background:rgba(20,20,22,.97);color:#fff;padding:0 clamp(18px,4vw,56px);display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10}
+    header{min-height:64px;background:rgba(20,20,22,.97);color:#fff;padding:0 clamp(18px,4vw,56px);display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10}header nav{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}header nav a{white-space:nowrap}
+    @media(max-width:640px){header{min-height:56px;padding:8px 14px}header .wordmark span{display:none}header .wordmark img{height:14px}header nav a.pdf{display:none}header nav a{padding:8px 12px;font-size:12px}}
     header .wordmark{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px}header .wordmark img{height:16px;width:auto;display:block}
     header nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}header nav a{color:#fff;text-decoration:none;font-size:12.5px;padding:7px 12px;border:1px solid rgba(255,255,255,.3);border-radius:999px}header nav a.primary{background:var(--cue);border-color:var(--cue);color:var(--ink);font-weight:500}
     main{max-width:1040px;margin:0 auto;padding:clamp(22px,5vw,56px) clamp(16px,4vw,40px) 80px}
@@ -29,7 +30,7 @@
     .shot{margin:0;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#eceae5;display:grid;align-content:start}.shot img{display:block;width:100%;height:auto}.shot figcaption{padding:8px 12px;font:500 9.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);background:#fff;border-top:1px solid var(--line)}
     .shot.phone{max-width:320px;justify-self:center}
     .twoshots{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .chain{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:8px}.chain div{padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff;min-height:112px}.chain b{display:block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}.chain span{font-size:14px}.chain div.you{border-color:var(--ink)}
+    .chain{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px;margin-top:8px}.chain div{padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff;min-height:112px;min-width:0;overflow-wrap:anywhere}.chain b{display:block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}.chain span{font-size:14px}.chain div.you{border-color:var(--ink)}
     .drafts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}.drafts div{padding:14px 16px;border:1px solid var(--line);border-radius:18px;background:#fff}.drafts b{display:block;font-weight:500;margin-bottom:4px}.drafts span{font-size:14px;color:#2d2d31}
     .faq{display:grid;gap:8px}details{border:1px solid var(--line);border-radius:18px;background:#fff;padding:0}summary{list-style:none;cursor:pointer;padding:16px 18px;font-weight:500;display:flex;align-items:center;gap:12px}summary::-webkit-details-marker{display:none}summary:after{content:"+";margin-left:auto;font:500 18px 'IBM Plex Mono',monospace;color:var(--dim)}details[open] summary:after{content:"–"}details p,details ul{margin:0;padding:0 18px 16px;color:#2d2d31}details ul{padding-left:36px}details li{margin:4px 0}
     .contact{padding:22px;border-radius:28px;background:var(--ink);color:#fff}.contact p{margin:6px 0 0;color:#cfcfd2}.contact a{color:#fff}
@@ -44,14 +45,14 @@
       .meta+h2,h2{break-after:avoid;page-break-after:avoid}#assistant,.drafts,.chain,.hero{break-inside:avoid;page-break-inside:avoid}
       details{break-inside:avoid}details>*{display:block}summary{padding:10px 14px}summary:after{display:none}details p,details ul{padding-bottom:10px;font-size:12px}
       h2{font-size:22px;margin-top:12px}section{margin-bottom:16px}.pb{break-before:page;page-break-before:always}
-      .chain{grid-template-columns:repeat(6,minmax(0,1fr))}.chain div{min-height:0;padding:8px}.chain span{font-size:11px}.drafts div{padding:10px}.drafts span{font-size:11.5px}
+      .chain{grid-template-columns:repeat(6,minmax(0,1fr))}.chain div{min-height:0;padding:8px}.chain span{font-size:10.5px}.chain b{font-size:8.5px;letter-spacing:.06em}.drafts div{padding:10px}.drafts span{font-size:11.5px}
       .contact{-webkit-print-color-adjust:exact;print-color-adjust:exact;border-radius:14px}
     }
   </style>
 </head>
 <body>
   <header><a class="wordmark" href="/"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ How it works</span></a>
-    <nav><a href="/help/guide.pdf">Download the PDF</a><a href="/">Sign in</a><a class="primary" href="/start">Start a tech pack</a></nav></header>
+    <nav><a class="pdf" href="/help/guide.pdf">Download the PDF</a><a href="/">Sign in</a><a class="primary" href="/start">Start a tech pack</a></nav></header>
   <main>
     <section class="hero">
       <div><span class="meta">Client guide · Future Basics Client Hub</span><h1>From a screenshot to a sample.</h1>
@@ -59,7 +60,7 @@
         <div class="noprint" style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn" href="/start">Start a tech pack from a screenshot</a><a class="btn ghost" href="/">Sign in to your room</a></div></div>
       <div class="quick">
         <div class="q"><b>01</b><span>Add a screenshot or photo of what you want made.</span></div>
-        <div class="q"><b>02</b><span>The assistant drafts the tech pack in about a minute. You check it and submit.</span></div>
+        <div class="q"><b>02</b><span>The assistant builds the tech pack in about a minute. You check it and submit. First one free; then $48 a pack or $100 a month.</span></div>
         <div class="q"><b>03</b><span>Future Basics finishes it and publishes v1. You approve and sign.</span></div>
         <div class="q"><b>04</b><span>You get a quote and a deposit invoice. Pay it and sampling begins.</span></div>
       </div>
@@ -81,13 +82,13 @@
 
         <article class="step"><div><span class="n">Step 03</span><h3>Add a screenshot, choose a project</h3>
           <p>Saw it on Instagram or Pinterest? Screenshot it. App bars and captions are trimmed automatically; the product is what we keep. Add up to four images — the first is the main view.</p>
-          <ul><li>Pick one of your projects or type a name to create a new one.</li><li>Give the product a working name. Everything else is optional.</li><li>No photo? Press <b>Create blank draft</b> and fill the pack in yourself.</li></ul></div>
+          <ul><li>Pick one of your projects or type a name to create a new one.</li><li>Give the product a working name. Everything else is optional.</li><li>Wrong file? Press the <b>×</b> on its thumbnail. Once you are in the editor, the <b>×</b> in the photo's corner swaps it.</li><li>No photo? Press <b>Create blank draft</b> and fill the pack in yourself.</li></ul></div>
           <figure class="shot"><img src="/help/assets/03-start-dialog.jpg" alt="The Start a tech pack dialog with a trimmed screenshot, a new project name and a product name"><figcaption>Photo in, project chosen</figcaption></figure></article>
 
-        <article class="step"><div><span class="n">Step 04</span><h3>The assistant reads your photo</h3>
-          <p>You land in your draft straight away. For about a minute the editor is read-only while the assistant works; it unlocks the moment the draft lands.</p>
+        <article class="step"><div><span class="n">Step 04</span><h3>The assistant builds your tech pack</h3>
+          <p>You land in your draft straight away with the banner <b>Building your tech pack…</b>. For about a minute the editor is read-only while the assistant reads the photo and drafts callouts, measurements, materials and colours; it unlocks the moment the draft lands.</p>
           <p>If the photo cannot be read — nothing recognisable in frame, too small, too blurry — you are told why, with a <b>Try again</b> button and the option to swap the photo. We are notified too.</p></div>
-          <figure class="shot"><img src="/help/assets/04-reading.jpg" alt="The editor with the Reading your photo banner"><figcaption>Reading your photo…</figcaption></figure></article>
+          <figure class="shot"><img src="/help/assets/04-reading.jpg" alt="The editor with the Building your tech pack banner"><figcaption>Building your tech pack…</figcaption></figure></article>
 
         <article class="step"><div><span class="n">Step 05</span><h3>Check the callouts</h3>
           <p>Callouts are the details a factory must get right. The assistant pins them on your photo — usually eight to twelve — each with a cropped close-up, a spec and a note to the factory.</p>
@@ -96,13 +97,15 @@
 
         <article class="step"><div><span class="n">Step 06</span><h3>Measurements, materials, colours</h3>
           <p>The assistant fills the measurement table for your sample size and grades it across the size run, drafts materials and trims with best-practice defaults, lists construction steps, and reads the colours off the photo with Pantone references.</p>
+          <p>When the photo cannot give a measurement, the assistant looks the style up online — retailer listings, size charts, lab measurements of the same or comparable products — fills the row from what it finds, and lists the sources under <b>Notes to factory</b>. Products with no standard template get their points of measure proposed the same way.</p>
           <p>Every value is a starting point. Change anything; what you type wins.</p></div>
           <div class="twoshots"><figure class="shot"><img src="/help/assets/06-measure.jpg" alt="Points of measure filled for the sample size and graded"><figcaption>Measure</figcaption></figure><figure class="shot"><img src="/help/assets/07-materials.jpg" alt="Materials and trims table"><figcaption>Materials</figcaption></figure></div></article>
 
         <article class="step"><div><span class="n">Step 07</span><h3>Submit to Future Basics</h3>
           <p>When the draft describes the product you want made, press <b>Submit</b>. The Submit tab shows what is still thin; you can submit anyway and we fill the gaps with you.</p>
-          <p>While we work on it the draft is read-only. Need to change something? Message us in the project thread and we hand it back.</p></div>
-          <figure class="shot"><img src="/help/assets/08-submit.jpg" alt="The Submit tab showing where the tech pack goes next"><figcaption>Where it goes next</figcaption></figure></article>
+          <p>While we work on it the draft is read-only. Need to change something? Message us in the project thread and we hand it back.</p>
+          <p><b>Your first tech pack is on us.</b> From the second one, the assistant and Submit unlock for <b>$48</b> a pack, or <b>$100 a month</b> for unlimited packs with the studio membership. The choice opens right there; payment is a Shopify checkout showing your photo, and the pack unlocks the moment it clears. Filling a draft in by hand is always free.</p></div>
+          <div class="twoshots"><figure class="shot"><img src="/help/assets/08-submit.jpg" alt="The Submit tab showing where the tech pack goes next"><figcaption>Where it goes next</figcaption></figure><figure class="shot"><img src="/help/assets/14-unlock.jpg" alt="The unlock choice: this pack for $48 or the studio membership for $100 a month"><figcaption>Unlocking a later pack</figcaption></figure></div></article>
       </div>
     </section>
 
@@ -147,9 +150,11 @@
       <div class="faq">
         <details><summary>Do I need an account to start?</summary><p>No. Open <a href="/start">/start</a>, add a screenshot and your email, and your room is created with your first tech pack in it. The next time you come back, we email you a six-digit code — there are no passwords.</p></details>
         <details><summary>What kind of photo works best?</summary><p>One product, filling most of the frame, side-on if it is footwear. Screenshots from Instagram or Pinterest are fine: app bars and captions are trimmed off automatically, and the assistant crops to the product. You can add up to four images; the first is the main view, the rest are detail views.</p></details>
-        <details><summary>How long does the draft take?</summary><p>Usually under two minutes. The editor is read-only while the assistant works and unlocks the moment the draft lands. If it takes longer than three minutes, editing opens anyway and the draft merges in when it arrives.</p></details>
+        <details><summary>How long does the draft take?</summary><p>Usually under two minutes. The banner reads “Building your tech pack…”; the editor is read-only while the assistant works and unlocks the moment the draft lands. If it takes longer than three minutes, editing opens anyway and the draft merges in when it arrives.</p></details>
         <details><summary>Will I lose what I typed if the assistant is still working?</summary><p>No. Anything you type wins: your edits are kept field by field, your callouts come first, and the assistant's are added around them.</p></details>
         <details><summary>It says the photo could not be read. Now what?</summary><p>The banner tells you why. Swap the photo under <b>Callouts → View settings → Replace image</b>, then press <b>Try again</b> (up to three times). You will also get an email with the same guidance, and we are notified so we can help. Or just reply to the email with a better picture and we take it from there.</p></details>
+        <details><summary>I uploaded the wrong photo. Can I swap it?</summary><p>Yes, at every stage. Before you create the draft, press the × on the thumbnail. In the editor, press the × in the corner of the photo under <b>Callouts</b>: the photo clears, the drop zone comes back, and the callouts stay listed (unpinned) until the right photo is in. A new first photo offers to have the assistant read it again; anything you typed is kept.</p></details>
+        <details><summary>Where do measurements come from when the photo cannot show them?</summary><p>From the same or comparable styles online. The assistant identifies the product, looks up retailer listings, brand size charts and lab measurements, converts to inches for your sample size, and lists every source under Notes to factory. Rows it cannot anchor are left open rather than guessed, and nothing is final until a physical sample confirms it.</p></details>
         <details><summary>Is the draft accurate?</summary><p>It is a strong starting point, not a spec. Measurements are read from the photo's proportions and anchored to category norms; materials are best-practice defaults. Every value is labelled as a draft, and nothing is released to a factory until you, Future Basics and the factory have all signed.</p></details>
         <details><summary>Can I start a tech pack without a photo, or add sketches later?</summary><p>Yes. Press <b>Create blank draft</b> to get the empty template, and add views under Callouts at any time. Future Basics can also run the assistant on a pack later once a photo or sketch is on it.</p></details>
         <details><summary>What happens after I submit?</summary><p>We review it, complete anything missing, and publish version 1 to your room, usually within two business days. You get an email. The draft is read-only while we work; message us in the project thread if you need it back.</p></details>
