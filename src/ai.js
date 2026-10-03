@@ -158,6 +158,42 @@ export async function draftFromPhotos({ photos, title, notes, pomTemplate, sizes
   await placeMissing(draft, photos[0]);
   return { draft, model: response.model || AI_MODEL, usage: response.usage || null };
 }
+// No photo yet: draft from the brief alone. Same shape as a photo draft, but callouts carry no positions (they are
+// pinned once a sketch or photo lands) and the model is told to lean on category norms and say so.
+const BRIEF_SCHEMA = structuredClone(DRAFT_SCHEMA);
+BRIEF_SCHEMA.properties.callouts.items = { type: 'object', additionalProperties: false, required: ['label', 'spec', 'note'],
+  properties: { label: { type: 'string' }, spec: { type: 'string', description: 'Material / construction spec for this detail' }, note: { type: 'string', description: 'Note to factory' } } };
+function briefSystemPrompt() {
+  return systemPrompt().replace('A prospective customer has uploaded a photo (often a screenshot from Instagram or Pinterest) of a product they want made, plus a few words about it. Draft the first version of the tech pack from what you can see.',
+    'There is no photo yet: a product has been set up with a title, a description and a brief. Draft the first version of the tech pack from the brief and category norms, so the team starts from a filled pack instead of a blank one.')
+    .replace('- Callouts: pick the 6–12 details a factory must get right. Place each at the exact spot on the photo where that detail is, as fractions of the image width and height. Spread them over the product; do not stack them.',
+      '- Callouts: pick the 6–12 details a factory must get right for this product type. There is no photo, so give no positions; they are pinned once a sketch arrives.')
+    .replace('Measure proportions from the photo where you can and anchor them to published category norms', 'Anchor them to published category norms and the brief')
+    .replace('what the photo does not show (medial side, interior, sole)', 'what only a photo or sketch could settle') + '\n\nMark confidence "low": everything here is a category default until a photo or sketch confirms it.';
+}
+export async function draftFromBrief({ title, notes, brief, pomTemplate, sizes, sampleSize }) {
+  if (process.env.AI_FIXTURE) {
+    await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0)));
+    const draft = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8'));
+    draft.callouts = draft.callouts.map(({ x, y, ...rest }) => normalizeCallout(rest)); draft.confidence = 'low';
+    return { draft, model: 'fixture', usage: null };
+  }
+  const client = new Anthropic();
+  const text = `${userPrompt({ title, notes, pomTemplate, sizes, sampleSize }).replace('Photo 1 is the main reference; later photos are extra views if present. Draft the tech pack now.', '')}Brief:\n${brief || '(none)'}\n\nThere is no photo. Draft the tech pack from the brief and category norms now.`;
+  const base = { model: AI_MODEL, max_tokens: 16000, system: briefSystemPrompt(), messages: [{ role: 'user', content: [{ type: 'text', text }] }] };
+  let response;
+  try {
+    response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'high', format: { type: 'json_schema', schema: BRIEF_SCHEMA } } });
+  } catch (e) {
+    if (!(e instanceof Anthropic.BadRequestError)) throw e;
+    response = await client.messages.create({ ...base, output_config: { effort: 'high' }, system: base.system + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(BRIEF_SCHEMA) });
+  }
+  if (response.stop_reason === 'refusal') throw new Error(`Model declined (${response.stop_details?.category || 'policy'})`);
+  if (response.stop_reason === 'max_tokens') throw new Error('Draft was cut off (max_tokens)');
+  const draft = parseDraft(response.content.filter(b => b.type === 'text').map(b => b.text).join(''));
+  draft.callouts = (draft.callouts || []).map(({ x, y, ...rest }) => normalizeCallout(rest)); draft.confidence = 'low';
+  return { draft, model: response.model || AI_MODEL, usage: response.usage || null };
+}
 // If the draft lacks positions (schema not honoured), ask for them; whatever is still unplaced stays unplaced.
 async function placeMissing(draft, photo) {
   if (!Array.isArray(draft.callouts) || !draft.callouts.length || !unplacedCallouts(draft.callouts)) return;
