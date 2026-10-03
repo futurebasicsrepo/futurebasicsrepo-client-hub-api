@@ -43,6 +43,9 @@ test('on white: trimmed to the product with air, as a JPEG data URL', async () =
   const url = await cutoutOnWhite(png, { max: 400 }); assert.match(url, /^data:image\/jpeg;base64,/);
   const meta = await sharp(Buffer.from(url.split(',')[1], 'base64')).metadata();
   assert.ok(meta.width < 260 && meta.width > 200 && meta.height < 140 && meta.height > 100, `trimmed to the shape plus padding (${meta.width}×${meta.height})`);
+  const { data, info } = await sharp(Buffer.from(url.split(',')[1], 'base64')).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[0] > 245 && data[1] > 245 && data[2] > 245, `the air around the product is white, not black (${data[0]},${data[1]},${data[2]})`);
+  const c = ((info.height >> 1) * info.width + (info.width >> 1)) * 3; assert.ok(data[c] < 130, 'the product itself keeps its colour');
 });
 
 test('cutoutFromPhoto + placeCutout: a Cut-out view after the photo, the cover rendering ahead of the tiles', async () => {
