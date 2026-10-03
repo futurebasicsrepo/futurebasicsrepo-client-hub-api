@@ -141,11 +141,20 @@ const HEADWEAR_POM = [
   ['D', 'Visor width', 'Edge to edge at widest point', '±0.25'],
   ['E', 'Sweatband height', 'Bottom edge to top edge of sweatband', '±0.125']
 ];
+const BAG_POM = [
+  ['A', 'Width', 'Edge to edge across the body at the base, laid flat', '±0.25'],
+  ['B', 'Height', 'Base to top edge of the body at centre, handles excluded', '±0.25'],
+  ['C', 'Depth / gusset', 'Front to back at the base', '±0.25'],
+  ['D', 'Handle drop', 'Top edge of the body to inside top of the handle', '±0.25'],
+  ['E', 'Strap length', 'End to end, buckle at the longest setting', '±0.5'],
+  ['F', 'Opening width', 'Edge to edge across the top opening', '±0.25']
+];
 export const isFootwear = text => /(shoe|sneaker|trainer|boot|mule|footwear|slide|sandal|loafer|court|runner|cleat|cupsole|clog|moc)/.test(String(text || '').toLowerCase());
 export function pomTemplateFor(text) {
   const t = String(text || '').toLowerCase();
   if (isFootwear(t)) return FOOTWEAR_POM;
   if (/(cap|hat|beanie|bucket|visor|headwear)/.test(t)) return HEADWEAR_POM;
+  if (/(\bbag\b|tote|backpack|pouch|duffle|duffel|crossbody|satchel|clutch|wallet|cardholder|card holder|belt bag|fanny|sling)/.test(t)) return BAG_POM;
   if (/(pant|short|trouser|jogger|bottom|denim|jean)/.test(t)) return BOTTOMS_POM;
   if (/(tee|shirt|tank|polo|knit|hoodie|sweat|crew|jacket|shell|top|apparel|dress|vest|fleece|layer)/.test(t)) return TOPS_POM;
   return [];
@@ -156,8 +165,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   const pack = emptyTechPack();
   const c = configuration || {};
   const descriptor = `${product.title || ''} ${product.product_type || ''} ${c.blank_name || ''}`;
-  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM;
-  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length ? [...DEFAULT_SIZES] : ['One size']);
+  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM, bag = apparel === BAG_POM;
+  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length && !bag ? [...DEFAULT_SIZES] : ['One size']);
   const month = now.getMonth(), year = String(now.getFullYear()).slice(-2);
   pack.style = {
     styleNumber: String(product.shopify_handle || '').toUpperCase().slice(0, 40),
@@ -195,7 +204,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   if (footwear) {
     pack.labels = [{ item: 'Tongue label', spec: 'Woven, client artwork', placement: 'Tongue, centred below top edge' }, { item: 'Size / country of origin label', spec: 'Printed, size + width + CO + article no.', placement: 'Inside tongue' }, { item: 'Footbed print', spec: 'Pad print on top cloth, client artwork', placement: 'Footbed, heel area' }, { item: 'Heel tab', spec: 'Woven or embossed', placement: 'Heel collar' }];
   } else if (apparel.length) {
-    pack.labels = apparel === HEADWEAR_POM
+    pack.labels = bag ? [{ item: 'Main label', spec: 'Woven or debossed leather patch, client artwork', placement: 'Inside body, centred below the opening' }, { item: 'Care / content label', spec: 'Printed satin, materials + care + country of origin', placement: 'Inside pocket seam' }]
+      : apparel === HEADWEAR_POM
       ? [{ item: 'Main label', spec: 'Woven, Future Basics / client artwork', placement: 'Inside back crown' }, { item: 'Care / content label', spec: 'Printed satin', placement: 'Inside sweatband' }]
       : [{ item: 'Main label', spec: 'Woven, client artwork', placement: 'Center back neck, inside' }, { item: 'Size label', spec: 'Woven or printed', placement: 'Below main label' }, { item: 'Care / content label', spec: 'Printed satin, fiber content + care + country of origin', placement: 'Inside left side seam' }];
   }

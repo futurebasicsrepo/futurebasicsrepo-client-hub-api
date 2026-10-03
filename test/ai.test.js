@@ -139,3 +139,55 @@ test('mergeClientEdits unpins leftover corner callouts (0,0 with no crop) instea
   const m = mergeClientEdits(orig, current, drafted).sketches[0].callouts;
   assert.deepEqual(m.map(c => [c.label, c.x, c.y]), [['Outsole', null, null], ['Real corner pin', 0, 0], ['Collar', 0.3, 0.2]]);
 });
+
+test('inches reads numbers in any of the forms a model or a listing writes them', async () => {
+  const { inches } = await import('../src/ai.js');
+  assert.equal(inches(11.5), 11.5); assert.equal(inches('11.5'), 11.5); assert.equal(inches('11.5 in'), 11.5); assert.equal(inches('11 1/2"'), 11.5);
+  assert.equal(inches('2.54 cm'), 1); assert.equal(inches('254 mm'), 10); assert.equal(inches(''), null); assert.equal(inches('n/a'), null); assert.equal(inches(null), null);
+});
+
+test('completeMeasurements researches the rows the draft left blank and proposes rows when no template fits', async () => {
+  const { completeMeasurements, missingMeasurements } = await import('../src/ai.js');
+  const { writeFileSync, mkdtempSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const fixture = join(mkdtempSync(join(tmpdir(), 'fb-ai-')), 'draft.json'); writeFileSync(fixture, JSON.stringify(draft));
+  const prev = process.env.AI_FIXTURE; process.env.AI_FIXTURE = fixture;
+  try {
+    const img = await photo();
+    const template = [{ code: 'A', name: 'Outsole length', how: 'toe to heel' }, { code: 'B', name: 'Forefoot width', how: 'ball' }, { code: 'C', name: 'Heel width', how: 'heel' }];
+    const d1 = { pom: [{ code: 'A', sample: 11.5, step: 0.33, basis: 'photo' }, { code: 'C', sample: 'n/a', step: 0, basis: '' }] };
+    assert.deepEqual(missingMeasurements(d1, template).missing.map(r => r.code), ['B', 'C'], 'a row with no usable number counts as missing');
+    const rs = await completeMeasurements(d1, { photo: img, pomTemplate: template, product: { title: 'Runner' }, sizes: ['9', '10'], sampleSize: '10' });
+    assert.deepEqual(rs.filled, ['B', 'C']); assert.deepEqual(rs.stillMissing, []); assert.equal(rs.proposed, false);
+    assert.ok(d1.pom.filter(r => r.researched).every(r => /example\.com/.test(r.basis)), 'researched rows carry their sources in the basis');
+    const done = { pom: [{ code: 'A', sample: 1 }, { code: 'B', sample: 2 }, { code: 'C', sample: 3 }] };
+    assert.equal(await completeMeasurements(done, { photo: img, pomTemplate: template, sizes: ['10'], sampleSize: '10' }), null, 'nothing to research when every row has a value');
+    // no template and the model answered with bare codes (no names): those cannot become rows, so rows are proposed instead
+    const d2 = { pom: [{ code: 'A', sample: 5, step: 0, basis: 'x' }, { code: 'B', sample: 6, step: 0, basis: 'x' }, { code: 'C', sample: 7, step: 0, basis: 'x' }, { code: 'D', sample: 8, step: 0, basis: 'x' }] };
+    const rs2 = await completeMeasurements(d2, { photo: img, pomTemplate: [], product: { title: 'Thing' }, sizes: ['One size'], sampleSize: 'One size' });
+    assert.equal(rs2.proposed, true); assert.deepEqual(rs2.filled, ['A', 'B', 'C']); assert.ok(d2.pom.filter(r => r.researched).every(r => r.name && r.how), 'proposed rows are named so they can become table rows');
+    const pack2 = normalizeTechPack(await applyDraftToPack(normalizeTechPack({ ...seedTechPack({ product: { title: 'Thing', product_type: 'Other' } }), sketches: [{ id: 'p', view: 'front', label: '', image: img, callouts: [] }] }), { ...draft, ...d2 }, { photos: [img], sizes: ['One size'], sampleSize: 'One size', model: 't' }));
+    assert.deepEqual(pack2.pom.map(r => [r.code, r.values['One size']]), [['A', '10.00'], ['B', '11.00'], ['C', '12.00']], 'the researched, named rows become the table; bare codes do not');
+  } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});
+
+test('applyDraftToPack appends proposed measurement rows and writes the research into the notes', async () => {
+  const img = await photo();
+  const seed = normalizeTechPack({ ...seedTechPack({ product: { title: 'Desk tray', product_type: 'Accessory' } }), sketches: [{ id: 'p', view: 'front', label: '', image: img, callouts: [] }] });
+  assert.equal(seed.pom.length, 0, 'accessories have no template');
+  const d = { ...draft, pom: [{ code: 'A', name: 'Length', how: 'Longest edge', tolerance: '±0.25', sample: '12 in', step: 0, basis: 'photo', researched: false }, { code: 'B', name: 'Width', how: 'Shortest edge', tolerance: '', sample: 8, step: 0, basis: 'Listed on a comparable [https://example.com/x]', researched: true }, { code: 'Q', name: '', how: '', tolerance: '', sample: 3, step: 0, basis: 'unnamed, dropped' }],
+    pomResearch: { identified: 'Leather valet tray', comparables: [{ name: 'Store listing', url: 'https://example.com/x', what: '12 × 8 in' }], consulted: [], requested: [], proposed: true, filled: ['B'], stillMissing: [], notes: 'Confirm depth.', model: 't' } };
+  const pack = normalizeTechPack(await applyDraftToPack(seed, d, { photos: [img], sizes: seed.sizes, sampleSize: seed.style.sampleSize, model: 't' }));
+  assert.deepEqual(pack.pom.map(r => r.code), ['A', 'B'], 'named rows are appended; unnamed unknown codes are not');
+  assert.equal(pack.pom[0].values['One size'], '12.00'); assert.equal(pack.pom[1].tolerance, '±0.25', 'tolerance defaults when the model gave none');
+  assert.match(pack.notes, /MEASUREMENT RESEARCH/); assert.match(pack.notes, /Leather valet tray/); assert.match(pack.notes, /https:\/\/example\.com\/x/); assert.match(pack.notes, /B \(researched\)/);
+  const failed = normalizeTechPack(await applyDraftToPack(seed, { ...draft, pom: [], pomResearch: { error: 'network' } }, { photos: [img], sizes: seed.sizes, sampleSize: seed.style.sampleSize, model: 't' }));
+  assert.match(failed.notes, /could not run \(network\)/);
+});
+
+test('bags get their own measurement template and a one-size run', async () => {
+  const { pomTemplateFor } = await import('../src/techpack.js');
+  assert.equal(pomTemplateFor('Canvas tote bag').map(r => r[0]).join(''), 'ABCDEF');
+  const pack = seedTechPack({ product: { title: 'Weekender duffle', product_type: 'Bag' } });
+  assert.deepEqual(pack.sizes, ['One size']); assert.equal(pack.pom[3].name, 'Handle drop'); assert.match(pack.labels[0].placement, /Inside body/);
+  assert.equal(pomTemplateFor('Sleeping bag liner hoodie').length, 6, 'bag wins when both words appear'); assert.equal(pomTemplateFor('Baggy jeans').map(r => r[1])[4], 'Inseam', '"baggy" is not a bag');
+});
