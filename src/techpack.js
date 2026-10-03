@@ -16,7 +16,8 @@ const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,[a-z0-9+/=]+$
 
 const str = (value, max = 2000) => String(value ?? '').replace(/\r/g, '').slice(0, max).trim();
 const hex = value => (/^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toLowerCase() : '');
-const unit = value => { const n = Number(value); return Number.isFinite(n) ? Math.min(1, Math.max(0, Math.round(n * 10000) / 10000)) : null; };
+// A fraction of the image, or null when absent: an unplaced pin must stay unplaced (null), never land at 0,0.
+const unit = value => { if (value == null || value === '') return null; const n = Number(value); return Number.isFinite(n) ? Math.min(1, Math.max(0, Math.round(n * 10000) / 10000)) : null; };
 const inches = value => { const n = Number(value); return Number.isFinite(n) && n > 0 && n < 1000 ? Math.round(n * 100) / 100 : null; };
 const list = (value, max, map) => (Array.isArray(value) ? value.slice(0, max).map(map) : []);
 const image = (value, max = MAX_IMAGE_CHARS) => { const v = String(value || ''); return v && v.length <= max && IMAGE_RE.test(v) ? v : ''; };

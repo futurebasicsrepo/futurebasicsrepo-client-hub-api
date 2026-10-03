@@ -107,3 +107,23 @@ test('locateProduct (fixture) rejects a blank image and crops a real one', async
     assert.equal(draftLooksEmpty({ callouts: [], pom: [], bom: [] }), true); assert.equal(draftLooksEmpty({ callouts: [{ label: 'a' }, { label: 'b' }, { label: 'c' }], pom: [], bom: [] }), false);
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
 });
+
+test('callout coordinates survive every answer shape, and a draft without positions gets them placed', async () => {
+  const { normalizeCallout, unplacedCallouts, draftFromPhotos } = await import('../src/ai.js');
+  assert.deepEqual([normalizeCallout({ label: 'A', x: '0.4', y: '0.6' }).x, normalizeCallout({ label: 'A', x: 40, y: 60 }).y], [0.4, 0.6], 'strings and percentages');
+  assert.deepEqual([normalizeCallout({ label: 'B', position: { x: 0.2, y: 0.3 } }).x, normalizeCallout({ label: 'B', position: [0.7, 0.8] }).y], [0.2, 0.8], 'nested positions');
+  const none = normalizeCallout({ label: 'C', spec: 'x' }); assert.equal(none.x, null, 'missing stays missing, never 0');
+  assert.equal(unplacedCallouts([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]), true, 'stacked pins count as unplaced');
+  assert.equal(unplacedCallouts([{ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.6 }, { x: null, y: null }]), false);
+  const prev = process.env.AI_FIXTURE; process.env.AI_FIXTURE = process.env.AI_FIXTURE || new URL('../' + 'fixtures-missing.json', import.meta.url).pathname;
+  try {
+    const noisy = `data:image/png;base64,${(await sharp({ create: { width: 300, height: 200, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).png().toBuffer()).toString('base64')}`;
+    const fixture = `/tmp/claude-0/-home-user-futurebasicsrepo-client-hub-api/a5343353-7eaf-5a82-bf6b-4f40f0e4ccc4/scratchpad/fixtures/ai-runner.json`;
+    process.env.AI_FIXTURE = fixture;
+    const { draft: d } = await draftFromPhotos({ photos: [noisy], title: 'Runner [noxy]', notes: '', pomTemplate: [], sizes: ['9', '10'], sampleSize: '10' });
+    const pts = new Set(d.callouts.map(c => `${c.x?.toFixed(2)},${c.y?.toFixed(2)}`));
+    assert.ok(d.callouts.every(c => c.x != null && c.y != null) && pts.size === d.callouts.length, `all ${d.callouts.length} callouts placed at distinct points`);
+    const pack = normalizeTechPack(await applyDraftToPack(normalizeTechPack({ ...seedTechPack({ product: { title: 'Runner', product_type: 'Footwear' } }), sketches: [{ id: 's', view: 'front', label: '', image: noisy, callouts: [] }] }), { ...d, callouts: d.callouts.map(c => ({ ...c, x: null, y: null })) }, { photos: [noisy], sizes: ['9', '10'], sampleSize: '10', model: 't' }));
+    assert.ok(pack.sketches[0].callouts.every(c => c.x == null && c.photo === ''), 'unplaced callouts carry no position and no crop');
+  } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});
