@@ -40,6 +40,7 @@ export function packItems(rows) {
   return out;
 }
 
+const waitAgo = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000)); return m < 2 ? 'just now' : m < 90 ? `${m} minutes ago` : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`; };
 export const AUTO_RETRY_LIMIT = 5;
 export function assistantRerunItems(rows) {
   return rows.map(r => {
@@ -58,7 +59,7 @@ const order = { urgent: 0, normal: 1, info: 2 };
 export const sortItems = items => [...items].sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || age(b.since) - age(a.since));
 
 export async function buildQueues(pool, { learning = null } = {}) {
-  const [packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai] = await Promise.all([
+  const [packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers] = await Promise.all([
     pool.query(`select tp.id tp_id,tp.status,tp.version,tp.submitted_at,tp.published_at,tp.locked_at,tp.verification,tp.ai_status,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and (tp.status='submitted' or tp.published_at is not null)`),
@@ -73,7 +74,7 @@ export async function buildQueues(pool, { learning = null } = {}) {
       where q.status='issued' and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by q.created_at`),
     pool.query(`select r.id,r.title,r.type,r.created_at,c.id client_id,c.name client_name from requests r join clients c on c.id=r.client_id
       where r.status='submitted' and r.type<>'project-intake' and ${LIVE_CLIENT} order by r.created_at`),
-    pool.query(`select c.id client_id,c.name client_name,c.created_at from clients c where c.status='lead' and c.archived_at is null and c.slug<>'future-basics' order by c.created_at`),
+    pool.query(`select c.id client_id,c.name client_name,c.created_at,a.attempts,a.last_at from clients c left join signin_attempts a on a.client_id=c.id where c.status='lead' and c.archived_at is null and c.slug<>'future-basics' order by c.created_at`),
     pool.query(`select pr.id,pr.po_number,pr.status,pr.eta_date,pr.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
       where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date<current_date and pr.status not in ('complete','delivered','cancelled'))) and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by pr.eta_date nulls last`),
@@ -97,7 +98,11 @@ export async function buildQueues(pool, { learning = null } = {}) {
         count(*) filter(where ai_draft is not null and published_at is null and status='draft')::int drafted_open,
         count(*) filter(where ai_draft is not null)::int drafted_total,
         count(*) filter(where ai_draft is null and initiated_by='client' and ai_status is null)::int blank_client
-      from tech_packs`)
+      from tech_packs`),
+    pool.query(`select s.email,s.attempts,s.first_at,s.last_at from signin_attempts s
+      where s.kind='unknown' and s.last_at>now()-interval '14 days'
+        and not exists(select 1 from clients c where c.status in ('active','lead') and c.archived_at is null and (lower(c.contact_email)=s.email or s.email=any(c.allowed_emails) or split_part(s.email,'@',2)=any(c.email_domains)))
+      order by s.last_at desc limit 20`)
   ]);
 
   const A = []; // waiting on approval
@@ -105,7 +110,15 @@ export async function buildQueues(pool, { learning = null } = {}) {
   for (const r of approvals.rows) A.push({ key: `approval:${r.id}`, stream: 'assets', kind: 'asset-approval', owner: 'client', severity: age(r.requested_at) > 5 * DAY ? 'urgent' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: clip(r.title, 120), detail: r.asset_name ? `Locked to ${clip(r.asset_name, 60)} v${r.asset_version}` : 'Waiting for the client to decide.', since: iso(r.requested_at) });
   for (const r of quotes.rows) { const expired = r.expires_at && new Date(r.expires_at) < new Date(); A.push({ key: `quote:${r.id}`, stream: 'quotes', kind: 'quote', owner: 'client', severity: expired ? 'urgent' : age(r.created_at) > 7 * DAY ? 'normal' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: `Quote v${r.version} for ${r.quantity} units is out`, detail: expired ? 'The quote has expired. Reissue it or follow up.' : r.expires_at ? `Valid until ${new Date(r.expires_at).toLocaleDateString('en-US')}.` : 'Waiting for the client to accept.', since: iso(r.created_at) }); }
   for (const r of requests.rows) A.push({ key: `request:${r.id}`, stream: 'requests', kind: 'request', owner: 'us', severity: age(r.created_at) > 2 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '', title: `New request: ${clip(r.title, 100)}`, detail: clip(r.type, 40), since: iso(r.created_at) });
-  for (const r of leads.rows) A.push({ key: `lead:${r.client_id}`, stream: 'leads', kind: 'lead', owner: 'us', severity: age(r.created_at) > 2 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '', title: 'Website lead: activate the room', detail: 'They cannot sign in until you do.', since: iso(r.created_at) });
+  for (const r of leads.rows) {
+    const tried = Number(r.attempts || 0) > 0;
+    A.push({ key: `lead:${r.client_id}`, stream: 'leads', kind: 'lead', owner: 'us', severity: tried || age(r.created_at) > 2 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '',
+      title: tried ? 'Website lead is trying to sign in: activate the room' : 'Website lead: activate the room',
+      detail: tried ? `They asked for a sign-in code ${r.attempts} ${Number(r.attempts) === 1 ? 'time' : 'times'}, last ${waitAgo(r.last_at)}, and were told the room is being set up.` : 'They cannot sign in until you do.', since: iso(r.created_at) });
+  }
+  // an email we have no work for: often a client using a different address than the one on their room
+  for (const r of strangers.rows) A.push({ key: `signin:${r.email}`, stream: 'leads', kind: 'signin', owner: 'us', severity: Number(r.attempts) >= 2 ? 'normal' : 'info', clientId: null, clientName: r.email, productId: null, productTitle: '',
+    title: 'Tried to sign in, but there is no work under this email', detail: `${r.attempts} ${Number(r.attempts) === 1 ? 'try' : 'tries'}. If this is an existing client, add the address to their room.`, since: iso(r.first_at) });
 
   const B = []; // production attention
   for (const r of runs.rows) B.push({ key: `run:${r.id}`, stream: 'production', kind: 'run', owner: 'us', severity: 'urgent', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: `${r.po_number || 'Production run'} is ${r.status === 'blocked' || r.status === 'delayed' ? r.status : 'past its ETA'}`, detail: r.eta_date ? `ETA ${new Date(r.eta_date).toLocaleDateString('en-US', { timeZone: 'UTC' })}` : 'No ETA set.', since: iso(r.eta_date || r.updated_at) });

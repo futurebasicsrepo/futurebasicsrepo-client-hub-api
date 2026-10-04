@@ -509,6 +509,15 @@ export async function migrate() {
     );
     create index if not exists platform_events_at_idx on platform_events(at desc);
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
+    create table if not exists signin_attempts (
+      email text primary key,
+      client_id uuid references clients(id) on delete cascade,
+      kind text not null default 'unknown',
+      attempts int not null default 1,
+      first_at timestamptz not null default now(),
+      last_at timestamptz not null default now(),
+      alerted_at timestamptz
+    );
     create table if not exists nurture_sends (
       client_id uuid not null references clients(id) on delete cascade,
       step text not null,

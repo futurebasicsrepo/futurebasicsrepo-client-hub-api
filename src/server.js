@@ -22,7 +22,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
-import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -372,6 +372,21 @@ app.post('/v1/public/intakes',async(req,reply)=>{
     message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
+// Someone who asked for a sign-in code and was turned away. A website lead is waiting at the door, so staff get one email per lead per day;
+// an email we have never seen is only listed in the console (it is often a client using a different address than the one on their room).
+async function noteSigninAttempt({email,clientId,kind}){
+  await pool.query(`insert into signin_attempts(email,client_id,kind) values($1,$2,$3)
+    on conflict(email) do update set attempts=signin_attempts.attempts+1,last_at=now(),client_id=excluded.client_id,kind=excluded.kind`,[email,clientId,kind]);
+  if(kind!=='lead'||!clientId)return false;
+  const claim=await pool.query(`update signin_attempts set alerted_at=now() where email=$1 and (alerted_at is null or alerted_at<now()-interval '24 hours') returning attempts`,[email]);
+  if(!claim.rowCount)return false;
+  try{
+    const c=(await pool.query('select name,contact_name from clients where id=$1',[clientId])).rows[0];
+    const who=c?.contact_name||c?.name||email,link=`${workHubUrl}/clients/${clientId}`;
+    return await sendHubEmail({to:intakeNotificationEmail,subject:`${who} is trying to sign in — their room is not active yet`,html:hubEmailShell('A website lead is waiting at the door',
+      `<p><strong>${emailEscape(who)}</strong> (${emailEscape(email)}) just asked for a sign-in code. Their room is not active, so they were told it is being set up and that you will email them.</p><p>Activating the room sends them the welcome email and lets them in.</p>${hubButton(link,'Open their room')}`)});
+  }catch(e){await pool.query('update signin_attempts set alerted_at=null where email=$1',[email]).catch(()=>{});throw e}
+}
 app.post('/v1/auth/code', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const domain = email.split('@')[1];
@@ -379,7 +394,8 @@ app.post('/v1/auth/code', async (req, reply) => {
   const client = await clientForEmail(email);
   if (!client) {
     const lead=(await pool.query(`select id from clients where status='lead' and (lower(contact_email)=$1 or $1=any(allowed_emails)) limit 1`,[email])).rows[0];
-    if(lead)return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'});
+    if(lead){noteSigninAttempt({email,clientId:lead.id,kind:'lead'}).catch(err=>app.log.warn({err:err.message},'sign-in attempt not recorded'));return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'})}
+    if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<=254&&throttle(`signinmiss:${req.ip}`,{limit:20,windowMs:60*60*1000}))noteSigninAttempt({email,clientId:null,kind:'unknown'}).catch(err=>app.log.warn({err:err.message},'sign-in attempt not recorded'));
     return reply.code(403).send({
       error: "We don't currently have any work from you. Start a project here",
       code: 'NO_CLIENT_WORK',
@@ -533,6 +549,7 @@ app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
 app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
 app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
@@ -1776,7 +1793,7 @@ app.post('/v1/admin/products/:id/tech-pack/translate',{preHandler:[authenticate,
   const strings=Object.fromEntries(current.filter(s=>cached[s]).map(s=>[s,cached[s]]));
   const entry={strings,model,at:new Date().toISOString(),count:Object.keys(strings).length};
   await pool.query(`update tech_packs set translations=jsonb_set(coalesce(translations,'{}'::jsonb),$2::text[],$3::jsonb) where id=$1`,[row.id,[lang],JSON.stringify(entry)]);
-  if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${lang==='zh'?'Mandarin':lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
+  if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${LANG_LABELS[lang]?.label||lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
   return {lang,...entry,translated:missing.length};
 });
 // Learning loop: at each milestone, diff the assistant's snapshot against the pack people kept and store the result.
@@ -2067,7 +2084,7 @@ async function dropPackVariant(row){
   try{await shopifyGraphql(VARIANTS_BULK_DELETE,{productId,variantsIds:[row.pay_variant_id]})}catch(e){app.log.warn({err:e.message,packId:row.id},'pack variant not deleted')}
   await pool.query('update tech_packs set pay_variant_id=null where id=$1',[row.id]).catch(()=>{});
 }
-const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
+const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · factory export in Mandarin, Spanish, Portuguese or Italian · yours to edit any time';
 // The payment gate: switched from the work console (stored in app_settings), otherwise automatic: on when Shopify can take
 // payment, or forced either way with TECH_PACK_BILLING=on|off. Read on every request, so a switch takes effect at once.
 let billingMode=null; // 'on' | 'off' | null (automatic)

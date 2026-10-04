@@ -458,22 +458,29 @@ function researchNote(rs) {
 }
 
 // ---- Factory-language translation ----
-// Translates the pack's human-written strings into Simplified Chinese for the factory. Codes, numbers, units, Pantone
+// Translates the pack's human-written strings into the factory's language (Mandarin, Spanish, Portuguese or Italian). Codes, numbers, units, Pantone
 // references and brand names are kept as they are. Returns { map: { source: translation }, model }.
 const TRANSLATE_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['items'],
   properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['i', 't'], properties: { i: { type: 'integer' }, t: { type: 'string' } } } } }
 };
-const LANG_NAMES = { zh: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China' };
-export const TRANSLATION_LANGS = Object.keys(LANG_NAMES);
+// One entry per factory language: how the model should write it, the trade terms that reader expects, and what the test fixture prefixes.
+const LANGS = {
+  zh: { label: 'Mandarin', native: '中文', name: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China', terms: '面料, 里布, 鞋面, 中底, 大底, 针距, 色号, 公差, 唛头', fixture: '中文：' },
+  es: { label: 'Spanish', native: 'Español', name: 'Spanish as used in apparel and footwear factories in Spain (español de España)', terms: 'tejido, forro, empeine, plantilla, suela, entresuela, puntadas por pulgada, tolerancia, etiqueta', fixture: 'ES: ' },
+  pt: { label: 'Portuguese', native: 'Português', name: 'European Portuguese as used in apparel and footwear factories in Portugal (português de Portugal)', terms: 'tecido, forro, gáspea, palmilha, sola, entressola, pontos por polegada, tolerância, etiqueta', fixture: 'PT: ' },
+  it: { label: 'Italian', native: 'Italiano', name: 'Italian as used in apparel and footwear factories in Italy', terms: 'tessuto, fodera, tomaia, soletta, suola, intersuola, punti per pollice, tolleranza, etichetta', fixture: 'IT: ' }
+};
+export const TRANSLATION_LANGS = Object.keys(LANGS);
+export const LANG_LABELS = Object.fromEntries(Object.entries(LANGS).map(([k, v]) => [k, { label: v.label, native: v.native }]));
 
 async function translateStringsRaw(strings, { lang = 'zh' } = {}) {
   const list = [...new Set(strings.map(s => String(s ?? '').trim()).filter(Boolean))];
-  if (!LANG_NAMES[lang]) throw new Error(`Unsupported language ${lang}`);
+  const L = LANGS[lang]; if (!L) throw new Error(`Unsupported language ${lang}`);
   if (!list.length) return { map: {}, model: null };
-  if (process.env.AI_FIXTURE) { await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0))); return { map: Object.fromEntries(list.map(s => [s, `中文：${s}`])), model: 'fixture' }; }
+  if (process.env.AI_FIXTURE) { await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0))); return { map: Object.fromEntries(list.map(s => [s, `${L.fixture}${s}`])), model: 'fixture' }; }
   const client = new Anthropic();
-  const system = `You translate garment and footwear tech packs from English into ${LANG_NAMES[lang]}. The reader is a factory's technical and production team, so use the standard industry terms they use (e.g. 面料, 里布, 鞋面, 中底, 大底, 针距, 色号, 公差, 唛头). Keep measurement codes, numbers, units, tolerances, Pantone/TCX codes, style numbers, supplier references and brand names (Future Basics) exactly as written. Keep line breaks. Do not add explanations. Translate every item; return each item's index with its translation.`;
+  const system = `You translate garment and footwear tech packs from English into ${L.name}. The reader is a factory's technical and production team, so use the standard industry terms they use (e.g. ${L.terms}). Keep measurement codes, numbers, units, tolerances, Pantone/TCX codes, style numbers, supplier references and brand names (Future Basics) exactly as written. Keep line breaks. Do not add explanations. Translate every item; return each item's index with its translation.`;
   const map = {}; let model = AI_MODEL;
   for (let start = 0; start < list.length; start += 80) {
     const chunk = list.slice(start, start + 80);
