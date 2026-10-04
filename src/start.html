@@ -34,6 +34,7 @@
     .go{margin-top:16px;width:100%;border:0;border-radius:999px;padding:17px 20px;background:var(--ink);color:#fff;font-weight:600;font-size:17px;cursor:pointer;display:flex;justify-content:center;align-items:center;gap:10px;min-height:58px;transition:transform .15s var(--ease)}
     .go:active{transform:scale(.985)}.go:disabled{opacity:.6;cursor:default}.go .dot{width:9px;height:9px;border-radius:999px;background:var(--cue);box-shadow:0 0 0 4px rgba(75,255,154,.25)}
     .msg{margin:12px 0 0;min-height:1.2em;font-size:14px}.msg.err{color:#b4231e}.msg.ok{color:#116d3f}
+    .linkbtn{background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer}.linkbtn:disabled{opacity:.5;cursor:default}
     .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0 0}.step{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 12px 13px;font-size:13px;line-height:1.35}.step b{display:block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:var(--dim);margin-bottom:6px}
     @media(max-width:420px){.steps{grid-template-columns:1fr 1fr 1fr}.step{font-size:12px;padding:10px}}
     .code{display:grid;gap:12px}.code input{letter-spacing:.3em;text-align:center;font-size:24px;font-family:'IBM Plex Mono',monospace}
@@ -75,8 +76,9 @@
       <span class="meta">One more step</span>
       <h2 style="font-weight:500;letter-spacing:-.03em;margin:8px 0 6px;font-size:26px">We know this email.</h2>
       <p style="margin:0 0 14px;color:#3a3a3e">Your draft is saved in your existing room. Enter the six-digit code we just emailed to <b id="codeEmail"></b> to open it.</p>
-      <form id="codeForm" class="code"><input class="t" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="••••••"><button class="go" type="submit" style="margin:0"><span id="codeLabel">Open my tech pack</span></button></form>
+      <form id="codeForm" class="code"><input class="t" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="14" required placeholder="••••••"><button class="go" type="submit" style="margin:0"><span id="codeLabel">Open my tech pack</span></button></form>
       <p id="codeMsg" class="msg" aria-live="polite"></p>
+      <p class="meta" style="margin:12px 0 0;text-transform:none;letter-spacing:0">Nothing yet? <button type="button" class="linkbtn" id="resend">Send a new code</button> · <button type="button" class="linkbtn" id="changeEmail">Use a different email</button></p>
     </section>
 
     <div class="steps" aria-label="How it works">
@@ -93,7 +95,13 @@
     const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const KEY='fb.client.token',shots=[];                           // {src, trimmed, original, name}
     const MAX=4;
-    async function api(p,body){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Something went wrong');e.status=r.status;throw e}return d}
+    const STATUS_WORDS={413:'Your images are too large to send together — remove one, or use smaller ones.',429:'Too many tries — wait a few minutes and try again.',502:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',503:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',504:'That took too long. Try again — your images are still here.'};
+    async function api(p,body){const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),90000);let r;
+      try{r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ctl.signal})}
+      catch(err){const e=new Error(err.name==='AbortError'?'This is taking longer than usual. Check your connection and try again — your images are still here.':'Could not reach Future Basics — check your connection and try again. If your images are very large, remove one.');e.status=0;throw e}finally{clearTimeout(timer)}
+      let d={},parsed=true;try{d=await r.json()}catch{parsed=false}
+      if(r.ok&&!parsed){const e=new Error('We got an unexpected reply — if you are on public Wi-Fi, finish its sign-in page first, then try again.');e.status=r.status;throw e}
+      if(!r.ok){const e=new Error((r.status<500&&d.error)||STATUS_WORDS[r.status]||(r.status>=500?'Something went wrong on our side — try again in a moment. Your images are still here.':'Something went wrong — try again in a moment.'));e.status=r.status;throw e}return d}
     const {loadImage,toCanvas,autoTrim,jpeg,prepare,isImageFile}=window.PhotoPrep;
     async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say('That file is not an image. Add a design, sketch, photo or screenshot (JPG, PNG or HEIC).','err');if(!list.length)return;
       for(const f of list){if(shots.length>=MAX){say(`Up to ${MAX} images — remove one to add another.`,'err');break}
@@ -119,7 +127,9 @@
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original),attribution});
         if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
-      }catch(err){say(/fetch|network|load failed/i.test(err.message||'')?'Could not reach Future Basics — check your connection and try again. If your photos are very large, remove one.':err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
+      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
+    $('#resend').addEventListener('click',async()=>{const m=$('#codeMsg'),b=$('#resend');b.disabled=true;m.className='msg';m.textContent='';try{await api('/v1/auth/code',{email:pending.email});m.textContent='A new code is on its way — it can take a minute. Use the latest one.';m.className='msg ok'}catch(err){m.textContent=err.message;m.className='msg err'}setTimeout(()=>{b.disabled=false},8000)});
+    $('#changeEmail').addEventListener('click',()=>{$('#codeCard').classList.add('hidden');$('#startForm').classList.remove('hidden');pending=null;$('#go').disabled=false;$('#goLabel').textContent='Create my tech pack';$('#email').focus();$('#email').select()});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const btn=e.target.querySelector('button');btn.disabled=true;
       try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href=`/tech-packs/${pending.product.id}`}
       catch(err){m.textContent=err.message;m.className='msg err';btn.disabled=false}});
