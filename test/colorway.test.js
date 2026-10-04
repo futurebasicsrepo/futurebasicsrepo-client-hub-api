@@ -59,3 +59,23 @@ test('renderColorways makes one JPEG tile per valid swatch, and the merge keeps 
   assert.match(merged[1].note, /concept visual/);
   assert.deepEqual(await renderColorways('not a data url', [{ name: 'X', swatch: '#000000' }]), []);
 });
+
+test('a cream product on a near-white backdrop is still found, and panels recolour on their own', async () => {
+  // cream body (238,233,227) on (242,242,240) with a soft 1px outline and a darker print panel
+  const w = 240, h = 160, rgb = Buffer.alloc(w * h * 3);
+  for (let k = 0; k < w * h; k++) { rgb[k * 3] = 242; rgb[k * 3 + 1] = 242; rgb[k * 3 + 2] = 240; }
+  const fill = (x0, y0, x1, y1, c) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * w + x) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; } };
+  fill(39, 29, 201, 131, [222, 218, 212]); fill(40, 30, 200, 130, [238, 233, 227]);
+  fill(80, 50, 160, 90, [150, 120, 120]);
+  const { mask } = productMask(rgb, w, h);
+  assert.equal(mask[5 * w + 5], 0, 'corner is background');
+  assert.equal(mask[100 * w + 60], 1, 'cream body is product, not backdrop');
+  const png = await sharp(rgb, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  const tiles = await renderColorways(`data:image/png;base64,${png.toString('base64')}`, [{ name: 'Olive', swatch: '#556b2f' }]);
+  const olive = tiles.find(t => t.id === 'cw-olive'); assert.equal(olive.mode, 'panels');
+  const { data } = await sharp(Buffer.from(olive.image.split(',')[1], 'base64')).raw().toBuffer({ resolveWithObject: true });
+  const body = at(data, w, 60, 100), print = at(data, w, 120, 70), bg = at(data, w, 5, 5);
+  assert.ok(body[1] > body[2] + 15, 'body turned olive');
+  assert.ok(Math.abs(rgbToHsl(...print)[2] - rgbToHsl(...body)[2]) > 0.06, 'the print stays its own panel, not painted flat into the body');
+  assert.ok(Math.min(...bg) > 230, 'backdrop untouched');
+});
