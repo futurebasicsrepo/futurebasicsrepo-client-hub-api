@@ -11,7 +11,7 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
-import { runChecks, configChecks, jobHealth, insights as platformInsights } from './platform.js';
+import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
@@ -19,7 +19,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
@@ -30,6 +30,7 @@ app.addHook('onResponse', async (req, reply) => { try { recordRequest(req.routeO
 setSink(async ({ source, level, message, detail }) => {
   await pool.query('insert into platform_events(source,level,message,detail) values($1,$2,$3,$4)', [source, level, String(message).slice(0, 500), detail || {}]);
   await pool.query('delete from platform_events where id in (select id from platform_events order by id desc offset 500)').catch(() => {});
+  if (source === 'anthropic') { const kind = classifyAiFailure(message); if (kind) alertAssistantDown(kind, message).catch(err => app.log.warn({ err: err.message }, 'assistant alert failed')); }
 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 mkdirSync(uploadDir, { recursive: true });
@@ -248,6 +249,20 @@ async function sendHubEmail({to,subject,html,replyTo,from,headers}){
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
 const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+// The assistant stopping for a reason only we can fix (empty credit, a rejected key) emails staff once, then stays quiet for a few hours
+// so a stuck queue is one email, not hundreds. The slot is claimed before sending so failures landing together send one; a delivery that
+// errors gives it back. With no email service configured it only logs: the Platform page shows that on its own.
+const platformAlertEmail=process.env.PLATFORM_ALERT_EMAIL||intakeNotificationEmail,AI_ALERT_COOLDOWN_HOURS=Number(process.env.AI_ALERT_COOLDOWN_HOURS)||6;
+async function alertAssistantDown(kind,message){
+  const key=`aiAlert:${kind}`;
+  const claim=await pool.query(`insert into app_settings(key,value) values($1,$2) on conflict(key) do update set value=excluded.value,updated_at=now() where app_settings.updated_at<now()-make_interval(hours=>$3) returning key`,[key,JSON.stringify({kind,at:new Date().toISOString()}),AI_ALERT_COOLDOWN_HOURS]);
+  if(!claim.rowCount)return false;
+  try{
+    const affected=(await pool.query(`select count(*)::int n from tech_packs where ai_status='failed' and ai_error ilike '%on our side%'`)).rows[0].n;
+    const a=assistantAlertContent({kind,message,affected,consoleUrl:workHubUrl,platformUrl:`${workHubUrl}/platform`});
+    return await sendHubEmail({to:platformAlertEmail,subject:a.subject,html:hubEmailShell(a.headline,`<p>${emailEscape(a.intro)}</p><p><strong>What customers see.</strong> ${emailEscape(a.customers)}</p><p><strong>What to do</strong></p><ol>${a.steps.map(t=>`<li>${emailEscape(t)}</li>`).join('')}</ol><p>${emailEscape(a.waiting)}</p>${hubButton(a.platformUrl,'Open the Platform page')}<p style="color:#717177;font-size:12px">What Anthropic said: ${emailEscape(a.quote)}<br>Sent once, then not again for ${AI_ALERT_COOLDOWN_HOURS} hours while this lasts.</p>`)});
+  }catch(e){await pool.query('delete from app_settings where key=$1',[key]).catch(()=>{});throw e}
+}
 async function sendIntakeConfirmation(intake){
   const d=intake.data,rows=[['Project',d.projectName],['Product',d.productCategory],['Quantity',d.targetQuantity],['Budget',d.budgetRange],['Target date',d.targetDate]].filter(([,v])=>v);
   return sendHubEmail({to:d.email,subject:`We have your brief — ${d.projectName}`,html:hubEmailShell('We have your brief',
@@ -1683,12 +1698,28 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
+// The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
+// the way a new price or MOQ does. A field the pack states overwrites the card; a field it leaves blank never erases anything. Only what the client
+// is allowed to see is passed in: their own draft, or a version staff have published.
+async function syncCardFromTechPack(productId,data,q=pool){
+  const f=cardFieldsFromPack(data);if(!f)return false;
+  const cur=(await q.query('select material,decoration_method,decoration_locations,colorways,sizes from product_configurations where product_id=$1',[productId])).rows[0];
+  const next={material:f.material??cur?.material??null,decoration_method:f.decoration_method??cur?.decoration_method??null,decoration_locations:f.decoration_locations??cur?.decoration_locations??[],colorways:f.colorways??cur?.colorways??[],sizes:f.sizes??cur?.sizes??[]};
+  if(cur&&JSON.stringify(cur)===JSON.stringify(next))return false;
+  await q.query(`insert into product_configurations(product_id,material,decoration_method,decoration_locations,colorways,sizes) values($1,$2,$3,$4,$5,$6)
+    on conflict(product_id) do update set material=excluded.material,decoration_method=excluded.decoration_method,decoration_locations=excluded.decoration_locations,colorways=excluded.colorways,sizes=excluded.sizes,updated_at=now()`,
+    [productId,next.material,next.decoration_method,next.decoration_locations,next.colorways,next.sizes]);
+  return true;
+}
+const syncCardQuietly=(productId,data)=>syncCardFromTechPack(productId,data).catch(err=>app.log.warn({err:err.message,productId},'product card not updated from the tech pack'));
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   {const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'})}
   const data=normalizeTechPack(req.body?.data);
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
     on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
+  // staff finishing a client's own unpublished draft: the card follows. Anything else reaches the card when it is published.
+  if(row.initiated_by==='client'&&!row.published_at)await syncCardQuietly(ctx.product.id,data);
   return {techPack:techPackPayload(row),completeness:techPackCompleteness(data)};
 });
 // Stored translations, keyed by language: { zh: { strings: { en: zh }, model, at } }. Only languages with content are returned.
@@ -1760,6 +1791,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
     await client.query('commit');
     recordDraftEdits(row.id,'published').catch(()=>{});
+    await syncCardQuietly(ctx.product.id,row.published_data);
     let clientNotified=false;
     if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
       try{
@@ -2256,6 +2288,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
+    if(row.initiated_by==='client')await syncCardQuietly(row.product_id,merged);
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
@@ -2516,6 +2549,7 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   const data=normalizeTechPack(sent);
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
+  await syncCardQuietly(row.product_id,data);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
 });
 // Colourway tiles on demand: the first photo recoloured to each colourway in the pack, saved as renderings.
@@ -3058,6 +3092,14 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+// One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.
+async function backfillCardsFromTechPacks(){
+  if((await getSetting('cardBackfillV1'))?.done)return 0;
+  const rows=(await pool.query(`select product_id,case when published_at is not null then published_data else data end d from tech_packs where initiated_by='client' or published_at is not null`)).rows;
+  let changed=0;for(const r of rows){try{if(r.d&&await syncCardFromTechPack(r.product_id,r.d))changed++}catch(e){app.log.warn({err:e.message,productId:r.product_id},'card backfill skipped one product')}}
+  await setSetting('cardBackfillV1',{done:true,at:new Date().toISOString(),products:rows.length,changed});app.log.info({products:rows.length,changed},'product cards filled from existing tech packs');return changed;
+}
+jobEvery('Product cards from tech packs', 24 * 60 * 60 * 1000, backfillCardsFromTechPacks, { delay: 20 * 1000 });
 jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep);
 offerJob();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

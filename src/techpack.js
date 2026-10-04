@@ -364,3 +364,20 @@ export function mergeClientEdits(orig, current, drafted) {
   out.artwork = c.artwork.length ? c.artwork : out.artwork;
   return normalizeTechPack(out);
 }
+
+// What the product card shows (material, decoration, colourways, size run) comes from the tech pack's own tables. A field the pack does not
+// state is left out, so a blank pack never erases what is on the card. The default size run only counts once the pack has real content.
+const distinct = (items, max) => { const seen = new Set(), out = []; for (const raw of items) { const v = String(raw || '').replace(/\s+/g, ' ').trim(); if (!v || seen.has(v.toLowerCase())) continue; seen.add(v.toLowerCase()); out.push(v); if (out.length >= max) break; } return out; };
+export function packHasContent(data) {
+  const d = normalizeTechPack(data);
+  return d.pom.some(r => Object.values(r.values).some(Boolean)) || d.bom.length > 0 || d.colorways.length > 0 || d.sketches.some(s => s.callouts.length > 0);
+}
+export function cardFieldsFromPack(data) {
+  const d = normalizeTechPack(data), out = {};
+  const materials = distinct(d.bom.map(r => r.material), 6); if (materials.length) out.material = materials.join(', ').slice(0, 200);
+  const methods = distinct(d.artwork.map(a => a.name || (a.image ? 'Artwork' : '')), 4); if (methods.length) out.decoration_method = methods.join(', ').slice(0, 200);
+  const places = distinct(d.artwork.flatMap(a => a.placements.map(p => p.label)), 8); if (places.length) out.decoration_locations = places;
+  const colours = distinct(d.colorways.map(c => c.code ? `${c.name} (${c.code})` : c.name), 12); if (colours.length) out.colorways = colours;
+  if (packHasContent(d) && d.sizes.length) out.sizes = d.sizes;
+  return Object.keys(out).length ? out : null;
+}

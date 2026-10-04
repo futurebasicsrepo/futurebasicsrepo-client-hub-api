@@ -342,4 +342,33 @@ await journey('J39', 'platform health page: staff only, complete, honest about t
   const tbl = sql(`select to_regclass('platform_events') is not null`); ok(tbl === 't', 'the failure log table exists');
 });
 
+await journey('J44', 'the product card follows the tech pack: material, decoration, colourways and size run', async () => {
+  const room = await newRoom('44'), cid = room.r.json.client.id, pid = room.r.json.project.id, id = room.productId;
+  const card = async (t = room.token, pidx = id) => (await call('/v1/dashboard', { token: t })).json.products.find(p => p.id === pidx)?.configuration || null;
+  let c = await card(); ok(c && c.material && c.colorways?.length && c.sizes?.length, 'once the assistant has drafted the pack, the card already shows material, colourways and size run', c && { m: c.material, c: c.colorways, s: c.sizes });
+  const save = async mutate => { const d = (await draftOf(room.token, id)).techPack.data; mutate(d); const r = await call(`/v1/products/${id}/tech-pack/draft`, { method: 'PUT', token: room.token, body: { data: d } }); ok(r.status === 200, 'save works', [r.status, r.json.error]); return d; };
+  await save(d => { d.bom = [{ component: 'Upper', material: 'Recycled mesh' }, { component: 'Lining', material: 'Suede' }, { component: 'Sole', material: 'recycled MESH' }]; d.colorways = [{ name: 'Gum', code: '18-1021' }, { name: 'Ecru' }]; d.sizes = ['8', '9', '10', '11']; d.artwork = [{ id: 'aw1', name: 'Heel logo', image: runner, pantones: [], placements: [{ sketchId: d.sketches[0].id, x: .5, y: .5, widthIn: 2, label: 'Heel' }] }]; });
+  c = await card(); ok(c.material === 'Recycled mesh, Suede', 'the customer edits the materials: the card says "Recycled mesh, Suede" (repeats dropped)', c.material);
+  ok(JSON.stringify(c.colorways) === JSON.stringify(['Gum (18-1021)', 'Ecru']), 'colourways follow, with the code', c.colorways); ok(JSON.stringify(c.sizes) === JSON.stringify(['8', '9', '10', '11']), 'the size run follows', c.sizes);
+  ok(c.decoration_method === 'Heel logo' && JSON.stringify(c.decoration_locations) === JSON.stringify(['Heel']), 'decoration reads the artwork and where it goes', [c.decoration_method, c.decoration_locations]);
+  await save(d => { d.bom = []; d.colorways = []; d.artwork = []; });
+  c = await card(); ok(c.material === 'Recycled mesh, Suede' && c.colorways.length === 2 && c.decoration_method === 'Heel logo', 'emptying the tables never erases what the card already says', c);
+  await save(d => { d.bom = [{ component: 'Upper', material: 'Vegan leather' }]; });
+  ok((await card()).material === 'Vegan leather', 'and the next edit replaces it');
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin' });
+  const adm = await call(`/v1/admin/clients/${cid}`, { token: admin }); const ap = (adm.json.products || []).find(p => p.id === id); const ac = ap?.configuration || (adm.json.configurations || []).find(x => x.product_id === id);
+  ok(ac?.material === 'Vegan leather' && ac.sizes?.length === 4, 'the work console shows the same card', ac && [ac.material, ac.sizes]);
+  await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} });
+  let seed = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data; seed.colorways = [{ name: 'Midnight' }];
+  const put = await call(`/v1/admin/products/${id}/tech-pack`, { method: 'PUT', token: admin, body: { data: seed } }); ok(put.status === 200, 'staff finish the client\'s unpublished draft', put.status);
+  ok(JSON.stringify((await card()).colorways) === JSON.stringify(['Midnight']), 'and the card follows their edits too');
+  // a pack staff write themselves stays off the card until it is published
+  const made = await call(`/v1/admin/clients/${cid}/products`, { token: admin, body: { title: `Staff pack ${stamp}`, projectId: pid } }); ok(made.status === 201 || made.status === 200, 'staff add a product of their own', [made.status, made.json.error]);
+  const sid = made.json.product?.id || made.json.id; const got = (await call(`/v1/admin/products/${sid}/tech-pack`, { token: admin })).json; const sd = got.techPack?.data || got.seed; sd.bom = [{ component: 'Shell', material: 'Secret wool blend' }]; sd.colorways = [{ name: 'Unreleased' }];
+  ok((await call(`/v1/admin/products/${sid}/tech-pack`, { method: 'PUT', token: admin, body: { data: sd } })).status === 200, 'staff save their draft');
+  ok(!JSON.stringify((await call('/v1/dashboard', { token: room.token })).json).includes('Secret wool'), 'the customer sees none of it while it is a draft');
+  const pub = await call(`/v1/admin/products/${sid}/tech-pack/publish`, { method: 'POST', token: admin, body: {} }); ok(pub.status === 200, 'staff publish', [pub.status, pub.json.error]);
+  const pc = await card(room.token, sid); ok(pc?.material === 'Secret wool blend' && pc.colorways?.[0] === 'Unreleased', 'publishing puts it on the card', pc);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -311,4 +311,33 @@ await journey('J42', 'the /start session ends while the editor is open: edits st
   } finally { await ctx.close(); }
 });
 
+await journey('J45', 'the product card in the hub and the work console shows what the tech pack says', async () => {
+  const r = await room('45'), W = 'http://work.localhost:3123';
+  const d = (await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).json.techPack.data;
+  d.bom = [{ component: 'Upper', material: 'Recycled mesh' }, { component: 'Lining', material: 'Suede' }]; d.colorways = [{ name: 'Gum', code: '18-1021' }, { name: 'Ecru' }]; d.sizes = ['8', '9', '10']; d.artwork = [{ id: 'aw1', name: 'Heel logo', image: runner, pantones: [], placements: [{ sketchId: d.sketches[0].id, x: .5, y: .5, widthIn: 2, label: 'Heel' }] }];
+  ok((await call(`/v1/products/${r.id}/tech-pack/draft`, { method: 'PUT', token: r.token, body: { data: d } })).status === 200, 'setup: the customer fills in the pack');
+  const { ctx, page } = await phone();
+  try {
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/projects/${r.projectId}#products`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cp-${r.id}`, { timeout: 15000 });
+    const hub = await page.innerText(`#cp-${r.id}`);
+    ok(/Material:\s*Recycled mesh, Suede/.test(hub) && /Decoration:\s*Heel logo/.test(hub) && /Colorways:\s*Gum \(18-1021\), Ecru/.test(hub), 'the hub card reads Material, Decoration and Colorways from the pack', hub.slice(0, 400));
+    ok(await page.locator(`#cp-${r.id} .size-chip`).allInnerTexts().then(t => t.join() === '8,9,10'), 'and the size run chips are 8, 9, 10');
+    ok(!/Material:\s*TBD/.test(hub), 'with no TBD left where the pack has an answer');
+    await page.locator(`#cp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-hub-card.png` });
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${W}/clients/${r.clientId}#project=${r.projectId}`, { waitUntil: 'networkidle' }); await wp.waitForSelector(`#wp-${r.id}`, { timeout: 15000 });
+    const work = await wp.innerText(`#wp-${r.id}`);
+    ok(await wp.locator(`#wp-${r.id} .size-chips span`).allInnerTexts().then(t => t.join() === '8,9,10'), 'with the size run chips');
+    ok(/Recycled mesh, Suede/.test(work) && /Heel logo/.test(work) && /Gum \(18-1021\), Ecru/.test(work), 'the work console card shows the same', work.slice(0, 400));
+    await wp.locator(`#wp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-work-card.png` });
+    ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
+  } finally { await wctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

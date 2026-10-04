@@ -24,4 +24,17 @@ await journey('J19', 'retrying while we are down never uses up the customer\'s t
   ok(Number(sql(`select ai_attempts from tech_packs where product_id='${id}'`)) === 0, 'attempts still zero');
 });
 
+await journey('J43', 'the model API refuses us: staff get one alert, not one per failure, and customers are unaffected', async () => {
+  const log = () => readFileSync(LOG, 'utf8').split('\n').filter(l => /Action needed: the tech pack assistant/.test(l));
+  const before = log().length;
+  const r = await call('/v1/public/start', { body: { email: em('43'), title: 'Alert runner', photos: [runner] } }); await waitAi(call, r.json.token, r.json.product.id, 40000);
+  for (let i = 0; i < 3; i++) { const x = await call(`/v1/products/${r.json.product.id}/tech-pack/draft/ai`, { method: 'POST', token: r.json.token }); await waitAi(call, r.json.token, r.json.product.id, 40000); }
+  await sleep(500);
+  const lines = log(); ok(lines.length - before === 1 || lines.length === 1, 'several failed runs produce exactly one alert', lines.length);
+  ok(/refused by Anthropic|out of Anthropic credit/.test(lines[0] || ''), 'it names the problem', (lines[0] || '').slice(0, 160));
+  ok(sql(`select count(*) from app_settings where key like 'aiAlert:%'`) === '1', 'and remembers when it was sent, so a restart does not send it again');
+  ok(Number(sql(`select count(*) from platform_events where source='anthropic'`)) >= 1, 'the failure is also on the Platform page list');
+  const d = (await call(`/v1/products/${r.json.product.id}/tech-pack/draft`, { token: r.json.token })).json.techPack; ok(d.aiStatus === 'failed' && /on our side/i.test(d.aiError || '') && !/401|api-key|authentication/i.test(d.aiError || ''), 'the customer still sees the honest message with no raw error', d.aiError);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
