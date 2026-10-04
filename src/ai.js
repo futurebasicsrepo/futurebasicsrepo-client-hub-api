@@ -6,6 +6,7 @@
 // with the same shape, so the merge, the callout crops and the editor flow can be exercised without a key.
 import { readFileSync } from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
+import { familyOf, rangeFor, fixUnitSlip, auditRows } from './plausible.js';
 import sharp from 'sharp';
 
 export const AI_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
@@ -259,7 +260,7 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
   if (Array.isArray(draft.colorways) && draft.colorways.length) pack.colorways = draft.colorways.slice(0, 6).filter(c => HEX_OK.test(c.hex || '')).map(c => ({ name: String(c.name || '').slice(0, 80), code: String(c.pantone || '').slice(0, 40), swatch: c.hex.toLowerCase(), notes: `${c.role ? c.role + ' · ' : ''}${c.observed ? 'Seen in the photo' : 'Suggested alternative'} — client to confirm` }));
   if (draft.care?.fiber || draft.care?.instructions) pack.care = { ...pack.care, fiber: String(draft.care.fiber || pack.care.fiber).slice(0, 300), instructions: String(draft.care.instructions || pack.care.instructions).slice(0, 1500) };
   pack.notes = [`AI DRAFT — written from the uploaded photo by the Future Basics assistant (${model}); confidence ${draft.confidence || 'medium'}. Every value is a starting point for the client and Future Basics to confirm; nothing here is released to a factory until all three signatures are in.`,
-    String(draft.notes || '').slice(0, 2500), pomBasis ? `MEASUREMENT BASIS\n${pomBasis}`.slice(0, 1800) : '', research].filter(Boolean).join('\n\n').slice(0, 6000);
+    String(draft.notes || '').slice(0, 2500), pomBasis ? `MEASUREMENT BASIS\n${pomBasis}`.slice(0, 1800) : '', research, checkNote(draft.pomChecks)].filter(Boolean).join('\n\n').slice(0, 7000);
   return pack;
 }
 
@@ -310,7 +311,7 @@ export async function researchMeasurements({ photo, product = {}, rows = [], pro
     if (fx) return { ...fx, consulted: fx.consulted || [], model: 'fixture' };
     const list = rows.length ? rows : proposeRows ? [{ code: 'A', name: 'Length', how: 'Edge to edge at the longest point', tolerance: '±0.25' }, { code: 'B', name: 'Width', how: 'Edge to edge at the widest point', tolerance: '±0.25' }, { code: 'C', name: 'Height', how: 'Base to top edge', tolerance: '±0.25' }] : [];
     return { identified: 'fixture product', comparables: [{ name: 'Comparable listing', url: 'https://example.com/size-guide', what: 'Listed dimensions' }], consulted: ['https://example.com/size-guide'],
-      rows: list.map((r, i) => ({ code: String(r.code).toUpperCase(), name: r.name || '', how: r.how || '', tolerance: r.tolerance || '±0.25', sample: 10 + i, step: 0.25, basis: 'Listed on a comparable style (fixture)', sources: ['https://example.com/size-guide'] })), notes: 'Fixture research.', model: 'fixture' };
+      rows: list.map((r, i) => ({ code: String(r.code).toUpperCase(), name: r.name || '', how: r.how || '', tolerance: r.tolerance || '±0.25', sample: r.range ? Math.round((r.range.lo + r.range.hi) / 2 * 100) / 100 : 10 + i, step: r.range ? 0 : 0.25, basis: 'Listed on a comparable style (fixture)', sources: ['https://example.com/size-guide'] })), notes: 'Fixture research.', model: 'fixture' };
   }
   const client = new Anthropic();
   const image = dataUrlToImageBlock(photo); if (!image) throw new Error('No readable photo');
@@ -324,7 +325,7 @@ How to work:
 Leave a row out when nothing defensible turns up — never invent a figure. Brand and style names are for lookup only; the pack describes an original product.`;
   const text = `Product: ${product.title || '(untitled)'}${product.category ? ` — ${product.category}` : ''}
 ${product.description ? `Draft description: ${String(product.description).slice(0, 600)}\n` : ''}${product.fabricSummary ? `Materials: ${product.fabricSummary}\n` : ''}Size run: ${sizes.join(', ')} · sample size ${sampleSize}
-${rows.length ? `Rows to fill (code — name — how to measure):\n${rows.map(r => `${r.code} — ${r.name} — ${r.how}`).join('\n')}` : 'Rows to fill: propose them.'}
+${rows.length ? `Rows to fill (code — name — how to measure):\n${rows.map(r => `${r.code} — ${r.name} — ${r.how}${r.range ? ` — a real one is between ${r.range.lo} and ${r.range.hi} inches` : ''}`).join('\n')}` : 'Rows to fill: propose them.'}
 
 Research comparable styles and return the measurements.`;
   const tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }, { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 }];
@@ -364,10 +365,12 @@ Research comparable styles and return the measurements.`;
 }
 // Fills what the draft left blank by researching comparable styles. Adds the rows to draft.pom and puts the summary on
 // draft.pomResearch (which applyDraftToPack writes into the notes). Returns null when nothing was missing.
-export async function completeMeasurements(draft, { photo, pomTemplate = [], product = {}, sizes = [], sampleSize = '' }) {
+export async function completeMeasurements(draft, { photo, pomTemplate = [], product = {}, sizes = [], sampleSize = '', family = '' }) {
   const { missing, needsRows } = missingMeasurements(draft, pomTemplate);
   if (!missing.length && !needsRows) return null;
-  const research = await researchMeasurements({ photo, product, rows: missing, proposeRows: needsRows, sizes, sampleSize });
+  const fam = family || familyOf(product.category, product.title);
+  const asked = missing.map(r => { const g = rangeFor(r.name, fam); return g ? { ...r, range: { lo: g.lo, hi: g.hi } } : r; });
+  const research = await researchMeasurements({ photo, product, rows: asked, proposeRows: needsRows, sizes, sampleSize });
   const have = usableCodes(draft, pomTemplate);
   const added = [];
   for (const r of research.rows) {
@@ -381,6 +384,67 @@ export async function completeMeasurements(draft, { photo, pomTemplate = [], pro
   const requested = missing.map(r => String(r.code).toUpperCase());
   draft.pomResearch = { identified: research.identified, comparables: research.comparables, consulted: research.consulted || [], requested, proposed: needsRows, filled: added.map(r => r.code), stillMissing: requested.filter(c => !have.has(c)), notes: research.notes, model: research.model };
   return draft.pomResearch;
+}
+// The measurement check: runs on the assistant's draft before it reaches a client. A value only wrong by its unit is
+// converted; a graded size that leaves the range has its step capped; a value outside the range for this kind of product
+// is taken out, researched again with the range stated, and left blank when it still does not fit. Every change is
+// recorded in draft.pomChecks for the pack's notes. Blank beats wrong: a factory reads a number as an instruction.
+export async function vetMeasurements(draft, { photo = '', pomTemplate = [], product = {}, sizes = [], sampleSize = '' } = {}) {
+  const family = familyOf(draft?.category || product.category, product.title);
+  const report = { family, converted: [], capped: [], rejected: [], refilled: [], blank: [], flagged: [] };
+  if (!draft || !Array.isArray(draft.pom) || !draft.pom.length) return report;
+  const nameOf = r => r.name || pomTemplate.find(t => String(t.code).toUpperCase() === String(r.code || '').toUpperCase())?.name || '';
+  const idx = Math.max(0, sizes.indexOf(sampleSize));
+  const pass = rows => {
+    const bad = [];
+    for (const r of rows) {
+      const name = nameOf(r), range = rangeFor(name, family), sample = inches(r.sample); if (!range || sample == null) continue;
+      let step = inches(r.step) || 0, value = sample;
+      if (value < range.lo || value > range.hi) {
+        const slip = fixUnitSlip(value, range);
+        if (slip) { const div = slip.unit === 'cm' ? 2.54 : 25.4; report.converted.push({ code: r.code, name, from: sample, unit: slip.unit, to: slip.value }); value = slip.value; step = step / div; r.sample = value; r.step = Math.round(step * 1000) / 1000; }
+        else { bad.push(r); continue; }
+      }
+      if (sizes.length > 1) {
+        const lo = value + (0 - idx) * step, hi = value + (sizes.length - 1 - idx) * step, out = Math.min(lo, hi) < range.lo || Math.max(lo, hi) > range.hi;
+        if (out) { const room = Math.min(...[(range.hi - value) / Math.max(1, sizes.length - 1 - idx), (value - range.lo) / Math.max(1, idx)].filter(Number.isFinite)); const cap = Math.max(0, Math.round(Math.min(Math.abs(step), room) * 1000) / 1000); report.capped.push({ code: r.code, name, from: step, to: Math.sign(step) * cap }); r.step = Math.sign(step) * cap; }
+        else if (step < 0 && /length|width|girth|circumference|waist|hip|chest|shoulder|thigh|rise|inseam|height/i.test(name) && !/heel height/i.test(name)) report.flagged.push({ code: r.code, name, note: 'grades smaller as the sizes get larger' });
+      }
+    }
+    return bad;
+  };
+  const rejectRows = bad => { for (const r of bad) { const name = nameOf(r), range = rangeFor(name, family); report.rejected.push({ code: r.code, name, value: inches(r.sample), range: { lo: range.lo, hi: range.hi } }); }
+    draft.pom = draft.pom.filter(r => !bad.includes(r)); };
+  let bad = pass(draft.pom);
+  if (bad.length) {
+    rejectRows(bad);
+    const before = new Set(draft.pom.map(r => String(r.code).toUpperCase()));
+    const prev = draft.pomResearch;
+    if (photo && pomTemplate.length) {
+      try {
+        const rs = await completeMeasurements(draft, { photo, pomTemplate, product: { ...product, category: draft.category || product.category }, sizes, sampleSize, family });
+        if (rs) draft.pomResearch = prev && !prev.error ? { ...prev, ...rs, requested: [...new Set([...(prev.requested || []), ...(rs.requested || [])])], filled: [...new Set([...(prev.filled || []), ...(rs.filled || [])])], consulted: [...new Set([...(prev.consulted || []), ...(rs.consulted || [])])], comparables: [...(prev.comparables || []), ...(rs.comparables || [])].slice(0, 8) } : rs;
+      } catch (e) { draft.pomResearch = prev || { error: String(e.message || e).slice(0, 200) }; }
+    }
+    const fresh = draft.pom.filter(r => !before.has(String(r.code).toUpperCase()));
+    const again = pass(fresh); if (again.length) { const names = again.map(r => String(r.code).toUpperCase()); rejectRows(again); report.blank.push(...names); }
+    const rejectedCodes = new Set(report.rejected.map(x => String(x.code).toUpperCase()));
+    for (const r of fresh.filter(r => !again.includes(r) && rejectedCodes.has(String(r.code).toUpperCase()))) report.refilled.push({ code: r.code, name: nameOf(r), value: inches(r.sample) });
+    for (const x of report.rejected) if (!report.refilled.some(f => String(f.code).toUpperCase() === String(x.code).toUpperCase()) && !report.blank.includes(String(x.code).toUpperCase())) report.blank.push(String(x.code).toUpperCase());
+  }
+  draft.pomChecks = report;
+  return report;
+}
+export function checkNote(rep) {
+  if (!rep || !(rep.converted.length || rep.capped.length || rep.rejected.length || rep.flagged.length)) return '';
+  const f = v => (Math.round(Number(v) * 100) / 100).toString();
+  const lines = ['MEASUREMENT CHECKS', `Every value was checked against what is plausible for ${rep.family === 'generic' ? 'this kind of product' : `a ${rep.family === 'small' ? 'small-goods' : rep.family} product`} before this draft was saved.`];
+  for (const c of rep.converted) lines.push(`• ${c.code} ${c.name}: ${f(c.from)} was read as ${c.unit}, converted to ${f(c.to)} in.`);
+  for (const c of rep.capped) lines.push(`• ${c.code} ${c.name}: the size-to-size step of ${f(c.from)} in would leave the plausible range, so it was limited to ${f(c.to)} in.`);
+  for (const x of rep.rejected) { const got = rep.refilled.find(r => String(r.code).toUpperCase() === String(x.code).toUpperCase());
+    lines.push(`• ${x.code} ${x.name}: the draft gave ${f(x.value)} in, outside ${f(x.range.lo)}–${f(x.range.hi)} in. ${got ? `Researched again: ${f(got.value)} in — please confirm.` : 'Left blank for Future Basics to fill.'}`); }
+  for (const x of rep.flagged) lines.push(`• ${x.code} ${x.name}: ${x.note} — please check.`);
+  return lines.join('\n').slice(0, 1500);
 }
 function researchNote(rs) {
   if (!rs) return '';

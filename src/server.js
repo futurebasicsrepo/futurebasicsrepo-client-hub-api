@@ -18,7 +18,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
-import { aiEnabled, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -2072,6 +2072,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       try{research=await completeMeasurements(draft,{photo,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary},sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize})}
       catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
     }
+    // the measurement check: unit slips converted, implausible values researched again or left blank, all of it written into the notes
+    try{await vetMeasurements(draft,{photo:original?photo:'',pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category},sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||'')})}
+    catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
     if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
