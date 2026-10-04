@@ -45,17 +45,11 @@ export async function runChecks(d) {
       if (env.AI_FIXTURE) return { status: 'warn', summary: 'Test fixture is on: the assistant is NOT calling the real model', facts: [['Model', model]] };
       if (!env.ANTHROPIC_API_KEY) return { status: 'off', summary: 'No API key set: the assistant is off', facts: [['Model', model]] };
       const t = Date.now(), tel = tIntegration('anthropic');
-      let keyOk = true, keyNote = '';
-      try { await new Anthropic({ timeout: 5000, maxRetries: 0 }).models.list({ limit: 1 }); }
-      catch (e) { keyOk = false; keyNote = e?.status === 401 ? 'The API key was rejected' : `Could not reach the API: ${String(e.message).slice(0, 120)}`; }
-      const latencyMs = ms(t);
-      // Running out of credits does not show on a key check: the signal is a recent failed run that says so.
-      const credit = d.recentAiFailures?.credit || 0, ourSide = d.recentAiFailures?.ourSide || 0;
-      const lastErr = tel?.lastError || '', erroredAfterOk = tel?.lastErrorAt && (!tel.lastOkAt || tel.lastErrorAt > tel.lastOkAt);
-      const outOfCredits = credit > 0 || (erroredAfterOk && /credit balance/i.test(lastErr));
-      const status = !keyOk ? 'down' : outOfCredits ? 'down' : ourSide > 0 || (erroredAfterOk && ago(tel.lastErrorAt) < 3600e3) ? 'warn' : 'ok';
-      return { status, latencyMs, summary: !keyOk ? keyNote : outOfCredits ? 'Out of credits: add credits in the Anthropic console, then re-run waiting packs' : status === 'warn' ? 'Key is fine, but recent assistant runs failed' : 'Key accepted',
-        facts: [['Model', model], ['Failed runs, last 24 h', `${ourSide + credit}${credit ? ` (${credit} out of credits)` : ''}`], ['Tokens since deploy', tel ? `${tel.tokensIn.toLocaleString()} in · ${tel.tokensOut.toLocaleString()} out` : 'none yet']] };
+      // A key check cannot see an empty balance, and old failures say nothing about now: ask the API with a real one-token call.
+      const probe = await probeAssistant(d.probeModel || PROBE_MODEL, { force: Boolean(d.fresh), client: d.anthropicClient });
+      const v = assistantVerdict({ probe, failed24: (d.recentAiFailures?.ourSide || 0) + (d.recentAiFailures?.credit || 0), tel });
+      return { status: v.status, latencyMs: ms(t), summary: v.summary,
+        facts: [['Model', model], ['Live check', probe.ok ? `a test call went through (${probe.ageSec < 5 ? 'just now' : Math.round(probe.ageSec / 60) + ' min ago'})` : probe.note], ['Failed runs, last 24 h', String((d.recentAiFailures?.ourSide || 0) + (d.recentAiFailures?.credit || 0))], ['Tokens since deploy', tel ? `${tel.tokensIn.toLocaleString()} in · ${tel.tokensOut.toLocaleString()} out` : 'none yet']] };
     }),
     runCheck('resend', 'Email (Resend)', 'integration', async () => {
       if (!env.RESEND_API_KEY || !env.AUTH_FROM_EMAIL) return { status: 'off', summary: 'Not set up: sign-in codes and notifications cannot be emailed', facts: [['From address', env.AUTH_FROM_EMAIL || 'not set']] };
@@ -227,4 +221,38 @@ export function assistantAlertContent({ kind, message, affected = 0, consoleUrl 
     customers: 'Customers who start a pack are told it is on our side, not their photo. Their three tries are not used, and they can still edit by hand and submit.',
     steps: ['Create or copy a working key in the Anthropic Console, API keys.', 'Set it as ANTHROPIC_API_KEY on the Railway service. The service restarts by itself.', 'Packs that failed meanwhile are not re-run on their own. Open each one in the work console and press Run assistant.'],
     waiting, quote, consoleUrl, platformUrl };
+}
+
+// ---- Is the assistant able to run right now? ----
+// A one-token request to the cheapest model: it fails for an empty balance and a bad key exactly as a real draft would, and costs next to nothing.
+// The answer is kept for five minutes (one minute when it failed, so a top-up shows quickly); "Check now" asks again.
+export const PROBE_MODEL = 'claude-haiku-4-5-20251001';
+let aiProbe = { at: 0, result: null };
+export async function probeAssistant(model = PROBE_MODEL, { force = false, now = Date.now(), client = null } = {}) {
+  const ttl = aiProbe.result?.ok ? 5 * 60_000 : 60_000;
+  if (!force && aiProbe.result && now - aiProbe.at < ttl) return { ...aiProbe.result, ageSec: Math.round((now - aiProbe.at) / 1000) };
+  let result;
+  try {
+    const c = client || new Anthropic({ timeout: 8000, maxRetries: 0 });
+    await c.messages.create({ model, max_tokens: 1, messages: [{ role: 'user', content: 'ok' }] });
+    result = { ok: true };
+  } catch (e) { result = classifyProbeError(e); }
+  aiProbe = { at: now, result };
+  return { ...result, ageSec: 0 };
+}
+export const resetAssistantProbe = () => { aiProbe = { at: 0, result: null }; };
+export function classifyProbeError(e) {
+  const msg = String(e?.message || e || ''), status = e?.status;
+  if (/credit balance|insufficient (funds|credit)|plans (and|&) billing/i.test(msg)) return { ok: false, kind: 'credit', note: 'refused: the credit balance is too low' };
+  if (status === 401 || status === 403 || /authentication_error|permission_error|invalid x-api-key/i.test(msg)) return { ok: false, kind: 'key', note: 'refused: the API key was rejected' };
+  return { ok: false, kind: 'unreachable', note: `could not complete a test call: ${msg.slice(0, 100)}` };
+}
+// The verdict for the card. The live test decides; earlier failures only add a note.
+export function assistantVerdict({ probe, failed24 = 0, tel = null, now = Date.now() }) {
+  if (!probe.ok && probe.kind === 'credit') return { status: 'down', summary: 'Out of credits: add credits in the Anthropic console, then re-run waiting packs' };
+  if (!probe.ok && probe.kind === 'key') return { status: 'down', summary: 'The API key was rejected: set a working ANTHROPIC_API_KEY on the service' };
+  if (!probe.ok) return { status: 'warn', summary: `Could not confirm the assistant can run: ${probe.note}` };
+  const erroredAfterOk = tel?.lastErrorAt && (!tel.lastOkAt || tel.lastErrorAt > tel.lastOkAt);
+  if (erroredAfterOk && now - new Date(tel.lastErrorAt).getTime() < 3600e3 && !/credit balance/i.test(tel.lastError || '')) return { status: 'warn', summary: 'The key and credit are fine, but the latest assistant run failed' };
+  return { status: 'ok', summary: failed24 ? `Working. ${failed24} run${failed24 === 1 ? '' : 's'} failed earlier today; re-run ${failed24 === 1 ? 'it' : 'them'} from the Assistant section` : 'Working: a test call went through' };
 }

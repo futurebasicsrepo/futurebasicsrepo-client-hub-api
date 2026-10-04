@@ -38,6 +38,8 @@ await journey('J43', 'the model API refuses us: staff get one alert, not one per
   const q = (await call('/v1/admin/dashboard', { token: admin })).json.queues; const rr = q?.assistant?.rerun?.find(x => x.productId === r.json.product.id);
   ok(rr && rr.owner === 'us' && /could not run on this pack: re-run it/i.test(rr.title) && /on our side/i.test(rr.detail), 'the failed pack is on the console\'s "needs a re-run" list', rr || q?.assistant?.rerun?.length);
   ok(q.assistant.failed30 >= 1 && q.assistant.successRate !== undefined, 'and the assistant panel counts the failure', [q.assistant.failed30, q.assistant.successRate]);
+  const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json.checks.find(c => c.id === 'anthropic');
+  ok(h && h.status === 'down' && /rejected/i.test(h.summary) && h.facts.some(([k, v]) => k === 'Live check' && /refused/.test(v)), 'the Platform page says the key is rejected, from a live test call, not from history', h && [h.status, h.summary]);
   const d = (await call(`/v1/products/${r.json.product.id}/tech-pack/draft`, { token: r.json.token })).json.techPack; ok(d.aiStatus === 'failed' && /on our side/i.test(d.aiError || '') && !/401|api-key|authentication/i.test(d.aiError || ''), 'the customer still sees the honest message with no raw error', d.aiError);
 });
 
