@@ -1227,6 +1227,19 @@ app.post('/v1/comments',{preHandler:authenticate},async(req,reply)=>{
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'comment','Client added a comment']);
   return reply.code(201).send(comment);
 });
+// A product's comments as a chat thread. The client sees what was shared with them; staff also see internal notes, marked as such.
+async function productThread(productId,{admin=false,clientId=null}={}){
+  if(!UUID_RE.test(String(productId)))return null;
+  const product=(await pool.query(`select id,title from products where id=$1${admin?'':' and client_id=$2'}`,admin?[productId]:[productId,clientId])).rows[0];
+  if(!product)return null;
+  const rows=(await pool.query(`select cm.id,cm.author_role,cm.body,cm.created_at,cm.visibility,
+      case when cm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email) end author_name
+    from comments cm left join users u on u.id=cm.author_id where cm.product_id=$1${admin?'':` and cm.visibility='client'`} order by cm.created_at desc limit 300`,[product.id])).rows.reverse();
+  return {product,messages:rows.map(c=>({id:c.id,author_role:c.author_role,author_name:c.author_name,body:c.body,created_at:c.created_at,reply_to_id:null,files:[],
+    ...(c.visibility==='internal'?{internal:true,tag:'Internal note · only Future Basics sees this'}:{})})),events:[]};
+}
+app.get('/v1/products/:id/thread',{preHandler:authenticate},async(req,reply)=>(await productThread(req.params.id,{clientId:req.auth.clientId}))||reply.code(404).send({error:'Product not found'}));
+app.get('/v1/admin/products/:id/thread',{preHandler:[authenticate,adminOnly]},async(req,reply)=>(await productThread(req.params.id,{admin:true}))||reply.code(404).send({error:'Product not found'}));
 // ---- Message center: one conversation per project (plus a "general" one per client for signals that belong to no project) ----
 // Messages are the bubbles. Notifications are what happened around them (a tech pack was submitted, a quote was decided) and show
 // as small centred lines. The notifications our own messages create are not shown or counted: the bubble already says it.

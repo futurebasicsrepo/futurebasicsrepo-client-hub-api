@@ -6,7 +6,9 @@
 //     send: async ({ body, file, replyToId }) => { ... }, refresh: async () => ({ messages, events }), download: (fileId, name) => ..., openProduct: id => ... });
 //   chat.update({ messages, events }, { toBottom: true });
 //
-// A message: { id, author_role, author_name, body, created_at, reply_to_id, files: [{ id, original_name, size_bytes }], tag?, noReply? }
+// A message: { id, author_role, author_name, body, created_at, reply_to_id, files: [{ id, original_name, size_bytes }], tag?, noReply?, internal? }
+// Options for a thread without files or replies (a product's comments): attach: false, replies: false. For staff, modes: [{ value, label, placeholder? }] adds a
+// choice above the box (share with the client / internal note); send() then receives { mode }, and an internal message is drawn dashed and amber.
 // An event:  { id, title, createdAt, unread, productId }
 (function (root) {
   'use strict';
@@ -46,11 +48,12 @@
   function mount(el, o) {
     o = o || {};
     const id = o.id || 'chat', viewer = o.viewer || 'client', canCompose = o.canCompose !== false && typeof o.send === 'function';
-    const S = { reply: null, file: null, data: { messages: [], events: [] }, sig: '', timer: null, busy: false };
+    const attach = o.attach !== false, replies = o.replies !== false, modes = Array.isArray(o.modes) && o.modes.length > 1 ? o.modes : null;
+    const S = { mode: modes ? modes[0].value : null, reply: null, file: null, data: { messages: [], events: [] }, sig: '', timer: null, busy: false };
     const $ = s => el.querySelector('#' + id + s);
     el.classList.add('fbchat');
     el.innerHTML = `<div class="mc-msgs" id="${id}Msgs" tabindex="0" aria-label="Messages"></div>` + (canCompose
-      ? `<form class="mc-compose" id="${id}Form"><div class="mc-replybar hidden" id="${id}ReplyBar"><span id="${id}ReplyText"></span><button type="button" data-x="reply" aria-label="Cancel reply">×</button></div><div class="mc-filebar hidden" id="${id}FileBar"><span id="${id}FileName"></span><button type="button" data-x="file" aria-label="Remove file">×</button></div><div class="mc-inputrow"><label class="mc-attach" title="Attach a file" aria-label="Attach a file">${icon.clip}<input type="file" id="${id}File" hidden></label><textarea id="${id}Text" rows="1" placeholder="${esc(o.placeholder || 'Message')}" aria-label="Message"></textarea><button type="submit" class="mc-send" id="${id}SendBtn" aria-label="Send" disabled>${icon.up}</button></div><span class="mc-status" id="${id}Status" aria-live="polite"></span></form>`
+      ? `<form class="mc-compose" id="${id}Form"><div class="mc-replybar hidden" id="${id}ReplyBar"><span id="${id}ReplyText"></span><button type="button" data-x="reply" aria-label="Cancel reply">×</button></div><div class="mc-filebar hidden" id="${id}FileBar"><span id="${id}FileName"></span><button type="button" data-x="file" aria-label="Remove file">×</button></div>${modes ? `<div class="mc-modes" id="${id}Modes" role="radiogroup" aria-label="Who sees this">${modes.map((m, i) => `<button type="button" role="radio" data-mode="${esc(m.value)}" aria-checked="${i === 0}" class="${i === 0 ? 'on' : ''}">${esc(m.label)}</button>`).join('')}</div>` : ''}<div class="mc-inputrow">${attach ? `<label class="mc-attach" title="Attach a file" aria-label="Attach a file">${icon.clip}<input type="file" id="${id}File" hidden></label>` : ''}<textarea id="${id}Text" rows="1" placeholder="${esc(o.placeholder || 'Message')}" aria-label="Message"></textarea><button type="submit" class="mc-send" id="${id}SendBtn" aria-label="Send" disabled>${icon.up}</button></div><span class="mc-status" id="${id}Status" aria-live="polite"></span></form>`
       : o.noComposeText ? `<div class="mc-compose mc-general">${esc(o.noComposeText)}</div>` : '');
     const box = $('Msgs'), text = $('Text'), send = $('SendBtn'), status = $('Status');
     box.innerHTML = '<div class="mc-empty"><span>Loading messages…</span></div>'; // until the first data arrives
@@ -64,7 +67,7 @@
         if (it.stamp) html += `<div class="mc-stamp"><b>${esc(day(it.at))}</b> ${esc(time(it.at))}</div>`;
         if (it.k === 'e') { const e = it.e; html += `<div class="mc-event ${e.unread ? 'new' : ''}"><span class="mc-etext">${esc(clean(e.title))}</span>${e.productId && o.openProduct ? `<button type="button" class="mc-eopen" data-product="${esc(e.productId)}">Open product →</button>` : ''}</div>`; continue; }
         const m = it.m, out = m.author_role === viewer, p = it.parent;
-        html += `<div class="mc-msg ${out ? 'out' : 'in'} ${it.joinsPrev ? '' : 'first'} ${it.joinsNext ? '' : 'last'}" data-id="${esc(m.id)}">${!out && !it.joinsPrev && m.author_name ? `<span class="mc-from">${esc(m.author_name)}</span>` : ''}<div class="mc-bub">${m.tag ? `<div class="mc-tag">${esc(m.tag)}</div>` : ''}${p ? `<div class="mc-quote"><b>${esc(p.author_role === viewer ? 'You' : p.author_name || 'They')}</b> ${esc(String(p.body || '').slice(0, 90))}${String(p.body || '').length > 90 ? '…' : ''}</div>` : ''}<span class="mc-text">${esc(m.body)}</span>${(m.files || []).map(f => `<button type="button" class="mc-file" data-file="${esc(f.id)}" data-name="${esc(f.original_name)}">${icon.clip}<span>${esc(f.original_name)}</span><small>${esc(bytes(f.size_bytes))}</small></button>`).join('')}</div>${canCompose && !m.noReply ? `<div class="mc-acts"><button type="button" data-reply="${esc(m.id)}">Reply</button></div>` : ''}</div>`;
+        html += `<div class="mc-msg ${out ? 'out' : 'in'} ${m.internal ? 'internal' : ''} ${it.joinsPrev ? '' : 'first'} ${it.joinsNext ? '' : 'last'}" data-id="${esc(m.id)}">${!out && !it.joinsPrev && m.author_name ? `<span class="mc-from">${esc(m.author_name)}</span>` : ''}<div class="mc-bub">${m.tag ? `<div class="mc-tag">${esc(m.tag)}</div>` : ''}${p ? `<div class="mc-quote"><b>${esc(p.author_role === viewer ? 'You' : p.author_name || 'They')}</b> ${esc(String(p.body || '').slice(0, 90))}${String(p.body || '').length > 90 ? '…' : ''}</div>` : ''}<span class="mc-text">${esc(m.body)}</span>${(m.files || []).map(f => `<button type="button" class="mc-file" data-file="${esc(f.id)}" data-name="${esc(f.original_name)}">${icon.clip}<span>${esc(f.original_name)}</span><small>${esc(bytes(f.size_bytes))}</small></button>`).join('')}</div>${canCompose && replies && !m.noReply ? `<div class="mc-acts"><button type="button" data-reply="${esc(m.id)}">Reply</button></div>` : ''}</div>`;
       }
       box.innerHTML = html || `<div class="mc-empty"><b>${esc(o.emptyTitle || 'No messages yet')}</b><span>${esc(o.emptyText || 'Say hello.')}</span></div>`;
       picked.forEach(i => box.querySelector(`.mc-msg[data-id="${i}"]`)?.classList.add('sel'));
@@ -78,6 +81,7 @@
       text.focus();
     }
     function pick(file) {
+      if (!attach) return;
       S.file = file || null; const input = $('File'); if (!file && input) input.value = '';
       $('FileBar').classList.toggle('hidden', !S.file); $('FileName').textContent = S.file ? S.file.name : ''; canSend();
     }
@@ -96,12 +100,13 @@
     if (canCompose) {
       text.addEventListener('input', grow);
       text.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('Form').requestSubmit(); } });
-      $('File').addEventListener('change', e => pick(e.target.files && e.target.files[0]));
+      if (attach) $('File').addEventListener('change', e => pick(e.target.files && e.target.files[0]));
+      if (modes) $('Modes').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b) return; S.mode = b.dataset.mode; $('Modes').querySelectorAll('[data-mode]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); }); const m = modes.find(x => x.value === S.mode); text.placeholder = (m && m.placeholder) || o.placeholder || 'Message'; text.focus(); });
       $('Form').addEventListener('submit', async e => {
         e.preventDefault(); const body = text.value.trim(), file = S.file; if (!body && !file) return;
         S.busy = true; canSend(); status.textContent = file ? 'Uploading…' : '';
         try {
-          await o.send({ body, file, replyToId: S.reply });
+          await o.send({ body, file, replyToId: S.reply, mode: S.mode });
           text.value = ''; text.style.height = 'auto'; setReply(null); pick(null); status.textContent = '';
           S.busy = false; canSend(); await reload(true);
         } catch (err) { status.textContent = err.message || 'Could not send'; S.busy = false; canSend(); }

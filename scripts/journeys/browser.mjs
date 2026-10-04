@@ -411,4 +411,55 @@ await journey('J51', 'the same chat everywhere: the room thread in the work cons
   } finally { await ctx.close(); }
 });
 
-await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
+await browser.close(); await journey('J55', 'a product\'s comments are the same chat: shared and internal in the console, only shared in the hub, nothing leaks', async () => {
+  const r = await room('55', { wait: false }), other = await room('55b', { wait: false }), W = 'http://work.localhost:3123', pid = r.projectId, id = r.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  await call('/v1/comments', { token: r.token, body: { productId: id, body: 'Can the heel be a little taller?' } });
+  await call('/v1/admin/comments', { token: admin, body: { productId: id, body: 'Yes, 2 mm taller, updating the pack.', visibility: 'client' } });
+  await call('/v1/admin/comments', { token: admin, body: { productId: id, body: 'INTERNAL: supplier will push back on price.', visibility: 'internal' } });
+  // the feeds first: who can read what
+  const mine = (await call(`/v1/products/${id}/thread`, { token: r.token })).json, staff = (await call(`/v1/admin/products/${id}/thread`, { token: admin })).json;
+  ok(mine.messages.length === 2 && !JSON.stringify(mine).includes('INTERNAL'), 'the client\'s feed has the shared comments and never the internal note', mine.messages.map(m => m.body));
+  ok(staff.messages.length === 3 && staff.messages.find(m => /INTERNAL/.test(m.body))?.internal === true && /only Future Basics/.test(staff.messages.find(m => /INTERNAL/.test(m.body)).tag), 'the staff feed has all three, with the internal note marked', staff.messages.length);
+  ok(staff.messages.every((m, i, a) => i === 0 || new Date(m.created_at) >= new Date(a[i - 1].created_at)) && staff.messages.find(m => m.author_role === 'admin').author_name === 'Future Basics' && !staff.messages.some(m => /@/.test(m.author_name || '')), 'oldest first, staff named "Future Basics", no address shown', staff.messages.map(m => [m.author_role, m.author_name]));
+  ok((await call(`/v1/products/${id}/thread`, { token: other.token })).status === 404, 'another client cannot read it', (await call(`/v1/products/${id}/thread`, { token: other.token })).status);
+  ok((await call(`/v1/products/${id}/thread`, {})).status === 401 && (await call('/v1/products/not-a-uuid/thread', { token: r.token })).status === 404 && (await call(`/v1/admin/products/${id}/thread`, { token: r.token })).status === 403, 'no sign-in → 401, a bad id → 404, a client on the staff route → 403');
+  // ---- the work console ----
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); window.FBCHAT_POLL_MS = 1200; } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${W}/clients/${r.clientId}#product=${id}&tab=assets`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#productChat .mc-msg', { timeout: 15000 });
+    ok(await wp.locator('#productChat .mc-msg.in .mc-bub', { hasText: 'heel be a little taller' }).count() === 1 && await wp.locator('#productChat .mc-msg.out .mc-bub', { hasText: '2 mm taller' }).count() === 1, 'the client is on the left, we are on the right');
+    ok(await wp.locator('#productChat .mc-msg.internal .mc-bub', { hasText: 'supplier will push back' }).count() === 1 && /only Future Basics/i.test(await wp.locator('#productChat .mc-msg.internal .mc-tag').innerText()), 'the internal note is set apart and labelled');
+    ok(await wp.locator('#productChat .mc-attach').count() === 0 && await wp.locator('#productChat .mc-acts').count() === 0, 'no attach button and no reply link: product comments are plain');
+    ok(await wp.locator('#productChat .mc-modes button').count() === 2 && await wp.locator('#productChat .mc-modes button.on').innerText() === 'Share with client', 'the box offers "Share with client" and "Internal note", shared first');
+    ok(await wp.locator('button:has-text("Add comment")').count() === 0, 'the old Add comment popup is gone');
+    await wp.fill('#pcText', 'Shared: sample ships Friday.'); await wp.press('#pcText', 'Enter'); await wp.waitForSelector('#productChat .mc-msg.out:not(.internal) .mc-text:has-text("sample ships Friday")', { timeout: 8000 }); ok(true, 'Enter sends a shared comment');
+    await wp.click('#productChat .mc-modes button[data-mode="internal"]'); ok(/Note for Future Basics only/.test(await wp.getAttribute('#pcText', 'placeholder')), 'choosing Internal note changes the prompt');
+    await wp.fill('#pcText', 'Internal: ask the mill for a quote.'); await wp.click('#pcSendBtn'); await wp.waitForSelector('#productChat .mc-msg.internal .mc-text:has-text("ask the mill")', { timeout: 8000 }); ok(true, 'an internal note appears dashed');
+    const rows = (await call('/v1/admin/products/' + id + '/thread', { token: admin })).json.messages, shared = rows.find(m => /sample ships Friday/.test(m.body)), note = rows.find(m => /ask the mill/.test(m.body));
+    ok(shared && !shared.internal && note && note.internal === true, 'the server stored them with the right visibility');
+    ok(!JSON.stringify((await call(`/v1/products/${id}/thread`, { token: r.token })).json).includes('ask the mill'), 'and the client still cannot see the internal one');
+    await call('/v1/comments', { token: r.token, body: { productId: id, body: 'Thanks, Friday works.' } }); await wp.waitForSelector('#productChat .mc-bub:has-text("Friday works")', { timeout: 9000 }); ok(true, 'a client comment that arrives while it is open appears by itself');
+    ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
+    await wp.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j55-work-product-chat.png` }).catch(() => {});
+  } finally { await wctx.close(); }
+  // ---- the hub, on a phone ----
+  const { ctx, page } = await phone(); await page.addInitScript(() => { window.FBCHAT_POLL_MS = 1200; });
+  try {
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/projects/${pid}#product=${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#productChat .mc-msg', { timeout: 15000 });
+    ok(await page.locator('#productChat .mc-msg.out .mc-bub', { hasText: 'heel be a little taller' }).count() === 1 && await page.locator('#productChat .mc-msg.in .mc-bub', { hasText: '2 mm taller' }).count() === 1, 'in the hub the customer is on the right and Future Basics on the left');
+    ok(!(await page.innerText('#productChat')).includes('INTERNAL') && !(await page.innerText('#productChat')).includes('ask the mill'), 'the customer never sees an internal note');
+    ok(await page.locator('#productChat .mc-attach').count() === 0 && await page.locator('#productChat .mc-modes').count() === 0 && await page.locator('.chat-form').count() === 0, 'plain box: no attach, no sharing choice, and the old form is gone');
+    await page.fill('#pcText', 'One more question about the lace.'); await page.click('#pcSendBtn'); await page.waitForSelector('#productChat .mc-msg.out .mc-text:has-text("the lace")', { timeout: 8000 }); ok(true, 'the customer sends from the same kind of box');
+    ok(Number(sql(`select count(*) from comments where product_id='${id}' and author_role='client' and body like '%the lace%' and visibility='client'`)) === 1, 'and it is stored as a shared client comment');
+    await call('/v1/admin/comments', { token: admin, body: { productId: id, body: 'Lace is waxed cotton.', visibility: 'client' } }); await page.waitForSelector('#productChat .mc-bub:has-text("waxed cotton")', { timeout: 9000 }); ok(true, 'a reply from us appears by itself');
+    const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'no sideways scroll on a phone', w);
+    ok(page.errs.length === 0, 'no script errors in the hub', page.errs);
+    await page.locator('#productChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j55-hub-product-chat-phone.png` }).catch(() => {});
+  } finally { await ctx.close(); }
+});
+
+const bad = summary(); process.exit(bad ? 1 : 0);
