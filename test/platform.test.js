@@ -124,3 +124,42 @@ test('the alert says what is wrong, what customers see and what to do, and quote
   assert.match(key.subject, /refused/); assert.match(key.waiting, /1 tech pack is waiting/); assert.ok(key.steps.some(t => /ANTHROPIC_API_KEY/.test(t)));
   assert.match(assistantAlertContent({ kind: 'credit', message: '', affected: 0 }).waiting, /No tech pack is waiting/);
 });
+
+import { probeAssistant, resetAssistantProbe, classifyProbeError, assistantVerdict } from '../src/platform.js';
+const stub = fn => ({ messages: { create: fn } });
+const creditErr = Object.assign(new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'), { status: 400 });
+
+test('the live test decides: credit that was added after earlier failures turns the card green', async () => {
+  resetAssistantProbe();
+  const probe = await probeAssistant('m', { client: stub(async () => ({})), force: true });
+  assert.equal(probe.ok, true);
+  const v = assistantVerdict({ probe, failed24: 2, tel: { lastErrorAt: Date.now() - 3 * 3600e3, lastError: creditErr.message, lastOkAt: null } });
+  assert.equal(v.status, 'ok'); assert.match(v.summary, /Working\. 2 runs failed earlier today/); assert.doesNotMatch(v.summary, /Out of credits/);
+});
+test('an empty balance and a rejected key are told apart, and both are red', async () => {
+  resetAssistantProbe();
+  const credit = await probeAssistant('m', { client: stub(async () => { throw creditErr; }), force: true });
+  assert.equal(credit.kind, 'credit'); assert.equal(assistantVerdict({ probe: credit }).status, 'down'); assert.match(assistantVerdict({ probe: credit }).summary, /Out of credits/);
+  const key = classifyProbeError(Object.assign(new Error('401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}'), { status: 401 }));
+  assert.equal(key.kind, 'key'); assert.equal(assistantVerdict({ probe: key }).status, 'down'); assert.match(assistantVerdict({ probe: key }).summary, /rejected/);
+});
+test('a timeout or an outage is amber, not a claim that credit ran out', () => {
+  const p = classifyProbeError(new Error('Request timed out.')); assert.equal(p.kind, 'unreachable');
+  const v = assistantVerdict({ probe: p }); assert.equal(v.status, 'warn'); assert.doesNotMatch(v.summary, /credit/i);
+});
+test('the answer is kept for five minutes (one when it failed) and "Check now" asks again', async () => {
+  resetAssistantProbe(); let calls = 0; const c = stub(async () => { calls++; });
+  const t0 = Date.UTC(2026, 9, 4, 12, 0, 0);
+  await probeAssistant('m', { client: c, now: t0 }); await probeAssistant('m', { client: c, now: t0 + 4 * 60_000 }); assert.equal(calls, 1);
+  await probeAssistant('m', { client: c, now: t0 + 6 * 60_000 }); assert.equal(calls, 2);
+  await probeAssistant('m', { client: c, now: t0 + 6 * 60_000 + 1000, force: true }); assert.equal(calls, 3);
+  resetAssistantProbe(); let n = 0; const bad = stub(async () => { n++; throw creditErr; });
+  await probeAssistant('m', { client: bad, now: t0 }); await probeAssistant('m', { client: bad, now: t0 + 30_000 }); assert.equal(n, 1);
+  await probeAssistant('m', { client: bad, now: t0 + 90_000 }); assert.equal(n, 2);        // a top-up shows within a minute
+});
+test('a good test but a failed run in the last hour is a warning; an old credit failure is not', () => {
+  const ok = { ok: true };
+  assert.equal(assistantVerdict({ probe: ok, tel: { lastErrorAt: Date.now() - 600e3, lastError: '500 server error', lastOkAt: null } }).status, 'warn');
+  assert.equal(assistantVerdict({ probe: ok, tel: { lastErrorAt: Date.now() - 600e3, lastError: creditErr.message, lastOkAt: null } }).status, 'ok');
+  assert.equal(assistantVerdict({ probe: ok, tel: { lastErrorAt: Date.now() - 7200e3, lastError: '500', lastOkAt: null } }).status, 'ok');
+});
