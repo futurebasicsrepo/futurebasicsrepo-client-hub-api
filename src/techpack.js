@@ -334,8 +334,12 @@ export function mergeClientEdits(orig, current, drafted) {
     if (replaced) { ds0.image = cs0.image; ds0.callouts = ds0.callouts.map(k => ({ ...k, x: null, y: null, photo: '' })); }
     if (cs0.label !== os0?.label) ds0.label = cs0.label; if (cs0.view !== os0?.view) ds0.view = cs0.view; if (cs0.garmentWidthIn !== os0?.garmentWidthIn) ds0.garmentWidthIn = cs0.garmentWidthIn;
     // a pin at exactly 0,0 with no crop is the old corner-stacking artefact, not a placement: keep the text, drop the position
-    const mine = cs0.callouts.filter(k => k.label || k.spec || k.note || k.x != null).map(k => (k.x === 0 && k.y === 0 && !k.photo ? { ...k, x: null, y: null } : k));
-    ds0.callouts = [...mine, ...ds0.callouts].slice(0, LIMITS.callouts).map((k, i) => ({ ...k, n: i + 1 }));
+    // "mine" is what the client added or changed. Callouts that are exactly as an earlier assistant draft left them are not
+    // theirs: the new draft replaces them, and one with the same label as one of theirs is dropped so it does not appear twice.
+    const asDrafted = new Set((os0?.callouts || []).map(k => `${k.label}|${k.spec}|${k.note}`));
+    const mine = cs0.callouts.filter(k => (k.label || k.spec || k.note || k.x != null) && !asDrafted.has(`${k.label}|${k.spec}|${k.note}`)).map(k => (k.x === 0 && k.y === 0 && !k.photo ? { ...k, x: null, y: null } : k));
+    const mineLabels = new Set(mine.map(k => String(k.label || '').trim().toLowerCase()).filter(Boolean));
+    ds0.callouts = [...mine, ...ds0.callouts.filter(k => !mineLabels.has(String(k.label || '').trim().toLowerCase()))].slice(0, LIMITS.callouts).map((k, i) => ({ ...k, n: i + 1 }));
   }
   const extraViews = c.sketches.slice(Math.max(1, o.sketches.length));
   out.sketches = [...out.sketches, ...extraViews].slice(0, LIMITS.sketches);
@@ -353,6 +357,10 @@ export function mergeClientEdits(orig, current, drafted) {
   for (const k of Object.keys(o.packaging)) if (c.packaging[k] !== o.packaging[k]) out.packaging[k] = c.packaging[k];
   for (const k of Object.keys(o.care)) if (c.care[k] !== o.care[k]) out.care[k] = c.care[k];
   if (c.notes !== o.notes) out.notes = [c.notes, out.notes].filter(Boolean).join('\n\n');
-  out.renderings = c.renderings.length ? c.renderings : out.renderings; out.artwork = c.artwork.length ? c.artwork : out.artwork;
+  // pictures the client uploaded stay; pictures the assistant made (cut-out, colourway tiles) come from the new draft
+  const generated = r => /^(cw-|cutout-)/.test(String(r.id || ''));
+  const ownPics = c.renderings.filter(r => !generated(r));
+  out.renderings = [...ownPics, ...out.renderings.filter(r => !ownPics.some(p => p.id === r.id))].slice(0, LIMITS.renderings || 6);
+  out.artwork = c.artwork.length ? c.artwork : out.artwork;
   return normalizeTechPack(out);
 }
