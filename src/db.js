@@ -480,6 +480,15 @@ export async function migrate() {
       unique(tech_pack_id,stage,version)
     );
     alter table tech_packs add column if not exists pay_variant_id text;
+    create table if not exists platform_events (
+      id bigserial primary key,
+      at timestamptz not null default now(),
+      source text not null,
+      level text not null default 'error',
+      message text not null,
+      detail jsonb not null default '{}'
+    );
+    create index if not exists platform_events_at_idx on platform_events(at desc);
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
     create table if not exists nurture_sends (
       client_id uuid not null references clients(id) on delete cascade,

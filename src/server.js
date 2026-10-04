@@ -10,9 +10,11 @@ import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
+import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
+import { runChecks, configChecks, jobHealth, insights as platformInsights } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
-import { cutoutEnabled, cutoutFromPhoto, placeCutout } from './cutout.js';
+import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -23,6 +25,12 @@ import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
+// Platform health: every answer is counted, and failures are kept in the database (the newest 500) so they survive a deploy.
+app.addHook('onResponse', async (req, reply) => { try { recordRequest(req.routeOptions?.url || '(no route)', reply.statusCode, reply.elapsedTime); } catch {} });
+setSink(async ({ source, level, message, detail }) => {
+  await pool.query('insert into platform_events(source,level,message,detail) values($1,$2,$3,$4)', [source, level, String(message).slice(0, 500), detail || {}]);
+  await pool.query('delete from platform_events where id in (select id from platform_events order by id desc offset 500)').catch(() => {});
+});
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 mkdirSync(uploadDir, { recursive: true });
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || randomBytes(32).toString('hex'));
@@ -202,7 +210,7 @@ async function projectCollectionPdf(client,project,products,quotes){
 
 async function sendCode(email, code) {
   if (process.env.RESEND_API_KEY) {
-    const response = await fetch('https://api.resend.com/emails', {
+    const response = await trackedFetch('resend','https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -221,7 +229,7 @@ const emailEscape=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;
 async function sendIntakeNotification(intake,uploads){
   if(!process.env.RESEND_API_KEY){app.log.warn({projectId:intake.project.id,to:intakeNotificationEmail},'RESEND_API_KEY missing; project intake email not sent');return false}
   const data=intake.data,files=uploads.map(file=>file.original_name).filter(Boolean),rows=[['Company',data.companyName],['Contact',`${data.contactName} · ${data.email}${data.phone?' · '+data.phone:''}`],['Project',data.projectName],['Category',data.productCategory],['Quantity',data.targetQuantity],['Budget',data.budgetRange],['Target',data.targetDate],['Channels',data.channels],['Help requested',data.services],['Shopify',data.shopifyStatus]].filter(([,value])=>value);
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
+  const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({
     from:process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>',to:[intakeNotificationEmail],reply_to:data.email,
     subject:`New project brief — ${data.companyName} / ${data.projectName}`,
     html:`<div style="font-family:Arial,sans-serif;color:#141416;max-width:720px"><p style="font-size:12px;letter-spacing:.14em;text-transform:uppercase">Future Basics · New project intake</p><h1>${emailEscape(data.projectName)}</h1>${rows.map(([label,value])=>`<p><strong>${emailEscape(label)}</strong><br>${emailEscape(value)}</p>`).join('')}<p><strong>Brief</strong><br>${emailEscape(data.projectBrief).replace(/\n/g,'<br>')}</p>${data.inspirationLinks?`<p><strong>Inspiration</strong><br>${emailEscape(data.inspirationLinks).replace(/\n/g,'<br>')}</p>`:''}${files.length?`<p><strong>Uploads</strong><br>${files.map(emailEscape).join('<br>')}</p>`:''}<p><a href="${workHubUrl}/clients/${intake.client.id}">Open the client room in Work</a></p></div>`
@@ -234,7 +242,7 @@ async function sendIntakeNotification(intake,uploads){
 const hubFromEmail=process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>';
 async function sendHubEmail({to,subject,html,replyTo,from,headers}){
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+  const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
     body:JSON.stringify({from:from||hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html,...(headers?{headers}:{})})});
   if(!response.ok)throw new Error(`Hub email delivery failed: ${response.status}`);return true;
 }
@@ -486,6 +494,7 @@ app.get('/', async (req, reply) => {
 });
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
+app.get('/platform', sendAdmin);
 app.get('/hub', sendClientHub);
 app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLowerCase().startsWith('work.')?sendAdmin(req,reply):sendClientHub(req,reply));
 // Tech pack page: editor on work., read-only viewer on the client hub, token viewer for factories.
@@ -564,6 +573,22 @@ app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOn
   if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
   return ensureTechPackProduct();
 });
+// ---- Platform health (staff only): live checks of every connection, background jobs, settings that are quietly wrong, and insights ----
+const SHOPIFY_REQUIRED_SCOPES=['read_products','write_products','read_inventory','read_customers','write_draft_orders','read_draft_orders','read_orders'];
+let healthCache=null;
+app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async req=>{
+  if(!req.query?.fresh&&healthCache&&Date.now()-healthCache.at<15_000)return healthCache.body;
+  const telemetry=telemetrySnapshot(),billing=await billingSummary(),techPackProduct=Boolean(await techPackProductId().catch(()=>''));
+  const fail=(await pool.query(`select (select count(*) from notifications where type='tech-pack-ai' and created_at>now()-interval '24 hours' and title ilike '%credit balance%')::int credit,
+    (select count(*) from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and ai_started_at>now()-interval '24 hours')::int our_side`)).rows[0];
+  const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},env:process.env});
+  const events=(await pool.query('select id,at,source,level,message from platform_events order by id desc limit 25').catch(()=>({rows:[]}))).rows;
+  const config=configChecks({env:process.env,billing,shopifyConfigured,techPackProduct});
+  const body={generatedAt:new Date().toISOString(),overall:overallStatus([...checks,...config.map(c=>({id:'setting',status:c.status}))]),checks,config,
+    jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events};
+  healthCache={at:Date.now(),body};return body;
+});
+app.get('/v1/admin/platform/insights',{preHandler:[authenticate,adminOnly]},async req=>platformInsights(pool,{days:req.query?.days,priceCents:TECH_PACK_PRICE_CENTS}));
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
   const result={configured:shopifyConfigured(),connected:false,techPackProduct:await techPackProductId().catch(()=>''),storeDomain:process.env.SHOPIFY_STORE_DOMAIN||'thefuturebasics.com',
     apiVersion:process.env.SHOPIFY_API_VERSION||'2026-07',authentication:process.env.SHOPIFY_ADMIN_ACCESS_TOKEN?'legacy-token':'client-credentials',
@@ -2631,7 +2656,7 @@ const consignTicketLink=token=>consignTicketUrl?`${consignTicketUrl}?t=${encodeU
 const consignImageUrl=req=>image=>`${req.protocol}://${req.headers.host}/v1/public/consignment-images/${image.id}`;
 async function sendConsignEmail({to,subject,html,replyTo}){
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; consignment email not sent');return false}
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+  const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
     body:JSON.stringify({from:consignFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
   if(!response.ok)throw new Error(`Consignment email delivery failed: ${response.status}`);return true;
 }
@@ -2781,7 +2806,7 @@ const offerFromEmail=process.env.OFFER_FROM_EMAIL||consignFromEmail;
 const offerTicketLink=token=>offerTicketUrl?`${offerTicketUrl}?t=${encodeURIComponent(token)}`:null;
 async function sendOfferEmail({to,subject,html,replyTo}){
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; offer email not sent');return false}
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
+  const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
     body:JSON.stringify({from:offerFromEmail,to:[to],reply_to:replyTo||undefined,subject,html})});
   if(!response.ok)throw new Error(`Offer email delivery failed: ${response.status}`);return true;
 }
@@ -3006,6 +3031,7 @@ app.setErrorHandler((error, req, reply) => {
     return reply.code(inPath ? 404 : 400).send({ error: inPath ? 'Not found' : 'Some of that input could not be read' });
   }
   req.log.error(error);
+  if (!error.statusCode || error.statusCode >= 500) reportError('web', `${req.method} ${req.routeOptions?.url || req.url.split('?')[0]}: ${error.message}`, { status: error.statusCode || 500 });
   reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
 });
 
@@ -3026,11 +3052,12 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
-setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
-if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();
-if(process.env.NURTURE_DISABLED!=='true')setInterval(() => runNurture().catch(error => app.log.error({ error }, 'Follow-up sequence sweep failed')), 15 * 60 * 1000).unref();
-setTimeout(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 15 * 1000).unref();
-setInterval(() => runAiRecovery().catch(error => app.log.error({ error }, 'AI recovery sweep failed')), 5 * 60 * 1000).unref();
-setInterval(() => runPaymentSweep().catch(error => app.log.error({ error }, 'Tech pack payment sweep failed')), 5 * 60 * 1000).unref();
-runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed'));
+// Background jobs, each tracked so the platform page can show when it last ran and whether it failed.
+const jobEvery = (name, every, fn, { delay = null } = {}) => { const run = trackJob(name, every, fn); setInterval(run, every).unref(); if (delay) setTimeout(run, delay).unref(); return run; };
+const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
+if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
+if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
+jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep);
+offerJob();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

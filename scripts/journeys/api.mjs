@@ -309,4 +309,37 @@ await journey('J36', 'payment gate: free access per client, a global switch, and
   } finally { if (restore) await restore(); } // never leave the shared test database with the gate switched
 });
 
+await journey('J39', 'platform health page: staff only, complete, honest about this setup, and no secrets in what it returns', async () => {
+  const a = await newRoom('39', { wait: false }), cid = a.r.json.client.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${a.email}'`), clientId: cid, role: 'admin' });
+  for (const path of ['/v1/admin/platform/health', '/v1/admin/platform/insights']) {
+    ok((await call(path)).status === 401, `${path}: no sign-in → 401`);
+    ok((await call(path, { token: a.token })).status === 403, `${path}: a customer → 403`);
+  }
+  const page = await call('/platform'); ok(page.status === 200 && /pf-tabs/.test(page.text), 'the /platform page is served (it is only a shell: every number comes from the staff-only calls above)', page.status);
+  const h = await call('/v1/admin/platform/health?fresh=1', { token: admin }); ok(h.status === 200, 'staff can read health', h.status);
+  const b = h.json, ids = (b.checks || []).map(c => c.id);
+  for (const id of ['postgres', 'shopify', 'anthropic', 'resend', 'google', 'cutout', 'storage', 'host']) ok(ids.includes(id), `health lists ${id}`, ids);
+  ok(['healthy', 'degraded', 'down'].includes(b.overall), 'one overall word for the banner', b.overall);
+  ok(b.checks.every(c => ['ok', 'warn', 'down', 'off', 'info'].includes(c.status) && c.name && c.summary && ['infrastructure', 'integration'].includes(c.group)), 'every check has a status, a name, a one-line summary and a group');
+  const pg = b.checks.find(c => c.id === 'postgres'); ok(pg.status === 'ok' || (pg.status === 'warn' && /waiting for a connection/.test(pg.summary)), 'the database reads healthy (or honestly says requests are queueing on this deliberately tiny pool)', pg.summary);
+  ok(pg.latencyMs >= 0 && pg.facts.some(f => f[0] === 'Version'), 'with a latency and a version');
+  ok(b.checks.find(c => c.id === 'shopify').status === 'off' && /not connected/i.test(b.checks.find(c => c.id === 'shopify').summary), 'Shopify is reported as not connected here (it is not configured), not as fine');
+  ok(b.checks.find(c => c.id === 'anthropic').status === 'warn', 'the assistant reads "warn" while a test fixture stands in for it', b.checks.find(c => c.id === 'anthropic'));
+  ok(b.config.find(c => c.id === 'bypass').status === 'ok', 'the sign-in bypass is reported off');
+  ok(b.config.find(c => c.id === 'fixture').status === 'warn', 'and the test fixture is flagged');
+  ok(b.jobs.some(j => j.name === 'Assistant recovery') && b.jobs.every(j => ['ok', 'warn', 'wait', 'off'].includes(j.health)), 'background jobs are listed, each with a state', b.jobs.map(j => j.name));
+  ok(b.telemetry.requests.total > 0 && b.telemetry.requests.minutes.length === 60 && b.telemetry.integrations.anthropic?.calls >= 1, 'request counts and assistant calls are being counted', [b.telemetry.requests.total, b.telemetry.integrations.anthropic?.calls]);
+  const text = JSON.stringify(b);
+  for (const secret of ['smoke-secret', 'postgres:postgres', process.env.DATABASE_URL || 'postgres:postgres', 'sk-ant', admin]) ok(!text.includes(secret), `health never contains ${secret.slice(0, 14)}…`);
+  const i = await call('/v1/admin/platform/insights?days=7', { token: admin }); ok(i.status === 200, 'staff can read insights', i.status);
+  const x = i.json; ok(x.totals && x.funnel && x.ai && x.money && Array.isArray(x.packsDaily) && Array.isArray(x.sources) && x.active && x.notTracked, 'insights has totals, funnel, assistant, money, daily packs, sources, activity and what is not tracked', Object.keys(x));
+  ok(x.funnel.started >= 1 && x.funnel.started >= x.funnel.drafted && x.funnel.drafted >= x.funnel.submitted, 'the funnel never grows as it goes down', x.funnel);
+  ok(x.ai.done + x.ai.failed + x.ai.pending + x.ai.locked >= 1 && (x.ai.successRate === null || (x.ai.successRate >= 0 && x.ai.successRate <= 1)), 'assistant numbers add up and the success rate is a share', x.ai);
+  ok(x.money.estRevenueCents === x.money.paid * 4800, 'estimated revenue is packs paid for × the price', [x.money.estRevenueCents, x.money.paid]);
+  for (const d of ['0', '-5', 'abc', '9999', "1;drop table clients"]) ok((await call(`/v1/admin/platform/insights?days=${encodeURIComponent(d)}`, { token: admin })).status === 200, `days=${d} is clamped, never an error`);
+  ok(!JSON.stringify(x).includes(a.email), 'and no customer email address is listed in insights');
+  const tbl = sql(`select to_regclass('platform_events') is not null`); ok(tbl === 't', 'the failure log table exists');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -1,3 +1,4 @@
+import { timed } from './telemetry.js';
 const domain = () => String(process.env.SHOPIFY_STORE_DOMAIN || '').replace(/^https?:\/\//,'').replace(/\/$/,'');
 const staticToken = () => process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || '';
 const version = () => process.env.SHOPIFY_API_VERSION || '2026-07';
@@ -20,7 +21,8 @@ async function accessToken(){
   try{return await tokenRequest}finally{tokenRequest=null}
 }
 
-export async function shopifyGraphql(query, variables = {}) {
+export const shopifyGraphql = (query, variables = {}) => timed('shopify', () => shopifyGraphqlRaw(query, variables));
+async function shopifyGraphqlRaw(query, variables = {}) {
   if (!shopifyConfigured()) throw Object.assign(new Error('Connect Shopify to Railway to enable live sync'), { statusCode: 503 });
   const request=async()=>fetch(`https://${domain()}/admin/api/${version()}/graphql.json`, {method:'POST',headers:{'Content-Type':'application/json','X-Shopify-Access-Token':await accessToken()},body:JSON.stringify({query,variables})});
   let response=await request();

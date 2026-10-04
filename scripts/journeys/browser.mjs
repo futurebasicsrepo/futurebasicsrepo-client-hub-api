@@ -229,4 +229,43 @@ await journey('J38', 'the whole customer path with the payment gate on, then off
   } finally { await setMode('auto'); }
 });
 
+await journey('J40', 'platform health page in the console: opens from the header, shows every connection, tabs and charts work, fits a phone, customers cannot see it', async () => {
+  const r = await room('40', { wait: false }), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const open = async (viewport, token = admin, path = '/platform') => { const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, token); const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); await page.goto(W + path, { waitUntil: 'networkidle' }); return { ctx, page }; };
+  // a customer's token: the console shows the sign-in, never the numbers
+  { const c = await open({ width: 1280, height: 900 }, r.token); await sleep(800); ok(await c.page.isHidden('#platformPage') || !/Platform health/.test(await c.page.innerText('#platformPage').catch(() => '')) || await c.page.isVisible('#auth'), 'a customer token does not get the platform page'); ok(!/Postgres|Anthropic/.test(await c.page.innerText('body')), 'and no connection names appear for them'); await c.ctx.close(); }
+  // desktop: from the console home through the header link
+  const { ctx, page } = await open({ width: 1280, height: 900 }, admin, '/admin');
+  try {
+    await page.waitForSelector('a.platformlink', { timeout: 10000 }); await page.click('a.platformlink'); await page.waitForSelector('.pf-banner', { timeout: 15000 });
+    ok(page.url().endsWith('/platform') && await page.isVisible('#platformPage') && await page.isHidden('#app'), 'the header link opens the page at /platform');
+    const names = await page.$$eval('.pf-card .pf-name', els => els.map(e => e.textContent.trim()));
+    for (const n of ['Database', 'Shopify', 'Assistant', 'Email', 'Google', 'Photo cutout', 'File storage', 'Railway']) ok(names.some(x => x.includes(n)), `a card for ${n}`, names);
+    ok(/All systems healthy|Something needs attention|The platform is down/.test(await page.textContent('.pf-banner')), 'the banner says the overall state in words');
+    ok(await page.$$eval('.pf-card', cs => cs.length >= 8 && cs.every(c => { const b = c.querySelector('.pf-badge'); return b && b.querySelector('i') && b.textContent.trim().length > 2; })), 'every card shows its state as an icon and a word, not colour alone');
+    await page.screenshot({ path: `${S}/j40-health-desktop.png`, fullPage: true });
+    await page.click('#pfTabInsights'); await page.waitForSelector('#pfInsights:not(.hidden) .pf-chart, #pfInsights:not(.hidden) .pf-funnel, #pfInsights:not(.hidden) table', { timeout: 15000 });
+    ok(await page.isHidden('#pfHealth') && await page.isVisible('#pfInsights'), 'the second tab shows people and packs');
+    const fig = page.locator('#pfInsights .pf-chart').first(); await fig.scrollIntoViewIfNeeded(); const box = await fig.locator('.pf-hit').boundingBox(); await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2); await sleep(200);
+    ok((await fig.locator('.pf-tip').innerText()).trim().length > 2, 'hovering a chart shows its value in a tooltip', await fig.locator('.pf-tip').innerText());
+    await fig.locator('summary').click(); ok(await fig.locator('table tbody tr').count() > 3, '"Show as table" lists the same numbers');
+    await page.click('#pfInsights .pf-range button:has-text("7 days")').catch(() => {}); await sleep(900);
+    ok(/7 days|Last 7/.test(await page.innerText('#pfInsights')) || (await page.$$('#pfInsights .pf-range button.on')).length === 1, 'changing the date range reloads the numbers');
+    await page.screenshot({ path: `${S}/j40-insights-desktop.png`, fullPage: true });
+    await page.click('#pfTabHealth'); await page.click('#pfRefresh'); await page.waitForSelector('.pf-banner', { timeout: 15000 }); ok(await page.isVisible('#pfHealth'), '"Check now" re-runs the checks and the page stays');
+    await page.click('#platformPage .crumbs button'); await page.waitForSelector('#app:not(.hidden)', { timeout: 10000 }); ok(new URL(page.url()).pathname === '/' && await page.isHidden('#platformPage'), 'the breadcrumb goes back to the client list');
+    await page.goBack(); await page.waitForSelector('.pf-banner', { timeout: 10000 }); ok(page.url().endsWith('/platform'), 'and the browser back button returns to the platform page');
+    ok(page.errs.length === 0, 'no script errors on desktop', page.errs);
+  } finally { await ctx.close(); }
+  // phone: nothing runs off the screen
+  const m = await open({ width: 390, height: 844 });
+  try {
+    await m.page.waitForSelector('.pf-banner', { timeout: 15000 });
+    for (const tab of ['#pfTabHealth', '#pfTabInsights']) { await m.page.click(tab); await sleep(700); const w = await m.page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, `phone ${tab.slice(6)}: no sideways scroll`, w); }
+    await m.page.screenshot({ path: `${S}/j40-insights-phone.png`, fullPage: true });
+    ok(m.page.errs.length === 0, 'no script errors on the phone', m.page.errs);
+  } finally { await m.ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

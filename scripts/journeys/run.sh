@@ -1,7 +1,7 @@
 #!/bin/bash
 # Customer-journey suite: scripted customers who make mistakes on purpose. Runs three throwaway servers
 # (assistant fixture · Shopify unreachable · model API failing) against a Postgres database, then drives
-# 38 journeys through the API and, when Playwright is available, a phone-sized browser.
+# 40 journeys through the API and, when Playwright is available, a phone-sized browser.
 #   needs: Postgres reachable at DATABASE_URL, psql on PATH. Optional: Playwright (PLAYWRIGHT_PATH or on the module path).
 #   run:   npm run journeys            (payment gate on, the production setup)
 #          JOURNEY_GATE=off npm run journeys   (gate switched off for everyone; the journeys that start from a locked pack are skipped)
