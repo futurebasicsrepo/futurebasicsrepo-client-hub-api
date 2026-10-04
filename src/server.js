@@ -2111,11 +2111,18 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     const db=await pool.connect();let merged;
     try{
       await db.query('begin');
-      const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];
+      const live=(await db.query('select data,ai_draft prior_draft from tech_packs where id=$1 for update',[packId])).rows[0];
       const current=normalizeTechPack(live.data);
       // the client's view of the photo is the original; the draft's is the crop — line them up before merging
       const currentForMerge=structuredClone(current);if(crop&&currentForMerge.sketches[0]&&currentForMerge.sketches[0].image===original)currentForMerge.sketches[0].image=photo;
-      const origForMerge=structuredClone(origSeed);if(crop&&origForMerge.sketches[0])origForMerge.sketches[0].image=photo;
+      let origForMerge=structuredClone(origSeed);if(crop&&origForMerge.sketches[0])origForMerge.sketches[0].image=photo;
+      // A re-run over an earlier assistant draft: what the client changed is the difference from THAT draft, not from the blank
+      // template. Without this the old assistant values counted as the client's own typing and were kept, so a re-run never
+      // replaced a measurement and doubled the callouts. (Pictures are not in the snapshot; they are taken from the live pack.)
+      if(live.prior_draft){
+        origForMerge=normalizeTechPack(live.prior_draft);
+        origForMerge.sketches=origForMerge.sketches.map(sk=>({...sk,image:currentForMerge.sketches.find(x=>x.id===sk.id)?.image||sk.image}));
+      }
       merged=mergeClientEdits(origForMerge,currentForMerge,drafted);
       await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null,ai_draft=$4,ai_draft_at=now() where id=$1`,[packId,merged,first.model,JSON.stringify(draftSnapshot(drafted))]); // the assistant's own output is kept so later edits can be measured against it // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
       await db.query('commit');

@@ -206,3 +206,33 @@ test('a brief-only draft carries the same shape, unpinned callouts and low confi
     assert.equal(d.confidence, 'low'); assert.ok(d.pom.length >= 1 && d.bom.length >= 1);
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
 });
+
+test('mergeClientEdits on a re-run: the new draft replaces the earlier draft, and only what the client changed since is kept', async () => {
+  const { mergeClientEdits } = await import('../src/techpack.js');
+  const base = normalizeTechPack({ ...seedTechPack({ product: { title: 'Modern Oxford', product_type: 'Footwear' } }), sketches: [{ id: 'photo-1', view: 'front', label: 'Reference photo', image: 'data:image/jpeg;base64,AAAA', callouts: [] }] });
+  const sample = base.style.sampleSize;
+  // the earlier assistant draft (what the snapshot holds): two callouts, a bad heel width, generated tiles
+  const v1 = structuredClone(base); v1.style.description = 'first draft';
+  v1.sketches[0].callouts = [{ n: 1, label: 'Heel cut-out', spec: 'old spec', note: '', photo: '', x: 0.2, y: 0.8 }, { n: 2, label: 'Toe puff', spec: 'old puff', note: '', photo: '', x: 0.9, y: 0.6 }];
+  v1.pom = v1.pom.map((r, i) => ({ ...r, values: Object.fromEntries(v1.sizes.map(s => [s, i === 2 ? '0.55' : '9.00'])) }));
+  // the live pack: the v1 draft plus the pictures it made, and one thing the client did since (a typed cell and their own callout)
+  const current = structuredClone(v1); current.renderings = [{ id: 'cutout-white', name: 'Cut-out on white', note: '', image: 'data:image/jpeg;base64,BBBB' }, { id: 'cw-red', name: 'Colourway red', note: '', image: 'data:image/jpeg;base64,CCCC' }, { id: 'rend-mine', name: 'Their render', note: '', image: 'data:image/jpeg;base64,DDDD' }];
+  current.pom[0].values[sample] = '12.50'; current.sketches[0].callouts.push({ n: 3, label: 'Our logo', spec: '', note: 'embroidered', photo: '', x: 0.5, y: 0.5 });
+  // the new draft: corrected heel width, new callouts (one shares a label with an old one), fresh tiles
+  const v2 = structuredClone(base); v2.style.description = 'second draft';
+  v2.sketches[0].callouts = [{ n: 1, label: 'Heel cut-out', spec: 'new spec', note: '', photo: '', x: 0.2, y: 0.8 }, { n: 2, label: 'Toe puff', spec: 'new puff', note: '', photo: '', x: 0.9, y: 0.6 }];
+  v2.pom = v2.pom.map((r, i) => ({ ...r, values: Object.fromEntries(v2.sizes.map(s => [s, i === 2 ? '3.10' : '9.50'])) }));
+  v2.renderings = [{ id: 'cutout-white', name: 'Cut-out on white', note: '', image: 'data:image/jpeg;base64,EEEE' }, { id: 'cw-blue', name: 'Colourway blue', note: '', image: 'data:image/jpeg;base64,FFFF' }];
+  const merged = mergeClientEdits(v1, current, v2);
+  assert.equal(merged.style.description, 'second draft', 'untouched fields come from the new draft');
+  assert.equal(merged.pom[2].values[sample], '3.10', 'the corrected heel width replaces the old assistant value');
+  assert.equal(merged.pom[1].values[sample], '9.50', 'other assistant values are refreshed too');
+  assert.equal(merged.pom[0].values[sample], '12.50', 'but a cell the client typed since the earlier draft stays');
+  assert.deepEqual(merged.sketches[0].callouts.map(c => `${c.n}:${c.label}:${c.spec}`), ['1:Our logo:', '2:Heel cut-out:new spec', '3:Toe puff:new puff'], 'their callout first, the new draft once, nothing doubled');
+  assert.deepEqual(merged.renderings.map(r => r.id), ['rend-mine', 'cutout-white', 'cw-blue'], 'their own render stays; generated pictures come from the new run');
+  assert.equal(merged.renderings.find(r => r.id === 'cutout-white').image.slice(-4), 'EEEE');
+  // a callout the client edited keeps their wording and is not repeated by the new draft's same-label callout
+  const edited = structuredClone(current); edited.sketches[0].callouts[0].spec = 'my wording';
+  const again = mergeClientEdits(v1, edited, v2);
+  assert.deepEqual(again.sketches[0].callouts.map(c => `${c.label}:${c.spec}`), ['Heel cut-out:my wording', 'Our logo:', 'Toe puff:new puff']);
+});
