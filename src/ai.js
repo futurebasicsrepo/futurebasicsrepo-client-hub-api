@@ -1,3 +1,4 @@
+import { timed } from './telemetry.js';
 // Reads a product photo (usually a screenshot from Instagram or Pinterest) and drafts the tech pack from it:
 // category, description, callouts pinned on the photo, measurements for the sample size, materials, construction,
 // colourways and notes. The result is a draft for a human to check — it is labelled as such in the pack.
@@ -96,7 +97,7 @@ export function unplacedCallouts(callouts) {
 }
 // Second pass when the draft came back without positions: show the photo and the labels, ask only for where each one is.
 const PLACE_SCHEMA = { type: 'object', additionalProperties: false, required: ['points'], properties: { points: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['i', 'x', 'y'], properties: { i: { type: 'integer' }, x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 } } } } } };
-export async function locateCallouts(photoDataUrl, labels) {
+async function locateCalloutsRaw(photoDataUrl, labels) {
   if (!labels.length) return [];
   if (process.env.AI_FIXTURE) {
     // fixture: spread the pins over the busy part of the image so tests can see distinct crops
@@ -123,7 +124,7 @@ const dataUrlToImageBlock = (dataUrl) => {
 };
 
 // Returns { draft, model, usage } or throws. `photos` are data URLs; the first is the main reference.
-export async function draftFromPhotos({ photos, title, notes, pomTemplate, sizes, sampleSize }) {
+async function draftFromPhotosRaw({ photos, title, notes, pomTemplate, sizes, sampleSize }) {
   if (process.env.AI_FIXTURE) {
     await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0)));
     const draft = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8'));
@@ -172,7 +173,7 @@ function briefSystemPrompt() {
     .replace('Measure proportions from the photo where you can and anchor them to published category norms', 'Anchor them to published category norms and the brief')
     .replace('what the photo does not show (medial side, interior, sole)', 'what only a photo or sketch could settle') + '\n\nMark confidence "low": everything here is a category default until a photo or sketch confirms it.';
 }
-export async function draftFromBrief({ title, notes, brief, pomTemplate, sizes, sampleSize }) {
+async function draftFromBriefRaw({ title, notes, brief, pomTemplate, sizes, sampleSize }) {
   if (process.env.AI_FIXTURE) {
     await new Promise(r => setTimeout(r, Number(process.env.AI_FIXTURE_DELAY_MS || 0)));
     const draft = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8'));
@@ -305,7 +306,7 @@ const RESEARCH_SCHEMA = {
 // Looks the product up online (retailer listings, size charts, lab measurements of the same or comparable styles) and
 // returns values for the rows the draft could not fill. Live path: Claude with web search + fetch. Fixture path: the
 // fixture file's "research" object, or synthetic rows so the flow can be exercised without a key.
-export async function researchMeasurements({ photo, product = {}, rows = [], proposeRows = false, sizes = [], sampleSize = '' }) {
+async function researchMeasurementsRaw({ photo, product = {}, rows = [], proposeRows = false, sizes = [], sampleSize = '' }) {
   if (process.env.AI_FIXTURE) {
     const fx = JSON.parse(readFileSync(process.env.AI_FIXTURE, 'utf8')).research;
     if (fx) return { ...fx, consulted: fx.consulted || [], model: 'fixture' };
@@ -466,7 +467,7 @@ const TRANSLATE_SCHEMA = {
 const LANG_NAMES = { zh: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China' };
 export const TRANSLATION_LANGS = Object.keys(LANG_NAMES);
 
-export async function translateStrings(strings, { lang = 'zh' } = {}) {
+async function translateStringsRaw(strings, { lang = 'zh' } = {}) {
   const list = [...new Set(strings.map(s => String(s ?? '').trim()).filter(Boolean))];
   if (!LANG_NAMES[lang]) throw new Error(`Unsupported language ${lang}`);
   if (!list.length) return { map: {}, model: null };
@@ -566,3 +567,13 @@ export function draftLooksEmpty(draft) {
   const bom = Array.isArray(draft?.bom) ? draft.bom.length : 0;
   return callouts < 3 && pom === 0 && bom === 0;
 }
+
+export const locateCallouts = (...args) => timed('anthropic', () => locateCalloutsRaw(...args));
+
+export const draftFromPhotos = (...args) => timed('anthropic', () => draftFromPhotosRaw(...args));
+
+export const draftFromBrief = (...args) => timed('anthropic', () => draftFromBriefRaw(...args));
+
+export const researchMeasurements = (...args) => timed('anthropic', () => researchMeasurementsRaw(...args));
+
+export const translateStrings = (...args) => timed('anthropic', () => translateStringsRaw(...args));

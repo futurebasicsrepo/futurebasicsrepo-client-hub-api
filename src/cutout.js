@@ -1,3 +1,4 @@
+import { trackedFetch } from './telemetry.js';
 // Background removal for the reference photo. A hosted segmentation model (remove.bg by default, Photoroom as the
 // alternative) returns the product with a transparent background; a quality gate decides whether the cut-out is good
 // enough to use. The cut-out is never what the assistant reads — the original photo stays the reference, because a
@@ -13,13 +14,13 @@ const dataUrlBuffer = u => { const m = /^data:image\/(png|jpe?g|webp);base64,(.+
 
 async function viaRemoveBg(buf, type) {
   const fd = new FormData(); fd.append('image_file', new Blob([buf], { type: `image/${type}` }), `photo.${type}`); fd.append('size', 'auto'); fd.append('format', 'png');
-  const r = await fetch('https://api.remove.bg/v1.0/removebg', { method: 'POST', headers: { 'X-Api-Key': process.env.REMOVE_BG_API_KEY || '' }, body: fd, signal: AbortSignal.timeout(30000) });
+  const r = await trackedFetch('cutout','https://api.remove.bg/v1.0/removebg', { method: 'POST', headers: { 'X-Api-Key': process.env.REMOVE_BG_API_KEY || '' }, body: fd, signal: AbortSignal.timeout(30000) });
   if (!r.ok) { let msg = ''; try { msg = (await r.json()).errors?.[0]?.title || ''; } catch {} throw new Error(`remove.bg ${r.status}${msg ? ` — ${msg}` : ''}`); }
   return Buffer.from(await r.arrayBuffer());
 }
 async function viaPhotoroom(buf, type) {
   const fd = new FormData(); fd.append('image_file', new Blob([buf], { type: `image/${type}` }), `photo.${type}`); fd.append('format', 'png');
-  const r = await fetch('https://sdk.photoroom.com/v1/segment', { method: 'POST', headers: { 'x-api-key': process.env.PHOTOROOM_API_KEY || '' }, body: fd, signal: AbortSignal.timeout(30000) });
+  const r = await trackedFetch('cutout','https://sdk.photoroom.com/v1/segment', { method: 'POST', headers: { 'x-api-key': process.env.PHOTOROOM_API_KEY || '' }, body: fd, signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw new Error(`Photoroom ${r.status}`);
   return Buffer.from(await r.arrayBuffer());
 }
