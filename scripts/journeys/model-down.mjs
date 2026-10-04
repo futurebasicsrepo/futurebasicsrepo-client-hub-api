@@ -36,11 +36,20 @@ await journey('J43', 'the model API refuses us: staff get one alert, not one per
   ok(Number(sql(`select count(*) from platform_events where source='anthropic'`)) >= 1, 'the failure is also on the Platform page list');
   const email = sql(`select email from users where client_id='${r.json.client.id}' limit 1`) || '', admin = await forge({ sub: sql(`select id from users where client_id='${r.json.client.id}' limit 1`), clientId: r.json.client.id, role: 'admin' });
   const q = (await call('/v1/admin/dashboard', { token: admin })).json.queues; const rr = q?.assistant?.rerun?.find(x => x.productId === r.json.product.id);
-  ok(rr && rr.owner === 'us' && /could not run on this pack: re-run it/i.test(rr.title) && /on our side/i.test(rr.detail), 'the failed pack is on the console\'s "needs a re-run" list', rr || q?.assistant?.rerun?.length);
+  ok(rr && rr.owner === 'us' && /could not run on this pack: it re-runs on its own/i.test(rr.title) && /on our side/i.test(rr.detail), 'the failed pack is on the console\'s "needs a re-run" list', rr || q?.assistant?.rerun?.length);
   ok(q.assistant.failed30 >= 1 && q.assistant.successRate !== undefined, 'and the assistant panel counts the failure', [q.assistant.failed30, q.assistant.successRate]);
   const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json.checks.find(c => c.id === 'anthropic');
   ok(h && h.status === 'down' && /rejected/i.test(h.summary) && h.facts.some(([k, v]) => k === 'Live check' && /refused/.test(v)), 'the Platform page says the key is rejected, from a live test call, not from history', h && [h.status, h.summary]);
   const d = (await call(`/v1/products/${r.json.product.id}/tech-pack/draft`, { token: r.json.token })).json.techPack; ok(d.aiStatus === 'failed' && /on our side/i.test(d.aiError || '') && !/401|api-key|authentication/i.test(d.aiError || ''), 'the customer still sees the honest message with no raw error', d.aiError);
+});
+
+await journey('J53', 'while the assistant is still refused, packs wait: no tries are spent and no calls pile up', async () => {
+  const r = await call('/v1/public/start', { body: { email: em('53'), title: 'Waiting runner', photos: [runner] } }); const id = r.json.product.id; await waitAi(call, r.json.token, id, 40000);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${r.json.client.id}' limit 1`), clientId: r.json.client.id, role: 'admin' });
+  sql(`update tech_packs set ai_started_at=now()-interval '30 minutes' where product_id='${id}'`);
+  const x = await call('/v1/admin/ai/auto-retry', { method: 'POST', token: admin });
+  ok(x.status === 200 && x.json.status === 'waiting' && x.json.started === 0 && x.json.kind === 'key', 'the job sees the key is refused and starts nothing', x.json);
+  ok(Number(sql(`select ai_auto_retries from tech_packs where product_id='${id}'`)) === 0 && sql(`select ai_status from tech_packs where product_id='${id}'`) === 'failed', 'the pack keeps its tries and stays failed', sql(`select ai_auto_retries from tech_packs where product_id='${id}'`));
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
