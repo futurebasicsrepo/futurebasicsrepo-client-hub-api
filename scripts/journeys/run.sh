@@ -1,15 +1,20 @@
 #!/bin/bash
 # Customer-journey suite: scripted customers who make mistakes on purpose. Runs three throwaway servers
 # (assistant fixture · Shopify unreachable · model API failing) against a Postgres database, then drives
-# 37 journeys through the API and, when Playwright is available, a phone-sized browser.
+# 38 journeys through the API and, when Playwright is available, a phone-sized browser.
 #   needs: Postgres reachable at DATABASE_URL, psql on PATH. Optional: Playwright (PLAYWRIGHT_PATH or on the module path).
-#   run:   npm run journeys
+#   run:   npm run journeys            (payment gate on, the production setup)
+#          JOURNEY_GATE=off npm run journeys   (gate switched off for everyone; the journeys that start from a locked pack are skipped)
 set -u
 cd "$(dirname "$0")/../.."
 # By default every run gets its own empty database (created here, dropped at the end), so runs stay fast and independent:
 # a database that keeps every room earlier runs made gets slower each time (the console draws a card per client).
 # Set DATABASE_URL yourself to run against a database you manage.
 THROWAWAY=""
+# Fail loudly, once, if the database is not there: otherwise every journey reports its own confusing connection error.
+if ! psql "${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/postgres}" -qAtc "select 1" >/dev/null 2>&1; then
+  echo "journeys: cannot reach Postgres at ${DATABASE_URL:-postgres://postgres:postgres@localhost:5432} - start it (or set DATABASE_URL) and run again" >&2; exit 2
+fi
 if [ -z "${DATABASE_URL:-}" ]; then
   THROWAWAY="fbhub_journeys_$$"; ADMIN_URL="postgres://postgres:postgres@localhost:5432/postgres"
   psql "$ADMIN_URL" -qAtc "create database $THROWAWAY" >/dev/null 2>&1 && export DATABASE_URL="postgres://postgres:postgres@localhost:5432/$THROWAWAY" || { THROWAWAY=""; export DATABASE_URL="postgres://postgres:postgres@localhost:5432/fbhub_tp"; }
@@ -22,7 +27,7 @@ COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uplo
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
 #    Its connection pool is deliberately tiny (4): any request that holds a database connection while asking for a second one hangs here.
-env "${COMMON[@]}" PG_POOL_MAX=4 PORT=3123 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=on START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
+env "${COMMON[@]}" PG_POOL_MAX=4 PORT=3123 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=$([ "${JOURNEY_GATE:-on}" = off ] && echo off || echo on) START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
 # the first server creates the tables; the other two start once it is up, so they never race to migrate an empty database
 for i in $(seq 1 120); do curl -sf "http://127.0.0.1:3123/health" >/dev/null && break; sleep 0.5; done
 # B: Shopify configured but unreachable, default limits
