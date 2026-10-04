@@ -371,4 +371,42 @@ await journey('J44', 'the product card follows the tech pack: material, decorati
   const pc = await card(room.token, sid); ok(pc?.material === 'Secret wool blend' && pc.colorways?.[0] === 'Unreleased', 'publishing puts it on the card', pc);
 });
 
+await journey('J48', 'the console queues follow the real work: tech packs, quotes, approvals, requests, production, money', async () => {
+  const room = await newRoom('48'), cid = room.r.json.client.id, id = room.productId, title = (await draftOf(room.token, id)).techPack.data.style.styleName || 'Layer runner';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const queues = async () => (await adm('/v1/admin/dashboard')).json.queues;
+  const mine = (list, kind) => list.filter(x => x.clientId === cid && (!kind || x.kind === kind));
+  let q = await queues(); ok(q && Array.isArray(q.approvals) && Array.isArray(q.attention) && q.assistant, 'the dashboard returns the three queues', q && Object.keys(q));
+  ok(mine(q.approvals).length === 0, 'a drafted pack nobody has submitted is not in anyone\'s queue yet');
+  // the tech pack chain: submit (on us) → publish (on the client) → the client approves (on us) → we countersign (on the factory)
+  await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} });
+  q = await queues(); let it = mine(q.approvals, 'review')[0]; ok(it && it.owner === 'us' && it.productId === id && /review it and publish/i.test(it.title) && it.since, 'a submitted pack waits on us: review and publish', it);
+  ok((await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: {} })).status === 200, 'staff publish v1');
+  q = await queues(); it = mine(q.approvals, 'client-approval')[0]; ok(it && it.owner === 'client' && !mine(q.approvals, 'review').length, 'once published it waits on the client, no longer on us', it);
+  ok((await call(`/v1/products/${id}/tech-pack/approve`, { method: 'POST', token: room.token, body: { name: 'Pay Tester' } })).status === 200, 'the client approves');
+  q = await queues(); it = mine(q.approvals, 'countersign')[0]; ok(it && it.owner === 'us' && /countersign/i.test(it.title), 'and it comes back to us to countersign', it);
+  ok((await adm(`/v1/admin/products/${id}/tech-pack/sign`, { method: 'POST', body: { name: 'Studio' } })).status === 200, 'we countersign');
+  q = await queues(); it = mine(q.approvals, 'factory-signature')[0]; ok(it && it.owner === 'factory', 'then it waits on the factory', it);
+  // the other streams, put there the way the console puts them
+  sql(`insert into quotes(product_id,version,quantity,unit_cost_cents,status,created_at) values('${id}',1,300,1200,'issued',now()-interval '9 days')`);
+  sql(`insert into requests(client_id,type,title,details,status,created_at) values('${cid}','sample','Need a size 11 sample','please','submitted',now()-interval '3 days')`);
+  sql(`insert into approvals(product_id,kind,version,title,status) values('${id}','asset','1','Approve the colourway board','pending')`);
+  sql(`insert into production_runs(product_id,po_number,quantity,status,eta_date,sample_status) values('${id}','PO-${stamp}',300,'delayed',current_date-5,'rejected')`);
+  const run = sql(`select id from production_runs where po_number='PO-${stamp}'`);
+  sql(`insert into qc_inspections(production_run_id,status,inspected_units,defect_units) values('${run}','failed',50,9)`);
+  sql(`insert into shipments(production_run_id,status,eta_date,carrier,tracking_number) values('${run}','in-transit',current_date-2,'DHL','JD123')`);
+  sql(`insert into invoices(client_id,number,amount_cents,status,due_date) values('${cid}','INV-${stamp}',250000,'due',current_date-20)`);
+  sql(`update products set risk_level='attention' where id='${id}'`);
+  q = await queues();
+  ok(mine(q.approvals, 'quote')[0]?.owner === 'client' && mine(q.approvals, 'request')[0]?.owner === 'us' && mine(q.approvals, 'asset-approval')[0]?.owner === 'client', 'quotes, requests and asset approvals are in the approval queue, each on the right person', mine(q.approvals).map(x => x.kind + ':' + x.owner));
+  const att = mine(q.attention).map(x => x.kind); for (const k of ['run', 'qc', 'shipment', 'sample', 'invoice', 'risk']) ok(att.includes(k), `production attention has the ${k}`, att);
+  ok(mine(q.attention).filter(x => x.severity === 'urgent').length >= 4, 'late and failed things are marked overdue');
+  ok(q.approvals.every((x, i, a) => i === 0 || ({ urgent: 0, normal: 1, info: 2 }[x.severity] >= { urgent: 0, normal: 1, info: 2 }[a[i - 1].severity])), 'the queue is sorted with the most urgent first');
+  ok(mine(q.approvals).concat(mine(q.attention)).every(x => x.clientName && x.title && x.key && x.since !== undefined), 'every item names its client, says what it is and carries a key');
+  // an archived client's work is not in anyone's queue
+  sql(`update clients set status='archived',archived_at=now() where id='${cid}'`); q = await queues();
+  ok(!mine(q.approvals).length && !mine(q.attention).length, 'an archived client has nothing in the queues'); sql(`update clients set status='active',archived_at=null where id='${cid}'`);
+  const raw = JSON.stringify((await adm('/v1/admin/dashboard')).json.queues); ok(!/"cost|unit_cost|internal/i.test(raw), 'nothing internal (cost, internal notes) leaks into the queue items');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -11,11 +11,13 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
+import { buildQueues } from './queues.js';
+import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
@@ -560,7 +562,9 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
     (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and ${PACK_HAS_IMAGE_SQL('tp')} order by tp.updated_at desc limit 1) cover_rendering_product_id,
-    (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
+    (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total,
+    (select coalesce(sum(py.amount_cents),0)::bigint from payments py where py.client_id=c.id) paid_cents,
+    (select count(*)::int from payments py where py.client_id=c.id) payment_count
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id left join projects pr on pr.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
   const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name,av.version asset_version,ast.name asset_name
@@ -582,7 +586,8 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   for(const c of clients.rows)if(!c.cover_image_url&&c.cover_rendering_product_id)c.cover_image_url=renderingUrl(c.cover_rendering_product_id);
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
-  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning};
+  const queues=await buildQueues(pool,{learning}).catch(err=>{app.log.warn({err:err.message},'work queues failed');reportError('web',`work queues: ${err.message}`);return null});
+  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning,queues};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
@@ -597,10 +602,17 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const fail=(await pool.query(`select (select count(*) from notifications where type='tech-pack-ai' and created_at>now()-interval '24 hours' and title ilike '%credit balance%')::int credit,
     (select count(*) from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and ai_started_at>now()-interval '24 hours')::int our_side`)).rows[0];
   const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},env:process.env});
+  // The store connection above only says Shopify answers. This says whether payments are actually landing in the ledger.
+  const payState=(await getSetting('paymentSync'))||{},payStats=await paymentStats().catch(()=>({count:0,totalCents:0,lastDay:0,paidButLocked:0,unlinkedPayers:0})),payVerdict=paymentSyncStatus({configured:shopifyConfigured(),state:payState,stats:payStats,everyMs:PAYMENT_SYNC_EVERY_MS});
+  const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-new Date(t).getTime())/60000);return m<1?'just now':m<90?`${m} min ago`:m<2880?`${Math.round(m/60)} hours ago`:`${Math.round(m/1440)} days ago`};
+  const payCheck={id:'payments',name:'Shopify payments (sync)',group:'integration',status:payVerdict.status,summary:payVerdict.summary,latencyMs:payState.lastMs??null,
+    facts:shopifyConfigured()?[['Last successful run',ago(payState.lastOkAt)],['Last run read',`${payState.scanned??0} paid ${payState.scanned===1?'order':'orders'} · ${payState.imported??0} new · ${payState.unlocked??0} ${payState.unlocked===1?'pack':'packs'} unlocked`],['Not matched to a room',String((payState.unmatched||[]).length)],['In the ledger',`${payStats.count} ${payStats.count===1?'payment':'payments'} · $${(payStats.totalCents/100).toLocaleString()}`],['Last 24 hours',`${payStats.lastDay} ${payStats.lastDay===1?'payment':'payments'}`],['Paid but still locked',String(payStats.paidButLocked)],['Payers without a store customer link',String(payStats.unlinkedPayers)],['Store spend last refreshed',ago(payStats.lastSpendRefresh)]]:[]};
+  checks.splice(Math.max(1,checks.findIndex(c=>c.id==='shopify')+1),0,payCheck);
+  const recentPayments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.shopify_order_name,py.paid_at,py.source,c.name client_name from payments py join clients c on c.id=py.client_id order by py.paid_at desc limit 8`).catch(()=>({rows:[]}))).rows;
   const events=(await pool.query('select id,at,source,level,message from platform_events order by id desc limit 25').catch(()=>({rows:[]}))).rows;
   const config=configChecks({env:process.env,billing,shopifyConfigured,techPackProduct});
   const body={generatedAt:new Date().toISOString(),overall:overallStatus([...checks,...config.map(c=>({id:'setting',status:c.status}))]),checks,config,
-    jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events};
+    jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events,payments:{recent:recentPayments,unmatched:payState.unmatched||[],lastRunAt:payState.lastRunAt||null,lastOkAt:payState.lastOkAt||null,lastError:payState.lastError||null,runs:payState.runs||0,stats:payStats}};
   healthCache={at:Date.now(),body};return body;
 });
 app.get('/v1/admin/platform/insights',{preHandler:[authenticate,adminOnly]},async req=>platformInsights(pool,{days:req.query?.days,priceCents:TECH_PACK_PRICE_CENTS}));
@@ -880,6 +892,7 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
+  const payments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.currency,py.shopify_order_id,py.shopify_order_name,py.paid_at,py.source,py.product_id from payments py where py.client_id=$1 order by py.paid_at desc limit 25`,[client.id])).rows;
   const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
       (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
@@ -925,7 +938,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
   ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
-    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
+    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};
@@ -2119,6 +2132,76 @@ async function techPackCheckout(row,{email}){
   if(!saved){const cur=(await pool.query('select pay_draft_order_id,pay_invoice_url from tech_packs where id=$1',[row.id])).rows[0];return {checkoutUrl:cur.pay_invoice_url,draftOrderId:cur.pay_draft_order_id}} // a parallel click got there first
   return {checkoutUrl:draft.invoiceUrl,draftOrderId:draft.id};
 }
+// What the store says this client has spent in total. Runs after a payment is recorded and from the sync, so the number on the card is not
+// waiting for someone to press a button.
+async function refreshClientSpend(clientId){
+  if(!shopifyConfigured())return false;
+  const client=(await pool.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return false;
+  if(!client.shopify_customer_id)await linkShopifyCustomer(client).catch(()=>{});
+  if(!client.shopify_customer_id)return false;
+  const customer=(await shopifyGraphql(CUSTOMER_SYNC_QUERY,{id:client.shopify_customer_id})).customer;if(!customer)return false;
+  await pool.query(`update clients set total_spent_cents=$2,shopify_order_count=$3,shopify_currency=$4,shopify_synced_at=now() where id=$1`,[clientId,Math.round(Number(customer.amountSpent?.amount||0)*100),Number(customer.numberOfOrders||0),customer.amountSpent?.currencyCode||'USD']);
+  return true;
+}
+const refreshSpendQuietly=clientId=>refreshClientSpend(clientId).catch(e=>app.log.warn({err:e.message,clientId},'client spend not refreshed'));
+
+// Every few minutes: read the store's paid orders since the last run and keep the ledger complete. A tech pack payment is recognised by the address
+// in its checkout, so the pack unlocks even if the customer closed the tab, changed email, or the pack is older than the locked-pack sweep looks.
+const PAYMENT_SYNC_EVERY_MS=5*60*1000;
+async function markPackPaidFromOrder(p,clientId){
+  if(p.kind!=='tech-pack'||!p.productId||p.amountCents<TECH_PACK_PRICE_CENTS)return false;
+  const row=(await pool.query(`select tp.*,pr.title from tech_packs tp join products pr on pr.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2`,[p.productId,clientId])).rows[0];
+  if(!row||row.paid_at)return false;
+  await pool.query(`update tech_packs set paid_at=$2,pay_order_id=$3,billing='single' where id=$1 and paid_at is null`,[row.id,p.paidAt||new Date().toISOString(),p.orderId]);
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[clientId,row.product_id,`Tech pack paid — ${row.title} (${p.orderName||p.orderId}), found by the payment sync`,{techPackId:row.id,orderId:p.orderId,amountCents:p.amountCents}]).catch(()=>{});
+  if(row.ai_status==='locked')await unlockTechPack({...row,paid_at:p.paidAt||new Date()}).catch(e=>app.log.warn({err:e.message,packId:row.id},'unlock after payment sync failed'));
+  return true;
+}
+async function runPaymentSync(){
+  if(!shopifyConfigured())return 0;
+  if(!(await getSetting('paymentLedgerBackfillV1'))?.done){const n=await backfillTechPackPayments(pool,TECH_PACK_PRICE_CENTS);await setSetting('paymentLedgerBackfillV1',{done:true,at:new Date().toISOString(),rows:n})}
+  const prev=(await getSetting('paymentSync'))||{},since=prev.cursor||new Date(Date.now()-90*86400e3).toISOString();
+  const started=Date.now(),touched=new Set(),unmatched=[];let scanned=0,imported=0,unlocked=0,after=null,pages=0,cursor=since;
+  try{
+    do{
+      const data=await shopifyGraphql(ORDERS_PAID_QUERY,{query:`financial_status:paid updated_at:>='${since}'`,after});
+      const page=data?.orders;if(!page)throw new Error('Shopify did not return an orders list — the app may be missing the read_orders scope');
+      for(const o of page.nodes||[]){
+        scanned++;const p=paymentFromOrder(o,{membershipProductId:MEMBERSHIP_PRODUCT_ID});if(!p)continue;if(p.updatedAt&&p.updatedAt>cursor)cursor=p.updatedAt;
+        const client=await clientForPayment(pool,p);
+        if(!client){if(unmatched.length<10)unmatched.push({order:p.orderName||p.orderId,email:p.email,cents:p.amountCents,at:p.paidAt});continue}
+        const pack=p.productId?(await pool.query('select id from tech_packs where product_id=$1',[p.productId])).rows[0]:null;
+        const r=await recordPayment(pool,{clientId:client.id,productId:p.productId&&pack?p.productId:null,techPackId:pack?.id||null,kind:p.kind,title:p.title,amountCents:p.amountCents,currency:p.currency,orderId:p.orderId,orderName:p.orderName,paidAt:p.paidAt,source:'sync'});
+        if(r.inserted||r.changed){imported++;touched.add(client.id)}
+        if(await markPackPaidFromOrder(p,client.id)){unlocked++;touched.add(client.id)}
+      }
+      after=page.pageInfo?.hasNextPage?page.pageInfo.endCursor:null;pages++;
+    }while(after&&pages<10);
+    await setSetting('paymentSync',{...prev,cursor,lastRunAt:new Date().toISOString(),lastOkAt:new Date().toISOString(),lastError:null,lastMs:Date.now()-started,scanned,imported,unlocked,unmatched,runs:(prev.runs||0)+1});
+  }catch(e){
+    await setSetting('paymentSync',{...prev,lastRunAt:new Date().toISOString(),lastError:String(e.message||e).slice(0,300),lastMs:Date.now()-started,runs:(prev.runs||0)+1}).catch(()=>{});
+    throw e;
+  }
+  // clients with payments whose store spend has not been refreshed for a day (a few per run), so the card never drifts for long
+  const stale=(await pool.query(`select c.id from clients c where exists(select 1 from payments p where p.client_id=c.id) and (c.shopify_synced_at is null or c.shopify_synced_at<now()-interval '1 day') limit 5`)).rows;
+  for(const r of stale)touched.add(r.id);
+  for(const id of touched)await refreshSpendQuietly(id);
+  if(imported||unlocked)app.log.info({scanned,imported,unlocked},'payment sync');
+  return imported+unlocked;
+}
+async function paymentStats(){
+  const r=(await pool.query(`select (select count(*)::int from payments) count,(select coalesce(sum(amount_cents),0)::bigint from payments) total_cents,
+    (select count(*)::int from payments where paid_at>now()-interval '24 hours') last_day,
+    (select count(*)::int from tech_packs where paid_at is not null and ai_status='locked') paid_but_locked,
+    (select count(*)::int from clients c where c.slug<>'future-basics' and exists(select 1 from payments p where p.client_id=c.id) and c.shopify_customer_id is null) unlinked_payers,
+    (select max(shopify_synced_at) from clients) last_spend_refresh`)).rows[0];
+  return {count:r.count,totalCents:Number(r.total_cents),lastDay:r.last_day,paidButLocked:r.paid_but_locked,unlinkedPayers:r.unlinked_payers,lastSpendRefresh:r.last_spend_refresh};
+}
+app.post('/v1/admin/payments/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
+  try{const n=await runPaymentSync();const st=await getSetting('paymentSync');return {ok:true,changed:n,state:st}}
+  catch(e){return reply.code(502).send({error:`The payment sync failed: ${e.message}`})}
+});
 // Has the single-pack draft order been paid? Marks the pack paid and returns true.
 async function techPackPaymentLanded(row){
   if(row.paid_at)return true;
@@ -2131,6 +2214,8 @@ async function techPackPaymentLanded(row){
   try{const cust=(await shopifyGraphql(ORDER_CUSTOMER_QUERY,{id:order.id}))?.order?.customer;
     if(cust?.id){const c=(await pool.query('select * from clients where id=$1',[row.client_id])).rows[0];if(c)await linkShopifyCustomer(c,cust.id)}}
   catch(e){app.log.info({err:e.message,packId:row.id},'order customer not linked')}
+  await recordPayment(pool,{clientId:row.client_id,productId:row.product_id,techPackId:row.id,kind:'tech-pack',title:`Tech pack · ${row.title}`,amountCents:Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)||TECH_PACK_PRICE_CENTS,currency:order.totalPriceSet?.shopMoney?.currencyCode||'USD',orderId:order.id,orderName:order.name||'',paidAt:new Date().toISOString(),source:'unlock'}).catch(e=>app.log.warn({err:e.message,packId:row.id},'payment not added to the ledger'));
+  refreshSpendQuietly(row.client_id);
   await dropPackVariant(row);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;
@@ -3092,6 +3177,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.
 async function backfillCardsFromTechPacks(){
   if((await getSetting('cardBackfillV1'))?.done)return 0;

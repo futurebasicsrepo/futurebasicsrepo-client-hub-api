@@ -480,6 +480,24 @@ export async function migrate() {
       unique(tech_pack_id,stage,version)
     );
     alter table tech_packs add column if not exists pay_variant_id text;
+    -- Every payment a client has made through the store, one row per order. Tech packs, memberships and anything else the store sold them.
+    create table if not exists payments (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      product_id uuid references products(id) on delete set null,
+      tech_pack_id uuid references tech_packs(id) on delete set null,
+      kind text not null default 'order',
+      title text,
+      amount_cents bigint not null,
+      currency text not null default 'USD',
+      shopify_order_id text,
+      shopify_order_name text,
+      paid_at timestamptz not null default now(),
+      source text not null default 'sync',
+      created_at timestamptz not null default now()
+    );
+    create unique index if not exists payments_order_idx on payments(shopify_order_id) where shopify_order_id is not null;
+    create index if not exists payments_client_idx on payments(client_id, paid_at desc);
     create table if not exists platform_events (
       id bigserial primary key,
       at timestamptz not null default now(),

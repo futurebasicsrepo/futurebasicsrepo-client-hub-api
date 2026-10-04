@@ -340,4 +340,33 @@ await journey('J45', 'the product card in the hub and the work console shows wha
   } finally { await wctx.close(); }
 });
 
+await journey('J49', 'the console home: waiting on approval, production attention and the assistant show the real work, and each row opens it', async () => {
+  const r = await room('49'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  await call(`/v1/products/${r.id}/tech-pack/submit`, { method: 'POST', token: r.token, body: {} });
+  sql(`insert into production_runs(product_id,po_number,quantity,status,eta_date) values('${r.id}','PO-J49-${stamp}',100,'blocked',current_date-3)`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  try {
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#actions .q-row', { timeout: 15000 });
+    const group = await page.locator('#actions .q-group h3', { hasText: 'On us' }).first().innerText(); ok(/ON US\s*\d+/i.test(group), 'the approval queue has an "On us" group with a count', group);
+    ok(await page.locator('#actions .q-group').count() >= 1, 'the queue is grouped by who has to move'); await page.evaluate(() => document.querySelectorAll('#actions details.q-more, #productionAlerts details.q-more').forEach(d => { d.open = true; }));
+    const row = page.locator(`#actions a.q-row[href*="product=${r.id}"]`).first();
+    ok(await row.count() === 1 && /Open|Overdue/i.test(await row.locator('.q-chip').innerText()), 'the submitted pack is a row, with a word for how urgent it is (not only a colour)');
+    ok(/just now|today|1 day|days/i.test(await row.locator('.q-age').innerText()), 'and how long it has waited');
+    ok(/\d+ on us/i.test(await page.innerText('#approvals .meta')), 'the section header counts what is on us');
+    const run = page.locator('#productionAlerts .q-row', { hasText: `PO-J49-${stamp}` }); ok(await run.count() === 1 && /blocked/i.test(await run.innerText()) && /Overdue/i.test(await run.locator('.q-chip').innerText()), 'a blocked production run is in Production attention, marked overdue');
+    const learn = await page.innerText('#learning'); ok(/finished/i.test(learn) && /need a re-run/i.test(learn), 'the assistant section shows how it is doing and what needs a re-run', learn.slice(0, 160));
+    const box = await page.evaluate(() => { const a = document.getElementById('approvals').getBoundingClientRect().top + scrollY, b = document.getElementById('learning').getBoundingClientRect().bottom + scrollY; return { y: Math.max(0, a - 20), h: Math.min(2600, b - a + 40) }; });
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues.png`, fullPage: true, clip: { x: 0, y: box.y, width: 1280, height: box.h } }).catch(() => {});
+    { const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await m.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin); const mp = await m.newPage(); await mp.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await mp.waitForSelector('#actions .q-row', { timeout: 15000 });
+      const w = await mp.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'on a phone the queues do not scroll sideways', w);
+      const y = await mp.evaluate(() => document.getElementById('approvals').getBoundingClientRect().top + scrollY - 10); await mp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues-phone.png`, fullPage: true, clip: { x: 0, y, width: 390, height: 1500 } }).catch(() => {}); await m.close(); }
+    await row.click(); await page.waitForSelector('#clientPage:not(.hidden)', { timeout: 10000 }); await sleep(600);
+    ok(page.url().includes(`/clients/${r.clientId}`) && page.url().includes(`product=${r.id}`), 'clicking a row opens that client and that product', page.url());
+    ok(await page.locator('#clientPage .crumbs, #crumbs').first().isVisible(), 'and the client page is showing');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
