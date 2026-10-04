@@ -74,6 +74,10 @@ await journey('J26', 'phone: a locked second pack, an "I\'ve paid" press too ear
   const toast = async () => { await sleep(500); return (await page.textContent('#toast')).trim(); };
   await page.click('[data-act="unlock"]'); ok(/not reached us|moment/i.test(await toast()), '"I\'ve paid" before paying → "Payment has not reached us yet"', await toast());
   await page.click('[data-act="paysingle"]'); await sleep(500); const dlg = await page.locator('#payChoice').count(); if (dlg) { await page.click('[data-act="paysinglego"]'); } await sleep(900); const t2 = await toast(); ok(/not set up|message Future Basics|checkout/i.test(t2) && !/Internal|undefined/i.test(t2), 'payments unavailable → a human message', t2);
+  ok(/Checkout would not open/.test(await page.innerText('.ai-banner')) && await page.isVisible('.ai-banner [data-act="askhelp"]'), 'and the page keeps a "Checkout would not open" note with a Message Future Basics button (not just a toast that vanishes)');
+  await page.click('.ai-banner [data-act="askhelp"]'); await page.waitForFunction(() => /Sent/.test(document.querySelector('.ai-banner [data-act="askhelp"]')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  ok(sql(`select count(*) from project_messages where project_id='${second.json.project.id}' and author_role='client' and body like '%checkout would not open%'`) === '1', 'one tap puts the message in the project thread where staff already look');
+  ok(sql(`select count(*) from notifications where client_id='${second.json.client.id}' and type='client-project-message'`) >= '1', 'and staff get a notification');
   sql(`update tech_packs set paid_at=now(),pay_order_id='ui-${stamp}',billing='single' where product_id='${id}'`); await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await page.click('[data-act="unlock"]').catch(() => {}); await page.waitForFunction(() => /Building your tech pack|Draft written/i.test(document.body.innerText), null, { timeout: 15000 }).catch(() => {}); const tp = await waitAi(call, token, id); ok(tp.json.techPack.aiStatus === 'done', 'once paid, the assistant builds the pack', tp.json.techPack.aiStatus); ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
@@ -266,6 +270,45 @@ await journey('J40', 'platform health page in the console: opens from the header
     await m.page.screenshot({ path: `${S}/j40-insights-phone.png`, fullPage: true });
     ok(m.page.errs.length === 0, 'no script errors on the phone', m.page.errs);
   } finally { await m.ctx.close(); }
+});
+
+await journey('J41', 'staff: Start over in the console tech pack redraws it from the photo, after asking first', async () => {
+  const r = await room('42'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); const dialogs = []; let accept = false; page.on('dialog', d => { dialogs.push(d.message()); accept ? d.accept() : d.dismiss(); });
+  try {
+    await page.goto(`${W}/tech-packs/${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('details.more > summary', { timeout: 15000 }); const more = () => page.click('details.more > summary'); await more(); await page.waitForSelector('[data-act="startover"]', { timeout: 5000 }); ok(await page.isVisible('[data-act="airun"]'), 'the console editor shows Re-run assistant and, beside it, Start over');
+    sql(`update tech_packs set data=jsonb_set(data,'{style,styleName}','"Hand-typed name"') where product_id='${r.id}'`);
+    await page.click('[data-act="startover"]'); await sleep(500); ok(dialogs.some(m => /cannot be undone|start this tech pack over/i.test(m)), 'Start over asks first and says it cannot be undone', dialogs);
+    ok(sql(`select data->'style'->>'styleName' from tech_packs where product_id='${r.id}'`) === 'Hand-typed name', 'dismissing the question changes nothing');
+    accept = true; await more(); await page.click('[data-act="startover"]');
+    let done = false; for (let i = 0; i < 40; i++) { await sleep(500); const st = sql(`select ai_status from tech_packs where product_id='${r.id}'`); if (st === 'done' && sql(`select count(*) from activities where product_id='${r.id}' and summary like '%started over%'`) === '1') { done = true; break; } }
+    ok(done, 'accepting runs the assistant again and records "started over" in the activity log');
+    ok(sql(`select data->'style'->>'styleName' from tech_packs where product_id='${r.id}'`) !== 'Hand-typed name', 'and what was typed by hand before is gone');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
+await journey('J42', 'the /start session ends while the editor is open: edits stay on the page and save once the customer is signed in again', async () => {
+  const r = await room('43'), field = '[data-path=\'["style","styleName"]\']';
+  const { ctx, page } = await phone(); page.on('dialog', d => d.accept());
+  try {
+    await openEditor(page, r.token, r.id); await page.waitForSelector(field, { timeout: 15000 });
+    // the owner signs in with a code (in another tab or on another device): the session /start handed out stops working
+    await call('/v1/auth/code', { body: { email: r.email } }); await sleep(200);
+    const v = await call('/v1/auth/verify', { body: { email: r.email, code: codeFrom(LOG, r.email) } }); ok(v.status === 200 && v.json.token, 'setup: the owner signs in with a code', v.status);
+    ok((await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).status === 401, 'setup: the old /start session now stops working');
+    await page.fill(field, 'Typed while signed out'); await sleep(3200);
+    const toast = (await page.textContent('#toast')).trim(); ok(/session ended/i.test(toast) && /still on this page/i.test(toast), 'a failed save says the session ended and that the edits are still on the page', toast);
+    ok(await page.inputValue(field) === 'Typed while signed out', 'and what was typed is still in the field');
+    ok(sql(`select data->'style'->>'styleName' from tech_packs where product_id='${r.id}'`) !== 'Typed while signed out', 'and nothing was saved under the dead session');
+    // the new session appears in this browser (the sign-in tab stored it): coming back to this tab saves the edit without retyping
+    await page.evaluate(t => localStorage.setItem('fb.client.token', t), v.json.token); await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await sleep(2500);
+    ok(sql(`select data->'style'->>'styleName' from tech_packs where product_id='${r.id}'`) === 'Typed while signed out', 'returning to the tab picks up the new session and saves the edit');
+    await page.fill(field, 'Typed after sign-in'); await sleep(3200); ok(sql(`select data->'style'->>'styleName' from tech_packs where product_id='${r.id}'`) === 'Typed after sign-in', 'and later edits save as normal');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
