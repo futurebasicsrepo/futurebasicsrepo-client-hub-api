@@ -5,8 +5,21 @@ export const pool = new pg.Pool({
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
   // Safety net: a lock wait fails after 15s instead of hanging a request forever, and a transaction left idle (a request
   // that died mid-way) is killed after 60s so its locks and connection come back. Legitimate waits here are sub-second.
-  options: '-c lock_timeout=15000 -c idle_in_transaction_session_timeout=60000'
+  options: '-c lock_timeout=15000 -c idle_in_transaction_session_timeout=60000',
+  max: Number(process.env.PG_POOL_MAX) || 20
 });
+// A connection the database drops (idle-in-transaction timeout, a restart, a network blip) emits 'error' on its client. With nobody
+// listening, Node treats that as fatal and the whole service goes down. Log it, mark the client dead, and make sure a dead client is
+// destroyed on release instead of being handed to the next request.
+pool.on('connect', client => client.on('error', e => { client.__dead = true; console.error('postgres client error:', e.message); }));
+pool.on('error', e => console.error('postgres pool error:', e.message));
+const connectOnce = pool.connect.bind(pool);
+pool.connect = async (...args) => {
+  if (args.length) return connectOnce(...args);
+  const client = await connectOnce(), release = client.release.bind(client);
+  client.release = err => release(err ?? (client.__dead ? true : undefined));
+  return client;
+};
 
 export async function migrate() {
   await pool.query(`

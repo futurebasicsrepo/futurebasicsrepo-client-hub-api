@@ -269,4 +269,18 @@ await journey('J32', 'message center: a client message becomes an unread convers
   const gen = (await call(`/v1/admin/message-center/general-${cid}`, { token: admin })); ok(gen.status === 200 && gen.json.conversation.kind === 'general', 'the per-client "general" conversation opens too', gen.status);
 });
 
+await journey('J34', 'many people with the same name start at once: every one gets a room, none gets an error', async () => {
+  const name = `Racey Name ${stamp}`; const results = await Promise.all(Array.from({ length: 14 }, (_, i) => call('/v1/public/start', { body: { email: `race${i}-${stamp}@chaos.test`, name, title: 'Same name runner', photos: [runner] } })));
+  ok(results.every(r => r.status === 201 && r.json.token), 'fourteen simultaneous /start calls with one name all succeed', results.map(r => r.status));
+  const slugs = sql(`select slug from clients where name='${name}'`).split('\n').filter(Boolean); ok(slugs.length === 14 && new Set(slugs).size === 14, 'and each room has its own address', slugs.length);
+});
+
+await journey('J35', 'the database drops connections: the service stays up and keeps answering', async () => {
+  const before = await call('/health'); ok(before.status === 200, 'healthy before', before.status);
+  // end every idle connection the service holds (not psql, not this script): what a database restart or a network blip does
+  const killed = sql(`select count(*) from (select pg_terminate_backend(pid) from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and application_name='' and state='idle') t`); ok(Number(killed) >= 1, 'idle connections were cut', killed);
+  await sleep(600); const after = await call('/health'); ok(after.status === 200, 'the service process is still up and answers', after.status);
+  const room = await newRoom('35', { wait: false }); ok(room.token, 'and a customer can still start a pack right after', room.r.status);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
