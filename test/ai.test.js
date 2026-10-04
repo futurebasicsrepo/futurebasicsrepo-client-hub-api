@@ -65,6 +65,11 @@ test('translateStrings uses the fixture path without a key and maps every source
     const { map, model } = await translateStrings(['Heel wrap', ' Heel wrap ', 'Outsole length', ''], { lang: 'zh' });
     assert.equal(model, 'fixture');
     assert.deepEqual(map, { 'Heel wrap': '中文：Heel wrap', 'Outsole length': '中文：Outsole length' });
+    for (const [lang, prefix] of [['es', 'ES: '], ['pt', 'PT: '], ['it', 'IT: ']]) assert.deepEqual((await translateStrings(['Heel wrap'], { lang })).map, { 'Heel wrap': `${prefix}Heel wrap` }, `${lang} is supported`);
+    const { TRANSLATION_LANGS, LANG_LABELS } = await import('../src/ai.js');
+    assert.deepEqual(TRANSLATION_LANGS, ['zh', 'es', 'pt', 'it']);
+    assert.deepEqual(Object.keys(LANG_LABELS), TRANSLATION_LANGS);
+    assert.equal(LANG_LABELS.pt.label, 'Portuguese');
     await assert.rejects(translateStrings(['x'], { lang: 'fr' }), /Unsupported language/);
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
 });

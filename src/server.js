@@ -22,7 +22,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
-import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -549,6 +549,7 @@ app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
 app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
 app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
@@ -1792,7 +1793,7 @@ app.post('/v1/admin/products/:id/tech-pack/translate',{preHandler:[authenticate,
   const strings=Object.fromEntries(current.filter(s=>cached[s]).map(s=>[s,cached[s]]));
   const entry={strings,model,at:new Date().toISOString(),count:Object.keys(strings).length};
   await pool.query(`update tech_packs set translations=jsonb_set(coalesce(translations,'{}'::jsonb),$2::text[],$3::jsonb) where id=$1`,[row.id,[lang],JSON.stringify(entry)]);
-  if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${lang==='zh'?'Mandarin':lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
+  if(missing.length)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Tech pack translated for the factory (${LANG_LABELS[lang]?.label||lang}) — ${missing.length} new phrase${missing.length===1?'':'s'}`,{techPackId:row.id,lang,model}]);
   return {lang,...entry,translated:missing.length};
 });
 // Learning loop: at each milestone, diff the assistant's snapshot against the pack people kept and store the result.
@@ -2083,7 +2084,7 @@ async function dropPackVariant(row){
   try{await shopifyGraphql(VARIANTS_BULK_DELETE,{productId,variantsIds:[row.pay_variant_id]})}catch(e){app.log.warn({err:e.message,packId:row.id},'pack variant not deleted')}
   await pool.query('update tech_packs set pay_variant_id=null where id=$1',[row.id]).catch(()=>{});
 }
-const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
+const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · factory export in Mandarin, Spanish, Portuguese or Italian · yours to edit any time';
 // The payment gate: switched from the work console (stored in app_settings), otherwise automatic: on when Shopify can take
 // payment, or forced either way with TECH_PACK_BILLING=on|off. Read on every request, so a switch takes effect at once.
 let billingMode=null; // 'on' | 'off' | null (automatic)
