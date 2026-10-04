@@ -37,6 +37,8 @@
 /* Navigation pass — breadcrumb per level, the tech pack first on a product, one filled button per area */
 header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;text-decoration:none;display:flex;align-items:center;margin-right:auto}
 .hubnav{display:flex;align-items:center;gap:6px}.hubnav a{color:#fff;text-decoration:none;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;padding:9px 12px;border-radius:999px;opacity:.78}.hubnav a:hover,.hubnav a:focus-visible{opacity:1;background:rgba(255,255,255,.12)}.hubnav .state{margin-left:8px}
+.hubnav .short{display:none}.hubnav .sitelink{border:1px solid rgba(255,255,255,.28);margin-right:4px;white-space:nowrap;flex:none}
+@media(max-width:620px){.hubnav .sitelink span{display:none}.hubnav .sitelink .short{display:inline}}
 @media(max-width:620px){.hubnav .state{display:none}.hubnav a{padding:8px 9px;font-size:10px}header{gap:8px}}
 .crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;font:500 11px/1.4 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:4px 0 0}
 .crumbs button{all:unset;cursor:pointer;color:var(--dim);padding:8px 2px;max-width:30ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crumbs button:hover,.crumbs button:focus-visible{color:var(--ink);text-decoration:underline}.crumbs [aria-current]{color:var(--ink);padding:8px 2px;max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.crumbs .sep{opacity:.45}
@@ -59,7 +61,7 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
 </head>
 <body>
   <div class="ambient" aria-hidden="true"></div>
-  <header><a class="homelink" href="/" onclick="return goHome(event)" aria-label="Future Basics client hub — all projects"><strong class="wordmark"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Client Hub</span></strong></a><nav class="hubnav" aria-label="Main"><a href="/" onclick="return goHome(event)">Projects</a><a href="/help">Help</a><span id="state" class="state">secure access</span></nav></header>
+  <header><a class="homelink" href="/" onclick="return goHome(event)" aria-label="Future Basics client hub — all projects"><strong class="wordmark"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Client Hub</span></strong></a><nav class="hubnav" aria-label="Main"><a class="sitelink" href="https://thefuturebasics.com/?utm_source=hub&amp;utm_medium=nav">← <span>thefuturebasics.com</span><span class="short">Site</span></a><a href="/" onclick="return goHome(event)">Projects</a><a href="/help">Help</a><span id="state" class="state">secure access</span></nav></header>
   <main>
     <section id="gate" class="panel gate">
       <div class="intro">

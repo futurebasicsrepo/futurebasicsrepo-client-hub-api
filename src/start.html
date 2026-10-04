@@ -11,7 +11,9 @@
     *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh;-webkit-font-smoothing:antialiased}
     button,input,textarea{font:inherit}.hidden{display:none!important}
     header{height:60px;background:var(--ink);color:#fff;padding:0 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-    .wordmark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;white-space:nowrap}header .meta{white-space:nowrap}@media(max-width:460px){.wordmark span{display:none}.wordmark img{height:14px}}
+    .wordmark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;white-space:nowrap}header .meta{white-space:nowrap}
+.sitelink{color:#fff;text-decoration:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:999px;white-space:nowrap}.sitelink b{display:none;font-weight:500}
+@media(max-width:620px){.sitelink span{display:none}.sitelink b{display:inline}}@media(max-width:460px){.wordmark span{display:none}.wordmark img{height:14px}}
     .meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:var(--dim)}
     main{max-width:560px;margin:0 auto;padding:22px 16px calc(40px + env(safe-area-inset-bottom))}
     h1{font-weight:500;letter-spacing:-.04em;line-height:.95;font-size:clamp(38px,11vw,56px);margin:10px 0 12px;text-wrap:balance}
@@ -43,7 +45,7 @@
   </style>
 </head>
 <body>
-  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><span class="meta" style="color:#aaa">Step 1 of 1</span></header>
+  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><a class="sitelink" href="https://thefuturebasics.com/?utm_source=hub&amp;utm_medium=nav">← <span>thefuturebasics.com</span><b>Site</b></a></header>
   <main>
     <span class="meta">Product development</span>
     <h1>Turn any image into a tech pack.</h1>
