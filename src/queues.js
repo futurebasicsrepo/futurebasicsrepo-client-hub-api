@@ -40,14 +40,15 @@ export function packItems(rows) {
   return out;
 }
 
+export const AUTO_RETRY_LIMIT = 5;
 export function assistantRerunItems(rows) {
   return rows.map(r => {
     const ours = !/could not make out a product|could not read enough detail|could not open this image|could not take this image|could not draft enough/i.test(r.ai_error || '') || /on our side/i.test(r.ai_error || '');
-    const since = iso(r.ai_started_at || r.updated_at);
+    const since = iso(r.ai_started_at || r.updated_at), retrying = ours && Number(r.ai_auto_retries || 0) < AUTO_RETRY_LIMIT;
     return {
-      key: `ai-failed:${r.tp_id}`, stream: 'assistant', kind: ours ? 'rerun' : 'photo', owner: ours ? 'us' : 'client', severity: ours ? (age(since) > DAY ? 'urgent' : 'normal') : 'info',
+      key: `ai-failed:${r.tp_id}`, stream: 'assistant', kind: ours ? 'rerun' : 'photo', owner: ours ? 'us' : 'client', severity: retrying ? 'info' : ours ? (age(since) > DAY ? 'urgent' : 'normal') : 'info',
       clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
-      title: ours ? 'The assistant could not run on this pack: re-run it' : 'The assistant could not read the photo: waiting on a clearer one from the client',
+      title: retrying ? 'The assistant could not run on this pack: it re-runs on its own once the assistant works' : ours ? 'The assistant could not run on this pack, and retrying did not help: re-run it by hand' : 'The assistant could not read the photo: waiting on a clearer one from the client',
       detail: clip(r.ai_error, 140), since
     };
   });
@@ -61,7 +62,7 @@ export async function buildQueues(pool, { learning = null } = {}) {
     pool.query(`select tp.id tp_id,tp.status,tp.version,tp.submitted_at,tp.published_at,tp.locked_at,tp.verification,tp.ai_status,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and (tp.status='submitted' or tp.published_at is not null)`),
-    pool.query(`select tp.id tp_id,tp.ai_error,tp.ai_started_at,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
+    pool.query(`select tp.id tp_id,tp.ai_error,tp.ai_started_at,tp.ai_auto_retries,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and tp.ai_status='failed' and tp.published_at is null order by tp.ai_started_at desc nulls last limit 25`),
     pool.query(`select a.id,a.title,a.requested_at,ast.name asset_name,av.version asset_version,p.id product_id,p.title product_title,c.id client_id,c.name client_name

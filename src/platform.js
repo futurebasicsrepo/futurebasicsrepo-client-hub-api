@@ -205,21 +205,21 @@ export function classifyAiFailure(message) {
 
 // What the alert says: what is wrong, what customers see meanwhile, and what to do. Plain words; no raw error beyond one short quoted line.
 export function assistantAlertContent({ kind, message, affected = 0, consoleUrl = '', platformUrl = '' }) {
-  const waiting = affected ? `${affected} ${affected === 1 ? 'tech pack is' : 'tech packs are'} waiting for a re-run after failing in the meantime.` : 'No tech pack is waiting for a re-run yet.';
+  const waiting = affected ? `${affected} ${affected === 1 ? 'tech pack is' : 'tech packs are'} waiting to re-run automatically after failing in the meantime.` : 'No tech pack is waiting to re-run yet.';
   const quote = String(message || '').replace(/\s+/g, ' ').slice(0, 220);
   if (kind === 'credit') return {
     subject: 'Action needed: the tech pack assistant is out of Anthropic credit',
     headline: 'The assistant is out of credit',
     intro: 'Anthropic is refusing every request from the platform because the credit balance is empty. Until it is topped up, no new tech pack can be drafted.',
     customers: 'Customers who start a pack are told it is on our side, not their photo. Their three tries are not used, and they can still edit by hand and submit.',
-    steps: ['Open the Anthropic Console, Plans & Billing, for the organisation that owns the API key on the Railway service, and add credit.', 'Packs that failed meanwhile are not re-run on their own. Open each one in the work console and press Run assistant.'],
+    steps: ['Open the Anthropic Console, Plans & Billing, for the organisation that owns the API key on the Railway service, and add credit.', 'Packs that failed meanwhile re-run on their own within about ten minutes of the assistant working again. Nothing to press.'],
     waiting, quote, consoleUrl, platformUrl };
   return {
     subject: 'Action needed: the tech pack assistant is being refused by Anthropic',
     headline: 'Anthropic is rejecting the platform\'s API key',
     intro: 'Requests from the platform are being refused as unauthorised, so no new tech pack can be drafted. The key was probably revoked, replaced, or pasted wrongly.',
     customers: 'Customers who start a pack are told it is on our side, not their photo. Their three tries are not used, and they can still edit by hand and submit.',
-    steps: ['Create or copy a working key in the Anthropic Console, API keys.', 'Set it as ANTHROPIC_API_KEY on the Railway service. The service restarts by itself.', 'Packs that failed meanwhile are not re-run on their own. Open each one in the work console and press Run assistant.'],
+    steps: ['Create or copy a working key in the Anthropic Console, API keys.', 'Set it as ANTHROPIC_API_KEY on the Railway service. The service restarts by itself.', 'Packs that failed meanwhile re-run on their own within about ten minutes of the assistant working again. Nothing to press.'],
     waiting, quote, consoleUrl, platformUrl };
 }
 
@@ -249,10 +249,10 @@ export function classifyProbeError(e) {
 }
 // The verdict for the card. The live test decides; earlier failures only add a note.
 export function assistantVerdict({ probe, failed24 = 0, tel = null, now = Date.now() }) {
-  if (!probe.ok && probe.kind === 'credit') return { status: 'down', summary: 'Out of credits: add credits in the Anthropic console, then re-run waiting packs' };
+  if (!probe.ok && probe.kind === 'credit') return { status: 'down', summary: 'Out of credits: add credits in the Anthropic console, then waiting packs re-run on their own' };
   if (!probe.ok && probe.kind === 'key') return { status: 'down', summary: 'The API key was rejected: set a working ANTHROPIC_API_KEY on the service' };
   if (!probe.ok) return { status: 'warn', summary: `Could not confirm the assistant can run: ${probe.note}` };
   const erroredAfterOk = tel?.lastErrorAt && (!tel.lastOkAt || tel.lastErrorAt > tel.lastOkAt);
   if (erroredAfterOk && now - new Date(tel.lastErrorAt).getTime() < 3600e3 && !/credit balance/i.test(tel.lastError || '')) return { status: 'warn', summary: 'The key and credit are fine, but the latest assistant run failed' };
-  return { status: 'ok', summary: failed24 ? `Working. ${failed24} run${failed24 === 1 ? '' : 's'} failed earlier today; re-run ${failed24 === 1 ? 'it' : 'them'} from the Assistant section` : 'Working: a test call went through' };
+  return { status: 'ok', summary: failed24 ? `Working. ${failed24} run${failed24 === 1 ? '' : 's'} failed earlier today; ${failed24 === 1 ? 'it re-runs' : 'they re-run'} on their own, or press Run assistant` : 'Working: a test call went through' };
 }

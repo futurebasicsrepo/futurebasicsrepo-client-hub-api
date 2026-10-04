@@ -11,9 +11,9 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
-import { buildQueues } from './queues.js';
+import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
-import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent } from './platform.js';
+import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
@@ -2438,11 +2438,33 @@ async function runAiRecovery(){
   if(stuck.length)app.log.info({stuck:stuck.length,restarted},'ai recovery sweep');
   return restarted;
 }
+// Packs that failed for our own reasons (credit, key, outage) run again by themselves once a live test call goes through, a few at a time,
+// at least ten minutes apart, up to AUTO_RETRY_LIMIT times each. A pack that fails for its photo is never retried: that needs the client.
+const AI_AUTO_BATCH=3,AI_AUTO_GAP_MINUTES=10;
+async function runAiAutoRetry({probe=probeAssistant}={}){
+  if(!aiEnabled())return {status:'off',started:0};
+  const waiting=(await pool.query(`select count(*)::int n from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and published_at is null and ai_auto_retries<$1 and coalesce(ai_started_at,updated_at)>now()-interval '14 days'`,[AUTO_RETRY_LIMIT])).rows[0].n;
+  if(!waiting)return {status:'idle',started:0};
+  const live=process.env.AI_FIXTURE?{ok:true}:await probe(PROBE_MODEL); // the test fixture stands in for a working assistant
+  if(!live.ok){app.log.info({waiting,kind:live.kind},'assistant auto-retry waiting: the assistant is not working yet');return {status:'waiting',started:0,waiting,kind:live.kind}}
+  const rows=(await pool.query(`update tech_packs set ai_auto_retries=ai_auto_retries+1 where id in (
+      select tp.id from tech_packs tp where tp.ai_status='failed' and tp.ai_error ilike '%on our side%' and tp.published_at is null and tp.ai_auto_retries<$1
+        and coalesce(tp.ai_started_at,tp.updated_at)>now()-interval '14 days' and coalesce(tp.ai_started_at,tp.updated_at)<now()-make_interval(mins=>$2)
+      order by tp.ai_started_at asc nulls first limit $3 for update skip locked)
+    returning id,client_id,product_id,ai_auto_retries,(select title from products p where p.id=tech_packs.product_id) title`,[AUTO_RETRY_LIMIT,AI_AUTO_GAP_MINUTES,AI_AUTO_BATCH])).rows;
+  for(const r of rows){
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[r.client_id,r.product_id,`Assistant re-running the tech pack for ${r.title} by itself after an earlier failure (try ${r.ai_auto_retries} of ${AUTO_RETRY_LIMIT})`,{techPackId:r.id,auto:true,reason:'auto-retry'}]).catch(()=>{});
+    await startAiRun({id:r.id});
+  }
+  if(rows.length)app.log.info({started:rows.length,waiting},'assistant auto-retry started runs');
+  return {status:'started',started:rows.length,waiting};
+}
 // Re-run on demand. The console can always re-run; a client may retry a failed read up to the attempt limit.
 async function startAiRun(row,{force=true}={}){
   await pool.query(`update tech_packs set ai_status='pending',ai_error=null where id=$1`,[row.id]);
   setImmediate(()=>enrichPhotoDraft(row.id,{force}).catch(e=>app.log.warn({err:e.message},'ai re-run failed')));
 }
+app.post('/v1/admin/ai/auto-retry',{preHandler:[authenticate,adminOnly]},async()=>runAiAutoRetry());
 app.post('/v1/admin/ai/recover',{preHandler:[authenticate,adminOnly]},async()=>({restarted:await runAiRecovery()}));
 app.post('/v1/admin/products/:id/tech-pack/ai',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!aiEnabled())return reply.code(503).send({error:'The assistant needs ANTHROPIC_API_KEY on the service'});
@@ -3200,6 +3222,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+jobEvery('Assistant re-runs after an outage', 5 * 60 * 1000, () => runAiAutoRetry().then(r => r.started), { delay: 40 * 1000 });
 if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.
 async function backfillCardsFromTechPacks(){

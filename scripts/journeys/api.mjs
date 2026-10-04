@@ -428,4 +428,30 @@ await journey('J50', 'the hub project thread: names written for a reader, files 
   ok(!JSON.stringify((await t(b.token, b.r.json.project.id)).json).includes('outsole'), 'each client\'s thread holds only their own words');
 });
 
+await journey('J52', 'packs that failed on our side re-run by themselves once the assistant works, a few at a time, and never loop', async () => {
+  const rooms = []; for (const t of ['52a', '52b', '52c', '52d']) rooms.push(await newRoom(t));
+  const cid = rooms[0].r.json.client.id, admin = await forge({ sub: sql(`select id from users where lower(email)='${rooms[0].email}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const fail = (id, error, ago = 30, tries = 0) => sql(`update tech_packs set ai_status='failed',ai_error='${error}',ai_started_at=now()-interval '${ago} minutes',ai_auto_retries=${tries},ai_attempts=0 where product_id='${id}'`);
+  const OURS = 'The assistant could not run just now. This is on our side, not your photo — Future Basics has been notified and will run it for you.';
+  for (const r of rooms.slice(0, 3)) fail(r.productId, OURS);
+  fail(rooms[3].productId, 'The assistant could not make out a product in this photo.');
+  // the queue first says it will retry on its own
+  const q0 = (await adm('/v1/admin/dashboard')).json.queues.assistant.rerun.find(x => x.productId === rooms[0].productId);
+  ok(q0 && q0.severity === 'info' && /re-runs on its own/i.test(q0.title), 'the console says the pack will re-run by itself, not that someone has to', q0 && [q0.severity, q0.title]);
+  const run = await adm('/v1/admin/ai/auto-retry', { method: 'POST' }); ok(run.status === 200 && run.json.started === 3, 'the retry job starts the packs that failed on our side', [run.status, run.json]);
+  for (const r of rooms.slice(0, 3)) { const st = (await waitAi(call, r.token, r.productId, 40000)).json.techPack; ok(st.aiStatus === 'done', 'a failed pack is drafted without anyone pressing a button', st.aiStatus); }
+  ok(rooms.slice(0, 3).every(r => Number(sql(`select ai_auto_retries from tech_packs where product_id='${r.productId}'`)) === 1), 'each was counted as one automatic try');
+  ok(sql(`select ai_status from tech_packs where product_id='${rooms[3].productId}'`) === 'failed', 'a pack that failed on its photo is left alone: that needs the client');
+  ok(Number(sql(`select count(*) from activities where product_id='${rooms[0].productId}' and metadata->>'reason'='auto-retry'`)) === 1, 'the pack\'s history says it was re-run automatically');
+  const again = await adm('/v1/admin/ai/auto-retry', { method: 'POST' }); ok(again.json.started === 0 && again.json.status === 'idle', 'with nothing left to retry, the job does nothing', again.json);
+  // a pack that keeps failing stops after the limit and goes back to a person
+  fail(rooms[0].productId, OURS, 30, 5);
+  const stuck = await adm('/v1/admin/ai/auto-retry', { method: 'POST' }); ok(stuck.json.started === 0, 'a pack that has used its automatic tries is not retried again', stuck.json);
+  const q1 = (await adm('/v1/admin/dashboard')).json.queues.assistant.rerun.find(x => x.productId === rooms[0].productId);
+  ok(q1 && q1.severity !== 'info' && /by hand/i.test(q1.title), 'it goes back on the console as something to re-run by hand', q1 && [q1.severity, q1.title]);
+  // retries are spaced out: one that failed a moment ago waits
+  fail(rooms[1].productId, OURS, 1, 0); const soon = await adm('/v1/admin/ai/auto-retry', { method: 'POST' }); ok(soon.json.started === 0, 'a pack that failed a minute ago waits its turn', soon.json);
+  const nonAdmin = await call('/v1/admin/ai/auto-retry', { method: 'POST', token: rooms[1].token }); ok([401, 403].includes(nonAdmin.status), 'a customer cannot trigger it', nonAdmin.status);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
