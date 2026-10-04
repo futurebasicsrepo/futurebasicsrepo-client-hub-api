@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, techPackReadiness, normalizeVerification, emptyVerification, publishedTechPackView, emptyTechPack, pomTemplateFor, calloutKey, DEFAULT_SIZES, FOOTWEAR_SIZES, mockupsComplete } from '../src/techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, techPackReadiness, normalizeVerification, emptyVerification, publishedTechPackView, emptyTechPack, pomTemplateFor, calloutKey, DEFAULT_SIZES, FOOTWEAR_SIZES, mockupsComplete, cardFieldsFromPack, packHasContent } from '../src/techpack.js';
 
 const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
@@ -157,4 +157,35 @@ test('footwear packs get footwear views, sizes, measurements, BOM and labels', (
   const r = techPackReadiness({ style: { category: 'Footwear' }, sketches: [{ id: 'l', view: 'lateral', image: 'data:image/png;base64,QUJD' }] }, emptyVerification(1));
   assert.equal(r.checks[0].label, 'Lateral + medial mockups uploaded');
   assert.match(r.checks[0].detail, /medial view missing/);
+});
+
+test('the product card takes material, decoration, colourways and sizes from the pack, and says nothing where the pack says nothing', () => {
+  assert.equal(cardFieldsFromPack({}), null);
+  assert.equal(cardFieldsFromPack(null), null);
+  const f = cardFieldsFromPack({
+    sizes: ['8', '9', '10'],
+    bom: [{ component: 'Upper', material: 'Recycled mesh' }, { component: 'Sole', material: 'recycled  MESH' }, { component: 'Lining', material: 'Suede' }, { component: 'Lace', material: '' }],
+    colorways: [{ name: 'Gum', code: '18-1021' }, { name: 'Ecru' }],
+    artwork: [{ id: 'a1', name: 'Heel logo', image: '', placements: [] }]
+  });
+  assert.equal(f.material, 'Recycled mesh, Suede');
+  assert.deepEqual(f.colorways, ['Gum (18-1021)', 'Ecru']);
+  assert.equal(f.decoration_method, 'Heel logo');
+  assert.deepEqual(f.sizes, ['8', '9', '10']);
+  assert.equal('decoration_locations' in f, false);
+});
+
+test('the default size run is not shown as if it were a decision until the pack has real content', () => {
+  assert.equal(cardFieldsFromPack({ style: { styleName: 'Only a name' } }), null);
+  assert.equal(packHasContent({ style: { styleName: 'Only a name' } }), false);
+  assert.equal(packHasContent({ colorways: [{ name: 'Black' }] }), true);
+  const withCallout = { sketches: [{ id: 's1', view: 'front', callouts: [{ n: 1, label: 'Collar' }] }] };
+  assert.equal(packHasContent(withCallout), true);
+  assert.ok(cardFieldsFromPack(withCallout).sizes.length > 0);
+});
+
+test('long lists are capped so a card stays a card', () => {
+  const bom = Array.from({ length: 30 }, (_, i) => ({ component: `c${i}`, material: `Material number ${i}` }));
+  const f = cardFieldsFromPack({ bom, colorways: Array.from({ length: 40 }, (_, i) => ({ name: `Colour ${i}` })) });
+  assert.equal(f.material.split(', ').length, 6); assert.ok(f.material.length <= 200); assert.equal(f.colorways.length, 12);
 });

@@ -198,3 +198,33 @@ export async function insights(pool, { days = 30, priceCents = 4800 } = {}) {
 }
 
 export { overallStatus };
+
+// ---- The assistant stopping for a reason only we can fix ----
+// An empty credit balance or a rejected key stops every new pack until someone acts, so it is worth an email. A rate limit or a brief outage
+// is not: it passes by itself. The text is what the SDK puts in the error message, which starts with the HTTP status.
+export function classifyAiFailure(message) {
+  const m = String(message || '');
+  if (/credit balance|insufficient (funds|credit)|plans (and|&) billing/i.test(m)) return 'credit';
+  if (/^\s*(401|403)\b|authentication_error|permission_error|invalid x-api-key/i.test(m)) return 'key';
+  return null;
+}
+
+// What the alert says: what is wrong, what customers see meanwhile, and what to do. Plain words; no raw error beyond one short quoted line.
+export function assistantAlertContent({ kind, message, affected = 0, consoleUrl = '', platformUrl = '' }) {
+  const waiting = affected ? `${affected} ${affected === 1 ? 'tech pack is' : 'tech packs are'} waiting for a re-run after failing in the meantime.` : 'No tech pack is waiting for a re-run yet.';
+  const quote = String(message || '').replace(/\s+/g, ' ').slice(0, 220);
+  if (kind === 'credit') return {
+    subject: 'Action needed: the tech pack assistant is out of Anthropic credit',
+    headline: 'The assistant is out of credit',
+    intro: 'Anthropic is refusing every request from the platform because the credit balance is empty. Until it is topped up, no new tech pack can be drafted.',
+    customers: 'Customers who start a pack are told it is on our side, not their photo. Their three tries are not used, and they can still edit by hand and submit.',
+    steps: ['Open the Anthropic Console, Plans & Billing, for the organisation that owns the API key on the Railway service, and add credit.', 'Packs that failed meanwhile are not re-run on their own. Open each one in the work console and press Run assistant.'],
+    waiting, quote, consoleUrl, platformUrl };
+  return {
+    subject: 'Action needed: the tech pack assistant is being refused by Anthropic',
+    headline: 'Anthropic is rejecting the platform\'s API key',
+    intro: 'Requests from the platform are being refused as unauthorised, so no new tech pack can be drafted. The key was probably revoked, replaced, or pasted wrongly.',
+    customers: 'Customers who start a pack are told it is on our side, not their photo. Their three tries are not used, and they can still edit by hand and submit.',
+    steps: ['Create or copy a working key in the Anthropic Console, API keys.', 'Set it as ANTHROPIC_API_KEY on the Railway service. The service restarts by itself.', 'Packs that failed meanwhile are not re-run on their own. Open each one in the work console and press Run assistant.'],
+    waiting, quote, consoleUrl, platformUrl };
+}

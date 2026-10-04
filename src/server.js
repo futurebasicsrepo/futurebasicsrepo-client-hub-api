@@ -11,15 +11,17 @@ import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
-import { runChecks, configChecks, jobHealth, insights as platformInsights } from './platform.js';
+import { buildQueues } from './queues.js';
+import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
+import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
-import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors } from './shopify.js';
+import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
@@ -30,6 +32,7 @@ app.addHook('onResponse', async (req, reply) => { try { recordRequest(req.routeO
 setSink(async ({ source, level, message, detail }) => {
   await pool.query('insert into platform_events(source,level,message,detail) values($1,$2,$3,$4)', [source, level, String(message).slice(0, 500), detail || {}]);
   await pool.query('delete from platform_events where id in (select id from platform_events order by id desc offset 500)').catch(() => {});
+  if (source === 'anthropic') { const kind = classifyAiFailure(message); if (kind) alertAssistantDown(kind, message).catch(err => app.log.warn({ err: err.message }, 'assistant alert failed')); }
 });
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 mkdirSync(uploadDir, { recursive: true });
@@ -248,6 +251,20 @@ async function sendHubEmail({to,subject,html,replyTo,from,headers}){
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
 const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+// The assistant stopping for a reason only we can fix (empty credit, a rejected key) emails staff once, then stays quiet for a few hours
+// so a stuck queue is one email, not hundreds. The slot is claimed before sending so failures landing together send one; a delivery that
+// errors gives it back. With no email service configured it only logs: the Platform page shows that on its own.
+const platformAlertEmail=process.env.PLATFORM_ALERT_EMAIL||intakeNotificationEmail,AI_ALERT_COOLDOWN_HOURS=Number(process.env.AI_ALERT_COOLDOWN_HOURS)||6;
+async function alertAssistantDown(kind,message){
+  const key=`aiAlert:${kind}`;
+  const claim=await pool.query(`insert into app_settings(key,value) values($1,$2) on conflict(key) do update set value=excluded.value,updated_at=now() where app_settings.updated_at<now()-make_interval(hours=>$3) returning key`,[key,JSON.stringify({kind,at:new Date().toISOString()}),AI_ALERT_COOLDOWN_HOURS]);
+  if(!claim.rowCount)return false;
+  try{
+    const affected=(await pool.query(`select count(*)::int n from tech_packs where ai_status='failed' and ai_error ilike '%on our side%'`)).rows[0].n;
+    const a=assistantAlertContent({kind,message,affected,consoleUrl:workHubUrl,platformUrl:`${workHubUrl}/platform`});
+    return await sendHubEmail({to:platformAlertEmail,subject:a.subject,html:hubEmailShell(a.headline,`<p>${emailEscape(a.intro)}</p><p><strong>What customers see.</strong> ${emailEscape(a.customers)}</p><p><strong>What to do</strong></p><ol>${a.steps.map(t=>`<li>${emailEscape(t)}</li>`).join('')}</ol><p>${emailEscape(a.waiting)}</p>${hubButton(a.platformUrl,'Open the Platform page')}<p style="color:#717177;font-size:12px">What Anthropic said: ${emailEscape(a.quote)}<br>Sent once, then not again for ${AI_ALERT_COOLDOWN_HOURS} hours while this lasts.</p>`)});
+  }catch(e){await pool.query('delete from app_settings where key=$1',[key]).catch(()=>{});throw e}
+}
 async function sendIntakeConfirmation(intake){
   const d=intake.data,rows=[['Project',d.projectName],['Product',d.productCategory],['Quantity',d.targetQuantity],['Budget',d.budgetRange],['Target date',d.targetDate]].filter(([,v])=>v);
   return sendHubEmail({to:d.email,subject:`We have your brief — ${d.projectName}`,html:hubEmailShell('We have your brief',
@@ -515,6 +532,9 @@ app.get('/tech-pack.webmanifest',(_req,reply)=>reply.header('cache-control','pub
 app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(png|svg)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=604800').type(f.endsWith('.svg')?'image/svg+xml':'image/png').send(readFileSync(new URL(f,iconDir)))}catch{return reply.code(404).send({error:'Not found'})}});
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
+// The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
+app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
@@ -545,7 +565,9 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
     count(distinct pr.id)::int all_project_count,
     (select sp.shopify_image_url from products sp where sp.client_id=c.id and sp.shopify_image_url is not null order by sp.shopify_updated_at desc nulls last limit 1) cover_image_url,
     (select tp.product_id from tech_packs tp join products sp on sp.id=tp.product_id where sp.client_id=c.id and ${PACK_HAS_IMAGE_SQL('tp')} order by tp.updated_at desc limit 1) cover_rendering_product_id,
-    (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total
+    (select coalesce(sum(sp.shopify_inventory_total),0)::int from products sp where sp.client_id=c.id) shopify_inventory_total,
+    (select coalesce(sum(py.amount_cents),0)::bigint from payments py where py.client_id=c.id) paid_cents,
+    (select count(*)::int from payments py where py.client_id=c.id) payment_count
     from clients c left join products p on p.client_id=c.id left join requests r on r.client_id=c.id left join projects pr on pr.client_id=c.id
     where c.slug<>'future-basics' group by c.id order by c.name`);
   const actions=await pool.query(`select a.id,a.title,a.status,p.title product_title,c.name client_name,av.version asset_version,ast.name asset_name
@@ -567,7 +589,8 @@ app.get('/v1/admin/dashboard', {preHandler:[authenticate,adminOnly]}, async ()=>
   for(const c of clients.rows)if(!c.cover_image_url&&c.cover_rendering_product_id)c.cover_image_url=renderingUrl(c.cover_rendering_product_id);
   const activeClients=clients.rows.filter(client=>!client.archived_at&&!['archive','archived'].includes(client.status));
   const archivedClients=clients.rows.filter(client=>client.archived_at||['archive','archived'].includes(client.status));
-  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning};
+  const queues=await buildQueues(pool,{learning}).catch(err=>{app.log.warn({err:err.message},'work queues failed');reportError('web',`work queues: ${err.message}`);return null});
+  return {clients:activeClients,archivedClients,actions:actions.rows,productionAlerts:productionAlerts.rows,collaboration:collaboration.rows,learning,queues};
 });
 app.post('/v1/admin/shopify/tech-pack-product',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
@@ -582,10 +605,17 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const fail=(await pool.query(`select (select count(*) from notifications where type='tech-pack-ai' and created_at>now()-interval '24 hours' and title ilike '%credit balance%')::int credit,
     (select count(*) from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and ai_started_at>now()-interval '24 hours')::int our_side`)).rows[0];
   const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},env:process.env});
+  // The store connection above only says Shopify answers. This says whether payments are actually landing in the ledger.
+  const payState=(await getSetting('paymentSync'))||{},payStats=await paymentStats().catch(()=>({count:0,totalCents:0,lastDay:0,paidButLocked:0,unlinkedPayers:0})),payVerdict=paymentSyncStatus({configured:shopifyConfigured(),state:payState,stats:payStats,everyMs:PAYMENT_SYNC_EVERY_MS});
+  const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-new Date(t).getTime())/60000);return m<1?'just now':m<90?`${m} min ago`:m<2880?`${Math.round(m/60)} hours ago`:`${Math.round(m/1440)} days ago`};
+  const payCheck={id:'payments',name:'Shopify payments (sync)',group:'integration',status:payVerdict.status,summary:payVerdict.summary,latencyMs:payState.lastMs??null,
+    facts:shopifyConfigured()?[['Last successful run',ago(payState.lastOkAt)],['Last run read',`${payState.scanned??0} paid ${payState.scanned===1?'order':'orders'} · ${payState.imported??0} new · ${payState.unlocked??0} ${payState.unlocked===1?'pack':'packs'} unlocked`],['Not matched to a room',String((payState.unmatched||[]).length)],['In the ledger',`${payStats.count} ${payStats.count===1?'payment':'payments'} · $${(payStats.totalCents/100).toLocaleString()}`],['Last 24 hours',`${payStats.lastDay} ${payStats.lastDay===1?'payment':'payments'}`],['Paid but still locked',String(payStats.paidButLocked)],['Payers without a store customer link',String(payStats.unlinkedPayers)],['Store spend last refreshed',ago(payStats.lastSpendRefresh)]]:[]};
+  checks.splice(Math.max(1,checks.findIndex(c=>c.id==='shopify')+1),0,payCheck);
+  const recentPayments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.shopify_order_name,py.paid_at,py.source,c.name client_name from payments py join clients c on c.id=py.client_id order by py.paid_at desc limit 8`).catch(()=>({rows:[]}))).rows;
   const events=(await pool.query('select id,at,source,level,message from platform_events order by id desc limit 25').catch(()=>({rows:[]}))).rows;
   const config=configChecks({env:process.env,billing,shopifyConfigured,techPackProduct});
   const body={generatedAt:new Date().toISOString(),overall:overallStatus([...checks,...config.map(c=>({id:'setting',status:c.status}))]),checks,config,
-    jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events};
+    jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events,payments:{recent:recentPayments,unmatched:payState.unmatched||[],lastRunAt:payState.lastRunAt||null,lastOkAt:payState.lastOkAt||null,lastError:payState.lastError||null,runs:payState.runs||0,stats:payStats}};
   healthCache={at:Date.now(),body};return body;
 });
 app.get('/v1/admin/platform/insights',{preHandler:[authenticate,adminOnly]},async req=>platformInsights(pool,{days:req.query?.days,priceCents:TECH_PACK_PRICE_CENTS}));
@@ -865,6 +895,7 @@ app.put('/v1/admin/products/:id/brief',{preHandler:[authenticate,adminOnly]},asy
 app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const client=(await pool.query('select * from clients where id=$1',[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Client not found'});
+  const payments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.currency,py.shopify_order_id,py.shopify_order_name,py.paid_at,py.source,py.product_id from payments py where py.client_id=$1 order by py.paid_at desc limit 25`,[client.id])).rows;
   const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
       (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
@@ -910,7 +941,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
   ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
-    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows};
+    assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
 app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};
@@ -1477,6 +1508,26 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     ] };
 });
 
+// A project's thread as the client sees it: names written for a reader (our staff are "Future Basics", a client's own people go by name), files attached
+// to their messages, and what was said about the project's products folded in as tagged messages.
+app.get('/v1/projects/:id/thread',{preHandler:authenticate},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Project not found'});
+  const project=(await pool.query(`select id,name from projects where id=$1 and client_id=$2 and archived_at is null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const [msgs,files,comments]=await Promise.all([
+    pool.query(`select pm.id,pm.author_role,pm.body,pm.reply_to_id,pm.created_at,
+        case when pm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email,c.name) end author_name
+      from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id where pm.project_id=$1 and pm.client_id=$2 order by pm.created_at desc limit 200`,[project.id,req.auth.clientId]),
+    pool.query(`select id,message_id,original_name,size_bytes from project_files where project_id=$1 and client_id=$2 and message_id is not null`,[project.id,req.auth.clientId]),
+    pool.query(`select cm.id,cm.author_role,cm.body,cm.created_at,p.title product_title,
+        case when cm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email) end author_name
+      from comments cm join products p on p.id=cm.product_id left join users u on u.id=cm.author_id where p.project_id=$1 and cm.client_id=$2 and cm.visibility='client' order by cm.created_at desc limit 100`,[project.id,req.auth.clientId])
+  ]);
+  const messages=[...msgs.rows.reverse().map(m=>({...m,files:files.rows.filter(f=>f.message_id===m.id)})),
+    ...comments.rows.reverse().map(c=>({id:c.id,author_role:c.author_role,author_name:c.author_name,body:c.body,created_at:c.created_at,reply_to_id:null,files:[],tag:`About ${c.product_title}`,noReply:true}))]
+    .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  return {project:{id:project.id,name:project.name},messages,events:[]};
+});
 app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=>{
   const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query(`select id,client_id,name from projects where id=$1 and client_id=$2
@@ -1683,12 +1734,28 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
+// The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
+// the way a new price or MOQ does. A field the pack states overwrites the card; a field it leaves blank never erases anything. Only what the client
+// is allowed to see is passed in: their own draft, or a version staff have published.
+async function syncCardFromTechPack(productId,data,q=pool){
+  const f=cardFieldsFromPack(data);if(!f)return false;
+  const cur=(await q.query('select material,decoration_method,decoration_locations,colorways,sizes from product_configurations where product_id=$1',[productId])).rows[0];
+  const next={material:f.material??cur?.material??null,decoration_method:f.decoration_method??cur?.decoration_method??null,decoration_locations:f.decoration_locations??cur?.decoration_locations??[],colorways:f.colorways??cur?.colorways??[],sizes:f.sizes??cur?.sizes??[]};
+  if(cur&&JSON.stringify(cur)===JSON.stringify(next))return false;
+  await q.query(`insert into product_configurations(product_id,material,decoration_method,decoration_locations,colorways,sizes) values($1,$2,$3,$4,$5,$6)
+    on conflict(product_id) do update set material=excluded.material,decoration_method=excluded.decoration_method,decoration_locations=excluded.decoration_locations,colorways=excluded.colorways,sizes=excluded.sizes,updated_at=now()`,
+    [productId,next.material,next.decoration_method,next.decoration_locations,next.colorways,next.sizes]);
+  return true;
+}
+const syncCardQuietly=(productId,data)=>syncCardFromTechPack(productId,data).catch(err=>app.log.warn({err:err.message,productId},'product card not updated from the tech pack'));
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   {const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'})}
   const data=normalizeTechPack(req.body?.data);
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
     on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
+  // staff finishing a client's own unpublished draft: the card follows. Anything else reaches the card when it is published.
+  if(row.initiated_by==='client'&&!row.published_at)await syncCardQuietly(ctx.product.id,data);
   return {techPack:techPackPayload(row),completeness:techPackCompleteness(data)};
 });
 // Stored translations, keyed by language: { zh: { strings: { en: zh }, model, at } }. Only languages with content are returned.
@@ -1760,6 +1827,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
     await client.query('commit');
     recordDraftEdits(row.id,'published').catch(()=>{});
+    await syncCardQuietly(ctx.product.id,row.published_data);
     let clientNotified=false;
     if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
       try{
@@ -2087,6 +2155,76 @@ async function techPackCheckout(row,{email}){
   if(!saved){const cur=(await pool.query('select pay_draft_order_id,pay_invoice_url from tech_packs where id=$1',[row.id])).rows[0];return {checkoutUrl:cur.pay_invoice_url,draftOrderId:cur.pay_draft_order_id}} // a parallel click got there first
   return {checkoutUrl:draft.invoiceUrl,draftOrderId:draft.id};
 }
+// What the store says this client has spent in total. Runs after a payment is recorded and from the sync, so the number on the card is not
+// waiting for someone to press a button.
+async function refreshClientSpend(clientId){
+  if(!shopifyConfigured())return false;
+  const client=(await pool.query('select * from clients where id=$1',[clientId])).rows[0];if(!client)return false;
+  if(!client.shopify_customer_id)await linkShopifyCustomer(client).catch(()=>{});
+  if(!client.shopify_customer_id)return false;
+  const customer=(await shopifyGraphql(CUSTOMER_SYNC_QUERY,{id:client.shopify_customer_id})).customer;if(!customer)return false;
+  await pool.query(`update clients set total_spent_cents=$2,shopify_order_count=$3,shopify_currency=$4,shopify_synced_at=now() where id=$1`,[clientId,Math.round(Number(customer.amountSpent?.amount||0)*100),Number(customer.numberOfOrders||0),customer.amountSpent?.currencyCode||'USD']);
+  return true;
+}
+const refreshSpendQuietly=clientId=>refreshClientSpend(clientId).catch(e=>app.log.warn({err:e.message,clientId},'client spend not refreshed'));
+
+// Every few minutes: read the store's paid orders since the last run and keep the ledger complete. A tech pack payment is recognised by the address
+// in its checkout, so the pack unlocks even if the customer closed the tab, changed email, or the pack is older than the locked-pack sweep looks.
+const PAYMENT_SYNC_EVERY_MS=5*60*1000;
+async function markPackPaidFromOrder(p,clientId){
+  if(p.kind!=='tech-pack'||!p.productId||p.amountCents<TECH_PACK_PRICE_CENTS)return false;
+  const row=(await pool.query(`select tp.*,pr.title from tech_packs tp join products pr on pr.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2`,[p.productId,clientId])).rows[0];
+  if(!row||row.paid_at)return false;
+  await pool.query(`update tech_packs set paid_at=$2,pay_order_id=$3,billing='single' where id=$1 and paid_at is null`,[row.id,p.paidAt||new Date().toISOString(),p.orderId]);
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[clientId,row.product_id,`Tech pack paid — ${row.title} (${p.orderName||p.orderId}), found by the payment sync`,{techPackId:row.id,orderId:p.orderId,amountCents:p.amountCents}]).catch(()=>{});
+  if(row.ai_status==='locked')await unlockTechPack({...row,paid_at:p.paidAt||new Date()}).catch(e=>app.log.warn({err:e.message,packId:row.id},'unlock after payment sync failed'));
+  return true;
+}
+async function runPaymentSync(){
+  if(!shopifyConfigured())return 0;
+  if(!(await getSetting('paymentLedgerBackfillV1'))?.done){const n=await backfillTechPackPayments(pool,TECH_PACK_PRICE_CENTS);await setSetting('paymentLedgerBackfillV1',{done:true,at:new Date().toISOString(),rows:n})}
+  const prev=(await getSetting('paymentSync'))||{},since=prev.cursor||new Date(Date.now()-90*86400e3).toISOString();
+  const started=Date.now(),touched=new Set(),unmatched=[];let scanned=0,imported=0,unlocked=0,after=null,pages=0,cursor=since;
+  try{
+    do{
+      const data=await shopifyGraphql(ORDERS_PAID_QUERY,{query:`financial_status:paid updated_at:>='${since}'`,after});
+      const page=data?.orders;if(!page)throw new Error('Shopify did not return an orders list — the app may be missing the read_orders scope');
+      for(const o of page.nodes||[]){
+        scanned++;const p=paymentFromOrder(o,{membershipProductId:MEMBERSHIP_PRODUCT_ID});if(!p)continue;if(p.updatedAt&&p.updatedAt>cursor)cursor=p.updatedAt;
+        const client=await clientForPayment(pool,p);
+        if(!client){if(unmatched.length<10)unmatched.push({order:p.orderName||p.orderId,email:p.email,cents:p.amountCents,at:p.paidAt});continue}
+        const pack=p.productId?(await pool.query('select id from tech_packs where product_id=$1',[p.productId])).rows[0]:null;
+        const r=await recordPayment(pool,{clientId:client.id,productId:p.productId&&pack?p.productId:null,techPackId:pack?.id||null,kind:p.kind,title:p.title,amountCents:p.amountCents,currency:p.currency,orderId:p.orderId,orderName:p.orderName,paidAt:p.paidAt,source:'sync'});
+        if(r.inserted||r.changed){imported++;touched.add(client.id)}
+        if(await markPackPaidFromOrder(p,client.id)){unlocked++;touched.add(client.id)}
+      }
+      after=page.pageInfo?.hasNextPage?page.pageInfo.endCursor:null;pages++;
+    }while(after&&pages<10);
+    await setSetting('paymentSync',{...prev,cursor,lastRunAt:new Date().toISOString(),lastOkAt:new Date().toISOString(),lastError:null,lastMs:Date.now()-started,scanned,imported,unlocked,unmatched,runs:(prev.runs||0)+1});
+  }catch(e){
+    await setSetting('paymentSync',{...prev,lastRunAt:new Date().toISOString(),lastError:String(e.message||e).slice(0,300),lastMs:Date.now()-started,runs:(prev.runs||0)+1}).catch(()=>{});
+    throw e;
+  }
+  // clients with payments whose store spend has not been refreshed for a day (a few per run), so the card never drifts for long
+  const stale=(await pool.query(`select c.id from clients c where exists(select 1 from payments p where p.client_id=c.id) and (c.shopify_synced_at is null or c.shopify_synced_at<now()-interval '1 day') limit 5`)).rows;
+  for(const r of stale)touched.add(r.id);
+  for(const id of touched)await refreshSpendQuietly(id);
+  if(imported||unlocked)app.log.info({scanned,imported,unlocked},'payment sync');
+  return imported+unlocked;
+}
+async function paymentStats(){
+  const r=(await pool.query(`select (select count(*)::int from payments) count,(select coalesce(sum(amount_cents),0)::bigint from payments) total_cents,
+    (select count(*)::int from payments where paid_at>now()-interval '24 hours') last_day,
+    (select count(*)::int from tech_packs where paid_at is not null and ai_status='locked') paid_but_locked,
+    (select count(*)::int from clients c where c.slug<>'future-basics' and exists(select 1 from payments p where p.client_id=c.id) and c.shopify_customer_id is null) unlinked_payers,
+    (select max(shopify_synced_at) from clients) last_spend_refresh`)).rows[0];
+  return {count:r.count,totalCents:Number(r.total_cents),lastDay:r.last_day,paidButLocked:r.paid_but_locked,unlinkedPayers:r.unlinked_payers,lastSpendRefresh:r.last_spend_refresh};
+}
+app.post('/v1/admin/payments/sync',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
+  try{const n=await runPaymentSync();const st=await getSetting('paymentSync');return {ok:true,changed:n,state:st}}
+  catch(e){return reply.code(502).send({error:`The payment sync failed: ${e.message}`})}
+});
 // Has the single-pack draft order been paid? Marks the pack paid and returns true.
 async function techPackPaymentLanded(row){
   if(row.paid_at)return true;
@@ -2099,6 +2237,8 @@ async function techPackPaymentLanded(row){
   try{const cust=(await shopifyGraphql(ORDER_CUSTOMER_QUERY,{id:order.id}))?.order?.customer;
     if(cust?.id){const c=(await pool.query('select * from clients where id=$1',[row.client_id])).rows[0];if(c)await linkShopifyCustomer(c,cust.id)}}
   catch(e){app.log.info({err:e.message,packId:row.id},'order customer not linked')}
+  await recordPayment(pool,{clientId:row.client_id,productId:row.product_id,techPackId:row.id,kind:'tech-pack',title:`Tech pack · ${row.title}`,amountCents:Math.round(Number(order.totalPriceSet?.shopMoney?.amount||0)*100)||TECH_PACK_PRICE_CENTS,currency:order.totalPriceSet?.shopMoney?.currencyCode||'USD',orderId:order.id,orderName:order.name||'',paidAt:new Date().toISOString(),source:'unlock'}).catch(e=>app.log.warn({err:e.message,packId:row.id},'payment not added to the ledger'));
+  refreshSpendQuietly(row.client_id);
   await dropPackVariant(row);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'commerce',$3,$4)`,[row.client_id,row.product_id,`Tech pack paid — ${row.title} (${order.name||order.id})`,{techPackId:row.id,orderId:order.id,amountCents:TECH_PACK_PRICE_CENTS}]).catch(()=>{});
   return true;
@@ -2256,6 +2396,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
+    if(row.initiated_by==='client')await syncCardQuietly(row.product_id,merged);
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
@@ -2516,6 +2657,7 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   const data=normalizeTechPack(sent);
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
+  await syncCardQuietly(row.product_id,data);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
 });
 // Colourway tiles on demand: the first photo recoloured to each colourway in the pack, saved as renderings.
@@ -3058,6 +3200,15 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
+// One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.
+async function backfillCardsFromTechPacks(){
+  if((await getSetting('cardBackfillV1'))?.done)return 0;
+  const rows=(await pool.query(`select product_id,case when published_at is not null then published_data else data end d from tech_packs where initiated_by='client' or published_at is not null`)).rows;
+  let changed=0;for(const r of rows){try{if(r.d&&await syncCardFromTechPack(r.product_id,r.d))changed++}catch(e){app.log.warn({err:e.message,productId:r.product_id},'card backfill skipped one product')}}
+  await setSetting('cardBackfillV1',{done:true,at:new Date().toISOString(),products:rows.length,changed});app.log.info({products:rows.length,changed},'product cards filled from existing tech packs');return changed;
+}
+jobEvery('Product cards from tech packs', 24 * 60 * 60 * 1000, backfillCardsFromTechPacks, { delay: 20 * 1000 });
 jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep);
 offerJob();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

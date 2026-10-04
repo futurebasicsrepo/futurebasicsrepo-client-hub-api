@@ -101,7 +101,7 @@ async function locateCalloutsRaw(photoDataUrl, labels) {
   if (!labels.length) return [];
   if (process.env.AI_FIXTURE) {
     // fixture: spread the pins over the busy part of the image so tests can see distinct crops
-    const where = await locateProduct(photoDataUrl); const b = where.found ? where.box : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+    const where = await locateProductRaw(photoDataUrl); const b = where.found ? where.box : { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
     const cols = Math.ceil(Math.sqrt(labels.length));
     return labels.map((_, i) => ({ i, x: b.x + b.w * ((i % cols) + 0.5) / cols, y: b.y + b.h * (Math.floor(i / cols) + 0.5) / Math.ceil(labels.length / cols) }));
   }
@@ -510,7 +510,7 @@ const LOCATE_SCHEMA = {
 };
 export class NoProductError extends Error { constructor(message) { super(message); this.name = 'NoProductError'; this.userFacing = true; } }
 
-export async function locateProduct(photoDataUrl) {
+async function locateProductRaw(photoDataUrl) {
   if (process.env.AI_FIXTURE) {
     // Fixture: a flat, featureless image has no product in it; anything with detail is the product, full frame.
     const img = dataUrlToImageBlock(photoDataUrl); if (!img) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'unreadable image' };
@@ -577,3 +577,4 @@ export const draftFromBrief = (...args) => timed('anthropic', () => draftFromBri
 export const researchMeasurements = (...args) => timed('anthropic', () => researchMeasurementsRaw(...args));
 
 export const translateStrings = (...args) => timed('anthropic', () => translateStringsRaw(...args));
+export const locateProduct = (...args) => timed('anthropic', () => locateProductRaw(...args));

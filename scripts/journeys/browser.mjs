@@ -311,4 +311,104 @@ await journey('J42', 'the /start session ends while the editor is open: edits st
   } finally { await ctx.close(); }
 });
 
+await journey('J45', 'the product card in the hub and the work console shows what the tech pack says', async () => {
+  const r = await room('45'), W = 'http://work.localhost:3123';
+  const d = (await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).json.techPack.data;
+  d.bom = [{ component: 'Upper', material: 'Recycled mesh' }, { component: 'Lining', material: 'Suede' }]; d.colorways = [{ name: 'Gum', code: '18-1021' }, { name: 'Ecru' }]; d.sizes = ['8', '9', '10']; d.artwork = [{ id: 'aw1', name: 'Heel logo', image: runner, pantones: [], placements: [{ sketchId: d.sketches[0].id, x: .5, y: .5, widthIn: 2, label: 'Heel' }] }];
+  ok((await call(`/v1/products/${r.id}/tech-pack/draft`, { method: 'PUT', token: r.token, body: { data: d } })).status === 200, 'setup: the customer fills in the pack');
+  const { ctx, page } = await phone();
+  try {
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/projects/${r.projectId}#products`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#cp-${r.id}`, { timeout: 15000 });
+    const hub = await page.innerText(`#cp-${r.id}`);
+    ok(/Material:\s*Recycled mesh, Suede/.test(hub) && /Decoration:\s*Heel logo/.test(hub) && /Colorways:\s*Gum \(18-1021\), Ecru/.test(hub), 'the hub card reads Material, Decoration and Colorways from the pack', hub.slice(0, 400));
+    ok(await page.locator(`#cp-${r.id} .size-chip`).allInnerTexts().then(t => t.join() === '8,9,10'), 'and the size run chips are 8, 9, 10');
+    ok(!/Material:\s*TBD/.test(hub), 'with no TBD left where the pack has an answer');
+    await page.locator(`#cp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-hub-card.png` });
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${W}/clients/${r.clientId}#project=${r.projectId}`, { waitUntil: 'networkidle' }); await wp.waitForSelector(`#wp-${r.id}`, { timeout: 15000 });
+    const work = await wp.innerText(`#wp-${r.id}`);
+    ok(await wp.locator(`#wp-${r.id} .size-chips span`).allInnerTexts().then(t => t.join() === '8,9,10'), 'with the size run chips');
+    ok(/Recycled mesh, Suede/.test(work) && /Heel logo/.test(work) && /Gum \(18-1021\), Ecru/.test(work), 'the work console card shows the same', work.slice(0, 400));
+    await wp.locator(`#wp-${r.id}`).screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j45-work-card.png` });
+    ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
+  } finally { await wctx.close(); }
+});
+
+await journey('J49', 'the console home: waiting on approval, production attention and the assistant show the real work, and each row opens it', async () => {
+  const r = await room('49'), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  await call(`/v1/products/${r.id}/tech-pack/submit`, { method: 'POST', token: r.token, body: {} });
+  sql(`insert into production_runs(product_id,po_number,quantity,status,eta_date) values('${r.id}','PO-J49-${stamp}',100,'blocked',current_date-3)`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  try {
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#actions .q-row', { timeout: 15000 });
+    const group = await page.locator('#actions .q-group h3', { hasText: 'On us' }).first().innerText(); ok(/ON US\s*\d+/i.test(group), 'the approval queue has an "On us" group with a count', group);
+    ok(await page.locator('#actions .q-group').count() >= 1, 'the queue is grouped by who has to move'); await page.evaluate(() => document.querySelectorAll('#actions details.q-more, #productionAlerts details.q-more').forEach(d => { d.open = true; }));
+    const row = page.locator(`#actions a.q-row[href*="product=${r.id}"]`).first();
+    ok(await row.count() === 1 && /Open|Overdue/i.test(await row.locator('.q-chip').innerText()), 'the submitted pack is a row, with a word for how urgent it is (not only a colour)');
+    ok(/just now|today|1 day|days/i.test(await row.locator('.q-age').innerText()), 'and how long it has waited');
+    ok(/\d+ on us/i.test(await page.innerText('#approvals .meta')), 'the section header counts what is on us');
+    const run = page.locator('#productionAlerts .q-row', { hasText: `PO-J49-${stamp}` }); ok(await run.count() === 1 && /blocked/i.test(await run.innerText()) && /Overdue/i.test(await run.locator('.q-chip').innerText()), 'a blocked production run is in Production attention, marked overdue');
+    const learn = await page.innerText('#learning'); ok(/finished/i.test(learn) && /need a re-run/i.test(learn), 'the assistant section shows how it is doing and what needs a re-run', learn.slice(0, 160));
+    const box = await page.evaluate(() => { const a = document.getElementById('approvals').getBoundingClientRect().top + scrollY, b = document.getElementById('learning').getBoundingClientRect().bottom + scrollY; return { y: Math.max(0, a - 20), h: Math.min(2600, b - a + 40) }; });
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues.png`, fullPage: true, clip: { x: 0, y: box.y, width: 1280, height: box.h } }).catch(() => {});
+    { const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await m.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin); const mp = await m.newPage(); await mp.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await mp.waitForSelector('#actions .q-row', { timeout: 15000 });
+      const w = await mp.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'on a phone the queues do not scroll sideways', w);
+      const y = await mp.evaluate(() => document.getElementById('approvals').getBoundingClientRect().top + scrollY - 10); await mp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j49-home-queues-phone.png`, fullPage: true, clip: { x: 0, y, width: 390, height: 1500 } }).catch(() => {}); await m.close(); }
+    await row.click(); await page.waitForSelector('#clientPage:not(.hidden)', { timeout: 10000 }); await sleep(600);
+    ok(page.url().includes(`/clients/${r.clientId}`) && page.url().includes(`product=${r.id}`), 'clicking a row opens that client and that product', page.url());
+    ok(await page.locator('#clientPage .crumbs, #crumbs').first().isVisible(), 'and the client page is showing');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await ctx.close(); }
+});
+
+await journey('J51', 'the same chat everywhere: the room thread in the work console and the project messages in the hub', async () => {
+  const r = await room('51', { wait: false }), W = 'http://work.localhost:3123', pid = r.projectId;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const hello = await call(`/v1/projects/${pid}/messages`, { token: r.token, body: { body: 'Is the sample still on track?' } });
+  await call(`/v1/admin/projects/${pid}/messages`, { token: admin, body: { body: 'Yes, ships on the 28th.', replyToId: hello.json.id } });
+  // ---- the work console: a client room, the project ----
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); window.FBCHAT_POLL_MS = 1200; } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${W}/clients/${r.clientId}#project=${pid}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#roomChat .mc-msg', { timeout: 15000 });
+    ok(await wp.locator('#roomChat .mc-msg.in .mc-bub', { hasText: 'still on track' }).count() === 1 && await wp.locator('#roomChat .mc-msg.out .mc-bub', { hasText: 'ships on the 28th' }).count() === 1, 'the client\'s bubble is on the left and ours is on the right');
+    ok(await wp.locator('#roomChat .mc-stamp').count() >= 1 && await wp.locator('#roomChat .mc-quote').count() === 1, 'with a time stamp and the quoted reply');
+    const txt = await wp.innerText('#roomChat'); ok(!/@[a-z0-9-]+\./i.test(txt) && !/\d{1,2}\/\d{1,2}\/\d{4}/.test(txt), 'no email address or raw date in the bubbles', txt.slice(0, 120));
+    ok(await wp.locator('#rcText').isVisible() && await wp.locator('.mc-attach').first().isVisible() && await wp.$eval('#rcSendBtn', b => b.disabled), 'the box has an attach button and a Send that is off while empty');
+    await wp.fill('#rcText', 'Booked the courier.'); await wp.press('#rcText', 'Enter'); await wp.waitForSelector('#roomChat .mc-msg.out .mc-text:has-text("Booked the courier.")', { timeout: 8000 }); ok(true, 'Enter sends and the bubble appears');
+    await wp.locator('#roomChat .mc-msg.in .mc-bub').first().click(); await wp.click('#roomChat .mc-msg.in.sel .mc-acts button'); ok(await wp.locator('#rcReplyBar').isVisible(), 'tapping a bubble offers Reply');
+    await wp.fill('#rcText', 'Replying to that'); await wp.click('#rcSendBtn'); await wp.waitForFunction(() => document.querySelectorAll('#roomChat .mc-quote').length >= 2, null, { timeout: 8000 }); ok(true, 'the reply carries its quote');
+    await wp.setInputFiles('#rcFile', `${FX}/ig-screenshot.png`); await wp.click('#rcSendBtn'); await wp.waitForSelector('#roomChat .mc-file', { timeout: 10000 }); ok(/ig-screenshot\.png/.test(await wp.textContent('#roomChat .mc-file')), 'an attachment appears in the thread');
+    // live: the client writes from elsewhere; it shows up without a reload
+    await call(`/v1/projects/${pid}/messages`, { token: r.token, body: { body: 'Thanks, see you on the 28th.' } }); await wp.waitForSelector('#roomChat .mc-bub:has-text("see you on the 28th")', { timeout: 9000 }); ok(true, 'a message that arrives while it is open appears by itself');
+    ok(await wp.$eval('#roomChat .mc-msgs', e => e.scrollHeight - e.scrollTop - e.clientHeight < 60), 'and the thread stays at the newest message');
+    ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
+    await wp.locator('#roomChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-work-thread.png` }).catch(() => {});
+  } finally { await wctx.close(); }
+  // ---- the hub, on a phone ----
+  const { ctx, page } = await phone(); await page.addInitScript(() => { window.FBCHAT_POLL_MS = 1200; });
+  try {
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/projects/${pid}#thread`, { waitUntil: 'networkidle' }); await page.waitForSelector('#hubChat .mc-msg', { timeout: 15000 });
+    ok(await page.locator('#hubChat .mc-msg.out .mc-bub', { hasText: 'still on track' }).count() === 1 && await page.locator('#hubChat .mc-msg.in .mc-bub', { hasText: 'ships on the 28th' }).count() === 1, 'in the hub the customer is on the right and Future Basics on the left');
+    ok(/Future Basics/.test(await page.locator('#hubChat .mc-from').first().innerText()), 'with the sender named "Future Basics", not an address');
+    ok(await page.locator('#hubChat .mc-quote').count() >= 1 && await page.locator('#hubChat .mc-stamp').count() >= 1, 'the quoted reply and the time stamp are there too');
+    await page.fill('#hcText', 'One more thing: the lace colour.'); await page.click('#hcSendBtn'); await page.waitForSelector('#hubChat .mc-msg.out .mc-text:has-text("lace colour")', { timeout: 8000 }); ok(true, 'the customer sends from the same kind of box');
+    await page.setInputFiles('#hcFile', `${FX}/ig-screenshot.png`); await page.click('#hcSendBtn'); await page.waitForSelector('#hubChat .mc-file', { timeout: 10000 }); ok(true, 'and attaches a file');
+    await call(`/v1/admin/projects/${pid}/messages`, { token: admin, body: { body: 'Lace is waxed cotton, noted.' } }); await page.waitForSelector('#hubChat .mc-bub:has-text("waxed cotton")', { timeout: 9000 }); ok(true, 'a reply from us appears by itself');
+    const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'no sideways scroll on a phone', w);
+    ok(await page.locator('#hubChat .fbchat-panel, #hubChat.fbchat-panel').count() >= 1 && !(await page.locator('.client-chat, .chat-form').count()), 'the old message box is gone');
+    ok(page.errs.length === 0, 'no script errors in the hub', page.errs);
+    await page.locator('#hubChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-hub-thread-phone.png` }).catch(() => {});
+  } finally { await ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

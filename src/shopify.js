@@ -2,6 +2,8 @@ import { timed } from './telemetry.js';
 const domain = () => String(process.env.SHOPIFY_STORE_DOMAIN || '').replace(/^https?:\/\//,'').replace(/\/$/,'');
 const staticToken = () => process.env.SHOPIFY_ADMIN_ACCESS_TOKEN || '';
 const version = () => process.env.SHOPIFY_API_VERSION || '2026-07';
+// Where the Admin API lives. Only the test rig sets SHOPIFY_API_ORIGIN (a local stand-in for the store); in production it is the store's own https address.
+const origin = () => process.env.SHOPIFY_API_ORIGIN ? String(process.env.SHOPIFY_API_ORIGIN).replace(/\/$/, '') : `https://${domain()}`;
 let cachedToken={value:'',expiresAt:0},tokenRequest=null;
 
 export const shopifyConfigured = () => Boolean(domain() && (staticToken() || (process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET)));
@@ -11,7 +13,7 @@ async function accessToken(){
   if(cachedToken.value&&Date.now()<cachedToken.expiresAt-300_000)return cachedToken.value;
   if(tokenRequest)return tokenRequest;
   tokenRequest=(async()=>{
-    const response=await fetch(`https://${domain()}/admin/oauth/access_token`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({
+    const response=await fetch(`${origin()}/admin/oauth/access_token`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({
       grant_type:'client_credentials',client_id:process.env.SHOPIFY_CLIENT_ID||'',client_secret:process.env.SHOPIFY_CLIENT_SECRET||''
     })});
     const payload=await response.json().catch(()=>({}));
@@ -24,7 +26,7 @@ async function accessToken(){
 export const shopifyGraphql = (query, variables = {}) => timed('shopify', () => shopifyGraphqlRaw(query, variables));
 async function shopifyGraphqlRaw(query, variables = {}) {
   if (!shopifyConfigured()) throw Object.assign(new Error('Connect Shopify to Railway to enable live sync'), { statusCode: 503 });
-  const request=async()=>fetch(`https://${domain()}/admin/api/${version()}/graphql.json`, {method:'POST',headers:{'Content-Type':'application/json','X-Shopify-Access-Token':await accessToken()},body:JSON.stringify({query,variables})});
+  const request=async()=>fetch(`${origin()}/admin/api/${version()}/graphql.json`, {method:'POST',headers:{'Content-Type':'application/json','X-Shopify-Access-Token':await accessToken()},body:JSON.stringify({query,variables})});
   let response=await request();
   if(response.status===401&&!staticToken()){cachedToken={value:'',expiresAt:0};response=await request()}
   const payload = await response.json().catch(() => ({}));
@@ -192,4 +194,18 @@ export const VARIANTS_BULK_UPDATE = `mutation UpdatePackVariant($productId: ID!,
 }`;
 export const VARIANTS_BULK_DELETE = `mutation DeletePackVariant($productId: ID!, $variantsIds: [ID!]!) {
   productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) { userErrors { field message } }
+}`;
+
+// Paid orders, oldest update first, so a cursor on updatedAt walks forward without missing any. Every order the store takes is read, not only
+// tech packs: the room's card shows what a client has paid, and a membership or an invoice paid in Shopify belongs in it too.
+export const ORDERS_PAID_QUERY = `query PaidOrders($query: String!, $after: String) {
+  orders(first: 50, after: $after, query: $query, sortKey: UPDATED_AT) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id name createdAt processedAt updatedAt displayFinancialStatus email tags
+      totalPriceSet { shopMoney { amount currencyCode } }
+      customer { id email }
+      lineItems(first: 5) { nodes { title product { id } customAttributes { key value } } }
+    }
+  }
 }`;

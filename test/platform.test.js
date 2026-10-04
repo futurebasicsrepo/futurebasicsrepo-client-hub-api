@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { percentile, record, timed, trackedFetch, recordRequest, trackJob, declareJob, snapshot, overallStatus, setSink, reportError } from '../src/telemetry.js';
-import { configChecks, jobHealth, fmtDuration } from '../src/platform.js';
+import { configChecks, jobHealth, fmtDuration, classifyAiFailure, assistantAlertContent } from '../src/platform.js';
 
 const billing = (effective, mode = 'auto') => ({ effective, mode });
 
@@ -106,4 +106,21 @@ test('settings checks flag the dangerous ones and never print a secret', () => {
 
 test('durations read as days, hours or minutes', () => {
   assert.equal(fmtDuration(59), '0m'); assert.equal(fmtDuration(3 * 60), '3m'); assert.equal(fmtDuration(3600 * 5 + 120), '5h 2m'); assert.equal(fmtDuration(86400 * 2 + 3600 * 3), '2d 3h');
+});
+
+test('only an empty balance or a rejected key counts as the assistant being down for a reason we must fix', () => {
+  assert.equal(classifyAiFailure('400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing"}}'), 'credit');
+  assert.equal(classifyAiFailure('401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}'), 'key');
+  assert.equal(classifyAiFailure('403 {"type":"error","error":{"type":"permission_error"}}'), 'key');
+  for (const transient of ['429 {"type":"error","error":{"type":"rate_limit_error"}}', '529 overloaded_error', '500 Internal server error', 'fetch failed', 'Connection error.', 'The operation was aborted', '400 {"error":{"message":"image too large"}}', '', null, undefined])
+    assert.equal(classifyAiFailure(transient), null, String(transient));
+});
+
+test('the alert says what is wrong, what customers see and what to do, and quotes the error briefly', () => {
+  const credit = assistantAlertContent({ kind: 'credit', message: 'x'.repeat(900), affected: 3 });
+  assert.match(credit.subject, /out of Anthropic credit/); assert.match(credit.waiting, /3 tech packs are waiting/);
+  assert.ok(credit.quote.length <= 220 && credit.steps.length >= 2 && /not their photo/.test(credit.customers));
+  const key = assistantAlertContent({ kind: 'key', message: '401 invalid x-api-key', affected: 1 });
+  assert.match(key.subject, /refused/); assert.match(key.waiting, /1 tech pack is waiting/); assert.ok(key.steps.some(t => /ANTHROPIC_API_KEY/.test(t)));
+  assert.match(assistantAlertContent({ kind: 'credit', message: '', affected: 0 }).waiting, /No tech pack is waiting/);
 });
