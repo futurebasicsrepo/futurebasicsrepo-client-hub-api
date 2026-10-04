@@ -449,6 +449,7 @@ await journey('J55', 'a product\'s comments are the same chat: shared and intern
   try {
     await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
     await page.goto(`${BASE}/projects/${pid}#product=${id}`, { waitUntil: 'networkidle' });
+    await page.click(`[onclick*="openProduct('${id}'"]`); // the product card's button opens its details, where the conversation is
     await page.waitForSelector('#productChat .mc-msg', { timeout: 15000 });
     ok(await page.locator('#productChat .mc-msg.out .mc-bub', { hasText: 'heel be a little taller' }).count() === 1 && await page.locator('#productChat .mc-msg.in .mc-bub', { hasText: '2 mm taller' }).count() === 1, 'in the hub the customer is on the right and Future Basics on the left');
     ok(!(await page.innerText('#productChat')).includes('INTERNAL') && !(await page.innerText('#productChat')).includes('ask the mill'), 'the customer never sees an internal note');
