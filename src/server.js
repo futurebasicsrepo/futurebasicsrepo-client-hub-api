@@ -681,10 +681,10 @@ app.post('/v1/admin/shopify/sync',{preHandler:[authenticate,adminOnly]},async(re
   return {query,count:synced.length,products:synced,customerSynced:Boolean(customer),customerError,syncedAt:new Date().toISOString()};
 });
 app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,slug,emailDomains=[],allowedEmails=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
+  const {name,slug,emailDomains=[],allowedEmails=[],contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};if(!name||!slug)return reply.code(400).send({error:'name and slug required'});
   const domains=await validateClientDomains(emailDomains);
-  const client=(await pool.query(`insert into clients(name,slug,email_domains,allowed_emails,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,[name,slug,domains,normalizeEmails(allowedEmails),contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null])).rows[0];
+  const client=(await pool.query(`insert into clients(name,slug,email_domains,allowed_emails,contact_name,contact_email,contact_phone,website_url,notes,shopify_customer_id,tech_pack_comped)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[name,slug,domains,normalizeEmails(allowedEmails),contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,techPackComped===true||techPackComped==='true'])).rows[0];
   await pool.query(`insert into projects(client_id,name,status,milestone) values($1,'General development','active','In progress') on conflict(client_id,name) do nothing`,[client.id]);
   return client;
 });
@@ -891,11 +891,20 @@ app.patch('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(re
   const {name,status,emailDomains,allowedEmails,contactName,contactEmail,contactPhone,websiteUrl,notes,shopifyCustomerId,techPackComped}=req.body||{};
   const domains=emailDomains===undefined?null:await validateClientDomains(emailDomains,req.params.id);
   const comped=techPackComped===undefined||techPackComped===null||techPackComped===''?null:(techPackComped===true||techPackComped==='true');
-  return (await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
+  const prev=comped===null?null:(await pool.query('select tech_pack_comped from clients where id=$1',[req.params.id])).rows[0];
+  const row=(await pool.query(`update clients set name=coalesce($1,name),status=coalesce($2,status),
     email_domains=coalesce($3,email_domains),contact_name=coalesce($4,contact_name),contact_email=coalesce($5,contact_email),
     contact_phone=coalesce($6,contact_phone),website_url=coalesce($7,website_url),notes=coalesce($8,notes),
     shopify_customer_id=coalesce($9,shopify_customer_id),allowed_emails=coalesce($11,allowed_emails),tech_pack_comped=coalesce($12,tech_pack_comped) where id=$10 returning *`,
     [name||null,status||null,domains,contactName||null,contactEmail||null,contactPhone||null,websiteUrl||null,notes||null,shopifyCustomerId||null,req.params.id,allowedEmails===undefined?null:normalizeEmails(allowedEmails),comped])).rows[0];
+  if(!row)return reply.code(404).send({error:'Client not found'});
+  // Free access granted: any pack of theirs that was waiting for payment starts now, and the change is on the record.
+  let unlockedPacks=0;
+  if(prev&&comped!==prev.tech_pack_comped){
+    await pool.query(`insert into activities(client_id,actor_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.id,req.auth.sub,comped?`Free tech pack access given to ${row.name}`:`Free tech pack access removed from ${row.name}`,{comped}]).catch(()=>{});
+    if(comped)unlockedPacks=await unlockWaitingPacks(row.id);
+  }
+  return {...row,unlockedPacks};
 });
 // Turn a website lead into an active client room: grant sign-in access (whole domain for company
 // mailboxes, the individual address for personal ones), open their intake projects, and email them the way in.
@@ -1966,7 +1975,11 @@ async function dropPackVariant(row){
   await pool.query('update tech_packs set pay_variant_id=null where id=$1',[row.id]).catch(()=>{});
 }
 const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · Mandarin factory export · yours to edit any time';
-const billingOn=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
+// The payment gate: switched from the work console (stored in app_settings), otherwise automatic: on when Shopify can take
+// payment, or forced either way with TECH_PACK_BILLING=on|off. Read on every request, so a switch takes effect at once.
+let billingMode=null; // 'on' | 'off' | null (automatic)
+const billingAuto=()=>process.env.TECH_PACK_BILLING==='on'||(process.env.TECH_PACK_BILLING!=='off'&&shopifyConfigured());
+const billingOn=()=>billingMode==='on'?true:billingMode==='off'?false:billingAuto();
 const techPackPricing=()=>({single:{amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'},membership:MEMBERSHIP_URL?{amountCents:MEMBERSHIP_PRICE_CENTS,currency:'USD',period:'month',url:MEMBERSHIP_URL}:null});
 // A membership is current when a paid membership order (first purchase or renewal) is less than 35 days old. Checked
 // against Shopify at most hourly per client; the result is cached on the client row.
@@ -2075,6 +2088,26 @@ async function unlockTechPack(row){
   if(won)setImmediate(()=>enrichPhotoDraft(row.id,{force:true}).catch(e=>app.log.warn({err:e.message},'unlocked run failed')));
   return 'pending';
 }
+// Packs parked waiting for payment start now: used when someone is given free access or the gate is switched off.
+async function unlockWaitingPacks(clientId=null){
+  const rows=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.ai_status='locked' and tp.status='draft' and ($1::uuid is null or tp.client_id=$1) order by tp.created_at limit 100`,[clientId])).rows;
+  let n=0;for(const r of rows){try{if(await unlockTechPack(r)==='pending')n++}catch(e){app.log.warn({err:e.message,packId:r.id},'unlock waiting pack failed')}}
+  return n;
+}
+async function billingSummary(){
+  const counts=(await pool.query(`select (select count(*)::int from clients where tech_pack_comped and archived_at is null) comped_clients,(select count(*)::int from tech_packs where ai_status='locked' and status='draft') waiting_packs`)).rows[0];
+  return {mode:billingMode||'auto',effective:billingOn(),automatic:billingAuto(),shopifyConnected:shopifyConfigured(),priceCents:TECH_PACK_PRICE_CENTS,compedClients:counts.comped_clients,waitingPacks:counts.waiting_packs};
+}
+app.get('/v1/admin/tech-pack-billing',{preHandler:[authenticate,adminOnly]},async()=>billingSummary());
+app.put('/v1/admin/tech-pack-billing',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const mode=req.body?.mode;if(!['on','off','auto'].includes(mode))return reply.code(400).send({error:'mode must be on, off or auto'});
+  await setSetting('techPackBilling',{mode,by:req.auth.sub,at:new Date().toISOString()});billingMode=mode==='auto'?null:mode;
+  await pool.query(`insert into activities(client_id,actor_id,type,summary,metadata) select c.id,$1,'tech-pack',$2,$3 from clients c where c.slug='future-basics' limit 1`,[req.auth.sub,`Tech pack payment gate set to ${mode}`,{mode}]).catch(()=>{});
+  // Free for everyone: whatever was waiting for payment starts now. The switch answers at once; the packs start in the background.
+  const summary=await billingSummary(),starting=billingOn()?0:summary.waitingPacks;
+  if(starting)setImmediate(()=>unlockWaitingPacks().catch(e=>app.log.warn({err:e.message},'unlock after gate off failed')));
+  return {...summary,starting};
+});
 // Every few minutes: locked packs with a checkout started in the last two weeks are checked for payment, so a client
 // who paid and closed the tab still gets their draft.
 async function runPaymentSweep(){
@@ -2991,6 +3024,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 }
 
 await migrate();
+billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
 setInterval(() => runOfferSweep().catch(error => app.log.error({ error }, 'Offer sweep failed')), 5 * 60 * 1000).unref();
 if(process.env.FOLLOWUPS_DISABLED!=='true')setInterval(() => runPhotoFollowups().catch(error => app.log.error({ error }, 'Photo follow-up sweep failed')), 15 * 60 * 1000).unref();

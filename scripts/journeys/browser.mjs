@@ -158,4 +158,30 @@ await journey('J33', 'message center on a phone: list → thread → send, reply
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
 
+await journey('J37', 'staff switches: free access for one client, and the payment gate for everyone', async () => {
+  const r = await room('37', { wait: false }), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const second = (await call('/v1/tech-packs', { token: r.token, body: { title: 'Second pack', projectId: r.projectId, photos: [runner] } })).json; ok(second.ai === 'locked', 'setup: the client has a pack waiting for payment', second.ai);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); const dialogs = []; page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+  try {
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => !/Checking/.test(document.getElementById('accessTitle')?.textContent || 'Checking'), null, { timeout: 10000 });
+    ok(/paid after the first free/i.test(await page.textContent('#accessTitle')) && await page.$eval('#accessSwitch', i => i.checked), 'the console home says tech packs are paid after the first, with the switch on', await page.textContent('#accessTitle'));
+    ok(/\d+ clients? (has|have) free access · \d+ packs? waiting/.test(await page.textContent('#accessText')), 'and counts who has free access and what is waiting', await page.textContent('#accessText'));
+    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.gate-row', { timeout: 10000 });
+    ok(!(await page.$eval('.gate-row input', i => i.checked)) && /Standard/.test(await page.textContent('.gate-row')), 'a client room shows "Standard" with the switch off');
+    await page.click('.gate-row .switch input'); await page.waitForSelector('.gate-row.on', { timeout: 10000 });
+    ok(/Free access/.test(await page.textContent('.gate-row')) && dialogs.some(m => /started/.test(m)), 'turning it on reads "Free access" and says the waiting pack started', [await page.textContent('.gate-row'), dialogs]);
+    let d = null; for (let i = 0; i < 40; i++) { d = (await call(`/v1/products/${second.product.id}/tech-pack/draft`, { token: r.token })).json; if (d.techPack.aiStatus !== 'locked') break; await sleep(400); } ok(d.techPack.aiStatus !== 'locked', 'and that pack really is unlocked', d.techPack?.aiStatus);
+    await page.screenshot({ path: `${S}/j37-client-room.png` });
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => /free for everyone|paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 });
+    await page.click('#accessSwitch'); await page.waitForFunction(() => /free for everyone/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 });
+    ok(dialogs.some(m => /free for everyone\?/i.test(m)) && !(await page.$eval('#accessSwitch', i => i.checked)) && await page.isVisible('#accessAuto'), 'the global switch asks first, then reads "free for everyone" and offers "Use automatic"');
+    await page.screenshot({ path: `${S}/j37-access-off.png`, clip: { x: 0, y: 0, width: 1280, height: 520 } });
+    await page.click('#accessAuto'); await page.waitForFunction(() => /paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 }); ok(await page.$eval('#accessSwitch', i => i.checked) && !(await page.isVisible('#accessAuto')), '"Use automatic" puts it back');
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForFunction(() => /paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 }); ok(true, 'and it is still back after a reload');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: 'auto' } }); await ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
