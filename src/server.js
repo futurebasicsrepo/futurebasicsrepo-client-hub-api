@@ -18,7 +18,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits } from './techpack.js';
-import { aiEnabled, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -70,6 +70,20 @@ function publicIntakeAllowed(ip,{bucket='intake',limit=5}={}){
   if(!current||now-current.startedAt>60*60*1000){intakeWindows.set(key,{startedAt:now,count:1});return true}
   current.count+=1;return current.count<=limit;
 }
+// Counts hits per key in a window; false once the limit is passed. Skipped in the test rig the same way publicIntakeAllowed is.
+const throttles=new Map();
+function throttle(key,{limit,windowMs}){
+  if(process.env.DEV_BYPASS_AUTH==='true')return true;
+  const now=Date.now(),cur=throttles.get(key);
+  if(throttles.size>5000)for(const [k,v] of throttles)if(now-v.startedAt>v.windowMs)throttles.delete(k);
+  if(!cur||now-cur.startedAt>windowMs){throttles.set(key,{startedAt:now,count:1,windowMs});return true}
+  cur.count+=1;return cur.count<=limit;
+}
+const CODE_ASK={limit:5,windowMs:15*60*1000},CODE_GUESS={limit:5,windowMs:15*60*1000};
+const tooManyCodes={error:'We already sent you a code — check your inbox (and spam), or wait a few minutes before asking for another.',code:'RATE_LIMITED'};
+const tooManyGuesses={error:'Too many wrong codes. Wait a few minutes, then ask for a new code.',code:'RATE_LIMITED'};
+// Only the digits count: a code pasted as "123 456" or with a stray space still works.
+const cleanCode=v=>String(v??'').replace(/\D/g,'').slice(0,12);
 const intakeValue=(fields,name,max=2000)=>String(fields[name]||'').trim().slice(0,max);
 const intakeSlug=value=>String(value||'client').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48)||'client';
 const domainPattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -341,6 +355,7 @@ app.post('/v1/auth/code', async (req, reply) => {
       action: { label: 'Start a project', url: startProjectUrl }
     });
   }
+  if(!throttle(`code:${email}`,CODE_ASK)||!throttle(`codeip:${req.ip}`,{limit:30,windowMs:60*60*1000}))return reply.code(429).send(tooManyCodes);
   const code = String(randomInt(100000, 1000000));
   await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')', [email, hash(code)]);
   await sendCode(email, code);
@@ -348,8 +363,10 @@ app.post('/v1/auth/code', async (req, reply) => {
 });
 
 app.post('/v1/auth/verify', async (req, reply) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
-  const code = String(req.body?.code || '');
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const code = cleanCode(typeof req.body?.code === 'string' || typeof req.body?.code === 'number' ? req.body.code : '');
+  if(!throttle(`verifyip:${req.ip}`,{limit:60,windowMs:60*60*1000}))return reply.code(429).send(tooManyGuesses);
+  const lock=throttles.get(`guess:${email}`);if(lock&&lock.count>CODE_GUESS.limit&&Date.now()-lock.startedAt<=CODE_GUESS.windowMs&&process.env.DEV_BYPASS_AUTH!=='true')return reply.code(429).send(tooManyGuesses);
   // One transaction: the code is only spent once the user row is written. If that write fails or waits out
   // (a lock held elsewhere), the rollback hands the code back instead of burning it on a request that never answered.
   const c = await pool.connect(); let user, client;
@@ -360,7 +377,13 @@ app.post('/v1/auth/verify', async (req, reply) => {
         select id from login_codes where email=$1 and code_hash=$2 and consumed_at is null and expires_at>now()
         order by created_at desc limit 1) returning id`, [email, hash(code)]
     );
-    if (!result.rowCount) { await c.query('rollback'); return reply.code(401).send({ error: 'Invalid or expired code' }); }
+    if (!result.rowCount) {
+      await c.query('rollback');
+      // five wrong guesses in a window and every open code for this email is burned: a six-digit code cannot be brute-forced
+      if (email && !throttle(`guess:${email}`, CODE_GUESS)) { await pool.query('update login_codes set consumed_at=now() where email=$1 and consumed_at is null', [email]).catch(() => {}); return reply.code(429).send(tooManyGuesses); }
+      return reply.code(401).send({ error: 'Invalid or expired code' });
+    }
+    throttles.delete(`guess:${email}`);
     client = await clientForEmail(email);
     if (!client) { await c.query('rollback'); return reply.code(403).send({ error: 'Client access is no longer active' }); }
     const role = email.split('@')[1] === 'thefuturebasics.com' ? 'admin' : 'client';
@@ -661,8 +684,8 @@ app.post('/v1/admin/clients',{preHandler:[authenticate,adminOnly]},async(req,rep
 });
 app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {title,handle,shopifyProductId,descriptionHtml,vendor,productType,templateSuffix,projectId}=req.body||{};if(!title)return reply.code(400).send({error:'title required'});
-  const referencePhotos=(Array.isArray(req.body?.referencePhotos)?req.body.referencePhotos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
-  if(referencePhotos.length){const bad=await unreadablePhoto(referencePhotos);if(bad)return reply.code(400).send({error:`Reference photo ${bad} could not be opened — re-save it as a JPG or PNG`})}
+  const prepRef=await preparePhotos(req.body?.referencePhotos);if(prepRef.bad)return reply.code(400).send({error:`Reference photo ${prepRef.bad} could not be opened — re-save it as a JPG or PNG`});
+  const referencePhotos=prepRef.photos;
   const client=(await pool.query(`select id from clients where id=$1 and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rows[0];
   if(!client)return reply.code(404).send({error:'Active client room not found'});
   const project=projectId?(await pool.query(`select id from projects where id=$1 and client_id=$2
@@ -1527,12 +1550,15 @@ async function loadAdminTechPack(productId){
     pool.query('select * from product_briefs where product_id=$1',[productId])]);
   return {product,techPack:pack.rows[0]||null,configuration:configuration.rows[0]||null,brief:brief.rows[0]||null};
 }
+// The version a page must hold to save over this pack: the later of the last save and the assistant landing. (The assistant
+// does not touch updated_at, because an untouched draft is defined by updated_at = created_at and the nudge email relies on it.)
+const packEtag=row=>{const t=Math.max(row?.updated_at?new Date(row.updated_at).getTime():0,row?.ai_completed_at?new Date(row.ai_completed_at).getTime():0);return t?new Date(t).toISOString():null};
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
   return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
-    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at};
+    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row)};
 }
 // Applies a change to the verification chain of the CURRENT published version only; a concurrent publish makes the write a no-op.
 async function updateVerification(packId,version,mutate){
@@ -1555,6 +1581,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  {const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'})}
   const data=normalizeTechPack(req.body?.data);
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
     on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
@@ -2074,6 +2101,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       try{research=await completeMeasurements(draft,{photo,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary},sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize})}
       catch(e){app.log.warn({err:e.message,packId},'measurement research failed');draft.pomResearch={error:String(e.message||e).slice(0,200)}}
     }
+    // the measurement check: unit slips converted, implausible values researched again or left blank, all of it written into the notes
+    try{await vetMeasurements(draft,{photo:original?photo:'',pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category},sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||'')})}
+    catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
     if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
@@ -2167,7 +2197,14 @@ app.post('/v1/products/:id/tech-pack/checkout',{preHandler:authenticate},async(r
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
   if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics — we will finish it with you',aiStatus:row.ai_status||null});
   if(row.ai_status!=='locked')return reply.code(409).send({error:'This tech pack does not need payment',aiStatus:row.ai_status||null});
-  const out=await techPackCheckout(row,{email:req.auth.email});
+  // Whatever goes wrong at Shopify (down, a missing scope, a rejected draft order) is ours to sort out, never a raw error on the pay button.
+  let out;
+  try{out=await techPackCheckout(row,{email:req.auth.email})}
+  catch(e){
+    if(e.statusCode===503&&/not set up/i.test(e.message||''))throw e; // the deliberate "payments are not set up yet" message
+    app.log.error({err:e.message,packId:row.id},'tech pack checkout failed');
+    return reply.code(502).send({error:'We could not open checkout just now. Try again in a minute — if it keeps happening, message Future Basics and we will unlock the pack for you.',code:'CHECKOUT_UNAVAILABLE'});
+  }
   return {...out,amountCents:TECH_PACK_PRICE_CENTS,currency:'USD'};
 });
 // After paying (or joining): re-check and start the assistant.
@@ -2189,16 +2226,15 @@ function cleanAttribution(a){if(!a||typeof a!=='object')return null;const pick=k
   const out={source:pick('source'),medium:pick('medium'),campaign:pick('campaign'),content:pick('content'),term:pick('term'),referrer:pick('referrer'),landing:pick('landing'),firstSeenAt:pick('firstSeenAt')};
   Object.keys(out).forEach(k=>out[k]===undefined&&delete out[k]);if(out.referrer&&!/^https?:\/\//.test(out.referrer))delete out.referrer;return Object.keys(out).length?{...out,recordedAt:new Date().toISOString()}:null}
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
-  if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:Number(process.env.START_RATE_LIMIT)||12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const b=req.body||{};
   if(String(b.website||'').trim())return reply.code(202).send({ok:true});                       // honeypot
-  const email=String(b.email||'').trim().toLowerCase(),name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000);
-  const photos=(Array.isArray(b.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4),attribution=cleanAttribution(b.attribution);
-  if(!/^\S+@\S+\.\S+$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
+  const email=typeof b.email==='string'?b.email.trim().toLowerCase():'',name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000),attribution=cleanAttribution(b.attribution);
+  if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
   if(!title)return reply.code(400).send({error:'Give the product a name'});
-  if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
-  {const badPhoto=await unreadablePhoto(photos);if(badPhoto)return reply.code(400).send({error:`Photo ${badPhoto} could not be opened — re-save it as a JPG or PNG and try again`})}
   if(emailDomain(email)==='thefuturebasics.com')return reply.code(400).send({error:'Use the work console to start a tech pack for a client'});
+  const prep=await preparePhotos(b.photos);if(prep.bad)return reply.code(400).send({error:`Photo ${prep.bad} could not be opened — re-save it as a JPG or PNG and try again`});
+  const photos=prep.photos;if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
   const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
   const db=await pool.connect();
   try{
@@ -2222,34 +2258,56 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     let project=(await db.query(`select * from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') and name='Product development' limit 1`,[client.id])).rows[0];
     if(!project)project=(await db.query(`insert into projects(client_id,name,status,milestone) values($1,'Product development','active','Development — tech pack')
       on conflict(client_id,name) do update set status='active',updated_at=now() returning *`,[client.id])).rows[0];
-    const {product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'});
-    const ai=aiEnabled()?(await gateNewPhotoDraft(db,{clientId:client.id,packId:pack.id})).ai:null;
+    const dup=await recentDuplicateDraft(db,{clientId:client.id,title,photo:photos[0]});
+    let product,pack,ai;
+    if(dup){product={id:dup.product_id,title};pack={id:dup.pack_id};ai=dup.ai_status==='locked'?'locked':(dup.ai_status==='pending'||dup.ai_status==='done')?'pending':null}
+    else{({product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'}));
+      ai=aiEnabled()?(await gateNewPhotoDraft(db,{clientId:client.id,packId:pack.id})).ai:null}
     await db.query('commit');
-    if(ai==='pending')setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
+    if(!dup&&ai==='pending')setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
+    // The same tap sent twice is answered from the draft the first one made (no second welcome email).
     let token=null;
     if(fresh)token=await issueClientToken(user,client,email);
-    else{const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'start: code email failed'))}
+    else if(throttle(`code:${email}`,CODE_ASK)){const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'start: code email failed'))}
     const link=`${clientHubUrl}/tech-packs/${product.id}`;
-    sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
+    if(!dup)sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
       `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>${ai==='locked'?`Your photo is saved on a new tech pack draft for <strong>${emailEscape(product.title)}</strong>. Your first pack was on us; open this one to have the assistant draft it for $${(TECH_PACK_PRICE_CENTS/100).toFixed(0)}${MEMBERSHIP_URL?` or join the studio membership`:''} — or fill it in yourself, which is always free.`:`We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.`}</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
     return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:ai||'off'});
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 });
 // Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
 // without photos they get the blank template. `project` is an existing project row or null to use/create "Product development".
-const photosFromBody=b=>(Array.isArray(b?.photos)?b.photos:[]).map(x=>String(x||'')).filter(x=>isInlineImage(x)).slice(0,4);
-// A data URL with an image prefix can still hold bytes no decoder can open (a renamed file, a truncated upload).
-async function unreadablePhoto(photos){
-  for(const [i,p] of photos.entries()){const m=/^data:image\/[a-z+]+;base64,(.+)$/i.exec(p);if(!m)return i+1;
-    try{const meta=await sharp(Buffer.from(m[1],'base64')).metadata();if(!meta.width||!meta.height)return i+1}catch{return i+1}}
-  return 0;
+// Photos arrive as data URLs. Anything over 4000 px or ~1.8 MB is shrunk to a 2000 px JPEG (the model API takes at most 5 MB and
+// 8000 px per image, and the pack stores at most ~1.9 MB per picture): a big phone photo posted straight to the API
+// used to be dropped without a word. Smaller pictures are stored exactly as sent. Returns { photos, bad } where bad is the 1-based position of a file nothing can open.
+const PHOTO_RE=/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=\s]+)$/i;
+async function preparePhotos(list){
+  const raw=(Array.isArray(list)?list:[]).filter(x=>typeof x==='string'&&PHOTO_RE.test(x)).slice(0,4),photos=[];
+  for(const [i,p] of raw.entries()){
+    try{
+      const buf=Buffer.from(PHOTO_RE.exec(p)[2].replace(/\s/g,''),'base64'),meta=await sharp(buf).metadata();
+      if(!meta.width||!meta.height)return {photos:[],bad:i+1};
+      if(Math.max(meta.width,meta.height)>4000||buf.length>1_800_000)photos.push(`data:image/jpeg;base64,${(await sharp(buf).rotate().resize({width:2000,height:2000,fit:'inside',withoutEnlargement:true}).flatten({background:'#ffffff'}).jpeg({quality:86}).toBuffer()).toString('base64')}`);
+      else photos.push(p);
+    }catch{return {photos:[],bad:i+1}}
+  }
+  return {photos,bad:0};
+}
+// A double-tap on Create, or a retry after a slow network, must not make a second draft (and with it a locked duplicate):
+// the same title with the same photo, from the same room, inside three minutes is the same draft.
+async function recentDuplicateDraft(db,{clientId,title,photo}){
+  if(!photo)return null;
+  const md5=createHash('md5').update(photo).digest('hex');
+  return (await db.query(`select p.id product_id,tp.id pack_id,tp.ai_status from tech_packs tp join products p on p.id=tp.product_id
+    where tp.client_id=$1 and tp.initiated_by='client' and tp.status='draft' and p.title=$2 and tp.created_at>now()-interval '3 minutes'
+    and exists(select 1 from jsonb_array_elements(tp.data->'sketches') sk where md5(sk->>'image')=$3) order by tp.created_at desc limit 1`,[clientId,title,md5])).rows[0]||null;
 }
 async function startHubDraft(req,reply,{project,newProjectName}){
   const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
-  const photos=photosFromBody(req.body);
   if(!title)return reply.code(400).send({error:'Give the product a name'});
-  {const badPhoto=await unreadablePhoto(photos);if(badPhoto)return reply.code(400).send({error:`Photo ${badPhoto} could not be opened — re-save it as a JPG or PNG and try again`})}
+  const prep=await preparePhotos(req.body?.photos);if(prep.bad)return reply.code(400).send({error:`Photo ${prep.bad} could not be opened — re-save it as a JPG or PNG and try again`});
+  const photos=prep.photos;
   const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
   const client=await pool.connect();
   try{
@@ -2260,6 +2318,11 @@ async function startHubDraft(req,reply,{project,newProjectName}){
       project=(await client.query(`insert into projects(client_id,name,status,milestone) values($1,$2,'active','Development — tech pack')
         on conflict(client_id,name) do update set status='active',archived_at=null,updated_at=now() returning *`,[req.auth.clientId,name])).rows[0];
       project.client_name=c?.name||'';
+    }
+    if(photos.length){
+      const dup=await recentDuplicateDraft(client,{clientId:req.auth.clientId,title,photo:photos[0]});
+      if(dup){await client.query('commit');const existing=await loadClientDraft(dup.product_id,req.auth.clientId);
+        if(existing)return reply.code(201).send({...draftView(existing),ai:dup.ai_status==='locked'?'locked':(dup.ai_status==='pending'||dup.ai_status==='done')?'pending':'off',project:{id:existing.project_id,name:existing.project_name}})}
     }
     const {product,pack}=await createClientDraft(client,{clientId:req.auth.clientId,clientName:project.client_name,project,title,productType,description,userId:req.auth.sub,sketches,source:photos.length?'photo':'hub'});
     const gate=photos.length&&aiEnabled()?await gateNewPhotoDraft(client,{clientId:req.auth.clientId,packId:pack.id}):{ai:null,billing:null},ai=gate.ai;
@@ -2293,7 +2356,12 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
   if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics — ask them to reopen it if you need changes'});
-  const data=normalizeTechPack(req.body?.data);
+  // A save with no pack in it must never blank the draft (normalizeTechPack turns nothing into an empty template).
+  const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'});
+  // A page opened before the assistant finished, or in another tab, holds an older pack: saving it would wipe what landed since.
+  if(req.body.baseEtag&&packEtag(row)&&Math.abs(new Date(req.body.baseEtag).getTime()-new Date(packEtag(row)).getTime())>5)
+    return reply.code(409).send({error:'This draft changed in another tab, or the assistant just finished it. Reload to see the latest — what you typed on this page was not saved.',code:'STALE'});
+  const data=normalizeTechPack(sent);
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
@@ -2804,6 +2872,12 @@ async function runOfferSweep(){
 }
 
 app.setErrorHandler((error, req, reply) => {
+  // Postgres class 22 = the value could not be read as the column's type (a malformed uuid in the path, a NUL byte in text)
+  if (/^22/.test(String(error.code || '')) && !error.statusCode) {
+    const inPath = Object.keys(req.params || {}).length > 0;
+    req.log.warn({ err: error.message, code: error.code }, 'malformed input');
+    return reply.code(inPath ? 404 : 400).send({ error: inPath ? 'Not found' : 'Some of that input could not be read' });
+  }
   req.log.error(error);
   reply.code(error.statusCode || 500).send({ error: error.statusCode ? error.message : 'Internal server error' });
 });

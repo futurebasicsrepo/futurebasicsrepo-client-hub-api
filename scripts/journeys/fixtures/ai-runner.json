@@ -1,0 +1,51 @@
+{
+  "productType": "footwear",
+  "category": "Footwear — chunky runner",
+  "styleName": "Layer Runner",
+  "description": "Chunky lifestyle runner on a sculpted, layered dual-density midsole. Engineered mesh base with synthetic nubuck overlays cut with two windows, a moulded heel wrap, webbing lace loops under a padded gusseted tongue, and a rubber toe bumper. Visible forefoot pod in a contrast colour.",
+  "fabricSummary": "Engineered mesh · synthetic nubuck overlays · TPU heel wrap · dual-density EVA · rubber",
+  "fitBlock": "Runner last, D width, true to size",
+  "callouts": [
+    {"label": "Heel wrap", "spec": "Moulded TPU heel wrap 1.5 mm bonded over mesh", "note": "Edge radius as photo; no lift after flex test", "x": 0.17, "y": 0.30},
+    {"label": "Padded tongue", "spec": "Gusseted tongue, 10 mm foam, mesh face", "note": "Gusset to 3rd lace loop", "x": 0.37, "y": 0.18},
+    {"label": "Lacing", "spec": "6 webbing lace loops 12 mm bar-tacked under synthetic eyestay; flat lace 8 mm", "note": "Loop spacing as photo", "x": 0.58, "y": 0.33},
+    {"label": "Upper window", "spec": "Synthetic nubuck 1.2 mm overlay with cut-out exposing mesh", "note": "Edges skived 8 mm and bonded", "x": 0.52, "y": 0.46},
+    {"label": "Vamp perforations", "spec": "3 rows slot perforations 4 × 1.5 mm", "note": "Backed by mesh", "x": 0.62, "y": 0.62},
+    {"label": "Toe bumper", "spec": "Rubber toe bumper wraps 15 mm up the vamp", "note": "Bonded + stitched to midsole", "x": 0.90, "y": 0.62},
+    {"label": "Layered midsole", "spec": "Dual-density EVA, Asker C 50 upper / 58 lower, sculpted layer lines", "note": "Parting lines per photo", "x": 0.14, "y": 0.62},
+    {"label": "Forefoot pod", "spec": "Contrast TPU-capped EVA pod inset", "note": "Pod flush with midsole wall", "x": 0.47, "y": 0.78}
+  ],
+  "pom": [
+    {"code": "A", "sample": 11.5, "step": 0.333, "basis": "US men's 10 outsole ≈ 11 5/16\" per brand size charts, +3/16\" for the extended chunky midsole"},
+    {"code": "B", "sample": 4.3, "step": 0.125, "basis": "Proportion measured from the photo against outsole length"},
+    {"code": "C", "sample": 3.4, "step": 0.1, "basis": "Proportion measured from the photo"},
+    {"code": "D", "sample": 1.5, "step": 0, "basis": "Chunky runners measure 30–40 mm heel stack in lab tests (RunRepeat)"},
+    {"code": "E", "sample": 1.0, "step": 0, "basis": "22–27 mm forefoot stack for the category (RunRepeat)"},
+    {"code": "F", "sample": 0.6, "step": 0, "basis": "Visible toe spring in the photo; typical 10–15 mm"},
+    {"code": "G", "sample": 3.1, "step": 0.0625, "basis": "Collar height measured from the photo at outsole scale"},
+    {"code": "H", "sample": 12.75, "step": 0.25, "basis": "Ankle circumference + ease; confirm on last"},
+    {"code": "I", "sample": 45, "step": 2, "basis": "45\" for 6 lace pairs (Lace Lab chart)"}
+  ],
+  "bom": [
+    {"component": "Upper", "material": "Engineered mesh 260 gsm + synthetic nubuck 1.2 mm", "spec": "Mesh base with windowed overlays", "placement": "Vamp, quarters"},
+    {"component": "Lining", "material": "Poly mesh, 3 mm spacer at collar", "spec": "Breathable, DTM", "placement": "Quarter + tongue"},
+    {"component": "Tongue", "material": "Engineered mesh face, 10 mm foam", "spec": "Gusseted", "placement": "Tongue"},
+    {"component": "Laces", "material": "Flat polyester 8 mm", "spec": "45\" at sample size", "placement": "Eyestay"},
+    {"component": "Midsole", "material": "Dual-density EVA", "spec": "Asker C 50 upper / 58 lower", "placement": "Sole unit"},
+    {"component": "Outsole", "material": "Rubber", "spec": "Shore A 55 ± 3, heel plate + forefoot segments", "placement": "Sole unit"},
+    {"component": "Footbed", "material": "Moulded EVA 5 mm", "spec": "Printed top cloth", "placement": "Inside"}
+  ],
+  "construction": [
+    {"area": "Lasting", "detail": "Strobel-lasted; midsole cemented; outsole segments cemented"},
+    {"area": "Overlays", "detail": "Synthetic nubuck skived 8 mm, bonded then stitched 8 SPI at perimeter"},
+    {"area": "Heel", "detail": "Moulded TPU heel wrap bonded over mesh; internal counter"}
+  ],
+  "colorways": [
+    {"name": "Grey", "hex": "#b8bcc0", "pantone": "15-4101 TCX", "role": "upper", "observed": true},
+    {"name": "Volt", "hex": "#d9ff3b", "pantone": "13-0650 TCX", "role": "forefoot pod accent", "observed": true},
+    {"name": "Triple White", "hex": "#f4f4f0", "pantone": "11-0601 TCX", "role": "alternative", "observed": false}
+  ],
+  "care": {"fiber": "Upper: textile and synthetic. Sole: EVA and rubber.", "instructions": "Spot clean with mild soap. Do not machine wash. Air dry away from heat."},
+  "notes": "Drafted from one lateral photo. Not visible: medial side, outsole tread, interior and footbed — assumed per category norms. Open questions: lead colourway, quantity, any logo or label artwork. Spec basis: RunRepeat lab stack averages; brand size charts for outsole length; Shoemakers Academy durometer guidance; Lace Lab lace lengths.",
+  "confidence": "medium"
+}

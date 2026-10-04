@@ -2,6 +2,7 @@
 // product, internal consistency) and against a golden pack people approved (do the measurements, callouts and materials
 // agree). Pure functions; the eval runner in scripts/ feeds them, and the console can show them per pack.
 import { normalizeTechPack } from './techpack.js';
+import { familyOf, rangeFor } from './plausible.js';
 
 const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const num = v => { const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, '')); return Number.isFinite(n) ? n : null; };
@@ -9,8 +10,8 @@ const words = s => new Set(norm(s).split(/[^a-z0-9]+/).filter(w => w.length > 2)
 const jaccard = (a, b) => { const A = new Set(a), B = new Set(b); if (!A.size && !B.size) return null; let i = 0; for (const x of A) if (B.has(x)) i++; return i / (A.size + B.size - i); };
 const round = x => (x == null ? null : Math.round(x * 1000) / 1000);
 
-// Plausible sample-size ranges in inches, by point-of-measure name. Wide on purpose: this catches a chest of 2" or
-// an inseam of 300", not a debatable half inch.
+// The first, apparel-and-footwear-only table. Kept for the tests that pin it; scoring now uses src/plausible.js, which
+// covers every product family and is the same check the assistant runs before a draft is saved.
 export const PLAUSIBLE_IN = {
   'across shoulder': [12, 28], 'chest width': [13, 42], 'body length hps': [15, 45], 'sleeve length': [4, 32], 'bicep': [4, 18], 'cuff opening': [2, 12], 'hem width': [12, 44], 'neck width': [4, 14], 'front neck drop': [1.5, 10],
   'waist relaxed': [10, 32], 'waist extended': [10, 36], 'front rise': [6, 22], 'back rise': [8, 26], 'inseam': [1, 42], 'thigh': [7, 22], 'knee': [5, 18], 'leg opening': [3, 18], 'hip': [12, 38],
@@ -36,10 +37,10 @@ export function scoreDraft(input, { box = null, sampleSize } = {}) {
   };
   coverage.mean = round(Object.values(coverage).reduce((a, b) => a + b, 0) / 7);
   // plausibility: known points of measure inside a sane range
-  let checked = 0, inRange = 0; const outOfRange = [];
+  let checked = 0, inRange = 0; const outOfRange = [], family = familyOf(p.style.category, p.style.styleName);
   for (const r of pomFilled) {
-    const range = PLAUSIBLE_IN[norm(r.name)]; if (!range) continue;
-    for (const s of sizes) { const v = num(r.values[s]); if (v == null) continue; checked++; if (v >= range[0] && v <= range[1]) inRange++; else outOfRange.push({ code: r.code, name: r.name, size: s, value: v }); }
+    const range = rangeFor(r.name, family); if (!range) continue;
+    for (const s of sizes) { const v = num(r.values[s]); if (v == null) continue; checked++; if (v >= range.lo && v <= range.hi) inRange++; else outOfRange.push({ code: r.code, name: r.name, size: s, value: v }); }
   }
   const plausibility = { checked, inRange, rate: checked ? round(inRange / checked) : null, outOfRange: outOfRange.slice(0, 10) };
   // grounding: pins placed, inside the product box (when known), not stacked on one spot
