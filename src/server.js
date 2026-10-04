@@ -1233,8 +1233,8 @@ async function productThread(productId,{admin=false,clientId=null}={}){
   const product=(await pool.query(`select id,title from products where id=$1${admin?'':' and client_id=$2'}`,admin?[productId]:[productId,clientId])).rows[0];
   if(!product)return null;
   const rows=(await pool.query(`select cm.id,cm.author_role,cm.body,cm.created_at,cm.visibility,
-      case when cm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email) end author_name
-    from comments cm left join users u on u.id=cm.author_id where cm.product_id=$1${admin?'':` and cm.visibility='client'`} order by cm.created_at desc limit 300`,[product.id])).rows.reverse();
+      case when cm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),nullif(c.contact_name,''),c.name) end author_name
+    from comments cm left join users u on u.id=cm.author_id join clients c on c.id=cm.client_id where cm.product_id=$1${admin?'':` and cm.visibility='client'`} order by cm.created_at desc limit 300`,[product.id])).rows.reverse();
   return {product,messages:rows.map(c=>({id:c.id,author_role:c.author_role,author_name:c.author_name,body:c.body,created_at:c.created_at,reply_to_id:null,files:[],
     ...(c.visibility==='internal'?{internal:true,tag:'Internal note · only Future Basics sees this'}:{})})),events:[]};
 }
