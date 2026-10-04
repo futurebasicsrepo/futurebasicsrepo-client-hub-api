@@ -50,6 +50,12 @@ export async function migrate() {
       role text not null default 'client' check (role in ('client','admin')),
       created_at timestamptz not null default now()
     );
+    do $$ begin
+      if not exists(select 1 from information_schema.columns where table_name='users' and column_name='email_verified_at') then
+        alter table users add column email_verified_at timestamptz;
+        update users set email_verified_at=created_at; -- everyone who exists today has signed in some way already
+      end if;
+    end $$;
     create table if not exists login_codes (
       id uuid primary key default gen_random_uuid(),
       email text not null,

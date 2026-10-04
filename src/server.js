@@ -111,6 +111,9 @@ async function authenticate(req, reply) {
   if (!token) return reply.code(401).send({ error: 'Authentication required' });
   try { req.auth = (await jwtVerify(token, secret, { issuer: 'future-basics-client-hub' })).payload; }
   catch { return reply.code(401).send({ error: 'Invalid or expired session' }); }
+  // A session handed out on /start vouches for nothing: nobody has proved they own that inbox. It works only until the
+  // address is verified with a code (by whoever really owns it), after which it must sign in like everyone else.
+  if(req.auth.unverified){const u=(await pool.query('select email_verified_at from users where id=$1',[req.auth.sub])).rows[0];if(!u||u.email_verified_at)return reply.code(401).send({error:'Invalid or expired session'})}
   if(req.auth.preview&&!['GET','HEAD','OPTIONS'].includes(req.method))return reply.code(403).send({error:'Client preview is read-only'});
 }
 async function adminOnly(req,reply){if(req.auth?.role!=='admin')return reply.code(403).send({error:'Future Basics admin access required'});}
@@ -388,8 +391,8 @@ app.post('/v1/auth/verify', async (req, reply) => {
     if (!client) { await c.query('rollback'); return reply.code(403).send({ error: 'Client access is no longer active' }); }
     const role = email.split('@')[1] === 'thefuturebasics.com' ? 'admin' : 'client';
     user = (await c.query(
-      `insert into users(client_id,email,role) values($1,$2,$3) on conflict(email)
-       do update set client_id=excluded.client_id,role=excluded.role returning *`, [client.id, email, role]
+      `insert into users(client_id,email,role,email_verified_at) values($1,$2,$3,now()) on conflict(email)
+       do update set client_id=excluded.client_id,role=excluded.role,email_verified_at=coalesce(users.email_verified_at,now()) returning *`, [client.id, email, role]
     )).rows[0];
     await c.query('commit');
   } catch (e) { await c.query('rollback').catch(() => {}); throw e; } finally { c.release(); }
@@ -1849,7 +1852,7 @@ async function createClientDraft(db,{clientId,clientName,project,title,productTy
   await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[clientId,`${clientName} started a tech pack for ${product.title}${how} in ${project.name}`,product.id]);
   return {product,pack};
 }
-const issueClientToken=(user,client,email)=>new SignJWT({sub:user.id,clientId:client.id,client:client.slug,role:user.role,email})
+const issueClientToken=(user,client,email,extra={})=>new SignJWT({sub:user.id,clientId:client.id,client:client.slug,role:user.role,email,...extra})
   .setProtectedHeader({alg:'HS256'}).setIssuer('future-basics-client-hub').setIssuedAt().setExpirationTime('7d').sign(secret);
 // Public, mobile-first entry point: a screenshot plus an email becomes a client room, a project and a tech pack draft with the
 // photo as its first view. A brand-new email gets its own room and a session right away (the room holds only what they just sent);
@@ -2259,7 +2262,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   try{
     await db.query('begin');
     await db.query('select pg_advisory_xact_lock(hashtext($1))',[email]); // a double-tap sends two of these at once: the second waits and finds the room the first made
-    let client=await clientForEmail(email),fresh=false;
+    let client=await clientForEmail(email),brandNew=false;
     if(!client){
       const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
       if(lead){
@@ -2270,8 +2273,8 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
         if((await db.query('select 1 from clients where slug=$1',[slug])).rowCount)slug=`${base.slice(0,43)}-${randomBytes(2).toString('hex')}`;
         client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at,acquisition) values($1,$2,'active',$3,$4,$5,$6,now(),$7::jsonb) returning *`,
           [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`,attribution?JSON.stringify(attribution):null])).rows[0];
+        brandNew=true;
       }
-      fresh=true;
     }else if(attribution&&!client.acquisition){client=(await db.query(`update clients set acquisition=$2::jsonb where id=$1 and acquisition is null returning *`,[client.id,JSON.stringify(attribution)])).rows[0]||client}
     const user=(await db.query(`insert into users(client_id,email,role) values($1,$2,'client') on conflict(email) do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email])).rows[0];
     let project=(await db.query(`select * from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') and name='Product development' limit 1`,[client.id])).rows[0];
@@ -2287,7 +2290,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
     // The same tap sent twice is answered from the draft the first one made (no second welcome email).
     let token=null;
-    if(fresh)token=await issueClientToken(user,client,email);
+    if(brandNew)token=await issueClientToken(user,client,email,{unverified:true}); // a lead's room was somebody's before this tap, so it takes a code like any known room
     else if(throttle(`code:${email}`,CODE_ASK)){const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'start: code email failed'))}
     const link=`${clientHubUrl}/tech-packs/${product.id}`;
     if(!dup)sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
