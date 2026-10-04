@@ -36,3 +36,5 @@
 @media(max-width:900px){.fbchat .mc-msg{max-width:84%}}
 @media(max-width:560px){.fbchat .mc-inputrow textarea{font-size:16px}.fbchat-panel{height:min(78vh,640px);min-height:380px;border-radius:22px}}
 @media(prefers-reduced-motion:reduce){.mc-msgs{scroll-behavior:auto}}
+.mc-modes{display:flex;gap:6px;margin:0 0 8px}.mc-modes button{all:unset;cursor:pointer;padding:5px 12px;border:1px solid var(--c-line);border-radius:999px;font-size:12.5px;color:var(--c-dim)}.mc-modes button.on{background:var(--c-ink);border-color:var(--c-ink);color:#fff}.mc-modes button:focus-visible{outline:2px solid var(--c-ink);outline-offset:2px}
+.mc-msg.internal .mc-bub{background:#fff6dd;color:var(--c-ink);border:1px dashed #d1a93a}.mc-msg.internal .mc-tag{opacity:.85}
