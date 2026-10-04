@@ -411,7 +411,7 @@ await journey('J51', 'the same chat everywhere: the room thread in the work cons
   } finally { await ctx.close(); }
 });
 
-await browser.close(); await journey('J55', 'a product\'s comments are the same chat: shared and internal in the console, only shared in the hub, nothing leaks', async () => {
+await journey('J55', 'a product\'s comments are the same chat: shared and internal in the console, only shared in the hub, nothing leaks', async () => {
   const r = await room('55', { wait: false }), other = await room('55b', { wait: false }), W = 'http://work.localhost:3123', pid = r.projectId, id = r.id;
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
   await call('/v1/comments', { token: r.token, body: { productId: id, body: 'Can the heel be a little taller?' } });
@@ -462,4 +462,4 @@ await browser.close(); await journey('J55', 'a product\'s comments are the same 
   } finally { await ctx.close(); }
 });
 
-const bad = summary(); process.exit(bad ? 1 : 0);
+await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
