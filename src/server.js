@@ -372,6 +372,21 @@ app.post('/v1/public/intakes',async(req,reply)=>{
     message:'Your project brief is in. Future Basics will review it and follow up by email.'});
 });
 
+// Someone who asked for a sign-in code and was turned away. A website lead is waiting at the door, so staff get one email per lead per day;
+// an email we have never seen is only listed in the console (it is often a client using a different address than the one on their room).
+async function noteSigninAttempt({email,clientId,kind}){
+  await pool.query(`insert into signin_attempts(email,client_id,kind) values($1,$2,$3)
+    on conflict(email) do update set attempts=signin_attempts.attempts+1,last_at=now(),client_id=excluded.client_id,kind=excluded.kind`,[email,clientId,kind]);
+  if(kind!=='lead'||!clientId)return false;
+  const claim=await pool.query(`update signin_attempts set alerted_at=now() where email=$1 and (alerted_at is null or alerted_at<now()-interval '24 hours') returning attempts`,[email]);
+  if(!claim.rowCount)return false;
+  try{
+    const c=(await pool.query('select name,contact_name from clients where id=$1',[clientId])).rows[0];
+    const who=c?.contact_name||c?.name||email,link=`${workHubUrl}/clients/${clientId}`;
+    return await sendHubEmail({to:intakeNotificationEmail,subject:`${who} is trying to sign in — their room is not active yet`,html:hubEmailShell('A website lead is waiting at the door',
+      `<p><strong>${emailEscape(who)}</strong> (${emailEscape(email)}) just asked for a sign-in code. Their room is not active, so they were told it is being set up and that you will email them.</p><p>Activating the room sends them the welcome email and lets them in.</p>${hubButton(link,'Open their room')}`)});
+  }catch(e){await pool.query('update signin_attempts set alerted_at=null where email=$1',[email]).catch(()=>{});throw e}
+}
 app.post('/v1/auth/code', async (req, reply) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const domain = email.split('@')[1];
@@ -379,7 +394,8 @@ app.post('/v1/auth/code', async (req, reply) => {
   const client = await clientForEmail(email);
   if (!client) {
     const lead=(await pool.query(`select id from clients where status='lead' and (lower(contact_email)=$1 or $1=any(allowed_emails)) limit 1`,[email])).rows[0];
-    if(lead)return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'});
+    if(lead){noteSigninAttempt({email,clientId:lead.id,kind:'lead'}).catch(err=>app.log.warn({err:err.message},'sign-in attempt not recorded'));return reply.code(403).send({error:"We have your brief — your private project room is being set up. We'll email you the moment it's ready.",code:'LEAD_PENDING'})}
+    if(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&email.length<=254&&throttle(`signinmiss:${req.ip}`,{limit:20,windowMs:60*60*1000}))noteSigninAttempt({email,clientId:null,kind:'unknown'}).catch(err=>app.log.warn({err:err.message},'sign-in attempt not recorded'));
     return reply.code(403).send({
       error: "We don't currently have any work from you. Start a project here",
       code: 'NO_CLIENT_WORK',

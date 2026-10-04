@@ -1,4 +1,5 @@
 import { journey, ok, summary, api, jpeg, png, bigJpeg, hugeHeaderPng, codeFrom, sleep, waitAi, forge, sql, stamp, S } from './lib.mjs';
+import { readFileSync } from 'node:fs';
 const BASE = 'http://127.0.0.1:3123', LOG = `${S}/server-j-a.log`, call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `j${tag}-${stamp}-${++n}@chaos.test`;
 const start = (email, extra = {}) => call('/v1/public/start', { body: { email, name: 'Chaos Tester', title: 'Layer runner', notes: 'Like the photo, in our colours.', photos: [runner], ...extra } });
@@ -452,6 +453,38 @@ await journey('J52', 'packs that failed on our side re-run by themselves once th
   // retries are spaced out: one that failed a moment ago waits
   fail(rooms[1].productId, OURS, 1, 0); const soon = await adm('/v1/admin/ai/auto-retry', { method: 'POST' }); ok(soon.json.started === 0, 'a pack that failed a minute ago waits its turn', soon.json);
   const nonAdmin = await call('/v1/admin/ai/auto-retry', { method: 'POST', token: rooms[1].token }); ok([401, 403].includes(nonAdmin.status), 'a customer cannot trigger it', nonAdmin.status);
+});
+
+await journey('J54', 'a website lead or an unknown email asks to sign in: staff are told once, and it shows in the console', async () => {
+  const room = await newRoom('54', { wait: false }), admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: room.r.json.client.id, role: 'admin' });
+  const queues = async () => (await call('/v1/admin/dashboard', { token: admin })).json.queues, code = e => call('/v1/auth/code', { body: { email: e } });
+  const lead = `lead54-${stamp}@chaos.test`, stranger = `stranger54-${stamp}@chaos.test`, subject = new RegExp('is trying to sign in — their room is not active yet');
+  sql(`insert into clients(slug,name,status,contact_email,allowed_emails) values('lead54-${stamp}','Lead 54 ${stamp}','lead','${lead}',array['${lead}'])`);
+  const leadId = sql(`select id from clients where slug='lead54-${stamp}'`), alerts = () => readFileSync(LOG, 'utf8').split('\n').filter(l => subject.test(l) && l.includes('Lead 54')).length;
+  let q = await queues(), item = q.approvals.find(x => x.key === `lead:${leadId}`);
+  ok(item && !/trying to sign in/.test(item.title), 'before anyone tries, the lead is an ordinary "activate the room" item', item && item.title);
+  const before = alerts();
+  let r = await code(lead); ok(r.status === 403 && r.json.code === 'LEAD_PENDING', 'the lead is still told the room is being set up', [r.status, r.json.code]);
+  await sleep(400); r = await code(lead); await sleep(400);
+  ok(alerts() - before === 1, 'two tries produce exactly one email to staff', alerts() - before);
+  ok(Number(sql(`select attempts from signin_attempts where email='${lead}'`)) === 2, 'both tries are counted', sql(`select attempts from signin_attempts where email='${lead}'`));
+  q = await queues(); item = q.approvals.find(x => x.key === `lead:${leadId}`);
+  ok(item && item.severity === 'urgent' && /trying to sign in/.test(item.title) && /2 times/.test(item.detail), 'the console marks the lead urgent and says they tried twice', item && [item.severity, item.title, item.detail]);
+  // an email with no work under it
+  r = await code(stranger); ok(r.status === 403 && r.json.code === 'NO_CLIENT_WORK', 'an unknown email gets the usual answer', [r.status, r.json.code]); await sleep(300);
+  q = await queues(); const s1 = q.approvals.find(x => x.key === `signin:${stranger}`);
+  ok(s1 && s1.owner === 'us' && s1.clientId === null && s1.severity === 'info' && /no work under this email/.test(s1.title), 'it shows in the console as a quiet item with no room behind it', s1);
+  ok(alerts() - before === 1, 'and sends staff no email');
+  await code(stranger); await sleep(300); q = await queues(); ok(q.approvals.find(x => x.key === `signin:${stranger}`).severity === 'normal', 'a second try makes it a regular item');
+  // once the address belongs to a room, it is no longer a stranger
+  sql(`update clients set allowed_emails=array_append(allowed_emails,'${stranger}') where id='${room.r.json.client.id}'`); q = await queues();
+  ok(!q.approvals.some(x => x.key === `signin:${stranger}`), 'adding the address to a room clears the item');
+  // junk and floods do not fill the table
+  for (const junk of ['not-an-email', '@', 'a@b', ' ']) await code(junk);
+  ok(Number(sql(`select count(*) from signin_attempts where email in ('not-an-email','@','a@b','')`)) === 0, 'malformed emails are not recorded');
+  // activating the lead takes it off the list
+  sql(`update clients set status='active' where id='${leadId}'`); q = await queues(); ok(!q.approvals.some(x => x.key === `lead:${leadId}`), 'an activated lead is no longer waiting');
+  sql(`update clients set status='archived',archived_at=now() where id='${leadId}'`);
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
