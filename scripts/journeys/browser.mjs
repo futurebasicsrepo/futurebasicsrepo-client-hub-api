@@ -127,4 +127,34 @@ await journey('J31', 'getting to the tech pack and back: every level is a link, 
   const barRight = await ph.page.$eval('#acts', e => e.getBoundingClientRect().right); ok(barRight <= 390, 'and the buttons fit the screen', barRight); await ph.ctx.close();
 });
 
+await journey('J33', 'message center on a phone: list → thread → send, reply, attach, back', async () => {
+  const r = await room('33', { wait: false }), W = 'http://work.localhost:3123';
+  await call(`/v1/projects/${r.projectId}/messages`, { token: r.token, body: { body: 'Is the sample still on track?' } });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('.mc-row', { timeout: 10000 });
+  ok(await page.$eval('#messageCenter', e => e.dataset.view) === 'list' && await page.locator('.mc-thread').isHidden(), 'a phone starts on the conversation list');
+  const mine = page.locator(`.mc-row:has-text("Is the sample still on track?")`); ok(await mine.count() >= 1 && /\d/.test(await mine.first().locator('.mc-badge').textContent()), 'the new conversation is there with an unread badge');
+  await page.fill('#mcSearch', 'zzzz-no-match'); ok(await page.locator('.mc-row').count() === 0, 'search filters the list'); await page.fill('#mcSearch', '');
+  await mine.first().click(); await page.waitForSelector('.mc-msg', { timeout: 8000 });
+  ok(await page.locator('.mc-list').isHidden() && await page.locator('.mc-thread').isVisible(), 'tapping opens the thread full screen');
+  ok(await page.locator('.mc-msg.in .mc-bub').first().textContent().then(t => /still on track/.test(t)), 'the client bubble is on the left');
+  ok(await page.$eval('#mcSendBtn', b => b.disabled), 'Send is off while the box is empty');
+  await page.fill('#mcText', 'Yes — ships on the 28th.'); ok(!(await page.$eval('#mcSendBtn', b => b.disabled)), 'and on once there is text');
+  await page.press('#mcText', 'Shift+Enter'); await page.type('#mcText', 'Line two'); ok((await page.inputValue('#mcText')).includes('\n'), 'Shift+Enter makes a new line instead of sending');
+  await page.press('#mcText', 'Enter'); await page.waitForSelector('.mc-msg.out', { timeout: 8000 });
+  const sent = await page.locator('.mc-msg.out .mc-text').last().textContent(); ok(/ships on the 28th\.\nLine two/.test(sent), 'Enter sends, as a bubble on the right with its line break', sent);
+  ok(await page.inputValue('#mcText') === '', 'and the box clears');
+  await page.locator('.mc-msg.in .mc-bub').first().click(); await page.click('.mc-msg.in.sel .mc-acts button'); ok(await page.locator('#mcReplyBar').isVisible(), 'tapping a bubble offers Reply, which shows the quoted message above the box');
+  await page.fill('#mcText', 'Replying to that'); await page.click('#mcSendBtn'); await page.waitForFunction(() => document.querySelectorAll('.mc-quote').length > 0, null, { timeout: 8000 }); ok(await page.locator('.mc-quote').count() === 1, 'the reply carries the quote');
+  await page.setInputFiles('#mcFile', `${FX}/ig-screenshot.png`); ok(await page.locator('#mcFileBar').isVisible() && /ig-screenshot/.test(await page.textContent('#mcFileName')), 'a chosen file shows above the box'); await page.click('#mcSendBtn');
+  await page.waitForSelector('.mc-file', { timeout: 10000 }); ok(/ig-screenshot\.png/.test(await page.textContent('.mc-file')), 'the upload appears as an attachment in the thread');
+  ok(await page.$eval('.mc-msgs', e => e.scrollHeight - e.scrollTop - e.clientHeight < 40), 'the thread stays scrolled to the newest message');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth); ok(overflow <= 1, 'nothing overflows the phone width', overflow);
+  await page.click('.mc-back'); ok(await page.locator('.mc-list').isVisible() && await page.locator('.mc-thread').isHidden(), 'back returns to the list');
+  ok(await page.locator(`.mc-row:has-text("Yes — ships")`).count() >= 1 && await page.locator(`.mc-row:has-text("Yes — ships") .mc-badge`).count() === 0, 'and the conversation now shows our reply with no unread badge');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

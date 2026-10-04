@@ -1141,6 +1141,70 @@ app.post('/v1/comments',{preHandler:authenticate},async(req,reply)=>{
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'comment','Client added a comment']);
   return reply.code(201).send(comment);
 });
+// ---- Message center: one conversation per project (plus a "general" one per client for signals that belong to no project) ----
+// Messages are the bubbles. Notifications are what happened around them (a tech pack was submitted, a quote was decided) and show
+// as small centred lines. The notifications our own messages create are not shown or counted: the bubble already says it.
+const NOTE_SCOPED_SQL=`select n.id,n.client_id,n.type,n.title,n.entity_type,n.entity_id,n.read_at,n.created_at,
+  case n.entity_type when 'project' then n.entity_id
+    when 'product' then (select p.project_id::text from products p where p.id::text=n.entity_id)
+    when 'quote' then (select p.project_id::text from quotes q join products p on p.id=q.product_id where q.id::text=n.entity_id) end project_id
+  from notifications n`;
+const OWN_NOTE_TYPES=['project-message','project-file'],BUBBLE_NOTE_TYPES=['project-message','project-file','client-project-message','client-project-file'];
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function convKey(key){const k=String(key||'');if(UUID_RE.test(k))return {project:k};const m=/^general-([0-9a-f-]{36})$/i.exec(k);return m&&UUID_RE.test(m[1])?{general:m[1]}:null}
+app.get('/v1/admin/message-center',{preHandler:[authenticate,adminOnly]},async()=>{
+  const live=`c.archived_at is null and c.status not in ('archive','archived') and c.slug<>'future-basics'`;
+  const projects=(await pool.query(`select pr.id project_id,pr.name project_name,c.id client_id,c.name client_name,
+      (select pm.body from project_messages pm where pm.project_id=pr.id order by pm.created_at desc limit 1) last_body,
+      (select pm.author_role from project_messages pm where pm.project_id=pr.id order by pm.created_at desc limit 1) last_role,
+      (select max(pm.created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
+    from projects pr join clients c on c.id=pr.client_id where pr.archived_at is null and pr.status not in ('archive','archived') and ${live}`)).rows;
+  const unread=(await pool.query(`select s.*,c.name client_name from (${NOTE_SCOPED_SQL}) s join clients c on c.id=s.client_id
+    where s.read_at is null and not (s.type=any($1)) and ${live} order by s.created_at desc limit 500`,[OWN_NOTE_TYPES])).rows;
+  const byProject=new Map(),general=new Map();
+  for(const n of unread){
+    if(n.project_id&&projects.some(p=>p.project_id===n.project_id)){const g=byProject.get(n.project_id)||{count:0,latest:n};g.count++;byProject.set(n.project_id,g)}
+    else{const g=general.get(n.client_id)||{count:0,latest:n,client_name:n.client_name};g.count++;general.set(n.client_id,g)}
+  }
+  const out=[];
+  for(const p of projects){
+    const u=byProject.get(p.project_id);if(!p.last_message_at&&!u)continue;
+    const noteAt=u?.latest.created_at,msgAt=p.last_message_at,lastAt=(noteAt&&(!msgAt||new Date(noteAt)>new Date(msgAt)))?noteAt:msgAt;
+    out.push({key:p.project_id,kind:'project',clientId:p.client_id,clientName:p.client_name,projectId:p.project_id,projectName:p.project_name,unread:u?.count||0,lastAt,
+      preview:p.last_body?`${p.last_role==='admin'?'You: ':''}${p.last_body}`.slice(0,140):u.latest.title,lastRole:p.last_body?p.last_role:'event'});
+  }
+  for(const [clientId,g] of general)out.push({key:`general-${clientId}`,kind:'general',clientId,clientName:g.client_name,projectId:null,projectName:'General',unread:g.count,lastAt:g.latest.created_at,preview:g.latest.title,lastRole:'event'});
+  out.sort((a,b)=>new Date(b.lastAt)-new Date(a.lastAt));
+  return {conversations:out.slice(0,80),unread:out.reduce((n,c)=>n+c.unread,0)};
+});
+app.get('/v1/admin/message-center/:key',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const k=convKey(req.params.key);if(!k)return reply.code(404).send({error:'Conversation not found'});
+  let meta,messages=[],files=[],events;
+  if(k.project){
+    meta=(await pool.query(`select pr.id project_id,pr.name project_name,c.id client_id,c.name client_name from projects pr join clients c on c.id=pr.client_id where pr.id=$1`,[k.project])).rows[0];
+    if(!meta)return reply.code(404).send({error:'Conversation not found'});
+    messages=(await pool.query(`select pm.id,pm.author_role,pm.body,pm.reply_to_id,pm.created_at,coalesce(nullif(u.name,''),case when pm.author_role='client' then nullif(c.contact_name,'') end,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
+      from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id where pm.project_id=$1 order by pm.created_at desc limit 200`,[k.project])).rows.reverse();
+    files=(await pool.query(`select id,message_id,original_name,size_bytes from project_files where project_id=$1 and message_id is not null`,[k.project])).rows;
+    events=(await pool.query(`select s.id,s.type,s.title,s.entity_type,s.entity_id,s.read_at,s.created_at from (${NOTE_SCOPED_SQL}) s where s.project_id=$1 and not (s.type=any($2)) order by s.created_at desc limit 60`,[k.project,BUBBLE_NOTE_TYPES])).rows.reverse();
+  }else{
+    meta=(await pool.query(`select c.id client_id,c.name client_name from clients c where c.id=$1`,[k.general])).rows[0];
+    if(!meta)return reply.code(404).send({error:'Conversation not found'});
+    meta={...meta,project_id:null,project_name:'General'};
+    events=(await pool.query(`select s.id,s.type,s.title,s.entity_type,s.entity_id,s.read_at,s.created_at from (${NOTE_SCOPED_SQL}) s where s.client_id=$1 and (s.project_id is null or not exists(select 1 from projects pr where pr.id::text=s.project_id and pr.archived_at is null)) and not (s.type=any($2)) order by s.created_at desc limit 60`,[k.general,BUBBLE_NOTE_TYPES])).rows.reverse();
+  }
+  const productIds=events.filter(e=>e.entity_type==='product').map(e=>e.entity_id).filter(id=>UUID_RE.test(id));
+  return {conversation:{key:req.params.key,kind:k.project?'project':'general',clientId:meta.client_id,clientName:meta.client_name,projectId:meta.project_id,projectName:meta.project_name},
+    messages:messages.map(m=>({...m,files:files.filter(f=>f.message_id===m.id)})),
+    events:events.map(e=>({id:e.id,type:e.type,title:e.title,createdAt:e.created_at,unread:!e.read_at,productId:e.entity_type==='product'&&productIds.includes(e.entity_id)?e.entity_id:null}))};
+});
+app.post('/v1/admin/message-center/:key/read',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const k=convKey(req.params.key);if(!k)return reply.code(404).send({error:'Conversation not found'});
+  const r=k.project
+    ?await pool.query(`update notifications set read_at=now() where read_at is null and id in (select s.id from (${NOTE_SCOPED_SQL}) s where s.project_id=$1)`,[k.project])
+    :await pool.query(`update notifications set read_at=now() where read_at is null and id in (select s.id from (${NOTE_SCOPED_SQL}) s where s.client_id=$1 and (s.project_id is null or not exists(select 1 from projects pr where pr.id::text=s.project_id and pr.archived_at is null)))`,[k.general]);
+  return {read:r.rowCount};
+});
 app.patch('/v1/admin/notifications/:id/read',{preHandler:[authenticate,adminOnly]},async req=>
   (await pool.query('update notifications set read_at=now() where id=$1 returning *',[req.params.id])).rows[0]
 );
