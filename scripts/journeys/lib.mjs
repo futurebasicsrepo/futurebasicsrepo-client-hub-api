@@ -7,7 +7,11 @@ export const stamp = Date.now().toString(36).slice(-5);
 export const sql = q => execSync(`psql ${DB} -qAtc ${JSON.stringify(q)}`, { encoding: 'utf8' }).trim();
 export const results = []; let cur = null, nChecks = 0, nBad = 0;
 export const ok = (c, m, extra) => { nChecks++; if (!c) { nBad++; cur.fails.push(m + (extra !== undefined ? ` — got ${typeof extra === 'string' ? extra : JSON.stringify(extra)}`.slice(0, 260) : '')); } cur.checks++; };
+// JOURNEY_GATE=off runs the whole suite with the payment gate switched off for everyone. These journeys start from a locked pack, so
+// they are skipped there (and only there): every other journey must pass with the gate on and with it off.
+export const NEEDS_GATE_ON = new Set(['J08', 'J09', 'J26', 'J36', 'J37']);
 export async function journey(id, title, fn) {
+  if (process.env.JOURNEY_GATE === 'off' && NEEDS_GATE_ON.has(id)) { console.log(`skip ${id} ${title} (needs the payment gate on)`); return; }
   cur = { id, title, checks: 0, fails: [], ms: 0, error: null }; results.push(cur); const t = Date.now();
   try { await fn(); } catch (e) { cur.error = String(e.stack || e).split('\n').slice(0, 3).join(' | '); nBad++; }
   cur.ms = Date.now() - t; console.log(`${cur.fails.length || cur.error ? 'FAIL' : 'ok  '} ${id} ${title} (${cur.checks} checks, ${cur.ms}ms)`);

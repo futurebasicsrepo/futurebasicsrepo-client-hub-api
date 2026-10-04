@@ -158,4 +158,75 @@ await journey('J33', 'message center on a phone: list → thread → send, reply
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
 
+await journey('J37', 'staff switches: free access for one client, and the payment gate for everyone', async () => {
+  const r = await room('37', { wait: false }), W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const second = (await call('/v1/tech-packs', { token: r.token, body: { title: 'Second pack', projectId: r.projectId, photos: [runner] } })).json; ok(second.ai === 'locked', 'setup: the client has a pack waiting for payment', second.ai);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); const dialogs = []; page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+  try {
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => !/Checking/.test(document.getElementById('accessTitle')?.textContent || 'Checking'), null, { timeout: 10000 });
+    ok(/paid after the first free/i.test(await page.textContent('#accessTitle')) && await page.$eval('#accessSwitch', i => i.checked), 'the console home says tech packs are paid after the first, with the switch on', await page.textContent('#accessTitle'));
+    ok(/\d+ clients? (has|have) free access · \d+ packs? waiting/.test(await page.textContent('#accessText')), 'and counts who has free access and what is waiting', await page.textContent('#accessText'));
+    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.gate-row', { timeout: 10000 });
+    ok(!(await page.$eval('.gate-row input', i => i.checked)) && /Standard/.test(await page.textContent('.gate-row')), 'a client room shows "Standard" with the switch off');
+    await page.click('.gate-row .switch input'); await page.waitForSelector('.gate-row.on', { timeout: 10000 });
+    ok(/Free access/.test(await page.textContent('.gate-row')) && dialogs.some(m => /started/.test(m)), 'turning it on reads "Free access" and says the waiting pack started', [await page.textContent('.gate-row'), dialogs]);
+    let d = null; for (let i = 0; i < 40; i++) { d = (await call(`/v1/products/${second.product.id}/tech-pack/draft`, { token: r.token })).json; if (d.techPack.aiStatus !== 'locked') break; await sleep(400); } ok(d.techPack.aiStatus !== 'locked', 'and that pack really is unlocked', d.techPack?.aiStatus);
+    await page.screenshot({ path: `${S}/j37-client-room.png` });
+    await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => /free for everyone|paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 });
+    await page.click('#accessSwitch'); await page.waitForFunction(() => /free for everyone/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 });
+    ok(dialogs.some(m => /free for everyone\?/i.test(m)) && !(await page.$eval('#accessSwitch', i => i.checked)) && await page.isVisible('#accessAuto'), 'the global switch asks first, then reads "free for everyone" and offers "Use automatic"');
+    await page.screenshot({ path: `${S}/j37-access-off.png`, clip: { x: 0, y: 0, width: 1280, height: 520 } });
+    await page.click('#accessAuto'); await page.waitForFunction(() => /paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 }); ok(await page.$eval('#accessSwitch', i => i.checked) && !(await page.isVisible('#accessAuto')), '"Use automatic" puts it back');
+    await page.reload({ waitUntil: 'networkidle' }); await page.waitForFunction(() => /paid after/.test(document.getElementById('accessTitle').textContent), null, { timeout: 10000 }); ok(true, 'and it is still back after a reload');
+    ok(page.errs.length === 0, 'no script errors', page.errs);
+  } finally { await call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: 'auto' } }); await ctx.close(); }
+});
+
+await journey('J38', 'the whole customer path with the payment gate on, then off, switched live on the same server', async () => {
+  const seed = await room('38s', { wait: false });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${seed.email}'`), clientId: seed.clientId, role: 'admin' });
+  const setMode = m => call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: m } });
+  const field = '[data-path=\'["style","styleName"]\']', PAY = /first tech pack was on us|\$48|Unlock this tech pack/i;
+  const status = async (token, id) => (await call(`/v1/products/${id}/tech-pack/draft`, { token })).json.techPack;
+  const settle = async (token, id, ms = 20000) => { let t; for (let i = 0; i < ms / 400; i++) { t = await status(token, id); if (t.aiStatus && !['pending', 'locked'].includes(t.aiStatus)) break; await sleep(400); } return t; };
+  try {
+    for (const mode of ['on', 'off']) {
+      const gate = mode === 'on', tag = `gate ${mode}`;
+      ok((await setMode(mode)).json.effective === gate, `${tag}: switched`);
+      // 1. a brand-new customer on a phone: photo → tech pack → the assistant builds it → edit → submit. Free in both modes.
+      const { ctx, page } = await phone(); page.on('dialog', d => d.accept());
+      await page.goto(`${BASE}/start`, { waitUntil: 'networkidle' }); await addImage(page); await fill(page, { email: em('38' + mode), title: `Gate ${mode} runner` }); await page.click('#go');
+      await page.waitForURL(/\/tech-packs\//, { timeout: 20000 }); const id = page.url().split('/tech-packs/')[1].split(/[?#]/)[0]; const token = await page.evaluate(() => localStorage.getItem('fb.client.token'));
+      const t1 = await settle(token, id); ok(t1.aiStatus === 'done', `${tag}: the first pack is drafted by the assistant`, t1.aiStatus);
+      await page.waitForFunction(() => /Draft written|written/i.test(document.body.innerText), null, { timeout: 20000 }).catch(() => {}); ok(!PAY.test(await page.innerText('body')), `${tag}: and the first pack never mentions payment`);
+      await page.fill(field, `Edited, gate ${mode}`); await sleep(2900); ok((await status(token, id)).data.style.styleName === `Edited, gate ${mode}`, `${tag}: a hand edit autosaves`);
+      await page.click('[data-act="submit"]'); let sub = await status(token, id); for (let i = 0; i < 20 && sub.status !== 'submitted'; i++) { await sleep(400); sub = await status(token, id); }
+      ok(sub.status === 'submitted', `${tag}: the customer submits it to Future Basics`, sub.status); await ctx.close();
+      // 2. the same customer starts a second pack
+      const projectId = (await call('/v1/dashboard', { token })).json.projects[0].id, mk = title => call('/v1/tech-packs', { token, body: { title, projectId, photos: [runner] } }).then(r => r.json);
+      const second = await mk(`Second, gate ${mode}`);
+      if (gate) {
+        ok(second.ai === 'locked', `${tag}: the second pack waits for payment`, second.ai);
+        const { ctx: c2, page: p2 } = await phone(); await openEditor(p2, token, second.product.id); await sleep(900); ok(PAY.test(await p2.innerText('body')) && await p2.isVisible('[data-act="paysingle"]'), `${tag}: the customer sees the price and a pay button`);
+        ok((await call(`/v1/products/${second.product.id}/tech-pack/submit`, { method: 'POST', token, body: {} })).status === 402, `${tag}: and cannot submit it unpaid`);
+        // the gate is switched off while that customer is looking at the locked pack: it starts without anyone paying
+        await setMode('off'); await p2.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await p2.click('[data-act="unlock"]').catch(() => {});
+        const t2 = await settle(token, second.product.id); ok(t2.aiStatus === 'done', `${tag}: switching the gate off while they watch starts the pack`, t2.aiStatus); await p2.waitForFunction(() => !/Unlock this tech pack/i.test(document.body.innerText), null, { timeout: 10000 }).catch(() => {}); ok(!(await p2.isVisible('[data-act="paysingle"]')), `${tag}: and the pay button is gone from their screen`); await c2.close();
+        await setMode('on');
+        const third = await mk(`Third, gate ${mode}`); ok(third.ai === 'locked', `${tag}: a third pack is locked again once the gate is back`, third.ai);
+        ok((await call(`/v1/admin/clients/${seed.clientId}`, { method: 'PATCH', token: admin, body: { techPackComped: true } })).status === 200, `${tag}: (the console gives a different client free access)`);
+        const room2 = await call('/v1/admin/clients', { method: 'POST', token: admin, body: { name: `Gifted ${stamp}${mode}`, slug: `gifted-${stamp}-${mode}`, allowedEmails: [`gift38-${stamp}@creator.test`], techPackComped: true } }); ok(room2.status === 200 && room2.json.tech_pack_comped, `${tag}: a creator can be given free access ahead of time`);
+      } else {
+        ok(second.ai === 'pending' || second.ai === 'done', `${tag}: the second pack is not locked, the assistant runs`, second.ai);
+        const t2 = await settle(token, second.product.id); ok(t2.aiStatus === 'done', `${tag}: and finishes`, t2.aiStatus);
+        const { ctx: c2, page: p2 } = await phone(); await openEditor(p2, token, second.product.id); await sleep(900); ok(!PAY.test(await p2.innerText('body')) && !(await p2.isVisible('[data-act="paysingle"]')), `${tag}: the second pack shows no payment step`); await c2.close();
+        const sub2 = await call(`/v1/products/${second.product.id}/tech-pack/submit`, { method: 'POST', token, body: {} }); ok(sub2.status === 200, `${tag}: and submits to Future Basics`, [sub2.status, sub2.json.error]);
+        ok((await mk(`Third, gate ${mode}`)).ai !== 'locked', `${tag}: a third pack is free too`);
+      }
+    }
+  } finally { await setMode('auto'); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

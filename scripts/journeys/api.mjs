@@ -283,4 +283,30 @@ await journey('J35', 'the database drops connections: the service stays up and k
   const room = await newRoom('35', { wait: false }); ok(room.token, 'and a customer can still start a pack right after', room.r.status);
 });
 
+await journey('J36', 'payment gate: free access per client, a global switch, and what waits for payment starts when it opens', async () => {
+  let restore = null;
+  try {
+  const a = await newRoom('36'), cid = a.r.json.client.id, pid = a.r.json.project.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${a.email}'`), clientId: cid, role: 'admin' }); restore = () => call('/v1/admin/tech-pack-billing', { method: 'PUT', token: admin, body: { mode: 'auto' } });
+  const hubPack = async (title) => (await call('/v1/tech-packs', { token: a.token, body: { title, projectId: pid, photos: [runner] } })).json;
+  const adm = (path, o = {}) => call(path, { token: admin, ...o });
+  ok((await call('/v1/admin/tech-pack-billing', { token: a.token })).status === 403 && (await call('/v1/admin/tech-pack-billing')).status === 401, 'only staff can read or change the gate');
+  let b = (await adm('/v1/admin/tech-pack-billing')).json; ok(b.mode === 'auto' && b.effective === true && b.priceCents > 0, 'the gate starts automatic and on in this setup', b);
+  ok((await adm('/v1/admin/tech-pack-billing', { method: 'PUT', body: { mode: 'sideways' } })).status === 400, 'a nonsense mode is refused');
+  const second = await hubPack('Second · standard'); ok(second.ai === 'locked', 'a standard client\'s second pack waits for payment', second.ai);
+  const on = await adm(`/v1/admin/clients/${cid}`, { method: 'PATCH', body: { techPackComped: true } }); ok(on.status === 200 && on.json.tech_pack_comped === true && on.json.unlockedPacks >= 1, 'giving free access unlocks the pack that was waiting', [on.status, on.json.unlockedPacks]);
+  const d2 = await waitAi(call, a.token, second.product.id); ok(['pending', 'done'].includes(d2.json.techPack.aiStatus) && d2.json.techPack.aiStatus !== 'locked', 'and the assistant runs on it', d2.json.techPack?.aiStatus);
+  ok((await hubPack('Third · free access')).ai !== 'locked', 'a new pack is never locked while they have free access');
+  const off = await adm(`/v1/admin/clients/${cid}`, { method: 'PATCH', body: { techPackComped: false } }); ok(off.status === 200 && off.json.tech_pack_comped === false && off.json.unlockedPacks === 0, 'taking it away works');
+  const fourth = await hubPack('Fourth · standard again'); ok(fourth.ai === 'locked', 'and the next pack is locked again', fourth.ai);
+  const gateOff = await adm('/v1/admin/tech-pack-billing', { method: 'PUT', body: { mode: 'off' } }); ok(gateOff.status === 200 && gateOff.json.effective === false && gateOff.json.starting >= 1, 'switching the gate off for everyone answers at once and starts what was waiting', [gateOff.status, gateOff.json.starting]);
+  let d4; for (let i = 0; i < 40; i++) { d4 = await draftOf(a.token, fourth.product.id); if (d4.techPack.aiStatus !== 'locked') break; await sleep(500); } ok(d4.techPack.aiStatus !== 'locked', 'the pack that was waiting is no longer locked', d4.techPack?.aiStatus);
+  ok((await hubPack('Fifth · gate off')).ai !== 'locked', 'while it is off nothing is locked');
+  const auto = await adm('/v1/admin/tech-pack-billing', { method: 'PUT', body: { mode: 'auto' } }); ok(auto.json.mode === 'auto' && auto.json.effective === true, 'back to automatic, the gate is on again');
+  ok((await hubPack('Sixth · gate on')).ai === 'locked', 'and new packs are locked again');
+  const made = await adm('/v1/admin/clients', { method: 'POST', body: { name: `Gifted ${stamp}`, slug: `gifted-${stamp}`, allowedEmails: [`gift-${stamp}@creator.test`], techPackComped: true } }); ok(made.status === 200 && made.json.tech_pack_comped === true, 'a creator can be added with free access from the start', [made.status, made.json.tech_pack_comped]);
+  const fresh = await start(`gift-${stamp}@creator.test`, { title: 'First of theirs' }); const signed = await signIn(`gift-${stamp}@creator.test`); const t2 = await call('/v1/tech-packs', { token: signed.token, body: { title: 'Their second', projectId: fresh.json.project.id, photos: [runner] } }); ok(t2.json.ai && t2.json.ai !== 'locked', 'and their second pack is not locked', t2.json.ai);
+  } finally { if (restore) await restore(); } // never leave the shared test database with the gate switched
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
