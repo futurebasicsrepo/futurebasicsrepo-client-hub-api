@@ -8,7 +8,7 @@ const phone = async () => { const ctx = await browser.newContext({ viewport: { w
 const msg = async page => (await page.textContent('#msg')).trim();
 const fill = async (page, { title = 'Layer runner', email, name = 'Chaos UI' } = {}) => { await page.fill('#title', title); await page.fill('#email', email); await page.fill('#name', name); };
 const addImage = async (page, f = 'ig-screenshot.png', sel = '#photos') => { const before = await page.locator('#shots .shot').count(); await page.setInputFiles(sel, `${FX}/${f}`); await page.waitForFunction(b => document.querySelectorAll('#shots .shot').length > b, before, { timeout: 8000 }).catch(() => {}); };
-async function room(tag, { wait = true } = {}) { const email = em(tag), r = await call('/v1/public/start', { body: { email, name: 'UI Room', title: 'Layer runner', photos: [runner] } }); const out = { email, token: r.json.token, id: r.json.product?.id }; if (wait) await waitAi(call, out.token, out.id); return out; }
+async function room(tag, { wait = true } = {}) { const email = em(tag), r = await call('/v1/public/start', { body: { email, name: 'UI Room', title: 'Layer runner', photos: [runner] } }); const out = { email, token: r.json.token, id: r.json.product?.id, projectId: r.json.project?.id, clientId: r.json.client?.id }; if (wait) await waitAi(call, out.token, out.id); return out; }
 const openEditor = async (page, token, id) => { await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, token); await page.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); };
 
 await journey('J20', 'phone: /start with every mistake a customer can make, then success', async () => {
@@ -87,6 +87,44 @@ await journey('J27', 'two tabs on one draft: the older tab cannot overwrite the 
   const server = (await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).json.techPack.data.style.styleName; ok(server === 'Written in tab A', 'and the server kept the newer version', server);
   await typeIn(b.page, 'Tab B after reload'); const after = (await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).json.techPack.data.style.styleName; ok(after === 'Tab B after reload', 'after the reload tab B can save again', after);
   ok(a.page.errs.length === 0 && b.page.errs.length === 0, 'no script errors', [...a.page.errs, ...b.page.errs]); await a.ctx.close(); await b.ctx.close();
+});
+
+await journey('J31', 'getting to the tech pack and back: every level is a link, and back lands on the same product', async () => {
+  const r = await room('31'), W = 'http://work.localhost:3123';
+  const wide = async (role, token) => { const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } }); await ctx.addInitScript(([k, t]) => { try { localStorage.setItem(k, t); } catch {} }, [role === 'admin' ? 'fb.admin.token' : 'fb.client.token', token]); const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); return { ctx, page }; };
+  const crumbs = page => page.$$eval('#crumb a, #crumb [aria-current], #crumbs button, #crumbs [aria-current]', els => els.map(e => e.textContent.trim()));
+  // the customer: project → product → tech pack → back
+  let { ctx, page } = await wide('client', r.token);
+  await page.goto(`${BASE}/projects/${r.projectId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  let c = await crumbs(page); ok(c[0] === 'Projects' && c[c.length - 1] === 'Layer runner' && c.length === 4, 'the hub product page shows Projects › project › Products › product', c);
+  ok(await page.locator('#projectPage .back-link').count() === 0, 'and no stray "back" button is left');
+  await page.click('.tpstrip'); await page.waitForSelector('#acts .btn.primary', { timeout: 10000 }); await sleep(600);
+  c = await crumbs(page); ok(c.length === 4 && c[0] === 'Projects' && c[2] === 'Layer runner' && c[3] === 'Tech pack', 'the tech pack shows Projects › project › product › Tech pack', c);
+  const visible = await page.$$eval('#acts > .btn, #acts > .status', els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())); ok(visible.length <= 3, 'the top bar has a status, Save and Submit — nothing else', visible);
+  await page.click('#acts details.more > summary'); const menu = await page.$$eval('#acts .menu button', els => els.map(e => e.textContent.trim())); ok(menu.includes('Download PDF'), 'PDF is under More', menu);
+  await page.click('body', { position: { x: 4, y: 500 } }); ok(!(await page.$eval('#acts details.more', d => d.open)), 'clicking elsewhere closes the menu');
+  await page.click('#crumb a.parent'); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  ok(page.url().endsWith(`/projects/${r.projectId}#product=${r.id}`), 'back from the tech pack lands on the same product, not the project list', page.url());
+  await page.click('#crumbs button:first-child'); await page.waitForSelector('#products .card', { timeout: 10000 }); ok(await page.$eval('#projectPage', e => e.classList.contains('hidden')), 'the Projects crumb goes home');
+  ok(page.errs.length === 0, 'no script errors (customer)', page.errs); await ctx.close();
+  // staff: client room → product → tech pack → back
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  ({ ctx, page } = await wide('admin', admin));
+  await page.goto(`${W}/clients/${r.clientId}#product=${r.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  ok(await page.locator('#clientPageBody .room-status').count() === 0, 'a product page does not carry the client details panel above it');
+  c = await crumbs(page); ok(c[0] === 'Clients' && c.length === 4 && c[3] === 'Layer runner', 'the console product page shows Clients › client › project › product', c);
+  const groups = await page.$$eval('.actgroup > .meta', els => els.map(e => e.textContent.trim())); ok(groups.length === 3, 'product actions sit in three labelled groups, not one row of pills', groups);
+  await page.click('.tpstrip'); await page.waitForSelector('#acts .btn.primary', { timeout: 10000 }); await sleep(600);
+  c = await crumbs(page); ok(c.length === 5 && c[0] === 'Clients' && c[4] === 'Tech pack', 'the console tech pack shows Clients › client › project › product › Tech pack', c);
+  const vis = await page.$$eval('#acts > .btn, #acts > .status', els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())); ok(vis.length <= 4 && vis.some(t => /^Save/.test(t)) && vis.some(t => /^Publish/.test(t)), 'staff see status, Save, Publish and More — the rest is under More', vis);
+  await page.click('#acts details.more > summary'); const am = await page.$$eval('#acts .menu button', els => els.map(e => e.textContent.trim())); ok(am.includes('Download PDF') && am.some(t => /assistant/i.test(t)) && am.some(t => /factory/i.test(t)), 'run assistant, translate and PDF are under More', am);
+  await page.click('body', { position: { x: 4, y: 500 } }); await page.click('#crumb a.parent'); await page.waitForSelector('.tpstrip', { timeout: 10000 });
+  ok(page.url().endsWith(`/clients/${r.clientId}#product=${r.id}`) && /Layer runner/i.test(await page.$eval('#roomMain .product h3', e => e.textContent)), 'back from the console tech pack opens the same product in the room', page.url());
+  ok(page.errs.length === 0, 'no script errors (staff)', page.errs); await ctx.close();
+  // phone: a single "‹ product" link instead of the whole trail
+  const ph = await phone(); await openEditor(ph.page, r.token, r.id); await sleep(800);
+  const shown = await ph.page.$$eval('#crumb a, #crumb [aria-current]', els => els.filter(e => e.offsetParent).map(e => e.textContent.trim())); ok(shown.length === 1 && shown[0] === 'Layer runner', 'on a phone the top bar shows one "‹ product" link', shown);
+  const barRight = await ph.page.$eval('#acts', e => e.getBoundingClientRect().right); ok(barRight <= 390, 'and the buttons fit the screen', barRight); await ph.ctx.close();
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
