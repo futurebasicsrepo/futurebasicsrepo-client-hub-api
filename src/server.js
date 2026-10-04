@@ -247,9 +247,9 @@ async function sendIntakeConfirmation(intake){
     <ol><li>We read it and reply within two business days, usually with a few questions.</li><li>You get an email the moment your private project room is ready — one place for the brief, concepts, tech packs, samples, quotes and our shared thread.</li><li>From there every product moves brief → concept → tech pack → sample → production, and you approve each step in the room.</li></ol>
     <p style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#717177;margin-top:24px">What you sent</p>${rows.map(([l,v])=>`<p style="margin:4px 0"><strong>${emailEscape(l)}:</strong> ${emailEscape(v)}</p>`).join('')}<p style="margin-top:12px;white-space:pre-wrap">${emailEscape(d.projectBrief)}</p>`)});
 }
-async function clientForEmail(email){
+async function clientForEmail(email,q=pool){
   const domain=emailDomain(email);
-  return (await pool.query(`select * from clients where status='active' and (($1<>'' and $1=any(email_domains)) or $2=any(allowed_emails))
+  return (await q.query(`select * from clients where status='active' and (($1<>'' and $1=any(email_domains)) or $2=any(allowed_emails))
     order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
 }
 
@@ -310,10 +310,13 @@ app.post('/v1/public/intakes',async(req,reply)=>{
         client=(await db.query(`update clients set name=$1,contact_name=$2,contact_phone=coalesce(nullif($3,''),contact_phone),website_url=coalesce(nullif($4,''),website_url),
           notes=$5 where id=$6 returning *`,[companyName,contactName,data.phone,data.websiteUrl,`Latest website intake · ${projectName}`,client.id])).rows[0];
       }else{
-        let slug=intakeSlug(companyName),candidate=slug;
-        if((await db.query('select 1 from clients where slug=$1',[candidate])).rowCount)candidate=`${slug.slice(0,43)}-${randomBytes(2).toString('hex')}`;
-        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,contact_phone,website_url,notes)
-          values($1,$2,'lead',$3,$4,$5,$6,$7) returning *`,[candidate,companyName,contactName,email,data.phone||null,data.websiteUrl||null,`Website intake · ${projectName}`])).rows[0];
+        const slug=intakeSlug(companyName);
+        for(let attempt=0;attempt<8&&!client;attempt++){ // a taken slug means another try with a longer suffix, never an error for the person filling in the form
+          const candidate=attempt===0?slug:`${slug.slice(0,40)}-${randomBytes(attempt<4?3:5).toString('hex')}`;
+          client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,contact_phone,website_url,notes)
+            values($1,$2,'lead',$3,$4,$5,$6,$7) on conflict(slug) do nothing returning *`,[candidate,companyName,contactName,email,data.phone||null,data.websiteUrl||null,`Website intake · ${projectName}`])).rows[0]||null;
+        }
+        if(!client)throw new Error('could not find a free room name');
       }
       const project=(await db.query(`insert into projects(client_id,name,status,milestone,target_date) values($1,$2,'intake','Brief',$3)
         on conflict(client_id,name) do update set status='intake',milestone='Brief',target_date=coalesce(excluded.target_date,projects.target_date),updated_at=now() returning *`,
@@ -383,11 +386,11 @@ app.post('/v1/auth/verify', async (req, reply) => {
     if (!result.rowCount) {
       await c.query('rollback');
       // five wrong guesses in a window and every open code for this email is burned: a six-digit code cannot be brute-forced
-      if (email && !throttle(`guess:${email}`, CODE_GUESS)) { await pool.query('update login_codes set consumed_at=now() where email=$1 and consumed_at is null', [email]).catch(() => {}); return reply.code(429).send(tooManyGuesses); }
+      if (email && !throttle(`guess:${email}`, CODE_GUESS)) { await c.query('update login_codes set consumed_at=now() where email=$1 and consumed_at is null', [email]).catch(() => {}); return reply.code(429).send(tooManyGuesses); }
       return reply.code(401).send({ error: 'Invalid or expired code' });
     }
     throttles.delete(`guess:${email}`);
-    client = await clientForEmail(email);
+    client = await clientForEmail(email, c);
     if (!client) { await c.query('rollback'); return reply.code(403).send({ error: 'Client access is no longer active' }); }
     const role = email.split('@')[1] === 'thefuturebasics.com' ? 'admin' : 'client';
     user = (await c.query(
@@ -2322,21 +2325,26 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   const prep=await preparePhotos(b.photos);if(prep.bad)return reply.code(400).send({error:`Photo ${prep.bad} could not be opened — re-save it as a JPG or PNG and try again`});
   const photos=prep.photos;if(!photos.length)return reply.code(400).send({error:'Add at least one photo or screenshot'});
   const sketches=photos.map((image,i)=>({id:`photo-${i+1}`,view:i===0?'front':'detail',label:i===0?'Reference photo':`Reference photo ${i+1}`,image,garmentWidthIn:null,callouts:[]}));
-  const db=await pool.connect();
+  const db=await pool.connect();let released=false;const release=()=>{if(!released){released=true;db.release()}};
   try{
     await db.query('begin');
     await db.query('select pg_advisory_xact_lock(hashtext($1))',[email]); // a double-tap sends two of these at once: the second waits and finds the room the first made
-    let client=await clientForEmail(email),brandNew=false;
+    let client=await clientForEmail(email,db),brandNew=false;
     if(!client){
       const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
       if(lead){
         client=(await db.query(`update clients set status='active',allowed_emails=(select array_agg(distinct e) from unnest(allowed_emails||$2::text[]) e),activated_at=coalesce(activated_at,now()),
           contact_name=coalesce(nullif(contact_name,''),$3),acquisition=coalesce(acquisition,$4::jsonb) where id=$1 returning *`,[lead.id,[email],name||null,attribution?JSON.stringify(attribution):null])).rows[0];
       }else{
-        const base=intakeSlug(name||email.split('@')[0]);let slug=base;
-        if((await db.query('select 1 from clients where slug=$1',[slug])).rowCount)slug=`${base.slice(0,43)}-${randomBytes(2).toString('hex')}`;
-        client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at,acquisition) values($1,$2,'active',$3,$4,$5,$6,now(),$7::jsonb) returning *`,
-          [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`,attribution?JSON.stringify(attribution):null])).rows[0];
+        // The name is not unique (two people called Alex, or the same person twice): the plain slug first, then a random suffix.
+        // Each try is an insert that does nothing on a clash, so a taken slug (even one taken a moment ago by someone else) just means another try, never a 500.
+        const base=intakeSlug(name||email.split('@')[0]);
+        for(let attempt=0;attempt<8&&!client;attempt++){
+          const slug=attempt===0?base:`${base.slice(0,40)}-${randomBytes(attempt<4?3:5).toString('hex')}`;
+          client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,allowed_emails,notes,activated_at,acquisition) values($1,$2,'active',$3,$4,$5,$6,now(),$7::jsonb) on conflict(slug) do nothing returning *`,
+            [slug,name||email.split('@')[0],name||null,email,[email],`Self-serve · started a tech pack from a photo`,attribution?JSON.stringify(attribution):null])).rows[0]||null;
+        }
+        if(!client)throw new Error('could not find a free room name');
         brandNew=true;
       }
     }else if(attribution&&!client.acquisition){client=(await db.query(`update clients set acquisition=$2::jsonb where id=$1 and acquisition is null returning *`,[client.id,JSON.stringify(attribution)])).rows[0]||client}
@@ -2349,7 +2357,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     if(dup){product={id:dup.product_id,title};pack={id:dup.pack_id};ai=dup.ai_status==='locked'?'locked':(dup.ai_status==='pending'||dup.ai_status==='done')?'pending':null}
     else{({product,pack}=await createClientDraft(db,{clientId:client.id,clientName:client.name,project,title,description:notes,userId:user.id,sketches,source:'photo'}));
       ai=aiEnabled()?(await gateNewPhotoDraft(db,{clientId:client.id,packId:pack.id})).ai:null}
-    await db.query('commit');
+    await db.query('commit');release(); // from here on this request needs the pool for its own queries: never hold a connection while asking for another
     if(!dup&&ai==='pending')setImmediate(()=>enrichPhotoDraft(pack.id).catch(e=>app.log.warn({err:e.message},'enrich failed')));
     // Only a room created in this request hands out a session: the email is unverified, and a known room must be entered with a code.
     // The same tap sent twice is answered from the draft the first one made (no second welcome email).
@@ -2360,7 +2368,7 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
     if(!dup)sendHubEmail({to:email,subject:`Your tech pack draft — ${product.title}`,html:hubEmailShell('Your tech pack draft is started',
       `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>${ai==='locked'?`Your photo is saved on a new tech pack draft for <strong>${emailEscape(product.title)}</strong>. Your first pack was on us; open this one to have the assistant draft it for $${(TECH_PACK_PRICE_CENTS/100).toFixed(0)}${MEMBERSHIP_URL?` or join the studio membership`:''} — or fill it in yourself, which is always free.`:`We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.`}</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
     return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:ai||'off'});
-  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{release()}
 });
 // Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
 // without photos they get the blank template. `project` is an existing project row or null to use/create "Product development".
