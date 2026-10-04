@@ -369,4 +369,46 @@ await journey('J49', 'the console home: waiting on approval, production attentio
   } finally { await ctx.close(); }
 });
 
+await journey('J51', 'the same chat everywhere: the room thread in the work console and the project messages in the hub', async () => {
+  const r = await room('51', { wait: false }), W = 'http://work.localhost:3123', pid = r.projectId;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const hello = await call(`/v1/projects/${pid}/messages`, { token: r.token, body: { body: 'Is the sample still on track?' } });
+  await call(`/v1/admin/projects/${pid}/messages`, { token: admin, body: { body: 'Yes, ships on the 28th.', replyToId: hello.json.id } });
+  // ---- the work console: a client room, the project ----
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); window.FBCHAT_POLL_MS = 1200; } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${W}/clients/${r.clientId}#project=${pid}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#roomChat .mc-msg', { timeout: 15000 });
+    ok(await wp.locator('#roomChat .mc-msg.in .mc-bub', { hasText: 'still on track' }).count() === 1 && await wp.locator('#roomChat .mc-msg.out .mc-bub', { hasText: 'ships on the 28th' }).count() === 1, 'the client\'s bubble is on the left and ours is on the right');
+    ok(await wp.locator('#roomChat .mc-stamp').count() >= 1 && await wp.locator('#roomChat .mc-quote').count() === 1, 'with a time stamp and the quoted reply');
+    const txt = await wp.innerText('#roomChat'); ok(!/@[a-z0-9-]+\./i.test(txt) && !/\d{1,2}\/\d{1,2}\/\d{4}/.test(txt), 'no email address or raw date in the bubbles', txt.slice(0, 120));
+    ok(await wp.locator('#rcText').isVisible() && await wp.locator('.mc-attach').first().isVisible() && await wp.$eval('#rcSendBtn', b => b.disabled), 'the box has an attach button and a Send that is off while empty');
+    await wp.fill('#rcText', 'Booked the courier.'); await wp.press('#rcText', 'Enter'); await wp.waitForSelector('#roomChat .mc-msg.out .mc-text:has-text("Booked the courier.")', { timeout: 8000 }); ok(true, 'Enter sends and the bubble appears');
+    await wp.locator('#roomChat .mc-msg.in .mc-bub').first().click(); await wp.click('#roomChat .mc-msg.in.sel .mc-acts button'); ok(await wp.locator('#rcReplyBar').isVisible(), 'tapping a bubble offers Reply');
+    await wp.fill('#rcText', 'Replying to that'); await wp.click('#rcSendBtn'); await wp.waitForFunction(() => document.querySelectorAll('#roomChat .mc-quote').length >= 2, null, { timeout: 8000 }); ok(true, 'the reply carries its quote');
+    await wp.setInputFiles('#rcFile', `${FX}/ig-screenshot.png`); await wp.click('#rcSendBtn'); await wp.waitForSelector('#roomChat .mc-file', { timeout: 10000 }); ok(/ig-screenshot\.png/.test(await wp.textContent('#roomChat .mc-file')), 'an attachment appears in the thread');
+    // live: the client writes from elsewhere; it shows up without a reload
+    await call(`/v1/projects/${pid}/messages`, { token: r.token, body: { body: 'Thanks, see you on the 28th.' } }); await wp.waitForSelector('#roomChat .mc-bub:has-text("see you on the 28th")', { timeout: 9000 }); ok(true, 'a message that arrives while it is open appears by itself');
+    ok(await wp.$eval('#roomChat .mc-msgs', e => e.scrollHeight - e.scrollTop - e.clientHeight < 60), 'and the thread stays at the newest message');
+    ok(wp.errs.length === 0, 'no script errors in the console', wp.errs);
+    await wp.locator('#roomChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-work-thread.png` }).catch(() => {});
+  } finally { await wctx.close(); }
+  // ---- the hub, on a phone ----
+  const { ctx, page } = await phone(); await page.addInitScript(() => { window.FBCHAT_POLL_MS = 1200; });
+  try {
+    await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+    await page.goto(`${BASE}/projects/${pid}#thread`, { waitUntil: 'networkidle' }); await page.waitForSelector('#hubChat .mc-msg', { timeout: 15000 });
+    ok(await page.locator('#hubChat .mc-msg.out .mc-bub', { hasText: 'still on track' }).count() === 1 && await page.locator('#hubChat .mc-msg.in .mc-bub', { hasText: 'ships on the 28th' }).count() === 1, 'in the hub the customer is on the right and Future Basics on the left');
+    ok(/Future Basics/.test(await page.locator('#hubChat .mc-from').first().innerText()), 'with the sender named "Future Basics", not an address');
+    ok(await page.locator('#hubChat .mc-quote').count() >= 1 && await page.locator('#hubChat .mc-stamp').count() >= 1, 'the quoted reply and the time stamp are there too');
+    await page.fill('#hcText', 'One more thing: the lace colour.'); await page.click('#hcSendBtn'); await page.waitForSelector('#hubChat .mc-msg.out .mc-text:has-text("lace colour")', { timeout: 8000 }); ok(true, 'the customer sends from the same kind of box');
+    await page.setInputFiles('#hcFile', `${FX}/ig-screenshot.png`); await page.click('#hcSendBtn'); await page.waitForSelector('#hubChat .mc-file', { timeout: 10000 }); ok(true, 'and attaches a file');
+    await call(`/v1/admin/projects/${pid}/messages`, { token: admin, body: { body: 'Lace is waxed cotton, noted.' } }); await page.waitForSelector('#hubChat .mc-bub:has-text("waxed cotton")', { timeout: 9000 }); ok(true, 'a reply from us appears by itself');
+    const w = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'no sideways scroll on a phone', w);
+    ok(await page.locator('#hubChat .fbchat-panel, #hubChat.fbchat-panel').count() >= 1 && !(await page.locator('.client-chat, .chat-form').count()), 'the old message box is gone');
+    ok(page.errs.length === 0, 'no script errors in the hub', page.errs);
+    await page.locator('#hubChat').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j51-hub-thread-phone.png` }).catch(() => {});
+  } finally { await ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

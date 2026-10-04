@@ -409,4 +409,23 @@ await journey('J48', 'the console queues follow the real work: tech packs, quote
   const raw = JSON.stringify((await adm('/v1/admin/dashboard')).json.queues); ok(!/"cost|unit_cost|internal/i.test(raw), 'nothing internal (cost, internal notes) leaks into the queue items');
 });
 
+await journey('J50', 'the hub project thread: names written for a reader, files and product talk folded in, and only your own project', async () => {
+  const a = await newRoom('50a'), b = await newRoom('50b'), cid = a.r.json.client.id, pid = a.r.json.project.id, id = a.productId;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${a.email}'`), clientId: cid, role: 'admin' });
+  const t = (token, project = pid) => call(`/v1/projects/${project}/thread`, { token });
+  ok((await t(undefined)).status === 401, 'no sign-in → 401'); ok((await t(b.token)).status === 404, 'another client\'s token → 404, nothing leaks', (await t(b.token)).status); ok((await t(a.token, 'not-a-uuid')).status === 404, 'a malformed project id → 404');
+  const first = await call(`/v1/projects/${pid}/messages`, { token: a.token, body: { body: 'Can you check the outsole width?' } }); ok(first.status === 201, 'the client writes');
+  const reply = await call(`/v1/admin/projects/${pid}/messages`, { token: admin, body: { body: 'Checked, it is right.', replyToId: first.json.id } }); ok(reply.status === 201, 'staff reply, quoting it');
+  sql(`insert into comments(client_id,product_id,author_role,body,visibility) values('${cid}','${id}','admin','Colour board is on its way','client')`);
+  sql(`insert into comments(client_id,product_id,author_role,body,visibility) values('${cid}','${id}','admin','INTERNAL: supplier is slow','internal')`);
+  const r = await t(a.token); ok(r.status === 200 && Array.isArray(r.json.messages) && Array.isArray(r.json.events), 'the client reads the thread', r.status);
+  const m = r.json.messages, mine = m.find(x => x.id === first.json.id), staff = m.find(x => x.id === reply.json.id), talk = m.find(x => /Colour board/.test(x.body));
+  ok(mine && mine.author_role === 'client' && mine.author_name, 'their own message carries a name');
+  ok(staff && staff.author_role === 'admin' && staff.author_name === 'Future Basics' && !/@/.test(staff.author_name) && staff.reply_to_id === first.json.id, 'staff are "Future Basics", never an email address, and the reply keeps what it quotes', staff);
+  ok(talk && /^About /.test(talk.tag || '') && talk.noReply === true && talk.author_name === 'Future Basics', 'what staff said on a product shows in the thread, tagged with the product', talk);
+  ok(!JSON.stringify(r.json).includes('INTERNAL'), 'and an internal note never does');
+  ok(m.every((x, i) => i === 0 || new Date(x.created_at) >= new Date(m[i - 1].created_at)), 'oldest first');
+  ok(!JSON.stringify((await t(b.token, b.r.json.project.id)).json).includes('outsole'), 'each client\'s thread holds only their own words');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

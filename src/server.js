@@ -532,6 +532,9 @@ app.get('/tech-pack.webmanifest',(_req,reply)=>reply.header('cache-control','pub
 app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[a-z0-9-]+\.(png|svg)$/.test(f))return reply.code(404).send({error:'Not found'});try{return reply.header('cache-control','public, max-age=604800').type(f.endsWith('.svg')?'image/svg+xml':'image/png').send(readFileSync(new URL(f,iconDir)))}catch{return reply.code(404).send({error:'Not found'})}});
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
+// The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
+app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
 app.get('/tech-packs/:productId', sendTechPack);
@@ -1505,6 +1508,26 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     ] };
 });
 
+// A project's thread as the client sees it: names written for a reader (our staff are "Future Basics", a client's own people go by name), files attached
+// to their messages, and what was said about the project's products folded in as tagged messages.
+app.get('/v1/projects/:id/thread',{preHandler:authenticate},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Project not found'});
+  const project=(await pool.query(`select id,name from projects where id=$1 and client_id=$2 and archived_at is null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!project)return reply.code(404).send({error:'Project not found'});
+  const [msgs,files,comments]=await Promise.all([
+    pool.query(`select pm.id,pm.author_role,pm.body,pm.reply_to_id,pm.created_at,
+        case when pm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email,c.name) end author_name
+      from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id where pm.project_id=$1 and pm.client_id=$2 order by pm.created_at desc limit 200`,[project.id,req.auth.clientId]),
+    pool.query(`select id,message_id,original_name,size_bytes from project_files where project_id=$1 and client_id=$2 and message_id is not null`,[project.id,req.auth.clientId]),
+    pool.query(`select cm.id,cm.author_role,cm.body,cm.created_at,p.title product_title,
+        case when cm.author_role='admin' then coalesce(nullif(u.name,''),'Future Basics') else coalesce(nullif(u.name,''),u.email) end author_name
+      from comments cm join products p on p.id=cm.product_id left join users u on u.id=cm.author_id where p.project_id=$1 and cm.client_id=$2 and cm.visibility='client' order by cm.created_at desc limit 100`,[project.id,req.auth.clientId])
+  ]);
+  const messages=[...msgs.rows.reverse().map(m=>({...m,files:files.rows.filter(f=>f.message_id===m.id)})),
+    ...comments.rows.reverse().map(c=>({id:c.id,author_role:c.author_role,author_name:c.author_name,body:c.body,created_at:c.created_at,reply_to_id:null,files:[],tag:`About ${c.product_title}`,noReply:true}))]
+    .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  return {project:{id:project.id,name:project.name},messages,events:[]};
+});
 app.post('/v1/projects/:id/messages',{preHandler:authenticate},async(req,reply)=>{
   const body=String(req.body?.body||'').trim(),replyToId=req.body?.replyToId||null;if(!body)return reply.code(400).send({error:'Message required'});
   const project=(await pool.query(`select id,client_id,name from projects where id=$1 and client_id=$2
