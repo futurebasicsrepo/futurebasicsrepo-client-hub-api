@@ -2182,8 +2182,20 @@ app.post('/v1/admin/products/:id/tech-pack/ai',{preHandler:[authenticate,adminOn
   if(ctx.techPack.ai_status==='pending'&&new Date(ctx.techPack.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already running on this pack'});
   if(!normalizeTechPack(ctx.techPack.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo or sketch first — the assistant reads the first view'});
   if(ctx.techPack.ai_status==='locked'||!ctx.techPack.billing)await pool.query(`update tech_packs set billing='admin' where id=$1`,[ctx.techPack.id]);
+  // Start over (explicit, staff only): drop everything the assistant and the customer put in the pack except the reference photo,
+  // forget the earlier assistant draft, and run as a first run. For a pack whose earlier runs left values that now read as the
+  // customer's own typing (re-runs made before the merge was fixed), or any pack that should simply be redrawn from the photo.
+  let startedOver=false;
+  if(req.body?.startOver===true){
+    const cur=normalizeTechPack(ctx.techPack.data),photo=cur.sketches.find(sk=>sk.image&&!/^cutout-/.test(String(sk.id||'')));
+    if(!photo)return reply.code(400).send({error:'Add a photo first — a pack is started over from its reference photo'});
+    const blank=normalizeTechPack({...seedTechPack(ctx),sketches:[{...photo,callouts:[]}]});blank.style.designer=cur.style.designer;
+    await pool.query(`update tech_packs set data=$2,ai_draft=null,ai_draft_at=null,updated_at=now() where id=$1`,[ctx.techPack.id,blank]);
+    await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack for ${ctx.product.title} started over from its reference photo`,{techPackId:ctx.techPack.id}]).catch(()=>{});
+    startedOver=true;
+  }
   await startAiRun(ctx.techPack);
-  return {aiStatus:'pending'};
+  return {aiStatus:'pending',startedOver};
 });
 app.post('/v1/products/:id/tech-pack/draft/ai',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
