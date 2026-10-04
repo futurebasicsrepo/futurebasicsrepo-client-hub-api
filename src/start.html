@@ -14,6 +14,9 @@
     .wordmark{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wordmark img{height:16px;display:block}.wordmark span{color:#aaa;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em}
     .free{white-space:nowrap;display:inline-flex;align-items:center;gap:8px;font:500 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#d8d8d4;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 12px}
     .free i{width:7px;height:7px;border-radius:50%;background:var(--cue);box-shadow:0 0 0 0 rgba(75,255,154,.6);animation:ping 2.4s ease-out infinite}
+    .hdr-r{display:flex;align-items:center;gap:10px}
+    .sitelink{color:#fff;text-decoration:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:999px;white-space:nowrap}.sitelink b{display:none;font-weight:500}.sitelink:hover{border-color:#fff}
+    @media(max-width:700px){.hdr-r .free{display:none}}@media(max-width:620px){.sitelink span{display:none}.sitelink b{display:inline}}
     @keyframes ping{0%{box-shadow:0 0 0 0 rgba(75,255,154,.55)}70%,100%{box-shadow:0 0 0 9px rgba(75,255,154,0)}}
     .meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:var(--dim)}
 
@@ -114,13 +117,13 @@
   </style>
 </head>
 <body>
-  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><span class="free"><i aria-hidden="true"></i>First pack free</span></header>
+  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><span class="hdr-r"><span class="free"><i aria-hidden="true"></i>First pack free</span><a class="sitelink" href="https://thefuturebasics.com/?utm_source=hub&amp;utm_medium=nav">← <span>thefuturebasics.com</span><b>Site</b></a></span></header>
   <div class="stage">
     <section class="hero" aria-label="What you get">
       <div class="hero-in">
         <span class="meta" data-in style="--i:0">Product development</span>
         <h1 data-in style="--i:1">Turn any image into a <em>tech pack.</em></h1>
-        <p class="lede" data-in style="--i:2"><span class="short">Drop in a render, sketch, photo or screenshot. You land in <b>your own draft</b> in about a minute.</span><span class="long">A finished render, a flat sketch, a photo of a sample or a screenshot you saved. Add it, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</span></p>
+        <p class="lede" data-in style="--i:2"><span class="short">Drop in a render, sketch, photo or screenshot. You land in <b>your own draft</b> in about a minute, and the first pack is free.</span><span class="long">A finished render, a flat sketch, a photo of a sample or a screenshot you saved. Add it, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</span></p>
         <div class="sheet" id="sheet" aria-hidden="true" data-in style="--i:3">
           <div class="sheet-top"><span>Tech pack · Draft v1</span><span class="status" id="status"><span><i></i>Reading your photo</span><span><i></i>Placing callouts</span><span><i></i>Measuring</span><span><i></i>Choosing colours</span><span>Draft ready</span></span></div>
           <div class="art" id="art">
