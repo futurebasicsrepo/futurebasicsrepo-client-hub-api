@@ -506,6 +506,17 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     await wp.waitForFunction(() => /Triangles/.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 30000 });
     const txt = await wp.innerText('[data-model]'); ok(/12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it shows the triangle count, warns it is not to scale, and says test mode', txt);
     ok(await wp.locator('[data-model] img').count() === 1, 'with a preview picture');
+    // the viewer: opens in place, draws the model, turns when dragged, resets, and flips the up axis
+    await wp.click('[data-act="view3d"]'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
+    ok(await wp.locator('[data-act="stlreset"]').count() === 1 && /Up: Y/.test(await wp.innerText('[data-act="stlup"]')), 'View in 3D opens a viewer with Reset and an up-axis control');
+    const host = wp.locator('.stl-host'), sharp = (await import('sharp')).default;
+    const shot = async () => sharp(await host.screenshot()).raw().toBuffer({ resolveWithObject: true });
+    await wp.waitForTimeout(500); const s1 = await shot(), spread = await sharp(s1.data, { raw: s1.info }).stats(); ok(spread.channels.some(c => c.stdev > 4), 'the model is drawn, not a blank box', spread.channels.map(c => Math.round(c.stdev)));
+    const bb = await host.boundingBox(); await wp.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await wp.mouse.down(); await wp.mouse.move(bb.x + bb.width / 2 + 90, bb.y + bb.height / 2 - 50, { steps: 5 }); await wp.mouse.up(); await wp.waitForTimeout(250);
+    const s2 = await shot(); ok(Buffer.compare(s1.data, s2.data) !== 0, 'dragging turns it');
+    await wp.click('[data-act="stlup"]'); ok(/Up: Z/.test(await wp.innerText('[data-act="stlup"]')), 'the up axis can be flipped');
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-viewer.png`, fullPage: true }).catch(() => {});
+    ok(await wp.locator('.stl-host .stl-msg').count() === 0, 'and no error shows');
     const [dl] = await Promise.all([wp.waitForEvent('download', { timeout: 10000 }), wp.click('[data-act="dlmodel"]')]);
     const path = await dl.path(); const { readFileSync } = await import('node:fs'); const buf = readFileSync(path);
     ok(/\.stl$/.test(dl.suggestedFilename()) && buf.length === 84 + 12 * 50 && buf.readUInt32LE(80) === 12, 'the download is a real STL file', [dl.suggestedFilename(), buf.length]);

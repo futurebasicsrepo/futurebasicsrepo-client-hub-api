@@ -157,8 +157,10 @@ body.xchg-on{overflow:hidden}
 .chk-h{margin:20px 0 8px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.chk-disc{display:grid;grid-template-columns:70px 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.chk-disc p{margin:4px 0 0;font-size:13px}.chk-sug{color:var(--ok)}.chk-field{margin-left:6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.chk-meta{margin-top:16px}
 .chk-mdl{display:grid;grid-template-columns:minmax(0,220px) 1fr;gap:18px;align-items:start;margin-top:6px}.chk-mdl .chk-img{min-height:160px;aspect-ratio:1/1;padding:8px}.chk-mdl .chk-img img{max-width:100%;height:auto;max-height:100%;object-fit:contain;display:block}
 .chk-mdl dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 12px;font-size:13px}.chk-mdl dt{color:var(--mute,#8b8b92)}.chk-mdl dd{margin:0;font-variant-numeric:tabular-nums}
+.chk-mdl.big{grid-template-columns:minmax(0,400px) 1fr}.stl-wrap{display:grid;gap:8px;min-width:0}.stl-host{position:relative;width:100%;aspect-ratio:1/1;min-height:220px;border-radius:14px;overflow:hidden;background:radial-gradient(90% 80% at 50% 30%,rgba(255,255,255,.55),rgba(127,127,127,.12));border:1px solid rgba(127,127,127,.22)}.stl-host .stl-msg{position:absolute;inset:0;display:grid;place-items:center;padding:18px;text-align:center;font-size:13px}
+.stl-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.stl-tools .meta{margin-left:auto}.chk-img .sbtn{margin-top:10px}
 .chk-bar{height:6px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;margin:10px 0 6px}.chk-bar i{display:block;height:100%;width:var(--w,5%);background:linear-gradient(90deg,#4bff9a,#ff8a5c);transition:width .8s ease}
-@media(max-width:700px){.chk-mdl{grid-template-columns:minmax(0,1fr)}.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
+@media(max-width:700px){.chk-mdl,.chk-mdl.big{grid-template-columns:minmax(0,1fr)}.stl-host{aspect-ratio:4/3}.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
 .langbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.langbar button{padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}.langbar button.on{background:#141416;border-color:#141416;color:#fff}.more{position:relative}.more>summary{list-style:none;cursor:pointer}.more>summary::-webkit-details-marker{display:none}.top .acts .more>summary.btn{font:400 12.5px/1.5 'Space Grotesk',system-ui,sans-serif;padding:8px 13px;text-transform:none;letter-spacing:0;color:#fff;gap:8px}.more>summary:after{content:"";flex:none;width:6px;height:6px;margin:-4px 0 0;border:solid currentColor;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}.more[open]>summary:after{margin:3px 0 0;transform:rotate(-135deg)}
 .more[open]>summary,.more>summary:hover,.top .acts .more[open]>summary.btn,.top .acts .more>summary.btn:hover{background:#fff;color:var(--ink)}.top{z-index:30}
 .more .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:250px;background:#fff;color:var(--ink);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);padding:6px;display:flex;flex-direction:column;z-index:40}
@@ -319,6 +321,23 @@ function panelCheck(){
   }
   return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section>${panelModel()}</div>`;
 }
+// The STL viewer: the script loads when someone first asks for it, the file is fetched with the staff sign-in, and a parsed model is kept so the panel can redraw without fetching again.
+const stlCache=new Map();let stlView=null,stlMounting='';
+function loadStlScript(){return window.FBStl?Promise.resolve():new Promise((res,rej)=>{const x=document.createElement('script');x.src='/stl-viewer.js';x.onload=res;x.onerror=()=>rej(new Error('The 3D viewer could not load.'));document.head.appendChild(x)})}
+async function mountStl(host){
+  const id=host.dataset.stl;if(!id||host.dataset.mounted===id||stlMounting===id)return;stlMounting=id;
+  const msg=t=>{host.innerHTML=`<div class="stl-msg meta">${esc(t)}</div>`};
+  try{
+    await loadStlScript();
+    let model=stlCache.get(id);
+    if(!model){const r=await fetch(`/v1/admin/tech-pack-models/${id}/stl`,{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw new Error('The model file could not be loaded.');model=window.FBStl.parse(await r.arrayBuffer());stlCache.set(id,model);if(stlCache.size>2)stlCache.delete(stlCache.keys().next().value)}
+    if(!host.isConnected||S.view3d!==id)return;
+    if(stlView){stlView.destroy();stlView=null}
+    host.innerHTML='';host.dataset.mounted=id;stlView=window.FBStl.mount(host,model,{upAxis:S.stlUp||'y'});
+  }catch(e){msg(/WebGL|3D here/i.test(e.message)?'This browser cannot show 3D here. Download the STL to open it in another program.':e.message)}
+  finally{stlMounting=''}
+}
+new MutationObserver(()=>{const h=document.querySelector('.stl-host[data-stl]:not([data-mounted])');if(h)mountStl(h);else if(stlView&&!document.body.contains(stlView.canvas)){stlView.destroy();stlView=null}}).observe(document.body,{childList:true,subtree:true});
 function panelModel(){
   const c=S.check;if(!c||c.error)return '';
   const m=c.model,cfg=c.modelConfig||{},hasPhoto=(S.pack?.sketches||[]).some(x=>x.image),running=S.modelBusy||m?.status==='running';
@@ -331,7 +350,7 @@ function panelModel(){
   else if(m.status==='failed')body=`<p class="note">It did not work: ${esc(m.error||'unknown error')}. Press <b>Make another</b> to try again.</p>`;
   else{
     const sz=m.size||[],mm=Number.isFinite(sz[0])?`${sz.map(v=>Math.round(v*100)/100).join(' × ')} (the service's own units)`:'—';
-    body=`<div class="chk-mdl"><div class="chk-img">${m.thumb?`<img src="${m.thumb}" alt="Preview of the 3D model">`:'<span class="meta">No preview</span>'}</div><div><dl><dt>Triangles</dt><dd>${(m.triangles||0).toLocaleString()}</dd><dt>Raw size</dt><dd>${esc(mm)}</dd><dt>File</dt><dd>${m.bytes?(m.bytes>=1048576?(m.bytes/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.bytes/1024))+' KB'):'—'} · STL</dd><dt>Made</dt><dd>${fmtDate(m.completedAt)}${m.stale?' · the pack has changed since':''}</dd></dl>
+    body=`<div class="chk-mdl ${S.view3d===m.id?'big':''}">${S.view3d===m.id?`<div class="stl-wrap"><div class="stl-host" data-stl="${esc(m.id)}"><div class="stl-msg meta">Loading the 3D model…</div></div><div class="stl-tools"><button type="button" class="sbtn" data-act="stlreset">Reset view</button><button type="button" class="sbtn" data-act="stlup" title="If the model is lying on its back, switch the up direction">Up: ${S.stlUp==='z'?'Z':'Y'}</button><span class="meta">Drag to turn · scroll to zoom · right-drag to move</span></div></div>`:`<div class="chk-img">${m.thumb?`<img src="${m.thumb}" alt="Preview of the 3D model">`:'<span class="meta">No preview</span>'}<button type="button" class="sbtn" data-act="view3d" data-id="${esc(m.id)}">View in 3D</button></div>`}<div><dl><dt>Triangles</dt><dd>${(m.triangles||0).toLocaleString()}</dd><dt>Raw size</dt><dd>${esc(mm)}</dd><dt>File</dt><dd>${m.bytes?(m.bytes>=1048576?(m.bytes/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.bytes/1024))+' KB'):'—'} · STL</dd><dt>Made</dt><dd>${fmtDate(m.completedAt)}${m.stale?' · the pack has changed since':''}</dd></dl>
       <button type="button" class="sbtn" data-act="dlmodel" data-id="${esc(m.id)}">Download STL</button>
       <p class="meta" style="margin-top:12px">A shape from one photo, not a measured part: the size is not to scale and the back is the service's best guess. Scale it against a measurement before anyone prints or cuts from it.${m.provider==='fixture'?' <b>Test mode: this is a placeholder cube.</b>':''}</p></div></div>`;
   }
@@ -560,6 +579,9 @@ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');i
   if(act==='morerow'){const tr=b.closest('tr');tr.classList.toggle('more');b.textContent=tr.classList.contains('more')?'Fewer details':b.dataset.n;return}
   if(act==='xhide'){xHide();return}if(act==='xshow'){xShow();return}if(act==='xclose'){xClose();document.querySelector('.ai-banner')?.scrollIntoView({block:'center',behavior:'smooth'});return}
   if(act==='handback'){handBack();return}if(act==='undochange'){undoChanges(b.dataset.loop,b.dataset.change||null);return}
+  if(act==='view3d'){S.view3d=b.dataset.id;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();return}
+  if(act==='stlreset'){stlView?.reset();return}
+  if(act==='stlup'){S.stlUp=S.stlUp==='z'?'y':'z';stlView?.setUp(S.stlUp);b.textContent='Up: '+(S.stlUp==='z'?'Z':'Y');return}
   if(act==='makemodel'){(async()=>{try{if(S.dirty)await save();S.modelBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/model`,{method:'POST',body:'{}'});toast('Meshy is building the shape')}catch(e){toast(e.message)}finally{S.modelBusy=false;loadCheck()}})();return}
   if(act==='dlmodel'){(async()=>{try{const r=await fetch(`/v1/admin/tech-pack-models/${b.dataset.id}/stl`,{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw Error('Download failed');const u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=`${(S.product?.title||'model').replace(/[^\w.-]+/g,'-').slice(0,60)}-3d.stl`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}catch(e){toast(e.message)}})();return}
   if(act==='runcheck'){(async()=>{try{if(S.dirty)await save();S.checkBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/check`,{method:'POST',body:'{}'});toast('Check started')}catch(e){toast(e.message)}finally{S.checkBusy=false;loadCheck()}})();return}

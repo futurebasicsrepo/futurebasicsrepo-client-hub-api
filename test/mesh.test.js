@@ -64,3 +64,32 @@ test('downloads only come from the vendor over https', async () => {
 test('no key, no task', async () => {
   await assert.rejects(startMesh({ imageDataUrl: 'x', cfg: { provider: 'none', configured: false } }), /MESHY_API_KEY/);
 });
+
+// ---- the viewer's reader (the same file the browser runs) ----
+import '../src/stl-viewer.js';
+const { parse } = globalThis.FBStl;
+const ab = b => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+
+test('the viewer reads a binary STL and works out its size and centre', () => {
+  const m = parse(ab(fixtureStl()));
+  assert.equal(m.triangles, 12); assert.deepEqual(m.size, [1, 1, 1]); assert.deepEqual(m.center, [0.5, 0.5, 0.5]);
+  assert.equal(m.positions.length, 12 * 9); assert.equal(m.normals.length, 12 * 9);
+});
+
+test('the viewer keeps a cube edge sharp but smooths a round surface', () => {
+  const cube = parse(ab(fixtureStl()));
+  for (let i = 0; i < cube.normals.length; i += 3) assert.ok([cube.normals[i], cube.normals[i + 1], cube.normals[i + 2]].some(v => Math.abs(Math.abs(v) - 1) < 1e-4), 'a cube corner keeps its face normal');
+  // a flat fan of triangles bent only slightly shares one smooth normal at the shared vertex
+  const tris = [[[0, 0, 0], [1, 0, 0], [0, 1, 0.1]], [[0, 0, 0], [0, 1, 0.1], [-1, 0, 0]]];
+  const b = Buffer.alloc(84 + 100); b.writeUInt32LE(2, 80); tris.forEach((t, i) => t.forEach((p, k) => p.forEach((c, j) => b.writeFloatLE(c, 84 + i * 50 + 12 + k * 12 + j * 4))));
+  const m = parse(ab(b)), n0 = [m.normals[0], m.normals[1], m.normals[2]], n1 = [m.normals[9], m.normals[10], m.normals[11]];
+  n0.forEach((v, i) => assert.ok(Math.abs(v - n1[i]) < 1e-6, 'the shared vertex has one normal'));
+});
+
+test('the viewer reads an ASCII STL and refuses a file that is not one', () => {
+  const t = 'solid x\n facet normal 0 0 1\n  outer loop\n   vertex 0 0 0\n   vertex 2 0 0\n   vertex 0 3 0\n  endloop\n endfacet\nendsolid x\n' + ' '.repeat(40);
+  assert.equal(parse(ab(Buffer.from(t))).triangles, 1);
+  assert.throws(() => parse(ab(Buffer.from('<html>no</html>'.padEnd(120)))), /not a valid STL/);
+  const bad = fixtureStl(); bad.writeFloatLE(Infinity, 100);
+  assert.throws(() => parse(ab(bad)), /not a valid STL/);
+});
