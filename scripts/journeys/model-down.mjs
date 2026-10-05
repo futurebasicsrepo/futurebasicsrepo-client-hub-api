@@ -52,4 +52,17 @@ await journey('J53', 'while the assistant is still refused, packs wait: no tries
   ok(Number(sql(`select ai_auto_retries from tech_packs where product_id='${id}'`)) === 0 && sql(`select ai_status from tech_packs where product_id='${id}'`) === 'failed', 'the pack keeps its tries and stays failed', sql(`select ai_auto_retries from tech_packs where product_id='${id}'`));
 });
 
+await journey('J57', 'the assistant is refused while a spec check runs: submit still works, the check says why in a sentence, and retries are limited', async () => {
+  const r = await call('/v1/public/start', { body: { email: em('57'), title: 'Check runner', photos: [runner] } }); const id = r.json.product.id; await waitAi(call, r.json.token, id, 40000);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${r.json.client.id}' limit 1`), clientId: r.json.client.id, role: 'admin' });
+  const sub = await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: r.json.token, body: {} }); ok(sub.status === 200, 'the client can still submit', sub.status);
+  let c; for (let i = 0; i < 40; i++) { c = (await call(`/v1/admin/products/${id}/tech-pack/check`, { token: admin })).json; if (c.latest?.error) break; await sleep(400); }
+  ok(c.latest && c.latest.status === 'pending' && /refused its key/i.test(c.latest.error), 'the check says in a sentence that the assistant refused its key', c.latest && [c.latest.status, c.latest.error]);
+  ok(!/api\.anthropic|invalid x-api-key|authentication_error|\{"type"/i.test(JSON.stringify(c.latest)), 'with no raw API reply in it');
+  ok(c.image.provider === 'none' && c.image.configured === false, 'and it reports that no image model is connected', c.image);
+  ok(Number(sql(`select attempts from tech_pack_checks where product_id='${id}'`)) === 1, 'it has used one try; the recovery job makes the others later');
+  sql(`update tech_pack_checks set attempts=3 where product_id='${id}'`); await call(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', token: admin, body: {} });
+  const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json.checks.find(x => x.id === 'imagegen'); ok(h && h.status === 'off' && /OPENAI_API_KEY/.test(h.summary), 'the Platform page says no render model is connected and what to set', h && [h.status, h.summary]);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -24,5 +24,5 @@
   }
   // a stored inch number shown as both: 12" / 30.5 cm
   const inch = v => (v == null || v === '' ? '—' : Math.round(Number(v) * 100) / 100 + '" / ' + trim1(Number(v) * 2.54) + ' cm');
-  window.FBTP_UNITS = { parseIn, metricOf, inch, trim1 };
+  (typeof window !== 'undefined' ? window : globalThis).FBTP_UNITS = { parseIn, metricOf, inch, trim1 };
 })();

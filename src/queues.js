@@ -59,7 +59,7 @@ const order = { urgent: 0, normal: 1, info: 2 };
 export const sortItems = items => [...items].sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || age(b.since) - age(a.since));
 
 export async function buildQueues(pool, { learning = null } = {}) {
-  const [packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers] = await Promise.all([
+  const [packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
     pool.query(`select tp.id tp_id,tp.status,tp.version,tp.submitted_at,tp.published_at,tp.locked_at,tp.verification,tp.ai_status,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and (tp.status='submitted' or tp.published_at is not null)`),
@@ -102,7 +102,10 @@ export async function buildQueues(pool, { learning = null } = {}) {
     pool.query(`select s.email,s.attempts,s.first_at,s.last_at from signin_attempts s
       where s.kind='unknown' and s.last_at>now()-interval '14 days'
         and not exists(select 1 from clients c where c.status in ('active','lead') and c.archived_at is null and (lower(c.contact_email)=s.email or s.email=any(c.allowed_emails) or split_part(s.email,'@',2)=any(c.email_domains)))
-      order by s.last_at desc limit 20`)
+      order by s.last_at desc limit 20`),
+    pool.query(`select distinct on (k.tech_pack_id) k.id,k.score,k.verdict_label,k.verdict,k.completed_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
+      from tech_pack_checks k join tech_packs tp on tp.id=k.tech_pack_id join products p on p.id=k.product_id join clients c on c.id=k.client_id
+      where k.status='done' and tp.published_at is null and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by k.tech_pack_id,k.completed_at desc`)
   ]);
 
   const A = []; // waiting on approval
@@ -116,6 +119,10 @@ export async function buildQueues(pool, { learning = null } = {}) {
       title: tried ? 'Website lead is trying to sign in: activate the room' : 'Website lead: activate the room',
       detail: tried ? `They asked for a sign-in code ${r.attempts} ${Number(r.attempts) === 1 ? 'time' : 'times'}, last ${waitAgo(r.last_at)}, and were told the room is being set up.` : 'They cannot sign in until you do.', since: iso(r.created_at) });
   }
+  // the independent spec check says the pack does not describe the product in its photo (latest check per unpublished pack)
+  for (const r of checks.rows.filter(x => x.verdict_label !== 'cannot-judge' && (x.verdict_label === 'does-not-resemble' || Number(x.score) < 60)))
+    A.push({ key: `check:${r.id}`, stream: 'tech-packs', kind: 'check', owner: 'us', severity: r.verdict_label === 'does-not-resemble' ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
+      title: `Spec check: the pack does not match its photo (${r.score}/100)`, detail: clip(r.verdict?.summary, 140), since: iso(r.completed_at) });
   // an email we have no work for: often a client using a different address than the one on their room
   for (const r of strangers.rows) A.push({ key: `signin:${r.email}`, stream: 'leads', kind: 'signin', owner: 'us', severity: Number(r.attempts) >= 2 ? 'normal' : 'info', clientId: null, clientName: r.email, productId: null, productTitle: '',
     title: 'Tried to sign in, but there is no work under this email', detail: `${r.attempts} ${Number(r.attempts) === 1 ? 'try' : 'tries'}. If this is an existing client, add the address to their room.`, since: iso(r.first_at) });
