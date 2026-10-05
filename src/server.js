@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
 import PDFDocument from 'pdfkit';
@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
+import { runSpecCheck, imageConfig } from './check.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
@@ -622,7 +623,8 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const telemetry=telemetrySnapshot(),billing=await billingSummary(),techPackProduct=Boolean(await techPackProductId().catch(()=>''));
   const fail=(await pool.query(`select (select count(*) from notifications where type='tech-pack-ai' and created_at>now()-interval '24 hours' and title ilike '%credit balance%')::int credit,
     (select count(*) from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and ai_started_at>now()-interval '24 hours')::int our_side`)).rows[0];
-  const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},fresh:Boolean(req.query?.fresh),env:process.env});
+  const specChecks=(await pool.query(`select count(*) filter(where status='done')::int done24,count(*) filter(where status='done' and render_status='failed')::int "renderFailed24",count(*) filter(where status='failed')::int failed24 from tech_pack_checks where created_at>now()-interval '24 hours'`)).rows[0];
+  const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,imageConfig,specChecks:{done24:specChecks.done24,renderFailed24:specChecks.renderFailed24,failed24:specChecks.failed24},cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},fresh:Boolean(req.query?.fresh),env:process.env});
   // The store connection above only says Shopify answers. This says whether payments are actually landing in the ledger.
   const payState=(await getSetting('paymentSync'))||{},payStats=await paymentStats().catch(()=>({count:0,totalCents:0,lastDay:0,paidButLocked:0,unlinkedPayers:0})),payVerdict=paymentSyncStatus({configured:shopifyConfigured(),state:payState,stats:payStats,everyMs:PAYMENT_SYNC_EVERY_MS});
   const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-new Date(t).getTime())/60000);return m<1?'just now':m<90?`${m} min ago`:m<2880?`${Math.round(m/60)} hours ago`:`${Math.round(m/1440)} days ago`};
@@ -2490,6 +2492,80 @@ async function runAiAutoRetry({probe=probeAssistant}={}){
   if(rows.length)app.log.info({started:rows.length,waiting},'assistant auto-retry started runs');
   return {status:'started',started:rows.length,waiting};
 }
+// ---- The independent spec check ----
+// Renders the product from the tech pack alone and compares the render with the client's photo and prompt (see check.js). It starts by itself
+// when a client submits a pack, and staff can run it again. Staff only: nothing here reaches the client. A check that fails is tried again by the
+// "Spec checks" job, up to three times; a missing or failing image model never fails the check, it just means there is no render.
+const CHECK_MANUAL_PER_DAY=Number(process.env.CHECK_MANUAL_PER_DAY)||6,CHECK_MAX_ATTEMPTS=3,checkDir=()=>join(uploadDir,'checks');
+async function startSpecCheck(row,{trigger='manual',actor=null}={}){
+  if(!aiEnabled())return {skipped:'off'};
+  if(trigger==='manual'){
+    const n=(await pool.query(`select count(*)::int n from tech_pack_checks where product_id=$1 and trigger='manual' and created_at>now()-interval '24 hours'`,[row.product_id])).rows[0].n;
+    if(n>=CHECK_MANUAL_PER_DAY)return {limited:true,limit:CHECK_MANUAL_PER_DAY};
+    const open=(await pool.query(`select id from tech_pack_checks where tech_pack_id=$1 and status='pending' and created_at>now()-interval '10 minutes' limit 1`,[row.id])).rows[0];
+    if(open)return {id:open.id,already:true};
+  }
+  const made=(await pool.query(`insert into tech_pack_checks(tech_pack_id,product_id,client_id,pack_version,pack_updated_at,trigger,requested_by) values($1,$2,$3,$4,$5,$6,$7)
+    on conflict do nothing returning id`,[row.id,row.product_id,row.client_id,row.version||0,row.updated_at,trigger,actor])).rows[0];
+  if(!made)return {skipped:'already-checked'};
+  setImmediate(()=>runSpecCheckJob(made.id).catch(e=>app.log.warn({err:e.message,checkId:made.id},'spec check failed to start')));
+  return {id:made.id};
+}
+async function runSpecCheckJob(checkId){
+  const claimed=(await pool.query(`update tech_pack_checks set attempts=attempts+1,started_at=now(),error=null where id=$1 and status='pending' returning *`,[checkId])).rows[0];
+  if(!claimed)return;
+  try{
+    const row=(await pool.query(`select tp.id,tp.product_id,tp.client_id,tp.data,tp.updated_at,p.title,p.product_type,p.description_html,c.name client_name from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=tp.client_id where tp.id=$1`,[claimed.tech_pack_id])).rows[0];
+    if(!row)throw new Error('The tech pack no longer exists');
+    const prompt=[`Title: ${row.title}`,await productBriefText(row.product_id,row.description_html)].filter(Boolean).join('\n');
+    const r=await runSpecCheck({pack:row.data,product:{title:row.title,product_type:row.product_type},promptText:prompt});
+    await mkdir(checkDir(),{recursive:true});
+    const renders=[];for(const x of r.renders){const file=`${checkId}-${x.view}.jpg`;await writeFile(join(checkDir(),file),x.buffer);renders.push({view:x.view,label:x.label,file})}
+    await pool.query(`update tech_pack_checks set status='done',completed_at=now(),render_status=$2,render_error=$3,provider=$4,image_model=$5,check_model=$6,brief=$7,verdict=$8,score=$9,verdict_label=$10,renders=$11,pack_updated_at=$12 where id=$1`,
+      [checkId,r.renderStatus,r.renderError,r.provider,r.imageModel,r.checkModel,JSON.stringify(r.brief),JSON.stringify(r.verdict),r.verdict.score,r.verdict.verdict,JSON.stringify(renders),row.updated_at]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Spec check on ${row.title}: ${r.verdict.verdict.replace(/-/g,' ')} (${r.verdict.score}/100)${r.renderStatus==='rendered'?'':', no render'}`,{techPackId:row.id,checkId,score:r.verdict.score}]).catch(()=>{});
+    if(r.verdict.verdict==='does-not-resemble'||(r.verdict.verdict!=='cannot-judge'&&r.verdict.score<60))
+      await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Spec check: ${row.client_name}'s ${row.title} does not match its photo (${r.verdict.score}/100) — ${clipText(r.verdict.summary,140)}`,row.product_id]).catch(()=>{});
+  }catch(e){
+    const msg=checkErrorText(e);app.log.warn({err:String(e.message||e).slice(0,300),checkId},'spec check failed');
+    await pool.query(`update tech_pack_checks set error=$2,status=case when attempts>=$3 then 'failed' else status end,completed_at=case when attempts>=$3 then now() else null end where id=$1`,[checkId,msg,CHECK_MAX_ATTEMPTS]).catch(()=>{});
+  }
+}
+// What staff are told when a check could not finish: a sentence, never the raw API reply.
+const checkErrorText=e=>e?.status===401||e?.status===403?'The assistant refused its key (Anthropic).':/credit balance/i.test(String(e?.message))?'The assistant is out of credit (Anthropic).':String(e?.message||e).replace(/\s?\d{3}\s*\{[\s\S]*$/,'').slice(0,240)||'Unknown error';
+const clipText=(t,n)=>String(t||'').replace(/\s+/g,' ').trim().slice(0,n);
+// A check that was waiting or failed part-way (a deploy, an API error) is picked up again a few minutes later.
+async function runSpecCheckRecovery(){
+  const stuck=(await pool.query(`select id,attempts from tech_pack_checks where status='pending' and coalesce(started_at,created_at)<now()-interval '8 minutes' order by created_at limit 3`)).rows;
+  let n=0;for(const r of stuck){if(r.attempts>=CHECK_MAX_ATTEMPTS){await pool.query(`update tech_pack_checks set status='failed',completed_at=now(),error=coalesce(error,'The check did not finish') where id=$1`,[r.id]);continue}await runSpecCheckJob(r.id);n++}
+  return n;
+}
+async function checkView(row,{withImages=false}={}){
+  if(!row)return null;
+  const renders=[];
+  for(const x of row.renders||[]){const r={view:x.view,label:x.label};if(withImages){try{r.dataUrl='data:image/jpeg;base64,'+(await readFile(join(checkDir(),x.file))).toString('base64')}catch{r.missing=true}}renders.push(r)}
+  return {id:row.id,status:row.status,trigger:row.trigger,attempts:row.attempts,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,score:row.score,verdict:row.verdict?.verdict||null,summary:row.verdict?.summary||'',
+    attributes:row.verdict?.attributes||[],discrepancies:row.verdict?.discrepancies||[],renders,renderStatus:row.render_status,renderError:row.render_error,provider:row.provider,imageModel:row.image_model,checkModel:row.check_model,error:row.error||null,
+    brief:withImages?row.brief:undefined};
+}
+app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const pack=(await pool.query('select id,updated_at,version from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!pack)return reply.code(404).send({error:'Tech pack not found'});
+  const rows=(await pool.query('select * from tech_pack_checks where product_id=$1 order by created_at desc limit 6',[req.params.id])).rows;
+  const latest=await checkView(rows[0],{withImages:true});
+  const img=imageConfig();
+  return {enabled:aiEnabled(),image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+    stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
+    history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
+});
+app.post('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  if(!aiEnabled())return reply.code(503).send({error:'The spec check needs the assistant: add ANTHROPIC_API_KEY to the service'});
+  const row=(await pool.query('select id,product_id,client_id,version,updated_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack before checking it'});
+  const r=await startSpecCheck(row,{trigger:'manual',actor:req.auth.sub});
+  if(r.limited)return reply.code(429).send({error:`That is ${r.limit} checks on this product today. Try again tomorrow, or wait for the next change to the pack.`});
+  return reply.code(202).send({started:true,id:r.id||null,already:Boolean(r.already)});
+});
 // Re-run on demand. The console can always re-run; a client may retry a failed read up to the attempt limit.
 async function startAiRun(row,{force=true}={}){
   await pool.query(`update tech_packs set ai_status='pending',ai_error=null where id=$1`,[row.id]);
@@ -2770,6 +2846,7 @@ app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req
     [row.client_id,row.product_id,req.auth.sub,`${row.client_name} submitted their tech pack for ${row.title} to Future Basics`,{techPackId:row.id,note}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} submitted a tech pack for ${row.title} — review and publish v1${note?' · "'+note.slice(0,120)+'"':''}`,row.product_id]);
   await pool.query(`update products set current_stage='development',updated_at=now() where id=$1 and current_stage='brief'`,[row.product_id]);
+  startSpecCheck({...row,...updated},{trigger:'submit'}).catch(e=>app.log.warn({err:e.message},'spec check not started')); // staff see the result in the Check tab
   return draftView({...row,...updated});
 });
 // Future Basics can hand a submitted draft back to the client for more work.
@@ -3253,6 +3330,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
+jobEvery('Spec checks', 5 * 60 * 1000, runSpecCheckRecovery, { delay: 50 * 1000 });
 jobEvery('Assistant re-runs after an outage', 5 * 60 * 1000, () => runAiAutoRetry().then(r => r.started), { delay: 40 * 1000 });
 if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.

@@ -68,6 +68,15 @@ export async function runChecks(d) {
       const on = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
       return { status: on ? 'ok' : 'off', summary: on ? 'Configured (cannot be test-signed-in from here)' : 'Not configured: staff use the emailed code', facts: [['Redirect address', env.GOOGLE_REDIRECT_URI ? 'set' : 'default (work site)']] };
     }),
+    runCheck('imagegen', 'Render model (spec check)', 'integration', async () => {
+      const cfg = d.imageConfig ? d.imageConfig() : { provider: 'none', configured: false }, tel = tIntegration('imagegen'), n = d.specChecks || {};
+      const facts = [['Provider', cfg.provider], ['Model', cfg.model || '—'], ['Checks, last 24 h', String(n.done24 ?? 0)], ['Renders that failed, last 24 h', String(n.renderFailed24 ?? 0)], ['Checks that could not finish, last 24 h', String(n.failed24 ?? 0)]];
+      if (cfg.provider === 'off') return { status: 'off', summary: `Renders are ${cfg.note}`, facts };
+      if (!cfg.configured) return { status: 'off', summary: 'Not connected: spec checks compare the written spec with the photo, without a render. Set OPENAI_API_KEY to draw one.', facts };
+      if (cfg.provider === 'fixture') return { status: 'warn', summary: 'Test fixture is on: renders are placeholders, not an image model', facts };
+      if ((n.renderFailed24 || 0) > 0 && (n.renderFailed24 >= (n.done24 || 0) || (tel && tel.errorRate > 0.3))) return { status: 'warn', summary: `${n.renderFailed24} render${n.renderFailed24 === 1 ? '' : 's'} failed in the last 24 hours: checks still ran, without a picture`, facts };
+      return { status: 'ok', summary: `${cfg.model} draws the renders${tel ? ` · ${tel.calls} call${tel.calls === 1 ? '' : 's'} since deploy` : ''}`, facts };
+    }),
     runCheck('cutout', 'Photo cutout service', 'integration', async () => {
       const p = d.cutoutProvider();
       if (!p) return { status: 'off', summary: 'Not set up: reference photos are not cut out', facts: [] };

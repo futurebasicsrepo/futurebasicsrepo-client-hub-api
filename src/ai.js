@@ -117,7 +117,7 @@ async function locateCalloutsRaw(photoDataUrl, labels) {
   return (Array.isArray(obj.points) ? obj.points : []).map(p => ({ i: Number(p.i), x: frac(p.x), y: frac(p.y) })).filter(p => Number.isInteger(p.i) && p.x != null && p.y != null);
 }
 
-const dataUrlToImageBlock = (dataUrl) => {
+export const dataUrlToImageBlock = (dataUrl) => {
   const m = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i.exec(dataUrl);
   if (!m) return null;
   return { type: 'image', source: { type: 'base64', media_type: m[1] === 'image/jpg' ? 'image/jpeg' : m[1], data: m[2] } };

@@ -508,6 +508,34 @@ export async function migrate() {
       detail jsonb not null default '{}'
     );
     create index if not exists platform_events_at_idx on platform_events(at desc);
+    create table if not exists tech_pack_checks (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      pack_version int not null default 0,
+      pack_updated_at timestamptz,
+      trigger text not null default 'manual',
+      status text not null default 'pending',
+      attempts int not null default 0,
+      render_status text,
+      provider text,
+      image_model text,
+      check_model text,
+      brief jsonb,
+      verdict jsonb,
+      score int,
+      verdict_label text,
+      renders jsonb not null default '[]',
+      render_error text,
+      error text,
+      requested_by uuid,
+      created_at timestamptz not null default now(),
+      started_at timestamptz,
+      completed_at timestamptz
+    );
+    create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);
+    create unique index if not exists tech_pack_checks_submit_once on tech_pack_checks(tech_pack_id, pack_version) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
     create table if not exists signin_attempts (
       email text primary key,

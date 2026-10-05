@@ -463,4 +463,33 @@ await journey('J55', 'a product\'s comments are the same chat: shared and intern
   } finally { await ctx.close(); }
 });
 
+await journey('J58', 'the Check tab: photo beside the render, a score, what to fix; staff only; runs from a button', async () => {
+  const r = await room('58', { wait: true }), W = 'http://work.localhost:3123', id = r.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: r.token, body: {} });
+  for (let i = 0; i < 40; i++) { const c = (await call(`/v1/admin/products/${id}/tech-pack/check`, { token: admin })).json; if (c.latest && c.latest.status === 'done') break; await sleep(400); }
+  sql(`update tech_pack_checks set score=58,verdict_label='partly',verdict=jsonb_set(jsonb_set(verdict,'{summary}','"The shape matches; the upper material does not."'),'{discrepancies}','[{"severity":"high","field":"bom","title":"Upper is suede in the photo","detail":"The BOM says engineered mesh.","suggestion":"Change the Upper row to suede."},{"severity":"low","field":"colorways","title":"Gum sole reads lighter","detail":"The photo sole is darker.","suggestion":""}]'::jsonb) where product_id='${id}'`);
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
+    ok(await wp.locator('#tabs button[data-tab="check"]').count() === 1, 'staff have a Check tab');
+    await wp.click('#tabs button[data-tab="check"]'); await wp.waitForSelector('.chk-verdict', { timeout: 10000 });
+    ok(await wp.locator('.chk-img img').count() >= 2, 'the photo and the render are side by side', await wp.locator('.chk-img img').count());
+    ok(/58/.test(await wp.innerText('.chk-score')) && /Partly/i.test(await wp.innerText('.chk-verdict')) && /upper material does not/.test(await wp.innerText('.chk-verdict')), 'the score, the verdict and the summary show');
+    ok(await wp.locator('.chk-attr').count() === 7 && await wp.locator('.chk-pill.warn', { hasText: 'Close' }).count() >= 1, 'seven attribute rows with a match pill each');
+    const fix = await wp.innerText('.chk-disc'); ok(await wp.locator('.chk-disc').count() === 2 && /Upper is suede/.test(fix) && /BOM/.test(fix) && /Change the Upper row/.test(await wp.innerText('[data-panel="check"]')), 'what to fix lists each difference with the pack field and a suggestion');
+    ok(/Test mode/i.test(await wp.innerText('[data-panel="check"]')), 'and says the render is a test placeholder');
+    const before = Number(sql(`select count(*) from tech_pack_checks where product_id='${id}'`));
+    await wp.click('[data-act="runcheck"]'); await wp.waitForFunction(() => /Check started/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+    for (let i = 0; i < 30 && Number(sql(`select count(*) from tech_pack_checks where product_id='${id}'`)) === before; i++) await sleep(300);
+    ok(Number(sql(`select count(*) from tech_pack_checks where product_id='${id}'`)) === before + 1, 'the button starts a new check');
+    await wp.waitForFunction(() => !document.querySelector('[data-act="runcheck"]')?.disabled, null, { timeout: 20000 }); ok(/82/.test(await wp.innerText('.chk-score')), 'and the new result replaces the old one when it is ready');
+    ok(wp.errs.length === 0, 'no script errors', wp.errs);
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j58-check-tab.png`, fullPage: true }).catch(() => {});
+  } finally { await wctx.close(); }
+  const { ctx, page } = await phone(); await page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+  try { await page.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#sheet .panel.on'); ok(await page.locator('#tabs button[data-tab="check"]').count() === 0 && await page.locator('[data-panel="check"]').count() === 0, 'a client never gets the tab, on a phone or anywhere'); } finally { await ctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

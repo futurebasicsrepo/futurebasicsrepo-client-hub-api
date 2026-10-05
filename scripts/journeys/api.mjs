@@ -487,4 +487,38 @@ await journey('J54', 'a website lead or an unknown email asks to sign in: staff 
   sql(`update clients set status='archived',archived_at=now() where id='${leadId}'`);
 });
 
+await journey('J56', 'the independent spec check: runs at submit, staff only, stale after edits, capped per day, flags a bad match in the queue', async () => {
+  const room = await newRoom('56'), cid = room.r.json.client.id, id = room.productId;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const latest = async () => (await adm(`/v1/admin/products/${id}/tech-pack/check`)).json;
+  let c = await latest(); ok(c.latest === null && c.enabled === true && c.image.provider === 'fixture', 'before the client submits there is no check, and the image model is reported', [c.latest, c.image]);
+  const sub = await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} }); ok(sub.status === 200, 'the client submits', sub.status);
+  for (let i = 0; i < 40; i++) { c = await latest(); if (c.latest && c.latest.status !== 'pending') break; await sleep(400); }
+  const l = c.latest; ok(l && l.status === 'done' && l.trigger === 'submit', 'the check ran by itself when the client submitted', l && [l.status, l.trigger, l.error]);
+  ok(l.score === 82 && l.verdict === 'resembles' && l.attributes.length === 7 && l.renders.length === 1 && l.renders[0].dataUrl.startsWith('data:image/jpeg'), 'a score, a verdict, seven attributes and one render', l && [l.score, l.verdict, l.attributes.length, l.renders.length]);
+  ok(!JSON.stringify(l.brief).includes('data:image') && l.brief.parts.length > 0, 'the brief the renderer got has the BOM and no picture');
+  ok(sql(`select count(*) from tech_pack_checks where product_id='${id}'`) === '1', 'one check, not two');
+  ok((await call(`/v1/admin/products/${id}/tech-pack/check`, { token: room.token })).status === 403 && (await call(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', token: room.token, body: {} })).status === 403, 'a client can neither read nor start one');
+  ok(!JSON.stringify((await call(`/v1/products/${id}/tech-pack/draft`, { token: room.token })).json).includes('does-not-resemble') && !JSON.stringify((await call(`/v1/products/${id}/thread`, { token: room.token })).json).includes('Spec check'), 'and nothing from it reaches the client\'s own views');
+  ok((await call(`/v1/admin/products/${id}/tech-pack/check`)).status === 401 && (await adm('/v1/admin/products/not-a-uuid/tech-pack/check')).status === 404, 'no sign-in → 401, a bad id → 404');
+  // a change to the pack makes the result stale; a manual run clears it and keeps the first one in the history
+  const pack = (await adm(`/v1/admin/products/${id}/tech-pack`)).json, data = pack.techPack.data; data.style.fabricSummary = 'Suede upper';
+  await adm(`/v1/admin/products/${id}/tech-pack`, { method: 'PUT', body: { data } }); c = await latest(); ok(c.stale === true, 'editing the pack marks the check as out of date');
+  const again = await adm(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', body: {} }); ok(again.status === 202 && again.json.id, 'staff run it again', again.json);
+  for (let i = 0; i < 40; i++) { c = await latest(); if (c.latest.trigger === 'manual' && c.latest.status !== 'pending') break; await sleep(400); }
+  ok(c.latest.trigger === 'manual' && c.latest.status === 'done' && c.stale === false && c.history.length === 1 && c.history[0].trigger === 'submit', 'the new result is on top, no longer stale, the first is in the history', [c.latest.trigger, c.stale, c.history.length]);
+  // it shows in the console's waiting-on-us list when it says the pack does not match, and goes away once published
+  sql(`update tech_pack_checks set score=38,verdict_label='does-not-resemble',verdict=jsonb_set(verdict,'{summary}','"The upper is mesh in the pack but suede in the photo."') where id='${c.latest.id}'`);
+  let q = (await adm('/v1/admin/dashboard')).json.queues, item = q.approvals.find(x => x.key === `check:${c.latest.id}`);
+  ok(item && item.owner === 'us' && item.severity === 'urgent' && /38\/100/.test(item.title) && /suede in the photo/.test(item.detail) && item.productId === id, 'a bad match shows as an urgent item that names the product', item);
+  sql(`update tech_pack_checks set score=82,verdict_label='resembles' where id='${c.latest.id}'`); q = (await adm('/v1/admin/dashboard')).json.queues; ok(!q.approvals.some(x => x.key === `check:${c.latest.id}`), 'a good match is not in the list');
+  sql(`update tech_pack_checks set score=38,verdict_label='does-not-resemble' where id='${c.latest.id}'`); sql(`update tech_packs set published_at=now() where product_id='${id}'`); q = (await adm('/v1/admin/dashboard')).json.queues; ok(!q.approvals.some(x => x.key === `check:${c.latest.id}`), 'and neither is a pack that has been published');
+  // the Platform page knows about the render model
+  const h = (await adm('/v1/admin/platform/health?fresh=1')).json, ig = h.checks.find(x => x.id === 'imagegen'); ok(ig && ig.status === 'warn' && /Test fixture/.test(ig.summary) && ig.facts.some(([k]) => k === 'Provider'), 'the Platform page has a render model check', ig && [ig.status, ig.summary]);
+  ok(h.jobs.some(j => /Spec checks/.test(j.name)), 'and the "Spec checks" job is listed');
+  // the daily cap
+  let last; for (let i = 0; i < 8; i++) { last = await adm(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', body: {} }); if (last.status === 429) break; await sleep(120); }
+  ok(last.status === 429 && /today/.test(last.json.error), 'staff are stopped at the daily limit with a plain message', [last.status, last.json]);
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
