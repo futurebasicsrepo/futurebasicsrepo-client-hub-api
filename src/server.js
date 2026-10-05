@@ -14,6 +14,7 @@ import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
 import { reconcile, applyChanges, revertChanges } from './loop.js';
+import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
@@ -625,7 +626,8 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const fail=(await pool.query(`select (select count(*) from notifications where type='tech-pack-ai' and created_at>now()-interval '24 hours' and title ilike '%credit balance%')::int credit,
     (select count(*) from tech_packs where ai_status='failed' and ai_error ilike '%on our side%' and ai_started_at>now()-interval '24 hours')::int our_side`)).rows[0];
   const specChecks=(await pool.query(`select count(*) filter(where status='done')::int done24,count(*) filter(where status='done' and render_status='failed')::int "renderFailed24",count(*) filter(where status='failed')::int failed24 from tech_pack_checks where created_at>now()-interval '24 hours'`)).rows[0];
-  const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,imageConfig,specChecks:{done24:specChecks.done24,renderFailed24:specChecks.renderFailed24,failed24:specChecks.failed24},cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},fresh:Boolean(req.query?.fresh),env:process.env});
+  const meshStats=(await pool.query(`select count(*) filter(where status='done')::int done24,count(*) filter(where status='failed')::int failed24 from tech_pack_models where created_at>now()-interval '24 hours'`)).rows[0];
+  const checks=await runChecks({pool,telemetry,shopifyConfigured,shopifyGraphql,SHOP_CONNECTION_QUERY,APP_SCOPES_QUERY,missingScopes,requiredScopes:SHOPIFY_REQUIRED_SCOPES,techPackProduct,membershipUrl:MEMBERSHIP_URL,aiModel:AI_MODEL,imageConfig,meshConfig,meshStats,specChecks:{done24:specChecks.done24,renderFailed24:specChecks.renderFailed24,failed24:specChecks.failed24},cutoutProvider,uploadDir,recentAiFailures:{credit:fail.credit,ourSide:fail.our_side},fresh:Boolean(req.query?.fresh),env:process.env});
   // The store connection above only says Shopify answers. This says whether payments are actually landing in the ledger.
   const payState=(await getSetting('paymentSync'))||{},payStats=await paymentStats().catch(()=>({count:0,totalCents:0,lastDay:0,paidButLocked:0,unlinkedPayers:0})),payVerdict=paymentSyncStatus({configured:shopifyConfigured(),state:payState,stats:payStats,everyMs:PAYMENT_SYNC_EVERY_MS});
   const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-new Date(t).getTime())/60000);return m<1?'just now':m<90?`${m} min ago`:m<2880?`${Math.round(m/60)} hours ago`:`${Math.round(m/1440)} days ago`};
@@ -2663,7 +2665,9 @@ app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admin
   const latest=await checkView(rows[0],{withImages:true});
   const img=imageConfig();
   const loops=(await pool.query('select * from tech_pack_loops where product_id=$1 order by created_at desc limit 4',[req.params.id])).rows.map(loopView);
-  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+  const mrows=(await pool.query('select * from tech_pack_models where product_id=$1 order by created_at desc limit 1',[req.params.id])).rows,mc=meshConfig();
+  const model=await modelView(mrows[0],{withThumb:true});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
+  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),model,modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
     history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
 });
@@ -2702,6 +2706,86 @@ app.post('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admi
   const r=await startSpecCheck(row,{trigger:'manual',actor:req.auth.sub});
   if(r.limited)return reply.code(429).send({error:`That is ${r.limit} checks on this product today. Try again tomorrow, or wait for the next change to the pack.`});
   return reply.code(202).send({started:true,id:r.id||null,already:Boolean(r.already)});
+});
+// ---- A 3D model (STL) from the client's photo, made by Meshy. Staff start it by hand: it costs credits and sends the photo to the vendor. ----
+const MESH_PER_PRODUCT_DAY=Number(process.env.MESH_PER_PRODUCT_DAY)||3,MESH_PER_DAY=Number(process.env.MESH_PER_DAY)||20,MESH_GIVE_UP_MS=20*60*1000,meshDir=()=>join(uploadDir,'models'),meshPolls=new Set();
+const meshPollMs=()=>Number(process.env.MESH_POLL_MS)||5000;
+async function startModel(row,{actor=null}={}){
+  const cfg=meshConfig();
+  if(!cfg.configured)return {unavailable:cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected: add MESHY_API_KEY to the service.'};
+  const photo=packPhotos(row.data)[0];if(!photo)return {noPhoto:true};
+  const image=await photoForMesh(photo);if(!image)return {noPhoto:true};
+  const open=(await pool.query(`select id from tech_pack_models where product_id=$1 and status='running' and created_at>now()-interval '20 minutes' limit 1`,[row.product_id])).rows[0];
+  if(open)return {already:true,id:open.id};
+  const n=(await pool.query(`select count(*) filter(where product_id=$1)::int p,count(*)::int t from tech_pack_models where created_at>now()-interval '24 hours'`,[row.product_id])).rows[0];
+  if(n.p>=MESH_PER_PRODUCT_DAY)return {limited:`That is ${MESH_PER_PRODUCT_DAY} 3D models on this product today. Try again tomorrow.`};
+  if(n.t>=MESH_PER_DAY)return {limited:`The daily limit of ${MESH_PER_DAY} 3D models is used up. It resets tomorrow, or raise MESH_PER_DAY.`};
+  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by) values($1,$2,$3,$4,$5,$6,$7) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor])).rows[0];
+  try{const t=await startMesh({imageDataUrl:image,cfg});await pool.query('update tech_pack_models set task_id=$2 where id=$1',[made.id,t.taskId])}
+  catch(e){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[made.id,clipText(e.message,240)]);return {failed:clipText(e.message,240),id:made.id}}
+  setImmediate(()=>followModel(made.id).catch(e=>app.log.warn({err:e.message,modelId:made.id},'3D model follow failed')));
+  return {id:made.id};
+}
+// Watches one task until the service is done, then saves the files. Resumed by the recovery job after a restart.
+async function followModel(id){
+  if(meshPolls.has(id))return;meshPolls.add(id);
+  try{
+    let errors=0;
+    for(;;){
+      const m=(await pool.query('select * from tech_pack_models where id=$1',[id])).rows[0];if(!m||m.status!=='running'||!m.task_id)return;
+      if(Date.now()-new Date(m.created_at)>MESH_GIVE_UP_MS){await pool.query(`update tech_pack_models set status='failed',error='The 3D service took too long. Try again.',completed_at=now() where id=$1`,[id]);return}
+      let r;
+      try{r=await pollMesh(m.task_id,{cfg:{...meshConfig(),provider:m.provider==='fixture'?'fixture':meshConfig().provider}});errors=0}
+      catch(e){if(e.status===401||e.status===403||++errors>=6){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[id,clipText(e.message,240)]);return}await new Promise(r=>setTimeout(r,meshPollMs()));continue}
+      if(r.status==='failed'){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[id,r.error||'The 3D service could not make a model.']);return}
+      if(r.status==='done'){
+        try{
+          const cfg=meshConfig(),stl=await fetchAsset(r.stlUrl,{kind:'stl',cfg:{...cfg,provider:m.provider==='fixture'?'fixture':cfg.provider}}),info=stlInfo(stl);
+          if(!info)throw new Error('The 3D service sent a file that is not a valid STL.');
+          await mkdir(meshDir(),{recursive:true});
+          const stlFile=`${id}.stl`;await writeFile(join(meshDir(),stlFile),stl);
+          let thumbFile=null;
+          if(r.thumbUrl){try{const t=await fetchAsset(r.thumbUrl,{kind:'thumb',cfg:{...cfg,provider:m.provider==='fixture'?'fixture':cfg.provider}}),jpg=await sharp(t).resize({width:640,height:640,fit:'inside'}).flatten({background:'#ffffff'}).jpeg({quality:82}).toBuffer();thumbFile=`${id}.jpg`;await writeFile(join(meshDir(),thumbFile),jpg)}catch{thumbFile=null}}
+          await pool.query(`update tech_pack_models set status='done',progress=100,stl_file=$2,thumb_file=$3,stl_bytes=$4,triangles=$5,size=$6,credits=$7,completed_at=now() where id=$1`,[id,stlFile,thumbFile,stl.length,info.triangles,JSON.stringify(info.size),r.credits]);
+          const p=(await pool.query(`select p.title,m.client_id,m.product_id,m.tech_pack_id from tech_pack_models m join products p on p.id=m.product_id where m.id=$1`,[id])).rows[0];
+          if(p)await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[p.client_id,p.product_id,`3D model (STL) made for ${p.title} from the client photo`,{techPackId:p.tech_pack_id,modelId:id}]).catch(()=>{});
+        }catch(e){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[id,clipText(e.message,240)])}
+        return;
+      }
+      await pool.query('update tech_pack_models set progress=$2 where id=$1',[id,r.progress||0]);
+      await new Promise(r=>setTimeout(r,meshPollMs()));
+    }
+  }finally{meshPolls.delete(id)}
+}
+async function runModelRecovery(){
+  await pool.query(`update tech_pack_models set status='failed',error='The 3D service took too long. Try again.',completed_at=now() where status='running' and created_at<now()-interval '25 minutes'`);
+  await pool.query(`update tech_pack_models set status='failed',error='The request did not reach the 3D service. Try again.',completed_at=now() where status='running' and task_id is null and created_at<now()-interval '3 minutes'`);
+  const open=(await pool.query(`select id from tech_pack_models where status='running' and task_id is not null order by created_at limit 5`)).rows;
+  let n=0;for(const r of open){if(!meshPolls.has(r.id)){setImmediate(()=>followModel(r.id).catch(()=>{}));n++}}
+  return n;
+}
+async function modelView(row,{withThumb=false}={}){
+  if(!row)return null;
+  let thumb=null;if(withThumb&&row.thumb_file){try{thumb='data:image/jpeg;base64,'+(await readFile(join(meshDir(),row.thumb_file))).toString('base64')}catch{}}
+  return {id:row.id,status:row.status,progress:row.progress,provider:row.provider,model:row.model,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,triangles:row.triangles,size:row.size,bytes:row.stl_bytes==null?null:Number(row.stl_bytes),credits:row.credits,error:row.error||null,thumb,hasFile:Boolean(row.stl_file)};
+}
+app.post('/v1/admin/products/:id/tech-pack/model',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select id,product_id,client_id,version,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  const r=await startModel(row,{actor:req.auth.sub});
+  if(r.unavailable)return reply.code(503).send({error:r.unavailable});
+  if(r.noPhoto)return reply.code(400).send({error:'Add a photo first: the 3D model is made from the reference photo.'});
+  if(r.limited)return reply.code(429).send({error:r.limited});
+  if(r.failed)return reply.code(502).send({error:r.failed});
+  if(r.already)return reply.code(409).send({error:'A 3D model is already being made for this product',id:r.id});
+  return reply.code(202).send({started:true,id:r.id});
+});
+app.get('/v1/admin/tech-pack-models/:id/:file',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id))||!['stl','thumb'].includes(req.params.file))return reply.code(404).send({error:'Not found'});
+  const m=(await pool.query(`select m.stl_file,m.thumb_file,p.title from tech_pack_models m join products p on p.id=m.product_id where m.id=$1 and m.status='done'`,[req.params.id])).rows[0];
+  const file=req.params.file==='stl'?m?.stl_file:m?.thumb_file;if(!file)return reply.code(404).send({error:'Not found'});
+  const name=`${String(m.title||'model').replace(/[^\w.-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'model'}-3d`;
+  return req.params.file==='stl'?reply.type('model/stl').header('content-disposition',`attachment; filename="${name}.stl"`).send(createReadStream(join(meshDir(),file))):reply.type('image/jpeg').send(createReadStream(join(meshDir(),file)));
 });
 // Re-run on demand. The console can always re-run; a client may retry a failed read up to the attempt limit.
 async function startAiRun(row,{force=true}={}){
@@ -3468,6 +3552,7 @@ if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails'
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
 jobEvery('Spec checks', 5 * 60 * 1000, runSpecCheckRecovery, { delay: 50 * 1000 });
+jobEvery('3D models', 5 * 60 * 1000, runModelRecovery, { delay: 55 * 1000 });
 jobEvery('Assistant re-runs after an outage', 5 * 60 * 1000, () => runAiAutoRetry().then(r => r.started), { delay: 40 * 1000 });
 if (shopifyConfigured()) jobEvery('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, runPaymentSync, { delay: 25 * 1000 }); else declareJob('Shopify payment sync', PAYMENT_SYNC_EVERY_MS, 'Shopify is not connected');
 // One time: cards of tech packs that already exist take their material, decoration, colourways and size run from the pack. Does nothing after the first full pass.

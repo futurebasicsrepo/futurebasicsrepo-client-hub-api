@@ -77,6 +77,15 @@ export async function runChecks(d) {
       if ((n.renderFailed24 || 0) > 0 && (n.renderFailed24 >= (n.done24 || 0) || (tel && tel.errorRate > 0.3))) return { status: 'warn', summary: `${n.renderFailed24} render${n.renderFailed24 === 1 ? '' : 's'} failed in the last 24 hours: checks still ran, without a picture`, facts };
       return { status: 'ok', summary: `${cfg.model} draws the renders${tel ? ` · ${tel.calls} call${tel.calls === 1 ? '' : 's'} since deploy` : ''}`, facts };
     }),
+    runCheck('mesh', '3D model service (STL)', 'integration', async () => {
+      const cfg = d.meshConfig ? d.meshConfig() : { provider: 'none', configured: false }, tel = tIntegration('meshy'), n = d.meshStats || {};
+      const facts = [['Provider', cfg.provider], ['Model', cfg.model || '—'], ['Models made, last 24 h', String(n.done24 ?? 0)], ['Models that failed, last 24 h', String(n.failed24 ?? 0)]];
+      if (cfg.provider === 'off') return { status: 'off', summary: `3D models are ${cfg.note}`, facts };
+      if (!cfg.configured) return { status: 'off', summary: 'Not connected: staff cannot make an STL from a photo. Set MESHY_API_KEY to turn it on.', facts };
+      if (cfg.provider === 'fixture') return { status: 'warn', summary: 'Test fixture is on: models are a placeholder cube', facts };
+      if ((n.failed24 || 0) > 0 && n.failed24 >= (n.done24 || 0) + 1) return { status: 'warn', summary: `${n.failed24} model${n.failed24 === 1 ? '' : 's'} failed in the last 24 hours (credits, a key, or a photo it could not read)`, facts };
+      return { status: 'ok', summary: `${cfg.model} makes the models${tel ? ` · ${tel.calls} call${tel.calls === 1 ? '' : 's'} since deploy` : ''}`, facts };
+    }),
     runCheck('cutout', 'Photo cutout service', 'integration', async () => {
       const p = d.cutoutProvider();
       if (!p) return { status: 'off', summary: 'Not set up: reference photos are not cut out', facts: [] };

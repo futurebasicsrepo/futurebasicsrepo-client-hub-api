@@ -155,7 +155,10 @@ body.xchg-on{overflow:hidden}
 .chk-ex{display:grid;gap:6px}.chk-ev{display:grid;grid-template-columns:78px 1fr;gap:10px;padding:8px 12px;border-radius:12px;font-size:13px}.chk-ev b{font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;padding-top:2px}.chk-ev.design{background:#e9f9f0}.chk-ev.design b{color:#1c6b42}.chk-ev.developer{background:#fff0ea}.chk-ev.developer b{color:#b83a12}.chk-sc{display:inline;padding:1px 8px;border-radius:999px;background:rgba(20,20,22,.1);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none}.chk-ev.system{background:var(--fog);color:var(--dim)}
 .chk-chg{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}.chk-chg p{margin:3px 0 0;font-size:13px}.chk-chg s{color:var(--bad)}.chk-chg.undone{opacity:.55}
 .chk-h{margin:20px 0 8px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.chk-disc{display:grid;grid-template-columns:70px 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.chk-disc p{margin:4px 0 0;font-size:13px}.chk-sug{color:var(--ok)}.chk-field{margin-left:6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.chk-meta{margin-top:16px}
-@media(max-width:700px){.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
+.chk-mdl{display:grid;grid-template-columns:minmax(0,220px) 1fr;gap:18px;align-items:start;margin-top:6px}.chk-mdl .chk-img{min-height:160px;aspect-ratio:1/1;padding:8px}.chk-mdl .chk-img img{max-width:100%;height:auto;max-height:100%;object-fit:contain;display:block}
+.chk-mdl dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 12px;font-size:13px}.chk-mdl dt{color:var(--mute,#8b8b92)}.chk-mdl dd{margin:0;font-variant-numeric:tabular-nums}
+.chk-bar{height:6px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;margin:10px 0 6px}.chk-bar i{display:block;height:100%;width:var(--w,5%);background:linear-gradient(90deg,#4bff9a,#ff8a5c);transition:width .8s ease}
+@media(max-width:700px){.chk-mdl{grid-template-columns:minmax(0,1fr)}.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
 .langbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.langbar button{padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}.langbar button.on{background:#141416;border-color:#141416;color:#fff}.more{position:relative}.more>summary{list-style:none;cursor:pointer}.more>summary::-webkit-details-marker{display:none}.top .acts .more>summary.btn{font:400 12.5px/1.5 'Space Grotesk',system-ui,sans-serif;padding:8px 13px;text-transform:none;letter-spacing:0;color:#fff;gap:8px}.more>summary:after{content:"";flex:none;width:6px;height:6px;margin:-4px 0 0;border:solid currentColor;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}.more[open]>summary:after{margin:3px 0 0;transform:rotate(-135deg)}
 .more[open]>summary,.more>summary:hover,.top .acts .more[open]>summary.btn,.top .acts .more>summary.btn:hover{background:#fff;color:var(--ink)}.top{z-index:30}
 .more .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:250px;background:#fff;color:var(--ink);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);padding:6px;display:flex;flex-direction:column;z-index:40}
@@ -314,13 +317,31 @@ function panelCheck(){
     }
     if(c.history?.length)body+=`<p class="meta chk-meta">Earlier checks: ${c.history.map(h=>h.status==='done'?`${fmtDate(h.completedAt)} · ${h.score}`:`${fmtDate(h.createdAt)} · ${h.status}`).join(' | ')}</p>`;
   }
-  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section></div>`;
+  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section>${panelModel()}</div>`;
+}
+function panelModel(){
+  const c=S.check;if(!c||c.error)return '';
+  const m=c.model,cfg=c.modelConfig||{},hasPhoto=(S.pack?.sketches||[]).some(x=>x.image),running=S.modelBusy||m?.status==='running';
+  const btn=`<button type="button" class="sbtn" data-act="makemodel" ${running||!cfg.configured||!hasPhoto?'disabled':''} title="Meshy builds a 3D shape from the client's photo. It uses credits and sends the photo to Meshy.">${running?'Making…':m?'Make another':'Make STL from photo'}</button>`;
+  let body;
+  if(!cfg.configured)body=`<p class="note">${cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected. Add MESHY_API_KEY to the service to turn this on.'}</p>`;
+  else if(!hasPhoto)body='<p class="meta">Add a reference photo to the pack first: the 3D shape is made from it.</p>';
+  else if(!m)body='<p class="meta">Press <b>Make STL from photo</b>. Meshy builds a 3D shape from the client\'s photo (about 2–5 minutes). It sends the photo to Meshy and uses credits, so it only runs when you press it.</p>';
+  else if(m.status==='running')body=`<p class="note">Meshy is building the shape from the photo. You can leave this page.</p><div class="chk-bar"><i style="--w:${Math.max(5,m.progress||0)}%"></i></div><p class="meta">${m.progress||0}%</p>`;
+  else if(m.status==='failed')body=`<p class="note">It did not work: ${esc(m.error||'unknown error')}. Press <b>Make another</b> to try again.</p>`;
+  else{
+    const sz=m.size||[],mm=Number.isFinite(sz[0])?`${sz.map(v=>Math.round(v*100)/100).join(' × ')} (the service's own units)`:'—';
+    body=`<div class="chk-mdl"><div class="chk-img">${m.thumb?`<img src="${m.thumb}" alt="Preview of the 3D model">`:'<span class="meta">No preview</span>'}</div><div><dl><dt>Triangles</dt><dd>${(m.triangles||0).toLocaleString()}</dd><dt>Raw size</dt><dd>${esc(mm)}</dd><dt>File</dt><dd>${m.bytes?(m.bytes>=1048576?(m.bytes/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.bytes/1024))+' KB'):'—'} · STL</dd><dt>Made</dt><dd>${fmtDate(m.completedAt)}${m.stale?' · the pack has changed since':''}</dd></dl>
+      <button type="button" class="sbtn" data-act="dlmodel" data-id="${esc(m.id)}">Download STL</button>
+      <p class="meta" style="margin-top:12px">A shape from one photo, not a measured part: the size is not to scale and the back is the service's best guess. Scale it against a measurement before anyone prints or cuts from it.${m.provider==='fixture'?' <b>Test mode: this is a placeholder cube.</b>':''}</p></div></div>`;
+  }
+  return `<section class="block" data-model>${head('12','3d','3D model (STL)','shape from the client\'s photo, for the factory and for fit checks',btn)}${body}</section>`;
 }
 async function loadCheck(){
   clearTimeout(S.checkTimer);
   try{S.check=await api(`/v1/admin/products/${S.product.id}/tech-pack/check`)}catch(e){S.check={error:e.status===404?'Save the tech pack to run a check.':e.message}}
   const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();renderTabs();
-  if(S.check?.latest?.status==='pending')S.checkTimer=setTimeout(loadCheck,4000);
+  if(S.check?.latest?.status==='pending'||S.check?.model?.status==='running')S.checkTimer=setTimeout(loadCheck,S.check?.model?.status==='running'?5000:4000);
 }
 const TAB_LIST=()=>MODE==='admin'?[...TABS,['check','Check','M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3zM9 12l2 2 4-4']]:TABS;
 function renderTabs(){const r=readiness();const badge={calls:r&&r.pendingCalloutKeys.length?'●':'',sign:r?.locked?'✓':'',check:S.check?.latest&&S.check.latest.status==='pending'?'…':(S.check?.latest?.verdict==='does-not-resemble'?'●':'')};$('#tabs').style.gridTemplateColumns=`repeat(${TAB_LIST().length},1fr)`;$('#tabs').innerHTML=TAB_LIST().map(([k,l,d])=>`<button type="button" class="${S.tab===k?'on':''}" data-tab="${k}"><svg viewBox="0 0 24 24"><path d="${d}" stroke-linecap="round" stroke-linejoin="round"/></svg><b>${esc(MODE==='client'?(k==='sign'&&S.draft?'Submit':CLIENT_TAB_LABELS[k]||l):l)}${badge[k]?' '+badge[k]:''}</b></button>`).join('')}
@@ -539,6 +560,8 @@ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');i
   if(act==='morerow'){const tr=b.closest('tr');tr.classList.toggle('more');b.textContent=tr.classList.contains('more')?'Fewer details':b.dataset.n;return}
   if(act==='xhide'){xHide();return}if(act==='xshow'){xShow();return}if(act==='xclose'){xClose();document.querySelector('.ai-banner')?.scrollIntoView({block:'center',behavior:'smooth'});return}
   if(act==='handback'){handBack();return}if(act==='undochange'){undoChanges(b.dataset.loop,b.dataset.change||null);return}
+  if(act==='makemodel'){(async()=>{try{if(S.dirty)await save();S.modelBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/model`,{method:'POST',body:'{}'});toast('Meshy is building the shape')}catch(e){toast(e.message)}finally{S.modelBusy=false;loadCheck()}})();return}
+  if(act==='dlmodel'){(async()=>{try{const r=await fetch(`/v1/admin/tech-pack-models/${b.dataset.id}/stl`,{headers:{Authorization:'Bearer '+TOKEN}});if(!r.ok)throw Error('Download failed');const u=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=u;a.download=`${(S.product?.title||'model').replace(/[^\w.-]+/g,'-').slice(0,60)}-3d.stl`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}catch(e){toast(e.message)}})();return}
   if(act==='runcheck'){(async()=>{try{if(S.dirty)await save();S.checkBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/check`,{method:'POST',body:'{}'});toast('Check started')}catch(e){toast(e.message)}finally{S.checkBusy=false;loadCheck()}})();return}
   if(act==='save'){save();return}
   if(act==='publish'){publish();return}

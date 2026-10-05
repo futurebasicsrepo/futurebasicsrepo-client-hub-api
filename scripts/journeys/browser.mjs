@@ -492,4 +492,38 @@ await journey('J58', 'the Check tab: photo beside the render, a score, what to f
   try { await page.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#sheet .panel.on'); ok(await page.locator('#tabs button[data-tab="check"]').count() === 0 && await page.locator('[data-panel="check"]').count() === 0, 'a client never gets the tab, on a phone or anywhere'); } finally { await ctx.close(); }
 });
 
+await journey('J63', 'the 3D model: staff make an STL from the client photo, watch it build, download a valid file; clients cannot reach it; limits hold', async () => {
+  const r = await room('63', { wait: true }), W = 'http://work.localhost:3123', id = r.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
+    await wp.click('#tabs button[data-tab="check"]'); await wp.waitForSelector('[data-model]', { timeout: 10000 });
+    ok(/Make STL from photo/i.test(await wp.innerText('[data-model]')) && /only runs when you press it/i.test(await wp.innerText('[data-model]')), 'the 3D card says it costs credits and only runs when pressed');
+    await wp.click('[data-act="makemodel"]');
+    await wp.waitForFunction(() => /Meshy is building/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 }); ok(await wp.locator('[data-model] .chk-bar').count() === 1, 'a progress bar shows while it builds');
+    await wp.waitForFunction(() => /Triangles/.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 30000 });
+    const txt = await wp.innerText('[data-model]'); ok(/12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it shows the triangle count, warns it is not to scale, and says test mode', txt);
+    ok(await wp.locator('[data-model] img').count() === 1, 'with a preview picture');
+    const [dl] = await Promise.all([wp.waitForEvent('download', { timeout: 10000 }), wp.click('[data-act="dlmodel"]')]);
+    const path = await dl.path(); const { readFileSync } = await import('node:fs'); const buf = readFileSync(path);
+    ok(/\.stl$/.test(dl.suggestedFilename()) && buf.length === 84 + 12 * 50 && buf.readUInt32LE(80) === 12, 'the download is a real STL file', [dl.suggestedFilename(), buf.length]);
+    ok(wp.errs.length === 0, 'no script errors', wp.errs);
+    await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-model.png`, fullPage: true }).catch(() => {});
+  } finally { await wctx.close(); }
+  const m = sql(`select id from tech_pack_models where product_id='${id}' and status='done' limit 1`);
+  ok((await call(`/v1/admin/tech-pack-models/${m}/stl`, { token: r.token })).status === 403, 'a client cannot download it');
+  ok((await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: r.token, body: {} })).status === 403, 'or start one');
+  ok((await call(`/v1/admin/tech-pack-models/not-an-id/stl`, { token: admin })).status === 404, 'a bad id is a plain 404');
+  // the per-product daily limit: three in all, the fourth is refused with a sentence
+  for (let i = 0; i < 4; i++) { await sleep(150); const x = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} }); if (x.status === 202) { for (let k = 0; k < 60 && sql(`select status from tech_pack_models where id='${x.json.id}'`) === 'running'; k++) await sleep(300); } else { ok(x.status === 429 && /3 3D models on this product today/.test(x.json.error), 'the fourth model today is refused with a sentence', [x.status, x.json.error]); break; } }
+  ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 3, 'and exactly three were made');
+  // a second press while one is building is not a second charge
+  sql(`delete from tech_pack_models where product_id='${id}'`);
+  const a = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} }), b = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} });
+  ok(a.status === 202 && b.status === 409, 'a second press while one is building is refused, not charged twice', [a.status, b.status]);
+  ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 1, 'and only one task exists');
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
