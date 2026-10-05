@@ -12,7 +12,8 @@ import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
-import { runSpecCheck, imageConfig } from './check.js';
+import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
+import { reconcile, applyChanges, revertChanges } from './loop.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
@@ -1764,7 +1765,7 @@ app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]}
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:techPackPayload(ctx.techPack),seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),cutoutEnabled:cutoutEnabled()};
+  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 // The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
@@ -2431,6 +2432,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
     if(row.initiated_by==='client')await syncCardQuietly(row.product_id,merged);
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
+    startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
     // an API-side failure (key, credits, rate limit, outage) is ours: the client is told so, never asked for another photo
@@ -2523,8 +2525,8 @@ async function runSpecCheckJob(checkId){
     const renders=[];for(const x of r.renders){const file=`${checkId}-${x.view}.jpg`;await writeFile(join(checkDir(),file),x.buffer);renders.push({view:x.view,label:x.label,file})}
     await pool.query(`update tech_pack_checks set status='done',completed_at=now(),render_status=$2,render_error=$3,provider=$4,image_model=$5,check_model=$6,brief=$7,verdict=$8,score=$9,verdict_label=$10,renders=$11,pack_updated_at=$12 where id=$1`,
       [checkId,r.renderStatus,r.renderError,r.provider,r.imageModel,r.checkModel,JSON.stringify(r.brief),JSON.stringify(r.verdict),r.verdict.score,r.verdict.verdict,JSON.stringify(renders),row.updated_at]);
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Spec check on ${row.title}: ${r.verdict.verdict.replace(/-/g,' ')} (${r.verdict.score}/100)${r.renderStatus==='rendered'?'':', no render'}`,{techPackId:row.id,checkId,score:r.verdict.score}]).catch(()=>{});
-    if(r.verdict.verdict==='does-not-resemble'||(r.verdict.verdict!=='cannot-judge'&&r.verdict.score<60))
+    if(claimed.trigger!=='loop')await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Spec check on ${row.title}: ${r.verdict.verdict.replace(/-/g,' ')} (${r.verdict.score}/100)${r.renderStatus==='rendered'?'':', no render'}`,{techPackId:row.id,checkId,score:r.verdict.score}]).catch(()=>{});
+    if(claimed.trigger!=='loop'&&(r.verdict.verdict==='does-not-resemble'||(r.verdict.verdict!=='cannot-judge'&&r.verdict.score<60)))
       await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Spec check: ${row.client_name}'s ${row.title} does not match its photo (${r.verdict.score}/100) — ${clipText(r.verdict.summary,140)}`,row.product_id]).catch(()=>{});
   }catch(e){
     const msg=checkErrorText(e);app.log.warn({err:String(e.message||e).slice(0,300),checkId},'spec check failed');
@@ -2536,6 +2538,7 @@ const checkErrorText=e=>e?.status===401||e?.status===403?'The assistant refused 
 const clipText=(t,n)=>String(t||'').replace(/\s+/g,' ').trim().slice(0,n);
 // A check that was waiting or failed part-way (a deploy, an API error) is picked up again a few minutes later.
 async function runSpecCheckRecovery(){
+  await pool.query(`update tech_pack_loops set status='failed',stage='done',error='The exchange did not finish',finished_at=now() where status='running' and created_at<now()-interval '15 minutes'`).catch(()=>{});
   const stuck=(await pool.query(`select id,attempts from tech_pack_checks where status='pending' and coalesce(started_at,created_at)<now()-interval '8 minutes' order by created_at limit 3`)).rows;
   let n=0;for(const r of stuck){if(r.attempts>=CHECK_MAX_ATTEMPTS){await pool.query(`update tech_pack_checks set status='failed',completed_at=now(),error=coalesce(error,'The check did not finish') where id=$1`,[r.id]);continue}await runSpecCheckJob(r.id);n++}
   return n;
@@ -2548,15 +2551,149 @@ async function checkView(row,{withImages=false}={}){
     attributes:row.verdict?.attributes||[],discrepancies:row.verdict?.discrepancies||[],renders,renderStatus:row.render_status,renderError:row.render_error,provider:row.provider,imageModel:row.image_model,checkModel:row.check_model,error:row.error||null,
     brief:withImages?row.brief:undefined};
 }
+// ---- The design assistant and the developer assistant, working on one pack ----
+// After the assistant drafts a pack, the developer assistant (the spec check) draws it from the pack alone and compares it with the photo; the design assistant
+// answers the findings and fixes descriptive fields; the developer assistant looks again. Every step is written to an event log that the pop-up shows as it
+// happens. Nothing here can fail a build: if any step goes wrong the draft stays as it was. A change that makes the score worse is taken back.
+const LOOP_ON=()=>process.env.BUILD_LOOP!=='off'&&aiEnabled();
+const LOOP_ROUNDS=()=>{const n=Number(process.env.BUILD_LOOP_ROUNDS);return Number.isFinite(n)&&process.env.BUILD_LOOP_ROUNDS!==undefined&&process.env.BUILD_LOOP_ROUNDS!==''?Math.max(0,Math.min(2,Math.floor(n))):1};
+const LOOP_THRESHOLD=()=>Number(process.env.BUILD_LOOP_THRESHOLD)||78;
+const trunc=(t,n)=>{const x=String(t??'').replace(/\s+/g,' ').trim();return x.length>n?x.slice(0,n-1)+'…':x};
+async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=null}){
+  const ev={at:new Date().toISOString(),agent,kind,text:trunc(text,360),...(score!=null?{score}:{}),...(data?{data}:{})};
+  await pool.query(`update tech_pack_loops set events=events||jsonb_build_array(jsonb_build_object('id',jsonb_array_length(events),'at',$2::text,'agent',$3::text,'kind',$4::text,'text',$5::text)||$6::jsonb),stage=coalesce($7,stage) where id=$1`,
+    [loopId,ev.at,agent,kind,ev.text,JSON.stringify({...(ev.score!=null?{score:ev.score}:{}),...(ev.data?{data:ev.data}:{})}),stage]).catch(e=>app.log.warn({err:e.message},'loop event not written'));
+}
+function loopView(row){
+  if(!row)return null;
+  return {id:row.id,status:row.status,trigger:row.trigger,stage:row.stage,events:row.events||[],changes:(row.changes||[]).map(c=>({id:c.id,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)})),startScore:row.start_score,finalScore:row.final_score,rounds:row.rounds,error:row.error||null,createdAt:row.created_at,finishedAt:row.finished_at};
+}
+const latestLoop=async packId=>loopView((await pool.query('select * from tech_pack_loops where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
+async function startLoop(packId,{trigger='build',actor=null}={}){
+  if(!LOOP_ON())return {skipped:'off'};
+  const row=(await pool.query('select id,product_id,client_id,published_at from tech_packs where id=$1',[packId])).rows[0];
+  if(!row||row.published_at)return {skipped:'published'};
+  const running=(await pool.query(`select id from tech_pack_loops where tech_pack_id=$1 and status='running' and created_at>now()-interval '15 minutes' limit 1`,[packId])).rows[0];
+  if(running)return {skipped:'running',id:running.id};
+  if(trigger==='manual'){const n=(await pool.query(`select count(*)::int n from tech_pack_loops where product_id=$1 and trigger='manual' and created_at>now()-interval '24 hours'`,[row.product_id])).rows[0].n;if(n>=CHECK_MANUAL_PER_DAY)return {limited:true,limit:CHECK_MANUAL_PER_DAY}}
+  const made=(await pool.query(`insert into tech_pack_loops(tech_pack_id,product_id,client_id,trigger,requested_by,stage) values($1,$2,$3,$4,$5,$6) returning id`,[row.id,row.product_id,row.client_id,trigger,actor,trigger==='build'?'compare':'compare'])).rows[0];
+  setImmediate(()=>runLoopBody(made.id).catch(e=>app.log.warn({err:e.message,loopId:made.id},'exchange failed')));
+  return {id:made.id};
+}
+async function runLoopBody(loopId){
+  const L=(await pool.query('select * from tech_pack_loops where id=$1',[loopId])).rows[0];if(!L||L.status!=='running')return;
+  const pause=Number(process.env.LOOP_STEP_DELAY_MS)||0; // test hook: slows the exchange so the pop-up can be watched
+  const say=async e=>{await loopSay(loopId,e);if(pause)await new Promise(r=>setTimeout(r,pause))},threshold=LOOP_THRESHOLD(),rounds=LOOP_ROUNDS();
+  const load=async()=>(await pool.query(`select tp.id,tp.product_id,tp.client_id,tp.data,tp.initiated_by,tp.updated_at,p.title,p.product_type,p.description_html,c.name client_name from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=tp.client_id where tp.id=$1`,[L.tech_pack_id])).rows[0];
+  // one check inside the exchange: it runs now and its failure ends the exchange instead of waiting for the retry job
+  const check=async()=>{
+    const made=(await pool.query(`insert into tech_pack_checks(tech_pack_id,product_id,client_id,pack_version,pack_updated_at,trigger,loop_id,requested_by) select tp.id,tp.product_id,tp.client_id,tp.version,tp.updated_at,'loop',$2,$3 from tech_packs tp where tp.id=$1 returning id`,[L.tech_pack_id,loopId,L.requested_by])).rows[0];
+    await runSpecCheckJob(made.id);
+    const r=(await pool.query('select * from tech_pack_checks where id=$1',[made.id])).rows[0];
+    if(r.status!=='done'){await pool.query(`update tech_pack_checks set status='failed',completed_at=now() where id=$1 and status<>'done'`,[made.id]);throw new Error(r.error||'The check could not finish')}
+    return r;
+  };
+  let applied=[],final=null,start=null,row=null;
+  try{
+    row=await load();if(!row)throw new Error('The tech pack no longer exists');
+    const prompt=[`Title: ${row.title}`,await productBriefText(row.product_id,row.description_html)].filter(Boolean).join('\n');
+    const pk=normalizeTechPack(row.data),mine={callouts:pk.sketches.reduce((n,s)=>n+s.callouts.length,0),poms:pk.pom.length,bom:pk.bom.length};
+    await say(L.trigger==='build'?{agent:'design',kind:'say',stage:'compare',text:`Draft written from your photo: ${mine.callouts} callouts, ${mine.poms} measurements and ${mine.bom} materials. Handing it to the developer assistant to test.`}
+      :{agent:'design',kind:'say',stage:'compare',text:'Sending the pack to the developer assistant for a fresh look.'});
+    const cfg=imageConfig();
+    await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'I build the product from the materials, colours and measurements alone, without looking at the photo. Drawing it now…':'I read the materials, colours and measurements alone, without looking at the photo, and compare what they describe with it.'});
+    const c1=await check(),v1=c1.verdict||{};start=c1.score;
+    await pool.query('update tech_pack_loops set start_score=$2 where id=$1',[loopId,start]);
+    await say({agent:'developer',kind:'verdict',stage:'compare',score:start,text:v1.summary||'Here is what I found.'});
+    for(const d of (v1.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`${d.title}. ${d.detail}`});
+    final=start;
+    if(v1.verdict==='cannot-judge'||!(v1.discrepancies||[]).length||start>=threshold||rounds<1){
+      await say({agent:'design',kind:'say',stage:'done',text:v1.verdict==='cannot-judge'?'The developer assistant could not judge this one, so I am leaving the draft as it is.':start>=threshold?'Nothing I would change: the pack reads as the product in your photo.':'I will leave the draft as it is for a person to review.'});
+    }else{
+      for(let round=1;round<=rounds;round++){
+        await say({agent:'design',kind:'think',stage:'review',text:'Going through those findings against your photo…'});
+        const cur=await load(),last=round===1?c1:applied.lastCheck;
+        const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:last.verdict,promptText:prompt});
+        for(const d of r.decisions)await say({agent:'design',kind:'decision',text:d.say});
+        if(!r.changes.length){await say({agent:'design',kind:'say',stage:'done',text:'I am keeping the draft as it is.'});break}
+        const db=await pool.connect();let done;
+        try{
+          await db.query('begin');
+          const live=(await db.query('select data,status,published_at from tech_packs where id=$1 for update',[L.tech_pack_id])).rows[0];
+          done=live.status==='submitted'||live.published_at?{applied:[],skipped:r.changes,pack:live.data}:applyChanges(live.data,r.changes); // a pack already sent to the factory is never edited behind the client's back
+          if(done.applied.length)await db.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,done.pack]); // updated_at is left alone: it marks a person's last edit
+          await db.query('commit');
+        }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+        if(!done.applied.length){await say({agent:'design',kind:'say',stage:'done',text:'The pack was edited or sent while I was reviewing, so I left it exactly as it is.'});break}
+        applied=done.applied;if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,done.pack);
+        await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(applied),round]);
+        await say({agent:'design',kind:'say',stage:'revise',text:`Changing ${applied.length} thing${applied.length===1?'':'s'}:`});
+        for(const c of applied)await say({agent:'design',kind:'change',data:{from:trunc(c.from,80),to:trunc(c.to,80)},text:`${c.label}: ${trunc(c.from,60)||'(empty)'} → ${trunc(c.to,60)}`});
+        await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks. Testing the changed pack from scratch…'});
+        const c2=await check();applied.lastCheck=c2;
+        if(c2.score<start-2){
+          const live=(await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],back=revertChanges(live.data,applied);
+          await pool.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,back.pack]);
+          if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,back.pack);
+          await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(applied.map(c=>({...c,undone:true})))]);
+          await say({agent:'developer',kind:'verdict',stage:'done',score:c2.score,text:`Lower than before (${start}). I am taking those changes back, and the original draft stays.`});final=start;
+        }else{
+          final=c2.score;
+          await say({agent:'developer',kind:'verdict',stage:'done',score:final,text:final>start?`Up from ${start}. That is better.`:`About the same as before (${start}).`});
+        }
+        if(final>=threshold)break;
+      }
+    }
+    await say({agent:'system',kind:'done',stage:'done',text:'Ready for your review.'});
+    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,finished_at=now() where id=$1`,[loopId,final]);
+    const kept=applied.length&&final>=start-2?applied.length:0;
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}`,{techPackId:L.tech_pack_id,loopId,start,final}]).catch(()=>{});
+    const lastRow=(await pool.query(`select verdict_label from tech_pack_checks where loop_id=$1 and status='done' order by completed_at desc limit 1`,[loopId])).rows[0];
+    if(final<60||lastRow?.verdict_label==='does-not-resemble')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Spec check: ${row.client_name}'s ${row.title} still does not match its photo after the assistants went over it (${final}/100)`,row.product_id]).catch(()=>{});
+  }catch(e){
+    const msg=checkErrorText(e);app.log.warn({err:String(e.message||e).slice(0,300),loopId},'exchange failed');
+    await say({agent:'system',kind:'done',stage:'done',text:'The assistants could not finish going over this one. Your draft is unchanged.'});
+    await pool.query(`update tech_pack_loops set status='failed',stage='done',error=$2,final_score=$3,finished_at=now() where id=$1`,[loopId,msg,final]).catch(()=>{});
+  }
+}
 app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const pack=(await pool.query('select id,updated_at,version from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!pack)return reply.code(404).send({error:'Tech pack not found'});
   const rows=(await pool.query('select * from tech_pack_checks where product_id=$1 order by created_at desc limit 6',[req.params.id])).rows;
   const latest=await checkView(rows[0],{withImages:true});
   const img=imageConfig();
-  return {enabled:aiEnabled(),image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+  const loops=(await pool.query('select * from tech_pack_loops where product_id=$1 order by created_at desc limit 4',[req.params.id])).rows.map(loopView);
+  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
     history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
+});
+// Hand the pack back to the design assistant: the developer assistant tests it again and the two go through the findings. Staff only.
+app.post('/v1/admin/products/:id/tech-pack/loop',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  if(!aiEnabled())return reply.code(503).send({error:'This needs the assistant: add ANTHROPIC_API_KEY to the service'});
+  if(process.env.BUILD_LOOP==='off')return reply.code(503).send({error:'The assistants\' exchange is switched off (BUILD_LOOP=off)'});
+  const row=(await pool.query('select id,published_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  if(row.published_at)return reply.code(409).send({error:'This version is published. The assistants only work on drafts.'});
+  const r=await startLoop(row.id,{trigger:'manual',actor:req.auth.sub});
+  if(r.limited)return reply.code(429).send({error:`That is ${r.limit} hand-backs on this product today. Try again tomorrow.`});
+  if(r.skipped==='running')return reply.code(409).send({error:'The assistants are already working on this pack',id:r.id});
+  return reply.code(202).send({started:true,id:r.id});
+});
+// Undo what the design assistant changed: all of it, or one change. A field someone edited since keeps its new value.
+app.post('/v1/admin/tech-pack-loops/:id/undo',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const L=(await pool.query('select * from tech_pack_loops where id=$1',[req.params.id])).rows[0];if(!L)return reply.code(404).send({error:'Not found'});
+  const only=req.body?.changeId?String(req.body.changeId):null,todo=(L.changes||[]).filter(c=>!c.undone&&(!only||c.id===only));
+  if(!todo.length)return reply.code(409).send({error:'Nothing left to undo'});
+  const pk=(await pool.query('select id,product_id,client_id,published_at,initiated_by,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0];
+  if(!pk||pk.published_at)return reply.code(409).send({error:'This version is published, so its fields are locked'});
+  const back=revertChanges(pk.data,todo),done=new Set(back.reverted.map(c=>c.id));
+  if(!done.size)return reply.code(409).send({error:'Those fields have been edited since, so they were left as they are'});
+  await pool.query('update tech_packs set data=$2 where id=$1',[pk.id,back.pack]);if(pk.initiated_by==='client')await syncCardQuietly(pk.product_id,back.pack);
+  await pool.query('update tech_pack_loops set changes=$2 where id=$1',[L.id,JSON.stringify((L.changes||[]).map(c=>done.has(c.id)?{...c,undone:true}:c))]);
+  await loopSay(L.id,{agent:'system',kind:'undo',text:`Undone: ${back.reverted.map(c=>c.label).join(', ')}.`});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[pk.client_id,pk.product_id,req.auth.sub,`Staff undid ${back.reverted.length} change${back.reverted.length===1?'':'s'} the design assistant made`,{techPackId:pk.id,loopId:L.id}]).catch(()=>{});
+  return {loop:loopView((await pool.query('select * from tech_pack_loops where id=$1',[L.id])).rows[0]),reverted:back.reverted.length,kept:back.kept.length};
 });
 app.post('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
@@ -2772,7 +2909,7 @@ app.post('/v1/tech-packs',{preHandler:authenticate,bodyLimit:16_000_000},async(r
 app.get('/v1/products/:id/tech-pack/draft',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client')return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
-  return draftView(row);
+  const view=draftView(row);view.techPack.loop=await latestLoop(row.id);view.loopEnabled=LOOP_ON();return view;
 });
 app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40_000_000},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});

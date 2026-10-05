@@ -491,13 +491,14 @@ await journey('J56', 'the independent spec check: runs at submit, staff only, st
   const room = await newRoom('56'), cid = room.r.json.client.id, id = room.productId;
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
   const latest = async () => (await adm(`/v1/admin/products/${id}/tech-pack/check`)).json;
-  let c = await latest(); ok(c.latest === null && c.enabled === true && c.image.provider === 'fixture', 'before the client submits there is no check, and the image model is reported', [c.latest, c.image]);
+  let c = await latest(); for (let i = 0; i < 40 && !(c.latest && c.latest.status === 'done'); i++) { await sleep(300); c = await latest(); }
+  ok(c.latest && c.latest.trigger === 'loop' && c.enabled === true && c.image.provider === 'fixture', 'before the client submits, the only check is the one the developer assistant ran after the draft, and the image model is reported', [c.latest && c.latest.trigger, c.image]);
   const sub = await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} }); ok(sub.status === 200, 'the client submits', sub.status);
   for (let i = 0; i < 40; i++) { c = await latest(); if (c.latest && c.latest.status !== 'pending') break; await sleep(400); }
   const l = c.latest; ok(l && l.status === 'done' && l.trigger === 'submit', 'the check ran by itself when the client submitted', l && [l.status, l.trigger, l.error]);
   ok(l.score === 82 && l.verdict === 'resembles' && l.attributes.length === 7 && l.renders.length === 1 && l.renders[0].dataUrl.startsWith('data:image/jpeg'), 'a score, a verdict, seven attributes and one render', l && [l.score, l.verdict, l.attributes.length, l.renders.length]);
   ok(!JSON.stringify(l.brief).includes('data:image') && l.brief.parts.length > 0, 'the brief the renderer got has the BOM and no picture');
-  ok(sql(`select count(*) from tech_pack_checks where product_id='${id}'`) === '1', 'one check, not two');
+  ok(sql(`select count(*) from tech_pack_checks where product_id='${id}' and trigger='submit'`) === '1', 'one check at submit, not two');
   ok((await call(`/v1/admin/products/${id}/tech-pack/check`, { token: room.token })).status === 403 && (await call(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', token: room.token, body: {} })).status === 403, 'a client can neither read nor start one');
   ok(!JSON.stringify((await call(`/v1/products/${id}/tech-pack/draft`, { token: room.token })).json).includes('does-not-resemble') && !JSON.stringify((await call(`/v1/products/${id}/thread`, { token: room.token })).json).includes('Spec check'), 'and nothing from it reaches the client\'s own views');
   ok((await call(`/v1/admin/products/${id}/tech-pack/check`)).status === 401 && (await adm('/v1/admin/products/not-a-uuid/tech-pack/check')).status === 404, 'no sign-in → 401, a bad id → 404');
@@ -506,7 +507,7 @@ await journey('J56', 'the independent spec check: runs at submit, staff only, st
   await adm(`/v1/admin/products/${id}/tech-pack`, { method: 'PUT', body: { data } }); c = await latest(); ok(c.stale === true, 'editing the pack marks the check as out of date');
   const again = await adm(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', body: {} }); ok(again.status === 202 && again.json.id, 'staff run it again', again.json);
   for (let i = 0; i < 40; i++) { c = await latest(); if (c.latest.trigger === 'manual' && c.latest.status !== 'pending') break; await sleep(400); }
-  ok(c.latest.trigger === 'manual' && c.latest.status === 'done' && c.stale === false && c.history.length === 1 && c.history[0].trigger === 'submit', 'the new result is on top, no longer stale, the first is in the history', [c.latest.trigger, c.stale, c.history.length]);
+  ok(c.latest.trigger === 'manual' && c.latest.status === 'done' && c.stale === false && c.history.some(h => h.trigger === 'submit'), 'the new result is on top, no longer stale, the one from submit is in the history', [c.latest.trigger, c.stale, c.history.map(h => h.trigger)]);
   // it shows in the console's waiting-on-us list when it says the pack does not match, and goes away once published
   sql(`update tech_pack_checks set score=38,verdict_label='does-not-resemble',verdict=jsonb_set(verdict,'{summary}','"The upper is mesh in the pack but suede in the photo."') where id='${c.latest.id}'`);
   let q = (await adm('/v1/admin/dashboard')).json.queues, item = q.approvals.find(x => x.key === `check:${c.latest.id}`);

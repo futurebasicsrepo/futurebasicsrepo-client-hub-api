@@ -2,7 +2,7 @@
 
 Scripted customers who make mistakes on purpose, so a change that breaks a path a real person takes fails here and not in production.
 
-`npm run journeys` starts four throwaway servers and a stand-in Shopify store and runs 51 journeys. Each one asserts the outcome a customer needs: a clear message, no 5xx, no hang, nothing lost.
+`npm run journeys` starts five throwaway servers and a stand-in Shopify store and runs 55 journeys. Each one asserts the outcome a customer needs: a clear message, no 5xx, no hang, nothing lost.
 
 | File | Server | Journeys |
 |---|---|---|
@@ -11,6 +11,7 @@ Scripted customers who make mistakes on purpose, so a change that breaks a path 
 | `shopify-down.mjs` | B: Shopify unreachable | J16–J17: checkout and unlock with the store down, the `/start` rate limit |
 | `payments.mjs` | D: a stand-in Shopify store the server reads | J46–J47: a tech pack paid in the store reaches the ledger, the pack, the client card and the Platform page without anyone pressing sync; an outage and a paid-but-locked pack turn the check amber; the console card, room and Platform page show it |
 | `model-down.mjs` | C: model API failing | J18, J19, J43, J53 and J57: the customer is told it is on our side and keeps their three tries; staff get one alert, not one per failure |
+| `loop.mjs` | E: fixture assistant that needs a fix, slowed exchange | J59–J62: after the draft the developer assistant tests the pack and the design assistant fixes the wording, the score goes up and every change can be undone; a change that scores worse is taken back; the pop-up (both assistants, live exchange, score count-up, Hide/Show/Escape) on desktop and phone; the Check tab's exchange, changes list, Undo and Hand back button |
 
 Needs Postgres at `DATABASE_URL` (default `postgres://postgres:postgres@localhost:5432/fbhub_tp`) and `psql` on the path. The browser journeys need Playwright (`PLAYWRIGHT_PATH`, or on the module path); without it they are skipped. Fixture pictures are drawn at run time, nothing binary is committed.
 

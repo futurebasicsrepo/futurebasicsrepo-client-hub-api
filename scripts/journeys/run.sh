@@ -22,7 +22,7 @@ fi
 export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
-for port in 3123 3124 3125 3126 3127; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
+for port in 3123 3124 3125 3126 3127 3128; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
 COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
@@ -37,13 +37,16 @@ env "${COMMON[@]}" PORT=3125 CLIENT_HUB_URL=http://127.0.0.1:3125 ANTHROPIC_API_
 # D: a stand-in Shopify store (orders you put in it, an outage you switch on) and a server that reads it, so the payment sync can be tested end to end
 node scripts/journeys/shopify-mock.mjs 3126 > "$T/shopify-mock.log" 2>&1 & PM=$!
 env "${COMMON[@]}" PORT=3127 CLIENT_HUB_URL=http://127.0.0.1:3127 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=on SHOPIFY_STORE_DOMAIN=mock.myshopify.com SHOPIFY_CLIENT_ID=x SHOPIFY_CLIENT_SECRET=y SHOPIFY_API_ORIGIN=http://127.0.0.1:3126 START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-d.log" 2>&1 & PD=$!
-for port in 3124 3125 3127; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
+# E: the fixture draft carries a flaw the fixture reviewer finds, and the exchange runs slowly enough for a browser to watch the pop-up
+env "${COMMON[@]}" PORT=3128 CLIENT_HUB_URL=http://127.0.0.1:3128 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=450 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-e.log" 2>&1 & PE=$!
+for port in 3124 3125 3127 3128; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
 RC=0
 node scripts/journeys/api.mjs          || RC=1
 if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
 node scripts/journeys/shopify-down.mjs || RC=1
 node scripts/journeys/model-down.mjs   || RC=1
 node scripts/journeys/payments.mjs     || RC=1
-kill -9 $PA $PB $PC $PD $PM 2>/dev/null; wait $PA $PB $PC $PD $PM 2>/dev/null
+node scripts/journeys/loop.mjs         || RC=1
+kill -9 $PA $PB $PC $PD $PE $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PM 2>/dev/null
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC
