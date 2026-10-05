@@ -2544,7 +2544,7 @@ async function checkView(row,{withImages=false}={}){
   if(!row)return null;
   const renders=[];
   for(const x of row.renders||[]){const r={view:x.view,label:x.label};if(withImages){try{r.dataUrl='data:image/jpeg;base64,'+(await readFile(join(checkDir(),x.file))).toString('base64')}catch{r.missing=true}}renders.push(r)}
-  return {id:row.id,status:row.status,trigger:row.trigger,attempts:row.attempts,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,score:row.score,verdict:row.verdict?.verdict||null,summary:row.verdict?.summary||'',
+  return {id:row.id,status:row.status,trigger:row.trigger,attempts:row.attempts,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,score:row.score,verdict:row.verdict_label||row.verdict?.verdict||null,summary:row.verdict?.summary||'',
     attributes:row.verdict?.attributes||[],discrepancies:row.verdict?.discrepancies||[],renders,renderStatus:row.render_status,renderError:row.render_error,provider:row.provider,imageModel:row.image_model,checkModel:row.check_model,error:row.error||null,
     brief:withImages?row.brief:undefined};
 }
