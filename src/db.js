@@ -534,6 +534,26 @@ export async function migrate() {
       started_at timestamptz,
       completed_at timestamptz
     );
+    alter table tech_pack_checks add column if not exists loop_id uuid;
+    create table if not exists tech_pack_loops (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      trigger text not null default 'build',
+      status text not null default 'running',
+      stage text not null default 'draft',
+      events jsonb not null default '[]',
+      changes jsonb not null default '[]',
+      start_score int,
+      final_score int,
+      rounds int not null default 0,
+      error text,
+      requested_by uuid,
+      created_at timestamptz not null default now(),
+      finished_at timestamptz
+    );
+    create index if not exists tech_pack_loops_pack_idx on tech_pack_loops(tech_pack_id, created_at desc);
     create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);
     create unique index if not exists tech_pack_checks_submit_once on tech_pack_checks(tech_pack_id, pack_version) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());

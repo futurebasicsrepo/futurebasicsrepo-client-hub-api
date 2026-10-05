@@ -177,6 +177,14 @@ async function callJson(system, content, { model = CHECK_MODEL(), maxTokens = 30
 }
 
 function fixtureVerdict(brief, { renders }) {
+  // test hook: a [worse] marker makes the fixture reviewer score the pack lower, so the exchange's "take it back" path can be tested
+  if (brief.parts.some(p => /\[worse\]/i.test(`${p.notes} ${p.spec}`))) return { score: 35, verdict: 'does-not-resemble', summary: 'Test verdict: the change made the pack match the photo less.',
+    attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'differs' : 'match', note: 'Test fixture.' })),
+    discrepancies: [{ severity: 'high', field: 'bom', title: 'A BOM finish reads differently from the photo', detail: 'Test fixture: the first BOM row carries a worse marker.', suggestion: 'Undo the last change.' }] };
+  // test hook: a BOM note containing [needs-fix] makes the fixture reviewer find a problem, so the hand-back flow can be exercised end to end
+  if (brief.parts.some(p => /\[needs-fix\]/i.test(`${p.notes} ${p.spec}`))) return { score: 58, verdict: 'partly', summary: 'Test verdict: the written finish does not match the photo.',
+    attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'differs' : 'match', note: key === 'materials' ? 'Test fixture: a BOM row carries a needs-fix marker.' : 'Test fixture: no difference found.' })),
+    discrepancies: [{ severity: 'high', field: 'bom', title: 'A BOM finish reads differently from the photo', detail: 'Test fixture: the first BOM row carries a needs-fix marker.', suggestion: 'Reconcile the first BOM row.' }] };
   const score = Number(process.env.CHECK_FIXTURE_SCORE) || 82, first = brief.parts[0];
   return { score, verdict: scoreLabel(score), summary: `Test verdict: ${renders.length ? 'the render' : 'the written spec'} resembles the photo with a few fixable details.`,
     attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'close' : 'match', note: key === 'materials' && first ? `${first.component || 'First part'} reads as ${first.material || 'the listed material'}; check its finish against the photo.` : 'Test fixture: no difference found.' })),

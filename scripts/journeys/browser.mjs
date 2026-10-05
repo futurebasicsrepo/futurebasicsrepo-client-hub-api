@@ -206,7 +206,7 @@ await journey('J38', 'the whole customer path with the payment gate on, then off
       const t1 = await settle(token, id); ok(t1.aiStatus === 'done', `${tag}: the first pack is drafted by the assistant`, t1.aiStatus);
       await page.waitForFunction(() => /Draft written|written/i.test(document.body.innerText), null, { timeout: 20000 }).catch(() => {}); ok(!PAY.test(await page.innerText('body')), `${tag}: and the first pack never mentions payment`);
       await page.fill(field, `Edited, gate ${mode}`); await sleep(2900); ok((await status(token, id)).data.style.styleName === `Edited, gate ${mode}`, `${tag}: a hand edit autosaves`);
-      await page.click('[data-act="submit"]'); let sub = await status(token, id); for (let i = 0; i < 20 && sub.status !== 'submitted'; i++) { await sleep(400); sub = await status(token, id); }
+      await page.keyboard.press('Escape'); await page.waitForSelector('.xchg', { state: 'hidden', timeout: 15000 }).catch(() => {}); await page.click('[data-act="submit"]'); let sub = await status(token, id); for (let i = 0; i < 20 && sub.status !== 'submitted'; i++) { await sleep(400); sub = await status(token, id); }
       ok(sub.status === 'submitted', `${tag}: the customer submits it to Future Basics`, sub.status); await ctx.close();
       // 2. the same customer starts a second pack
       const projectId = (await call('/v1/dashboard', { token })).json.projects[0].id, mk = title => call('/v1/tech-packs', { token, body: { title, projectId, photos: [runner] } }).then(r => r.json);

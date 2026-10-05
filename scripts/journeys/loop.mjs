@@ -1,0 +1,119 @@
+// The design assistant and the developer assistant working on a pack, on a server whose draft carries a flaw the fixture reviewer finds (server E).
+// The exchange runs slowly there so the pop-up can be watched.
+import { createRequire } from 'node:module';
+import { journey, ok, summary, api, jpeg, sleep, forge, sql, stamp } from './lib.mjs';
+const BASE = 'http://127.0.0.1:3128', call = api(BASE), runner = jpeg();
+let n = 0; const em = tag => `jl${tag}-${stamp}-${++n}@chaos.test`;
+let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
+async function room(tag) { const r = await call('/v1/public/start', { body: { email: em(tag), name: 'Loop Room', title: 'Layer runner', photos: [runner] } }); return { token: r.json.token, id: r.json.product.id, cid: r.json.client.id, email: r.json.client ? undefined : undefined, r }; }
+const loopOf = async (token, id) => (await call(`/v1/products/${id}/tech-pack/draft`, { token })).json.techPack.loop;
+async function waitLoop(token, id, ms = 40000) { const t0 = Date.now(); let lp = null; while (Date.now() - t0 < ms) { lp = await loopOf(token, id); if (lp && lp.status !== 'running') return lp; await sleep(400); } return lp; }
+
+await journey('J59', 'the exchange: after the draft the developer assistant tests it, the design assistant fixes the wording, the score goes up, and every change can be undone', async () => {
+  const m = await room('59'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  // watch it happen: the client's own feed shows the exchange growing event by event
+  let seen = [], lp = null; const t0 = Date.now();
+  while (Date.now() - t0 < 45000) { lp = await loopOf(m.token, m.id); if (lp) seen.push(lp.events.length); if (lp && lp.status !== 'running') break; await sleep(350); }
+  ok(lp && lp.status === 'done', 'the exchange ran by itself after the draft', lp && [lp.status, lp.error]);
+  ok(seen.some((x, i) => i && x > seen[i - 1]) && new Set(seen).size >= 4, 'and it could be followed while it ran: the event list grew step by step', [...new Set(seen)]);
+  ok(lp.startScore === 58 && lp.finalScore === 82 && lp.rounds === 1, 'the developer assistant scored 58, the design assistant answered, and the second test scored 82', [lp.startScore, lp.finalScore, lp.rounds]);
+  ok(lp.events.every((e, i) => e.id === i && e.at && e.text) && lp.events[0].agent === 'design' && lp.events.at(-1).kind === 'done', 'the events are numbered, timed and written out, from the design assistant\'s first line to "ready"');
+  const kinds = lp.events.map(e => `${e.agent}:${e.kind}`); ok(['developer:verdict', 'developer:finding', 'design:decision', 'design:change'].every(k => kinds.includes(k)), 'they include a verdict, a finding, a decision and a change', kinds);
+  ok(lp.events.filter(e => e.kind === 'verdict').map(e => e.score).join() === '58,82', 'the two verdicts carry their scores');
+  const pack = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data;
+  ok(lp.changes.length === 1 && /needs-fix/.test(lp.changes[0].from) && !/needs-fix/.test(lp.changes[0].to) && !pack.bom.some(r => /needs-fix/.test(`${r.notes} ${r.spec}`)), 'one change: what it was, what it became, and the pack carries it', lp.changes);
+  ok(pack.pom.length > 0 && pack.pom.every(r => r.tolerance && Object.keys(r.values).length === pack.sizes.length), 'measurements and tolerances are whole');
+  ok((await call(`/v1/admin/tech-pack-loops/${lp.id}/undo`, { method: 'POST', token: m.token, body: {} })).status === 403 && (await call(`/v1/admin/products/${m.id}/tech-pack/loop`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a client can neither undo nor hand back');
+  // undo
+  const u = await adm(`/v1/admin/tech-pack-loops/${lp.id}/undo`, { method: 'POST', body: { changeId: lp.changes[0].id } }); ok(u.status === 200 && u.json.reverted === 1, 'staff undo the change', u.json);
+  const back = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack; ok(back.data.bom.some(r => /needs-fix/.test(`${r.notes} ${r.spec}`)) && back.loop.changes[0].undone === true && back.loop.events.at(-1).kind === 'undo', 'the field is as it was, the change is marked undone, and the log says so');
+  ok((await adm(`/v1/admin/tech-pack-loops/${lp.id}/undo`, { method: 'POST', body: {} })).status === 409, 'undoing again says there is nothing left');
+  // a person's edit is never overwritten: hand back, then edit the field, then undo
+  const go = await adm(`/v1/admin/products/${m.id}/tech-pack/loop`, { method: 'POST', body: {} }); ok(go.status === 202 && go.json.id, 'staff hand the pack back', go.json);
+  const second = await adm(`/v1/admin/products/${m.id}/tech-pack/loop`, { method: 'POST', body: {} }); ok(second.status === 409, 'a second hand-back while the assistants are working is refused', second.status);
+  let l2; for (let i = 0; i < 60; i++) { l2 = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json.loop; if (l2 && l2.id === go.json.id && l2.status !== 'running') break; await sleep(400); }
+  ok(l2.status === 'done' && l2.startScore === 58 && l2.finalScore === 82 && l2.changes.length === 1, 'the hand-back goes through the same steps', l2 && [l2.status, l2.startScore, l2.finalScore]);
+  const cur = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data; const row = cur.bom.findIndex(r => /Reconciled/.test(`${r.notes} ${r.spec}`)); cur.bom[row].spec = 'Hand-edited by staff'; await adm(`/v1/admin/products/${m.id}/tech-pack`, { method: 'PUT', body: { data: cur } });
+  const stale = await adm(`/v1/admin/tech-pack-loops/${l2.id}/undo`, { method: 'POST', body: {} }); ok(stale.status === 409 && /edited since/.test(stale.json.error), 'undoing over a field a person edited since is refused with a plain message', stale.json);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data.bom[row].spec === 'Hand-edited by staff', 'and their edit stays');
+  // activity and notifications: the exchange leaves a trace, not a flood
+  ok(Number(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Design and developer assistants went over%'`)) >= 2, 'each exchange is on the product\'s activity');
+  ok(sql(`select count(*) from tech_pack_checks where loop_id='${lp.id}' and status='done'`) === '2', 'each exchange ran two checks, both finished');
+});
+
+await journey('J60', 'a change that makes the score worse is taken back; a pack that reads fine is left alone', async () => {
+  const m = await room('60'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  await waitLoop(m.token, m.id);
+  // plant the hook that makes the design assistant's fix backfire
+  const d = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data; d.bom[0].spec = (d.bom[0].spec || '') + ' [needs-fix]'; d.style.fabricSummary = '[make-worse] ' + (d.style.fabricSummary || '');
+  await adm(`/v1/admin/products/${m.id}/tech-pack`, { method: 'PUT', body: { data: d } });
+  const go = await adm(`/v1/admin/products/${m.id}/tech-pack/loop`, { method: 'POST', body: {} }); ok(go.status === 202, 'hand back', go.status);
+  let lp; for (let i = 0; i < 60; i++) { lp = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json.loop; if (lp && lp.id === go.json.id && lp.status !== 'running') break; await sleep(400); }
+  ok(lp.status === 'done' && lp.startScore === 58 && lp.finalScore === 58, 'the score after the change was 35, so the final score is the original 58', [lp.status, lp.startScore, lp.finalScore]);
+  ok(lp.changes.length === 1 && lp.changes[0].undone === true && lp.events.some(e => /taking those changes back/i.test(e.text)), 'the change is marked undone and the exchange says it took it back');
+  const pk = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data; ok(/needs-fix/.test(pk.bom[0].spec) && !/\[worse\]/.test(JSON.stringify(pk.bom)), 'the pack is back as it was', pk.bom[0].spec);
+  // a pack that reads fine
+  const m2 = await room('60b'), l2 = await waitLoop(m2.token, m2.id); const a2 = await forge({ sub: sql(`select id from users where client_id='${m2.cid}' limit 1`), clientId: m2.cid, role: 'admin' });
+  const pk2 = (await call(`/v1/admin/products/${m2.id}/tech-pack`, { token: a2 })).json.techPack.data; pk2.bom[0].spec = 'Mesh base with windowed overlays'; await call(`/v1/admin/products/${m2.id}/tech-pack`, { method: 'PUT', token: a2, body: { data: pk2 } });
+  const g2 = await call(`/v1/admin/products/${m2.id}/tech-pack/loop`, { method: 'POST', token: a2, body: {} }); let x; for (let i = 0; i < 60; i++) { x = (await call(`/v1/admin/products/${m2.id}/tech-pack/check`, { token: a2 })).json.loop; if (x && x.id === g2.json.id && x.status !== 'running') break; await sleep(400); }
+  ok(x.status === 'done' && x.startScore === 82 && x.changes.length === 0 && x.rounds === 0 && /Nothing I would change/.test(x.events.map(e => e.text).join(' ')), 'a pack that already reads fine gets no changes, and the design assistant says so', x && [x.startScore, x.changes.length, x.rounds]);
+  void l2;
+});
+
+await journey('J61', 'the pop-up: both assistants, a live exchange, a score that counts up, and a way out', async () => {
+  if (!playwright) { ok(true, 'skipped: Playwright is not available'); return; }
+  const { chromium } = playwright, browser = await chromium.launch();
+  try {
+    for (const [name, viewport, mobile] of [['desktop', { width: 1280, height: 800 }, false], ['phone', { width: 390, height: 844 }, true]]) {
+      const m = await room('61' + name[0]), ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' });
+      await p.waitForSelector('.xchg.on', { timeout: 15000 }); ok(true, `${name}: the pop-up opens as soon as the pack starts building`);
+      ok(await p.locator('.xag.design').count() === 1 && await p.locator('.xag.developer').count() === 1 && await p.locator('.xchg-rail li').count() === 6, `${name}: both assistants and the six steps are there`);
+      ok(await p.locator('.xchg-cta').isHidden(), `${name}: "See the tech pack" is not offered while they work`);
+      await p.waitForFunction(() => document.querySelectorAll('.xchg .xm.developer').length >= 1, null, { timeout: 30000 }); ok(await p.locator('.xchg .xm.design').count() >= 1, `${name}: both assistants have spoken`);
+      await p.waitForFunction(() => /^\d+$/.test(document.querySelector('.xnum')?.textContent || ''), null, { timeout: 30000 }); await p.waitForFunction(() => document.querySelector('.xchg-score.has'), null, { timeout: 5000 }); ok(true, `${name}: the score ring fills once the first test is in`);
+      ok(await p.locator('.xchg .xm.kind-finding').count() >= 1, `${name}: the developer assistant's findings are shown`);
+      const w = await p.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, card: document.querySelector('.xchg-card').getBoundingClientRect().width })); ok(w.doc <= w.win + 1 && w.card <= w.win + 1, `${name}: nothing spills sideways`, w);
+      await p.waitForSelector('.xchg.done', { timeout: 45000 }); ok(await p.locator('.xchg-cta').isVisible() && /Ready/.test(await p.innerText('.xchg-title')), `${name}: at the end it says ready and offers the pack`);
+      ok(await p.locator('.xm.kind-change .xd').count() >= 1 && await p.locator('.xm.kind-change .xa').count() >= 1, `${name}: the change shows what it was and what it became`);
+      await p.waitForFunction(() => document.querySelector('.xnum')?.textContent === '82', null, { timeout: 5000 }); ok(/\+24/.test(await p.innerText('.xdelta')), `${name}: the score ends at 82 with the gain shown`);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j61-${name}-done.png` }).catch(() => {});
+      await p.click('.xchg-cta'); await p.waitForSelector('.xchg', { state: 'hidden', timeout: 4000 }); ok(await p.locator('#sheet .panel.on').isVisible(), `${name}: the button closes it and the tech pack is there`);
+      ok(!/needs-fix/i.test(await p.innerText('#sheet')), `${name}: the pack on screen already has the fix`);
+      ok(/Tested by the developer assistant: 82\/100/.test(await p.innerText('#noteSlot')), `${name}: a note under the title records the result`);
+      ok(p.errs.length === 0, `${name}: no script errors`, p.errs); await ctx.close();
+    }
+    // hide and escape
+    const m = await room('61h'), ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+    const p = await ctx.newPage(); await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('.xchg.on'); await p.keyboard.press('Escape'); await p.waitForSelector('.xchg', { state: 'hidden', timeout: 3000 }); ok(true, 'Escape hides the pop-up');
+    await p.waitForSelector('.ai-banner [data-act="xshow"]', { timeout: 15000 }); await p.click('.ai-banner [data-act="xshow"]'); await p.waitForSelector('.xchg.on', { timeout: 3000 }); ok(true, 'and a note under the title brings it back while the assistants are still working');
+    await p.click('.xchg-hide'); await p.waitForSelector('.xchg', { state: 'hidden', timeout: 3000 }); ok(true, 'the Hide button hides it');
+    await ctx.close();
+  } finally { await browser.close(); }
+});
+
+await journey('J62', 'the Check tab for staff: the exchange, what changed with an Undo, and a hand-back button that opens the pop-up', async () => {
+  if (!playwright) { ok(true, 'skipped: Playwright is not available'); return; }
+  const m = await room('62'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }); await waitLoop(m.token, m.id);
+  const { chromium } = playwright, browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+    await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="check"]');
+    ok(await p.locator('.xchg.on').count() === 0, 'staff opening a pack whose exchange has finished are not interrupted by the pop-up');
+    await p.click('#tabs button[data-tab="check"]'); await p.waitForSelector('.chk-ex', { timeout: 10000 });
+    ok(await p.locator('.chk-ev.design').count() >= 1 && await p.locator('.chk-ev.developer').count() >= 1 && /58 → 82/.test(await p.innerText('[data-panel="check"] .chk-h >> nth=-2').catch(() => '') + await p.innerText('[data-panel="check"]')), 'the exchange is listed with both assistants and the score going 58 → 82');
+    ok(await p.locator('.chk-chg').count() === 1 && /Mesh base/.test(await p.innerText('.chk-chg')) && await p.locator('.chk-chg [data-act="undochange"]').count() === 1, 'what the design assistant changed is listed with its reason and an Undo button');
+    await p.click('.chk-chg [data-act="undochange"]'); await p.waitForSelector('.chk-chg.undone', { timeout: 8000 }); ok(true, 'Undo marks it undone');
+    ok(Number(sql(`select count(*) from tech_packs where product_id='${m.id}' and data::text like '%needs-fix%'`)) === 1, 'and the pack has the old wording back');
+    await p.waitForSelector('[data-act="handback"]:not([disabled])'); await p.click('[data-act="handback"]'); await p.waitForSelector('.xchg.on', { timeout: 8000 }); ok(true, 'Hand back opens the pop-up');
+    await p.waitForSelector('.xchg.done', { timeout: 45000 }); ok(await p.locator('.xnum').innerText() === '82', 'it runs through to 82');
+    await p.click('.xchg-cta'); await p.waitForSelector('.xchg', { state: 'hidden', timeout: 4000 });
+    await p.waitForFunction(() => document.querySelectorAll('.chk-chg').length >= 1 && !document.querySelector('.chk-chg.undone'), null, { timeout: 10000 }); ok(true, 'the Check tab shows the new change');
+    await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j62-check-exchange.png`, fullPage: true }).catch(() => {});
+    ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+  } finally { await browser.close(); }
+});
+
+const bad = summary(); process.exit(bad ? 1 : 0);

@@ -87,12 +87,75 @@ table.tp[data-tbl="bom"] td:nth-child(1),table.tp[data-tbl="bom"] td:nth-child(2
 .top .crumbs a{color:#a9a9ad;text-decoration:none;padding:4px 0;max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top .crumbs a:hover,.top .crumbs a:focus-visible{color:#fff;text-decoration:underline}
 .top .crumbs [aria-current]{color:#fff;font-weight:600;padding:4px 0}.top .crumbs .sep{opacity:.45}.top .crumbs .meta{color:#aaa}
 body.has-crumbs .top .brand b{display:none}
-.metric{display:block;margin-top:2px;font-size:10.5px;line-height:1.3;color:#8b8b92;white-space:nowrap}.metric:empty{display:none}.chk-shots{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 18px}.chk-shots figure{margin:0}.chk-img{display:grid;place-items:center;gap:8px;min-height:240px;padding:10px;border:1px solid var(--line);border-radius:18px;background:var(--fog);overflow:hidden}.chk-img img{max-width:100%;max-height:340px;border-radius:12px;object-fit:contain}.chk-shots figcaption{margin-top:6px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.metric{display:block;margin-top:2px;font-size:10.5px;line-height:1.3;color:#8b8b92;white-space:nowrap}.metric:empty{display:none}/* ---- The pop-up: the design assistant and the developer assistant at work ---- */
+.xchg{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:radial-gradient(120% 90% at 50% 0%,rgba(20,20,22,.55),rgba(8,8,10,.86));backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);opacity:0;transition:opacity .35s var(--ease)}
+.xchg[hidden]{display:none}.xchg.on{opacity:1}
+.xchg-card{position:relative;width:min(640px,100%);max-height:min(860px,calc(100dvh - 40px));display:flex;flex-direction:column;gap:16px;padding:26px 26px 22px;border-radius:30px;color:#f3f3ef;background:linear-gradient(180deg,#1a1b1f 0%,#0f1012 100%);border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 120px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;transform:translateY(18px) scale(.97);transition:transform .55s var(--ease)}
+.xchg.on .xchg-card{transform:none}
+.xchg-card::before{content:"";position:absolute;inset:-30% -10% auto;height:70%;background:radial-gradient(50% 60% at 25% 40%,rgba(75,255,154,.16),transparent 70%),radial-gradient(50% 60% at 78% 40%,rgba(255,106,61,.17),transparent 70%);pointer-events:none;animation:xdrift 9s ease-in-out infinite alternate}
+@keyframes xdrift{to{transform:translate3d(0,6%,0) scale(1.06)}}
+.xchg-hide{all:unset;box-sizing:border-box;position:absolute;top:16px;right:18px;z-index:2;cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#bdbdc4}
+.xchg-hide:hover{border-color:#fff;color:#fff}.xchg-hide:focus-visible,.xchg-cta:focus-visible{outline:2px solid var(--cue);outline-offset:3px}
+.xchg-top{position:relative}.xchg-kicker{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#9a9aa3}
+.xchg-title{margin:6px 0 0;font:400 34px/1.05 'Instrument Serif',Georgia,serif;font-style:italic;letter-spacing:-.01em;min-height:36px}
+.xchg-title span{display:inline-block;animation:xin .5s var(--ease) both}
+@keyframes xin{from{opacity:0;transform:translateY(10px);filter:blur(4px)}}
+.xchg-agents{position:relative;display:grid;grid-template-columns:1fr minmax(80px,170px) 1fr;align-items:center;gap:6px}
+.xag{display:grid;justify-items:center;gap:7px;text-align:center;opacity:.5;transition:opacity .5s var(--ease),transform .5s var(--ease)}.xag.act{opacity:1;transform:translateY(-2px)}
+.xag b{font:500 13px 'Space Grotesk',system-ui,sans-serif}.xag small{display:block;margin-top:2px;font:400 11px 'Space Grotesk',system-ui,sans-serif;color:#9a9aa3}
+.xorb{position:relative;width:64px;height:64px;border-radius:50%}
+.xorb::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 32% 28%,var(--hi),var(--lo) 68%);box-shadow:0 0 0 1px rgba(255,255,255,.2) inset,0 10px 30px var(--glow);animation:xbreath 3.4s ease-in-out infinite}
+.xorb::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid var(--lo);opacity:0;transform:scale(.8)}
+.xag.act .xorb::after{animation:xping 1.8s var(--ease) infinite}
+@keyframes xbreath{50%{transform:scale(1.06)}}@keyframes xping{0%{opacity:.7;transform:scale(.85)}100%{opacity:0;transform:scale(1.5)}}
+.xag.design{--hi:#b9ffd8;--lo:#19c97d;--glow:rgba(75,255,154,.45)}.xag.developer{--hi:#ffc3a8;--lo:#f0521f;--glow:rgba(255,106,61,.45)}
+.xorb svg{position:absolute;inset:0;margin:auto;width:28px;height:28px;stroke:#0f1012;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;z-index:1}
+.xlink{width:100%;height:46px;overflow:visible}.xlink path{fill:none;stroke:rgba(255,255,255,.16);stroke-width:1.5;stroke-dasharray:3 5;animation:xflow 1.6s linear infinite}
+@keyframes xflow{to{stroke-dashoffset:-16}}
+.xlink .pk{fill:#fff;opacity:0}.xchg[data-dir="fwd"] .xlink .pf,.xchg[data-dir="back"] .xlink .pb{opacity:.95}
+.xchg-rail{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:2px 0 0;padding:0;list-style:none}
+.xchg-rail::before{content:"";position:absolute;left:8%;right:8%;top:6px;height:2px;background:rgba(255,255,255,.12);border-radius:2px}
+.xchg-rail::after{content:"";position:absolute;left:8%;top:6px;height:2px;width:calc(84% * var(--p,0));background:linear-gradient(90deg,#4bff9a,#ff8a5c);border-radius:2px;transition:width .9s var(--ease)}
+.xchg-rail li{position:relative;display:grid;justify-items:center;gap:7px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6f6f78;text-align:center}
+.xchg-rail li i{position:relative;z-index:1;width:14px;height:14px;border-radius:50%;background:#26272c;border:2px solid #3a3b42;transition:all .4s var(--ease)}
+.xchg-rail li.on{color:#f3f3ef}.xchg-rail li.on i{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 6px rgba(75,255,154,.18);animation:xpulse 1.6s ease-in-out infinite}
+.xchg-rail li.ok{color:#bdbdc4}.xchg-rail li.ok i{background:#4bff9a;border-color:#4bff9a}
+@keyframes xpulse{50%{box-shadow:0 0 0 9px rgba(75,255,154,.05)}}
+.xchg-mid{position:relative;display:grid;grid-template-columns:1fr 128px;gap:14px;min-height:0;flex:1}
+.xchg-feed{display:flex;flex-direction:column;gap:9px;min-height:150px;max-height:300px;overflow-y:auto;padding:4px 4px 2px 0;scrollbar-width:thin;scrollbar-color:#3a3b42 transparent;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px);mask-image:linear-gradient(180deg,transparent 0,#000 14px)}
+.xm{max-width:92%;padding:10px 13px;border-radius:16px;font:400 13.5px/1.45 'Space Grotesk',system-ui,sans-serif;animation:xmsg .5s var(--ease) both}
+@keyframes xmsg{from{opacity:0;transform:translateY(12px) scale(.97)}}
+.xm b{display:block;margin-bottom:3px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
+.xm p{margin:0}.xm.design{align-self:flex-start;background:rgba(75,255,154,.09);border:1px solid rgba(75,255,154,.24);border-bottom-left-radius:5px}.xm.design b{color:#6dffae}
+.xm.developer{align-self:flex-end;background:rgba(255,106,61,.09);border:1px solid rgba(255,106,61,.28);border-bottom-right-radius:5px}.xm.developer b{color:#ff8a5c}
+.xm.system{align-self:center;max-width:100%;padding:4px 8px;background:none;border:0;text-align:center;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#9a9aa3}
+.xm.kind-change{padding:7px 11px;font-size:12.5px}.xm.kind-change p{font-family:'IBM Plex Mono',monospace;font-size:11.5px}.xm .xd{color:#ff9d80;text-decoration:line-through;text-decoration-color:rgba(255,157,128,.5)}.xm .xa{color:#6dffae}
+.xm .xchip{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:rgba(255,255,255,.12);font:500 11px 'IBM Plex Mono',monospace}
+.xm.typing{display:flex;gap:5px;align-items:center;padding:12px 14px;animation:xmsg .4s var(--ease) both}.xm.typing i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4;animation:xdot 1.1s ease-in-out infinite}.xm.typing i:nth-child(2){animation-delay:.16s}.xm.typing i:nth-child(3){animation-delay:.32s}
+.xm.typing.design{color:#6dffae}.xm.typing.developer{color:#ff8a5c}@keyframes xdot{40%{transform:translateY(-4px);opacity:1}}
+.xchg-score{display:grid;justify-items:center;align-content:start;gap:8px;padding-top:2px;opacity:.35;transition:opacity .6s var(--ease)}.xchg-score.has{opacity:1}
+.xring{position:relative;width:112px;height:112px}.xring svg{width:100%;height:100%;transform:rotate(-90deg)}.xring circle{fill:none;stroke-width:7;stroke-linecap:round}
+.xring .trk{stroke:rgba(255,255,255,.1)}.xring .val{stroke:var(--sc,#4bff9a);stroke-dasharray:326.7;stroke-dashoffset:326.7;transition:stroke-dashoffset 1.3s var(--ease),stroke .6s}
+.xring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2px;font:400 34px/1 'Instrument Serif',Georgia,serif}.xring b small{align-self:center;margin-top:12px;font:400 11px 'IBM Plex Mono',monospace;color:#9a9aa3}
+.xchg-score>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9a9aa3;text-align:center}
+.xdelta{padding:2px 9px;border-radius:999px;background:rgba(75,255,154,.16);color:#6dffae!important;opacity:0;transform:translateY(6px);transition:all .6s var(--ease) .5s}.xchg-score.up .xdelta{opacity:1;transform:none}
+.xchg-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:40px;font:400 12px 'Space Grotesk',system-ui,sans-serif;color:#9a9aa3}
+.xchg-cta{all:unset;box-sizing:border-box;display:none;cursor:pointer;padding:11px 20px;border-radius:999px;background:var(--cue);color:#0f1012;font:600 14px 'Space Grotesk',system-ui,sans-serif;box-shadow:0 8px 28px rgba(75,255,154,.3);transition:transform .25s var(--ease)}.xchg-cta:hover{transform:translateY(-2px)}
+.xchg.done .xchg-cta{display:inline-block;animation:xin .6s var(--ease) both}.xchg.done .xchg-wait{display:none}
+.xburst{position:absolute;right:76px;top:50%;width:0;height:0;pointer-events:none}.xburst i{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--c);opacity:0}
+.xchg.done .xburst i{animation:xspark 1.1s var(--ease) both;animation-delay:calc(var(--n)*18ms)}
+@keyframes xspark{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.3)}}
+body.xchg-on{overflow:hidden}
+@media(max-width:600px){.xchg{padding:0;place-items:end center}.xchg-card{width:100%;max-height:94dvh;border-radius:28px 28px 0 0;padding:22px 18px 18px;gap:13px}.xchg-title{font-size:28px;padding-right:56px}.xchg-mid{grid-template-columns:1fr}.xchg-score{grid-template-columns:auto 1fr;justify-items:start;align-items:center;gap:14px}.xring{width:84px;height:84px}.xring b{font-size:27px}.xchg-feed{max-height:34dvh;min-height:120px}.xorb{width:54px;height:54px}.xchg-rail li{font-size:9px;letter-spacing:.04em}}
+@media(prefers-reduced-motion:reduce){.xchg *,.xchg *::before,.xchg *::after{animation:none!important;transition-duration:.01ms!important}.xlink .pk{display:none}}
+.chk-shots{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 18px}.chk-shots figure{margin:0;min-width:0}.chk-img{display:grid;place-items:center;gap:8px;min-height:240px;padding:10px;border:1px solid var(--line);border-radius:18px;background:var(--fog);overflow:hidden}.chk-img{min-width:0}.chk-img img{max-width:100%;height:auto;max-height:340px;border-radius:12px;object-fit:contain}.chk-shots figcaption{margin-top:6px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .chk-verdict{display:flex;gap:18px;align-items:center;margin:4px 0 16px}.chk-verdict p{margin:8px 0 0;max-width:62ch}.chk-score{display:flex;align-items:baseline;gap:2px;min-width:104px;justify-content:center;padding:14px 16px;border-radius:20px;border:1px solid var(--line)}.chk-score b{font:400 44px/1 'Instrument Serif',Georgia,serif}.chk-score small{color:var(--dim)}.chk-score.ok{background:#e3f6ea;border-color:#b6e2c6}.chk-score.warn{background:#fff6d6;border-color:#ecd98a}.chk-score.bad{background:#fbe3df;border-color:#efb7ae}
 .chk-pill{display:inline-block;padding:3px 10px;border-radius:999px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.chk-pill.ok{background:#e3f6ea;color:#1c6b42}.chk-pill.warn{background:#fff1be;color:#7a5a00}.chk-pill.bad{background:#fbe3df;color:#9a2419}.chk-pill.mute{background:#ececef;color:#555}
 .chk-attrs{display:grid;gap:0;border:1px solid var(--line);border-radius:16px;overflow:hidden}.chk-attr{display:grid;grid-template-columns:104px 200px 1fr;gap:12px;align-items:start;padding:10px 14px;border-top:1px solid var(--line);font-size:13px}.chk-attr:first-child{border-top:0}.chk-attr span:last-child{color:var(--dim)}
+.chk-ex{display:grid;gap:6px}.chk-ev{display:grid;grid-template-columns:78px 1fr;gap:10px;padding:8px 12px;border-radius:12px;font-size:13px}.chk-ev b{font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;padding-top:2px}.chk-ev.design{background:#e9f9f0}.chk-ev.design b{color:#1c6b42}.chk-ev.developer{background:#fff0ea}.chk-ev.developer b{color:#b83a12}.chk-sc{display:inline;padding:1px 8px;border-radius:999px;background:rgba(20,20,22,.1);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none}.chk-ev.system{background:var(--fog);color:var(--dim)}
+.chk-chg{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}.chk-chg p{margin:3px 0 0;font-size:13px}.chk-chg s{color:var(--bad)}.chk-chg.undone{opacity:.55}
 .chk-h{margin:20px 0 8px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.chk-disc{display:grid;grid-template-columns:70px 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.chk-disc p{margin:4px 0 0;font-size:13px}.chk-sug{color:var(--ok)}.chk-field{margin-left:6px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.chk-meta{margin-top:16px}
-@media(max-width:700px){.chk-shots{grid-template-columns:1fr}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
+@media(max-width:700px){.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
 .langbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.langbar button{padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}.langbar button.on{background:#141416;border-color:#141416;color:#fff}.more{position:relative}.more>summary{list-style:none;cursor:pointer}.more>summary::-webkit-details-marker{display:none}.top .acts .more>summary.btn{font:400 12.5px/1.5 'Space Grotesk',system-ui,sans-serif;padding:8px 13px;text-transform:none;letter-spacing:0;color:#fff;gap:8px}.more>summary:after{content:"";flex:none;width:6px;height:6px;margin:-4px 0 0;border:solid currentColor;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}.more[open]>summary:after{margin:3px 0 0;transform:rotate(-135deg)}
 .more[open]>summary,.more>summary:hover,.top .acts .more[open]>summary.btn,.top .acts .more>summary.btn:hover{background:#fff;color:var(--ink)}.top{z-index:30}
 .more .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:250px;background:#fff;color:var(--ink);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);padding:6px;display:flex;flex-direction:column;z-index:40}
@@ -222,6 +285,7 @@ const CHK_FIELD={bom:'BOM',pom:'POMs',colorways:'Colourways',construction:'Const
 function panelCheck(){
   const c=S.check,l=c?.latest,sk=(S.pack?.sketches||[]).filter(x=>x.image),photos=[...new Set([...sk.filter(x=>/reference|photo/i.test(x.label)),...sk].map(x=>x.image))].slice(0,2).map(image=>({image}));
   const run=`<button type="button" class="sbtn" data-act="runcheck" ${S.checkBusy||l?.status==='pending'?'disabled':''}>${S.checkBusy||l?.status==='pending'?'Checking…':l?'Run check again':'Run check'}</button>`;
+  const lpRun=c?.loop?.status==='running',hb=c&&c.loopEnabled&&l&&l.status==='done'&&!S.preview?`<button type="button" class="sbtn" data-act="handback" ${lpRun||S.checkBusy?'disabled':''} title="The developer assistant tests the pack again, then the design assistant answers its findings and fixes the wording">${lpRun?'The assistants are working…':'Hand back to the design assistant'}</button>`:'';
   let body;
   if(!c)body='<p class="meta">Loading…</p>';
   else if(c.error)body=`<p class="note">${esc(c.error)}</p>`;
@@ -243,12 +307,14 @@ function panelCheck(){
         <figure><div class="chk-img">${l.renders.length?l.renders.map(x=>x.dataUrl?`<img src="${x.dataUrl}" alt="Render: ${esc(x.label)}">`:`<span class="meta">Image not found</span>`).join(''):`<span class="meta">${l.renderStatus==='failed'?'The render failed: '+esc(l.renderError||'the image model did not answer'):'No render for this check'}</span>`}</div><figcaption>Drawn from the pack alone${r0?' · '+esc(r0.label):''}</figcaption></figure></div>`;
       const attrs=l.attributes.length?`<div class="chk-attrs">${l.attributes.map(a=>{const [ml,mc]=CHK_MATCH[a.match]||['—','mute'];return `<div class="chk-attr"><span class="chk-pill ${mc}">${ml}</span><b>${esc(CHK_ATTR[a.key]||a.key)}</b><span>${esc(a.note)}</span></div>`}).join('')}</div>`:'';
       const disc=l.discrepancies.length?`<h3 class="chk-h">What to fix</h3>${l.discrepancies.map(d=>`<div class="chk-disc ${esc(d.severity)}"><span class="chk-pill ${d.severity==='high'?'bad':d.severity==='medium'?'warn':'mute'}">${esc(d.severity)}</span><div><b>${esc(d.title)}</b> <span class="chk-field">${esc(CHK_FIELD[d.field]||d.field)}</span><p>${esc(d.detail)}</p>${d.suggestion?`<p class="chk-sug">${esc(d.suggestion)}</p>`:''}</div></div>`).join('')}`:'<p class="meta" style="margin-top:14px">Nothing to fix.</p>';
-      body=noteHtml+shots+`<div class="chk-verdict"><div class="chk-score ${vc}"><b>${l.score}</b><small>/100</small></div><div><span class="chk-pill ${vc}">${esc(vl)}</span><p>${esc(l.summary)}</p></div></div>${attrs}${disc}
+      const lp=c.loop,exch=lp&&lp.events.length?`<h3 class="chk-h">The assistants' exchange${lp.startScore!=null?` · ${lp.startScore}${lp.finalScore!=null&&lp.finalScore!==lp.startScore?' → '+lp.finalScore:''}/100`:''} <span class="chk-field">${lp.trigger==='build'?'ran after the draft':'handed back by staff'}</span></h3><div class="chk-ex">${lp.events.map(e=>`<div class="chk-ev ${esc(e.agent)}"><b>${e.agent==='design'?'Design':e.agent==='developer'?'Developer':'·'}</b><span>${esc(e.text)}${e.score!=null?` <b class="chk-sc">${e.score}/100</b>`:''}</span></div>`).join('')}</div>`:'';
+      const live=lp?lp.changes.filter(x=>!x.undone):[],chg=lp&&lp.changes.length?`<h3 class="chk-h">What the design assistant changed${live.length>1?` <button type="button" class="sbtn" data-act="undochange" data-loop="${esc(lp.id)}">Undo all</button>`:''}</h3>${lp.changes.map(x=>`<div class="chk-chg ${x.undone?'undone':''}"><div><b>${esc(x.label)}</b><p><s>${esc(x.from||'(empty)')}</s> → ${esc(x.to)}</p>${x.reason?`<p class="meta">${esc(x.reason)}</p>`:''}</div>${x.undone?'<span class="meta">undone</span>':`<button type="button" class="sbtn" data-act="undochange" data-loop="${esc(lp.id)}" data-change="${esc(x.id)}">Undo</button>`}</div>`).join('')}`:'';
+      body=noteHtml+shots+`<div class="chk-verdict"><div class="chk-score ${vc}"><b>${l.score}</b><small>/100</small></div><div><span class="chk-pill ${vc}">${esc(vl)}</span><p>${esc(l.summary)}</p></div></div>${attrs}${disc}${chg}${exch}
         <p class="meta chk-meta">Checked ${fmtDate(l.completedAt)} · ${l.packVersion?'pack v'+l.packVersion:'draft pack'} · ${l.trigger==='submit'?'ran when the client submitted':'run by staff'} · written spec compared by ${esc(l.checkModel||'—')}${l.imageModel?' · drawn by '+esc(l.imageModel):''}</p>`;
     }
     if(c.history?.length)body+=`<p class="meta chk-meta">Earlier checks: ${c.history.map(h=>h.status==='done'?`${fmtDate(h.completedAt)} · ${h.score}`:`${fmtDate(h.createdAt)} · ${h.status}`).join(' | ')}</p>`;
   }
-  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run)}${body}</section></div>`;
+  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section></div>`;
 }
 async function loadCheck(){
   clearTimeout(S.checkTimer);
@@ -324,15 +390,108 @@ function paySingle(){const pr=S.pricing||{single:{amountCents:4800}},m=pr.member
 async function startSingleCheckout(){document.getElementById('payChoice')?.close();try{const d=await api(`/v1/products/${S.product.id}/tech-pack/checkout`,{method:'POST'});if(d.checkoutUrl){window.open(d.checkoutUrl,'_blank','noopener');if(S.techPack)S.techPack.checkoutUrl=d.checkoutUrl;toast('Checkout opened in a new tab — this page unlocks when payment clears');watchUnlock()}else if(d.dev){toast('Test rig: no Shopify — use the dev pay route');watchUnlock()}}catch(e){if(S.draft&&(e.status===502||e.status===503)){S.checkoutProblem=true;document.querySelectorAll('.ai-banner').forEach(b=>b.remove());aiBanner('locked',S.techPack)}toast(e.message)}}
 async function unlockNow(){try{const d=await api(`/v1/products/${S.product.id}/tech-pack/unlock`,{method:'POST'});if(d.aiStatus==='pending'){if(S.techPack)S.techPack.aiStatus='pending';watchAiDraft()}else toast('Payment has not reached us yet — give it a moment, or open the checkout again')}catch(e){toast(e.message)}}
 let aiWatch=null;
-async function watchAiDraft(){clearTimeout(aiWatch);document.querySelectorAll('.ai-banner').forEach(b=>b.remove());const slot=$('#noteSlot');const banner=document.createElement('div');banner.className='note noprint ai-banner';
+// ---- The pop-up: the design assistant and the developer assistant at work. It follows the real event log of the exchange (see server: tech_pack_loops). ----
+const XSTEPS=[['draft','Draft'],['compare','Test'],['review','Review'],['revise','Revise'],['recheck','Re-test'],['done','Ready']];
+const XTITLE={draft:'Reading the photo and drafting the pack',compare:'Testing the draft',review:'Going over the findings',revise:'Making the changes',recheck:'Testing it again',done:'Ready to review'};
+const XWHO={draft:'design',compare:'developer',review:'design',revise:'design',recheck:'developer'};
+const XICON={design:'<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/></svg>',developer:'<svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>'};
+const X={el:null,seen:0,shown:0,title:'',stage:'',score:null,open:false,hidden:false};
+const loopState=lp=>({stage:lp.stage,events:lp.events||[],status:lp.status==='running'?'running':lp.status==='failed'?'failed':'done',startScore:lp.startScore,finalScore:lp.finalScore,changes:(lp.changes||[]).filter(c=>!c.undone).length});
+function xBuild(){
+  const el=document.createElement('div');el.className='xchg';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-labelledby','xTitle');el.dataset.dir='fwd';
+  const sparks=Array.from({length:14},(_,i)=>{const a=i/14*Math.PI*2,r=60+(i%3)*22;return `<i style="--n:${i};--x:${Math.round(Math.cos(a)*r)}px;--y:${Math.round(Math.sin(a)*r)}px;--c:${['#4bff9a','#ff8a5c','#fff'][i%3]}"></i>`}).join('');
+  el.innerHTML=`<div class="xchg-card"><button type="button" class="xchg-hide" data-act="xhide">Hide</button>
+    <div class="xchg-top"><span class="xchg-kicker">Two assistants, one tech pack</span><h2 class="xchg-title" id="xTitle"></h2></div>
+    <div class="xchg-agents"><div class="xag design" data-who="design"><span class="xorb">${XICON.design}</span><div><b>Design assistant</b><small>drafts and fixes the pack</small></div></div>
+      <svg class="xlink" viewBox="0 0 160 46" preserveAspectRatio="none" aria-hidden="true"><path id="xp" d="M2,23 C42,2 118,44 158,23"/>
+        <g class="pf"><circle class="pk pf" r="3.2"><animateMotion dur="1.5s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pf" r="2.4"><animateMotion dur="1.5s" begin="-.5s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pf" r="2"><animateMotion dur="1.5s" begin="-1s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle></g>
+        <g class="pb"><circle class="pk pb" r="3.2"><animateMotion dur="1.5s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pb" r="2.4"><animateMotion dur="1.5s" begin="-.5s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pb" r="2"><animateMotion dur="1.5s" begin="-1s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle></g></svg>
+      <div class="xag developer" data-who="developer"><span class="xorb">${XICON.developer}</span><div><b>Developer assistant</b><small>tests it from the pack alone</small></div></div></div>
+    <ol class="xchg-rail">${XSTEPS.map(([k,l])=>`<li data-k="${k}"><i></i>${l}</li>`).join('')}</ol>
+    <div class="xchg-mid"><div class="xchg-feed" aria-live="polite" tabindex="0"></div>
+      <div class="xchg-score"><div class="xring"><svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" cx="60" cy="60" r="52"/></svg><b><span class="xnum">–</span><small>/100</small></b></div><span class="xlbl">Match with the photo</span><span class="xdelta"></span></div></div>
+    <div class="xchg-foot"><span class="xchg-wait">Usually two to four minutes. You can hide this and keep working.</span><span class="xburst" aria-hidden="true">${sparks}</span><button type="button" class="xchg-cta" data-act="xclose">See the tech pack</button></div></div>`;
+  document.body.appendChild(el);return el;
+}
+function xOpen(){
+  if(!X.el)X.el=xBuild();const el=X.el;Object.assign(X,{seen:0,title:'',stage:'',score:null,open:true,hidden:false});
+  el.querySelector('.xchg-feed').innerHTML='';el.classList.remove('done','on');el.querySelector('.xchg-score').classList.remove('has','up');el.querySelector('.xnum').textContent='–';el.querySelector('.xring .val').style.strokeDashoffset='326.7';
+  el.hidden=false;document.body.classList.add('xchg-on');requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('on')));
+}
+function xHide(){if(!X.el||!X.open)return;X.hidden=true;X.el.classList.remove('on');document.body.classList.remove('xchg-on');setTimeout(()=>{if(X.hidden)X.el.hidden=true},380)}
+function xShow(){if(!X.el)return;X.hidden=false;X.el.hidden=false;document.body.classList.add('xchg-on');requestAnimationFrame(()=>X.el.classList.add('on'))}
+function xClose(){if(!X.el)return;X.open=false;X.hidden=false;X.el.classList.remove('on');document.body.classList.remove('xchg-on');setTimeout(()=>{if(!X.open)X.el.hidden=true},380)}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&X.open&&!X.hidden)xHide()});
+function xBubble(e){
+  if(e.agent==='system')return `<div class="xm system">${esc(e.text)}</div>`;
+  const who=e.agent==='design'?'Design assistant':'Developer assistant';let body;
+  if(e.kind==='change'&&e.data){const i=e.text.indexOf(': ');body=`<p>${esc(i>0?e.text.slice(0,i):'')}: <span class="xd">${esc(e.data.from||'(empty)')}</span> → <span class="xa">${esc(e.data.to)}</span></p>`}
+  else body=`<p>${esc(e.text)}${e.kind==='verdict'&&e.score!=null?`<span class="xchip">${e.score}/100</span>`:''}</p>`;
+  return `<div class="xm ${e.agent} kind-${esc(e.kind)}"><b>${who}</b>${body}</div>`;
+}
+function xScore(el,n,start){
+  const sc=el.querySelector('.xchg-score'),num=el.querySelector('.xnum'),val=el.querySelector('.xring .val'),from=X.score??0;X.score=n;sc.classList.add('has');
+  val.style.strokeDashoffset=String(326.7*(1-Math.max(0,Math.min(100,n))/100));el.style.setProperty('--sc',n>=75?'#4bff9a':n>=50?'#ffd84a':'#ff7a59');val.style.setProperty('--sc',n>=75?'#4bff9a':n>=50?'#ffd84a':'#ff7a59');
+  const t0=performance.now(),dur=matchMedia('(prefers-reduced-motion:reduce)').matches?1:1100;const step=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);num.textContent=Math.round(from+(n-from)*e);if(k<1)requestAnimationFrame(step)};requestAnimationFrame(step);
+  const dl=el.querySelector('.xdelta');if(start!=null&&n>start){dl.textContent='+'+(n-start)+' since the first test';sc.classList.add('up')}else sc.classList.remove('up');
+}
+function xUpdate(st){
+  const el=X.el;if(!el)return;const feed=el.querySelector('.xchg-feed'),running=st.status==='running',stage=running?st.stage:'done';
+  const idx=Math.max(0,XSTEPS.findIndex(s=>s[0]===stage));el.querySelector('.xchg-rail').style.setProperty('--p',String(idx/(XSTEPS.length-1)));
+  el.querySelectorAll('.xchg-rail li').forEach((li,i)=>{li.classList.toggle('ok',i<idx||(!running&&i===idx));li.classList.toggle('on',running&&i===idx)});
+  const title=!running&&st.status==='failed'?'Your draft is ready':XTITLE[stage]||'';
+  if(title!==X.title){X.title=title;el.querySelector('.xchg-title').innerHTML=`<span>${esc(title)}</span>`}
+  const speaker=running?(XWHO[stage]||'design'):null;el.querySelectorAll('.xag').forEach(a=>a.classList.toggle('act',running&&a.dataset.who===speaker));
+  const evs=st.events||[],last=evs.at(-1);if(last&&last.agent!=='system')el.dataset.dir=last.agent==='design'?'fwd':'back';else if(speaker)el.dataset.dir=speaker==='design'?'fwd':'back';
+  feed.querySelectorAll('.typing').forEach(t=>t.remove());
+  if(!evs.length&&running&&!feed.children.length)feed.insertAdjacentHTML('beforeend',xBubble({agent:'design',kind:'say',text:'Looking at the photo and drafting callouts, measurements, materials and colours.'}));
+  for(const e of evs){if(e.id<X.seen)continue;feed.insertAdjacentHTML('beforeend',xBubble(e));X.seen=e.id+1}
+  if(running)feed.insertAdjacentHTML('beforeend',`<div class="xm typing ${speaker}" aria-hidden="true"><i></i><i></i><i></i></div>`);
+  feed.scrollTo({top:feed.scrollHeight,behavior:'smooth'});
+  const scores=evs.filter(e=>e.kind==='verdict'&&e.score!=null),cur=scores.at(-1)?.score;
+  if(cur!=null&&cur!==X.score)xScore(el,cur,st.startScore??scores[0]?.score);
+  if(!running&&!el.classList.contains('done')){el.classList.add('done');setTimeout(()=>el.querySelector('.xchg-cta')?.focus({preventScroll:true}),400)}
+  X.stage=stage;
+}
+// Waits for the assistant's draft, then for the exchange with the developer assistant, with the pop-up showing each step as it happens.
+async function watchAiDraft(){
+  clearTimeout(aiWatch);document.querySelectorAll('.ai-banner').forEach(b=>b.remove());const slot=$('#noteSlot');
   const hold=S.draft&&!RO;if(hold){RO=true;rerender()}
-  banner.innerHTML='<span class="spin"></span><strong>Building your tech pack…</strong> The Future Basics assistant is reading your photo and drafting callouts, measurements, materials and colours. Usually under a minute' + (hold?' — editing opens as soon as the draft lands.':'.');slot.prepend(banner);
-  const url=S.draft?`/v1/products/${S.product.id}/tech-pack/draft`:`/v1/admin/products/${S.product.id}/tech-pack`;
-  const started=Date.now();const tick=async()=>{try{const d=await api(url);const tp=d.techPack;const st=tp?.aiStatus;
-    if(st==='pending'){if(Date.now()-started<180000){aiWatch=setTimeout(tick,3000);return}if(hold){RO=false;rerender()}banner.innerHTML='<strong>Still working.</strong> You can edit now — the draft will merge in when it lands, and anything you type is kept.';aiWatch=setTimeout(tick,10000);return}
-    if(st==='done'){if(hold)RO=false;if(!S.dirty&&!S.saving){S.techPack=tp;S.pack=tp.data;S.completeness=d.completeness;if(d.product)S.product={...S.product,...d.product};if(d.translations)S.translations=d.translations;rerender();toast('Draft written from the photo — check every value')}else{S.techPack=tp;rerender();toast('Draft landed — save to merge it with your edits')}banner.innerHTML=AI_BANNERS.done;return}
-    if(hold){RO=false;rerender()}S.techPack=tp;banner.innerHTML=st==='failed'?aiFailedHtml(tp):st==='locked'?lockedHtml(tp,d.pricing):(AI_BANNERS[st]||AI_BANNERS.failed);
-  }catch(e){aiWatch=setTimeout(tick,5000)}};aiWatch=setTimeout(tick,2500)}
+  const prevLoop=S.techPack?.loop?.id||null,url=S.draft?`/v1/products/${S.product.id}/tech-pack/draft`:`/v1/admin/products/${S.product.id}/tech-pack`;
+  const banner=document.createElement('div');banner.className='note noprint ai-banner';
+  xOpen();xUpdate({stage:'draft',events:[],status:'running'});
+  const started=Date.now();let applied=false,doneAt=0;
+  const say=html=>{banner.innerHTML=html;if(!banner.isConnected)slot.prepend(banner)};
+  const land=(d,tp)=>{if(hold)RO=false;if(!S.dirty&&!S.saving){S.techPack=tp;S.pack=tp.data;S.completeness=d.completeness;if(d.product)S.product={...S.product,...d.product};if(d.translations)S.translations=d.translations;rerender();toast('Draft written from the photo — check every value')}else{S.techPack=tp;rerender();toast('Draft landed — save to merge it with your edits')}};
+  const tick=async()=>{try{
+    const d=await api(url),tp=d.techPack,st=tp?.aiStatus,lp=tp?.loop&&tp.loop.id!==prevLoop?tp.loop:null;
+    if(X.hidden&&X.open&&!banner.isConnected)say('<span class="spin"></span><strong>The assistants are still going over this pack.</strong> <button type="button" class="sbtn" data-act="xshow">Show</button>');
+    if(st==='pending'){
+      if(Date.now()-started>300000){if(hold){RO=false;rerender()}xClose();say('<strong>Still working.</strong> You can edit now — the draft will merge in when it lands, and anything you type is kept.');aiWatch=setTimeout(tick,10000);return}
+      xUpdate({stage:'draft',events:[],status:'running'});aiWatch=setTimeout(tick,1500);return}
+    if(st==='done'){
+      if(!applied){applied=true;land(d,tp)}
+      if(!doneAt)doneAt=Date.now();
+      const waiting=!lp&&d.loopEnabled&&Date.now()-doneAt<8000;
+      if((lp&&lp.status==='running')||waiting){xUpdate(lp?loopState(lp):{stage:'compare',events:[],status:'running'});aiWatch=setTimeout(tick,1500);return}
+      if(lp){xUpdate(loopState(lp));if(!S.dirty&&!S.saving){S.techPack=tp;S.pack=tp.data;S.completeness=d.completeness;rerender()}
+        say(AI_BANNERS.done+(lp.finalScore!=null?` <strong>Tested by the developer assistant: ${lp.finalScore}/100</strong>${lp.changes.some(c=>!c.undone)?` after ${lp.changes.filter(c=>!c.undone).length} change${lp.changes.filter(c=>!c.undone).length===1?'':'s'} by the design assistant${MODE==='admin'?' (see the Check tab to undo)':''}`:''}.`:''));if(X.hidden)xClose();return}
+      xClose();say(AI_BANNERS.done);return}
+    xClose();if(hold){RO=false;rerender()}S.techPack=tp;say(st==='failed'?aiFailedHtml(tp):st==='locked'?lockedHtml(tp,d.pricing):(AI_BANNERS[st]||AI_BANNERS.failed));
+  }catch(e){aiWatch=setTimeout(tick,4000)}};aiWatch=setTimeout(tick,1200)}
+// "Hand it back": the developer assistant tests the pack again and the two go through the findings (staff).
+async function handBack(){
+  try{if(S.dirty)await save();const r=await api(`/v1/admin/products/${S.product.id}/tech-pack/loop`,{method:'POST',body:'{}'});
+    xOpen();xUpdate({stage:'compare',events:[],status:'running'});
+    const poll=async()=>{try{const c=await api(`/v1/admin/products/${S.product.id}/tech-pack/check`),lp=c.loop;
+      if(lp&&lp.id===r.id){xUpdate(loopState(lp));if(lp.status==='running'){setTimeout(poll,1500);return}
+        const d=await api(`/v1/admin/products/${S.product.id}/tech-pack`);if(!S.dirty&&!S.saving&&d.techPack){S.techPack=d.techPack;S.pack=d.techPack.data;S.completeness=d.completeness;rerender()}S.check=c;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();renderTabs();return}
+      setTimeout(poll,1500)}catch(e){setTimeout(poll,3000)}};poll()
+  }catch(e){toast(e.message)}
+}
+async function undoChanges(loopId,changeId){
+  try{await api(`/v1/admin/tech-pack-loops/${loopId}/undo`,{method:'POST',body:JSON.stringify(changeId?{changeId}:{})});const d=await api(`/v1/admin/products/${S.product.id}/tech-pack`);if(!S.dirty&&!S.saving&&d.techPack){S.techPack=d.techPack;S.pack=d.techPack.data;S.completeness=d.completeness;rerender()}toast('Undone');loadCheck()}catch(e){toast(e.message);loadCheck()}
+}
 async function startOver(){if(!confirm('Start this tech pack over from its reference photo?\n\nEverything the assistant and the client put in — callouts, measurements, materials, notes — is removed and the assistant draws it again. The photo stays. This cannot be undone.'))return;try{if(S.dirty&&EDIT())await save();await api(`/v1/admin/products/${S.product.id}/tech-pack/ai`,{method:'POST',body:JSON.stringify({startOver:true})});if(S.techPack)S.techPack.aiStatus='pending';toast('Starting over from the reference photo');watchAiDraft()}catch(e){toast(e.message)}}
 // One tap to tell Future Basics something is wrong, from the pack itself: it lands in the project's messages, where the team already looks.
 const HELP_TEXT={checkout:'I tried to unlock this tech pack but checkout would not open. Can you unlock it or help me pay?',photo:'The assistant could not read the photo for this tech pack. Can you take a look and help me finish it?',tries:'I have used all three assistant tries on this tech pack. Can you finish it with me?',other:'I need help with this tech pack.'};
@@ -378,6 +537,8 @@ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');i
     (async()=>{try{if(S.dirty)await save();S.translating=true;S.translatingLang=l;renderActs();const r=await api(`/v1/admin/products/${S.product.id}/tech-pack/translate`,{method:'POST',body:JSON.stringify({lang:l})});S.translations={...S.translations,[l]:r};setLang(l);const lb=I18N.langs[l].label;toast(r.translated?`${lb} ready — ${r.translated} new phrase${r.translated===1?'':'s'} translated`:`${lb} is up to date`)}catch(e){toast(e.message)}finally{S.translating=false;S.translatingLang=null;rerender()}})();return}
   if(act==='flang'){const l=b.dataset.lang||'en';setLang(l);try{localStorage.setItem('fb.tp.lang.'+tokenMatch[1],l)}catch{}document.title=factoryTitle();factoryHead();rerender();return}
   if(act==='morerow'){const tr=b.closest('tr');tr.classList.toggle('more');b.textContent=tr.classList.contains('more')?'Fewer details':b.dataset.n;return}
+  if(act==='xhide'){xHide();return}if(act==='xshow'){xShow();return}if(act==='xclose'){xClose();document.querySelector('.ai-banner')?.scrollIntoView({block:'center',behavior:'smooth'});return}
+  if(act==='handback'){handBack();return}if(act==='undochange'){undoChanges(b.dataset.loop,b.dataset.change||null);return}
   if(act==='runcheck'){(async()=>{try{if(S.dirty)await save();S.checkBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/check`,{method:'POST',body:'{}'});toast('Check started')}catch(e){toast(e.message)}finally{S.checkBusy=false;loadCheck()}})();return}
   if(act==='save'){save();return}
   if(act==='publish'){publish();return}
