@@ -27,7 +27,7 @@ COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uplo
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
 #    Its connection pool is deliberately tiny (4): any request that holds a database connection while asking for a second one hangs here.
-env "${COMMON[@]}" PG_POOL_MAX=4 PORT=3123 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=$([ "${JOURNEY_GATE:-on}" = off ] && echo off || echo on) START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
+env "${COMMON[@]}" PG_POOL_MAX=4 MESH_POLL_MS=300 MESH_FIXTURE_MS=1500 PORT=3123 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=$([ "${JOURNEY_GATE:-on}" = off ] && echo off || echo on) START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
 # the first server creates the tables; the other two start once it is up, so they never race to migrate an empty database
 for i in $(seq 1 120); do curl -sf "http://127.0.0.1:3123/health" >/dev/null && break; sleep 0.5; done
 # B: Shopify configured but unreachable, default limits
