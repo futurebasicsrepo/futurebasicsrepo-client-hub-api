@@ -509,7 +509,7 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     const txt = await wp.innerText('[data-model]'); ok(/final render of the pack/i.test(txt) && /82\/100/.test(txt) && /12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it says it came from the pack\'s final render and its score, shows the triangle count, warns it is not to scale, and says test mode', txt);
     ok(await wp.locator('[data-model] img').count() === 1, 'with a preview picture');
     // the viewer: opens in place, draws the model, turns when dragged, resets, and flips the up axis
-    await wp.click('[data-act="view3d"]'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
+    await wp.click('.stl-prev .btn'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
     ok(await wp.locator('[data-act="stlreset"]').count() === 1 && /Up: Y/.test(await wp.innerText('[data-act="stlup"]')), 'View in 3D opens a viewer with Reset and an up-axis control');
     const host = wp.locator('.stl-host'), sharp = (await import('sharp')).default;
     const shot = async () => sharp(await host.screenshot()).raw().toBuffer({ resolveWithObject: true });
@@ -526,6 +526,21 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-model.png`, fullPage: true }).catch(() => {});
   } finally { await wctx.close(); }
   const m = sql(`select id from tech_pack_models where product_id='${id}' and status='done' limit 1`);
+  // on a phone, with a tall preview picture like the one the 3D service sends, the "View in 3D" button is on the screen and opens the viewer
+  { const { mkdirSync, writeFileSync } = await import('node:fs'), sharp = (await import('sharp')).default, dir = `${process.env.JOURNEY_TMP}/uploads/models`; mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/${m}.jpg`, await sharp({ create: { width: 1000, height: 1400, channels: 3, background: '#cfd2d6' } }).jpeg().toBuffer());
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+    try {
+      await pp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#tabs button[data-tab="check"]'); await pp.click('#tabs button[data-tab="check"]'); await pp.waitForSelector('.stl-prev .btn', { timeout: 10000 });
+      const btn = pp.locator('.stl-prev .btn'); await btn.scrollIntoViewIfNeeded(); const bb = await btn.boundingBox(), pv = await pp.locator('.stl-prev').boundingBox();
+      ok(await btn.isVisible() && bb.height > 24 && bb.x >= 0 && bb.x + bb.width <= 390 && bb.y + bb.height <= pv.y + pv.height + 1, 'on a phone the "View in 3D" button is on the screen, not cut off below a tall preview', [bb, pv]);
+      await btn.click(); await pp.waitForSelector('.stl-host canvas', { timeout: 15000 }); ok(await pp.locator('.stl-host .stl-msg').count() === 0, 'and it opens the viewer');
+      const w = await pp.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'without the page spilling sideways', w);
+      await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j63-phone-viewer.png` }).catch(() => {});
+      ok(pp.errs.length === 0, 'no script errors', pp.errs);
+    } finally { await pctx.close(); }
+  }
   ok((await call(`/v1/admin/tech-pack-models/${m}/stl`, { token: r.token })).status === 403, 'a client cannot download it');
   ok((await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: r.token, body: {} })).status === 403, 'or start one');
   ok((await call(`/v1/admin/tech-pack-models/not-an-id/stl`, { token: admin })).status === 404, 'a bad id is a plain 404');

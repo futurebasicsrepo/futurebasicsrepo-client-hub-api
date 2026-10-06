@@ -28,9 +28,11 @@
     const size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]], center = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
     const diag = Math.hypot(size[0], size[1], size[2]) || 1, q = diag / 20000;
     // face normals, and an angle-weighted sum per welded vertex
-    const face = new Float32Array(n * 3), ids = new Int32Array(n * 3), map = new Map();
+    // vertices are welded with an open-addressing hash on typed arrays (a big model has well over a million corners; a Map of them would run a phone out of memory)
+    const face = new Float32Array(n * 3), ids = new Int32Array(n * 3);
+    let cap = 1024; while (cap < n * 6) cap <<= 1;
+    const mask = cap - 1, table = new Int32Array(cap).fill(-1), kx = new Int32Array(n * 3), ky = new Int32Array(n * 3), kz = new Int32Array(n * 3), acc = new Float32Array(n * 9);
     let next = 0;
-    const acc = [];
     for (let t = 0; t < n; t++) {
       const o = t * 9, ax = pos[o], ay = pos[o + 1], az = pos[o + 2], bx = pos[o + 3] - ax, by = pos[o + 4] - ay, bz = pos[o + 5] - az, cx = pos[o + 6] - ax, cy = pos[o + 7] - ay, cz = pos[o + 8] - az;
       const nx = by * cz - bz * cy, ny = bz * cx - bx * cz, nz = bx * cy - by * cx;
@@ -41,8 +43,9 @@
         const p0 = o + c * 3, p1 = o + ((c + 1) % 3) * 3, p2 = o + ((c + 2) % 3) * 3;
         const e1x = pos[p1] - pos[p0], e1y = pos[p1 + 1] - pos[p0 + 1], e1z = pos[p1 + 2] - pos[p0 + 2], e2x = pos[p2] - pos[p0], e2y = pos[p2 + 1] - pos[p0 + 1], e2z = pos[p2 + 2] - pos[p0 + 2];
         const l1 = Math.hypot(e1x, e1y, e1z) || 1, l2 = Math.hypot(e2x, e2y, e2z) || 1, ang = Math.acos(Math.max(-1, Math.min(1, (e1x * e2x + e1y * e2y + e1z * e2z) / (l1 * l2))));
-        const key = (Math.round((pos[o + c * 3] - min[0]) / q) * 32768 + Math.round((pos[o + c * 3 + 1] - min[1]) / q)) * 32768 + Math.round((pos[o + c * 3 + 2] - min[2]) / q);
-        let id = map.get(key); if (id === undefined) { id = next++; map.set(key, id); acc.push(0, 0, 0); }
+        const ix = Math.round((pos[o + c * 3] - min[0]) / q), iy = Math.round((pos[o + c * 3 + 1] - min[1]) / q), iz = Math.round((pos[o + c * 3 + 2] - min[2]) / q);
+        let h = (((ix * 73856093) ^ (iy * 19349663) ^ (iz * 83492791)) >>> 0) & mask, id;
+        for (;;) { id = table[h]; if (id < 0) { id = next++; table[h] = id; kx[id] = ix; ky[id] = iy; kz[id] = iz; break; } if (kx[id] === ix && ky[id] === iy && kz[id] === iz) break; h = (h + 1) & mask; }
         ids[t * 3 + c] = id; acc[id * 3] += ux * ang; acc[id * 3 + 1] += uy * ang; acc[id * 3 + 2] += uz * ang;
       }
     }
