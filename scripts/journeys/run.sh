@@ -40,7 +40,7 @@ env "${COMMON[@]}" HERO_AUTO=off PORT=3127 CLIENT_HUB_URL=http://127.0.0.1:3127 
 # E: the fixture draft carries a flaw the fixture reviewer finds, and the exchange runs slowly enough for a browser to watch the pop-up
 env "${COMMON[@]}" HERO_AUTO=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3128 CLIENT_HUB_URL=http://127.0.0.1:3128 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=450 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-e.log" 2>&1 & PE=$!
 # F: like E, but the studio runs by itself: the hero image is made from the photo inside the exchange, and waits for a person's approval
-env "${COMMON[@]}" MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3129 CLIENT_HUB_URL=http://127.0.0.1:3129 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-f.log" 2>&1 & PF=$!
+env "${COMMON[@]}" CUTOUT_FIXTURE=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3129 CLIENT_HUB_URL=http://127.0.0.1:3129 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-f.log" 2>&1 & PF=$!
 for port in 3124 3125 3127 3128 3129; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
 RC=0
 node scripts/journeys/api.mjs          || RC=1

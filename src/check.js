@@ -87,7 +87,8 @@ export function renderPrompt(brief, view = viewsFor(brief.kind)[0]) {
 // Which image model draws it. OpenAI is the first adapter; with only the test fixture on, a plain placeholder is drawn so the flow can be exercised.
 export function imageConfig(env = process.env) {
   if (env.CHECK_RENDER_DISABLED === 'true') return { provider: 'off', configured: false, model: null, note: 'switched off (CHECK_RENDER_DISABLED)' };
-  if (env.OPENAI_API_KEY && (env.IMAGE_PROVIDER || 'openai') === 'openai') return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-1.5', quality: env.IMAGE_QUALITY || 'medium', size: env.IMAGE_SIZE || '1024x1024' };
+  // the newest image model, at high quality, unless the service says otherwise (IMAGE_MODEL, IMAGE_QUALITY); IMAGE_FALLBACK_MODEL is tried once if the first is refused as unknown
+  if (env.OPENAI_API_KEY && (env.IMAGE_PROVIDER || 'openai') === 'openai') return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-2.5-sunburst', quality: env.IMAGE_QUALITY || 'high', size: env.IMAGE_SIZE || '1024x1024', fallbackModel: env.IMAGE_FALLBACK_MODEL || 'gpt-image-1.5' };
   if (env.IMAGE_FIXTURE || env.AI_FIXTURE) return { provider: 'fixture', configured: true, model: 'fixture', note: 'test placeholder, not a real image model' };
   return { provider: 'none', configured: false, model: null, note: 'no image model connected: checks compare the written spec with the photo' };
 }
@@ -102,7 +103,22 @@ export async function fixtureRender(brief, view) {
   return sharp(Buffer.from(svg)).jpeg({ quality: 82 }).toBuffer();
 }
 
+// If the image model's name is refused (not known to this account yet), the same request is tried once on the fallback model, so a wrong name never stops the work.
+async function withFallback(cfg, run) {
+  try { return await run(cfg); }
+  catch (e) {
+    const fb = cfg.fallbackModel;
+    if (fb && fb !== cfg.model && (e.status === 400 || e.status === 404) && /model|does not exist|not found|unknown|unsupported|quality/i.test(String(e.message))) {
+      console.warn(JSON.stringify({ level: 'warn', msg: 'image model refused, using the fallback', model: cfg.model, fallback: fb }));
+      return run({ ...cfg, model: fb, quality: ['xhigh', 'max'].includes(cfg.quality) ? 'high' : cfg.quality });
+    }
+    throw e;
+  }
+}
 async function openaiImage(prompt, cfg) {
+  return withFallback(cfg, c => openaiImageOnce(prompt, c));
+}
+async function openaiImageOnce(prompt, cfg) {
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/generations', {
     method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: cfg.model, prompt, size: cfg.size, quality: cfg.quality, n: 1, output_format: 'jpeg' }), signal: AbortSignal.timeout(150000)
@@ -116,6 +132,9 @@ async function openaiImage(prompt, cfg) {
 
 // An edit with reference images: the images go in, the model redraws them as the prompt says. Used for the hero image and for renders guided by it.
 export async function openaiEdit({ images, prompt, cfg }) {
+  return withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c }));
+}
+async function openaiEditOnce({ images, prompt, cfg }) {
   const fd = new FormData();
   fd.append('model', cfg.model); fd.append('prompt', prompt); fd.append('size', cfg.size || '1024x1024'); fd.append('quality', cfg.quality || 'medium'); fd.append('n', '1'); fd.append('output_format', 'jpeg');
   const fidelity = process.env.IMAGE_INPUT_FIDELITY || (/^gpt-image-1/.test(String(cfg.model)) ? 'high' : ''); // the newer models do not take it

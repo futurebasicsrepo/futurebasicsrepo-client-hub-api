@@ -53,7 +53,13 @@ export async function measureColours(input, { max = 420 } = {}) {
   let product = 0; for (let k = 0; k < w * h; k++) if (mask[k]) product++;
   if (product < w * h * 0.02) return [];
   const seg = segmentPanels(rgb, w, h, mask), sums = new Map();
-  for (let k = 0; k < w * h; k++) { const id = seg.labels[k]; if (id < 0) continue; const s = sums.get(id) || [0, 0, 0, 0]; s[0] += rgb[k * 3]; s[1] += rgb[k * 3 + 1]; s[2] += rgb[k * 3 + 2]; s[3]++; sums.set(id, s); }
+  // A panel that owns a big part of the picture's edge is the backdrop (a white wall, a table), even when the mask let it through: drop it.
+  const edge = Math.max(2, Math.round(Math.min(w, h) * 0.03)), border = new Map(); let borderPx = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { if (x >= edge && y >= edge && x < w - edge && y < h - edge) continue; const id = seg.labels[y * w + x]; borderPx++; if (id >= 0) border.set(id, (border.get(id) || 0) + 1); }
+  const backdrop = new Set([...border].filter(([, n]) => n / borderPx > 0.25).map(([id]) => id));
+  product = 0; for (let k = 0; k < w * h; k++) { const id = seg.labels[k]; if (id >= 0 && !backdrop.has(id)) product++; }
+  if (product < w * h * 0.02) return [];
+  for (let k = 0; k < w * h; k++) { const id = seg.labels[k]; if (id < 0 || backdrop.has(id)) continue; const s = sums.get(id) || [0, 0, 0, 0]; s[0] += rgb[k * 3]; s[1] += rgb[k * 3 + 1]; s[2] += rgb[k * 3 + 2]; s[3]++; sums.set(id, s); }
   let out = [...sums.values()].map(s => { const c = [s[0] / s[3], s[1] / s[3], s[2] / s[3]]; return { rgb: c, hex: toHex(c), share: s[3] / product, lab: rgbToLab(...c) }; }).sort((a, b) => b.share - a.share);
   // merge colours that are only a shade apart (same material in light and shadow)
   const merged = [];

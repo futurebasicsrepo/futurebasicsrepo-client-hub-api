@@ -50,7 +50,7 @@ test('views follow the kind of product', () => {
 test('which image model is used follows the environment', () => {
   assert.equal(imageConfig({}).provider, 'none'); assert.equal(imageConfig({}).configured, false);
   assert.equal(imageConfig({ AI_FIXTURE: 'x' }).provider, 'fixture');
-  const o = imageConfig({ OPENAI_API_KEY: 'k' }); assert.equal(o.provider, 'openai'); assert.equal(o.model, 'gpt-image-1.5'); assert.equal(o.quality, 'medium'); assert.equal(o.size, '1024x1024');
+  const o = imageConfig({ OPENAI_API_KEY: 'k' }); assert.equal(o.provider, 'openai'); assert.equal(o.model, 'gpt-image-2.5-sunburst'); assert.equal(o.quality, 'high'); assert.equal(o.fallbackModel, 'gpt-image-1.5'); assert.equal(o.size, '1024x1024');
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', IMAGE_MODEL: 'gpt-image-2', IMAGE_QUALITY: 'high' }).model, 'gpt-image-2');
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', CHECK_RENDER_DISABLED: 'true' }).provider, 'off');
   assert.equal(imageConfig({ OPENAI_API_KEY: 'k', IMAGE_PROVIDER: 'other' }).configured, false);
@@ -104,4 +104,20 @@ test('colours say where they go, and the draft\'s own notes are not drawn', () =
   // a pack a person filled in, with no notes, keeps the old behaviour
   const q = specBrief(normalizeTechPack({ style: { sampleSize: '10' }, sizes: ['10'], bom: [{ component: 'Upper' }], colorways: [{ name: 'Bone', swatch: '#e8e2d0' }, { name: 'Black', swatch: '#111111' }] }), {});
   assert.match(renderPrompt(q), /COLOURWAY: Bone #e8e2d0; Black #111111\. Show the first colourway/);
+});
+
+test('an image model name the account does not know falls back once, and only then', async () => {
+  const { openaiEdit } = await import('../src/check.js');
+  const real = globalThis.fetch, seen = [];
+  process.env.OPENAI_API_KEY = 'k';
+  globalThis.fetch = async (url, o) => { const m = o.body.get('model'); seen.push(m); return m === 'gpt-image-2.5-sunburst'
+    ? new Response('{"error":{"message":"The model `gpt-image-2.5-sunburst` does not exist"}}', { status: 404 })
+    : new Response(JSON.stringify({ data: [{ b64_json: Buffer.from('img').toString('base64') }] }), { status: 200 }); };
+  try {
+    const cfg = { provider: 'openai', configured: true, model: 'gpt-image-2.5-sunburst', quality: 'max', size: '1024x1024', fallbackModel: 'gpt-image-1.5' };
+    const out = await openaiEdit({ images: [Buffer.from('x')], prompt: 'p', cfg });
+    assert.equal(out.toString(), 'img'); assert.deepEqual(seen, ['gpt-image-2.5-sunburst', 'gpt-image-1.5']);
+    seen.length = 0; globalThis.fetch = async (url, o) => { seen.push(o.body.get('model')); return new Response('{"error":{"message":"bad key"}}', { status: 401 }); };
+    await assert.rejects(openaiEdit({ images: [Buffer.from('x')], prompt: 'p', cfg }), /refused the request \(401\)/); assert.deepEqual(seen, ['gpt-image-2.5-sunburst'], 'a key problem is not retried');
+  } finally { globalThis.fetch = real; delete process.env.OPENAI_API_KEY; }
 });

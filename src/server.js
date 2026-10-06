@@ -2412,7 +2412,8 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
     // the colours the assistant saw are replaced by the colours the pixels have, so the colourways and the tiles made from them are real
-    if(original){try{const snapped=snapColours(drafted,await measureColours(cutout?.image||photo));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}
+    // only measured on a clean cut-out: on a raw photo a busy backdrop would be counted as product colour, and the assistant's own colours are better than that
+    if(original&&cutout?.image){try{const snapped=snapColours(drafted,await measureColours(cutout.image));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}
     if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
@@ -2767,7 +2768,9 @@ async function runHero(id){
   if(!h||h.status!=='generating')return;
   try{
     const photos=packPhotos(h.data),photo=photos[0],pack=normalizeTechPack(h.data);
-    const measured=await measureColours(photo);
+    // measured on the cut-out when the draft made one (a clean backdrop), else on the photo
+    const cut=pack.sketches.find(sk=>sk.image&&/^cutout-/.test(String(sk.id||'')))?.image;
+    const measured=cut?await measureColours(cut):[]; // no clean cut-out, no photo palette: the colour penalty is skipped rather than measured on a busy backdrop
     const cands=await heroCandidates({photos,meta:{title:h.title,category:pack.style.category}});
     const pick=await pickHero({photo,candidates:cands,photoPalette:measured});
     await mkdir(heroDir(),{recursive:true});
