@@ -39,6 +39,15 @@ await journey('J59', 'the exchange: after the draft the developer assistant test
   // activity and notifications: the exchange leaves a trace, not a flood
   ok(Number(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Design and developer assistants went over%'`)) >= 2, 'each exchange is on the product\'s activity');
   ok(sql(`select count(*) from tech_pack_checks where loop_id='${lp.id}' and status='done'`) === '2', 'each exchange ran two checks, both finished');
+  // the pack now reads as the photo (82): its final render went to the 3D service by itself
+  let mdl = ''; for (let i = 0; i < 40 && mdl !== 'done'; i++) { mdl = sql(`select status from tech_pack_models where product_id='${m.id}' order by created_at limit 1`); await sleep(300); }
+  ok(mdl === 'done', 'the 3D model was made by itself once the pack passed', mdl);
+  const mr = sql(`select source||'|'||source_score||'|'||(source_check_id=(select final_check_id from tech_pack_loops where id='${lp.id}'))::text from tech_pack_models where product_id='${m.id}' order by created_at limit 1`);
+  ok(mr === 'render|82|true', 'it was made from the render of the pack as negotiated (the final check, score 82), not from the photo', mr);
+  ok(lp.events.some(e => /final render to Meshy/i.test(e.text)), 'and the exchange said it was sending that render');
+  // the second hand-back changed the pack again, so it earns a second model; a hand-back that changes nothing does not (J60)
+  let cnt = ''; for (let i = 0; i < 20 && cnt !== '2'; i++) { cnt = sql(`select count(*) from tech_pack_models where product_id='${m.id}'`); await sleep(250); }
+  ok(cnt === '2' && sql(`select count(*) from tech_pack_models where product_id='${m.id}' and source='render'`) === '2', 'a hand-back that changed the pack made a second model from its new render, and no more than that', cnt);
 });
 
 await journey('J60', 'a change that makes the score worse is taken back; a pack that reads fine is left alone', async () => {
@@ -51,12 +60,16 @@ await journey('J60', 'a change that makes the score worse is taken back; a pack 
   let lp; for (let i = 0; i < 60; i++) { lp = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json.loop; if (lp && lp.id === go.json.id && lp.status !== 'running') break; await sleep(400); }
   ok(lp.status === 'done' && lp.startScore === 58 && lp.finalScore === 58, 'the score after the change was 35, so the final score is the original 58', [lp.status, lp.startScore, lp.finalScore]);
   ok(lp.changes.length === 1 && lp.changes[0].undone === true && lp.events.some(e => /taking those changes back/i.test(e.text)), 'the change is marked undone and the exchange says it took it back');
+  const afterWorse = sql(`select count(*) from tech_pack_models where product_id='${m.id}'`); ok(!lp.events.some(e => /to Meshy/i.test(e.text)), 'a pack that still does not look like the photo is not sent to the 3D service', afterWorse);
+  const man = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: {} }); ok(man.status === 409 && /does not look like the photo yet \(58\/100, it needs 78\)/.test(man.json.error), 'and staff pressing the button are told why, with the score and the bar', [man.status, man.json.error]);
+  const ph = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'photo' } }); ok(ph.status === 202 || ph.status === 409, 'the client photo is a deliberate alternative', ph.status);
   const pk = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data; ok(/needs-fix/.test(pk.bom[0].spec) && !/\[worse\]/.test(JSON.stringify(pk.bom)), 'the pack is back as it was', pk.bom[0].spec);
   // a pack that reads fine
   const m2 = await room('60b'), l2 = await waitLoop(m2.token, m2.id); const a2 = await forge({ sub: sql(`select id from users where client_id='${m2.cid}' limit 1`), clientId: m2.cid, role: 'admin' });
   const pk2 = (await call(`/v1/admin/products/${m2.id}/tech-pack`, { token: a2 })).json.techPack.data; pk2.bom[0].spec = 'Mesh base with windowed overlays'; await call(`/v1/admin/products/${m2.id}/tech-pack`, { method: 'PUT', token: a2, body: { data: pk2 } });
   const g2 = await call(`/v1/admin/products/${m2.id}/tech-pack/loop`, { method: 'POST', token: a2, body: {} }); let x; for (let i = 0; i < 60; i++) { x = (await call(`/v1/admin/products/${m2.id}/tech-pack/check`, { token: a2 })).json.loop; if (x && x.id === g2.json.id && x.status !== 'running') break; await sleep(400); }
   ok(x.status === 'done' && x.startScore === 82 && x.changes.length === 0 && x.rounds === 0 && /Nothing I would change/.test(x.events.map(e => e.text).join(' ')), 'a pack that already reads fine gets no changes, and the design assistant says so', x && [x.startScore, x.changes.length, x.rounds]);
+  ok(sql(`select count(*) from tech_pack_models where product_id='${m2.id}'`) === '1', 'a hand-back that changes nothing does not make another 3D model');
   void l2;
 });
 
@@ -73,6 +86,7 @@ await journey('J61', 'the pop-up: both assistants, a live exchange, a score that
       ok(await p.locator('.xchg-cta').isHidden(), `${name}: "See the tech pack" is not offered while they work`);
       await p.waitForFunction(() => document.querySelectorAll('.xchg .xm.developer').length >= 1, null, { timeout: 30000 }); ok(await p.locator('.xchg .xm.design').count() >= 1, `${name}: both assistants have spoken`);
       await p.waitForFunction(() => /^\d+$/.test(document.querySelector('.xnum')?.textContent || ''), null, { timeout: 30000 }); await p.waitForFunction(() => document.querySelector('.xchg-score.has'), null, { timeout: 5000 }); ok(true, `${name}: the score ring fills once the first test is in`);
+      await p.waitForFunction(() => document.querySelectorAll('.xchg .xm.kind-finding').length >= 1, null, { timeout: 10000 }).catch(() => {}); // the findings arrive a beat after the score
       ok(await p.locator('.xchg .xm.kind-finding').count() >= 1, `${name}: the developer assistant's findings are shown`);
       const w = await p.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, card: document.querySelector('.xchg-card').getBoundingClientRect().width })); ok(w.doc <= w.win + 1 && w.card <= w.win + 1, `${name}: nothing spills sideways`, w);
       await p.waitForSelector('.xchg.done', { timeout: 45000 }); ok(await p.locator('.xchg-cta').isVisible() && /Ready/.test(await p.innerText('.xchg-title')), `${name}: at the end it says ready and offers the pack`);

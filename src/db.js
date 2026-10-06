@@ -577,6 +577,10 @@ export async function migrate() {
       completed_at timestamptz
     );
     create index if not exists tech_pack_models_product_idx on tech_pack_models(product_id, created_at desc);
+    alter table tech_pack_models add column if not exists source text not null default 'photo';
+    alter table tech_pack_models add column if not exists source_check_id uuid;
+    alter table tech_pack_models add column if not exists source_score int;
+    alter table tech_pack_loops add column if not exists final_check_id uuid;
     create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);
     create unique index if not exists tech_pack_checks_submit_once on tech_pack_checks(tech_pack_id, pack_version) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
