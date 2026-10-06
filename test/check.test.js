@@ -90,3 +90,18 @@ test('no photo and no prompt: the check says it cannot judge, and never invents 
   const { verdict } = await compareToPhoto({ photos: [], promptText: '  ', renders: [], brief: specBrief({}) });
   assert.equal(verdict.verdict, 'cannot-judge'); assert.equal(verdict.score, 0);
 });
+
+test('colours say where they go, and the draft\'s own notes are not drawn', () => {
+  const p = normalizeTechPack({ style: { sampleSize: '10', category: 'Footwear' }, sizes: ['10'],
+    bom: [{ component: 'Upper', material: 'Mesh', color: 'Navy #1f2a44', notes: 'Default — confirm' }, { component: 'Sole', material: 'Rubber', color: 'White #ffffff', notes: 'Waffle tread' }],
+    colorways: [{ name: 'Navy', swatch: '#1f2a44', notes: 'upper · Seen in the photo — client to confirm' }, { name: 'White', swatch: '#ffffff', notes: 'midsole · Seen in the photo — client to confirm' }, { name: 'Red', swatch: '#cc2222', notes: 'Suggested alternative — client to confirm' }] });
+  const b = specBrief(p, { title: 'Runner' }), text = renderPrompt(b);
+  assert.equal(b.parts[0].notes, '', 'the default note is dropped'); assert.equal(b.parts[1].notes, 'Waffle tread');
+  assert.deepEqual(b.colours.map(c => [c.role, c.kind]), [['upper', 'observed'], ['midsole', 'observed'], ['', 'alternative']]);
+  assert.match(text, /COLOUR BLOCKING[^\n]*upper: Navy #1f2a44; midsole: White #ffffff/);
+  assert.ok(!/Red #cc2222/.test(text), 'a suggested alternative colourway is not drawn');
+  assert.ok(!/Show the first colourway/.test(text), 'every observed colour is on the product, not only the first');
+  // a pack a person filled in, with no notes, keeps the old behaviour
+  const q = specBrief(normalizeTechPack({ style: { sampleSize: '10' }, sizes: ['10'], bom: [{ component: 'Upper' }], colorways: [{ name: 'Bone', swatch: '#e8e2d0' }, { name: 'Black', swatch: '#111111' }] }), {});
+  assert.match(renderPrompt(q), /COLOURWAY: Bone #e8e2d0; Black #111111\. Show the first colourway/);
+});

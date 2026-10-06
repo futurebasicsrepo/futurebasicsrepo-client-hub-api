@@ -45,8 +45,11 @@ export function specBrief(input, { title = '', productType = '' } = {}) {
   const sample = p.style.sampleSize || p.sizes[Math.floor(p.sizes.length / 2)] || '';
   const category = clip(p.style.category || productType, 120);
   const kind = kindOf(category, title || p.style.styleName);
-  const parts = p.bom.map(r => ({ component: clip(r.component, 80), material: clip(r.material, 120), spec: clip(r.spec, 160), colour: clip(r.color, 60), placement: clip(r.placement, 80), notes: clip(r.notes, 120) }));
-  const colours = p.colorways.map(c => ({ name: clip(c.name, 60), code: clip(c.code, 30), hex: c.swatch || '' }));
+  // the draft's "Default — confirm" is a note to the factory, not something to draw
+  const parts = p.bom.map(r => ({ component: clip(r.component, 80), material: clip(r.material, 120), spec: clip(r.spec, 160), colour: clip(r.color, 60), placement: clip(r.placement, 80), notes: /^default\s*[—–-]\s*confirm\.?$/i.test(String(r.notes).trim()) ? '' : clip(r.notes, 120) }));
+  // colourway notes read "upper · Seen in the photo — client to confirm" (a colour the product has, and where) or "… Suggested alternative" (a different colourway, not drawn)
+  const colours = p.colorways.map(c => { const n = String(c.notes || ''), lead = n.split(' · ')[0].trim(), role = / · /.test(n) && !/^(seen in|suggested)/i.test(lead) ? clip(lead, 40) : '';
+    return { name: clip(c.name, 60), code: clip(c.code, 30), hex: c.swatch || '', role, kind: /suggested alternative/i.test(n) ? 'alternative' : /seen in the photo/i.test(n) ? 'observed' : 'listed' }; });
   const measures = p.pom.map(r => { const raw = r.values?.[sample] ?? ''; const inches = parseIn(raw); return { code: r.code, name: clip(r.name, 80), raw, inches, cm: inches ? cm(inches) : null }; }).filter(m => m.inches);
   const ref = measures[0] || null;
   const proportions = ref ? measures.slice(1).map(m => ({ code: m.code, name: m.name, inches: m.inches, cm: m.cm, pctOfReference: Math.round(m.inches / ref.inches * 100) })) : [];
@@ -68,7 +71,9 @@ export function renderPrompt(brief, view = viewsFor(brief.kind)[0]) {
   if (brief.fit) L.push(`Fit / last / block: ${brief.fit}.`);
   if (brief.parts.length) L.push('MATERIALS AND COLOURS. Build the product from exactly these parts and show each material\'s real surface (weave, grain, mesh, foam, rubber tread, stitching):\n' +
     brief.parts.slice(0, 16).map(r => `- ${r.component || 'Part'}: ${[r.material, r.spec].filter(Boolean).join(', ')}${r.colour ? `; colour ${r.colour}` : ''}${r.placement ? `; ${r.placement}` : ''}${r.notes ? `; ${r.notes}` : ''}`).join('\n'));
-  if (brief.colours.length) L.push('COLOURWAY: ' + brief.colours.slice(0, 4).map(c => `${c.name}${c.code ? ` (${c.code})` : ''}${c.hex ? ` ${c.hex}` : ''}`).join('; ') + '. Show the first colourway.');
+  const named = c => `${c.role ? c.role + ': ' : ''}${c.name}${c.code ? ` (${c.code})` : ''}${c.hex ? ` ${c.hex}` : ''}`, observed = brief.colours.filter(c => c.kind === 'observed');
+  if (observed.length) L.push('COLOUR BLOCKING (these colours are all on the one product; use each where it is named): ' + observed.slice(0, 8).map(named).join('; ') + '.');
+  else if (brief.colours.length) L.push('COLOURWAY: ' + brief.colours.filter(c => c.kind !== 'alternative').slice(0, 4).map(named).join('; ') + '. Show the first colourway.');
   if (brief.reference) L.push(`PROPORTIONS (size ${brief.sampleSize}). Reference: ${brief.reference.name} ${brief.reference.inches} in (${brief.reference.cm} cm) = 100%. ` +
     brief.proportions.slice(0, 14).map(m => `${m.name} ${m.inches} in = ${m.pctOfReference}%`).join('; ') + '. Keep these proportions true.');
   if (brief.construction.length) L.push('CONSTRUCTION:\n' + brief.construction.slice(0, 8).map(r => `- ${r.area}: ${r.detail}`).join('\n'));
@@ -185,6 +190,12 @@ function fixtureVerdict(brief, { renders }) {
   if (brief.parts.some(p => /\[needs-fix\]/i.test(`${p.notes} ${p.spec}`))) return { score: 58, verdict: 'partly', summary: 'Test verdict: the written finish does not match the photo.',
     attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'differs' : 'match', note: key === 'materials' ? 'Test fixture: a BOM row carries a needs-fix marker.' : 'Test fixture: no difference found.' })),
     discrepancies: [{ severity: 'high', field: 'bom', title: 'A BOM finish reads differently from the photo', detail: 'Test fixture: the first BOM row carries a needs-fix marker.', suggestion: 'Reconcile the first BOM row.' }] };
+  // test hooks: [stuck] stays at 62 whatever is changed; [climb] gains 12 points for every "+" in the first material's notes, up to 95
+  if (/\[stuck\]/i.test(brief.fabricSummary || '')) return { score: 62, verdict: 'partly', summary: 'Test verdict: still not close enough to the photo.', attributes: ATTRIBUTES.map(key => ({ key, match: key === 'colours' ? 'differs' : 'close', note: 'Test fixture.' })),
+    discrepancies: [{ severity: 'high', field: 'bom', title: 'The colour blocking differs from the photo', detail: 'Test fixture: this verdict never improves.', suggestion: 'Try a different fix.' }] };
+  if (/\[climb\]/i.test(brief.fabricSummary || '')) { const n = (String(brief.parts[0]?.notes || '').match(/\+/g) || []).length, sc = Math.min(95, 60 + 12 * n);
+    return { score: sc, verdict: scoreLabel(sc), summary: `Test verdict: ${sc >= 90 ? 'a factory would build the same product' : 'closer, but not there yet'}.`, attributes: ATTRIBUTES.map(key => ({ key, match: sc >= 90 ? 'match' : 'close', note: 'Test fixture.' })),
+      discrepancies: sc >= 90 ? [] : [{ severity: 'medium', field: 'bom', title: 'A detail still reads differently from the photo', detail: 'Test fixture: keep improving.', suggestion: 'Change the first material again.' }] }; }
   const score = Number(process.env.CHECK_FIXTURE_SCORE) || 82, first = brief.parts[0];
   return { score, verdict: scoreLabel(score), summary: `Test verdict: ${renders.length ? 'the render' : 'the written spec'} resembles the photo with a few fixable details.`,
     attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'close' : 'match', note: key === 'materials' && first ? `${first.component || 'First part'} reads as ${first.material || 'the listed material'}; check its finish against the photo.` : 'Test fixture: no difference found.' })),

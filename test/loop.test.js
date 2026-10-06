@@ -42,7 +42,7 @@ test('proposals are de-duplicated and capped', () => {
   const p = pack();
   const many = Array.from({ length: 20 }, (_, i) => ({ section: 'construction', index: 0, field: 'detail', to: `v${i}` }));
   assert.equal(validateChanges(many, p).length, 1, 'one field is one change');
-  const wide = [...['component', 'material', 'spec', 'color', 'placement', 'notes'].map(f => ({ section: 'bom', index: 0, field: f, to: 'x' })), ...['component', 'material', 'spec', 'color'].map(f => ({ section: 'bom', index: 1, field: f, to: 'y' }))];
+  const wide = [...['component', 'material', 'spec', 'color', 'placement', 'notes'].map(f => ({ section: 'bom', index: 0, field: f, to: 'x' })), ...['component', 'material', 'spec', 'color', 'placement', 'notes'].map(f => ({ section: 'bom', index: 1, field: f, to: 'y' })), { section: 'construction', index: 0, field: 'area', to: 'z' }, { section: 'construction', index: 0, field: 'detail', to: 'z' }];
   assert.equal(validateChanges(wide, p).length, MAX_CHANGES);
   assert.deepEqual(validateChanges('nope', p), []);
 });
@@ -78,4 +78,29 @@ test('the design assistant answers findings: fixture keeps what needs no change 
     r = await reconcile({ pack: marked, verdict }); assert.equal(r.changes.length, 1); assert.equal(r.changes[0].path.join('.'), 'bom.0.notes'); assert.ok(!/needs-fix/i.test(r.changes[0].to)); assert.equal(r.decisions[0].decision, 'change');
     assert.deepEqual((await reconcile({ pack: marked, verdict: { score: 90, discrepancies: [] } })).changes, [], 'no findings, no work');
   } finally { if (prev === undefined) delete process.env.AI_FIXTURE; else process.env.AI_FIXTURE = prev; }
+});
+
+test('a new bom or construction row can be added at the end, and only there', () => {
+  const p = pack();
+  const add = validateChanges([{ section: 'construction', index: 1, field: 'area', to: 'Silhouette and proportions', reason: 'No row says how it is shaped' }, { section: 'construction', index: 1, field: 'detail', to: 'Low, chunky profile with a rounded toe box' }], p);
+  assert.equal(add.length, 2); assert.equal(add[0].from, ''); assert.equal(add[0].label, 'New construction row · area');
+  assert.deepEqual(validateChanges([{ section: 'construction', index: 5, field: 'area', to: 'gap' }], p), [], 'not past the end');
+  assert.deepEqual(validateChanges([{ section: 'colorways', index: 1, field: 'name', to: 'new' }], p), [], 'colourways cannot grow');
+  const { pack: out, applied } = applyChanges(p, add);
+  assert.equal(applied.length, 2); assert.equal(out.construction.length, 2); assert.equal(out.construction[1].area, 'Silhouette and proportions');
+  const back = revertChanges(out, applied); assert.equal(back.pack.construction.length, 1, 'undoing leaves no empty row behind'); assert.equal(back.reverted.length, 2);
+  const bomAdd = validateChanges([{ section: 'bom', index: 2, field: 'component', to: 'Heel tab' }, { section: 'bom', index: 2, field: 'color', to: 'Black #111111' }], p);
+  const r2 = applyChanges(p, bomAdd).pack; assert.equal(r2.bom.length, 3); assert.equal(r2.bom[2].color, 'Black #111111');
+  assert.equal(revertChanges(r2, bomAdd).pack.bom.length, 2);
+});
+
+test('the fixture hooks make small edits that go round after round', async () => {
+  process.env.AI_FIXTURE = 'x';
+  try {
+    const p = normalizeTechPack({ style: { fabricSummary: '[climb] Mesh' }, bom: [{ component: 'Upper', material: 'Mesh', notes: '' }], sizes: ['10'] });
+    const r = await reconcile({ pack: p, verdict: { score: 60, summary: 's', discrepancies: [{ severity: 'high', field: 'bom', title: 't', detail: 'd', suggestion: 's' }] } });
+    assert.equal(r.changes.length, 1); assert.equal(r.changes[0].to, '+');
+    const r2 = await reconcile({ pack: applyChanges(p, r.changes).pack, verdict: { score: 72, summary: 's', discrepancies: [{ severity: 'high', field: 'bom', title: 't', detail: 'd', suggestion: 's' }] } });
+    assert.equal(r2.changes[0].to, '++');
+  } finally { delete process.env.AI_FIXTURE; }
 });

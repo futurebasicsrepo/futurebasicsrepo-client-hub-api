@@ -120,9 +120,10 @@ export async function buildQueues(pool, { learning = null } = {}) {
       detail: tried ? `They asked for a sign-in code ${r.attempts} ${Number(r.attempts) === 1 ? 'time' : 'times'}, last ${waitAgo(r.last_at)}, and were told the room is being set up.` : 'They cannot sign in until you do.', since: iso(r.created_at) });
   }
   // the independent spec check says the pack does not describe the product in its photo (latest check per unpublished pack)
-  for (const r of checks.rows.filter(x => x.verdict_label !== 'cannot-judge' && (x.verdict_label === 'does-not-resemble' || Number(x.score) < 60)))
-    A.push({ key: `check:${r.id}`, stream: 'tech-packs', kind: 'check', owner: 'us', severity: r.verdict_label === 'does-not-resemble' ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
-      title: `Spec check: the pack does not match its photo (${r.score}/100)`, detail: clip(r.verdict?.summary, 140), since: iso(r.completed_at) });
+  const BAR = Number(process.env.BUILD_LOOP_THRESHOLD) || 90;
+  for (const r of checks.rows.filter(x => x.verdict_label !== 'cannot-judge' && Number(x.score) < BAR))
+    A.push({ key: `check:${r.id}`, stream: 'tech-packs', kind: 'check', owner: 'us', severity: r.verdict_label === 'does-not-resemble' || Number(r.score) < 60 ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
+      title: `Spec check: the pack is not ready (${r.score}/100, the bar is ${BAR})`, detail: clip(r.verdict?.summary, 140), since: iso(r.completed_at) });
   // an email we have no work for: often a client using a different address than the one on their room
   for (const r of strangers.rows) A.push({ key: `signin:${r.email}`, stream: 'leads', kind: 'signin', owner: 'us', severity: Number(r.attempts) >= 2 ? 'normal' : 'info', clientId: null, clientName: r.email, productId: null, productTitle: '',
     title: 'Tried to sign in, but there is no work under this email', detail: `${r.attempts} ${Number(r.attempts) === 1 ? 'try' : 'tries'}. If this is an existing client, add the address to their room.`, since: iso(r.first_at) });
