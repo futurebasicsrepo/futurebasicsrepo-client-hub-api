@@ -569,6 +569,7 @@ app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
 app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
@@ -955,7 +956,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,${HAS_RENDERING_SQL},
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at,'ai_status',tp.ai_status) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at,'ai_status',tp.ai_status,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1661,7 +1662,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query(`select p.*,
       (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
       (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
-      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
       ${HAS_RENDERING_SQL},
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,

@@ -92,4 +92,32 @@ await journey('J69', 'the product\'s own page in the hub shows its file: tech pa
   }
 });
 
+await journey('J70', 'the left nav says who has the ball: client, Future Basics or the factory, with a moving marker that follows the tech pack and stands still for reduced motion', async () => {
+  const m = await room('70'); await sleep(500);
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), pid = sql(`select project_id from products where id='${m.id}'`);
+  if (!playwright) return;
+  const b = await playwright.chromium.launch();
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+    const who = async () => { await p.goto(`${BASE}/clients/${m.cid}`, { waitUntil: 'networkidle' }); await p.waitForSelector('.workbar .wb.sub .ball', { timeout: 10000 }); return [await p.getAttribute('.workbar .wb.sub .ball', 'data-ball'), (await p.innerText('.workbar .wb.sub .ball')).trim(), await p.getAttribute('.workbar .wb.sub .ball', 'title')]; };
+    let w = await who(); ok(w[0] === 'client' && w[1] === 'Client' && /drafting/i.test(w[2]), 'while the customer drafts their pack, the ball is theirs', w);
+    ok(await p.evaluate(() => getComputedStyle(document.querySelector('.ball i')).animationName !== 'none'), 'and the marker moves');
+    await p.locator('.workbar').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j70-nav.png` }).catch(() => {});
+    await p.emulateMedia({ reducedMotion: 'reduce' }); ok(await p.evaluate(() => getComputedStyle(document.querySelector('.ball i')).animationName === 'none'), 'it stands still when the person asked for reduced motion');
+    await p.emulateMedia({ reducedMotion: 'no-preference' });
+    sql(`update tech_packs set status='submitted', submitted_at=now() where product_id='${m.id}'`); w = await who(); ok(w[0] === 'future-basics' && w[1] === 'Future Basics' && /publishes v1/.test(w[2]), 'once they submit it, the ball is Future Basics\'s', w);
+    sql(`update tech_packs set published_at=now(), version=1, published_data=data, verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`); w = await who(); ok(w[0] === 'client' && /review and sign/.test(w[2]), 'published, it is back with the client to sign', w);
+    sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"A Client","at":"x"}}'::jsonb where product_id='${m.id}'`); w = await who(); ok(w[0] === 'future-basics' && /sign/.test(w[2]), 'once the client has signed, Future Basics signs next', w);
+    sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"A Client","at":"x"},"brandSign":{"name":"FB","at":"x"}}'::jsonb where product_id='${m.id}'`); w = await who(); ok(w[0] === 'factory' && w[1] === 'Factory', 'and then the factory', w);
+    // the customer's own hub says "Your move" when it is theirs
+    sql(`update tech_packs set verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+    const cctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+    const c = await cctx.newPage(); await c.goto(`${BASE}/projects/${pid}#product=${m.id}`, { waitUntil: 'networkidle' }); await c.waitForSelector('.workbar .wb.sub .ball', { timeout: 10000 });
+    ok(/Your move/.test(await c.innerText('.workbar .wb.sub .ball')), 'in their own hub it reads "Your move"');
+    ok(p.errs.length === 0, 'no script errors', p.errs); await cctx.close(); await ctx.close();
+  } finally { await b.close(); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
