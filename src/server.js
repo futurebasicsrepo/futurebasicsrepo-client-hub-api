@@ -1395,7 +1395,7 @@ async function createDepositInvoice(quoteId,actorId=null){
   if(shopifyConfigured()){
     try{
       const money=c=>({amount:(Number(c)/100).toFixed(2),currencyCode:q.currency});
-      const input={lineItems:[{title:`Sample deposit (${pct}%) — ${q.product_title}, quote v${q.version}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(amount)}],
+      const input={lineItems:[{title:`Sample deposit (${pct}%) — ${q.product_title}, quote v${q.version}`,quantity:1,requiresShipping:false,taxable:false,originalUnitPriceWithCurrency:money(amount)}],
         email:q.contact_email||undefined,customerId:q.shopify_customer_id||undefined,note:`Future Basics sample deposit · quote v${q.version}`,
         tags:['future-basics-client-hub','sample-deposit',`client-${q.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
       const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
