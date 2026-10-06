@@ -242,3 +242,13 @@ test('mergeClientEdits on a re-run: the new draft replaces the earlier draft, an
   const again = mergeClientEdits(v1, edited, v2);
   assert.deepEqual(again.sketches[0].callouts.map(c => `${c.label}:${c.spec}`), ['Heel cut-out:my wording', 'Our logo:', 'Toe puff:new puff']);
 });
+
+test('a template row that does not apply to the product is dropped, not left blank', async () => {
+  const img = await photo();
+  const product = { title: 'Loafer', product_type: 'Footwear' };
+  const seed = normalizeTechPack({ ...seedTechPack({ product }), sketches: [{ id: 'photo-1', view: 'front', label: 'Reference photo', image: img, callouts: [] }] });
+  const codes = seed.pom.map(r => r.code); assert.ok(codes.length >= 2);
+  const d = { ...draft, pom: [{ code: codes[0], sample: 11.5, step: 0.33, basis: 'size chart' }, { code: codes[1], sample: 0, step: 0, basis: 'not applicable: this is a slip-on' }] };
+  const pack = normalizeTechPack(await applyDraftToPack(seed, d, { photos: [img], sizes: seed.sizes, sampleSize: seed.style.sampleSize, model: 't' }));
+  assert.ok(pack.pom.some(r => r.code === codes[0]) && !pack.pom.some(r => r.code === codes[1]), 'the not-applicable row is gone');
+});

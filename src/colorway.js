@@ -193,8 +193,16 @@ export async function renderColorways(photoDataUrl, colorways, { max = 900, qual
   const seg = segmentPanels(rgb, w, h, mask), tiles = [], seen = new Set();
   const encode = async px => `data:image/jpeg;base64,${(await sharp(px, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality }).toBuffer()).toString('base64')}`;
   const valid = (colorways || []).filter(c => hexToRgb(c?.swatch));
+  // A tile is only worth making when it shows something the photo does not: not the colour the product already is, not a pale colour pushed onto a dark
+  // glossy product (it comes out a washed-out ghost), and not a second tile that looks like one already made.
+  const main = seg.panels.find(pn => pn.kind === 'main'), mainLab = main ? rgbToLab(...main.rgb) : null, madeLabs = [];
+  const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
   for (const c of valid.slice(0, limit)) {
-    const id = `cw-${slug(c.name)}`; if (seen.has(id)) continue; seen.add(id);
+    const tl = rgbToLab(...hexToRgb(c.swatch));
+    if (mainLab && dist(tl, mainLab) < 16) continue;
+    if (mainLab && mainLab[0] < 42 && tl[0] - mainLab[0] > 40) continue;
+    if (madeLabs.some(m => dist(m, tl) < 12)) continue;
+    const id = `cw-${slug(c.name)}`; if (seen.has(id)) continue; seen.add(id); madeLabs.push(tl);
     const targets = leadTargets(seg, c.swatch); const r = targets ? recolorPanels(rgb, w, h, seg, targets) : recolorPixels(rgb, w, h, mask, plan, c.swatch); if (!r) continue;
     tiles.push({ id, name: c.name, swatch: c.swatch.toLowerCase(), image: await encode(r.pixels), mode: targets ? 'panels' : plan.mode, recolored: r.recolored });
   }
