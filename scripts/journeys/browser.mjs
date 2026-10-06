@@ -555,4 +555,27 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
   } finally { await wctx2.close(); }
 });
 
+await journey('J66', 'Pantone C: every colour on the pack gets a coated Pantone code matched from its colour, and a person\'s own C code is left alone', async () => {
+  const r = await room('66', { wait: true }), id = r.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  ok((await call('/pantone-c.js')).status === 200, 'the Pantone list is served to the editor');
+  // the draft already carries Pantone C codes, not TCX ones
+  const first = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways;
+  ok(first.length >= 1 && first.every(c => !c.swatch || /^PANTONE .+ C$/.test(c.code)) && !first.some(c => /TCX/i.test(c.code)), 'the assistant\'s colourways have Pantone C codes and no TCX codes', first.map(c => c.code));
+  const d = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data;
+  d.colorways = [{ name: 'Red', code: '19-1664 TCX', swatch: '#c8202a', notes: '' }, { name: 'Silver foil', code: '', swatch: '#c0c0c0', notes: 'trim' }, { name: 'Mine', code: 'PANTONE Black 6 C', swatch: '#101012', notes: '' }];
+  await call(`/v1/admin/products/${id}/tech-pack`, { method: 'PUT', token: admin, body: { data: d } });
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
+    await wp.click('#tabs button[data-tab="calls"]'); await wp.waitForSelector('[data-act="matchc"]', { timeout: 8000 });
+    ok(!/TCX/.test(await wp.innerText('[data-panel="calls"]')), 'the editor does not mention TCX any more');
+    await wp.click('[data-act="matchc"]');
+    let cw; for (let i = 0; i < 30; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
+    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'one press: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    ok(wp.errs.length === 0, 'no script errors', wp.errs);
+  } finally { await wctx.close(); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

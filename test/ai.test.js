@@ -23,7 +23,8 @@ test('applyDraftToPack fills the seeded pack from the model draft', async () => 
   const pack = normalizeTechPack(await applyDraftToPack(seed, draft, { photos: [img], sizes, sampleSize, model: 'test-model' }));
   assert.equal(pack.style.category, 'Footwear — chunky runner');
   assert.equal(pack.sketches[0].callouts.length, 2);
-  assert.deepEqual(pack.bom.map(r => r.color), ['Grey #b8bcc0', 'White #ffffff'], 'each part keeps the colour the draft saw on it');
+  assert.deepEqual(pack.bom.map(r => r.color), ['Grey #b8bcc0 · PANTONE Cool Gray 4 C', 'White #ffffff · PANTONE 9345 C'], 'each part keeps the colour the draft saw on it, with its Pantone C chip');
+  assert.equal(pack.colorways[0].code, 'PANTONE Cool Gray 4 C', 'the colourway has a Pantone C code matched from its colour, not the TCX guess the draft carried');
   assert.ok(pack.sketches[0].callouts[0].photo.startsWith('data:image/jpeg;base64,'), 'callout gets a detail crop');
   assert.deepEqual([pack.sketches[0].callouts[1].x, pack.sketches[0].callouts[1].y], [1, 0], 'coordinates are clamped to the photo');
   const A = pack.pom.find(r => r.code === 'A'), D = pack.pom.find(r => r.code === 'D');
