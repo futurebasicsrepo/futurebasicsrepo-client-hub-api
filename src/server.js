@@ -13,7 +13,7 @@ import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
-import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, heroThumb } from './studio.js';
+import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, heroThumb, refineHero, HERO_APPROVE_MIN, HERO_REFINE_ROUNDS } from './studio.js';
 import { reconcile, applyChanges, revertChanges } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
@@ -2813,7 +2813,8 @@ async function runLoopBody(loopId){
       await say({agent:'design',kind:'say',stage:'draft',text:'Making a clean reference picture from your photo (the best of a few tries) before the test.'});
       const hr=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],st=hr?await startHero(hr,{actor:L.requested_by,trigger:'auto'}):{};
       if(st.id){await runHero(st.id);const h=(await pool.query('select status,candidates,chosen,error from tech_pack_heroes where id=$1',[st.id])).rows[0],c=h?.candidates?.[h.chosen];
-        if(h?.status==='ready')await say({agent:'design',kind:'say',stage:'draft',text:`Reference picture ready: ${c?.total??'–'}/100 faithful to the photo${c?.drift!=null?`, colours within ${c.drift} of the photo's`:''}. It waits for a person to approve it.`});
+        if(h?.status==='approved')await say({agent:'design',kind:'say',stage:'draft',text:`Reference picture ready and approved: ${c?.total??'–'}/100 faithful to the photo${c?.drift!=null?`, colours within ${c.drift} of the photo's`:''}${c?.refined?' (corrected against the photo)':''}.`});
+        else if(h?.status==='ready')await say({agent:'design',kind:'say',stage:'draft',text:`Reference picture ready: ${c?.total??'–'}/100 faithful to the photo${c?.drift!=null?`, colours within ${c.drift} of the photo's`:''}. It waits for a person to approve it.`});
         else heroNote=`The reference picture could not be made (${h?.error||'unknown error'}), so this test uses the written pack alone.`}
       else if(st.unavailable||st.limited)heroNote=st.unavailable||st.limited;
       if(heroNote)await say({agent:'design',kind:'say',stage:'draft',text:heroNote});
@@ -2888,6 +2889,11 @@ async function runLoopBody(loopId){
     await say({agent:'system',kind:'done',stage:'done',data:{outcome:passed?'passed':'needs-review',score:final,bar:threshold,heroPending},text:passed?(heroPending?`Scored ${final}/100, above the bar of ${threshold}. One step left: a person approves the reference picture (Check tab).`:`Ready: ${final}/100, above the bar of ${threshold}.`):`Not ready: ${final}/100, and the bar is ${threshold}. A person needs to review what is still open.`});
     await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,outcome=$4,finished_at=now() where id=$1`,[loopId,final,curCheckId||null,passed?'passed':'needs-review']);
     if(autoModelRow)startModel(autoModelRow,{actor:null,source:'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
+    // the colourway pictures, drawn from the approved reference once the pack has settled (what a customer gets without anyone starting it)
+    if(process.env.CW_AUTO!=='off'&&cwOn()&&(await currentHero(L.tech_pack_id))?.status==='approved'){
+      const cr=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],cs=cr?await startColourways(cr,{actor:L.requested_by,trigger:'build'}):{};
+      if(cs.id&&!cs.already)setImmediate(()=>runColourways(cs.id));
+    }
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}${passed?', ready':`, below the bar of ${threshold}: needs a person`}`,{techPackId:L.tech_pack_id,loopId,start,final,passed}]).catch(()=>{});
     // every pack under the bar is in the console's queue; a message goes out only when it is far from the photo
     if(!passed&&(final<60||cur_.verdict?.verdict==='does-not-resemble'))await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Needs a person: ${row.client_name}'s ${row.title} reached ${final}/100 after the assistants went over it (the bar is ${threshold})`,row.product_id]).catch(()=>{});
@@ -2975,11 +2981,24 @@ async function runHero(id){
     const cands=await heroCandidates({photos,meta:{title:h.title,category:pack.style.category}});
     const pick=await pickHero({photo,candidates:cands,photoPalette:measured});
     await mkdir(heroDir(),{recursive:true});
-    const out=[];for(let i=0;i<cands.length;i++){const file=`${id}-${i}.jpg`;await writeFile(join(heroDir(),file),cands[i].buffer);out.push({file,score:pick.scores[i].score,drift:pick.scores[i].drift,issues:pick.scores[i].issues,total:pick.scores[i].total})}
+    const out=[],bufs=[];for(let i=0;i<cands.length;i++){const file=`${id}-${i}.jpg`;await writeFile(join(heroDir(),file),cands[i].buffer);bufs.push(cands[i].buffer);out.push({file,score:pick.scores[i].score,drift:pick.scores[i].drift,issues:pick.scores[i].issues,total:pick.scores[i].total})}
+    let best=pick.best;
+    // When the customer's own pack is being built, a try that is not good enough is not handed on: the best one is corrected against the photo, up to a couple of times, and the correction competes with the tries.
+    if(h.trigger==='auto'){
+      for(let round=0;round<HERO_REFINE_ROUNDS()&&out[best].total<HERO_APPROVE_MIN();round++){
+        try{
+          const r=await refineHero({photos,best:bufs[best],issues:out[best].issues,meta:{title:h.title,category:pack.style.category}}),p2=await pickHero({photo,candidates:[{buffer:r.buffer}],photoPalette:measured}),i=out.length,file=`${id}-${i}.jpg`;
+          await writeFile(join(heroDir(),file),r.buffer);bufs.push(r.buffer);out.push({file,score:p2.scores[0].score,drift:p2.scores[0].drift,issues:p2.scores[0].issues,total:p2.scores[0].total,refined:true});
+          if(out[i].total>out[best].total)best=i;
+        }catch(e){app.log.warn({err:String(e.message||e).slice(0,200),heroId:id},'hero refinement failed');break}
+      }
+    }
     // a new hero replaces the earlier ones: it needs its own approval
     await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status in ('ready','approved')`,[h.tech_pack_id,id]);
-    await pool.query(`update tech_pack_heroes set status='ready',measured=$2,candidates=$3,chosen=$4,completed_at=now() where id=$1`,[id,JSON.stringify(measured),JSON.stringify(out),pick.best]);
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[h.client_id,h.product_id,`Hero image made for ${h.title} from the photo (${out[pick.best].total}/100 faithful), waiting for approval`,{techPackId:h.tech_pack_id,heroId:id}]).catch(()=>{});
+    await pool.query(`update tech_pack_heroes set status='ready',measured=$2,candidates=$3,chosen=$4,completed_at=now() where id=$1`,[id,JSON.stringify(measured),JSON.stringify(out),best]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[h.client_id,h.product_id,`Hero image made for ${h.title} from the photo (${out[best].total}/100 faithful), waiting for approval`,{techPackId:h.tech_pack_id,heroId:id}]).catch(()=>{});
+    // good enough on its own: approved without waiting for a person (staff can still replace it); below the bar it waits for one
+    if(h.trigger==='auto'&&process.env.HERO_AUTO_APPROVE!=='off'&&out[best].total>=HERO_APPROVE_MIN())await approveHero({...h,id,title:h.title},{actor:null,auto:true,followUps:false});
   }catch(e){
     app.log.warn({err:String(e.message||e).slice(0,300),heroId:id},'hero image failed');
     await pool.query(`update tech_pack_heroes set status='failed',error=$2,completed_at=now() where id=$1`,[id,checkErrorText(e).replace(/\(Anthropic\)/,'')]).catch(()=>{});
@@ -2997,7 +3016,7 @@ async function heroView(h){
     try{image=await heroThumb(await heroBuffer(h))}catch{}
     for(let i=0;i<c.length;i++){try{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:await heroThumb(await readFile(join(heroDir(),c[i].file)),460,80)})}catch{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:null})}}
   }
-  return {id:h.id,status:h.status,provider:h.provider,model:h.model,chosen:h.chosen,score:cur?.total??null,drift:cur?.drift??null,issues:cur?.issues||'',image,candidates:alts,measured:h.measured||[],createdAt:h.created_at,completedAt:h.completed_at,approvedAt:h.approved_at,sharedAt:h.shared_at,error:h.error||null,progressing:h.status==='generating'};
+  return {id:h.id,status:h.status,provider:h.provider,model:h.model,chosen:h.chosen,score:cur?.total??null,drift:cur?.drift??null,issues:cur?.issues||'',image,candidates:alts,measured:h.measured||[],createdAt:h.created_at,completedAt:h.completed_at,approvedAt:h.approved_at,auto:Boolean(h.auto_approved),sharedAt:h.shared_at,error:h.error||null,progressing:h.status==='generating'};
 }
 app.post('/v1/admin/products/:id/tech-pack/hero',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
@@ -3010,24 +3029,29 @@ app.post('/v1/admin/products/:id/tech-pack/hero',{preHandler:[authenticate,admin
   setImmediate(()=>runHero(r.id));
   return reply.code(202).send({started:true,id:r.id});
 });
-app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
-  const h=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.id=$1`,[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
-  if(!['ready','approved'].includes(h.status))return reply.code(409).send({error:'This hero image is not ready to approve'});
+// Approving a hero: it becomes the picture everything else starts from. followUps: also start what waits on it (the colourway pictures, and the 3D model when the exchange has already passed).
+async function approveHero(h,{actor=null,auto=false,followUps=true}={}){
   await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status='approved'`,[h.tech_pack_id,h.id]);
-  await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now() where id=$1`,[h.id,req.auth.sub]);
-  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,req.auth.sub,`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id}]).catch(()=>{});
+  await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now(),auto_approved=$3 where id=$1`,[h.id,actor,auto]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,actor,auto?`Hero image approved automatically for ${h.title}`:`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id,auto}]).catch(()=>{});
+  if(!followUps)return;
   // with a hero a person has signed off, the colourway pictures are drawn from it, part by part (CW_AUTO=off leaves that to the button)
   if(process.env.CW_AUTO!=='off'&&cwOn()){
     const row=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[h.tech_pack_id])).rows[0];
-    if(row)startColourways(row,{actor:req.auth.sub,trigger:'hero'}).then(r=>{if(r.id&&!r.already)setImmediate(()=>runColourways(r.id))}).catch(()=>{});
+    if(row)startColourways(row,{actor,trigger:'hero'}).then(r=>{if(r.id&&!r.already)setImmediate(()=>runColourways(r.id))}).catch(()=>{});
   }
   // the exchange may already have passed while it waited for this: now the 3D model can start
   if(process.env.MESH_AUTO!=='off'&&meshConfig().configured){
     const lp=(await pool.query(`select outcome,final_check_id from tech_pack_loops where tech_pack_id=$1 and status='done' order by created_at desc limit 1`,[h.tech_pack_id])).rows[0];
     const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[h.tech_pack_id])).rows[0].n);
-    if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor:req.auth.sub,source:'render',checkId:lp.final_check_id}).catch(()=>{})}
+    if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor,source:'render',checkId:lp.final_check_id}).catch(()=>{})}
   }
+}
+app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.id=$1`,[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
+  if(!['ready','approved'].includes(h.status))return reply.code(409).send({error:'This hero image is not ready to approve'});
+  await approveHero(h,{actor:req.auth.sub});
   return {approved:true};
 });
 app.post('/v1/admin/tech-pack-heroes/:id/adopt',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -3515,6 +3539,31 @@ app.post('/v1/admin/products/:id/tech-pack/cutout',{preHandler:[authenticate,adm
   const row=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Background removed from the reference photo for ${ctx.product.title}`,{techPackId:row.id,quality:made.quality,provider:made.provider}]).catch(()=>{});
   return {quality:made.quality,provider:made.provider,sketches:data.sketches,renderings:data.renderings,techPack:techPackPayload(row)};
+});
+// What the customer sees of the studio: the approved reference picture, the colourway run, the 3D model and how the assistants built the pack. Only what is finished and
+// approved: a hero waiting for a person is not shown, and staff-only tools stay staff-only.
+async function studioForClient(productId,clientId,{lite=false}={}){
+  const tp=(await pool.query('select id,product_id,data,published_data from tech_packs where product_id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!tp)return null;
+  const heroRow=(await pool.query(`select * from tech_pack_heroes where tech_pack_id=$1 and status in ('approved','ready','generating') order by (status='approved') desc,created_at desc limit 1`,[tp.id])).rows[0];
+  let hero=null;if(heroRow?.status==='approved'){try{hero={image:lite?null:await heroThumb(await heroBuffer(heroRow),900,84),score:heroRow.candidates?.[heroRow.chosen]?.total??null,approvedAt:heroRow.approved_at,auto:Boolean(heroRow.auto_approved)}}catch{}}
+  const mrow=(await pool.query(`select * from tech_pack_models where tech_pack_id=$1 and status in ('running','done') order by created_at desc limit 1`,[tp.id])).rows[0],model=mrow?await modelView(mrow,{withThumb:!lite}):null;
+  const colourways=await latestColourways(tp.id),loop=await latestLoop(tp.id),pack=normalizeTechPack(tp.published_data||tp.data);
+  const working=Boolean(loop?.status==='running'||heroRow?.status==='generating'||colourways?.running||model?.status==='running');
+  const tiles=lite?undefined:pack.renderings.filter(r=>/^cw-/.test(String(r.id||''))&&r.image);
+  return {lite,working,hero,tiles,heroPending:Boolean(heroRow&&heroRow.status==='ready'),colourways:colourways?{status:colourways.status,running:colourways.running,progress:colourways.progress,made:colourways.made}:null,
+    model:model?{id:model.id,status:model.status,progress:model.progress,triangles:model.triangles,bytes:model.bytes,thumb:model.thumb,completedAt:model.completedAt}:null,
+    loop:loop?{status:loop.status,startScore:loop.startScore,finalScore:loop.finalScore,outcome:loop.outcome,events:loop.events}:null,parts:pack.parts};
+}
+app.get('/v1/products/:id/tech-pack/studio',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const v=await studioForClient(req.params.id,req.auth.clientId,{lite:req.query?.lite==='1'});if(!v)return reply.code(404).send({error:'Tech pack not found'});return v;
+});
+// The 3D model's own files for the customer who owns the product (the shape and its preview; a download is the same file).
+app.get('/v1/products/:id/tech-pack/model/:file',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||!UUID_RE.test(String(req.params.id))||!['stl','thumb'].includes(req.params.file))return reply.code(404).send({error:'Not found'});
+  const m=(await pool.query(`select m.stl_file,m.thumb_file,p.title from tech_pack_models m join products p on p.id=m.product_id where m.product_id=$1 and m.client_id=$2 and m.status='done' order by m.created_at desc limit 1`,[req.params.id,req.auth.clientId])).rows[0];
+  const file=req.params.file==='stl'?m?.stl_file:m?.thumb_file;if(!file)return reply.code(404).send({error:'Not found'});
+  return req.params.file==='stl'?reply.type('model/stl').send(createReadStream(join(meshDir(),file))):reply.type('image/jpeg').send(createReadStream(join(meshDir(),file)));
 });
 app.post('/v1/products/:id/tech-pack/draft/colorways',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});

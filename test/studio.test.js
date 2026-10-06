@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { measureColours, snapColours, nearestName, colourDistance, paletteDrift, heroPrompt, heroConfig, heroCandidates, pickHero } from '../src/studio.js';
+import { measureColours, snapColours, nearestName, colourDistance, paletteDrift, heroPrompt, heroConfig, heroCandidates, pickHero, refinePrompt, refineHero, HERO_APPROVE_MIN, HERO_REFINE_ROUNDS } from '../src/studio.js';
 import { guidedPrompt, specBrief } from '../src/check.js';
 import { normalizeTechPack } from '../src/techpack.js';
 
@@ -81,4 +81,24 @@ test('a dark brown leather is not called graphite, and the assistant\'s own name
   assert.equal(snapColours(far, [{ hex: '#7a96d8', name: 'Cobalt', share: 0.7 }]).pack.colorways[0].name, 'Sky');
   const twins = normalizeTechPack({ sizes: ['10'], colorways: [{ name: 'Black', swatch: '#0f0f10', notes: 'sole · Seen in the photo — client to confirm' }, { name: 'Jet Black', swatch: '#141415', notes: 'trim · Seen in the photo — client to confirm' }, { name: 'Red', swatch: '#cc2222', notes: 'Suggested alternative — client to confirm' }] });
   assert.deepEqual(snapColours(twins, [{ hex: '#101011', name: 'Black', share: 0.5 }]).pack.colorways.map(c => c.name), ['Black', 'Red'], 'two observed colourways that read as one are one; alternatives stay');
+});
+
+test('a try that is not good enough is corrected against the photo: both go in, and the problem is named', async () => {
+  const p = refinePrompt({ title: 'Trail runner', category: 'Footwear', issues: 'the heel is a different colour and the toe overlay is missing' });
+  assert.match(p, /Image 1 is the reference photo of Trail runner/); assert.match(p, /Image 2 is a draft/);
+  assert.match(p, /heel is a different colour and the toe overlay is missing/); assert.match(p, /Do not add logos, text or features/);
+  const photo = `data:image/jpeg;base64,${(await shoe()).toString('base64')}`;
+  const out = await refineHero({ photos: [photo], best: await shoe(), issues: 'colour drift', meta: { title: 'Shoe' }, cfg: { provider: 'fixture', configured: true } });
+  assert.ok(out.buffer.length > 500 && /colour drift/.test(out.prompt));
+  await assert.rejects(async () => refineHero({ photos: [photo], best: await shoe(), issues: '', meta: {}, cfg: { provider: 'none', configured: false } }), /No image model/);
+});
+
+test('the bar for approving a hero by itself and the number of corrections are settable, with safe defaults', () => {
+  const keep = { a: process.env.HERO_APPROVE_MIN, b: process.env.HERO_REFINE_ROUNDS };
+  delete process.env.HERO_APPROVE_MIN; delete process.env.HERO_REFINE_ROUNDS;
+  assert.equal(HERO_APPROVE_MIN(), 80); assert.equal(HERO_REFINE_ROUNDS(), 2);
+  process.env.HERO_APPROVE_MIN = '90'; process.env.HERO_REFINE_ROUNDS = '0'; assert.equal(HERO_APPROVE_MIN(), 90); assert.equal(HERO_REFINE_ROUNDS(), 0, 'zero turns correction off');
+  process.env.HERO_REFINE_ROUNDS = '9'; assert.equal(HERO_REFINE_ROUNDS(), 3, 'capped');
+  if (keep.a === undefined) delete process.env.HERO_APPROVE_MIN; else process.env.HERO_APPROVE_MIN = keep.a;
+  if (keep.b === undefined) delete process.env.HERO_REFINE_ROUNDS; else process.env.HERO_REFINE_ROUNDS = keep.b;
 });
