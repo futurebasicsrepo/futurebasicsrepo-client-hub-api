@@ -663,6 +663,22 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
+    alter table tech_pack_shares add column if not exists kind text not null default 'review';
+    create table if not exists factory_quotes (
+      id uuid primary key default gen_random_uuid(),
+      share_id uuid unique not null references tech_pack_shares(id) on delete cascade,
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      version integer not null,
+      company text, contact_name text, email text, wechat text, phone text,
+      currency text not null default 'USD',
+      tiers jsonb not null default '[]',
+      moq integer, sample_cost numeric(14,2), sample_days integer, lead_days integer, tooling numeric(14,2),
+      incoterm text, payment_terms text, valid_until date, notes text,
+      history jsonb not null default '[]',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists factory_quotes_pack_idx on factory_quotes(tech_pack_id, updated_at desc);
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.
     -- Factories that signed up at a trade fair (or anywhere): each gets a referral code. Buyers who start a tech pack through

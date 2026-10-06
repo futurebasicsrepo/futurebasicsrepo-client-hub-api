@@ -21,6 +21,7 @@ import { runChecks, configChecks, jobHealth, insights as platformInsights, class
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { makeColourways } from './panels.js';
+import { cleanQuote, compareQuotes, defaultCompareQty } from './rfq.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -1932,7 +1933,7 @@ async function updateVerification(packId,version,mutate){
 }
 // Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
 const flow=(productId,event,opts={},q=pool)=>applyFlow(q,productId,event,opts).catch(err=>{app.log.warn({err:err.message,productId,event},'product flow not updated');return {changed:false}});
-const shareRow=s=>({id:s.id,label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
+const shareRow=s=>({id:s.id,kind:s.kind||'review',label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
   active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
 app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
@@ -2094,18 +2095,19 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
 app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before sharing it with a factory'});
-  if(!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before factory links are created`});
+  const kind=req.body?.kind==='quote'?'quote':'review'; // a link for quotation needs no client approval: nothing is signed through it, and the client's name is not shown
+  if(kind==='review'&&!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before factory links are created`});
   const label=String(req.body?.label||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
   const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
-  const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||0)));
+  const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||(kind==='quote'?30:0))));
   const token=randomBytes(24).toString('base64url');
-  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at)
-    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days])).rows[0];
+  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at,kind)
+    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end,$7) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days,kind])).rows[0];
   const url=`${clientHubUrl}/tp/${token}`;let emailed=false;
   if(email&&req.body?.sendEmail!==false){
-    try{emailed=await sendHubEmail({to:email,replyTo:req.auth.email||intakeNotificationEmail,subject:`Tech pack for ${ctx.product.title} — please review and countersign`,
-      html:hubEmailShell(`Tech pack: ${ctx.product.title}`,`<p>Hello ${emailEscape(label)},</p><p>Future Basics is sharing the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> (version ${ctx.techPack.version}). Please read every callout, acknowledge each one, then countersign to confirm you can make it to spec. No account is needed: this private link is yours.</p>${hubButton(url,'Open the tech pack')}<p style="font-size:12px;color:#717177">The page can switch language at the top. Reply to this email with any questions.</p>`)});
-      if(emailed)await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Factory link for v${ctx.techPack.version} emailed to ${label} (${email})`]);
+    try{emailed=await sendHubEmail({to:email,replyTo:req.auth.email||intakeNotificationEmail,subject:kind==='quote'?`Request for quotation: ${ctx.product.title}`:`Tech pack for ${ctx.product.title} — please review and countersign`,
+      html:kind==='quote'?hubEmailShell(`Request for quotation: ${ctx.product.title}`,`<p>Hello ${emailEscape(label)},</p><p>Future Basics would like a quotation for <strong>${emailEscape(ctx.product.title)}</strong>. Open the tech pack, then use the <strong>Quote</strong> tab to give your prices by quantity, minimum order, sample cost and lead time. No account is needed: this private link is yours, and it is free.</p>${hubButton(url,'Open the tech pack and quote')}<p style="font-size:12px;color:#717177">The page can switch language at the top. Reply to this email with any questions.</p>`):hubEmailShell(`Tech pack: ${ctx.product.title}`,`<p>Hello ${emailEscape(label)},</p><p>Future Basics is sharing the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> (version ${ctx.techPack.version}). Please read every callout, acknowledge each one, then countersign to confirm you can make it to spec. No account is needed: this private link is yours.</p>${hubButton(url,'Open the tech pack')}<p style="font-size:12px;color:#717177">The page can switch language at the top. Reply to this email with any questions.</p>`)});
+      if(emailed)await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`${kind==='quote'?'Quotation request':'Factory link'} for v${ctx.techPack.version} emailed to ${label} (${email})`]);
     }catch(e){app.log.warn({err:e.message,shareId:row.id},'factory link email not sent')}
   }
   return reply.code(201).send({share:shareRow(row),url,emailed});
@@ -3720,13 +3722,14 @@ app.post('/v1/products/:id/tech-pack/changes',{preHandler:authenticate},async(re
 async function loadShareByToken(token){
   const found=await loadShareRow(token);if(found.error)return found;
   const row=found.row;
+  if(row.share_kind==='quote')return {row:{...row,quote:true}};
   if(row.client_slug==='future-basics'||normalizeVerification(row.verification,row.version).clientSign)return {row};
   const approved=(await pool.query(`select version,data,verification,published_at,locked_at from tech_pack_versions where tech_pack_id=$1 and version<$2 and verification->'clientSign'->>'name' is not null order by version desc limit 1`,[row.id,row.version])).rows[0];
   if(!approved)return {error:{code:409,message:`Version ${row.version} of this tech pack is waiting for ${row.client_name}'s approval. Future Basics will send the link again once it is approved.`}};
   return {row:{...row,version:approved.version,published_data:approved.data,verification:approved.verification,published_at:approved.published_at,locked_at:approved.locked_at,held:true,newerVersion:row.version}};
 }
 async function loadShareRow(token){
-  const row=(await pool.query(`select s.id share_id,s.label share_label,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
+  const row=(await pool.query(`select s.id share_id,s.label share_label,s.kind share_kind,s.email share_email,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
     p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,c.slug client_slug,pr.name project_name
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
@@ -3738,12 +3741,18 @@ async function loadShareRow(token){
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
+  if(row.quote){ // a quotation link: the pack, without the client's name, signatures or the staff's notes, and the factory's own quote if it already sent one
+    const clean={...row,client_name:'',project_name:null,verification:emptyVerification(row.version),revisions:[],published_data:{...normalizeTechPack(row.published_data),style:{...normalizeTechPack(row.published_data).style,designer:''}}};
+    const mine=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
+    return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''}};
+  }
   const view=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
   return row.held?{...view,held:true,notice:`This is version ${row.version}, the one ${row.client_name} approved. Version ${row.newerVersion} is waiting for their approval, so this page is read-only until then.`}:view;
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.quote)return reply.code(403).send({error:'This link is for quotations only: send your quote from the Quote tab'});
   if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — nothing can be acknowledged until then`});
   if(row.locked_at)return reply.code(409).send({error:'This tech pack is signed and locked'});
   const key=String(req.body?.key||'').slice(0,60),acknowledged=req.body?.acknowledged!==false;
@@ -3753,8 +3762,39 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
 });
+const quoteRow=q=>({id:q.id,shareId:q.share_id,version:q.version,company:q.company,contactName:q.contact_name,email:q.email,wechat:q.wechat,phone:q.phone,currency:q.currency,tiers:q.tiers||[],moq:q.moq,sampleCost:q.sample_cost==null?null:Number(q.sample_cost),sampleDays:q.sample_days,leadDays:q.lead_days,tooling:q.tooling==null?null:Number(q.tooling),incoterm:q.incoterm,paymentTerms:q.payment_terms,validUntil:q.valid_until?String(q.valid_until).slice(0,10):null,notes:q.notes,revisions:(q.history||[]).length,createdAt:q.created_at,updatedAt:q.updated_at});
+// A factory sends (or revises) its quotation through its link: free, no account. Staff are told; earlier versions of the same factory's quote are kept.
+app.post('/v1/tp/:token/quote',async(req,reply)=>{
+  if(!throttle(`quote:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many sends from this link. Please try again in an hour.'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(!row.quote)return reply.code(403).send({error:'This link is not for quotations'});
+  const c=cleanQuote(req.body||{});if(c.error)return reply.code(400).send({error:c.error});const q=c.q;
+  const prev=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
+  let saved;
+  if(prev){
+    const history=[...(prev.history||[]),{at:prev.updated_at,version:prev.version,currency:prev.currency,tiers:prev.tiers,moq:prev.moq,sample_cost:prev.sample_cost,lead_days:prev.lead_days,tooling:prev.tooling}].slice(-20);
+    saved=(await pool.query(`update factory_quotes set version=$2,company=$3,contact_name=$4,email=$5,wechat=$6,phone=$7,currency=$8,tiers=$9,moq=$10,sample_cost=$11,sample_days=$12,lead_days=$13,tooling=$14,incoterm=$15,payment_terms=$16,valid_until=$17,notes=$18,history=$19,updated_at=now() where id=$1 returning *`,
+      [prev.id,row.version,q.company||row.share_label,q.contactName,q.email,q.wechat,q.phone,q.currency,JSON.stringify(q.tiers),q.moq,q.sampleCost,q.sampleDays,q.leadDays,q.tooling,q.incoterm,q.paymentTerms,q.validUntil,q.notes,JSON.stringify(history)])).rows[0];
+  }else saved=(await pool.query(`insert into factory_quotes(share_id,tech_pack_id,version,company,contact_name,email,wechat,phone,currency,tiers,moq,sample_cost,sample_days,lead_days,tooling,incoterm,payment_terms,valid_until,notes)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,[row.share_id,row.id,row.version,q.company||row.share_label,q.contactName,q.email,q.wechat,q.phone,q.currency,JSON.stringify(q.tiers),q.moq,q.sampleCost,q.sampleDays,q.leadDays,q.tooling,q.incoterm,q.paymentTerms,q.validUntil,q.notes])).rows[0];
+  const first=q.tiers[0],summary=`${row.share_label} ${prev?'revised its quote':'quoted'} for ${row.title}: ${q.currency} ${first.unit} at ${first.qty}${q.moq?`, MOQ ${q.moq}`:''}${q.leadDays?`, ${q.leadDays} days`:''}`;
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,quoteId:saved.id,shareId:row.share_id}]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-quote',$2,'product',$3)`,[row.client_id,summary,row.product_id]).catch(()=>{});
+  await notifyStaff(`${prev?'Revised quote':'New quote'}: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> ${prev?'revised its quotation':'sent a quotation'} for <strong>${emailEscape(row.title)}</strong>.</p><p>${emailEscape(q.currency)} ${first.unit} at ${first.qty} units${q.moq?` · MOQ ${q.moq}`:''}${q.leadDays?` · ${q.leadDays} days`:''}</p><p>Compare it with the others in the tech pack's Sign tab.</p>`).catch(()=>{});
+  return reply.code(prev?200:201).send({quote:quoteRow(saved)});
+});
+// Staff: the links sent for quotation, and what came back, side by side at one quantity.
+app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id,version from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return reply.code(404).send({error:'Tech pack not found'});
+  const links=(await pool.query(`select s.*,q.id quote_id from tech_pack_shares s left join factory_quotes q on q.share_id=s.id where s.tech_pack_id=$1 and s.kind='quote' order by s.created_at desc`,[tp.id])).rows;
+  const quotes=(await pool.query('select q.*,s.label share_label from factory_quotes q join tech_pack_shares s on s.id=q.share_id where q.tech_pack_id=$1 order by q.updated_at desc',[tp.id])).rows.map(q=>({...quoteRow(q),label:q.share_label}));
+  const qty=Math.max(1,Math.round(Number(req.query?.qty))||defaultCompareQty(quotes));
+  return {version:tp.version,qty,links:links.map(l=>({...shareRow(l),quoted:Boolean(l.quote_id)})),quotes,compare:compareQuotes(quotes,qty)};
+});
 app.post('/v1/tp/:token/sign',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.quote)return reply.code(403).send({error:'This link is for quotations only: send your quote from the Quote tab'});
   if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — countersign it once it is approved`});
   if(row.locked_at)return reply.code(409).send({error:'This tech pack is already signed and locked'});
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to countersign'});

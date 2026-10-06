@@ -120,4 +120,58 @@ await journey('J70', 'the left nav says who has the ball: client, Future Basics 
   } finally { await b.close(); }
 });
 
+await journey('J71', 'a factory is asked to quote: a private link with the client hidden, no signing, a quote form, a revised quote, and staff compare the quotes side by side', async () => {
+  const m = await room('71');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  // a pack that is published but that the client has not approved: a signing link is refused, a quotation link is not
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill X' } })).status === 409, 'a link to read and sign still waits for the client\'s approval');
+  const a = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Mill A Guangzhou' } }); ok(a.status === 201 && /\/tp\//.test(a.json.url), 'a link for quotation does not', [a.status, a.json]);
+  const tokA = a.json.url.split('/tp/')[1], view = (await call(`/v1/tp/${tokA}`)).json;
+  ok(view.quoteMode === true && view.product.clientName === '' && view.product.projectName === null, 'the factory sees the pack marked for quotation, without the client\'s name', [view.quoteMode, view.product.clientName]);
+  ok(!JSON.stringify(view).includes('Secret Brand Co') && !view.techPack.verification.clientSign && view.techPack.revisions.length === 0 && view.techPack.data.style.designer === '', 'nor a signature, a staff note or the designer: the name is nowhere in what it receives');
+  ok((await call(`/v1/tp/${tokA}/ack`, { body: { key: 'x:1' } })).status === 403 && (await call(`/v1/tp/${tokA}/sign`, { body: { name: 'Mill A' } })).status === 403, 'and cannot acknowledge or sign through it');
+  const bad = await call(`/v1/tp/${tokA}/quote`, { body: { email: 'a@mill.cn', tiers: [] } }); ok(bad.status === 400 && /at least one price/.test(bad.json.error), 'a quote with no price is sent back with a sentence', [bad.status, bad.json.error]);
+  ok((await call(`/v1/tp/${tokA}/quote`, { body: { tiers: [{ qty: 500, unit: 5 }] } })).status === 400, 'and so is one with no way to reach the factory');
+  const q1 = await call(`/v1/tp/${tokA}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: '5.20' }, { qty: 2000, unit: '4.60' }], moq: 500, sampleCost: 90, sampleDays: 12, leadDays: 35, tooling: 400, incoterm: 'FOB', paymentTerms: '30% deposit', email: 'sales@milla.cn', wechat: 'milla' } });
+  ok(q1.status === 201 && q1.json.quote.tiers.length === 2, 'a good quote is saved', [q1.status, q1.json]);
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='factory-quote'`) === '1' && sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Mill A Guangzhou quoted%'`) === '1', 'staff are told');
+  const rev = await call(`/v1/tp/${tokA}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: '4.90' }], moq: 500, email: 'sales@milla.cn' } }); ok(rev.status === 200 && rev.json.quote.revisions === 1, 'the same link can revise its quote, and the first is kept', [rev.status, rev.json.quote?.revisions]);
+  ok((await call(`/v1/tp/${tokA}`)).json.quote.tiers[0].unit === 4.9, 'the factory sees its own latest quote when it comes back');
+  const b = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Mill B Shenzhen' } }), tokB = b.json.url.split('/tp/')[1];
+  await call(`/v1/tp/${tokB}/quote`, { body: { currency: 'CNY', tiers: [{ qty: 500, unit: 30 }, { qty: 3000, unit: 26 }], moq: 1000, leadDays: 40, wechat: 'millb_sz' } });
+  const cmp = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json;
+  ok(cmp.quotes.length === 2 && cmp.links.length === 2 && cmp.links.every(l => l.quoted), 'staff see both links answered', cmp.links);
+  ok(cmp.compare[0].company === 'Mill B Shenzhen' && cmp.compare[0].lowest === true && cmp.compare[0].unitUsd === 4.2 && cmp.compare[1].atUnit === 4.9, 'ranked by approximate dollar price at the quantity picked (CNY 30 is about USD 4.20)', cmp.compare.map(r => [r.company, r.unitUsd]));
+  ok(cmp.compare[0].under === true, 'and a quote priced from a higher minimum than the quantity says so', cmp.compare[0].under);
+  ok((await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).status === 200, 'the customer\'s own pages are untouched');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/quotes`, { token: m.token })).status === 403, 'a customer cannot read the quotes');
+  const del = await call(`/v1/admin/tech-pack-shares/${(await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.links.find(l => l.label === 'Mill B Shenzhen').id}`, { method: 'DELETE', token: admin }); ok(del.status === 200 && (await call(`/v1/tp/${tokB}`)).status === 410, 'a revoked link stops working at once');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const pctx = await bw.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }), p = await pctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${tokA}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="quote"]', { timeout: 10000 });
+      ok(await p.locator('#tabs button[data-tab="sign"]').count() === 0 && /Request for quotation/i.test(await p.innerText('#noteSlot')), 'on a phone the factory gets a Quote tab, no Sign tab, and a line saying what to do');
+      await p.click('#tabs button[data-tab="calls"]'); ok(await p.locator('.ackbtn').count() === 0, 'and no acknowledge buttons');
+      await p.click('#tabs button[data-tab="quote"]'); await p.waitForSelector('#quoteForm');
+      ok(/Free for factories/i.test(await p.innerText('.panel[data-panel="quote"]')) && /Quote sent/i.test(await p.innerText('.panel[data-panel="quote"]')), 'the form says it is free, and shows the quote already sent', (await p.innerText('.panel[data-panel="quote"]')).slice(0, 160));
+      await p.fill('[name="unit0"]', '4.75'); await p.fill('[name="leadDays"]', '30'); await p.click('[data-act="sendquote"]');
+      for (let i = 0; i < 20 && sql(`select tiers->0->>'unit' from factory_quotes where company like 'Mill A%'`) !== '4.75'; i++) await sleep(300);
+      ok(sql(`select tiers->0->>'unit'||'|'||lead_days from factory_quotes where company like 'Mill A%'`) === '4.75|30', 'editing and sending from the page updates the quote');
+      const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); ok(over <= 1, 'with nothing running off the screen', over);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j71-quote.png`, fullPage: true }).catch(() => {});
+      ok(p.errs.length === 0, 'no script errors', p.errs); await pctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-quotes] .ptab tbody tr', { timeout: 10000 });
+      ok(/Mill A Guangzhou/.test(await ap.innerText('[data-quotes]')) && /Lowest/i.test(await ap.innerText('[data-quotes]')), 'staff see the quotations table with the lowest marked');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j71-staff.png`, fullPage: true }).catch(() => {});
+      ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
