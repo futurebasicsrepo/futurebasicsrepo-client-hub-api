@@ -2896,7 +2896,7 @@ async function modelSource(row,{checkId=null}={}){
 // May the 3D model be made from the render? Only when the pack, as it stands, reads as the product in the photo.
 async function modelGate(row,opts){
   const min=MESH_MIN_SCORE(),src=await modelSource(row,opts);
-  const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off.'};
+  const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off. Choosing a different try, or making new ones, takes the approval away, and a client saying yes in their hub is not the same as pressing Approve here.'};
   if(src.reason==='nocheck')return {ok:false,reason:'nocheck',min,message:'The pack has not been tested since it last changed. Run the spec check first: the 3D model is made from its render.'};
   if(src.reason==='norender')return {ok:false,reason:'norender',min,score:src.score,message:'The last check had no render (the image model is not connected, or the render failed), so there is nothing to make the 3D model from.'};
   if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, make the model from this render anyway, or make it straight from the client photo.`};

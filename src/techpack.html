@@ -386,7 +386,8 @@ function panelModel(){
   // below the bar, or the pack edited since the check: a person can still choose a render and make the model from it (the hero still has to be approved)
   const forceable=!g.ok&&['score','nocheck'].includes(g.reason)&&pick&&cfg.configured;
   const force=forceable?`<button type="button" class="sbtn" data-act="makemodel" data-source="render" data-force="1" data-check="${esc(pick.id)}" data-score="${pick.score}" data-min="${g.min||90}" data-stale="${pick.stale?1:''}" ${running?'disabled':''} title="Make the 3D model from this render whatever its score: it uses Meshy credits.">Make STL from this ${pick.score}/100 render</button>`:'';
-  const tools=picker+mk('render',m?'Make another from the render':'Make STL from the render',true)+force+(!g.ok&&hasPhoto&&cfg.configured?mk('photo','Use the client photo instead',false):'');
+  const approveHere=g.reason==='hero'&&c.hero&&c.hero.status==='ready'?`<button type="button" class="sbtn" data-act="heroapprove" data-id="${esc(c.hero.id)}" title="Approve the hero image shown above so the 3D model can be made">Approve the hero image</button>`:'';
+  const tools=approveHere+picker+mk('render',m?'Make another from the render':'Make STL from the render',true)+force+(!g.ok&&hasPhoto&&cfg.configured?mk('photo','Use the client photo instead',false):'');
   const srcLine=x=>x.source==='render'?`from the final render of the pack${x.sourceScore!=null?` (it scored ${x.sourceScore}/100 against the photo${x.forced?', below the bar: made on purpose':''})`:''}`:'straight from the client\'s photo, not from the pack';
   let body;
   if(!cfg.configured)body=`<p class="note">${cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected. Add MESHY_API_KEY to the service to turn this on.'}</p>`;
