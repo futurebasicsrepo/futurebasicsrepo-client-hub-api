@@ -557,6 +557,29 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
   const low = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} });
   ok(low.status === 409 && /does not look like the photo yet \(50\/100, it needs 78\)/.test(low.json.error), 'a pack that does not look like the photo yet gets no 3D model, and is told the score and the bar', [low.status, low.json.error]);
   ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 0, 'and nothing was charged');
+  // a person can still choose to make it from the render below the bar: it is recorded as made on purpose, and the card says so
+  const forcedModel = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true } });
+  ok(forcedModel.status === 202, 'below the bar, staff can choose to make the 3D model from the render anyway', [forcedModel.status, forcedModel.json]);
+  for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${forcedModel.json.id}'`) === 'running'; k++) await sleep(300);
+  ok(sql(`select source||'|'||forced::text||'|'||source_score from tech_pack_models where id='${forcedModel.json.id}'`) === 'render|true|50', 'and it is recorded: made from the render, forced, at 50/100');
+  // the pack was edited after the check: no render is "current", but a person who picks that render by name can still make the model from it
+  const origAt = sql(`select updated_at from tech_packs where product_id='${id}'`);
+  sql(`update tech_packs set updated_at=now()+interval '1 minute' where product_id='${id}'`);
+  const stale = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true } });
+  ok(stale.status === 409 && /not been tested since it last changed/.test(stale.json.error), 'if the pack changed since the check, a render nobody named is not used', [stale.status, stale.json.error]);
+  const pickedId = (await call(`/v1/admin/products/${id}/tech-pack/check`, { token: admin })).json.renderChoices?.[0]?.id;
+  ok(!!pickedId, 'the check lists the renders staff can choose from');
+  const picked = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true, checkId: pickedId } });
+  ok(picked.status === 202, 'choosing that render by name makes the model from it', [picked.status, picked.json]);
+  for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${picked.json.id}'`) === 'running'; k++) await sleep(300);
+  // a render can also be added to the hero tries and chosen (and then needs approving)
+  const pk = sql(`select id from tech_packs where product_id='${id}'`), cl = sql(`select client_id from tech_packs where product_id='${id}'`);
+  const hid = sql(`insert into tech_pack_heroes(tech_pack_id,product_id,client_id,status,candidates,chosen) values('${pk}','${id}','${cl}','approved','[{"file":"none.jpg","score":60,"drift":5,"issues":"","total":58}]',0) returning id`).split('\n')[0];
+  const adopt = await call(`/v1/admin/tech-pack-heroes/${hid}/adopt`, { method: 'POST', token: admin, body: { checkId: pickedId } });
+  ok(adopt.status === 200 && adopt.json.chosen === 1, 'a render can be added to the hero tries and chosen', [adopt.status, adopt.json]);
+  ok(sql(`select status||'|'||jsonb_array_length(candidates)||'|'||(candidates->1->>'total') from tech_pack_heroes where id='${hid}'`) === 'ready|2|50', 'it then waits for approval again, scored as the render scored');
+  sql(`delete from tech_pack_heroes where id='${hid}'`); sql(`update tech_packs set updated_at='${origAt}' where product_id='${id}'`);
+  sql(`delete from tech_pack_models where product_id='${id}'`);
   const viaPhoto = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'photo' } });
   ok(viaPhoto.status === 202 && sql(`select source from tech_pack_models where id='${viaPhoto.json.id}'`) === 'photo', 'making it from the client photo instead is allowed, and recorded as such', [viaPhoto.status, viaPhoto.json]);
   for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${viaPhoto.json.id}'`) === 'running'; k++) await sleep(300);
@@ -566,7 +589,12 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     sql(`delete from tech_pack_models where product_id='${id}'`);
     await w2.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await w2.waitForSelector('#sheet .panel.on'); await w2.click('#tabs button[data-tab="check"]'); await w2.waitForSelector('[data-model]', { timeout: 10000 });
     await w2.waitForFunction(() => /does not look like the photo yet/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 });
-    ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]:not([data-force])').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-force="1"]').isEnabled(), 'and offers to make it from the render whatever its score');
+    w2.on('dialog', d => d.accept()); await w2.click('[data-model] [data-act="makemodel"][data-force="1"]');
+    let fm = ''; for (let i = 0; i < 40 && fm !== 'done'; i++) { fm = sql(`select status from tech_pack_models where product_id='${id}' and forced order by created_at desc limit 1`); await sleep(300); }
+    ok(fm === 'done', 'pressing it, after a confirmation saying the score, makes the model', fm);
+    await w2.waitForFunction(() => /below the bar: made on purpose/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 10000 }); ok(true, 'and the card says it was made below the bar on purpose');
   } finally { await wctx2.close(); }
 });
 
@@ -586,9 +614,19 @@ await journey('J66', 'Pantone C: every colour on the pack gets a coated Pantone 
     await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
     await wp.click('#tabs button[data-tab="calls"]'); await wp.waitForSelector('[data-act="matchc"]', { timeout: 8000 });
     ok(!/TCX/.test(await wp.innerText('[data-panel="calls"]')), 'the editor does not mention TCX any more');
-    await wp.click('[data-act="matchc"]');
-    let cw; for (let i = 0; i < 30; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
-    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'one press: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    // nothing is pressed: opening a pack that still has TCX or blank codes matches them by itself, and saves
+    let cw; for (let i = 0; i < 40; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
+    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'opening the pack matches them: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    await wp.click('[data-act="matchc"]'); await wp.waitForFunction(() => /already has a Pantone C code/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 5000 }); ok(true, 'and the button, pressed again, says every colour has one');
+    const rows = await wp.locator('[data-panel="calls"] .pt').first().evaluate(el => { const [a, b] = [el.children[1].getBoundingClientRect(), el.children[2].getBoundingClientRect()]; return { sameRow: Math.abs(a.top - b.top) < 4 }; }); ok(rows.sameRow, 'on a desktop the name and the code sit side by side', rows);
+    // on a phone the code has its own line under the name, wide enough to read "PANTONE 186 C"
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const pp = await pctx.newPage();
+    try {
+      await pp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#tabs button[data-tab="calls"]'); await pp.click('#tabs button[data-tab="calls"]'); await pp.waitForSelector('[data-panel="calls"] .pt input[data-path*="code"]', { timeout: 8000 });
+      const g = await pp.locator('[data-panel="calls"] .pt').first().evaluate(el => { const n = el.children[1].getBoundingClientRect(), c = el.children[2].getBoundingClientRect(); return { nameAbove: c.top > n.top + 10, codeWidth: Math.round(c.width), value: el.children[2].value }; });
+      ok(g.nameAbove && g.codeWidth >= 150 && /^PANTONE .+ C$/.test(g.value), 'on a phone the code is under the name and wide enough to read in full', g);
+    } finally { await pctx.close(); }
     ok(wp.errs.length === 0, 'no script errors', wp.errs);
   } finally { await wctx.close(); }
 });
