@@ -2314,7 +2314,7 @@ async function dropPackVariant(row){
   try{await shopifyGraphql(VARIANTS_BULK_DELETE,{productId,variantsIds:[row.pay_variant_id]})}catch(e){app.log.warn({err:e.message,packId:row.id},'pack variant not deleted')}
   await pool.query('update tech_packs set pay_variant_id=null where id=$1',[row.id]).catch(()=>{});
 }
-const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · factory export in Mandarin, Spanish, Portuguese or Italian · yours to edit any time';
+const TECH_PACK_INCLUDES='Assistant draft from your photo (callouts pinned on the image, points of measure, materials & construction, colourways) · Future Basics review and v1 publish · factory export in Chinese (Simplified or Traditional), Spanish, Portuguese or Italian · yours to edit any time';
 // The payment gate: switched from the work console (stored in app_settings), otherwise automatic: on when Shopify can take
 // payment, or forced either way with TECH_PACK_BILLING=on|off. Read on every request, so a switch takes effect at once.
 let billingMode=null; // 'on' | 'off' | null (automatic)

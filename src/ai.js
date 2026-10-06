@@ -470,7 +470,7 @@ function researchNote(rs) {
 }
 
 // ---- Factory-language translation ----
-// Translates the pack's human-written strings into the factory's language (Mandarin, Spanish, Portuguese or Italian). Codes, numbers, units, Pantone
+// Translates the pack's human-written strings into the factory's language (Simplified or Traditional Chinese, Spanish, Portuguese or Italian). Codes, numbers, units, Pantone
 // references and brand names are kept as they are. Returns { map: { source: translation }, model }.
 const TRANSLATE_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['items'],
@@ -478,7 +478,8 @@ const TRANSLATE_SCHEMA = {
 };
 // One entry per factory language: how the model should write it, the trade terms that reader expects, and what the test fixture prefixes.
 const LANGS = {
-  zh: { label: 'Mandarin', native: '中文', name: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China', terms: '面料, 里布, 鞋面, 中底, 大底, 针距, 色号, 公差, 唛头', fixture: '中文：' },
+  zh: { label: 'Chinese (Simplified)', native: '简体中文', name: 'Simplified Chinese (简体中文) as used in apparel and footwear factories in mainland China', terms: '面料, 里布, 鞋面, 中底, 大底, 针距, 色号, 公差, 唛头', fixture: '中文：' },
+  'zh-hant': { label: 'Chinese (Traditional)', native: '繁體中文', name: 'Traditional Chinese (繁體中文) as used by apparel and footwear factories and trading offices in Hong Kong and Taiwan, with Traditional characters only and their trade terms', terms: '面料, 裡布, 鞋面, 中底, 大底, 針距, 色號, 公差, 嘜頭', fixture: '繁中：' },
   es: { label: 'Spanish', native: 'Español', name: 'Spanish as used in apparel and footwear factories in Spain (español de España)', terms: 'tejido, forro, empeine, plantilla, suela, entresuela, puntadas por pulgada, tolerancia, etiqueta', fixture: 'ES: ' },
   pt: { label: 'Portuguese', native: 'Português', name: 'European Portuguese as used in apparel and footwear factories in Portugal (português de Portugal)', terms: 'tecido, forro, gáspea, palmilha, sola, entressola, pontos por polegada, tolerância, etiqueta', fixture: 'PT: ' },
   it: { label: 'Italian', native: 'Italiano', name: 'Italian as used in apparel and footwear factories in Italy', terms: 'tessuto, fodera, tomaia, soletta, suola, intersuola, punti per pollice, tolleranza, etichetta', fixture: 'IT: ' }

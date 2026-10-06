@@ -111,7 +111,7 @@ ${ctx.membershipUrl ? '<p>Most brands making a capsule of four or more styles go
     case 'paid_howto': return {
       subject: `What happens next with ${ctx.productTitle || 'your tech pack'}`, title: 'What happens next',
       html: `${hi(ctx.first)}<p>Thanks, your <strong>${product}</strong> pack is paid for. Here's how it gets to a factory:</p>
-<ol><li><strong>Check the draft.</strong> Fix any callout, measurement or material that's off. It's yours to edit any time.</li><li><strong>Submit it to Future Basics.</strong> We review it and publish version 1.</li><li><strong>Approve and sign.</strong> Once you approve, the version locks. Changes after that become version 2.</li><li><strong>Factory sign-off.</strong> The factory gets a private link (in Mandarin if they need it), acknowledges every callout and countersigns.</li></ol>${button(pack, 'Open your tech pack')}`
+<ol><li><strong>Check the draft.</strong> Fix any callout, measurement or material that's off. It's yours to edit any time.</li><li><strong>Submit it to Future Basics.</strong> We review it and publish version 1.</li><li><strong>Approve and sign.</strong> Once you approve, the version locks. Changes after that become version 2.</li><li><strong>Factory sign-off.</strong> The factory gets a private link (in Chinese if they need it), acknowledges every callout and countersigns.</li></ol>${button(pack, 'Open your tech pack')}`
     };
     case 'membership_pitch': return {
       subject: 'Two packs in: the studio membership', title: 'Two packs in',

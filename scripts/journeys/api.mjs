@@ -559,6 +559,8 @@ await journey('J57', 'the handoff from submission to delivery: every step names 
   ok((await call(`/v1/tp/${token}/ack`, { method: 'POST', body: { key } })).status === 409, 'and cannot acknowledge anything on it');
   ok((await call(`/v1/products/${id}/tech-pack/approve`, { method: 'POST', token: tok, body: { name: 'Hand Off' } })).status === 200, 'the client approves v3');
   fv = await call(`/v1/tp/${token}`); ok(fv.json.techPack.version === 3 && !fv.json.held, 'now the link shows v3');
+  const trz = await adm(`/v1/admin/products/${id}/tech-pack/translate`, { method: 'POST', body: { lang: 'zh-hant' } }); ok(trz.status === 200 && trz.json.count > 0 && Object.values(trz.json.strings).every(s => s.startsWith('繁中：')), 'staff translate the pack into Traditional Chinese for a Hong Kong or Taiwan factory', [trz.status, trz.json.error]);
+  fv = await call(`/v1/tp/${token}`); ok(fv.json.techPack.translations?.['zh-hant']?.count > 0 && !fv.json.techPack.translations?.zh, 'the factory link carries the Traditional text, and only what was asked for', Object.keys(fv.json.techPack.translations || {}));
   // quote → deposit
   ok((await adm(`/v1/admin/products/${id}/configuration`, { method: 'PUT', body: { material: 'Mesh', decorationMethod: 'Embroidery', colorways: ['Black'], sizes: ['9', '10'], moq: 100, leadTimeDays: 45, status: 'ready' } })).status === 200, 'staff set the configuration');
   const tier = await adm(`/v1/admin/products/${id}/price-tiers`, { method: 'POST', body: { minQuantity: 100, unitCostCents: 2000, wholesaleCents: 4000, srpCents: 9000, setupCents: 10000, freightCents: 0, leadTimeDays: 45 } });
