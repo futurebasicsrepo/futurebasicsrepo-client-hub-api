@@ -576,11 +576,34 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       completed_at timestamptz
     );
+    create table if not exists tech_pack_heroes (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      status text not null default 'generating',
+      provider text,
+      model text,
+      source_hash text,
+      measured jsonb not null default '[]',
+      candidates jsonb not null default '[]',
+      chosen int not null default 0,
+      trigger text not null default 'manual',
+      error text,
+      requested_by uuid,
+      approved_by uuid,
+      approved_at timestamptz,
+      created_at timestamptz not null default now(),
+      completed_at timestamptz
+    );
+    create index if not exists tech_pack_heroes_pack_idx on tech_pack_heroes(tech_pack_id, created_at desc);
+    alter table tech_pack_checks add column if not exists hero_id uuid;
     create index if not exists tech_pack_models_product_idx on tech_pack_models(product_id, created_at desc);
     alter table tech_pack_models add column if not exists source text not null default 'photo';
     alter table tech_pack_models add column if not exists source_check_id uuid;
     alter table tech_pack_models add column if not exists source_score int;
     alter table tech_pack_loops add column if not exists final_check_id uuid;
+    alter table tech_pack_loops add column if not exists outcome text;
     create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);
     create unique index if not exists tech_pack_checks_submit_once on tech_pack_checks(tech_pack_id, pack_version) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());

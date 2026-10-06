@@ -45,8 +45,11 @@ export function specBrief(input, { title = '', productType = '' } = {}) {
   const sample = p.style.sampleSize || p.sizes[Math.floor(p.sizes.length / 2)] || '';
   const category = clip(p.style.category || productType, 120);
   const kind = kindOf(category, title || p.style.styleName);
-  const parts = p.bom.map(r => ({ component: clip(r.component, 80), material: clip(r.material, 120), spec: clip(r.spec, 160), colour: clip(r.color, 60), placement: clip(r.placement, 80), notes: clip(r.notes, 120) }));
-  const colours = p.colorways.map(c => ({ name: clip(c.name, 60), code: clip(c.code, 30), hex: c.swatch || '' }));
+  // the draft's "Default — confirm" is a note to the factory, not something to draw
+  const parts = p.bom.map(r => ({ component: clip(r.component, 80), material: clip(r.material, 120), spec: clip(r.spec, 160), colour: clip(r.color, 60), placement: clip(r.placement, 80), notes: /^default\s*[—–-]\s*confirm\.?$/i.test(String(r.notes).trim()) ? '' : clip(r.notes, 120) }));
+  // colourway notes read "upper · Seen in the photo — client to confirm" (a colour the product has, and where) or "… Suggested alternative" (a different colourway, not drawn)
+  const colours = p.colorways.map(c => { const n = String(c.notes || ''), lead = n.split(' · ')[0].trim(), role = / · /.test(n) && !/^(seen in|suggested)/i.test(lead) ? clip(lead, 40) : '';
+    return { name: clip(c.name, 60), code: clip(c.code, 30), hex: c.swatch || '', role, kind: /suggested alternative/i.test(n) ? 'alternative' : /seen in the photo/i.test(n) ? 'observed' : 'listed' }; });
   const measures = p.pom.map(r => { const raw = r.values?.[sample] ?? ''; const inches = parseIn(raw); return { code: r.code, name: clip(r.name, 80), raw, inches, cm: inches ? cm(inches) : null }; }).filter(m => m.inches);
   const ref = measures[0] || null;
   const proportions = ref ? measures.slice(1).map(m => ({ code: m.code, name: m.name, inches: m.inches, cm: m.cm, pctOfReference: Math.round(m.inches / ref.inches * 100) })) : [];
@@ -68,7 +71,9 @@ export function renderPrompt(brief, view = viewsFor(brief.kind)[0]) {
   if (brief.fit) L.push(`Fit / last / block: ${brief.fit}.`);
   if (brief.parts.length) L.push('MATERIALS AND COLOURS. Build the product from exactly these parts and show each material\'s real surface (weave, grain, mesh, foam, rubber tread, stitching):\n' +
     brief.parts.slice(0, 16).map(r => `- ${r.component || 'Part'}: ${[r.material, r.spec].filter(Boolean).join(', ')}${r.colour ? `; colour ${r.colour}` : ''}${r.placement ? `; ${r.placement}` : ''}${r.notes ? `; ${r.notes}` : ''}`).join('\n'));
-  if (brief.colours.length) L.push('COLOURWAY: ' + brief.colours.slice(0, 4).map(c => `${c.name}${c.code ? ` (${c.code})` : ''}${c.hex ? ` ${c.hex}` : ''}`).join('; ') + '. Show the first colourway.');
+  const named = c => `${c.role ? c.role + ': ' : ''}${c.name}${c.code ? ` (${c.code})` : ''}${c.hex ? ` ${c.hex}` : ''}`, observed = brief.colours.filter(c => c.kind === 'observed');
+  if (observed.length) L.push('COLOUR BLOCKING (these colours are all on the one product; use each where it is named): ' + observed.slice(0, 8).map(named).join('; ') + '.');
+  else if (brief.colours.length) L.push('COLOURWAY: ' + brief.colours.filter(c => c.kind !== 'alternative').slice(0, 4).map(named).join('; ') + '. Show the first colourway.');
   if (brief.reference) L.push(`PROPORTIONS (size ${brief.sampleSize}). Reference: ${brief.reference.name} ${brief.reference.inches} in (${brief.reference.cm} cm) = 100%. ` +
     brief.proportions.slice(0, 14).map(m => `${m.name} ${m.inches} in = ${m.pctOfReference}%`).join('; ') + '. Keep these proportions true.');
   if (brief.construction.length) L.push('CONSTRUCTION:\n' + brief.construction.slice(0, 8).map(r => `- ${r.area}: ${r.detail}`).join('\n'));
@@ -82,7 +87,8 @@ export function renderPrompt(brief, view = viewsFor(brief.kind)[0]) {
 // Which image model draws it. OpenAI is the first adapter; with only the test fixture on, a plain placeholder is drawn so the flow can be exercised.
 export function imageConfig(env = process.env) {
   if (env.CHECK_RENDER_DISABLED === 'true') return { provider: 'off', configured: false, model: null, note: 'switched off (CHECK_RENDER_DISABLED)' };
-  if (env.OPENAI_API_KEY && (env.IMAGE_PROVIDER || 'openai') === 'openai') return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-1.5', quality: env.IMAGE_QUALITY || 'medium', size: env.IMAGE_SIZE || '1024x1024' };
+  // the newest image model, at high quality, unless the service says otherwise (IMAGE_MODEL, IMAGE_QUALITY); IMAGE_FALLBACK_MODEL is tried once if the first is refused as unknown
+  if (env.OPENAI_API_KEY && (env.IMAGE_PROVIDER || 'openai') === 'openai') return { provider: 'openai', configured: true, model: env.IMAGE_MODEL || 'gpt-image-2.5-sunburst', quality: env.IMAGE_QUALITY || 'high', size: env.IMAGE_SIZE || '1024x1024', fallbackModel: env.IMAGE_FALLBACK_MODEL || 'gpt-image-1.5' };
   if (env.IMAGE_FIXTURE || env.AI_FIXTURE) return { provider: 'fixture', configured: true, model: 'fixture', note: 'test placeholder, not a real image model' };
   return { provider: 'none', configured: false, model: null, note: 'no image model connected: checks compare the written spec with the photo' };
 }
@@ -97,7 +103,22 @@ export async function fixtureRender(brief, view) {
   return sharp(Buffer.from(svg)).jpeg({ quality: 82 }).toBuffer();
 }
 
+// If the image model's name is refused (not known to this account yet), the same request is tried once on the fallback model, so a wrong name never stops the work.
+async function withFallback(cfg, run) {
+  try { return await run(cfg); }
+  catch (e) {
+    const fb = cfg.fallbackModel;
+    if (fb && fb !== cfg.model && (e.status === 400 || e.status === 404) && /model|does not exist|not found|unknown|unsupported|quality/i.test(String(e.message))) {
+      console.warn(JSON.stringify({ level: 'warn', msg: 'image model refused, using the fallback', model: cfg.model, fallback: fb }));
+      return run({ ...cfg, model: fb, quality: ['xhigh', 'max'].includes(cfg.quality) ? 'high' : cfg.quality });
+    }
+    throw e;
+  }
+}
 async function openaiImage(prompt, cfg) {
+  return withFallback(cfg, c => openaiImageOnce(prompt, c));
+}
+async function openaiImageOnce(prompt, cfg) {
   const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/generations', {
     method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: cfg.model, prompt, size: cfg.size, quality: cfg.quality, n: 1, output_format: 'jpeg' }), signal: AbortSignal.timeout(150000)
@@ -109,13 +130,36 @@ async function openaiImage(prompt, cfg) {
   throw new Error('The image model returned no image');
 }
 
+// An edit with reference images: the images go in, the model redraws them as the prompt says. Used for the hero image and for renders guided by it.
+export async function openaiEdit({ images, prompt, cfg }) {
+  return withFallback(cfg, c => openaiEditOnce({ images, prompt, cfg: c }));
+}
+async function openaiEditOnce({ images, prompt, cfg }) {
+  const fd = new FormData();
+  fd.append('model', cfg.model); fd.append('prompt', prompt); fd.append('size', cfg.size || '1024x1024'); fd.append('quality', cfg.quality || 'medium'); fd.append('n', '1'); fd.append('output_format', 'jpeg');
+  const fidelity = process.env.IMAGE_INPUT_FIDELITY || (/^gpt-image-1/.test(String(cfg.model)) ? 'high' : ''); // the newer models do not take it
+  if (fidelity && fidelity !== 'off') fd.append('input_fidelity', fidelity);
+  images.slice(0, 4).forEach((b, i) => fd.append('image[]', new Blob([b], { type: 'image/jpeg' }), `reference-${i + 1}.jpg`));
+  const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd, signal: AbortSignal.timeout(180000) });
+  if (!res.ok) { const t = await res.text().catch(() => ''); throw Object.assign(new Error(`The image model refused the request (${res.status}): ${clip(t, 200)}`), { status: res.status }); }
+  const j = await res.json(), item = j?.data?.[0];
+  if (item?.b64_json) return Buffer.from(item.b64_json, 'base64');
+  if (item?.url) { const r = await fetch(item.url); if (r.ok) return Buffer.from(await r.arrayBuffer()); }
+  throw new Error('The image model returned no image');
+}
+
+// The render when an approved hero exists: the hero goes in as the reference, and the tech pack says what it must show.
+export function guidedPrompt(brief, view) {
+  return `The reference image is the approved picture of this product. Draw the same product as a photorealistic studio photograph, ${view.camera}.\nKeep its exact shape, proportions, materials, textures, colours and details. Where the tech pack below says something different from the reference image, follow the tech pack. Do not add any feature, logo, text, colour or material that is in neither the reference image nor the tech pack.\n\nTECH PACK:\n${renderPrompt(brief, view)}`.slice(0, 7000);
+}
+
 // Returns [{ view, label, buffer }]. Throws if the model fails; the caller decides whether the check goes on without a render.
-export async function renderViews(brief, views, cfg = imageConfig()) {
+export async function renderViews(brief, views, cfg = imageConfig(), hero = null) {
   if (!cfg.configured) return [];
   const out = [];
   for (const view of views) {
-    const prompt = renderPrompt(brief, view);
-    const buffer = cfg.provider === 'openai' ? await timed('imagegen-render', () => openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
+    const prompt = hero && cfg.provider === 'openai' ? guidedPrompt(brief, view) : renderPrompt(brief, view);
+    const buffer = cfg.provider === 'openai' ? await timed('imagegen-render', () => hero ? openaiEdit({ images: [hero], prompt, cfg }) : openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
     out.push({ view: view.id, label: view.label, buffer, prompt });
   }
   return out;
@@ -161,6 +205,11 @@ Rules:
 - Score 90-100: a factory would build the same product. 75-89: resembles, with fixable details. 50-74: partly, a visible feature or material is wrong. Below 50: a different product.
 - Be specific and short. The reader is a production manager deciding whether to publish.`;
 
+// When the render was guided by an approved hero image (itself made from the photo) the reviewer is told so: the render now carries the photo's look,
+// and what the pack adds or contradicts is what shows up as a difference.
+const SYSTEM_GUIDED = SYSTEM + `
+Note on (C): these renders were drawn from an approved reference picture of the product (made from the client's photo) together with the tech pack. They should look like the photo. Where the pack says something the photo does not show (another material, colour, detail or proportion), the render follows the pack, so report that as a discrepancy and name the pack row. Also report anything in the render that the written spec (D) does not mention, because the pack is missing it.`;
+
 async function callJson(system, content, { model = CHECK_MODEL(), maxTokens = 3000 } = {}) {
   const client = new Anthropic();
   const base = { model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] };
@@ -185,13 +234,19 @@ function fixtureVerdict(brief, { renders }) {
   if (brief.parts.some(p => /\[needs-fix\]/i.test(`${p.notes} ${p.spec}`))) return { score: 58, verdict: 'partly', summary: 'Test verdict: the written finish does not match the photo.',
     attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'differs' : 'match', note: key === 'materials' ? 'Test fixture: a BOM row carries a needs-fix marker.' : 'Test fixture: no difference found.' })),
     discrepancies: [{ severity: 'high', field: 'bom', title: 'A BOM finish reads differently from the photo', detail: 'Test fixture: the first BOM row carries a needs-fix marker.', suggestion: 'Reconcile the first BOM row.' }] };
+  // test hooks: [stuck] stays at 62 whatever is changed; [climb] gains 12 points for every "+" in the first material's notes, up to 95
+  if (/\[stuck\]/i.test(brief.fabricSummary || '')) return { score: 62, verdict: 'partly', summary: 'Test verdict: still not close enough to the photo.', attributes: ATTRIBUTES.map(key => ({ key, match: key === 'colours' ? 'differs' : 'close', note: 'Test fixture.' })),
+    discrepancies: [{ severity: 'high', field: 'bom', title: 'The colour blocking differs from the photo', detail: 'Test fixture: this verdict never improves.', suggestion: 'Try a different fix.' }] };
+  if (/\[climb\]/i.test(brief.fabricSummary || '')) { const n = (String(brief.parts[0]?.notes || '').match(/\+/g) || []).length, sc = Math.min(95, 60 + 12 * n);
+    return { score: sc, verdict: scoreLabel(sc), summary: `Test verdict: ${sc >= 90 ? 'a factory would build the same product' : 'closer, but not there yet'}.`, attributes: ATTRIBUTES.map(key => ({ key, match: sc >= 90 ? 'match' : 'close', note: 'Test fixture.' })),
+      discrepancies: sc >= 90 ? [] : [{ severity: 'medium', field: 'bom', title: 'A detail still reads differently from the photo', detail: 'Test fixture: keep improving.', suggestion: 'Change the first material again.' }] }; }
   const score = Number(process.env.CHECK_FIXTURE_SCORE) || 82, first = brief.parts[0];
   return { score, verdict: scoreLabel(score), summary: `Test verdict: ${renders.length ? 'the render' : 'the written spec'} resembles the photo with a few fixable details.`,
     attributes: ATTRIBUTES.map(key => ({ key, match: key === 'materials' ? 'close' : 'match', note: key === 'materials' && first ? `${first.component || 'First part'} reads as ${first.material || 'the listed material'}; check its finish against the photo.` : 'Test fixture: no difference found.' })),
     discrepancies: score < 75 ? [{ severity: 'high', field: 'bom', title: 'Test discrepancy', detail: 'The fixture score is below 75, so one difference is reported.', suggestion: 'Check the first BOM row against the photo.' }] : [] };
 }
 
-export async function compareToPhoto({ photos = [], promptText = '', renders = [], brief }) {
+export async function compareToPhoto({ photos = [], promptText = '', renders = [], brief, guided = false }) {
   if (!photos.length && !clip(promptText, 10)) return { verdict: normalizeVerdict({ score: 0, verdict: 'cannot-judge', summary: 'There is no photo or prompt to compare the pack with.' }), model: null };
   if (process.env.AI_FIXTURE) return { verdict: normalizeVerdict(fixtureVerdict(brief, { renders })), model: 'fixture' };
   const content = [{ type: 'text', text: `(A) The client's reference photo${photos.length === 1 ? '' : 's'}:` }];
@@ -203,7 +258,7 @@ export async function compareToPhoto({ photos = [], promptText = '', renders = [
     for (const r of renders.slice(0, 2)) { content.push({ type: 'text', text: `Render: ${r.label}` }); content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: r.buffer.toString('base64') } }); }
   } else content.push({ type: 'text', text: '(C) No render is available.' });
   content.push({ type: 'text', text: `(D) The written spec:\n${renderPrompt(brief)}` });
-  const { obj, model } = await timed('anthropic', () => callJson(SYSTEM, content));
+  const { obj, model } = await timed('anthropic', () => callJson(guided ? SYSTEM_GUIDED : SYSTEM, content));
   return { verdict: normalizeVerdict(obj), model };
 }
 
@@ -215,13 +270,13 @@ export function referencePhotos(input) {
   return [...withImage.filter(s => /reference|photo/i.test(s.label)), ...withImage.filter(s => !/reference|photo/i.test(s.label))].map(s => s.image).slice(0, 2);
 }
 
-export async function runSpecCheck({ pack, product = {}, promptText = '', cfg = imageConfig() }) {
+export async function runSpecCheck({ pack, product = {}, promptText = '', cfg = imageConfig(), hero = null }) {
   const brief = specBrief(pack, { title: product.title, productType: product.product_type });
   const views = viewsFor(brief.kind).slice(0, Math.max(1, Math.min(2, Number(process.env.CHECK_VIEWS) || 1)));
   let renders = [], renderStatus = cfg.configured ? 'rendered' : 'none', renderError = null;
   if (cfg.configured) {
-    try { renders = await renderViews(brief, views, cfg); } catch (e) { renders = []; renderStatus = 'failed'; renderError = clip(e.message, 300); }
+    try { renders = await renderViews(brief, views, cfg, hero); } catch (e) { renders = []; renderStatus = 'failed'; renderError = clip(e.message, 300); }
   }
-  const { verdict, model } = await compareToPhoto({ photos: referencePhotos(pack), promptText, renders, brief });
+  const { verdict, model } = await compareToPhoto({ photos: referencePhotos(pack), promptText, renders, brief, guided: Boolean(hero) });
   return { brief, views, renders, renderStatus, renderError, verdict, provider: cfg.provider, imageModel: cfg.model, checkModel: model };
 }

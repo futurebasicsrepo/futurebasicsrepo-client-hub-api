@@ -13,6 +13,7 @@ import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
+import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, heroThumb } from './studio.js';
 import { reconcile, applyChanges, revertChanges } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
@@ -2410,6 +2411,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     try{await vetMeasurements(draft,{photo:original?photo:'',pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category},sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||'')})}
     catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
+    // the colours the assistant saw are replaced by the colours the pixels have, so the colourways and the tiles made from them are real
+    // only measured on a clean cut-out: on a raw photo a busy backdrop would be counted as product colour, and the assistant's own colours are better than that
+    if(original&&cutout?.image){try{const snapped=snapColours(drafted,await measureColours(cutout.image));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}
     if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
@@ -2523,7 +2527,9 @@ async function runSpecCheckJob(checkId){
     const row=(await pool.query(`select tp.id,tp.product_id,tp.client_id,tp.data,tp.updated_at,p.title,p.product_type,p.description_html,c.name client_name from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=tp.client_id where tp.id=$1`,[claimed.tech_pack_id])).rows[0];
     if(!row)throw new Error('The tech pack no longer exists');
     const prompt=[`Title: ${row.title}`,await productBriefText(row.product_id,row.description_html)].filter(Boolean).join('\n');
-    const r=await runSpecCheck({pack:row.data,product:{title:row.title,product_type:row.product_type},promptText:prompt});
+    const heroRow=await currentHero(row.id);let heroBuf=null;if(heroRow){try{heroBuf=await heroBuffer(heroRow)}catch{heroBuf=null}}
+    const r=await runSpecCheck({pack:row.data,product:{title:row.title,product_type:row.product_type},promptText:prompt,hero:heroBuf});
+    if(heroBuf)await pool.query('update tech_pack_checks set hero_id=$2 where id=$1',[checkId,heroRow.id]);
     await mkdir(checkDir(),{recursive:true});
     const renders=[];for(const x of r.renders){const file=`${checkId}-${x.view}.jpg`;await writeFile(join(checkDir(),file),x.buffer);renders.push({view:x.view,label:x.label,file})}
     await pool.query(`update tech_pack_checks set status='done',completed_at=now(),render_status=$2,render_error=$3,provider=$4,image_model=$5,check_model=$6,brief=$7,verdict=$8,score=$9,verdict_label=$10,renders=$11,pack_updated_at=$12 where id=$1`,
@@ -2551,7 +2557,7 @@ async function checkView(row,{withImages=false}={}){
   const renders=[];
   for(const x of row.renders||[]){const r={view:x.view,label:x.label};if(withImages){try{r.dataUrl='data:image/jpeg;base64,'+(await readFile(join(checkDir(),x.file))).toString('base64')}catch{r.missing=true}}renders.push(r)}
   return {id:row.id,status:row.status,trigger:row.trigger,attempts:row.attempts,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,score:row.score,verdict:row.verdict_label||row.verdict?.verdict||null,summary:row.verdict?.summary||'',
-    attributes:row.verdict?.attributes||[],discrepancies:row.verdict?.discrepancies||[],renders,renderStatus:row.render_status,renderError:row.render_error,provider:row.provider,imageModel:row.image_model,checkModel:row.check_model,error:row.error||null,
+    attributes:row.verdict?.attributes||[],discrepancies:row.verdict?.discrepancies||[],renders,renderStatus:row.render_status,renderError:row.render_error,provider:row.provider,imageModel:row.image_model,checkModel:row.check_model,error:row.error||null,heroId:row.hero_id||null,
     brief:withImages?row.brief:undefined};
 }
 // ---- The design assistant and the developer assistant, working on one pack ----
@@ -2559,8 +2565,8 @@ async function checkView(row,{withImages=false}={}){
 // answers the findings and fixes descriptive fields; the developer assistant looks again. Every step is written to an event log that the pop-up shows as it
 // happens. Nothing here can fail a build: if any step goes wrong the draft stays as it was. A change that makes the score worse is taken back.
 const LOOP_ON=()=>process.env.BUILD_LOOP!=='off'&&aiEnabled();
-const LOOP_ROUNDS=()=>{const n=Number(process.env.BUILD_LOOP_ROUNDS);return Number.isFinite(n)&&process.env.BUILD_LOOP_ROUNDS!==undefined&&process.env.BUILD_LOOP_ROUNDS!==''?Math.max(0,Math.min(2,Math.floor(n))):1};
-const LOOP_THRESHOLD=()=>Number(process.env.BUILD_LOOP_THRESHOLD)||78;
+const LOOP_ROUNDS=()=>{const n=Number(process.env.BUILD_LOOP_ROUNDS);return Number.isFinite(n)&&process.env.BUILD_LOOP_ROUNDS!==undefined&&process.env.BUILD_LOOP_ROUNDS!==''?Math.max(0,Math.min(6,Math.floor(n))):4};
+const LOOP_THRESHOLD=()=>Number(process.env.BUILD_LOOP_THRESHOLD)||90; // the bar: below it a pack is never "ready"
 const trunc=(t,n)=>{const x=String(t??'').replace(/\s+/g,' ').trim();return x.length>n?x.slice(0,n-1)+'…':x};
 async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=null}){
   const ev={at:new Date().toISOString(),agent,kind,text:trunc(text,360),...(score!=null?{score}:{}),...(data?{data}:{})};
@@ -2569,7 +2575,7 @@ async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=
 }
 function loopView(row){
   if(!row)return null;
-  return {id:row.id,status:row.status,trigger:row.trigger,stage:row.stage,events:row.events||[],changes:(row.changes||[]).map(c=>({id:c.id,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)})),startScore:row.start_score,finalScore:row.final_score,rounds:row.rounds,error:row.error||null,createdAt:row.created_at,finishedAt:row.finished_at};
+  return {id:row.id,status:row.status,trigger:row.trigger,stage:row.stage,events:row.events||[],changes:(row.changes||[]).map(c=>({id:c.id,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)})),startScore:row.start_score,finalScore:row.final_score,rounds:row.rounds,outcome:row.outcome||null,bar:LOOP_THRESHOLD(),error:row.error||null,createdAt:row.created_at,finishedAt:row.finished_at};
 }
 const latestLoop=async packId=>loopView((await pool.query('select * from tech_pack_loops where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
 async function startLoop(packId,{trigger='build',actor=null}={}){
@@ -2596,31 +2602,44 @@ async function runLoopBody(loopId){
     if(r.status!=='done'){await pool.query(`update tech_pack_checks set status='failed',completed_at=now() where id=$1 and status<>'done'`,[made.id]);throw new Error(r.error||'The check could not finish')}
     return r;
   };
-  let applied=[],final=null,start=null,row=null;
+  let final=null,start=null,row=null;
   try{
     row=await load();if(!row)throw new Error('The tech pack no longer exists');
     const prompt=[`Title: ${row.title}`,await productBriefText(row.product_id,row.description_html)].filter(Boolean).join('\n');
     const pk=normalizeTechPack(row.data),mine={callouts:pk.sketches.reduce((n,s)=>n+s.callouts.length,0),poms:pk.pom.length,bom:pk.bom.length};
+    // The reference picture first: the photo redrawn clean by an image model, so the render the developer assistant tests is guided by the real product, not by words alone.
+    let heroNote='';
+    if(process.env.HERO_AUTO!=='off'&&heroConfig().configured&&!(await currentHero(L.tech_pack_id))){
+      await say({agent:'design',kind:'say',stage:'draft',text:'Making a clean reference picture from your photo (the best of a few tries) before the test.'});
+      const hr=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],st=hr?await startHero(hr,{actor:L.requested_by,trigger:'auto'}):{};
+      if(st.id){await runHero(st.id);const h=(await pool.query('select status,candidates,chosen,error from tech_pack_heroes where id=$1',[st.id])).rows[0],c=h?.candidates?.[h.chosen];
+        if(h?.status==='ready')await say({agent:'design',kind:'say',stage:'draft',text:`Reference picture ready: ${c?.total??'–'}/100 faithful to the photo${c?.drift!=null?`, colours within ${c.drift} of the photo's`:''}. It waits for a person to approve it.`});
+        else heroNote=`The reference picture could not be made (${h?.error||'unknown error'}), so this test uses the written pack alone.`}
+      else if(st.unavailable||st.limited)heroNote=st.unavailable||st.limited;
+      if(heroNote)await say({agent:'design',kind:'say',stage:'draft',text:heroNote});
+    }
     await say(L.trigger==='build'?{agent:'design',kind:'say',stage:'compare',text:`Draft written from your photo: ${mine.callouts} callouts, ${mine.poms} measurements and ${mine.bom} materials. Handing it to the developer assistant to test.`}
       :{agent:'design',kind:'say',stage:'compare',text:'Sending the pack to the developer assistant for a fresh look.'});
     const cfg=imageConfig();
     await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'I build the product from the materials, colours and measurements alone, without looking at the photo. Drawing it now…':'I read the materials, colours and measurements alone, without looking at the photo, and compare what they describe with it.'});
     const c1=await check(),v1=c1.verdict||{};start=c1.score;
     await pool.query('update tech_pack_loops set start_score=$2 where id=$1',[loopId,start]);
-    let curCheckId=c1.id; // the check that describes the pack as it stands now: the final render comes from it
     await say({agent:'developer',kind:'verdict',stage:'compare',score:start,text:v1.summary||'Here is what I found.'});
     for(const d of (v1.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`${d.title}. ${d.detail}`});
     final=start;
-    if(v1.verdict==='cannot-judge'||!(v1.discrepancies||[]).length||start>=threshold||rounds<1){
+    // The exchange goes on until the pack reads as the product in the photo (the bar), the design assistant has nothing left to try, or two rounds in a row gain nothing.
+    // It is only "ready" at or above the bar: below it, the pack is handed to a person with what is still open.
+    const all=[],history=[];let cur_=c1,curScore=start,curCheckId=c1.id,stalls=0,stopped='';
+    const unfixable=v1.verdict==='cannot-judge'||!(v1.discrepancies||[]).length||start>=threshold||rounds<1;
+    if(unfixable){
       await say({agent:'design',kind:'say',stage:'done',text:v1.verdict==='cannot-judge'?'The developer assistant could not judge this one, so I am leaving the draft as it is.':start>=threshold?'Nothing I would change: the pack reads as the product in your photo.':'I will leave the draft as it is for a person to review.'});
     }else{
       for(let round=1;round<=rounds;round++){
-        await say({agent:'design',kind:'think',stage:'review',text:'Going through those findings against your photo…'});
-        const cur=await load(),last=round===1?c1:applied.lastCheck;
-        const prevCheckId=curCheckId;
-        const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:last.verdict,promptText:prompt});
+        await say({agent:'design',kind:'think',stage:'review',text:round===1?'Going through those findings against your photo…':`Round ${round}: going back over what is still open (${curScore}/100, the bar is ${threshold})…`});
+        const cur=await load();
+        const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:cur_.verdict,promptText:prompt,history});
         for(const d of r.decisions)await say({agent:'design',kind:'decision',text:d.say});
-        if(!r.changes.length){await say({agent:'design',kind:'say',stage:'done',text:'I am keeping the draft as it is.'});break}
+        if(!r.changes.length){stopped='nothing';await say({agent:'design',kind:'say',stage:'done',text:round===1?'I am keeping the draft as it is.':'I have nothing more I can change from these findings.'});break}
         const db=await pool.connect();let done;
         try{
           await db.query('begin');
@@ -2629,41 +2648,49 @@ async function runLoopBody(loopId){
           if(done.applied.length)await db.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,done.pack]); // updated_at is left alone: it marks a person's last edit
           await db.query('commit');
         }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
-        if(!done.applied.length){await say({agent:'design',kind:'say',stage:'done',text:'The pack was edited or sent while I was reviewing, so I left it exactly as it is.'});break}
-        applied=done.applied;if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,done.pack);
-        await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(applied),round]);
+        if(!done.applied.length){stopped='edited';await say({agent:'design',kind:'say',stage:'done',text:'The pack was edited or sent while I was reviewing, so I left it exactly as it is.'});break}
+        const applied=done.applied;if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,done.pack);
+        all.push(...applied);
+        await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(all),round]);
         await say({agent:'design',kind:'say',stage:'revise',text:`Changing ${applied.length} thing${applied.length===1?'':'s'}:`});
         for(const c of applied)await say({agent:'design',kind:'change',data:{from:trunc(c.from,80),to:trunc(c.to,80)},text:`${c.label}: ${trunc(c.from,60)||'(empty)'} → ${trunc(c.to,60)}`});
         await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks. Testing the changed pack from scratch…'});
-        const c2=await check();applied.lastCheck=c2;
-        curCheckId=c2.id;
-        if(c2.score<start-2){
+        const c2=await check(),baseline=curScore;
+        if(c2.score<baseline-2){ // worse: take this round's changes back and try something else
           const live=(await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],back=revertChanges(live.data,applied);
           await pool.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,back.pack]);
           if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,back.pack);
-          await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(applied.map(c=>({...c,undone:true})))]);
-          await say({agent:'developer',kind:'verdict',stage:'done',score:c2.score,text:`Lower than before (${start}). I am taking those changes back, and the original draft stays.`});final=start;curCheckId=prevCheckId;
+          const ids=new Set(applied.map(c=>c.id));for(let i=0;i<all.length;i++)if(ids.has(all[i].id)&&!all[i].undone)all[i]={...all[i],undone:true};
+          await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(all)]);
+          history.push({round,score:c2.score,result:'made it worse',tried:applied.map(c=>c.label)});stalls++;
+          await say({agent:'developer',kind:'verdict',stage:round<rounds&&stalls<2?'review':'done',score:c2.score,text:`Lower than before (${baseline}). I am taking those changes back.`});
         }else{
-          final=c2.score;
-          await say({agent:'developer',kind:'verdict',stage:'done',score:final,text:final>start?`Up from ${start}. That is better.`:`About the same as before (${start}).`});
+          const gain=c2.score-baseline;cur_=c2;curScore=c2.score;curCheckId=c2.id;final=c2.score;stalls=gain<=1?stalls+1:0;
+          history.push({round,score:c2.score,result:gain>1?'helped':'did not help',tried:applied.map(c=>c.label)});
+          await say({agent:'developer',kind:'verdict',stage:final>=threshold||round>=rounds||stalls>=2?'done':'review',score:final,text:final>=threshold?`Up to ${final}. That clears the bar of ${threshold}.`:gain>1?`Up from ${baseline} to ${final}. Still short of ${threshold}.`:`About the same as before (${baseline}). Still short of ${threshold}.`});
         }
-        if(final>=threshold)break;
+        final=curScore;
+        if(final>=threshold){stopped='passed';break}
+        if(stalls>=2){stopped='stalled';break}
       }
     }
+    const passed=final>=threshold&&v1.verdict!=='cannot-judge',kept=all.filter(c=>!c.undone).length;
+    // What is still open goes in front of the person who has to finish it.
+    if(!passed&&cur_!==c1)for(const d of (cur_.verdict?.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`Still open: ${d.title}. ${d.detail}`});
     // Once the pack reads as the product in the photo, its final render goes to Meshy for the STL (unless switched off or over the daily limit).
     let autoModelRow=null;
-    if(process.env.MESH_AUTO!=='off'&&meshConfig().configured&&final>=MESH_MIN_SCORE()&&curCheckId){
+    if(passed&&process.env.MESH_AUTO!=='off'&&meshConfig().configured&&final>=MESH_MIN_SCORE()&&curCheckId){
       const cr=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[L.tech_pack_id])).rows[0];
-      const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[L.tech_pack_id])).rows[0].n),kept=applied.length&&final>=start-2?applied.length:0;
-      if(cr&&(!have||kept)&&(await modelSource(cr,{checkId:curCheckId})).file){autoModelRow=cr;await say({agent:'system',kind:'say',stage:'done',text:`The pack reads as the product in your photo (${final}/100). Sending its final render to Meshy to make the 3D model.`})}
+      const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[L.tech_pack_id])).rows[0].n);
+      if(cr&&(!have||kept)&&(await modelGate(cr,{checkId:curCheckId})).ok){autoModelRow=cr;await say({agent:'system',kind:'say',stage:'done',text:`The pack reads as the product in your photo (${final}/100). Sending its final render to Meshy to make the 3D model.`})}
     }
-    await say({agent:'system',kind:'done',stage:'done',text:'Ready for your review.'});
-    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,finished_at=now() where id=$1`,[loopId,final,curCheckId||null]);
+    const heroNow=await currentHero(L.tech_pack_id),heroPending=Boolean(heroNow&&heroNow.status!=='approved');
+    await say({agent:'system',kind:'done',stage:'done',data:{outcome:passed?'passed':'needs-review',score:final,bar:threshold,heroPending},text:passed?(heroPending?`Scored ${final}/100, above the bar of ${threshold}. One step left: a person approves the reference picture (Check tab).`:`Ready: ${final}/100, above the bar of ${threshold}.`):`Not ready: ${final}/100, and the bar is ${threshold}. A person needs to review what is still open.`});
+    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,outcome=$4,finished_at=now() where id=$1`,[loopId,final,curCheckId||null,passed?'passed':'needs-review']);
     if(autoModelRow)startModel(autoModelRow,{actor:null,source:'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
-    const kept=applied.length&&final>=start-2?applied.length:0;
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}`,{techPackId:L.tech_pack_id,loopId,start,final}]).catch(()=>{});
-    const lastRow=(await pool.query(`select verdict_label from tech_pack_checks where loop_id=$1 and status='done' order by completed_at desc limit 1`,[loopId])).rows[0];
-    if(final<60||lastRow?.verdict_label==='does-not-resemble')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Spec check: ${row.client_name}'s ${row.title} still does not match its photo after the assistants went over it (${final}/100)`,row.product_id]).catch(()=>{});
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}${passed?', ready':`, below the bar of ${threshold}: needs a person`}`,{techPackId:L.tech_pack_id,loopId,start,final,passed}]).catch(()=>{});
+    // every pack under the bar is in the console's queue; a message goes out only when it is far from the photo
+    if(!passed&&(final<60||cur_.verdict?.verdict==='does-not-resemble'))await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Needs a person: ${row.client_name}'s ${row.title} reached ${final}/100 after the assistants went over it (the bar is ${threshold})`,row.product_id]).catch(()=>{});
   }catch(e){
     const msg=checkErrorText(e);app.log.warn({err:String(e.message||e).slice(0,300),loopId},'exchange failed');
     await say({agent:'system',kind:'done',stage:'done',text:'The assistants could not finish going over this one. Your draft is unchanged.'});
@@ -2678,8 +2705,10 @@ app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admin
   const img=imageConfig();
   const loops=(await pool.query('select * from tech_pack_loops where product_id=$1 order by created_at desc limit 4',[req.params.id])).rows.map(loopView);
   const mrows=(await pool.query('select * from tech_pack_models where product_id=$1 order by created_at desc limit 1',[req.params.id])).rows,mc=meshConfig();
+  const heroRow=(await pool.query(`select * from tech_pack_heroes where product_id=$1 and status<>'superseded' order by (status in ('generating','ready','approved')) desc,created_at desc limit 1`,[req.params.id])).rows[0];
+  const hero=await heroView(heroRow),heroCfg=heroConfig();
   const model=await modelView(mrows[0],{withThumb:true}),gate=await modelGate({id:pack.id,updated_at:pack.updated_at});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
-  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),hero,heroConfig:{provider:heroCfg.provider,configured:heroCfg.configured,model:heroCfg.model||null},model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
     history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
 });
@@ -2719,6 +2748,90 @@ app.post('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admi
   if(r.limited)return reply.code(429).send({error:`That is ${r.limit} checks on this product today. Try again tomorrow, or wait for the next change to the pack.`});
   return reply.code(202).send({started:true,id:r.id||null,already:Boolean(r.already)});
 });
+// ---- The hero image: the photo redrawn clean by an image model (the photo goes in as the reference), best of several, approved by a person. ----
+const HERO_PER_PRODUCT_DAY=Number(process.env.HERO_PER_PRODUCT_DAY)||4,heroDir=()=>join(uploadDir,'heroes');
+const photoHash=photo=>createHash('sha1').update(String(photo||'').slice(0,200000)).digest('hex');
+async function startHero(row,{actor=null,trigger='manual'}={}){
+  const cfg=heroConfig();
+  if(!cfg.configured)return {unavailable:cfg.provider==='off'?'The hero image is switched off (HERO_DISABLED).':'No image model is connected: add OPENAI_API_KEY to the service.'};
+  const photo=packPhotos(row.data)[0];if(!photo)return {noPhoto:true};
+  const open=(await pool.query(`select id from tech_pack_heroes where tech_pack_id=$1 and status='generating' and created_at>now()-interval '12 minutes' limit 1`,[row.id])).rows[0];
+  if(open)return {already:true,id:open.id};
+  const n=Number((await pool.query(`select count(*)::int n from tech_pack_heroes where product_id=$1 and created_at>now()-interval '24 hours'`,[row.product_id])).rows[0].n);
+  if(n>=HERO_PER_PRODUCT_DAY)return {limited:`That is ${HERO_PER_PRODUCT_DAY} hero images on this product today. Try again tomorrow.`};
+  const made=(await pool.query(`insert into tech_pack_heroes(tech_pack_id,product_id,client_id,provider,model,source_hash,trigger,requested_by) values($1,$2,$3,$4,$5,$6,$7,$8) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model||null,photoHash(photo),trigger,actor])).rows[0];
+  return {id:made.id};
+}
+// Makes the candidates, picks the most faithful, saves them. Never throws: a failure is written on the row.
+async function runHero(id){
+  const h=(await pool.query('select h.*,tp.data,p.title from tech_pack_heroes h join tech_packs tp on tp.id=h.tech_pack_id join products p on p.id=h.product_id where h.id=$1',[id])).rows[0];
+  if(!h||h.status!=='generating')return;
+  try{
+    const photos=packPhotos(h.data),photo=photos[0],pack=normalizeTechPack(h.data);
+    // measured on the cut-out when the draft made one (a clean backdrop), else on the photo
+    const cut=pack.sketches.find(sk=>sk.image&&/^cutout-/.test(String(sk.id||'')))?.image;
+    const measured=cut?await measureColours(cut):[]; // no clean cut-out, no photo palette: the colour penalty is skipped rather than measured on a busy backdrop
+    const cands=await heroCandidates({photos,meta:{title:h.title,category:pack.style.category}});
+    const pick=await pickHero({photo,candidates:cands,photoPalette:measured});
+    await mkdir(heroDir(),{recursive:true});
+    const out=[];for(let i=0;i<cands.length;i++){const file=`${id}-${i}.jpg`;await writeFile(join(heroDir(),file),cands[i].buffer);out.push({file,score:pick.scores[i].score,drift:pick.scores[i].drift,issues:pick.scores[i].issues,total:pick.scores[i].total})}
+    // a new hero replaces the earlier ones: it needs its own approval
+    await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status in ('ready','approved')`,[h.tech_pack_id,id]);
+    await pool.query(`update tech_pack_heroes set status='ready',measured=$2,candidates=$3,chosen=$4,completed_at=now() where id=$1`,[id,JSON.stringify(measured),JSON.stringify(out),pick.best]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[h.client_id,h.product_id,`Hero image made for ${h.title} from the photo (${out[pick.best].total}/100 faithful), waiting for approval`,{techPackId:h.tech_pack_id,heroId:id}]).catch(()=>{});
+  }catch(e){
+    app.log.warn({err:String(e.message||e).slice(0,300),heroId:id},'hero image failed');
+    await pool.query(`update tech_pack_heroes set status='failed',error=$2,completed_at=now() where id=$1`,[id,checkErrorText(e).replace(/\(Anthropic\)/,'')]).catch(()=>{});
+  }
+}
+// The hero the rest of the pipeline starts from: the approved one, else the newest unapproved one.
+async function currentHero(packId){
+  return (await pool.query(`select * from tech_pack_heroes where tech_pack_id=$1 and status in ('approved','ready') order by (status='approved') desc,created_at desc limit 1`,[packId])).rows[0]||null;
+}
+const heroBuffer=h=>readFile(join(heroDir(),h.candidates[h.chosen]?.file||`${h.id}-0.jpg`));
+async function heroView(h){
+  if(!h)return null;
+  const c=h.candidates||[],cur=c[h.chosen];let image=null;const alts=[];
+  if(h.status==='ready'||h.status==='approved'){
+    try{image=await heroThumb(await heroBuffer(h))}catch{}
+    for(let i=0;i<c.length;i++){try{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:await heroThumb(await readFile(join(heroDir(),c[i].file)),240,78)})}catch{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:null})}}
+  }
+  return {id:h.id,status:h.status,provider:h.provider,model:h.model,chosen:h.chosen,score:cur?.total??null,drift:cur?.drift??null,issues:cur?.issues||'',image,candidates:alts,measured:h.measured||[],createdAt:h.created_at,completedAt:h.completed_at,approvedAt:h.approved_at,error:h.error||null,progressing:h.status==='generating'};
+}
+app.post('/v1/admin/products/:id/tech-pack/hero',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select id,product_id,client_id,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  const r=await startHero(row,{actor:req.auth.sub});
+  if(r.unavailable)return reply.code(503).send({error:r.unavailable});
+  if(r.noPhoto)return reply.code(400).send({error:'Add a photo first: the hero image is made from it.'});
+  if(r.limited)return reply.code(429).send({error:r.limited});
+  if(r.already)return reply.code(409).send({error:'A hero image is already being made for this pack',id:r.id});
+  setImmediate(()=>runHero(r.id));
+  return reply.code(202).send({started:true,id:r.id});
+});
+app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.id=$1`,[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
+  if(!['ready','approved'].includes(h.status))return reply.code(409).send({error:'This hero image is not ready to approve'});
+  await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status='approved'`,[h.tech_pack_id,h.id]);
+  await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now() where id=$1`,[h.id,req.auth.sub]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,req.auth.sub,`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id}]).catch(()=>{});
+  // the exchange may already have passed while it waited for this: now the 3D model can start
+  if(process.env.MESH_AUTO!=='off'&&meshConfig().configured){
+    const lp=(await pool.query(`select outcome,final_check_id from tech_pack_loops where tech_pack_id=$1 and status='done' order by created_at desc limit 1`,[h.tech_pack_id])).rows[0];
+    const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[h.tech_pack_id])).rows[0].n);
+    if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor:req.auth.sub,source:'render',checkId:lp.final_check_id}).catch(()=>{})}
+  }
+  return {approved:true};
+});
+app.post('/v1/admin/tech-pack-heroes/:id/choose',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query('select * from tech_pack_heroes where id=$1',[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
+  const i=Number(req.body?.index);if(!['ready','approved'].includes(h.status)||!Number.isInteger(i)||!h.candidates[i])return reply.code(400).send({error:'Pick one of the candidates shown'});
+  await pool.query(`update tech_pack_heroes set chosen=$2,status='ready',approved_by=null,approved_at=null where id=$1`,[h.id,i]); // a different picture needs approving again
+  return {chosen:i};
+});
+
 // ---- A 3D model (STL) from the client's photo, made by Meshy. Staff start it by hand: it costs credits and sends the photo to the vendor. ----
 const MESH_PER_PRODUCT_DAY=Number(process.env.MESH_PER_PRODUCT_DAY)||3,MESH_PER_DAY=Number(process.env.MESH_PER_DAY)||20,MESH_GIVE_UP_MS=20*60*1000,meshDir=()=>join(uploadDir,'models'),meshPolls=new Set();
 const meshPollMs=()=>Number(process.env.MESH_POLL_MS)||5000;
@@ -2740,6 +2853,7 @@ async function modelSource(row,{checkId=null}={}){
 // May the 3D model be made from the render? Only when the pack, as it stands, reads as the product in the photo.
 async function modelGate(row,opts){
   const min=MESH_MIN_SCORE(),src=await modelSource(row,opts);
+  const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off.'};
   if(src.reason==='nocheck')return {ok:false,reason:'nocheck',min,message:'The pack has not been tested since it last changed. Run the spec check first: the 3D model is made from its render.'};
   if(src.reason==='norender')return {ok:false,reason:'norender',min,score:src.score,message:'The last check had no render (the image model is not connected, or the render failed), so there is nothing to make the 3D model from.'};
   if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, or make the model straight from the client photo.`};
