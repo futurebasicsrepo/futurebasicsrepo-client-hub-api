@@ -495,16 +495,18 @@ await journey('J58', 'the Check tab: photo beside the render, a score, what to f
 await journey('J63', 'the 3D model: staff make an STL from the client photo, watch it build, download a valid file; clients cannot reach it; limits hold', async () => {
   const r = await room('63', { wait: true }), W = 'http://work.localhost:3123', id = r.id;
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  // the 3D model is made from the render of the negotiated pack, so the pack has to have been tested first: wait for the exchange to finish
+  for (let i = 0; i < 60; i++) { const c = (await call(`/v1/admin/products/${id}/tech-pack/check`, { token: admin })).json; if (c.modelGate?.ok && c.loop?.status === 'done') break; await sleep(400); }
   const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
   try {
     await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
     await wp.click('#tabs button[data-tab="check"]'); await wp.waitForSelector('[data-model]', { timeout: 10000 });
-    ok(/Make STL from photo/i.test(await wp.innerText('[data-model]')) && /only runs when you press it/i.test(await wp.innerText('[data-model]')), 'the 3D card says it costs credits and only runs when pressed');
+    ok(/Make STL from the render/i.test(await wp.innerText('[data-model]')) && /final render/i.test(await wp.innerText('[data-model]')) && /uses credits/i.test(await wp.innerText('[data-model]')), 'the 3D card says it is made from the pack\'s final render and uses credits');
     await wp.click('[data-act="makemodel"]');
     await wp.waitForFunction(() => /Meshy is building/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 }); ok(await wp.locator('[data-model] .chk-bar').count() === 1, 'a progress bar shows while it builds');
     await wp.waitForFunction(() => /Triangles/.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 30000 });
-    const txt = await wp.innerText('[data-model]'); ok(/12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it shows the triangle count, warns it is not to scale, and says test mode', txt);
+    const txt = await wp.innerText('[data-model]'); ok(/final render of the pack/i.test(txt) && /82\/100/.test(txt) && /12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it says it came from the pack\'s final render and its score, shows the triangle count, warns it is not to scale, and says test mode', txt);
     ok(await wp.locator('[data-model] img').count() === 1, 'with a preview picture');
     // the viewer: opens in place, draws the model, turns when dragged, resets, and flips the up axis
     await wp.click('[data-act="view3d"]'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
@@ -535,6 +537,22 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
   const a = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} }), b = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} });
   ok(a.status === 202 && b.status === 409, 'a second press while one is building is refused, not charged twice', [a.status, b.status]);
   ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 1, 'and only one task exists');
+  // the gate: when the pack stops looking like the photo, the render route is closed and the card says why; the photo is a deliberate alternative
+  sql(`delete from tech_pack_models where product_id='${id}'`); sql(`update tech_pack_checks set score=50, verdict_label='partly' where product_id='${id}'`);
+  const low = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} });
+  ok(low.status === 409 && /does not look like the photo yet \(50\/100, it needs 78\)/.test(low.json.error), 'a pack that does not look like the photo yet gets no 3D model, and is told the score and the bar', [low.status, low.json.error]);
+  ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 0, 'and nothing was charged');
+  const viaPhoto = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'photo' } });
+  ok(viaPhoto.status === 202 && sql(`select source from tech_pack_models where id='${viaPhoto.json.id}'`) === 'photo', 'making it from the client photo instead is allowed, and recorded as such', [viaPhoto.status, viaPhoto.json]);
+  for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${viaPhoto.json.id}'`) === 'running'; k++) await sleep(300);
+  const wctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx2.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const w2 = await wctx2.newPage();
+  try {
+    sql(`delete from tech_pack_models where product_id='${id}'`);
+    await w2.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await w2.waitForSelector('#sheet .panel.on'); await w2.click('#tabs button[data-tab="check"]'); await w2.waitForSelector('[data-model]', { timeout: 10000 });
+    await w2.waitForFunction(() => /does not look like the photo yet/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 });
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
+  } finally { await wctx2.close(); }
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

@@ -2607,6 +2607,7 @@ async function runLoopBody(loopId){
     await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'I build the product from the materials, colours and measurements alone, without looking at the photo. Drawing it now…':'I read the materials, colours and measurements alone, without looking at the photo, and compare what they describe with it.'});
     const c1=await check(),v1=c1.verdict||{};start=c1.score;
     await pool.query('update tech_pack_loops set start_score=$2 where id=$1',[loopId,start]);
+    let curCheckId=c1.id; // the check that describes the pack as it stands now: the final render comes from it
     await say({agent:'developer',kind:'verdict',stage:'compare',score:start,text:v1.summary||'Here is what I found.'});
     for(const d of (v1.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`${d.title}. ${d.detail}`});
     final=start;
@@ -2616,6 +2617,7 @@ async function runLoopBody(loopId){
       for(let round=1;round<=rounds;round++){
         await say({agent:'design',kind:'think',stage:'review',text:'Going through those findings against your photo…'});
         const cur=await load(),last=round===1?c1:applied.lastCheck;
+        const prevCheckId=curCheckId;
         const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:last.verdict,promptText:prompt});
         for(const d of r.decisions)await say({agent:'design',kind:'decision',text:d.say});
         if(!r.changes.length){await say({agent:'design',kind:'say',stage:'done',text:'I am keeping the draft as it is.'});break}
@@ -2634,12 +2636,13 @@ async function runLoopBody(loopId){
         for(const c of applied)await say({agent:'design',kind:'change',data:{from:trunc(c.from,80),to:trunc(c.to,80)},text:`${c.label}: ${trunc(c.from,60)||'(empty)'} → ${trunc(c.to,60)}`});
         await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks. Testing the changed pack from scratch…'});
         const c2=await check();applied.lastCheck=c2;
+        curCheckId=c2.id;
         if(c2.score<start-2){
           const live=(await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],back=revertChanges(live.data,applied);
           await pool.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,back.pack]);
           if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,back.pack);
           await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(applied.map(c=>({...c,undone:true})))]);
-          await say({agent:'developer',kind:'verdict',stage:'done',score:c2.score,text:`Lower than before (${start}). I am taking those changes back, and the original draft stays.`});final=start;
+          await say({agent:'developer',kind:'verdict',stage:'done',score:c2.score,text:`Lower than before (${start}). I am taking those changes back, and the original draft stays.`});final=start;curCheckId=prevCheckId;
         }else{
           final=c2.score;
           await say({agent:'developer',kind:'verdict',stage:'done',score:final,text:final>start?`Up from ${start}. That is better.`:`About the same as before (${start}).`});
@@ -2647,8 +2650,16 @@ async function runLoopBody(loopId){
         if(final>=threshold)break;
       }
     }
+    // Once the pack reads as the product in the photo, its final render goes to Meshy for the STL (unless switched off or over the daily limit).
+    let autoModelRow=null;
+    if(process.env.MESH_AUTO!=='off'&&meshConfig().configured&&final>=MESH_MIN_SCORE()&&curCheckId){
+      const cr=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[L.tech_pack_id])).rows[0];
+      const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[L.tech_pack_id])).rows[0].n),kept=applied.length&&final>=start-2?applied.length:0;
+      if(cr&&(!have||kept)&&(await modelSource(cr,{checkId:curCheckId})).file){autoModelRow=cr;await say({agent:'system',kind:'say',stage:'done',text:`The pack reads as the product in your photo (${final}/100). Sending its final render to Meshy to make the 3D model.`})}
+    }
     await say({agent:'system',kind:'done',stage:'done',text:'Ready for your review.'});
-    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,finished_at=now() where id=$1`,[loopId,final]);
+    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,finished_at=now() where id=$1`,[loopId,final,curCheckId||null]);
+    if(autoModelRow)startModel(autoModelRow,{actor:null,source:'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
     const kept=applied.length&&final>=start-2?applied.length:0;
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}`,{techPackId:L.tech_pack_id,loopId,start,final}]).catch(()=>{});
     const lastRow=(await pool.query(`select verdict_label from tech_pack_checks where loop_id=$1 and status='done' order by completed_at desc limit 1`,[loopId])).rows[0];
@@ -2667,8 +2678,8 @@ app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admin
   const img=imageConfig();
   const loops=(await pool.query('select * from tech_pack_loops where product_id=$1 order by created_at desc limit 4',[req.params.id])).rows.map(loopView);
   const mrows=(await pool.query('select * from tech_pack_models where product_id=$1 order by created_at desc limit 1',[req.params.id])).rows,mc=meshConfig();
-  const model=await modelView(mrows[0],{withThumb:true});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
-  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),model,modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+  const model=await modelView(mrows[0],{withThumb:true}),gate=await modelGate({id:pack.id,updated_at:pack.updated_at});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
+  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
     history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
 });
@@ -2711,17 +2722,48 @@ app.post('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admi
 // ---- A 3D model (STL) from the client's photo, made by Meshy. Staff start it by hand: it costs credits and sends the photo to the vendor. ----
 const MESH_PER_PRODUCT_DAY=Number(process.env.MESH_PER_PRODUCT_DAY)||3,MESH_PER_DAY=Number(process.env.MESH_PER_DAY)||20,MESH_GIVE_UP_MS=20*60*1000,meshDir=()=>join(uploadDir,'models'),meshPolls=new Set();
 const meshPollMs=()=>Number(process.env.MESH_POLL_MS)||5000;
-async function startModel(row,{actor=null}={}){
+const MESH_MIN_SCORE=()=>Number(process.env.MESH_MIN_SCORE)||LOOP_THRESHOLD();
+// The render the 3D model is made from: the developer assistant's drawing of the pack as it stands now (after the exchange), never an older pack.
+async function modelSource(row,{checkId=null}={}){
+  let c=null;
+  if(checkId)c=(await pool.query(`select * from tech_pack_checks where id=$1 and tech_pack_id=$2 and status='done'`,[checkId,row.id])).rows[0];
+  else{
+    const lp=(await pool.query(`select final_check_id,finished_at from tech_pack_loops where tech_pack_id=$1 and status='done' and final_check_id is not null order by created_at desc limit 1`,[row.id])).rows[0];
+    if(lp&&new Date(lp.finished_at)>=new Date(row.updated_at))c=(await pool.query(`select * from tech_pack_checks where id=$1 and status='done'`,[lp.final_check_id])).rows[0];
+    if(!c)c=(await pool.query(`select * from tech_pack_checks where tech_pack_id=$1 and status='done' and pack_updated_at=$2 order by completed_at desc limit 1`,[row.id,row.updated_at])).rows[0];
+  }
+  if(!c)return {reason:'nocheck'};
+  const first=(c.renders||[])[0];
+  if(c.render_status!=='rendered'||!first)return {reason:'norender',check:c,score:c.score};
+  return {check:c,score:c.score,verdict:c.verdict_label,file:join(checkDir(),first.file)};
+}
+// May the 3D model be made from the render? Only when the pack, as it stands, reads as the product in the photo.
+async function modelGate(row,opts){
+  const min=MESH_MIN_SCORE(),src=await modelSource(row,opts);
+  if(src.reason==='nocheck')return {ok:false,reason:'nocheck',min,message:'The pack has not been tested since it last changed. Run the spec check first: the 3D model is made from its render.'};
+  if(src.reason==='norender')return {ok:false,reason:'norender',min,score:src.score,message:'The last check had no render (the image model is not connected, or the render failed), so there is nothing to make the 3D model from.'};
+  if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, or make the model straight from the client photo.`};
+  return {ok:true,min,score:src.score,checkId:src.check.id};
+}
+async function startModel(row,{actor=null,source='render',checkId=null}={}){
   const cfg=meshConfig();
   if(!cfg.configured)return {unavailable:cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected: add MESHY_API_KEY to the service.'};
-  const photo=packPhotos(row.data)[0];if(!photo)return {noPhoto:true};
-  const image=await photoForMesh(photo);if(!image)return {noPhoto:true};
+  let image,src=null;
+  if(source==='render'){
+    const gate=await modelGate(row,{checkId});if(!gate.ok)return {gated:gate.message,gate};
+    src=await modelSource(row,{checkId});
+    try{image=await photoForMesh('data:image/jpeg;base64,'+(await readFile(src.file)).toString('base64'))}catch{return {gated:'The render file is missing. Run the spec check again.',gate:{ok:false,reason:'norender'}}}
+  }else{
+    const photo=packPhotos(row.data)[0];if(!photo)return {noPhoto:true};
+    image=await photoForMesh(photo);
+  }
+  if(!image)return {noPhoto:true};
   const open=(await pool.query(`select id from tech_pack_models where product_id=$1 and status='running' and created_at>now()-interval '20 minutes' limit 1`,[row.product_id])).rows[0];
   if(open)return {already:true,id:open.id};
   const n=(await pool.query(`select count(*) filter(where product_id=$1)::int p,count(*)::int t from tech_pack_models where created_at>now()-interval '24 hours'`,[row.product_id])).rows[0];
   if(n.p>=MESH_PER_PRODUCT_DAY)return {limited:`That is ${MESH_PER_PRODUCT_DAY} 3D models on this product today. Try again tomorrow.`};
   if(n.t>=MESH_PER_DAY)return {limited:`The daily limit of ${MESH_PER_DAY} 3D models is used up. It resets tomorrow, or raise MESH_PER_DAY.`};
-  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by) values($1,$2,$3,$4,$5,$6,$7) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor])).rows[0];
+  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by,source,source_check_id,source_score) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor,source,src?src.check.id:null,src?src.score:null])).rows[0];
   try{const t=await startMesh({imageDataUrl:image,cfg});await pool.query('update tech_pack_models set task_id=$2 where id=$1',[made.id,t.taskId])}
   catch(e){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[made.id,clipText(e.message,240)]);return {failed:clipText(e.message,240),id:made.id}}
   setImmediate(()=>followModel(made.id).catch(e=>app.log.warn({err:e.message,modelId:made.id},'3D model follow failed')));
@@ -2768,14 +2810,15 @@ async function runModelRecovery(){
 async function modelView(row,{withThumb=false}={}){
   if(!row)return null;
   let thumb=null;if(withThumb&&row.thumb_file){try{thumb='data:image/jpeg;base64,'+(await readFile(join(meshDir(),row.thumb_file))).toString('base64')}catch{}}
-  return {id:row.id,status:row.status,progress:row.progress,provider:row.provider,model:row.model,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,triangles:row.triangles,size:row.size,bytes:row.stl_bytes==null?null:Number(row.stl_bytes),credits:row.credits,error:row.error||null,thumb,hasFile:Boolean(row.stl_file)};
+  return {id:row.id,status:row.status,progress:row.progress,provider:row.provider,model:row.model,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,triangles:row.triangles,size:row.size,bytes:row.stl_bytes==null?null:Number(row.stl_bytes),credits:row.credits,error:row.error||null,thumb,hasFile:Boolean(row.stl_file),source:row.source||'photo',sourceScore:row.source_score};
 }
 app.post('/v1/admin/products/:id/tech-pack/model',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
-  const row=(await pool.query('select id,product_id,client_id,version,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
-  const r=await startModel(row,{actor:req.auth.sub});
+  const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render'});
+  if(r.gated)return reply.code(409).send({error:r.gated,gate:r.gate});
   if(r.unavailable)return reply.code(503).send({error:r.unavailable});
-  if(r.noPhoto)return reply.code(400).send({error:'Add a photo first: the 3D model is made from the reference photo.'});
+  if(r.noPhoto)return reply.code(400).send({error:'Add a photo first.'});
   if(r.limited)return reply.code(429).send({error:r.limited});
   if(r.failed)return reply.code(502).send({error:r.failed});
   if(r.already)return reply.code(409).send({error:'A 3D model is already being made for this product',id:r.id});
