@@ -141,6 +141,23 @@ export async function heroCandidates({ photos, meta, n = HERO_CANDIDATES(), cfg 
   return out;
 }
 
+// A second pass on the best try: the photo and the draft go in together, with what the check found wrong, and the model fixes only that.
+export const HERO_APPROVE_MIN = () => Number(process.env.HERO_APPROVE_MIN) || 80;
+export const HERO_REFINE_ROUNDS = () => { const n = Number(process.env.HERO_REFINE_ROUNDS); return Number.isFinite(n) && process.env.HERO_REFINE_ROUNDS !== undefined && process.env.HERO_REFINE_ROUNDS !== '' ? Math.max(0, Math.min(3, Math.floor(n))) : 2; };
+export function refinePrompt({ title = '', category = '', issues = '' } = {}) {
+  return [`Image 1 is the reference photo of ${title || 'a product'}${category ? ` (${category})` : ''}. Image 2 is a draft studio redraw of it.`,
+    'Redraw image 2 as the same clean studio photograph (same three-quarter front view, framing, plain light-grey background, soft light), changing only what does not match image 1.',
+    `What does not match: ${clip(issues, 400) || 'colours, panel layout or proportions drift from the photo'}.`,
+    'Make the shape, proportions, materials, colours and where each colour sits, and every visible detail match image 1. Keep everything in image 2 that already matches. Do not add logos, text or features that are not in image 1.'].join('\n');
+}
+export async function refineHero({ photos, best, issues, meta, cfg = heroConfig() }) {
+  if (!cfg.configured) throw new Error('No image model is connected: set OPENAI_API_KEY on the service.');
+  const ref = await toJpegBuffer(photos[0]); if (!ref) throw new Error('There is no photo to refine against.');
+  const prompt = refinePrompt({ ...meta, issues });
+  const buffer = cfg.provider === 'fixture' ? await fixtureHero(ref, 5) : await timed('imagegen-hero', () => openaiEdit({ images: [ref, best], prompt, cfg: { ...cfg, size: process.env.HERO_SIZE || '1024x1024' } }));
+  return { buffer, prompt };
+}
+
 // ---- choosing among candidates ----
 const PICK_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['candidates'],

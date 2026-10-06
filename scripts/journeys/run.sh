@@ -22,7 +22,7 @@ fi
 export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
-for port in 3123 3124 3125 3126 3127 3128 3129; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
+for port in 3123 3124 3125 3126 3127 3128 3129 3130; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
 COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
@@ -40,8 +40,10 @@ env "${COMMON[@]}" HERO_AUTO=off CW_AUTO=off PORT=3127 CLIENT_HUB_URL=http://127
 # E: the fixture draft carries a flaw the fixture reviewer finds, and the exchange runs slowly enough for a browser to watch the pop-up
 env "${COMMON[@]}" HERO_AUTO=off CW_AUTO=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3128 CLIENT_HUB_URL=http://127.0.0.1:3128 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=450 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-e.log" 2>&1 & PE=$!
 # F: like E, but the studio runs by itself: the hero image is made from the photo inside the exchange, and waits for a person's approval
-env "${COMMON[@]}" CUTOUT_FIXTURE=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3129 CLIENT_HUB_URL=http://127.0.0.1:3129 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-f.log" 2>&1 & PF=$!
-for port in 3124 3125 3127 3128 3129; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
+env "${COMMON[@]}" CUTOUT_FIXTURE=1 HERO_AUTO_APPROVE=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3129 CLIENT_HUB_URL=http://127.0.0.1:3129 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-f.log" 2>&1 & PF=$!
+# G: the studio as a customer gets it: the hero is approved by itself when it is good enough, then the colourways and the 3D model follow
+env "${COMMON[@]}" CUTOUT_FIXTURE=1 MESH_POLL_MS=300 MESH_FIXTURE_MS=1200 CHECK_FIXTURE_SCORE=92 PORT=3130 CLIENT_HUB_URL=http://127.0.0.1:3130 AI_FIXTURE=scripts/journeys/fixtures/ai-runner-needsfix.json AI_FIXTURE_DELAY_MS=300 LOOP_STEP_DELAY_MS=150 TECH_PACK_BILLING=off START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-g.log" 2>&1 & PG=$!
+for port in 3124 3125 3127 3128 3129 3130; do for i in $(seq 1 120); do curl -sf "http://127.0.0.1:$port/health" >/dev/null && break; sleep 0.5; done; done
 RC=0
 node scripts/journeys/api.mjs          || RC=1
 if node -e "require(process.env.PLAYWRIGHT_PATH||'playwright')" 2>/dev/null; then node scripts/journeys/browser.mjs || RC=1; else echo "skipping the browser journeys (Playwright not found)"; fi
@@ -50,6 +52,7 @@ node scripts/journeys/model-down.mjs   || RC=1
 node scripts/journeys/payments.mjs     || RC=1
 node scripts/journeys/loop.mjs         || RC=1
 node scripts/journeys/studio.mjs       || RC=1
-kill -9 $PA $PB $PC $PD $PE $PF $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PM 2>/dev/null
+node scripts/journeys/customer.mjs     || RC=1
+kill -9 $PA $PB $PC $PD $PE $PF $PG $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PM 2>/dev/null
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC

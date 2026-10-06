@@ -619,6 +619,7 @@ export async function migrate() {
     );
     create index if not exists tech_pack_colourways_pack_idx on tech_pack_colourways(tech_pack_id, created_at desc);
     alter table tech_pack_heroes add column if not exists shared_at timestamptz;
+    alter table tech_pack_heroes add column if not exists auto_approved boolean not null default false;
     alter table tech_pack_checks add column if not exists hero_id uuid;
     create index if not exists tech_pack_models_product_idx on tech_pack_models(product_id, created_at desc);
     alter table tech_pack_models add column if not exists source text not null default 'photo';
