@@ -13,7 +13,7 @@ import { dataUrlToImageBlock } from './ai.js';
 import { openaiEdit } from './check.js';
 import { callJsonSchema, heroConfig, nearestName, colourDistance } from './studio.js';
 import { hexToRgb } from './colorway.js';
-import { timed } from './telemetry.js';
+import { timed, trackedFetch } from './telemetry.js';
 import './pantone-c.js';
 
 const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -123,15 +123,41 @@ const CHECK_SCHEMA = {
 };
 const CHECK_SYSTEM = `You inspect a recoloured product picture against its reference and a part-by-part colour plan.
 Check, part by part, that each planned part is drawn in about the planned colour and that the colour stays inside that part (no smearing across seams, no camouflage or blotches, no parts left in the old colour that should have changed, no parts changed that should not). Check the shape, camera angle and details are the same as the reference. Be strict: 90+ means a designer could put it on a colourway sheet as it is. Colour smeared across several parts, or a different shape, is below 50.`;
-export async function checkColourway({ reference, drawn, plan, fixture = false }) {
+// Two judges. Claude did not draw the picture; an OpenAI vision model is a second opinion that sees the same two pictures and the same plan, and the stricter score
+// stands. OpenAI is used when OPENAI_API_KEY is set. CW_CHECKER=claude|openai|both (default both), OPENAI_CHECK_MODEL sets the OpenAI model.
+export const checkerMode = (env = process.env) => { const m = String(env.CW_CHECKER || '').toLowerCase(); const hasKey = Boolean(env.OPENAI_API_KEY); if (m === 'claude') return { claude: true, openai: false }; if (m === 'openai') return { claude: !hasKey, openai: hasKey }; return { claude: true, openai: hasKey }; };
+async function openaiJudge({ referenceB64, drawnB64, planText }) {
+  const res = await trackedFetch('openai-check', 'https://api.openai.com/v1/chat/completions', {
+    method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(90000),
+    body: JSON.stringify({ model: process.env.OPENAI_CHECK_MODEL || 'gpt-5', response_format: { type: 'json_schema', json_schema: { name: 'colourway_check', strict: true, schema: CHECK_SCHEMA } },
+      messages: [{ role: 'system', content: CHECK_SYSTEM }, { role: 'user', content: [{ type: 'text', text: 'The reference picture:' }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${referenceB64}` } }, { type: 'text', text: 'The recoloured picture:' }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${drawnB64}` } }, { type: 'text', text: `The plan:\n${planText}\n\nJudge it.` }] }] })
+  });
+  if (!res.ok) throw new Error(`OpenAI check refused (${res.status})`);
+  const r = JSON.parse((await res.json())?.choices?.[0]?.message?.content || '{}');
+  return normVerdict(r);
+}
+const normVerdict = r => ({ score: Math.max(0, Math.min(100, Math.round(Number(r.score) || 0))), issues: clip(r.issues, 300), parts: (r.parts || []).map(p => ({ label: clip(p.label, 40), ok: Boolean(p.ok) })) });
+// Several judges, one verdict: the strictest score stands, every problem any of them named is kept, and a part is only fine if all of them say so.
+// A judge that could not run is left out; if none ran the picture is "unchecked" (shown, since nobody could say it was wrong).
+export function combineVerdicts(list) {
+  const ran = list.filter(v => v && !v.unchecked); if (!ran.length) return { score: 0, issues: 'The check could not run.', parts: [], unchecked: true };
+  const issues = [...new Set(ran.map(v => v.issues).filter(x => x && !/^none$/i.test(x)))].join(' / ') || 'none';
+  const labels = [...new Set(ran.flatMap(v => v.parts.map(p => p.label)))];
+  return { score: Math.min(...ran.map(v => v.score)), issues: clip(issues, 300), parts: labels.map(label => ({ label, ok: ran.every(v => v.parts.find(p => p.label === label)?.ok !== false) })), judges: ran.length };
+}
+export async function checkColourway({ reference, drawn, plan, fixture = false, mode = checkerMode(), judges = null }) {
   if (fixture) return { score: 88, issues: 'none', parts: plan.map(x => ({ label: x.label, ok: true })) };
-  const content = [{ type: 'text', text: 'The reference picture:' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: (await jpeg(reference, 900)).toString('base64') } },
-    { type: 'text', text: 'The recoloured picture:' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: (await jpeg(drawn, 900)).toString('base64') } },
-    { type: 'text', text: `The plan:\n${plan.map(x => `- ${x.label}: ${x.changed ? `${x.from} -> ${x.hex} (${x.name})` : `unchanged ${x.from}`}`).join('\n')}\n\nJudge it.` }];
-  try {
-    const r = await timed('anthropic', () => callJsonSchema(CHECK_SYSTEM, content, CHECK_SCHEMA, { maxTokens: 1200 }));
-    return { score: Math.max(0, Math.min(100, Math.round(Number(r.score) || 0))), issues: clip(r.issues, 300), parts: (r.parts || []).map(p => ({ label: clip(p.label, 40), ok: Boolean(p.ok) })) };
-  } catch { return { score: 0, issues: 'The check could not run.', parts: [], unchecked: true }; }
+  const referenceB64 = (await jpeg(reference, 900)).toString('base64'), drawnB64 = (await jpeg(drawn, 900)).toString('base64');
+  const planText = plan.map(x => `- ${x.label}: ${x.changed ? `${x.from} -> ${x.hex} (${x.name})` : `unchanged ${x.from}`}`).join('\n');
+  const content = [{ type: 'text', text: 'The reference picture:' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: referenceB64 } },
+    { type: 'text', text: 'The recoloured picture:' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: drawnB64 } }, { type: 'text', text: `The plan:\n${planText}\n\nJudge it.` }];
+  const run = {
+    claude: async () => normVerdict(await timed('anthropic', () => callJsonSchema(CHECK_SYSTEM, content, CHECK_SCHEMA, { maxTokens: 1200 }))),
+    openai: () => openaiJudge({ referenceB64, drawnB64, planText }), ...(judges || {})
+  };
+  const picked = ['claude', 'openai'].filter(k => mode[k]);
+  const out = await Promise.all(picked.map(k => run[k]().catch(() => ({ unchecked: true }))));
+  return combineVerdicts(out);
 }
 
 // ---- the whole run ------------------------------------------------------------------------------------------------------

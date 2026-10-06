@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { identifyParts, assignColourway, panelPrompt, planDistance, planDifference, makeColourways } from '../src/panels.js';
+import { checkColourway, combineVerdicts, checkerMode, identifyParts, assignColourway, panelPrompt, planDistance, planDifference, makeColourways } from '../src/panels.js';
 import { normalizeTechPack } from '../src/techpack.js';
 
 const ref = () => sharp({ create: { width: 256, height: 256, channels: 3, background: '#cfd2d6' } }).jpeg().toBuffer();
@@ -69,4 +69,27 @@ test('a colourway that would look like the product already does is not drawn', a
 test('parts and per-tile parts survive saving the pack', () => {
   const p = normalizeTechPack({ parts: [{ label: 'Overlays', material: 'PU', hex: '#B8BCC2', name: 'Silver', code: 'PANTONE 877 C', where: 'sides' }, { label: '' }], renderings: [{ id: 'cw-gold', name: 'Colourway — Gold', image: 'data:image/jpeg;base64,AAAA', parts: [{ label: 'Overlays', name: 'Gold', hex: '#c9b27c', code: 'PANTONE 871 C', changed: true }] }] });
   assert.equal(p.parts.length, 1); assert.equal(p.parts[0].hex, '#b8bcc2'); assert.equal(p.renderings[0].parts[0].code, 'PANTONE 871 C');
+});
+
+test('two judges, one verdict: the stricter score stands, every problem is kept, a part is fine only if both say so', () => {
+  const v = combineVerdicts([{ score: 90, issues: 'none', parts: [{ label: 'Mesh', ok: true }, { label: 'Heel', ok: true }] }, { score: 62, issues: 'gold smeared into the mesh', parts: [{ label: 'Mesh', ok: false }, { label: 'Heel', ok: true }] }]);
+  assert.equal(v.score, 62); assert.match(v.issues, /smeared into the mesh/); assert.deepEqual(v.parts, [{ label: 'Mesh', ok: false }, { label: 'Heel', ok: true }]);
+  assert.equal(combineVerdicts([{ unchecked: true }, { score: 80, issues: 'none', parts: [] }]).score, 80, 'a judge that could not run is left out');
+  assert.equal(combineVerdicts([{ unchecked: true }]).unchecked, true, 'none ran: unchecked, not a failing score');
+});
+
+test('which judges run: Claude alone without an OpenAI key; both with one; the setting can pick', () => {
+  assert.deepEqual(checkerMode({}), { claude: true, openai: false });
+  assert.deepEqual(checkerMode({ OPENAI_API_KEY: 'k' }), { claude: true, openai: true });
+  assert.deepEqual(checkerMode({ OPENAI_API_KEY: 'k', CW_CHECKER: 'claude' }), { claude: true, openai: false });
+  assert.deepEqual(checkerMode({ OPENAI_API_KEY: 'k', CW_CHECKER: 'openai' }), { claude: false, openai: true });
+  assert.deepEqual(checkerMode({ CW_CHECKER: 'openai' }), { claude: true, openai: false }, 'no key: Claude still checks');
+});
+
+test('checking runs both judges and survives one failing', async () => {
+  const plan = [{ label: 'Mesh', from: '#9aa0a6', hex: '#c9b27c', name: 'Gold', changed: true }], img = await ref();
+  const good = async () => ({ score: 88, issues: 'none', parts: [{ label: 'Mesh', ok: true }] }), strict = async () => ({ score: 55, issues: 'blotchy', parts: [{ label: 'Mesh', ok: false }] });
+  assert.equal((await checkColourway({ reference: img, drawn: img, plan, mode: { claude: true, openai: true }, judges: { claude: good, openai: strict } })).score, 55);
+  const one = await checkColourway({ reference: img, drawn: img, plan, mode: { claude: true, openai: true }, judges: { claude: good, openai: async () => { throw new Error('refused'); } } });
+  assert.equal(one.score, 88); assert.equal(one.unchecked, undefined);
 });
