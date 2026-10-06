@@ -6,7 +6,7 @@
   <title>Start a tech pack — Future Basics</title><link rel="icon" href="/icons/techpack-v3-192.png" type="image/png"><link rel="apple-touch-icon" href="/icons/techpack-v3-apple-touch-icon.png"><link rel="manifest" href="/tech-pack.webmanifest"><meta name="theme-color" content="#141416"><meta name="apple-mobile-web-app-title" content="Tech Pack"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="description" content="Turn any image into a factory-ready tech pack. Add your design, sketch, photo or screenshot, tell us what you want made, and open your draft.">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+    @import url('/fonts/fonts.css');
     :root{--ink:#141416;--ink2:#1d1e21;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ease:cubic-bezier(.22,1,.36,1);--hdr:60px}
     *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
     button,input,textarea{font:inherit}.hidden{display:none!important}
@@ -123,21 +123,23 @@
     @media(max-width:600px) and (max-height:700px){.lede{display:none}}
     .sheet-top>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media(max-width:400px){.sheet-top{font-size:9px;letter-spacing:.1em}.status{min-width:0}}
     @media(max-width:520px){header{padding:0 14px}.wordmark span{display:none}.free{font-size:9.5px;padding:7px 10px;letter-spacing:.12em}}
+    .lang-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid rgba(255,255,255,.22);border-radius:999px}.lang-switch button{border:0;background:transparent;color:#fff;font:500 11px/1 'IBM Plex Mono',ui-monospace,monospace;padding:6px 8px;border-radius:999px;cursor:pointer;opacity:.7}.lang-switch button[aria-pressed="true"]{background:#fff;color:#141416;opacity:1}.lang-switch button:focus-visible{outline:2px solid #4bff9a;outline-offset:2px}
+    @media(max-width:520px){.lang-switch button{padding:6px 6px;font-size:10px}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition:none!important}.hero::before,.hero::after{animation:none!important}h1 em::after{transform:scaleX(1)}}
   </style>
 </head>
 <body>
-  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span>/ Tech pack</span></a><span class="hdr-r"><span class="free"><i aria-hidden="true"></i>First pack free</span><a class="sitelink" href="https://thefuturebasics.com/?utm_source=hub&amp;utm_medium=nav">← <span>thefuturebasics.com</span><b>Site</b></a></span></header>
+  <header><a class="wordmark" href="/" style="color:#fff;text-decoration:none"><img src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span data-i18n="nav.tag">/ Tech pack</span></a><span class="hdr-r"><span data-lang-switch></span><span class="free"><i aria-hidden="true"></i><span data-i18n="nav.free">First pack free</span></span><a class="sitelink" href="https://thefuturebasics.com/?utm_source=hub&amp;utm_medium=nav">← <span>thefuturebasics.com</span><b data-i18n="nav.site">Site</b></a></span></header>
   <div class="stage">
     <section class="hero" aria-label="What you get">
       <div class="hero-in">
-        <span class="meta" data-in style="--i:0">Product development</span>
-        <h1 data-in style="--i:1">Turn any image into a <em>tech pack.</em></h1>
-        <p class="lede" data-in style="--i:2"><span class="short">Drop in a render, sketch, photo or screenshot. You land in <b>your own draft</b> in about a minute, and the first pack is free.</span><span class="long">A finished render, a flat sketch, a photo of a sample or a screenshot you saved. Add it, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</span></p>
+        <span class="meta" data-in style="--i:0" data-i18n="start.meta">Product development</span>
+        <h1 data-in style="--i:1" data-i18n-html="start.h1">Turn any image into a <em>tech pack.</em></h1>
+        <p class="lede" data-in style="--i:2"><span class="short" data-i18n-html="start.short">Drop in a render, sketch, photo or screenshot. You land in <b>your own draft</b> in about a minute, and the first pack is free.</span><span class="long" data-i18n-html="start.long">A finished render, a flat sketch, a photo of a sample or a screenshot you saved. Add it, tell us what you want made, and you'll land in <b>your own draft</b> — ready for callouts, measurements, materials and colours. Future Basics finishes it with you.</span></p>
         <div class="sheet" id="sheet" aria-hidden="true" data-in style="--i:3">
-          <div class="sheet-top"><span>Tech pack · Draft v1</span><span class="status" id="status"><i></i><span id="statusText">Reading your photo</span></span></div>
+          <div class="sheet-top"><span data-i18n="start.sheet">Tech pack · Draft v1</span><span class="status" id="status"><i></i><span id="statusText">Reading your photo</span></span></div>
           <div class="art" id="art"></div>
-          <div class="sheet-foot"><div class="sw" id="swatches"></div><span class="cap" id="artCap"></span><span class="done" id="done">✓ Ready to edit</span></div>
+          <div class="sheet-foot"><div class="sw" id="swatches"></div><span class="cap" id="artCap"></span><span class="done" id="done" data-i18n="start.ready">✓ Ready to edit</span></div>
         </div>
       </div>
     </section>
@@ -148,49 +150,51 @@
       <div id="drop" class="drop">
         <input id="photos" type="file" accept="image/*" multiple aria-label="Add photos">
         <span class="ic" aria-hidden="true">+</span>
-        <b>Add your design, sketch or photo</b>
-        <span class="meta">Renders · sketches · photos · screenshots · up to 4 images</span>
+        <b data-i18n="start.drop">Add your design, sketch or photo</b>
+        <span class="meta" data-i18n="start.dropMeta">Renders · sketches · photos · screenshots · up to 4 images</span>
       </div>
       <div id="shots" class="shots hidden"></div>
-      <div id="addMore" class="add-more hidden"><span class="meta" id="shotCount"></span><label class="sbtn">+ Add another<input type="file" accept="image/*" multiple id="photosMore"></label></div>
+      <div id="addMore" class="add-more hidden"><span class="meta" id="shotCount"></span><label class="sbtn"><span data-i18n="start.addMore">+ Add another</span><input type="file" accept="image/*" multiple id="photosMore"></label></div>
 
       <div class="fields">
-        <label class="f"><span>What is it?</span><input class="t" id="title" name="title" required maxlength="200" placeholder="Chunky runner · Court sneaker · Hoodie · Cap" autocomplete="off"></label>
-        <label class="f"><span>What do you want made? Anything we should match or change?</span><textarea class="t" id="notes" name="notes" maxlength="3000" placeholder="Same shape as the image, leather instead of mesh, our colours, 300 pairs…"></textarea></label>
+        <label class="f"><span data-i18n="start.title">What is it?</span><input class="t" id="title" name="title" required maxlength="200" data-i18n-ph="start.titlePh" placeholder="Chunky runner · Court sneaker · Hoodie · Cap" autocomplete="off"></label>
+        <label class="f"><span data-i18n="start.notes">What do you want made? Anything we should match or change?</span><textarea class="t" id="notes" name="notes" maxlength="3000" data-i18n-ph="start.notesPh" placeholder="Same shape as the image, leather instead of mesh, our colours, 300 pairs…"></textarea></label>
         <div class="row2">
-          <label class="f"><span>Your email</span><input class="t" id="email" name="email" type="email" inputmode="email" autocomplete="email" required placeholder="you@brand.com"></label>
-          <label class="f"><span>Your name</span><input class="t" id="name" name="name" autocomplete="name" maxlength="140" placeholder="Jordan Lee"></label>
+          <label class="f"><span data-i18n="start.email">Your email</span><input class="t" id="email" name="email" type="email" inputmode="email" autocomplete="email" required placeholder="you@brand.com"></label>
+          <label class="f"><span data-i18n="start.name">Your name</span><input class="t" id="name" name="name" autocomplete="name" maxlength="140" data-i18n-ph="start.namePh" placeholder="Jordan Lee"></label>
         </div>
         <label class="hp" aria-hidden="true">Website<input tabindex="-1" autocomplete="off" id="website" name="website"></label>
       </div>
-      <button class="go" id="go" type="submit"><span class="dot" aria-hidden="true"></span><span id="goLabel">Create my tech pack</span></button>
+      <button class="go" id="go" type="submit"><span class="dot" aria-hidden="true"></span><span id="goLabel" data-i18n="start.go">Create my tech pack</span></button>
       <p id="msg" class="msg" aria-live="polite"></p>
     </form>
 
     <section id="codeCard" class="card hidden" style="margin-top:14px">
-      <span class="meta">One more step</span>
-      <h2 style="font-weight:500;letter-spacing:-.03em;margin:8px 0 6px;font-size:26px">We know this email.</h2>
-      <p style="margin:0 0 14px;color:#3a3a3e">Your draft is saved in your existing room. Enter the six-digit code we just emailed to <b id="codeEmail"></b> to open it.</p>
-      <form id="codeForm" class="code"><input class="t" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="14" required placeholder="••••••"><button class="go" type="submit" style="margin:0"><span id="codeLabel">Open my tech pack</span></button></form>
+      <span class="meta" data-i18n="code.meta">One more step</span>
+      <h2 style="font-weight:500;letter-spacing:-.03em;margin:8px 0 6px;font-size:26px" data-i18n="code.h">We know this email.</h2>
+      <p style="margin:0 0 14px;color:#3a3a3e" data-i18n-html="code.p">Your draft is saved in your existing room. Enter the six-digit code we just emailed to <b id="codeEmail"></b> to open it.</p>
+      <form id="codeForm" class="code"><input class="t" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="14" required placeholder="••••••"><button class="go" type="submit" style="margin:0"><span id="codeLabel" data-i18n="code.go">Open my tech pack</span></button></form>
       <p id="codeMsg" class="msg" aria-live="polite"></p>
-      <p class="meta" style="margin:12px 0 0;text-transform:none;letter-spacing:0">Nothing yet? <button type="button" class="linkbtn" id="resend">Send a new code</button> · <button type="button" class="linkbtn" id="changeEmail">Use a different email</button></p>
+      <p class="meta" style="margin:12px 0 0;text-transform:none;letter-spacing:0"><span data-i18n="code.nothing">Nothing yet?</span> <button type="button" class="linkbtn" id="resend" data-i18n="code.resend">Send a new code</button> · <button type="button" class="linkbtn" id="changeEmail" data-i18n="code.change">Use a different email</button></p>
     </section>
 
 
         <div class="steps" aria-label="How it works">
-          <div class="step"><b>01</b>Your image becomes the first page of a tech pack draft.</div>
-          <div class="step"><b>02</b>Pin callouts on it, add sizes, materials, colours — or leave it to us.</div>
-          <div class="step"><b>03</b>Submit. We finish it, you approve, then it goes to a factory.</div>
+          <div class="step"><b>01</b><span data-i18n="step.1">Your image becomes the first page of a tech pack draft.</span></div>
+          <div class="step"><b>02</b><span data-i18n="step.2">Pin callouts on it, add sizes, materials, colours — or leave it to us.</span></div>
+          <div class="step"><b>03</b><span data-i18n="step.3">Submit. We finish it, you approve, then it goes to a factory.</span></div>
         </div>
-        <p class="fine">Already have a room? <a href="/">Sign in to the client hub</a> · <a href="/help">How it works</a>. By continuing you agree we may contact you about this product.</p>
+        <p class="fine" data-i18n-html="start.fine">Already have a room? <a href="/">Sign in to the client hub</a> · <a href="/help">How it works</a>. By continuing you agree we may contact you about this product.</p>
       </div>
     </main>
   </div>
 
+  <script src="/hub-i18n.js"></script>
   <script src="/photo-prep.js"></script>
   <script>
     "use strict";
     const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const T=(k,en,v)=>window.HubI18n?HubI18n.t(k,en,v):en.replace(/\{(\w+)\}/g,(m,x)=>v&&v[x]!=null?v[x]:m);
     const KEY='fb.client.token',shots=[];                           // {src, trimmed, original, name}
     const MAX=4;
     const STATUS_WORDS={413:'Your images are too large to send together — remove one, or use smaller ones.',429:'Too many tries — wait a few minutes and try again.',502:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',503:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',504:'That took too long. Try again — your images are still here.'};
@@ -201,12 +205,12 @@
       if(r.ok&&!parsed){const e=new Error('We got an unexpected reply — if you are on public Wi-Fi, finish its sign-in page first, then try again.');e.status=r.status;throw e}
       if(!r.ok){const e=new Error((r.status<500&&d.error)||STATUS_WORDS[r.status]||(r.status>=500?'Something went wrong on our side — try again in a moment. Your images are still here.':'Something went wrong — try again in a moment.'));e.status=r.status;throw e}return d}
     const {loadImage,toCanvas,autoTrim,jpeg,prepare,isImageFile}=window.PhotoPrep;
-    async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say('That file is not an image. Add a design, sketch, photo or screenshot (JPG, PNG or HEIC).','err');if(!list.length)return;
-      for(const f of list){if(shots.length>=MAX){say(`Up to ${MAX} images — remove one to add another.`,'err');break}
+    async function addFiles(files){const all=[...files],list=all.filter(isImageFile);if(all.length&&!list.length)return say(T('err.notImage','That file is not an image. Add a design, sketch, photo or screenshot (JPG, PNG or HEIC).'),'err');if(!list.length)return;
+      for(const f of list){if(shots.length>=MAX){say(T('err.tooMany',`Up to ${MAX} images — remove one to add another.`,{max:MAX}),'err');break}
         try{shots.push(await prepare(f))}catch(e){say(e.message,'err')}}
       render()}
-    function render(){const has=shots.length>0;$('#drop').classList.toggle('hidden',has);$('#shots').classList.toggle('hidden',!has);$('#addMore').classList.toggle('hidden',!has||shots.length>=MAX);$('#shotCount').textContent=`${shots.length} of ${MAX} images`;
-      $('#shots').innerHTML=shots.map((s,i)=>`<figure class="shot" data-i="${i}"><div class="pic"><img src="${s.useTrim&&s.trimmed?s.trimmed:s.original}" alt=""></div><div class="bar"><span>${i===0?'Main view':'Detail '+(i+1)}</span>${s.trimmed?`<button type="button" class="${s.useTrim?'on':''}" data-act="trim" title="Toggle trimming of app bars">${s.useTrim?'✓ Trimmed':'Trim bars'}</button>`:''}<button type="button" class="rm" data-act="rm" aria-label="Remove">✕</button></div></figure>`).join('')}
+    function render(){const has=shots.length>0;$('#drop').classList.toggle('hidden',has);$('#shots').classList.toggle('hidden',!has);$('#addMore').classList.toggle('hidden',!has||shots.length>=MAX);$('#shotCount').textContent=T('start.count',`${shots.length} of ${MAX} images`,{n:shots.length,max:MAX});
+      $('#shots').innerHTML=shots.map((s,i)=>`<figure class="shot" data-i="${i}"><div class="pic"><img src="${s.useTrim&&s.trimmed?s.trimmed:s.original}" alt=""></div><div class="bar"><span>${i===0?T('start.main','Main view'):T('start.detail','Detail '+(i+1),{n:i+1})}</span>${s.trimmed?`<button type="button" class="${s.useTrim?'on':''}" data-act="trim" title="Toggle trimming of app bars">${s.useTrim?T('start.trimmed','✓ Trimmed'):T('start.trim','Trim bars')}</button>`:''}<button type="button" class="rm" data-act="rm" aria-label="Remove">✕</button></div></figure>`).join('')}
     function say(t,k){const m=$('#msg');m.textContent=t||'';m.className='msg '+(k||'')}
     $('#photos').addEventListener('change',e=>addFiles(e.target.files));$('#photosMore').addEventListener('change',e=>{addFiles(e.target.files);e.target.value=''});
     const drop=$('#drop');['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over')}));['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');if(ev==='drop')addFiles(e.dataTransfer.files)}));
@@ -214,20 +218,20 @@
     $('#shots').addEventListener('click',e=>{const b=e.target.closest('button[data-act]');if(!b)return;const i=+b.closest('.shot').dataset.i;if(b.dataset.act==='rm')shots.splice(i,1);else shots[i].useTrim=!shots[i].useTrim;render()});
     // Where this visit came from: utm_* on the ad link, the referrer and the landing path. First touch is kept so a return visit does not overwrite the ad that brought them.
     const attribution=(()=>{let saved=null;try{saved=JSON.parse(localStorage.getItem('fb.attr')||'null')}catch{}const q=new URLSearchParams(location.search),g=k=>(q.get(k)||'').trim().slice(0,120)||undefined;
-      const fresh={source:g('utm_source')||g('ref')||g('source'),medium:g('utm_medium'),campaign:g('utm_campaign'),content:g('utm_content'),term:g('utm_term'),referrer:document.referrer&&!document.referrer.startsWith(location.origin)?document.referrer.slice(0,120):undefined,landing:(location.pathname+location.search).slice(0,120),firstSeenAt:new Date().toISOString()};
+      const fresh={source:g('utm_source')||g('ref')||g('source'),medium:g('utm_medium'),campaign:g('utm_campaign'),content:g('utm_content'),term:g('utm_term'),referrer:document.referrer&&!document.referrer.startsWith(location.origin)?document.referrer.slice(0,120):undefined,landing:(location.pathname+location.search).slice(0,120),firstSeenAt:new Date().toISOString(),lang:window.HubI18n?.lang};
       Object.keys(fresh).forEach(k=>fresh[k]===undefined&&delete fresh[k]);const any=fresh.source||fresh.campaign||fresh.medium||fresh.referrer;
       const out=saved&&(saved.source||saved.campaign||saved.referrer)?saved:(any?fresh:saved||fresh);try{localStorage.setItem('fb.attr',JSON.stringify(out))}catch{}return out})();
     let pending=null;
     $('#startForm').addEventListener('submit',async e=>{e.preventDefault();say('');
       const title=$('#title').value.trim(),email=$('#email').value.trim(),name=$('#name').value.trim(),notes=$('#notes').value.trim();
-      if(!shots.length)return say('Add an image of your design first.','err');if(!title)return say('Tell us what it is — a few words is plenty.','err');if(!/^\S+@\S+\.\S+$/.test(email))return say('Enter the email you want us to reach you at.','err');
-      const go=$('#go');go.disabled=true;$('#goLabel').textContent='Building your draft…';
+      if(!shots.length)return say(T('err.noImage','Add an image of your design first.'),'err');if(!title)return say(T('err.noTitle','Tell us what it is — a few words is plenty.'),'err');if(!/^\S+@\S+\.\S+$/.test(email))return say(T('err.noEmail','Enter the email you want us to reach you at.'),'err');
+      const go=$('#go');go.disabled=true;$('#goLabel').textContent=T('start.building','Building your draft…');
       try{const d=await api('/v1/public/start',{title,email,name,notes,website:$('#website').value,photos:shots.map(s=>s.useTrim&&s.trimmed?s.trimmed:s.original),attribution});
-        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?'Building your tech pack…':'Opening your tech pack…';location.href=`/tech-packs/${d.product.id}`;return}
+        if(d.token){try{localStorage.setItem(KEY,d.token);if(d.ai==='pending')sessionStorage.setItem('fb.start.ai','1')}catch{}$('#goLabel').textContent=d.ai==='pending'?T('start.buildingPack','Building your tech pack…'):T('start.opening','Opening your tech pack…');location.href=`/tech-packs/${d.product.id}`;return}
         pending=d;$('#codeEmail').textContent=d.email;$('#codeCard').classList.remove('hidden');$('#startForm').classList.add('hidden');$('#codeCard').scrollIntoView({behavior:'smooth',block:'start'});setTimeout(()=>$('#code').focus(),250);
-      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent='Create my tech pack'}});
-    $('#resend').addEventListener('click',async()=>{const m=$('#codeMsg'),b=$('#resend');b.disabled=true;m.className='msg';m.textContent='';try{await api('/v1/auth/code',{email:pending.email});m.textContent='A new code is on its way — it can take a minute. Use the latest one.';m.className='msg ok'}catch(err){m.textContent=err.message;m.className='msg err'}setTimeout(()=>{b.disabled=false},8000)});
-    $('#changeEmail').addEventListener('click',()=>{$('#codeCard').classList.add('hidden');$('#startForm').classList.remove('hidden');pending=null;$('#go').disabled=false;$('#goLabel').textContent='Create my tech pack';$('#email').focus();$('#email').select()});
+      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent=T('start.go','Create my tech pack')}});
+    $('#resend').addEventListener('click',async()=>{const m=$('#codeMsg'),b=$('#resend');b.disabled=true;m.className='msg';m.textContent='';try{await api('/v1/auth/code',{email:pending.email});m.textContent=T('code.sent','A new code is on its way — it can take a minute. Use the latest one.');m.className='msg ok'}catch(err){m.textContent=err.message;m.className='msg err'}setTimeout(()=>{b.disabled=false},8000)});
+    $('#changeEmail').addEventListener('click',()=>{$('#codeCard').classList.add('hidden');$('#startForm').classList.remove('hidden');pending=null;$('#go').disabled=false;$('#goLabel').textContent=T('start.go','Create my tech pack');$('#email').focus();$('#email').select()});
     $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const btn=e.target.querySelector('button');btn.disabled=true;
       try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href=`/tech-packs/${pending.product.id}`}
       catch(err){m.textContent=err.message;m.className='msg err';btn.disabled=false}});
@@ -274,12 +278,12 @@
       const play=()=>{timers.forEach(clearTimeout);timers=[];const p=P[k];
         slides.forEach((s,i)=>{s.classList.toggle('on',i===k);if(i!==k)s.classList.remove('run')});
         sheet.classList.remove('ready','done-on');showFoot(p);
-        if(still){slides[k].classList.add('run');sheet.classList.add('ready','done-on');say(p.cat+' · draft ready');return}
-        say('Reading your photo');
+        if(still){slides[k].classList.add('run');sheet.classList.add('ready','done-on');say(p.cat+' · '+(window.HubI18n?HubI18n.t('st.ready','draft ready'):'draft ready'));return}
+        const W=(k,en)=>window.HubI18n?HubI18n.t(k,en):en;say(W('st.reading','Reading your photo'));
         requestAnimationFrame(()=>requestAnimationFrame(()=>slides[k].classList.add('run')));
-        timers.push(setTimeout(()=>say('Placing callouts'),700),setTimeout(()=>say('Measuring'),2000),
-          setTimeout(()=>{say('Choosing colours');sheet.classList.add('ready')},2600),
-          setTimeout(()=>{say(p.cat+' · draft ready');sheet.classList.add('done-on')},3300),
+        timers.push(setTimeout(()=>say(W('st.callouts','Placing callouts')),700),setTimeout(()=>say(W('st.measuring','Measuring')),2000),
+          setTimeout(()=>{say(W('st.colours','Choosing colours'));sheet.classList.add('ready')},2600),
+          setTimeout(()=>{say(p.cat+' · '+(window.HubI18n?HubI18n.t('st.ready','draft ready'):'draft ready'));sheet.classList.add('done-on')},3300),
           setTimeout(()=>{k=(k+1)%P.length;play()},5200))};
       play();
       // pause the loop while the tab is hidden so it resumes cleanly

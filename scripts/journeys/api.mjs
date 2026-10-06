@@ -610,4 +610,25 @@ await journey('J57', 'the handoff from submission to delivery: every step names 
   ok(!(await adm('/v1/admin/dashboard')).json.queues.approvals.some(x => x.key === `request:${rq.json.id}`), 'and it leaves the queue');
 });
 
+await journey('J58', 'trade fairs: a factory signs up for its own link, buyers it sends are credited to it, and the pages work without Google', async () => {
+  const bad = await call('/v1/public/factories', { body: { company: 'Mill', lang: 'zh' } });
+  ok(bad.status === 400 && /email, WeChat or phone/.test(bad.json.error), 'a factory with no way to reach it is refused', [bad.status, bad.json.error]);
+  ok((await call('/v1/public/factories', { body: { company: '', wechat: 'x' } })).status === 400, 'and one with no company name');
+  const f = await call('/v1/public/factories', { body: { company: `宏达鞋业 ${stamp}`, wechat: 'hongda', city: '东莞', source: 'canton', lang: 'zh' } });
+  ok(f.status === 201 && /^[A-HJ-NP-Z2-9]{6}$/.test(f.json.code) && f.json.link.endsWith(`/start?ref=f-${f.json.code}&lang=zh`), 'a factory gets a six-character code and a Chinese link', [f.status, f.json]);
+  ok(Number(sql(`select count(*) from notifications where type='partner' and title like '%宏达鞋业 ${stamp}%'`)) === 1, 'staff get a notice naming the factory and the fair');
+  const email = `j58-${stamp}@buyer.test`;
+  const st = await call('/v1/public/start', { body: { email, name: 'Fair Buyer', title: 'Runner', photos: [runner], attribution: { source: `f-${f.json.code.toLowerCase()}`, lang: 'zh', landing: `/start?ref=f-${f.json.code}` } } });
+  ok(st.status === 201, 'a buyer starts a tech pack through the factory link', st.status);
+  const acq = JSON.parse(sql(`select acquisition::text from clients where id='${st.json.client.id}'`));
+  ok(acq.partner === `宏达鞋业 ${stamp}` && acq.partnerCode === f.json.code && acq.lang === 'zh', 'their room is credited to the factory, in the language they used', acq);
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${email}'`), clientId: st.json.client.id, role: 'admin' });
+  const list = (await call('/v1/admin/partners', { token: admin })).json.partners, me = list.find(p => p.code === f.json.code);
+  ok(me && me.buyers === 1 && me.source === 'canton', 'the console lists the factory with one buyer from the Canton Fair', me);
+  ok((await call('/v1/admin/partners', { token: st.json.token })).status === 403, 'a client cannot read the list');
+  const page = await call('/fair'), start = await call('/start');
+  ok(page.status === 200 && /hub-i18n\.js/.test(page.text) && !/fonts\.googleapis/.test(page.text + start.text), 'the fair page and /start load no Google fonts', page.status);
+  ok((await call('/fonts/space-grotesk-latin.woff2')).status === 200 && (await call('/fonts/nope.woff2')).status === 404, 'the fonts are served by the hub');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

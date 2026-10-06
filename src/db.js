@@ -665,6 +665,24 @@ export async function migrate() {
     create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.
+    -- Factories that signed up at a trade fair (or anywhere): each gets a referral code. Buyers who start a tech pack through
+    -- the factory's link (/start?ref=f-CODE) carry the factory on their room's acquisition, so the console can show who sent them.
+    create table if not exists partners (
+      id uuid primary key default gen_random_uuid(),
+      code text unique not null,
+      kind text not null default 'factory',
+      company text not null,
+      contact_name text,
+      email text,
+      wechat text,
+      phone text,
+      city text,
+      makes text,
+      source text,
+      lang text,
+      notes text,
+      created_at timestamptz not null default now()
+    );
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
