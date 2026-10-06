@@ -562,6 +562,23 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
   ok(forcedModel.status === 202, 'below the bar, staff can choose to make the 3D model from the render anyway', [forcedModel.status, forcedModel.json]);
   for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${forcedModel.json.id}'`) === 'running'; k++) await sleep(300);
   ok(sql(`select source||'|'||forced::text||'|'||source_score from tech_pack_models where id='${forcedModel.json.id}'`) === 'render|true|50', 'and it is recorded: made from the render, forced, at 50/100');
+  // the pack was edited after the check: no render is "current", but a person who picks that render by name can still make the model from it
+  const origAt = sql(`select updated_at from tech_packs where product_id='${id}'`);
+  sql(`update tech_packs set updated_at=now()+interval '1 minute' where product_id='${id}'`);
+  const stale = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true } });
+  ok(stale.status === 409 && /not been tested since it last changed/.test(stale.json.error), 'if the pack changed since the check, a render nobody named is not used', [stale.status, stale.json.error]);
+  const pickedId = (await call(`/v1/admin/products/${id}/tech-pack/check`, { token: admin })).json.renderChoices?.[0]?.id;
+  ok(!!pickedId, 'the check lists the renders staff can choose from');
+  const picked = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true, checkId: pickedId } });
+  ok(picked.status === 202, 'choosing that render by name makes the model from it', [picked.status, picked.json]);
+  for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${picked.json.id}'`) === 'running'; k++) await sleep(300);
+  // a render can also be added to the hero tries and chosen (and then needs approving)
+  const pk = sql(`select id from tech_packs where product_id='${id}'`), cl = sql(`select client_id from tech_packs where product_id='${id}'`);
+  const hid = sql(`insert into tech_pack_heroes(tech_pack_id,product_id,client_id,status,candidates,chosen) values('${pk}','${id}','${cl}','approved','[{"file":"none.jpg","score":60,"drift":5,"issues":"","total":58}]',0) returning id`).split('\n')[0];
+  const adopt = await call(`/v1/admin/tech-pack-heroes/${hid}/adopt`, { method: 'POST', token: admin, body: { checkId: pickedId } });
+  ok(adopt.status === 200 && adopt.json.chosen === 1, 'a render can be added to the hero tries and chosen', [adopt.status, adopt.json]);
+  ok(sql(`select status||'|'||jsonb_array_length(candidates)||'|'||(candidates->1->>'total') from tech_pack_heroes where id='${hid}'`) === 'ready|2|50', 'it then waits for approval again, scored as the render scored');
+  sql(`delete from tech_pack_heroes where id='${hid}'`); sql(`update tech_packs set updated_at='${origAt}' where product_id='${id}'`);
   sql(`delete from tech_pack_models where product_id='${id}'`);
   const viaPhoto = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'photo' } });
   ok(viaPhoto.status === 202 && sql(`select source from tech_pack_models where id='${viaPhoto.json.id}'`) === 'photo', 'making it from the client photo instead is allowed, and recorded as such', [viaPhoto.status, viaPhoto.json]);
@@ -573,7 +590,7 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     await w2.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await w2.waitForSelector('#sheet .panel.on'); await w2.click('#tabs button[data-tab="check"]'); await w2.waitForSelector('[data-model]', { timeout: 10000 });
     await w2.waitForFunction(() => /does not look like the photo yet/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 });
     ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]:not([data-force])').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
-    ok(await w2.locator('[data-model] [data-act="makemodel"][data-force="1"]').isEnabled(), 'and offers to make it from the render anyway');
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-force="1"]').isEnabled(), 'and offers to make it from the render whatever its score');
     w2.on('dialog', d => d.accept()); await w2.click('[data-model] [data-act="makemodel"][data-force="1"]');
     let fm = ''; for (let i = 0; i < 40 && fm !== 'done'; i++) { fm = sql(`select status from tech_pack_models where product_id='${id}' and forced order by created_at desc limit 1`); await sleep(300); }
     ok(fm === 'done', 'pressing it, after a confirmation saying the score, makes the model', fm);

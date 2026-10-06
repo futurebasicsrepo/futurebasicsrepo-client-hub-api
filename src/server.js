@@ -2711,7 +2711,8 @@ app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admin
   const model=await modelView(mrows[0],{withThumb:true}),gate=await modelGate({id:pack.id,updated_at:pack.updated_at});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
   return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),hero,heroConfig:{provider:heroCfg.provider,configured:heroCfg.configured,model:heroCfg.model||null},model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
-    history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY};
+    history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY,
+    renderChoices:rows.filter(r=>r.status==='done'&&r.render_status==='rendered'&&(r.renders||[]).length).map(r=>({id:r.id,score:r.score,completedAt:r.completed_at,packVersion:r.pack_version,stale:Boolean(r.pack_updated_at&&new Date(pack.updated_at)>new Date(r.pack_updated_at))}))};
 });
 // Hand the pack back to the design assistant: the developer assistant tests it again and the two go through the findings. Staff only.
 app.post('/v1/admin/products/:id/tech-pack/loop',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -2824,6 +2825,19 @@ app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,admi
     if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor:req.auth.sub,source:'render',checkId:lp.final_check_id}).catch(()=>{})}
   }
   return {approved:true};
+});
+app.post('/v1/admin/tech-pack-heroes/:id/adopt',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query('select * from tech_pack_heroes where id=$1',[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
+  if(!['ready','approved'].includes(h.status))return reply.code(409).send({error:'There is no hero image to add to yet'});
+  const c=UUID_RE.test(String(req.body?.checkId||''))?(await pool.query(`select * from tech_pack_checks where id=$1 and product_id=$2 and status='done'`,[req.body.checkId,h.product_id])).rows[0]:null,r=c?.renders?.[0];
+  if(!r)return reply.code(404).send({error:'That render is not available'});
+  let buf;try{buf=await readFile(join(checkDir(),r.file))}catch{return reply.code(404).send({error:'The render file is missing. Run the check again.'})}
+  const cands=h.candidates||[],i=cands.length,file=`${h.id}-${i}.jpg`;
+  await mkdir(heroDir(),{recursive:true});await writeFile(join(heroDir(),file),buf);
+  cands.push({file,score:c.score,drift:null,issues:'None: this is the spec-check render, picked by staff',total:c.score,fromCheck:c.id});
+  await pool.query(`update tech_pack_heroes set candidates=$2,chosen=$3,status='ready',approved_by=null,approved_at=null where id=$1`,[h.id,JSON.stringify(cands),i]); // a different picture needs approving again
+  return {chosen:i};
 });
 app.post('/v1/admin/tech-pack-heroes/:id/choose',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
@@ -2959,7 +2973,8 @@ async function modelView(row,{withThumb=false}={}){
 app.post('/v1/admin/products/:id/tech-pack/model',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
-  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render',force:req.body?.force===true});
+  const pick=UUID_RE.test(String(req.body?.checkId||''))?String(req.body.checkId):null; // the render staff picked; it is used as it is, even if the pack has changed since
+  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render',checkId:pick,force:req.body?.force===true});
   if(r.gated)return reply.code(409).send({error:r.gated,gate:r.gate});
   if(r.unavailable)return reply.code(503).send({error:r.unavailable});
   if(r.noPhoto)return reply.code(400).send({error:'Add a photo first.'});
