@@ -597,6 +597,7 @@ export async function migrate() {
       completed_at timestamptz
     );
     create index if not exists tech_pack_heroes_pack_idx on tech_pack_heroes(tech_pack_id, created_at desc);
+    alter table tech_pack_heroes add column if not exists shared_at timestamptz;
     alter table tech_pack_checks add column if not exists hero_id uuid;
     create index if not exists tech_pack_models_product_idx on tech_pack_models(product_id, created_at desc);
     alter table tech_pack_models add column if not exists source text not null default 'photo';

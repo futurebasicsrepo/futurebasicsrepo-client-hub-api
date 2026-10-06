@@ -2795,9 +2795,9 @@ async function heroView(h){
   const c=h.candidates||[],cur=c[h.chosen];let image=null;const alts=[];
   if(h.status==='ready'||h.status==='approved'){
     try{image=await heroThumb(await heroBuffer(h))}catch{}
-    for(let i=0;i<c.length;i++){try{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:await heroThumb(await readFile(join(heroDir(),c[i].file)),240,78)})}catch{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:null})}}
+    for(let i=0;i<c.length;i++){try{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:await heroThumb(await readFile(join(heroDir(),c[i].file)),460,80)})}catch{alts.push({index:i,score:c[i].score,drift:c[i].drift,issues:c[i].issues,total:c[i].total,thumb:null})}}
   }
-  return {id:h.id,status:h.status,provider:h.provider,model:h.model,chosen:h.chosen,score:cur?.total??null,drift:cur?.drift??null,issues:cur?.issues||'',image,candidates:alts,measured:h.measured||[],createdAt:h.created_at,completedAt:h.completed_at,approvedAt:h.approved_at,error:h.error||null,progressing:h.status==='generating'};
+  return {id:h.id,status:h.status,provider:h.provider,model:h.model,chosen:h.chosen,score:cur?.total??null,drift:cur?.drift??null,issues:cur?.issues||'',image,candidates:alts,measured:h.measured||[],createdAt:h.created_at,completedAt:h.completed_at,approvedAt:h.approved_at,sharedAt:h.shared_at,error:h.error||null,progressing:h.status==='generating'};
 }
 app.post('/v1/admin/products/:id/tech-pack/hero',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
@@ -2831,6 +2831,34 @@ app.post('/v1/admin/tech-pack-heroes/:id/choose',{preHandler:[authenticate,admin
   const i=Number(req.body?.index);if(!['ready','approved'].includes(h.status)||!Number.isInteger(i)||!h.candidates[i])return reply.code(400).send({error:'Pick one of the candidates shown'});
   await pool.query(`update tech_pack_heroes set chosen=$2,status='ready',approved_by=null,approved_at=null where id=$1`,[h.id,i]); // a different picture needs approving again
   return {chosen:i};
+});
+
+// Staff put a render in front of the client, whatever its score: it becomes a message from Future Basics in the client's project (with the picture attached), so it shows in their hub and they are notified.
+app.post('/v1/admin/products/:id/tech-pack/share-render',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const prod=(await pool.query('select id,title,client_id,project_id from products where id=$1',[req.params.id])).rows[0];if(!prod)return reply.code(404).send({error:'Product not found'});
+  const project=prod.project_id?(await pool.query(`select id,client_id,name from projects where id=$1 and archived_at is null and status not in ('archive','archived')`,[prod.project_id])).rows[0]:null;
+  if(!project)return reply.code(409).send({error:'This product is not in an active project yet. Put it in a project first: the picture is shared in the project\'s messages.'});
+  const src=String(req.body?.source||''),itemId=String(req.body?.id||'');let buf,label,hero=null;
+  try{
+    if(src==='hero'){
+      hero=UUID_RE.test(itemId)?(await pool.query(`select * from tech_pack_heroes where id=$1 and product_id=$2 and status in ('ready','approved')`,[itemId,prod.id])).rows[0]:null;
+      if(!hero)return reply.code(404).send({error:'That hero image is not available'});buf=await heroBuffer(hero);label='reference picture';
+    }else if(src==='check'){
+      const c=UUID_RE.test(itemId)?(await pool.query(`select * from tech_pack_checks where id=$1 and product_id=$2 and status='done'`,[itemId,prod.id])).rows[0]:null,r=c?.renders?.[Number(req.body?.index)||0];
+      if(!r)return reply.code(404).send({error:'That render is not available'});buf=await readFile(join(checkDir(),r.file));label=`render (${String(r.label||'').toLowerCase()||'view'})`;
+    }else return reply.code(400).send({error:'Choose a hero image or a render to share'});
+  }catch(e){if(e.code==='ENOENT')return reply.code(404).send({error:'The picture file is missing. Make it again.'});throw e}
+  const slug=String(prod.title||'product').replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'product',name=`${slug}-${label.replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'')}.jpg`,storageName=`${randomBytes(18).toString('hex')}-${name}`;
+  const text=clipText(req.body?.message,1500)||`A work-in-progress ${label} of ${prod.title}. It is a concept to react to, not a final sample. Tell us what you would change.`;
+  await writeFile(join(uploadDir,storageName),buf);
+  const msg=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4) returning *`,[project.id,project.client_id,req.auth.sub,text])).rows[0];
+  const file=(await pool.query(`insert into project_files(project_id,client_id,message_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes) values($1,$2,$3,$4,'admin',$5,$6,'image/jpeg',$7) returning id`,[project.id,project.client_id,msg.id,req.auth.sub,name,storageName,buf.length])).rows[0];
+  await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-file',$2,'project',$3)`,[project.client_id,`New picture in ${project.name}: ${name}`,project.id]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[prod.client_id,prod.id,req.auth.sub,`Shared a ${label} of ${prod.title} with the client`,{messageId:msg.id,fileId:file.id,source:src}]).catch(()=>{});
+  if(hero)await pool.query('update tech_pack_heroes set shared_at=now() where id=$1',[hero.id]);
+  return reply.code(201).send({shared:true,messageId:msg.id,project:project.name});
 });
 
 // ---- A 3D model (STL) from the client's photo, made by Meshy. Staff start it by hand: it costs credits and sends the photo to the vendor. ----
