@@ -177,6 +177,7 @@ export async function migrate() {
     alter table products add column if not exists shopify_image_alt text;
     alter table products add column if not exists shopify_updated_at timestamptz;
     alter table products add column if not exists project_id uuid references projects(id) on delete set null;
+    alter table products add column if not exists waiting_on text;
     alter table requests add column if not exists product_id uuid references products(id);
     create table if not exists product_briefs (
       product_id uuid primary key references products(id) on delete cascade,
@@ -425,6 +426,9 @@ export async function migrate() {
     alter table invoices add column if not exists shopify_order_id text;
     alter table invoices add column if not exists shopify_financial_status text;
     alter table invoices add column if not exists product_ids uuid[] not null default '{}';
+    -- deposit: the sample deposit invoiced when a quote is accepted; balance: the rest, invoiced when production starts
+    alter table invoices add column if not exists kind text not null default 'invoice';
+    alter table quotes add column if not exists deposit_pct integer;
     create index if not exists invoices_project_idx on invoices(project_id,created_at desc);
     create index if not exists invoices_draft_order_idx on invoices(shopify_draft_order_id);
     update invoices i set project_id=p.project_id,product_id=p.id,quote_id=q.id
@@ -607,7 +611,9 @@ export async function migrate() {
     alter table tech_pack_loops add column if not exists final_check_id uuid;
     alter table tech_pack_loops add column if not exists outcome text;
     create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);
-    create unique index if not exists tech_pack_checks_submit_once on tech_pack_checks(tech_pack_id, pack_version) where trigger='submit';
+    -- one check per submission of a given state of the pack: resubmitting after edits checks again, submitting twice unchanged does not
+    drop index if exists tech_pack_checks_submit_once;
+    create unique index if not exists tech_pack_checks_submit_state on tech_pack_checks(tech_pack_id, pack_version, pack_updated_at) where trigger='submit';
     create table if not exists app_settings (key text primary key, value jsonb not null, updated_at timestamptz not null default now());
     create table if not exists signin_attempts (
       email text primary key,
@@ -639,6 +645,25 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
+    -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
+    -- latest version the client approved; quotes and production runs record the version they were based on.
+    create table if not exists tech_pack_versions (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      version integer not null,
+      data jsonb not null,
+      verification jsonb not null default '{}',
+      note text,
+      published_at timestamptz not null default now(),
+      published_by uuid references users(id),
+      locked_at timestamptz,
+      unique(tech_pack_id, version)
+    );
+    insert into tech_pack_versions(tech_pack_id,version,data,verification,published_at,published_by,locked_at)
+      select id,version,published_data,verification,published_at,published_by,locked_at from tech_packs where published_at is not null and published_data is not null
+      on conflict(tech_pack_id,version) do nothing;
+    alter table quotes add column if not exists tech_pack_version integer;
+    alter table production_runs add column if not exists tech_pack_version integer;
     create table if not exists notifications (
       id bigserial primary key,
       client_id uuid not null references clients(id) on delete cascade,

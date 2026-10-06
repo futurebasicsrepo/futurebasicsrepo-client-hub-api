@@ -25,9 +25,10 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
+import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
+import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -255,6 +256,20 @@ async function sendHubEmail({to,subject,html,replyTo,from,headers}){
 }
 const hubButton=(href,label)=>`<p style="margin:24px 0"><a href="${emailEscape(href)}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#141416;color:#fff;text-decoration:none;font-weight:600">${emailEscape(label)}</a></p>`;
 const hubEmailShell=(title,body)=>`<div style="font-family:Arial,Helvetica,sans-serif;color:#141416;max-width:640px;line-height:1.5"><p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#717177">Future Basics · Client hub</p><h1 style="font-size:24px;margin:8px 0 18px">${emailEscape(title)}</h1>${body}<p style="margin-top:32px;font-size:12px;color:#717177">Future Basics · product development, from brief to delivery · reply to this email to reach us.</p></div>`;
+// Handoff emails. Staff hear when a client acts; the client's contact hears when something waits on them. A delivery problem is
+// logged and never fails the action that triggered it (the console notice and the hub panel still show it).
+const staffEmail=process.env.STAFF_NOTIFICATION_EMAIL||intakeNotificationEmail;
+async function notifyStaff(subject,body){
+  try{return await sendHubEmail({to:staffEmail,subject,html:hubEmailShell(subject,body)})}catch(e){app.log.warn({err:e.message,subject},'staff email not sent');return false}
+}
+async function notifyClientContact(clientId,{subject,title,body,replyTo}){
+  try{
+    const c=(await pool.query('select slug,contact_email,contact_name from clients where id=$1',[clientId])).rows[0];
+    if(!c?.contact_email||c.slug==='future-basics')return false;
+    const first=String(c.contact_name||'').split(' ')[0]||'there';
+    return await sendHubEmail({to:c.contact_email,subject,replyTo,html:hubEmailShell(title||subject,`<p>Hi ${emailEscape(first)},</p>${body}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`)});
+  }catch(e){app.log.warn({err:e.message,clientId,subject},'client email not sent');return false}
+}
 // The assistant stopping for a reason only we can fix (empty credit, a rejected key) emails staff once, then stays quiet for a few hours
 // so a stuck queue is one email, not hundreds. The slot is claimed before sending so failures landing together send one; a delivery that
 // errors gives it back. With no email service configured it only logs: the Platform page shows that on its own.
@@ -782,6 +797,7 @@ app.post('/v1/admin/clients/:id/products',{preHandler:[authenticate,adminOnly]},
     values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[req.params.id,project?.id||null,title,handle||null,shopifyProductId||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null])).rows[0];
   await pool.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[p.id]);
+  await flow(p.id,'product-created',{owner:'future-basics',actorId:req.auth.sub});
   if((shopifyProductId||handle)&&shopifyConfigured()){try{p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||null,handle||null))||p}catch(e){app.log.warn({err:e.message,productId:p.id},'linked Shopify product not hydrated at creation')}}
   const autoDraft=await autoDraftProduct(p,{photos:referencePhotos,actorId:req.auth.sub,reason:'created'}).catch(e=>{app.log.warn({err:e.message,productId:p.id},'auto draft failed');return {ai:'error'}});
   return {...p,autoDraft};
@@ -1093,11 +1109,22 @@ app.post('/v1/admin/projects/:id/uploads',{preHandler:[authenticate,adminOnly]},
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-file',$2,'project',$3)`,[project.client_id,`New file in ${project.name}: ${file.original_name}`,project.id]);
   return reply.code(201).send({message,file});
 });
+// Staff override of one milestone. Events normally move milestones (src/flow.js); a hand change is checked and logged with its note.
 app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {status,dueDate,responsibleParty,notes,required,clientVisible}=req.body||{};return (await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
+  const {status,dueDate,responsibleParty,notes,required,clientVisible}=req.body||{};
+  if(status&&!MILESTONE_STATUSES.includes(status))return reply.code(400).send({error:`Status must be one of: ${MILESTONE_STATUSES.join(', ')}`});
+  if(responsibleParty&&!OWNERS.includes(responsibleParty))return reply.code(400).send({error:`Responsible party must be one of: ${OWNERS.join(', ')}`});
+  const before=(await pool.query('select m.*,p.client_id,p.title from milestones m join products p on p.id=m.product_id where m.id=$1',[req.params.id])).rows[0];
+  if(!before)return reply.code(404).send({error:'Milestone not found'});
+  const row=(await pool.query(`update milestones set status=coalesce($1,status),due_date=coalesce($2,due_date),
     responsible_party=coalesce($3,responsible_party),notes=coalesce($4,notes),required=coalesce($5,required),client_visible=coalesce($6,client_visible),
-    completed_at=case when $1='complete' then now() when $1 is not null then null else completed_at end where id=$7 returning *`,
+    completed_at=case when $1='complete' then coalesce(completed_at,now()) when $1 is not null then null else completed_at end where id=$7 returning *`,
     [status||null,dueDate||null,responsibleParty||null,notes||null,typeof required==='boolean'?required:null,typeof clientVisible==='boolean'?clientVisible:null,req.params.id])).rows[0];
+  if(row.status==='current')await pool.query(`update products set current_stage=$2,waiting_on=$3,updated_at=now() where id=$1`,[row.product_id,row.name.toLowerCase(),row.responsible_party]);
+  const changed=[status&&status!==before.status?`${before.status} → ${status}`:'',responsibleParty&&responsibleParty!==before.responsible_party?`owner ${OWNER_LABELS[responsibleParty]}`:''].filter(Boolean).join(', ');
+  if(changed)await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'flow',$4,$5)`,
+    [before.client_id,row.product_id,req.auth.sub,`${row.name} set by hand: ${changed}${notes?` · ${String(notes).slice(0,200)}`:''}`,{milestoneId:row.id,override:true,from:before.status,to:row.status,owner:row.responsible_party}]);
+  return row;
 });
 app.post('/v1/admin/suppliers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,contactEmail,contactPhone,country,leadTimeDays,notes}=req.body||{};if(!name)return reply.code(400).send({error:'Supplier name required'});
@@ -1138,18 +1165,25 @@ app.post('/v1/admin/products/:id/quotes/from-tier',{preHandler:[authenticate,adm
   if(!tier)return reply.code(404).send({error:'Price tier not found'});if(quantity<tier.min_quantity||(tier.max_quantity&&quantity>tier.max_quantity))return reply.code(400).send({error:'Quantity is outside this price tier'});
   const config=(await pool.query('select * from product_configurations where product_id=$1',[req.params.id])).rows[0];if(!config)return reply.code(400).send({error:'Complete the product configuration first'});
   const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
-  const quote=(await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,notes,status,price_tier_id,configuration_snapshot)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,'issued',$10,$11) returning *`,[req.params.id,version,quantity,tier.unit_cost_cents,tier.setup_cents,tier.freight_cents,
-      tier.wholesale_cents,tier.srp_cents,req.body?.notes||tier.notes||null,tier.id,JSON.stringify(config)])).rows[0];return reply.code(201).send(quote);
+  const quote=(await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,notes,status,price_tier_id,configuration_snapshot,tech_pack_version,deposit_pct)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,'issued',$10,$11,(select version from tech_packs where product_id=$1 and published_at is not null),$12) returning *`,[req.params.id,version,quantity,tier.unit_cost_cents,tier.setup_cents,tier.freight_cents,
+      tier.wholesale_cents,tier.srp_cents,req.body?.notes||tier.notes||null,tier.id,JSON.stringify(config),depositPct(req.body?.depositPct)])).rows[0];
+  await flow(req.params.id,'quote-issued',{actorId:req.auth.sub,note:`v${quote.version}`});
+  await emailQuoteIssued(req.params.id,quote);
+  return reply.code(201).send(quote);
 });
 app.post('/v1/admin/products/:id/production-runs',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {supplierId,poNumber,quantity,unitCostCents,status='planned',sampleStatus='not-started',exFactoryDate,etaDate,notes,internalNotes}=req.body||{};
   const product=(await pool.query('select id,client_id,title from products where id=$1',[req.params.id])).rows[0];
   if(!product)return reply.code(404).send({error:'Product not found'});if(!quantity)return reply.code(400).send({error:'Quantity required'});
-  const run=(await pool.query(`insert into production_runs(product_id,supplier_id,po_number,quantity,unit_cost_cents,status,sample_status,ex_factory_date,eta_date,notes,internal_notes)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[product.id,supplierId||null,poNumber||null,quantity,unitCostCents||null,status,sampleStatus,
+  const ready=(await pool.query(`select exists(select 1 from approvals where product_id=$1 and kind='sample' and status='approved') sample,(select rush_mode from products where id=$1) rush`,[product.id])).rows[0];
+  const early=String(req.body?.earlyReason||'').trim();
+  if(!ready.sample&&!ready.rush&&early.length<5)return reply.code(409).send({error:'The client has not approved a sample yet. Request a sample approval first, or give a reason to start production without one.',needsReason:true});
+  const run=(await pool.query(`insert into production_runs(product_id,supplier_id,po_number,quantity,unit_cost_cents,status,sample_status,ex_factory_date,eta_date,notes,internal_notes,tech_pack_version)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,(select version from tech_packs where product_id=$1 and locked_at is not null)) returning *`,[product.id,supplierId||null,poNumber||null,quantity,unitCostCents||null,status,sampleStatus,
     exFactoryDate||null,etaDate||null,notes||null,internalNotes||null])).rows[0];
-  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'production',`Opened production run ${poNumber||run.id}`]);
+  await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'production',`Opened production run ${poNumber||run.id}${!ready.sample&&!ready.rush?` without an approved sample: ${early}`:''}`]);
+  await flow(product.id,'production-started',{actorId:req.auth.sub});
   return reply.code(201).send(run);
 });
 app.patch('/v1/admin/production-runs/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1167,21 +1201,33 @@ app.post('/v1/admin/production-runs/:id/qc',{preHandler:[authenticate,adminOnly]
   const qc=(await pool.query(`insert into qc_inspections(production_run_id,inspector,status,inspected_units,defect_units,checklist,notes)
     values($1,$2,$3,$4,$5,$6,$7) returning *`,[run.id,inspector||null,status,inspectedUnits||null,defectUnits||null,JSON.stringify(checklist),notes||null])).rows[0];
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[run.client_id,run.product_id,req.auth.sub,'quality',`QC ${status}: ${defectUnits||0} defects`]);
+  await flow(run.product_id,['passed','pass','approved'].includes(String(status).toLowerCase())?'qc-passed':'qc-started',{actorId:req.auth.sub});
   return reply.code(201).send(qc);
 });
 app.post('/v1/admin/production-runs/:id/shipments',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {carrier,trackingNumber,trackingUrl,status='preparing',destination,shippedAt,etaDate}=req.body||{};
-  const run=(await pool.query('select id from production_runs where id=$1',[req.params.id])).rows[0];if(!run)return reply.code(404).send({error:'Production run not found'});
-  return reply.code(201).send((await pool.query(`insert into shipments(production_run_id,carrier,tracking_number,tracking_url,status,destination,shipped_at,eta_date)
-    values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[run.id,carrier||null,trackingNumber||null,trackingUrl||null,status,destination||null,shippedAt||null,etaDate||null])).rows[0]);
+  const run=(await pool.query('select id,product_id from production_runs where id=$1',[req.params.id])).rows[0];if(!run)return reply.code(404).send({error:'Production run not found'});
+  const shipment=(await pool.query(`insert into shipments(production_run_id,carrier,tracking_number,tracking_url,status,destination,shipped_at,eta_date)
+    values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[run.id,carrier||null,trackingNumber||null,trackingUrl||null,status,destination||null,shippedAt||null,etaDate||null])).rows[0];
+  await shipmentFlow(shipment,run.product_id,req.auth.sub);
+  return reply.code(201).send(shipment);
 });
 app.patch('/v1/admin/shipments/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {carrier,trackingNumber,trackingUrl,status,destination,shippedAt,etaDate,deliveredAt}=req.body||{};
   const shipment=(await pool.query(`update shipments set carrier=coalesce($1,carrier),tracking_number=coalesce($2,tracking_number),tracking_url=coalesce($3,tracking_url),
     status=coalesce($4,status),destination=coalesce($5,destination),shipped_at=coalesce($6,shipped_at),eta_date=coalesce($7,eta_date),
     delivered_at=coalesce($8,delivered_at),updated_at=now() where id=$9 returning *`,[carrier||null,trackingNumber||null,trackingUrl||null,status||null,destination||null,
-    shippedAt||null,etaDate||null,deliveredAt||null,req.params.id])).rows[0];if(!shipment)return reply.code(404).send({error:'Shipment not found'});return shipment;
+    shippedAt||null,etaDate||null,deliveredAt||null,req.params.id])).rows[0];if(!shipment)return reply.code(404).send({error:'Shipment not found'});
+  const run=(await pool.query('select product_id from production_runs where id=$1',[shipment.production_run_id])).rows[0];
+  if(run)await shipmentFlow(shipment,run.product_id,req.auth.sub);
+  return shipment;
 });
+// A shipment on its way waits on the client to receive it; a delivered one completes the product.
+async function shipmentFlow(shipment,productId,actorId){
+  const st=String(shipment.status||'').toLowerCase();
+  if(shipment.delivered_at||st==='delivered')return flow(productId,'delivered',{actorId});
+  if(shipment.shipped_at||['shipped','in-transit','in transit'].includes(st))return flow(productId,'shipped',{actorId});
+}
 app.post('/v1/admin/products/:id/assets',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const product=(await pool.query('select * from products where id=$1',[req.params.id])).rows[0];if(!product)return reply.code(404).send({error:'Product not found'});
   const name=String(req.query?.name||'').trim(),kind=String(req.query?.kind||'artwork'),visibility=req.query?.visibility==='internal'?'internal':'client';
@@ -1318,14 +1364,93 @@ app.patch('/v1/admin/notifications/:id/read',{preHandler:[authenticate,adminOnly
 app.post('/v1/admin/products/:id/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {quantity,unitCostCents,toolingCents=0,freightCents=0,wholesaleCents,srpCents,expiresAt,notes}=req.body||{};
   const version=(await pool.query('select coalesce(max(version),0)+1 v from quotes where product_id=$1',[req.params.id])).rows[0].v;
-  return reply.code(201).send((await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,expires_at,notes,status)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'issued') returning *`,[req.params.id,version,quantity,unitCostCents,toolingCents,freightCents,wholesaleCents||null,srpCents||null,expiresAt||null,notes||null])).rows[0]);
+  const quote=(await pool.query(`insert into quotes(product_id,version,quantity,unit_cost_cents,tooling_cents,freight_cents,wholesale_cents,srp_cents,expires_at,notes,status,tech_pack_version,deposit_pct)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'issued',(select version from tech_packs where product_id=$1 and published_at is not null),$11) returning *`,[req.params.id,version,quantity,unitCostCents,toolingCents,freightCents,wholesaleCents||null,srpCents||null,expiresAt||null,notes||null,depositPct(req.body?.depositPct)])).rows[0];
+  await flow(req.params.id,'quote-issued',{actorId:req.auth.sub,note:`v${quote.version}`});
+  await emailQuoteIssued(req.params.id,quote);
+  return reply.code(201).send(quote);
 });
+// The client hears about a new quote; they decide it in the hub ("Waiting on you").
+async function emailQuoteIssued(productId,quote){
+  const p=(await pool.query('select title,client_id from products where id=$1',[productId])).rows[0];if(!p)return false;
+  const total=quoteTotalCents(quote),pct=quote.deposit_pct??DEFAULT_DEPOSIT_PCT;
+  return notifyClientContact(p.client_id,{subject:`Quote v${quote.version} for ${p.title}`,title:'A quote is ready for you',
+    body:`<p>Quote v${quote.version} for <strong>${emailEscape(p.title)}</strong> is in your hub: ${emailEscape(quote.quantity)} units, <strong>${(total/100).toFixed(2)} ${emailEscape(quote.currency||'USD')}</strong> in total${pct?`, with a ${pct}% sample deposit when you accept`:''}.</p><p>Accept it or decline it from <strong>Waiting on you</strong> at the top of your hub.</p>${hubButton(`${clientHubUrl}/`,'Review the quote')}`});
+}
+// ---- Sample deposit. Accepting a quote invoices a share of it (SAMPLE_DEPOSIT_PCT, 50 by default, or the quote's own figure) as a
+// Shopify draft order sent to the client. Its payment starts the sample: Future Basics signs and the factory gets the pack. A quote
+// with a 0% deposit moves on at once. Without Shopify the invoice is recorded as due and staff send the payment link themselves.
+const DEFAULT_DEPOSIT_PCT=Math.min(100,Math.max(0,Number(process.env.SAMPLE_DEPOSIT_PCT??50)));
+const depositPct=v=>{if(v===undefined||v===null||v==='')return DEFAULT_DEPOSIT_PCT;const n=Math.round(Number(v));return Number.isFinite(n)?Math.min(100,Math.max(0,n)):DEFAULT_DEPOSIT_PCT};
+const quoteTotalCents=q=>Number(q.quantity||0)*Number(q.wholesale_cents||q.unit_cost_cents||0)+Number(q.tooling_cents||0)+Number(q.freight_cents||0);
+async function createDepositInvoice(quoteId,actorId=null){
+  const q=(await pool.query(`select q.*,p.title product_title,p.client_id,p.project_id,c.name client_name,c.shopify_customer_id,c.contact_email
+    from quotes q join products p on p.id=q.product_id join clients c on c.id=p.client_id where q.id=$1`,[quoteId])).rows[0];
+  if(!q||q.status!=='accepted')return null;
+  const existing=(await pool.query(`select * from invoices where quote_id=$1 and kind='deposit'`,[q.id])).rows[0];if(existing)return existing;
+  const pct=q.deposit_pct??DEFAULT_DEPOSIT_PCT,amount=Math.round(quoteTotalCents(q)*pct/100);
+  if(!pct||amount<=0){await flow(q.product_id,'deposit-paid',{actorId,note:`no sample deposit on quote v${q.version}`});return null}
+  let number=`DEP-${q.product_id.slice(0,6).toUpperCase()}-Q${q.version}`,url=null,draftId=null,sent=false;
+  if(shopifyConfigured()){
+    try{
+      const money=c=>({amount:(Number(c)/100).toFixed(2),currencyCode:q.currency});
+      const input={lineItems:[{title:`Sample deposit (${pct}%) — ${q.product_title}, quote v${q.version}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(amount)}],
+        email:q.contact_email||undefined,customerId:q.shopify_customer_id||undefined,note:`Future Basics sample deposit · quote v${q.version}`,
+        tags:['future-basics-client-hub','sample-deposit',`client-${q.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
+      const draft=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate).draftOrder;
+      number=draft.name;url=draft.invoiceUrl;draftId=draft.id;
+      if(q.contact_email){const sentDraft=requireNoUserErrors((await shopifyGraphql(DRAFT_INVOICE_SEND,{id:draft.id})).draftOrderInvoiceSend).draftOrder;url=sentDraft.invoiceUrl||url;sent=true}
+    }catch(e){app.log.warn({err:e.message,quoteId},'sample deposit draft order not created; recorded for staff to send')}
+  }
+  const inv=(await pool.query(`insert into invoices(client_id,project_id,product_id,quote_id,number,amount_cents,currency,status,external_url,kind,shopify_draft_order_id,shopify_invoice_sent_at)
+    values($1,$2,$3,$4,$5,$6,$7,'due',$8,'deposit',$9,case when $10 then now() end) on conflict(client_id,number) do update set status=invoices.status returning *`,
+    [q.client_id,q.project_id,q.product_id,q.id,number,amount,q.currency,url,draftId,sent])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'commerce',$4,$5)`,[q.client_id,q.product_id,actorId,`Sample deposit invoice ${number} (${pct}% of quote v${q.version}) ${sent?'sent to the client':url?'created in Shopify':'recorded — send the payment link'}`,{invoiceId:inv.id,quoteId:q.id,pct}]);
+  if(!sent)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'deposit',$2,'product',$3)`,[q.client_id,`Send the sample deposit invoice for ${q.product_title} (${number}, ${(amount/100).toFixed(2)} ${q.currency}) — ${url?'the Shopify draft order is ready':'Shopify is not connected, so send it by hand'} and mark it paid when it lands`,q.product_id]);
+  await notifyClientContact(q.client_id,{subject:`Sample deposit for ${q.product_title}`,title:'Your sample deposit',
+    body:`<p>Thanks for accepting quote v${q.version} for <strong>${emailEscape(q.product_title)}</strong>. The next step is the sample deposit: <strong>${(amount/100).toFixed(2)} ${emailEscape(q.currency)}</strong> (${pct}% of the quote). Once it is paid, we sign the tech pack and the factory starts your sample.</p>${url?hubButton(url,'Pay the deposit'):`<p>We will send you the payment link shortly.</p>`}${hubButton(`${clientHubUrl}/`,'Open your hub')}`});
+  return inv;
+}
+// A deposit landing (Shopify sync, the deposit sweep, or staff marking it paid) starts the sample.
+async function depositPaid(invoice,actorId=null){
+  if(invoice.kind!=='deposit'||!invoice.product_id)return;
+  const p=(await pool.query('select title,client_id from products where id=$1',[invoice.product_id])).rows[0];if(!p)return;
+  await flow(invoice.product_id,'deposit-paid',{actorId,note:invoice.number});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'deposit',$2,'product',$3)`,[p.client_id,`Sample deposit ${invoice.number} paid for ${p.title} — sign the tech pack and send it to the factory`,invoice.product_id]);
+  await notifyStaff(`Sample deposit paid — ${p.title}`,`<p>Deposit <strong>${emailEscape(invoice.number)}</strong> is paid. Sign the approved tech pack and send the factory its link.</p>${hubButton(`${workHubUrl}/tech-packs/${invoice.product_id}`,'Open the tech pack')}`);
+}
+async function setInvoiceStatus(invoiceId,status,actorId=null){
+  const before=(await pool.query('select * from invoices where id=$1',[invoiceId])).rows[0];if(!before)return null;
+  const row=(await pool.query('update invoices set status=$2 where id=$1 returning *',[invoiceId,status])).rows[0];
+  if(status==='paid'&&before.status!=='paid')await depositPaid(row,actorId);
+  return row;
+}
+// Staff record a payment that landed outside Shopify (bank transfer), or correct a status.
+app.patch('/v1/admin/invoices/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const status=String(req.body?.status||'');if(!['draft','due','paid','void'].includes(status))return reply.code(400).send({error:'Status must be draft, due, paid or void'});
+  const row=await setInvoiceStatus(req.params.id,status,req.auth.sub);if(!row)return reply.code(404).send({error:'Invoice not found'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'commerce',$4)`,[row.client_id,row.product_id,req.auth.sub,`Invoice ${row.number} marked ${status}`]);
+  return row;
+});
+// Every few minutes: due deposits with a Shopify draft order are checked, so a paid deposit moves the product without anyone syncing.
+async function runDepositSweep(){
+  if(!shopifyConfigured())return 0;
+  const due=(await pool.query(`select * from invoices where kind='deposit' and status='due' and shopify_draft_order_id is not null order by created_at limit 25`)).rows;let paid=0;
+  for(const inv of due){
+    try{const draft=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:inv.shopify_draft_order_id})).draftOrder;if(!draft)continue;
+      if(draft.order?.displayFinancialStatus==='PAID'||draft.status==='COMPLETED'){await setInvoiceStatus(inv.id,'paid');paid++}}
+    catch(e){app.log.warn({err:e.message,invoiceId:inv.id},'deposit status not checked')}
+  }
+  return paid;
+}
 app.post('/v1/admin/products/:id/shopify-draft-order',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query(`select q.*,p.title product_title,p.shopify_variant_id,p.client_id,p.project_id,c.name client_name,c.shopify_customer_id
     from quotes q join products p on p.id=q.product_id join clients c on c.id=p.client_id where q.id=$1 and p.id=$2`,[req.body?.quoteId,req.params.id])).rows[0];
   if(!row)return reply.code(404).send({error:'Quote not found'});
+  if(row.status!=='accepted')return reply.code(409).send({error:`Quote v${row.version} is ${row.status} — only an accepted quote is invoiced`});
   if(row.shopify_draft_order_id)return reply.code(409).send({error:'This quote already has a Shopify draft order'});
+  const deposit=(await pool.query(`select * from invoices where quote_id=$1 and kind='deposit' and status<>'void'`,[row.id])).rows[0];
+  if(deposit&&deposit.status!=='paid')return reply.code(409).send({error:`The sample deposit ${deposit.number} is not paid yet — the balance is invoiced after it`});
   const unitCents=row.wholesale_cents||row.unit_cost_cents;
   // a variant line is priced through priceOverride; a custom (title-only) line only through originalUnitPriceWithCurrency
   const money=cents=>({amount:(Number(cents)/100).toFixed(2),currencyCode:row.currency});
@@ -1334,14 +1459,15 @@ app.post('/v1/admin/products/:id/shopify-draft-order',{preHandler:[authenticate,
   if(Number(row.tooling_cents)>0)lineItems.push({title:`Tooling / setup — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.tooling_cents)});
   if(Number(row.freight_cents)>0)lineItems.push({title:`Freight — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.freight_cents)});
   const input={lineItems,email:req.body?.email||undefined,customerId:row.shopify_customer_id||undefined,
-    note:req.body?.note||`Future Basics client hub quote v${row.version}`,tags:['future-basics-client-hub',`client-${row.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
+    ...(deposit?{appliedDiscount:{title:`Sample deposit ${deposit.number} paid`,value:Number((deposit.amount_cents/100).toFixed(2)),valueType:'FIXED_AMOUNT'}}:{}),
+    note:req.body?.note||`Future Basics client hub quote v${row.version}${deposit?' · balance after the sample deposit':''}`,tags:['future-basics-client-hub',`client-${row.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
   const updated=(await pool.query(`update quotes set shopify_draft_order_id=$1,shopify_draft_order_name=$2,shopify_draft_order_status=$3,
     shopify_invoice_url=$4,shopify_synced_at=now() where id=$5 returning *`,[draft.id,draft.name,draft.status,draft.invoiceUrl,row.id])).rows[0];
-  await pool.query(`insert into invoices(client_id,project_id,product_id,quote_id,number,amount_cents,currency,status,external_url) values($1,$2,$3,$4,$5,$6,$7,'draft',$8)
+  await pool.query(`insert into invoices(client_id,project_id,product_id,quote_id,number,amount_cents,currency,status,external_url,kind) values($1,$2,$3,$4,$5,$6,$7,'draft',$8,$9)
     on conflict(client_id,number) do update set project_id=excluded.project_id,product_id=excluded.product_id,quote_id=excluded.quote_id,
-      amount_cents=excluded.amount_cents,currency=excluded.currency,status='draft',external_url=excluded.external_url`,
-    [row.client_id,row.project_id,req.params.id,row.id,draft.name,row.quantity*unitCents+Number(row.tooling_cents||0)+Number(row.freight_cents||0),row.currency,draft.invoiceUrl]);
+      amount_cents=excluded.amount_cents,currency=excluded.currency,status='draft',external_url=excluded.external_url,kind=excluded.kind`,
+    [row.client_id,row.project_id,req.params.id,row.id,draft.name,quoteTotalCents(row)-Number(deposit?.amount_cents||0),row.currency,draft.invoiceUrl,deposit?'balance':'invoice']);
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[row.client_id,req.params.id,req.auth.sub,'commerce',`Created Shopify draft order ${draft.name}`]);
   return updated;
 });
@@ -1419,7 +1545,7 @@ app.post('/v1/admin/project-invoices/:invoiceId/send',{preHandler:[authenticate,
   await pool.query('insert into activities(client_id,actor_id,type,summary) values($1,$2,$3,$4)',[invoice.client_id,req.auth.sub,'commerce',`Sent combined invoice ${draft.name||invoice.number}`]);
   return updated;
 });
-app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]},async()=>{
+app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]},async(req)=>{
   const quotes=(await pool.query('select q.*,p.client_id,p.id product_id from quotes q join products p on p.id=q.product_id where q.shopify_draft_order_id is not null')).rows;
   const synced=[];
   for(const quote of quotes){
@@ -1428,17 +1554,18 @@ app.post('/v1/admin/shopify/sync-commerce',{preHandler:[authenticate,adminOnly]}
     await pool.query(`update quotes set shopify_draft_order_status=$1,shopify_invoice_url=$2,shopify_order_id=$3,shopify_financial_status=$4,
       shopify_fulfillment_status=$5,shopify_synced_at=now() where id=$6`,[draft.status,draft.invoiceUrl,draft.order?.id||null,financial,fulfillment,quote.id]);
     const invoiceStatus=financial==='PAID'?'paid':draft.status==='INVOICE_SENT'?'due':draft.status==='COMPLETED'?'paid':'draft';
-    await pool.query('update invoices set status=$1,external_url=coalesce($2,external_url) where client_id=$3 and number=$4',[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name]);
+    await pool.query(`update invoices set status=$1,external_url=coalesce($2,external_url) where client_id=$3 and number=$4 and kind<>'deposit'`,[invoiceStatus,draft.invoiceUrl,quote.client_id,draft.name]);
     synced.push({quoteId:quote.id,draftOrder:draft.name,status:draft.status,financialStatus:financial,fulfillmentStatus:fulfillment});
   }
-  const projectInvoices=(await pool.query('select * from invoices where shopify_draft_order_id is not null and quote_id is null')).rows;
+  const projectInvoices=(await pool.query(`select * from invoices where shopify_draft_order_id is not null and (quote_id is null or kind='deposit')`)).rows;
   const syncedInvoices=[];
   for(const invoice of projectInvoices){
     const draft=(await shopifyGraphql(DRAFT_ORDER_STATUS,{id:invoice.shopify_draft_order_id})).draftOrder;if(!draft)continue;
     const financial=draft.order?.displayFinancialStatus||null;
     const invoiceStatus=financial==='PAID'?'paid':draft.status==='INVOICE_SENT'?'due':draft.status==='COMPLETED'?'paid':invoice.status==='due'?'due':'draft';
-    await pool.query(`update invoices set status=$1,external_url=coalesce($2,external_url),shopify_draft_order_status=$3,
-      shopify_order_id=$4,shopify_financial_status=$5 where id=$6`,[invoiceStatus,draft.invoiceUrl,draft.status,draft.order?.id||null,financial,invoice.id]);
+    await pool.query(`update invoices set external_url=coalesce($1,external_url),shopify_draft_order_status=$2,
+      shopify_order_id=$3,shopify_financial_status=$4 where id=$5`,[draft.invoiceUrl,draft.status,draft.order?.id||null,financial,invoice.id]);
+    if(invoiceStatus!==invoice.status)await setInvoiceStatus(invoice.id,invoiceStatus,req.auth.sub);
     syncedInvoices.push({invoiceId:invoice.id,draftOrder:draft.name,status:draft.status,financialStatus:financial});
   }
   return {count:synced.length+syncedInvoices.length,quotes:synced,projectInvoices:syncedInvoices,syncedAt:new Date().toISOString()};
@@ -1454,6 +1581,9 @@ app.post('/v1/admin/products/:id/approvals',{preHandler:[authenticate,adminOnly]
   const product=(await pool.query('select client_id,title from products where id=$1',[req.params.id])).rows[0];
   await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[product.client_id,'approval-request',`Approval requested: ${linked?linked.asset_name+' v'+linked.version:title}`,'approval',approval.id]);
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,req.params.id,req.auth.sub,'approval',`Requested approval${linked?' for '+linked.asset_name+' v'+linked.version:''}`]);
+  if(approval.kind==='sample')await flow(req.params.id,'sample-posted',{actorId:req.auth.sub});
+  await notifyClientContact(product.client_id,{subject:`${approval.kind==='sample'?'Your sample is ready to review':'Approval needed'} — ${product.title}`,title:approval.kind==='sample'?'Your sample is ready to review':'Something needs your approval',
+    body:`<p>${approval.kind==='sample'?`The sample for <strong>${emailEscape(product.title)}</strong> is ready. Look at the photos and notes, then approve it or ask for changes.`:`<strong>${emailEscape(linked?`${linked.asset_name} v${linked.version}`:title)}</strong> for ${emailEscape(product.title)} is waiting for your approval.`}</p>${notes?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(notes)}</p>`:''}${hubButton(`${clientHubUrl}/`,'Review it in your hub')}`});
   return reply.code(201).send(approval);
 });
 app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1491,6 +1621,23 @@ app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=
   return reply.type('application/pdf').header('content-disposition',`attachment; filename="${filename}"`).send(pdf);
 });
 
+// Everything waiting on the client right now, newest first: a published tech pack version to approve (or send back), the latest
+// quote to accept or decline, a sample or artwork to approve, an invoice to pay. The hub shows these as one "Waiting on you" list.
+async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
+  const live=new Map(products.map(p=>[p.id,p])),out=[];
+  const packs=(await pool.query(`select product_id,version,verification,published_at from tech_packs where client_id=$1 and published_at is not null`,[clientId])).rows;
+  for(const tp of packs){const p=live.get(tp.product_id);if(!p)continue;const v=normalizeVerification(tp.verification,tp.version);if(v.clientSign||v.changes)continue;
+    out.push({kind:'tech-pack',id:`tp-${tp.product_id}`,productId:p.id,projectId:p.project_id,title:`Approve tech pack v${tp.version}`,product:p.title,at:tp.published_at,href:`/tech-packs/${p.id}#sign`})}
+  const latest=new Map();for(const q of quotes)if(!latest.has(q.product_id)||q.version>latest.get(q.product_id).version)latest.set(q.product_id,q);
+  for(const q of latest.values()){const p=live.get(q.product_id);if(!p||q.status!=='issued')continue;if(!quoteReadiness(p,p.configuration||null,q).ready)continue;
+    const total=Number(q.quantity||0)*Number(q.wholesale_cents||q.unit_cost_cents||0)+Number(q.tooling_cents||0)+Number(q.freight_cents||0);
+    out.push({kind:'quote',id:q.id,productId:p.id,projectId:p.project_id,title:`Accept quote v${q.version}`,product:p.title,at:q.created_at,quantity:q.quantity,unitCents:q.wholesale_cents||q.unit_cost_cents,totalCents:total,depositPct:q.deposit_pct??null})}
+  for(const a of approvals){const p=live.get(a.product_id);if(!p)continue;
+    out.push({kind:'approval',id:a.id,productId:p.id,projectId:p.project_id,title:a.kind==='sample'?`Approve the sample`:`Approve ${a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title}`,product:p.title,at:a.requested_at,notes:a.notes||null,assetVersionId:a.asset_version_id||null,approvalKind:a.kind})}
+  for(const i of invoices){if(i.status!=='due')continue;
+    out.push({kind:'invoice',id:i.id,productId:i.product_id||null,projectId:i.project_id||null,title:`Pay ${i.kind==='deposit'?'the sample deposit':'invoice'} ${i.number}`,product:live.get(i.product_id)?.title||null,at:i.created_at,amountCents:i.amount_cents,payUrl:i.external_url||null})}
+  return out.sort((a,b)=>new Date(b.at)-new Date(a.at));
+}
 app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   const id = req.auth.clientId;
   const workspace=(await pool.query('select status,archived_at from clients where id=$1',[id])).rows[0];
@@ -1538,9 +1685,10 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
       order by a.requested_at`, [id]),
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
+  const waiting=await clientWaiting(id,{products:products.rows,quotes:quotes.rows,approvals:approvals.rows,invoices:invoices.rows});
   return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
-    approvals: approvals.rows, activities: activities.rows,
+    approvals: approvals.rows, activities: activities.rows, waiting,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
       ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
@@ -1660,19 +1808,19 @@ app.post('/v1/quotes/:id/decision', { preHandler: authenticate }, async (req, re
     const updated=(await client.query(`update quotes set status=$1,decided_by=$2,decided_at=now(),decision_notes=$3 where id=$4 and status='issued' returning *`,
       [status,req.auth.sub,notes,row.id])).rows[0];
     if(!updated)throw Object.assign(new Error('This quote has already been decided'),{statusCode:409});
-    if(decision==='approved'){
-      await client.query(`update products set status='in-development',current_stage='development',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
-      await client.query(`update milestones set status='complete',completed_at=coalesce(completed_at,now()) where product_id=$1 and lower(name) in ('brief','concept')`,[row.product_id]);
-      await client.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='development' and status<>'complete'`,[row.product_id]);
-    }else await client.query(`update products set risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);
+    if(decision==='approved')await client.query(`update products set status='in-development',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
+    else await client.query(`update products set risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);
+    await applyFlow(client,row.product_id,decision==='approved'?'quote-accepted':'quote-declined',{actorId:req.auth.sub,note:`quote v${row.version}`});
     const action=decision==='approved'?'approved':'declined',next=decision==='approved'?' The product is ready to move into development.':'';
     const message=`${row.client_name} ${action} quote v${row.version} for ${row.product_title}.${next}${notes?` Note: ${notes}`:''}`;
     if(row.project_id)await client.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'client',$4)`,[row.project_id,row.client_id,req.auth.sub,message]);
     await client.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[row.client_id,row.product_id,req.auth.sub,'quote-decision',message]);
     await client.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'quote-decision',$2,'quote',$3)`,[row.client_id,message,row.id]);
-    if(row.project_id)await client.query('update projects set milestone=$1,updated_at=now() where id=$2',[decision==='approved'?'Development':'Quote declined',row.project_id]);
     await client.query('commit');
-    return {...updated,decision,nextStage:decision==='approved'?'development':null};
+    let deposit=null;
+    if(decision==='approved')deposit=await createDepositInvoice(row.id,req.auth.sub).catch(e=>{app.log.error({err:e.message,quoteId:row.id},'sample deposit not invoiced');return null});
+    await notifyStaff(`${row.client_name} ${decision==='approved'?'accepted':'declined'} quote v${row.version} — ${row.product_title}`,`<p>${emailEscape(message)}</p>${hubButton(`${workHubUrl}/clients/${row.client_id}`,'Open the client room')}`);
+    return {...updated,decision,nextStage:decision==='approved'?'development':null,deposit:deposit?{id:deposit.id,number:deposit.number,amountCents:deposit.amount_cents,payUrl:deposit.external_url}:null};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
 
@@ -1687,15 +1835,9 @@ app.post('/v1/approvals/:id/decision', { preHandler: authenticate }, async (req,
   let versionLabel='';
   if(row.asset_version_id){const linked=(await pool.query(`select av.version,a.id asset_id,a.name from asset_versions av join assets a on a.id=av.asset_id where av.id=$1`,[row.asset_version_id])).rows[0];
     if(linked){versionLabel=` ${linked.name} v${linked.version}`;await pool.query(`update assets set status=$1,approved_version_id=case when $1='approved' then $2 else approved_version_id end,updated_at=now() where id=$3`,[decision==='approved'?'approved':'working',row.asset_version_id,linked.asset_id]);}}
-  if(decision==='approved'){
-    await pool.query(`update milestones set status='complete',completed_at=now() where product_id=$1 and lower(name)='approval'`,[row.product_id]);
-    await pool.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='production' and status<>'complete'`,[row.product_id]);
-    await pool.query(`update products set current_stage='production',risk_level='on-track',updated_at=now() where id=$1`,[row.product_id]);
-  }else{
-    await pool.query(`update milestones set status='blocked',completed_at=null where product_id=$1 and lower(name)='approval'`,[row.product_id]);
-    await pool.query(`update milestones set status='current',completed_at=null where product_id=$1 and lower(name)='development' and status<>'complete'`,[row.product_id]);
-    await pool.query(`update products set current_stage='development',risk_level='attention',updated_at=now() where id=$1`,[row.product_id]);
-  }
+  // a sample approval moves the product (to production, or back to the spec); artwork and other approvals only record the decision
+  if(row.kind==='sample')await flow(row.product_id,decision==='approved'?'sample-approved':'sample-changes',{actorId:req.auth.sub,note:row.notes||null});
+  await pool.query(`update products set risk_level=$2,updated_at=now() where id=$1`,[row.product_id,decision==='approved'?'on-track':'attention']);
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',
     [req.auth.clientId,row.product_id,req.auth.sub,'approval',decision==='approved'?`Approved${versionLabel||' '+row.title}`:`Requested changes to${versionLabel||' '+row.title}`]);
   await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',[req.auth.clientId,'approval-decision',`${decision==='approved'?'Approved':'Changes requested'}: ${versionLabel.trim()||row.title}`,'approval',row.id]);
@@ -1714,6 +1856,18 @@ app.post('/v1/requests', { preHandler: authenticate }, async (req, reply) => {
   return reply.code(201).send(row);
 });
 
+// Staff move a client's request along: in progress, done or declined. An optional reply goes to the client in the project thread.
+const REQUEST_STATUSES=['submitted','in-progress','done','declined'];
+app.patch('/v1/admin/requests/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const status=String(req.body?.status||'');if(!REQUEST_STATUSES.includes(status))return reply.code(400).send({error:`Status must be one of: ${REQUEST_STATUSES.join(', ')}`});
+  const reply_=String(req.body?.reply||'').trim().slice(0,4000);
+  const row=(await pool.query(`update requests set status=$1,updated_at=now() where id=$2 returning *`,[status,req.params.id])).rows[0];
+  if(!row)return reply.code(404).send({error:'Request not found'});
+  const product=row.product_id?(await pool.query('select id,title,project_id from products where id=$1',[row.product_id])).rows[0]:null;
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'request',$4)`,[row.client_id,product?.id||null,req.auth.sub,`Request "${row.title}" marked ${status.replace('-',' ')}`]);
+  if(reply_&&product?.project_id)await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4)`,[product.project_id,row.client_id,req.auth.sub,`Re: ${row.title} (${status.replace('-',' ')}) — ${reply_}`]);
+  return row;
+});
 app.post('/v1/requests/:id/files', { preHandler: authenticate }, async (req, reply) => {
   const request = await pool.query('select id from requests where id=$1 and client_id=$2', [req.params.id, req.auth.clientId]);
   if (!request.rowCount) return reply.code(404).send({ error: 'Request not found' });
@@ -1761,9 +1915,13 @@ async function updateVerification(packId,version,mutate){
   const verification=normalizeVerification(row.verification,row.version);
   mutate(verification);
   const locked=Boolean(verification.clientSign&&verification.brandSign&&verification.factorySign);
-  return (await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
+  const updated=(await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
     [packId,version,verification,locked])).rows[0]||null;
+  if(updated)await pool.query(`update tech_pack_versions set verification=$3,locked_at=$4 where tech_pack_id=$1 and version=$2`,[packId,version,verification,updated.locked_at]);
+  return updated;
 }
+// Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
+const flow=(productId,event,opts={},q=pool)=>applyFlow(q,productId,event,opts).catch(err=>{app.log.warn({err:err.message,productId,event},'product flow not updated');return {changed:false}});
 const shareRow=s=>({id:s.id,label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
   active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
 app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1853,7 +2011,18 @@ app.get('/v1/admin/learning',{preHandler:[authenticate,adminOnly]},async()=>{
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
-  const note=String(req.body?.note||'').trim().slice(0,500);
+  let note=String(req.body?.note||'').trim().slice(0,500);
+  // the publish gate: ready, and checked by the independent spec check, or published anyway with a reason that is kept on the version
+  const lastCheck=(await pool.query(`select status,score,verdict_label,pack_updated_at from tech_pack_checks where tech_pack_id=$1 order by created_at desc limit 1`,[ctx.techPack.id])).rows[0];
+  const gate=publishGate(ctx.techPack.data,{threshold:LOOP_THRESHOLD(),checkRequired:aiEnabled(),
+    check:lastCheck?{status:lastCheck.status,score:lastCheck.score,verdict:lastCheck.verdict_label,stale:Boolean(lastCheck.pack_updated_at&&new Date(ctx.techPack.updated_at)>new Date(lastCheck.pack_updated_at))}:null});
+  const override=String(req.body?.override||'').trim().slice(0,500);
+  if(!gate.ok&&override.length<5){
+    let started=false;
+    if(aiEnabled()&&(!lastCheck||(lastCheck.status!=='pending'&&gate.problems.some(p=>/spec check has not run|changed after the last spec check/.test(p))))){const r=await startSpecCheck({...ctx.techPack},{trigger:'publish',actor:req.auth.sub}).catch(()=>null);started=Boolean(r?.id)}
+    return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started});
+  }
+  if(!gate.ok)note=[note,`Published before every check passed: ${override}`].filter(Boolean).join(' · ');
   const client=await pool.connect();
   try{
     await client.query('begin');
@@ -1862,10 +2031,15 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
       verification=$5::jsonb,locked_at=null,
       revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text))
       where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1))])).rows[0];
+    await client.query(`insert into tech_pack_versions(tech_pack_id,version,data,verification,note,published_by) values($1,$2,$3,$4,$5,$6)
+      on conflict(tech_pack_id,version) do update set data=excluded.data,verification=excluded.verification,note=excluded.note,published_at=now(),published_by=excluded.published_by,locked_at=null`,
+      [row.id,row.version,row.published_data,row.verification,note||null,req.auth.sub]);
     await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
-      [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}`,{techPackId:row.id,version:row.version,note}]);
+      [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}${gate.ok?'':' — with open checks: '+gate.problems.join('; ')}`,{techPackId:row.id,version:row.version,note,overridden:!gate.ok,problems:gate.problems}]);
     await client.query('commit');
     recordDraftEdits(row.id,'published').catch(()=>{});
+    await flow(ctx.product.id,'pack-published',{actorId:req.auth.sub,note:`v${row.version}`});
+    await flagRequote(ctx.product,ctx.techPack.published_data,row);
     await syncCardQuietly(ctx.product.id,row.published_data);
     let clientNotified=false;
     if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
@@ -1878,6 +2052,19 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     return {techPack:techPackPayload(row),clientNotified};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
 });
+// A new version that changes what was priced (material, decoration, colourways, sizes) behind a live quote tells staff to re-quote.
+async function flagRequote(product,before,row){
+  try{
+    if(!before)return false;
+    const a=cardFieldsFromPack(before)||{},b=cardFieldsFromPack(row.published_data)||{},keys=['material','decoration_method','decoration_locations','colorways','sizes'];
+    const changed=keys.filter(k=>JSON.stringify(a[k]??null)!==JSON.stringify(b[k]??null));if(!changed.length)return false;
+    const q=(await pool.query(`select version,status from quotes where product_id=$1 and status in ('issued','accepted') order by version desc limit 1`,[product.id])).rows[0];if(!q)return false;
+    const what=changed.map(k=>k.replace('_method','').replace('_',' ')).join(', ');
+    await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'requote',$2,'product',$3)`,[product.client_id,`Tech pack v${row.version} for ${product.title} changed ${what} after quote v${q.version} was ${q.status} — check the price and re-quote if it moved`,product.id]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'quote',$3,$4)`,[product.client_id,product.id,`Re-quote check: v${row.version} changed ${what} since quote v${q.version}`,{version:row.version,quoteVersion:q.version,changed}]);
+    return true;
+  }catch(e){app.log.warn({err:e.message,productId:product.id},'re-quote check failed');return false}
+}
 app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before signing it'});
@@ -1885,10 +2072,13 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
   const current=normalizeVerification(ctx.techPack.verification,ctx.techPack.version);
   if(current.brandSign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already signed by Future Basics`});
   if(!current.clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before Future Basics signs`});
+  const unpaid=(await pool.query(`select number from invoices where product_id=$1 and kind='deposit' and status='due' order by created_at desc limit 1`,[ctx.product.id])).rows[0];
+  if(unpaid&&req.body?.skipDeposit!==true)return reply.code(409).send({error:`The sample deposit ${unpaid.number} is not paid yet — sign once it lands, or sign anyway if you have agreed otherwise`,depositDue:unpaid.number});
   const row=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{v.brandSign={name,at:new Date().toISOString(),by:req.auth.email||'Future Basics'}});
   if(!row)return reply.code(409).send({error:'The tech pack changed while you were signing — reload and try again'});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} signed by Future Basics (${name})`,{techPackId:row.id,version:row.version,locked:Boolean(row.locked_at)}]);
+  await flow(ctx.product.id,row.locked_at?'pack-locked':'pack-signed',{actorId:req.auth.sub,note:`v${row.version}`});
   return {techPack:techPackPayload(row)};
 });
 app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1901,7 +2091,14 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
   const token=randomBytes(24).toString('base64url');
   const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at)
     values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days])).rows[0];
-  return reply.code(201).send({share:shareRow(row),url:`${clientHubUrl}/tp/${token}`});
+  const url=`${clientHubUrl}/tp/${token}`;let emailed=false;
+  if(email&&req.body?.sendEmail!==false){
+    try{emailed=await sendHubEmail({to:email,replyTo:req.auth.email||intakeNotificationEmail,subject:`Tech pack for ${ctx.product.title} — please review and countersign`,
+      html:hubEmailShell(`Tech pack: ${ctx.product.title}`,`<p>Hello ${emailEscape(label)},</p><p>Future Basics is sharing the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> (version ${ctx.techPack.version}). Please read every callout, acknowledge each one, then countersign to confirm you can make it to spec. No account is needed: this private link is yours.</p>${hubButton(url,'Open the tech pack')}<p style="font-size:12px;color:#717177">The page can switch language at the top. Reply to this email with any questions.</p>`)});
+      if(emailed)await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Factory link for v${ctx.techPack.version} emailed to ${label} (${email})`]);
+    }catch(e){app.log.warn({err:e.message,shareId:row.id},'factory link email not sent')}
+  }
+  return reply.code(201).send({share:shareRow(row),url,emailed});
 });
 app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query('update tech_pack_shares set revoked_at=coalesce(revoked_at,now()) where id=$1 returning *',[req.params.id])).rows[0];
@@ -2052,6 +2249,7 @@ async function createClientDraft(db,{clientId,clientName,project,title,productTy
     [clientId,project.id,title,productType||null,description?`<p>${escapeHtml(description)}</p>`:null])).rows[0];
   await db.query(`insert into milestones(product_id,name,status,sort_order) select $1,name,case when n=1 then 'current' else 'upcoming' end,n
     from(values(1,'Brief'),(2,'Concept'),(3,'Development'),(4,'Sample'),(5,'Approval'),(6,'Production'),(7,'Quality'),(8,'Delivery'))m(n,name)`,[product.id]);
+  await applyFlow(db,product.id,'product-created',{owner:'client',actorId:userId||null});
   const seed=normalizeTechPack({...seedTechPack({product}),sketches});seed.style.designer=clientName;
   const pack=(await db.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source) values($1,$2,'draft',$3,$4,'client',$5) returning *`,[product.id,clientId,seed,userId||null,source])).rows[0];
   const how=source==='photo'?' from a photo':'';
@@ -3269,7 +3467,8 @@ app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [row.client_id,row.product_id,req.auth.sub,`${row.client_name} submitted their tech pack for ${row.title} to Future Basics`,{techPackId:row.id,note}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} submitted a tech pack for ${row.title} — review and publish v1${note?' · "'+note.slice(0,120)+'"':''}`,row.product_id]);
-  await pool.query(`update products set current_stage='development',updated_at=now() where id=$1 and current_stage='brief'`,[row.product_id]);
+  await flow(row.product_id,'pack-submitted',{actorId:req.auth.sub});
+  await notifyStaff(`${row.client_name} submitted a tech pack — ${row.title}`,`<p><strong>${emailEscape(row.client_name)}</strong> submitted their tech pack for <strong>${emailEscape(row.title)}</strong>. Review it, finish it and publish v1 for their approval.</p>${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`);
   startSpecCheck({...row,...updated},{trigger:'submit'}).catch(e=>app.log.warn({err:e.message},'spec check not started')); // staff see the result in the Check tab
   return draftView({...row,...updated});
 });
@@ -3279,6 +3478,7 @@ app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adm
   if(ctx.techPack.initiated_by!=='client'||ctx.techPack.published_at)return reply.code(409).send({error:'Only an unpublished client draft can be reopened'});
   const row=(await pool.query(`update tech_packs set status='draft',updated_at=now() where id=$1 returning *`,[ctx.techPack.id])).rows[0];
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack draft for ${ctx.product.title} reopened for ${ctx.product.client_name}`,{techPackId:row.id}]);
+  await flow(ctx.product.id,'pack-returned',{actorId:req.auth.sub});
   return {techPack:techPackPayload(row)};
 });
 // Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
@@ -3290,17 +3490,48 @@ app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(re
   const row=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
   if(!row)return reply.code(404).send({error:'Tech pack not found'});
   if(normalizeVerification(row.verification,row.version).clientSign)return reply.code(409).send({error:`Version ${row.version} is already approved`});
-  const updated=await updateVerification(row.id,row.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:req.auth.email||''}});
+  const updated=await updateVerification(row.id,row.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:req.auth.email||''};v.changes=null});
   if(!updated)return reply.code(409).send({error:'A new version was published — reload to review it'});
   recordDraftEdits(row.id,'approved').catch(()=>{});
+  await flow(row.product_id,'pack-approved',{actorId:req.auth.sub,note:`v${row.version}`});
+  await notifyStaff(`Tech pack v${row.version} approved — ${row.title}`,`<p>${emailEscape(name)} approved tech pack v${row.version} for <strong>${emailEscape(row.title)}</strong>. Next: issue the quote.</p>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`);
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,`Tech pack v${row.version} approved by ${name}`,{techPackId:row.id,version:row.version}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
   return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
 });
+// The client asks for changes to a published version instead of approving it. The note goes to Future Basics (console notice and
+// the project thread); the next publish is a new version, which the client approves again.
+app.post('/v1/products/:id/tech-pack/changes',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Only the client asks for changes to their tech pack'});
+  const notes=String(req.body?.notes||'').trim().slice(0,2000);if(notes.length<3)return reply.code(400).send({error:'Say what should change'});
+  const row=(await pool.query(`select tp.*,p.title,p.project_id,c.name client_name from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
+    where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  if(normalizeVerification(row.verification,row.version).clientSign)return reply.code(409).send({error:`Version ${row.version} is already approved — message Future Basics in the project thread to change it`});
+  const updated=await updateVerification(row.id,row.version,v=>{v.changes={notes,at:new Date().toISOString(),by:req.auth.email||''}});
+  if(!updated)return reply.code(409).send({error:'A new version was published — reload to review it'});
+  await flow(row.product_id,'pack-changes-requested',{actorId:req.auth.sub,note:`v${row.version}`});
+  const text=`Changes requested on tech pack v${row.version} for ${row.title}: ${notes}`;
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,text,{techPackId:row.id,version:row.version}]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${row.client_name} asked for changes to tech pack v${row.version} for ${row.title} — edit and publish v${row.version+1}`,row.product_id]);
+  if(row.project_id)await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'client',$4)`,[row.project_id,row.client_id,req.auth.sub,text]);
+  await notifyStaff(`${row.client_name} asked for changes to ${row.title} (v${row.version})`,`<p><strong>${emailEscape(row.client_name)}</strong> asked for changes to tech pack v${row.version} for <strong>${emailEscape(row.title)}</strong>:</p><p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(notes)}</p>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`);
+  return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
+});
 // Factory link: resolves a token to the published pack, or the reason it cannot be opened.
+// A factory sees the latest version the client approved. When a newer version is still waiting on the client, the link keeps showing
+// the approved one, read-only (held: true), so a factory never acts on a version the client has not signed.
 async function loadShareByToken(token){
+  const found=await loadShareRow(token);if(found.error)return found;
+  const row=found.row;
+  if(row.client_slug==='future-basics'||normalizeVerification(row.verification,row.version).clientSign)return {row};
+  const approved=(await pool.query(`select version,data,verification,published_at,locked_at from tech_pack_versions where tech_pack_id=$1 and version<$2 and verification->'clientSign'->>'name' is not null order by version desc limit 1`,[row.id,row.version])).rows[0];
+  if(!approved)return {error:{code:409,message:`Version ${row.version} of this tech pack is waiting for ${row.client_name}'s approval. Future Basics will send the link again once it is approved.`}};
+  return {row:{...row,version:approved.version,published_data:approved.data,verification:approved.verification,published_at:approved.published_at,locked_at:approved.locked_at,held:true,newerVersion:row.version}};
+}
+async function loadShareRow(token){
   const row=(await pool.query(`select s.id share_id,s.label share_label,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
-    p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+    p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,c.slug client_slug,pr.name project_name
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
   if(!row||!row.published_at)return {error:{code:404,message:'This tech pack link is not valid'}};
@@ -3311,11 +3542,13 @@ async function loadShareByToken(token){
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
-  return publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
+  const view=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
+  return row.held?{...view,held:true,notice:`This is version ${row.version}, the one ${row.client_name} approved. Version ${row.newerVersion} is waiting for their approval, so this page is read-only until then.`}:view;
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — nothing can be acknowledged until then`});
   if(row.locked_at)return reply.code(409).send({error:'This tech pack is signed and locked'});
   const key=String(req.body?.key||'').slice(0,60),acknowledged=req.body?.acknowledged!==false;
   const known=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version)).callouts.some(c=>c.key===key);
@@ -3326,6 +3559,7 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
 });
 app.post('/v1/tp/:token/sign',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — countersign it once it is approved`});
   if(row.locked_at)return reply.code(409).send({error:'This tech pack is already signed and locked'});
   const name=String(req.body?.name||'').trim().slice(0,120);if(!name)return reply.code(400).send({error:'Type your full name to countersign'});
   const readiness=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version));
@@ -3335,6 +3569,8 @@ app.post('/v1/tp/:token/sign',async(req,reply)=>{
   const updated=await updateVerification(row.id,row.version,v=>{v.factorySign={name,at:new Date().toISOString(),by:row.share_label}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
   recordDraftEdits(row.id,'countersigned').catch(()=>{});
+  if(updated.locked_at)await flow(row.product_id,'pack-locked',{note:`v${row.version} countersigned by ${row.share_label}`});
+  await notifyStaff(`${row.share_label} countersigned ${row.title} v${row.version}`,`<p><strong>${emailEscape(row.share_label)}</strong> countersigned tech pack v${row.version} for <strong>${emailEscape(row.title)}</strong>${updated.locked_at?'. Every signature is in and the version is locked: the factory can start the sample.':'.'}</p>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`);
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,
     [row.client_id,row.product_id,`Tech pack v${row.version} countersigned by ${row.share_label} (${name})${updated.locked_at?' — locked for production':''}`,{techPackId:row.id,version:row.version,locked:Boolean(updated.locked_at)}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,
@@ -3767,5 +4003,6 @@ async function backfillCardsFromTechPacks(){
 }
 jobEvery('Product cards from tech packs', 24 * 60 * 60 * 1000, backfillCardsFromTechPacks, { delay: 20 * 1000 });
 jobEvery('Payment check for locked packs', 5 * 60 * 1000, runPaymentSweep);
+if (shopifyConfigured()) jobEvery('Sample deposits', 5 * 60 * 1000, runDepositSweep, { delay: 35 * 1000 }); else declareJob('Sample deposits', 5 * 60 * 1000, 'Shopify is not connected: staff mark deposits paid in the console');
 offerJob();
 await app.listen({ port: Number(process.env.PORT || 3000), host: '0.0.0.0' });

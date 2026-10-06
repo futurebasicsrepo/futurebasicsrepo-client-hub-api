@@ -71,7 +71,7 @@ export async function buildQueues(pool, { learning = null } = {}) {
       where a.status='pending' and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by a.requested_at`),
     pool.query(`select q.id,q.version,q.quantity,q.created_at,q.expires_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from quotes q join products p on p.id=q.product_id join clients c on c.id=p.client_id
-      where q.status='issued' and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by q.created_at`),
+      where q.status='issued' and q.version=(select max(q2.version) from quotes q2 where q2.product_id=q.product_id) and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} order by q.created_at`), // a quote superseded by a newer one is no longer waiting on anyone
     pool.query(`select r.id,r.title,r.type,r.created_at,c.id client_id,c.name client_name from requests r join clients c on c.id=r.client_id
       where r.status='submitted' and r.type<>'project-intake' and ${LIVE_CLIENT} order by r.created_at`),
     pool.query(`select c.id client_id,c.name client_name,c.created_at,a.attempts,a.last_at from clients c left join signin_attempts a on a.client_id=c.id where c.status='lead' and c.archived_at is null and c.slug<>'future-basics' order by c.created_at`),
