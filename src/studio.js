@@ -9,6 +9,7 @@ import { productMask, segmentPanels, rgbToLab, hexToRgb } from './colorway.js';
 import { dataUrlToImageBlock } from './ai.js';
 import { imageConfig, openaiEdit, CHECK_MODEL } from './check.js';
 import { timed } from './telemetry.js';
+import { codeColourways, colourWithCode } from './pantone-codes.js';
 
 const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const hex2 = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
@@ -97,8 +98,10 @@ export function snapColours(input, measured) {
   pack.bom = (pack.bom || []).map(r => {
     const mm = /#([0-9a-f]{6})\b/i.exec(r.color || ''); if (!mm) return r;
     const m = near('#' + mm[1].toLowerCase(), 25); if (!m || m.hex === '#' + mm[1].toLowerCase()) return r;
-    changed++; return { ...r, color: String(r.color).replace(/#[0-9a-f]{6}/i, m.hex) };
+    changed++; return { ...r, color: colourWithCode(String(r.color).replace(/#[0-9a-f]{6}/i, m.hex)) };
   });
+  // the Pantone C code follows the colour: a colourway whose colour was moved gets a new code
+  pack.colorways = codeColourways(pack, { keep: false }).pack.colorways;
   return { pack, changed };
 }
 

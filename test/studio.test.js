@@ -39,7 +39,7 @@ test('the pack\'s colours move onto the measured ones', () => {
   assert.equal(out.colorways.find(c => c.name === 'Neon green').swatch, '#39ff14', 'a suggested alternative is left alone');
   assert.ok(out.colorways.some(c => c.swatch === '#c8202a' && /measured/.test(c.notes)), 'a colour the assistant missed is added');
   assert.ok(out.colorways.some(c => c.swatch === '#f5f5f2'));
-  assert.equal(out.bom[0].color, 'Blue #1d2a4a', 'a BOM colour near a measured one is snapped'); assert.equal(out.bom[1].color, 'Pink #ff66aa', 'one far from every measured colour is not'); assert.equal(out.bom[2].color, 'Mesh');
+  assert.match(out.bom[0].color, /^Blue #1d2a4a · PANTONE .+ C$/, 'a BOM colour near a measured one is snapped, and its Pantone C follows'); assert.equal(out.bom[1].color, 'Pink #ff66aa', 'one far from every measured colour is not'); assert.equal(out.bom[2].color, 'Mesh');
   assert.equal(snapColours(pack, []).changed, 0);
 });
 

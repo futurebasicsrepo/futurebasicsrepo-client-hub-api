@@ -509,7 +509,7 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     const txt = await wp.innerText('[data-model]'); ok(/final render of the pack/i.test(txt) && /82\/100/.test(txt) && /12/.test(txt) && /not to scale/i.test(txt) && /placeholder cube/i.test(txt), 'when done it says it came from the pack\'s final render and its score, shows the triangle count, warns it is not to scale, and says test mode', txt);
     ok(await wp.locator('[data-model] img').count() === 1, 'with a preview picture');
     // the viewer: opens in place, draws the model, turns when dragged, resets, and flips the up axis
-    await wp.click('[data-act="view3d"]'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
+    await wp.click('.stl-prev .btn'); await wp.waitForSelector('.stl-host canvas', { timeout: 15000 });
     ok(await wp.locator('[data-act="stlreset"]').count() === 1 && /Up: Y/.test(await wp.innerText('[data-act="stlup"]')), 'View in 3D opens a viewer with Reset and an up-axis control');
     const host = wp.locator('.stl-host'), sharp = (await import('sharp')).default;
     const shot = async () => sharp(await host.screenshot()).raw().toBuffer({ resolveWithObject: true });
@@ -526,6 +526,21 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     await wp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j63-model.png`, fullPage: true }).catch(() => {});
   } finally { await wctx.close(); }
   const m = sql(`select id from tech_pack_models where product_id='${id}' and status='done' limit 1`);
+  // on a phone, with a tall preview picture like the one the 3D service sends, the "View in 3D" button is on the screen and opens the viewer
+  { const { mkdirSync, writeFileSync } = await import('node:fs'), sharp = (await import('sharp')).default, dir = `${process.env.JOURNEY_TMP}/uploads/models`; mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/${m}.jpg`, await sharp({ create: { width: 1000, height: 1400, channels: 3, background: '#cfd2d6' } }).jpeg().toBuffer());
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+    try {
+      await pp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#tabs button[data-tab="check"]'); await pp.click('#tabs button[data-tab="check"]'); await pp.waitForSelector('.stl-prev .btn', { timeout: 10000 });
+      const btn = pp.locator('.stl-prev .btn'); await btn.scrollIntoViewIfNeeded(); const bb = await btn.boundingBox(), pv = await pp.locator('.stl-prev').boundingBox();
+      ok(await btn.isVisible() && bb.height > 24 && bb.x >= 0 && bb.x + bb.width <= 390 && bb.y + bb.height <= pv.y + pv.height + 1, 'on a phone the "View in 3D" button is on the screen, not cut off below a tall preview', [bb, pv]);
+      await btn.click(); await pp.waitForSelector('.stl-host canvas', { timeout: 15000 }); ok(await pp.locator('.stl-host .stl-msg').count() === 0, 'and it opens the viewer');
+      const w = await pp.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth })); ok(w.doc <= w.win + 1, 'without the page spilling sideways', w);
+      await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j63-phone-viewer.png` }).catch(() => {});
+      ok(pp.errs.length === 0, 'no script errors', pp.errs);
+    } finally { await pctx.close(); }
+  }
   ok((await call(`/v1/admin/tech-pack-models/${m}/stl`, { token: r.token })).status === 403, 'a client cannot download it');
   ok((await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: r.token, body: {} })).status === 403, 'or start one');
   ok((await call(`/v1/admin/tech-pack-models/not-an-id/stl`, { token: admin })).status === 404, 'a bad id is a plain 404');
@@ -553,6 +568,29 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     await w2.waitForFunction(() => /does not look like the photo yet/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 });
     ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
   } finally { await wctx2.close(); }
+});
+
+await journey('J66', 'Pantone C: every colour on the pack gets a coated Pantone code matched from its colour, and a person\'s own C code is left alone', async () => {
+  const r = await room('66', { wait: true }), id = r.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin' });
+  ok((await call('/pantone-c.js')).status === 200, 'the Pantone list is served to the editor');
+  // the draft already carries Pantone C codes, not TCX ones
+  const first = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways;
+  ok(first.length >= 1 && first.every(c => !c.swatch || /^PANTONE .+ C$/.test(c.code)) && !first.some(c => /TCX/i.test(c.code)), 'the assistant\'s colourways have Pantone C codes and no TCX codes', first.map(c => c.code));
+  const d = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data;
+  d.colorways = [{ name: 'Red', code: '19-1664 TCX', swatch: '#c8202a', notes: '' }, { name: 'Silver foil', code: '', swatch: '#c0c0c0', notes: 'trim' }, { name: 'Mine', code: 'PANTONE Black 6 C', swatch: '#101012', notes: '' }];
+  await call(`/v1/admin/products/${id}/tech-pack`, { method: 'PUT', token: admin, body: { data: d } });
+  const wctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await wctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const wp = await wctx.newPage(); wp.errs = []; wp.on('pageerror', e => wp.errs.push(e.message));
+  try {
+    await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
+    await wp.click('#tabs button[data-tab="calls"]'); await wp.waitForSelector('[data-act="matchc"]', { timeout: 8000 });
+    ok(!/TCX/.test(await wp.innerText('[data-panel="calls"]')), 'the editor does not mention TCX any more');
+    await wp.click('[data-act="matchc"]');
+    let cw; for (let i = 0; i < 30; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
+    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'one press: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    ok(wp.errs.length === 0, 'no script errors', wp.errs);
+  } finally { await wctx.close(); }
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

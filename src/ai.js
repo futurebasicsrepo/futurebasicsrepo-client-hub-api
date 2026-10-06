@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import { familyOf, rangeFor, fixUnitSlip, auditRows } from './plausible.js';
 import sharp from 'sharp';
+import { codeColourways, colourWithCode } from './pantone-codes.js';
 
 export const AI_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.AI_FIXTURE);
@@ -42,7 +43,7 @@ const DRAFT_SCHEMA = {
         color: { type: 'string', description: 'The colour of this part as seen in the photo: a plain colour name and a hex, e.g. "Navy #1f2a44"' }, placement: { type: 'string', description: 'Where on the product this part sits' } } } },
     construction: { type: 'array', minItems: 2, maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['area', 'detail'], properties: { area: { type: 'string' }, detail: { type: 'string' } } } },
     colorways: { type: 'array', minItems: 1, maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['name', 'hex', 'pantone', 'role', 'observed'],
-      properties: { name: { type: 'string' }, hex: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, pantone: { type: 'string', description: 'Closest Pantone TCX reference, e.g. "19-4007 TCX", or empty if unsure' }, role: { type: 'string', description: 'Where this colour sits, e.g. "upper", "midsole", "accent"' }, observed: { type: 'boolean', description: 'true if seen in the photo, false if a suggested alternative' } } } },
+      properties: { name: { type: 'string' }, hex: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, pantone: { type: 'string', description: 'Leave empty: the Pantone C code is matched from the colour afterwards' }, role: { type: 'string', description: 'Where this colour sits, e.g. "upper", "midsole", "accent"' }, observed: { type: 'boolean', description: 'true if seen in the photo, false if a suggested alternative' } } } },
     care: { type: 'object', additionalProperties: false, required: ['fiber', 'instructions'], properties: { fiber: { type: 'string' }, instructions: { type: 'string' } } },
     notes: { type: 'string', description: 'Notes to factory: assumptions made, what could not be seen in the photo, open questions for the client, and the spec basis with references' },
     confidence: { type: 'string', enum: ['low', 'medium', 'high'] }
@@ -57,7 +58,7 @@ How to work:
 - Callouts: pick the 6–12 details a factory must get right. Place each at the exact spot on the photo where that detail is, as fractions of the image width and height. Spread them over the product; do not stack them.
 - Measurements: fill the template codes given with values for the sample size in inches. Measure proportions from the photo where you can and anchor them to published category norms (size charts, lab-measured stack heights, standard trims). Say which in "basis". Never invent precision you do not have — round sensibly. If a template row does not apply to this product (for example lace length on a slip-on, or a hood measurement on a jacket without one), still return its code with sample 0 and a basis that starts with "not applicable": it is removed. If no template is given, or it does not fit the product, propose the industry-standard points of measure for it instead (6–12 rows with letter codes, name, how to measure and tolerance). Leave out any row you cannot anchor to the photo or to a reference you know: a second pass researches comparable styles online for whatever you leave out, and a blank is better than a guess.
 - Materials and construction: name the most common, best-practice materials and methods for this product type when the photo cannot tell you (e.g. full-grain leather 1.4–1.6 mm for a court sneaker upper; 400 gsm brushed-back fleece for a heavyweight hoodie). Mark them as defaults to confirm.
-- Colours: list the colours you observe (with a hex you estimate and the closest Pantone TCX if you are confident) and up to two suggested alternatives marked observed=false.
+- Colours: list the colours you observe (with a hex you estimate; leave the pantone field empty, the Pantone C code is matched from the colour afterwards) and up to two suggested alternatives marked observed=false.
 - Write the pack so that someone who has never seen the photo could draw the product from the written fields alone. An independent reviewer will do exactly that (an image model draws the product from the pack, then the drawing is compared with the photo on seven points: product type, silhouette, proportions, materials, colours, construction, branding), and the pack is judged on how close that drawing is. So:
   - The first construction row is "Silhouette and proportions": the overall shape in plain visual words, as seen (a shoe: toe-box shape, collar height, sole profile and thickness, panel layout; a hoodie or jacket: length, shoulder, sleeve, hood or collar shape, hem; a bag: outline, depth, handle and strap shape). Add a second row "Colour blocking": which colour is on which part.
   - Every bill-of-materials row names the material, its visible surface or finish, its colour as a name and a hex, and exactly where it sits. Parts that are different colours are different rows.
@@ -266,10 +267,13 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
       return { component: String(r.component || '').slice(0, 120), material: String(r.material || '').slice(0, 200), spec: String(r.spec || '').slice(0, 300), supplier: 'TBD', ref: '', color: String(r.color || '').slice(0, 120), placement: String(r.placement || s?.placement || '').slice(0, 200), qty: s?.qty || '1', unit: s?.unit || '', notes: 'Default — confirm' }; });
   }
   if (Array.isArray(draft.construction) && draft.construction.length) pack.construction = draft.construction.slice(0, 12).map(r => ({ area: String(r.area || '').slice(0, 120), detail: String(r.detail || '').slice(0, 600) }));
-  if (Array.isArray(draft.colorways) && draft.colorways.length) pack.colorways = draft.colorways.slice(0, 6).filter(c => HEX_OK.test(c.hex || '')).map(c => ({ name: String(c.name || '').slice(0, 80), code: String(c.pantone || '').slice(0, 40), swatch: c.hex.toLowerCase(), notes: `${c.role ? c.role + ' · ' : ''}${c.observed ? 'Seen in the photo' : 'Suggested alternative'} — client to confirm` }));
+  if (Array.isArray(draft.colorways) && draft.colorways.length) pack.colorways = draft.colorways.slice(0, 6).filter(c => HEX_OK.test(c.hex || '')).map(c => ({ name: String(c.name || '').slice(0, 80), code: /^PANTONE\s+.+\sC$/i.test(String(c.pantone || '').trim()) ? String(c.pantone).trim().slice(0, 40) : '', swatch: c.hex.toLowerCase(), notes: `${c.role ? c.role + ' · ' : ''}${c.observed ? 'Seen in the photo' : 'Suggested alternative'} — client to confirm` }));
   if (draft.care?.fiber || draft.care?.instructions) pack.care = { ...pack.care, fiber: String(draft.care.fiber || pack.care.fiber).slice(0, 300), instructions: String(draft.care.instructions || pack.care.instructions).slice(0, 1500) };
   pack.notes = [`AI DRAFT — written from the uploaded photo by the Future Basics assistant (${model}); confidence ${draft.confidence || 'medium'}. Every value is a starting point for the client and Future Basics to confirm; nothing here is released to a factory until all three signatures are in.`,
     String(draft.notes || '').slice(0, 2500), pomBasis ? `MEASUREMENT BASIS\n${pomBasis}`.slice(0, 1800) : '', research, checkNote(draft.pomChecks)].filter(Boolean).join('\n\n').slice(0, 7000);
+  // Pantone C codes, matched from each colour's hex (the colourways, and the colour written on each material)
+  pack.colorways = codeColourways(pack).pack.colorways;
+  pack.bom = pack.bom.map(r => (/#[0-9a-f]{6}\b/i.test(r.color || '') ? { ...r, color: colourWithCode(r.color) } : r));
   return pack;
 }
 

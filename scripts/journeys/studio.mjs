@@ -25,15 +25,45 @@ await journey('J65', 'the hero image: made from the photo inside the exchange, t
   const cw = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data.colorways; ok(cw.some(x => /measured from the pixels/.test(x.notes)), 'the pack\'s colourways carry colours measured from the pixels', cw.map(x => x.notes));
   ok((await call(`/v1/admin/tech-pack-heroes/${c.hero.id}/approve`, { method: 'POST', token: m.token, body: {} })).status === 403 && (await call(`/v1/admin/products/${m.id}/tech-pack/hero`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a client can neither approve nor make a hero');
   if (playwright) {
+    // on a phone: the tries are big enough to see, each has a "Use this one" button, and choosing moves the tick
+    const pb = await playwright.chromium.launch();
+    try {
+      const pctx = await pb.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+      await pp.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#tabs button[data-tab="check"]'); await pp.click('#tabs button[data-tab="check"]'); await pp.waitForSelector('[data-hero] .hero-alts figure', { timeout: 10000 });
+      ok(await pp.locator('[data-hero] .hero-alts figure').count() === 3 && await pp.locator('[data-hero] .hero-alts figure button').count() === 3, 'on a phone the three tries each have a "Use this one" button');
+      const box = await pp.locator('[data-hero] .hero-alts figure img').first().boundingBox(); ok(box.width >= 100 && box.width <= 390, 'and are big enough to judge', box);
+      const third = pp.locator('[data-hero] .hero-alts figure:nth-child(3) button'); await third.scrollIntoViewIfNeeded(); await third.tap(); await pp.waitForSelector('[data-hero] .hero-alts figure:nth-child(3).on', { timeout: 8000 });
+      ok(sql(`select chosen from tech_pack_heroes where product_id='${m.id}' and status in ('ready','approved') order by created_at desc limit 1`) === '2', 'tapping it chooses that one');
+      ok(pp.errs.length === 0, 'no script errors', pp.errs); await pctx.close();
+    } finally { await pb.close(); }
+  }
+  // sharing: whatever the score, staff can put the picture in the client's project so it is on their hub
+  const projectId = sql(`select project_id from products where id='${m.id}'`);
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body: { source: 'hero', id: c.hero.id } });
+  ok(sh.status === 201 && sh.json.shared, 'staff can share the hero with the client while it is still waiting for approval', [sh.status, sh.json]);
+  const thread = (await call(`/v1/projects/${projectId}/thread`, { token: m.token })).json, shared = thread.messages.find(x => x.id === sh.json.messageId);
+  ok(shared && shared.author_role === 'admin' && /work-in-progress/.test(shared.body) && shared.files.length === 1 && /\.jpg$/.test(shared.files[0].original_name), 'the client sees it in their project: a message from Future Basics with the picture attached', shared);
+  const dl = await call(`/v1/project-files/${shared.files[0].id}/download`, { token: m.token }); ok(dl.status === 200, 'and can open the picture', dl.status);
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and title like 'New picture in%'`) === '1', 'and is notified');
+  ok(sql(`select count(*) from tech_pack_heroes where id='${c.hero.id}' and shared_at is not null`) === '1', 'the card remembers it was shared');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', token: m.token, body: { source: 'hero', id: c.hero.id } })).status === 403, 'a client cannot share on staff\'s behalf');
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body: { source: 'nope' } })).status === 400, 'a bad request is refused plainly');
+  const chk = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json.latest, sc = await adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body: { source: 'check', id: chk.id, index: 0, message: 'The latest render, from the pack alone.' } });
+  ok(sc.status === 201, 'a spec-check render can be shared too', [sc.status, sc.json]);
+  if (playwright) {
     const browser = await playwright.chromium.launch();
     try {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
       const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
       await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="check"]'); await p.click('#tabs button[data-tab="check"]'); await p.waitForSelector('[data-hero] .chk-shots img', { timeout: 10000 });
       ok(await p.locator('[data-hero] .chk-shots img').count() === 2 && /Waiting for approval/i.test(await p.innerText('[data-hero]')), 'the Check tab shows the photo beside the hero, waiting for approval');
-      ok(await p.locator('[data-hero] .hero-alts button').count() === 3 && await p.locator('[data-hero] .hero-sw span').count() >= 1, 'with the three tries and the measured colours');
-      await p.click('[data-hero] .hero-alts button:nth-child(2)'); await p.waitForSelector('[data-hero] .hero-alts button:nth-child(2).on', { timeout: 8000 }); ok(true, 'picking another try works');
+      ok(await p.locator('[data-hero] .hero-alts figure').count() === 3 && await p.locator('[data-hero] .hero-sw span').count() >= 1, 'with the three tries and the measured colours');
+      await p.click('[data-hero] .hero-alts figure:nth-child(2) button'); await p.waitForSelector('[data-hero] .hero-alts figure:nth-child(2).on', { timeout: 8000 }); ok(true, 'picking another try works');
       await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j65-hero.png`, fullPage: true }).catch(() => {});
+      const before = Number(sql(`select count(*) from project_messages where project_id='${projectId}' and author_role='admin'`)); p.on('dialog', d => d.accept());
+      await p.click('[data-act="heroshare"]'); for (let i = 0; i < 20 && Number(sql(`select count(*) from project_messages where project_id='${projectId}' and author_role='admin'`)) === before; i++) await sleep(300);
+      ok(Number(sql(`select count(*) from project_messages where project_id='${projectId}' and author_role='admin'`)) === before + 1, 'the Share with client button, after a confirmation, posts the picture to the project');
       await p.click('[data-act="heroapprove"]'); await p.waitForFunction(() => /approved/i.test(document.querySelector('[data-hero]')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'approving marks it approved');
       ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
     } finally { await browser.close(); }
