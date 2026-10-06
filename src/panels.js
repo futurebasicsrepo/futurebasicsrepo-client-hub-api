@@ -12,7 +12,7 @@ import sharp from 'sharp';
 import { dataUrlToImageBlock } from './ai.js';
 import { openaiEdit } from './check.js';
 import { callJsonSchema, heroConfig, nearestName, colourDistance } from './studio.js';
-import { hexToRgb } from './colorway.js';
+import { hexToRgb, rgbToHsl, hslToRgb } from './colorway.js';
 import { timed, trackedFetch } from './telemetry.js';
 import './pantone-c.js';
 
@@ -72,20 +72,38 @@ The lead colour goes on the parts that carry the colour of the design (the main 
 
 const mixHex = (a, b, t) => { const x = hexToRgb(a), y = hexToRgb(b); return '#' + [0, 1, 2].map(i => Math.round(x[i] + (y[i] - x[i]) * t).toString(16).padStart(2, '0')).join(''); };
 
-// → [{ label, material, from, hex, name, code, changed }]  (hex is the colour in this colourway)
-export async function assignColourway({ parts, colourway, fixture = false }) {
-  const lead = normHex(colourway.swatch); if (!lead) return null;
-  let given;
-  if (fixture) { given = parts.map((p, i) => ({ label: p.label, hex: i < 2 ? mixHex(lead, p.hex, i * 0.15) : p.hex, changed: i < 2 })); }
-  else {
-    const text = `Parts:\n${parts.map(p => `- ${p.label} (${p.material || 'material unknown'}): ${p.hex}`).join('\n')}\n\nNew colourway: "${colourway.name}", lead colour ${lead}${colourway.notes ? `. Note: ${clip(colourway.notes, 200)}` : ''}.`;
-    given = (await timed('anthropic', () => callJsonSchema(ASSIGN_SYSTEM, [{ type: 'text', text }], ASSIGN_SCHEMA, { maxTokens: 1500 }))).parts;
-  }
+// Parts a colourway does not usually recolour: soles, laces, linings, hardware, labels.
+const NEUTRAL_PART = /sole|lace|lining|eyelet|hardware|zip|logo|label|trim|binding|tape|drawcord|aglet|stitch/i;
+const lblKey = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// The same plan without asking a model: the lead colour on the parts that carry the design's colour, each keeping its own lightness relative to the others, so
+// shading and contrast survive. Used when the model's answer changes nothing.
+export function leadPlan(parts, lead) {
+  const carry = parts.filter(p => !NEUTRAL_PART.test(p.label) && !/outsole|midsole/i.test(p.label)); if (!carry.length) return parts.map(p => ({ label: p.label, hex: p.hex, changed: false }));
+  const lightOf = h => rgbToHsl(...hexToRgb(h))[2], mean = carry.reduce((a, p) => a + lightOf(p.hex), 0) / carry.length, [lh, ls, ll] = rgbToHsl(...hexToRgb(lead));
   return parts.map(p => {
-    const g = (given || []).find(x => String(x.label).toLowerCase() === p.label.toLowerCase()), hex = normHex(g?.hex) || p.hex;
-    const changed = colourDistance(hex, p.hex) > 9;
+    if (!carry.includes(p)) return { label: p.label, hex: p.hex, changed: false };
+    const l = Math.max(0.06, Math.min(0.94, ll + (lightOf(p.hex) - mean) * 0.8)), [r, g, b] = hslToRgb(lh, ls, l);
+    return { label: p.label, hex: '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join(''), changed: true };
+  });
+}
+// Reads the model's answer against our parts: by label (ignoring case and punctuation), else by position when it gave one entry per part.
+const matchGiven = (parts, given) => parts.map((p, i) => (given || []).find(x => lblKey(x.label) === lblKey(p.label)) || ((given || []).length === parts.length ? given[i] : null));
+
+// → [{ label, material, from, hex, name, code, changed }]  (hex is the colour in this colourway)
+export async function assignColourway({ parts, colourway, fixture = false, ask = null }) {
+  const lead = normHex(colourway.swatch); if (!lead) return null;
+  const finish = given => parts.map((p, i) => {
+    const g = given[i], hex = normHex(g?.hex) || p.hex, changed = colourDistance(hex, p.hex) > 9;
     return { label: p.label, material: p.material, from: p.hex, hex: changed ? hex : p.hex, name: nearestName(changed ? hex : p.hex), code: changed ? codeOf(hex, `${colourway.name} ${p.label}`) : p.code, changed };
   });
+  if (fixture) return finish(parts.map((p, i) => ({ hex: i < 2 ? mixHex(lead, p.hex, i * 0.15) : p.hex })));
+  const text = `Parts, in this order:\n${parts.map((p, i) => `${i + 1}. ${p.label} (${p.material || 'material unknown'}): ${p.hex}`).join('\n')}\n\nNew colourway: "${colourway.name}", lead colour ${lead}${colourway.notes ? `. Note: ${clip(colourway.notes, 200)}` : ''}.\nGive exactly one entry per part, in the same order, copying each label exactly.`;
+  const call = ask || (t => timed('anthropic', () => callJsonSchema(ASSIGN_SYSTEM, [{ type: 'text', text: t }], ASSIGN_SCHEMA, { maxTokens: 1500 })).then(r => r.parts));
+  let plan = finish(matchGiven(parts, await call(text)));
+  // an answer that changes nothing is asked once more, then replaced by the plain rule, so a colourway is never dropped for the model's caution
+  if (!plan.some(x => x.changed)) plan = finish(matchGiven(parts, await call(text + `\n\nYour last answer left every part as it was. The colourway "${colourway.name}" must look clearly different: put ${lead} (or a shade of it that keeps the part's own light and dark) on the parts that carry the colour of the design.`)));
+  if (!plan.some(x => x.changed)) plan = finish(leadPlan(parts, lead));
+  return plan;
 }
 // How different a colourway's per-part colours are from the product as it is: the mean colour distance, and how many parts change.
 export const planDifference = plan => ({ changed: plan.filter(x => x.changed).length, mean: plan.length ? plan.reduce((s, x) => s + (x.changed ? colourDistance(x.hex, x.from) : 0), 0) / plan.length : 0 });
@@ -173,24 +191,20 @@ export async function makeColourways({ reference, colourways, meta = {}, parts =
   await onStep({ stage: 'parts' });
   const list = parts?.length ? parts : await D.identifyParts({ image: refUrl, meta, fixture });
   const want = (colourways || []).filter(c => normHex(c?.swatch)), skipped = [], tiles = [], made = [];
-  const chosen = [];
-  for (const c of want) {
-    if (chosen.length >= MAX_COLOURWAYS()) { skipped.push({ name: c.name, why: 'over the limit for one run' }); continue; }
-    if (chosen.some(x => colourDistance(x.swatch, c.swatch) < 12)) { skipped.push({ name: c.name, why: 'looks like another colourway' }); continue; }
-    chosen.push(c);
-  }
   let done = 0;
-  for (const c of chosen) {
-    await onStep({ stage: 'colourway', name: c.name, done, total: chosen.length });
+  for (const c of want) {
+    if (tiles.length >= MAX_COLOURWAYS()) { skipped.push({ name: c.name, why: 'over the limit for one run' }); continue; }
+    if (tiles.some(t => colourDistance(t.swatch, c.swatch) < 12)) { skipped.push({ name: c.name, why: 'looks like another colourway' }); continue; }
+    await onStep({ stage: 'colourway', name: c.name, done, total: want.length });
     try {
       const plan = await D.assignColourway({ parts: list, colourway: c, fixture });
       const diff = plan && planDifference(plan);
-      if (!plan || !diff.changed || diff.mean < 6) { skipped.push({ name: c.name, why: 'it would look the same as the product already does' }); continue; }
+      if (!plan || !diff.changed || diff.mean < 6) { skipped.push({ name: c.name, why: `it would look the same as the product already does (${diff ? diff.changed : 0} of ${list.length} parts change, by ${diff ? Math.round(diff.mean) : 0} on average)` }); continue; }
       if (made.some(m => planDistance(m, plan) < 7)) { skipped.push({ name: c.name, why: 'it would look like another colourway' }); continue; }
       let best = null, problem = '';
       for (let attempt = 0; attempt < 2; attempt++) {
         const drawn = await D.drawColourway({ reference: ref, plan, meta, cfg, problem, fixture });
-        await onStep({ stage: 'check', name: c.name, done, total: chosen.length });
+        await onStep({ stage: 'check', name: c.name, done, total: want.length });
         const verdict = await D.checkColourway({ reference: ref, drawn, plan, fixture });
         if (!best || verdict.score > best.verdict.score) best = { drawn, verdict };
         if (verdict.score >= 85 || verdict.unchecked) break;
