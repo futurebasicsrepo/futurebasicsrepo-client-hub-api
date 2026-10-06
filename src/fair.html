@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Future Basics — Tech packs factories can read</title>
+  <meta name="description" content="Turn a photo or an Alibaba listing into a factory-ready tech pack, in Chinese for your supplier. Factories: get your own link for your buyers.">
+  <link rel="icon" href="/icons/icon-192.png" type="image/png"><meta name="theme-color" content="#141416">
+  <style>
+    @import url('/fonts/fonts.css');
+    /* The fair page: the QR on the trade-show cards lands here. Two doors (brand, factory), Chinese or English, phone first. */
+    :root{--ink:#141416;--paper:#f6f6f2;--card:#fff;--dim:#66666d;--line:rgba(20,20,22,.14);--cue:#48f39a;--deep:#17603a;
+      --sans:'Space Grotesk',system-ui,-apple-system,'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+    :lang(zh-Hant){--sans:'Space Grotesk',system-ui,-apple-system,'PingFang HK','PingFang TC','Microsoft JhengHei','Noto Sans CJK TC',sans-serif}
+    *{box-sizing:border-box}html{background:var(--paper)}body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.55 var(--sans);-webkit-text-size-adjust:100%}
+    a{color:inherit}button,input,textarea{font:inherit}
+    header{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;height:64px;padding:0 clamp(16px,4vw,40px);padding-top:env(safe-area-inset-top,0px);background:rgba(20,20,22,.97);color:#fff}
+    header img{display:block;width:150px;height:auto}
+    .lang-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid rgba(255,255,255,.24);border-radius:999px}.lang-switch button{border:0;background:transparent;color:#fff;font:500 12px/1 var(--mono);padding:8px 10px;border-radius:999px;cursor:pointer;opacity:.72}.lang-switch button[aria-pressed="true"]{background:#fff;color:var(--ink);opacity:1}
+    button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--deep);outline-offset:2px}
+    main{max-width:1080px;margin:0 auto;padding:clamp(28px,6vw,64px) clamp(16px,4vw,40px) 64px;display:grid;gap:clamp(28px,5vw,48px)}
+    .eyebrow{font:500 11px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+    :lang(zh-Hans) .eyebrow,:lang(zh-Hant) .eyebrow{letter-spacing:.08em}
+    .hero{display:grid;gap:14px;max-width:760px}
+    h1{margin:0;font-weight:500;font-size:clamp(36px,7vw,68px);line-height:1;letter-spacing:-.045em;text-wrap:balance}
+    :lang(zh-Hans) h1,:lang(zh-Hant) h1{letter-spacing:-.01em;line-height:1.15}
+    h1 em{font-style:normal;color:var(--deep)}
+    .lede{margin:0;color:var(--dim);font-size:clamp(17px,2vw,20px);max-width:58ch}
+    .doors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .door{display:grid;gap:14px;align-content:start;padding:clamp(22px,3vw,32px);border-radius:28px;background:var(--card);border:1px solid var(--line);min-width:0}
+    .door.dark{background:var(--ink);color:#fff;border-color:var(--ink)}.door.dark .eyebrow{color:var(--cue)}.door.dark p{color:#c7c7cc}
+    .door h2{margin:0;font-weight:500;font-size:clamp(24px,3vw,32px);line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
+    :lang(zh-Hans) .door h2,:lang(zh-Hant) .door h2,:lang(zh-Hans) h1,:lang(zh-Hant) h1{letter-spacing:0;text-wrap:pretty;word-break:keep-all;line-break:strict}
+    .door p{margin:0;color:var(--dim)}
+    .door ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}.door li{display:flex;gap:10px;align-items:baseline}.door li:before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--cue);transform:translateY(-1px)}
+    .cta{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 24px;border-radius:999px;background:var(--cue);color:var(--ink);text-decoration:none;font-weight:600;border:0;cursor:pointer;width:100%}
+    .cta.ink{background:var(--ink);color:#fff}
+    form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    label{display:grid;gap:5px;font-size:13px;color:var(--dim);min-width:0}label.full{grid-column:1/-1}
+    input,textarea{width:100%;min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);font-size:16px}
+    textarea{min-height:76px;resize:vertical}
+    .hp{position:absolute;left:-9999px}
+    .msg{grid-column:1/-1;margin:0;font-size:14px;min-height:1em}.msg.err{color:#a3291b}
+    form .cta{grid-column:1/-1;margin-top:4px}
+    .done{display:grid;gap:12px;justify-items:start}
+    .linkrow{display:flex;gap:8px;width:100%}.linkrow input{flex:1;font:400 13px var(--mono)}.linkrow button{flex:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:999px;padding:0 16px;cursor:pointer}
+    .qr{padding:14px;background:#fff;border-radius:18px;border:1px solid var(--line)}.qr img,.qr canvas{display:block;width:200px;height:200px;image-rendering:pixelated}
+    .how{display:grid;gap:14px}
+    .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--ink)}
+    .steps li{display:grid;gap:6px;align-content:start;padding:16px 16px 0 0;min-width:0}.steps li+li{padding-left:16px;border-left:1px solid var(--line)}
+    .steps b{font:500 13px var(--mono);color:var(--dim)}
+    footer{max-width:1080px;margin:0 auto;padding:0 clamp(16px,4vw,40px) 48px;color:var(--dim);font-size:13px}
+    .hidden{display:none!important}
+    @media(max-width:800px){.doors{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.steps li:nth-child(3){padding-left:0;border-left:0}}
+    @media(max-width:480px){form{grid-template-columns:minmax(0,1fr)}header img{width:120px}.steps{grid-template-columns:minmax(0,1fr)}.steps li+li{padding-left:0;border-left:0;border-top:1px solid var(--line);padding-top:12px}}
+  </style>
+</head>
+<body>
+  <header><a href="https://thefuturebasics.com/?utm_source=fair&amp;utm_medium=web"><img src="/icons/wordmark-white.svg" alt="Future Basics"></a><span data-lang-switch></span></header>
+  <main>
+    <section class="hero">
+      <span class="eyebrow" id="eyebrow">Future Basics</span>
+      <h1 data-i18n-html="fair.h1">Tech packs factories can read. <em>Production you can track.</em></h1>
+      <p class="lede" data-i18n="fair.lede">From one image to a tech pack the factory signs: callouts, measurements, materials and colours, in English and Chinese. Brands and factories confirm every detail in one place.</p>
+    </section>
+
+    <section class="doors">
+      <article class="door dark" aria-labelledby="brandH">
+        <span class="eyebrow" data-i18n="fair.brandTag">Brands · buyers</span>
+        <h2 id="brandH" data-i18n="fair.brandH">Turn a photo or an Alibaba listing screenshot into a tech pack.</h2>
+        <p data-i18n="fair.brandP">Add an image and get an editable tech pack draft in minutes. Your supplier gets it in Chinese and confirms every detail before sampling.</p>
+        <ul><li data-i18n="fair.brand1">Photos, sketches, renders, listing screenshots</li><li data-i18n="fair.brand2">The factory's link opens in Chinese</li><li data-i18n="fair.brand3">You, Future Basics and the factory each sign off</li></ul>
+        <a class="cta" id="brandGo" href="/start" data-i18n="fair.brandGo">Start a tech pack · first one free</a>
+      </article>
+
+      <article class="door" aria-labelledby="factoryH">
+        <span class="eyebrow" data-i18n="fair.factoryTag">Factories · suppliers</span>
+        <h2 id="factoryH" data-i18n="fair.factoryH">Get a complete, clear tech pack before you cut anything.</h2>
+        <p data-i18n="fair.factoryP">Overseas buyers often send unclear specs, and samples go round and round. Sign up and get your own link. Send it to your buyers: their tech packs come to you with a Chinese version.</p>
+        <form id="factoryForm" novalidate>
+          <label class="full"><span data-i18n="fair.f1">Company name</span><input id="company" name="company" required maxlength="160" autocomplete="organization"></label>
+          <label><span data-i18n="fair.f2">Contact name</span><input id="contact" name="contact" maxlength="140" autocomplete="name"></label>
+          <label><span data-i18n="fair.f6">City</span><input id="city" name="city" maxlength="80"></label>
+          <label><span data-i18n="fair.f4">WeChat ID</span><input id="wechat" name="wechat" maxlength="80" autocapitalize="off"></label>
+          <label><span data-i18n="fair.f5">Phone / WhatsApp</span><input id="phone" name="phone" maxlength="60" inputmode="tel" autocomplete="tel"></label>
+          <label class="full"><span data-i18n="fair.f3">Email</span><input id="femail" name="email" type="email" inputmode="email" maxlength="254" autocomplete="email"></label>
+          <label class="full"><span data-i18n="fair.f7">What do you make?</span><textarea id="makes" name="makes" maxlength="500" data-i18n-ph="fair.f7ph" placeholder="Sneakers, knitwear, Bluetooth earbuds, packaging…"></textarea></label>
+          <label class="hp" aria-hidden="true">Website<input tabindex="-1" autocomplete="off" name="website"></label>
+          <button class="cta ink" id="factoryGo" type="submit" data-i18n="fair.factoryGo">Get my factory link</button>
+          <p class="msg" id="factoryMsg" aria-live="polite"></p>
+        </form>
+        <div class="done hidden" id="factoryDone">
+          <h2 data-i18n="fair.doneH">Here is your link</h2>
+          <p data-i18n="fair.doneP">Send it to your overseas buyers, or have them scan this QR code. Tech packs they start from it are linked to your factory, and we will be in touch.</p>
+          <div class="linkrow"><input id="partnerLink" readonly aria-label="Your link"><button type="button" id="copyLink" data-i18n="fair.copy">Copy link</button></div>
+          <div class="qr" id="partnerQr" aria-label="QR code for your link"></div>
+          <span class="eyebrow" data-i18n="fair.save">Long-press or right-click to save the QR code</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="how" aria-labelledby="howH">
+      <span class="eyebrow" id="howH" data-i18n="fair.how">How it works</span>
+      <ol class="steps">
+        <li><b>01</b><span data-i18n="fair.how1">The brand adds an image and gets a tech pack draft.</span></li>
+        <li><b>02</b><span data-i18n="fair.how2">Future Basics reviews and finishes it; the brand approves.</span></li>
+        <li><b>03</b><span data-i18n="fair.how3">The factory opens it in Chinese, confirms each callout and signs.</span></li>
+        <li><b>04</b><span data-i18n="fair.how4">Sampling, production, QC and shipping, tracked in one place.</span></li>
+      </ol>
+    </section>
+  </main>
+  <footer>Future Basics · product development and production management · <a href="/help">How it works</a></footer>
+
+  <script src="/hub-i18n.js"></script>
+  <script src="/qrcode.js"></script>
+  <script>
+    "use strict";
+    // Which fair the card came from (?src=canton | hkef), kept on every link out of this page so the console can count it.
+    const q=new URLSearchParams(location.search),src=(q.get('src')||'fair').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,40)||'fair',side=(q.get('side')||'').toLowerCase();
+    const FAIRS={canton:{en:'Canton Fair',zh:'广交会','zh-hk':'廣交會'},hkef:{en:'HK Electronics Fair',zh:'香港电子产品展','zh-hk':'香港電子產品展'}};
+    const T=(k,en,v)=>HubI18n.t(k,en,v);
+    function paint(){const lang=HubI18n.lang,fair=FAIRS[src]?.[lang]||FAIRS[src]?.en;
+      document.getElementById('eyebrow').textContent=fair?`Future Basics · ${fair}`:'Future Basics';
+      const u=new URLSearchParams({utm_source:src,utm_medium:'card',utm_campaign:'fairs-2026',utm_content:'brand'});if(lang!=='en')u.set('lang',lang);
+      document.getElementById('brandGo').href='/start?'+u.toString()}
+    paint();document.addEventListener('hub:lang',paint);
+    if(side==='factory')document.getElementById('factoryH').scrollIntoView({block:'start'});
+    const form=document.getElementById('factoryForm'),msg=document.getElementById('factoryMsg'),go=document.getElementById('factoryGo');
+    form.addEventListener('submit',async e=>{e.preventDefault();msg.textContent='';msg.className='msg';
+      const v=Object.fromEntries(new FormData(form).entries());
+      if(!String(v.company||'').trim()||!(String(v.email||'').trim()||String(v.wechat||'').trim()||String(v.phone||'').trim())){msg.textContent=T('fair.factoryNeed','Enter the company name and at least one way to reach you: email, WeChat or phone.');msg.className='msg err';return}
+      go.disabled=true;const was=go.textContent;go.textContent=T('fair.sending','Sending…');
+      try{const r=await fetch('/v1/public/factories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...v,source:src,lang:HubI18n.lang})});const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.error||'Something went wrong — try again in a moment.');
+        form.classList.add('hidden');const done=document.getElementById('factoryDone');done.classList.remove('hidden');
+        document.getElementById('partnerLink').value=d.link;
+        const qr=qrcode(0,'M');qr.addData(d.link);qr.make();document.getElementById('partnerQr').innerHTML=qr.createImgTag(6,8,'QR code');
+        done.scrollIntoView({behavior:'smooth',block:'start'});
+      }catch(err){msg.textContent=err.message;msg.className='msg err';go.disabled=false;go.textContent=was}});
+    document.getElementById('copyLink').addEventListener('click',async e=>{const i=document.getElementById('partnerLink');try{await navigator.clipboard.writeText(i.value)}catch{i.select();document.execCommand('copy')}e.target.textContent=T('fair.copied','Copied')});
+  </script>
+</body>
+</html>

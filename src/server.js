@@ -70,7 +70,7 @@ await app.register(multipart, {
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
-    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     .header('x-content-type-options', 'nosniff')
     .header('referrer-policy', 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
@@ -556,6 +556,10 @@ const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0'
 app.get('/start', sendStart);
 // Client guide: how the hub works, with screenshots and an FAQ, plus the same guide as a PDF.
 const helpAssets=new URL('./help-assets/',import.meta.url);
+// The trade-fair page (the QR on the cards): brands start a tech pack, factories sign up for a referral link. Bilingual (see hub-i18n.js).
+app.get('/fair',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./fair.html',import.meta.url),'utf8')));
+app.get('/hub-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./hub-i18n.js',import.meta.url),'utf8')));
+app.get('/qrcode.js',(_req,reply)=>reply.header('cache-control','public, max-age=86400').type('application/javascript').send(readFileSync(new URL('./qrcode.js',import.meta.url),'utf8'))); // qrcode-generator, MIT (Kazuhiko Arase)
 app.get('/help',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./help.html',import.meta.url),'utf8')));
 app.get('/how-it-works',(_req,reply)=>reply.redirect('/help'));
 app.get('/help/guide.pdf',(_req,reply)=>{try{return reply.header('cache-control','public, max-age=300').header('content-disposition','inline; filename="future-basics-client-hub-guide.pdf"').type('application/pdf').send(readFileSync(new URL('future-basics-client-hub-guide.pdf',helpAssets)))}catch{return reply.code(404).send({error:'Guide PDF not built yet'})}});
@@ -574,6 +578,10 @@ app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max
 app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
 app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
 app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
+// Self-hosted fonts (see src/fonts/fonts.css): the file names are fixed, so they cache for a year.
+const FONT_FILES=new Set(['fonts.css','space-grotesk-latin.woff2','space-grotesk-latin-ext.woff2','ibm-plex-mono-400.woff2','ibm-plex-mono-500.woff2']);
+app.get('/fonts/:file',(req,reply)=>{const f=String(req.params.file);if(!FONT_FILES.has(f))return reply.code(404).send({error:'Not found'});
+  return reply.header('cache-control',f.endsWith('.css')?'public, max-age=3600':'public, max-age=31536000, immutable').header('access-control-allow-origin','*').type(f.endsWith('.css')?'text/css':'font/woff2').send(readFileSync(new URL('./fonts/'+f,import.meta.url)))});
 app.get('/chat.css',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('text/css').send(readFileSync(new URL('./chat.css',import.meta.url),'utf8')));
 app.get('/photo-prep.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./photo-prep.js',import.meta.url),'utf8')));
 app.get('/tech-packs/new', sendStart);
@@ -3369,13 +3377,54 @@ app.post('/v1/dev/pay/:packId',async(req,reply)=>{
 });
 // Where a self-serve room came from: utm_* from the ad link, the referrer and the landing path, captured once on /start. First touch wins; the console shows it on the room.
 function cleanAttribution(a){if(!a||typeof a!=='object')return null;const pick=k=>{const v=String(a[k]??'').trim().slice(0,120);return v||undefined};
-  const out={source:pick('source'),medium:pick('medium'),campaign:pick('campaign'),content:pick('content'),term:pick('term'),referrer:pick('referrer'),landing:pick('landing'),firstSeenAt:pick('firstSeenAt')};
+  const out={source:pick('source'),medium:pick('medium'),campaign:pick('campaign'),content:pick('content'),term:pick('term'),referrer:pick('referrer'),landing:pick('landing'),firstSeenAt:pick('firstSeenAt'),lang:pick('lang')};
   Object.keys(out).forEach(k=>out[k]===undefined&&delete out[k]);if(out.referrer&&!/^https?:\/\//.test(out.referrer))delete out.referrer;return Object.keys(out).length?{...out,recordedAt:new Date().toISOString()}:null}
+// A buyer who arrived through a factory's link (source f-CODE) carries that factory on their room.
+async function withPartner(attribution){
+  const m=/^f-([A-Z0-9]{6})$/i.exec(attribution?.source||'');if(!m)return attribution;
+  const p=(await pool.query('select id,company,code from partners where code=$1',[m[1].toUpperCase()])).rows[0];
+  return p?{...attribution,partner:p.company,partnerId:p.id,partnerCode:p.code}:attribution;
+}
+// ---- Factory sign-up (the fair page). A factory gets its own link to hand to its buyers; staff are told, and the factory is emailed
+// its link when it gave an email. Codes are six letters and digits without look-alikes (no 0/O, 1/I/L).
+const PARTNER_ALPHABET='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const partnerCode=()=>Array.from(randomBytes(6),b=>PARTNER_ALPHABET[b%PARTNER_ALPHABET.length]).join('');
+const partnerLink=(code,lang)=>`${clientHubUrl}/start?ref=f-${code}${lang&&lang!=='en'?`&lang=${lang}`:''}`;
+app.post('/v1/public/factories',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip,{bucket:'factory',limit:Number(process.env.FACTORY_SIGNUP_LIMIT)||20}))return reply.code(429).send({error:'Too many sign-ups from here. Please try again in an hour.'});
+  const b=req.body||{},f=(k,n=200)=>String(b[k]??'').trim().slice(0,n)||null;
+  if(f('website'))return reply.code(202).send({ok:true}); // honeypot
+  const company=f('company',160),email=(f('email',254)||'').toLowerCase()||null,wechat=f('wechat',80),phone=f('phone',60);
+  const lang=['en','zh','zh-hk'].includes(b.lang)?b.lang:'en',source=f('source',60);
+  if(!company)return reply.code(400).send({error:'Enter the company name'});
+  if(!email&&!wechat&&!phone)return reply.code(400).send({error:'Leave at least one way to reach you: email, WeChat or phone'});
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Check the email address'});
+  let row=null;
+  for(let i=0;i<5&&!row;i++)row=(await pool.query(`insert into partners(code,company,contact_name,email,wechat,phone,city,makes,source,lang) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    on conflict(code) do nothing returning *`,[partnerCode(),company,f('contact',140),email,wechat,phone,f('city',80),f('makes',500),source,lang])).rows[0];
+  if(!row)return reply.code(503).send({error:'Could not make a code just now — try again'});
+  const link=partnerLink(row.code,lang),fb=(await pool.query(`select id from clients where slug='future-basics'`)).rows[0];
+  const who=[row.contact_name,row.email,row.wechat&&`WeChat ${row.wechat}`,row.phone].filter(Boolean).join(' · ');
+  if(fb)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'partner',$2,'partner',$3)`,[fb.id,`New factory${source?` from ${source}`:''}: ${company}${row.city?` (${row.city})`:''} — ${who}`,row.id]).catch(()=>{});
+  await notifyStaff(`New factory sign-up${source?` · ${source}`:''}: ${company}`,`<p><strong>${emailEscape(company)}</strong>${row.city?` · ${emailEscape(row.city)}`:''} signed up${source?` at <strong>${emailEscape(source)}</strong>`:''}.</p><p>${emailEscape(who)}</p>${row.makes?`<p>Makes: ${emailEscape(row.makes)}</p>`:''}<p>Their referral link: ${emailEscape(link)}</p>`);
+  if(email){
+    const zh=lang!=='en',hk=lang==='zh-hk';
+    sendHubEmail({to:email,subject:zh?(hk?'你的 Future Basics 工廠連結':'你的 Future Basics 工厂链接'):'Your Future Basics factory link',
+      html:hubEmailShell(zh?(hk?'這是你的工廠連結':'这是你的工厂链接'):'Your factory link',zh
+        ?`<p>${emailEscape(company)}，${hk?'多謝登記。把這個連結發給你的海外客戶，他們由這裡開始的技術包會連同中文版直接交到你手上：':'感谢注册。把这个链接发给你的海外客户，他们从这里开始的技术包会带着中文版直接给到你：'}</p>${hubButton(link,hk?'打開連結':'打开链接')}<p style="word-break:break-all">${emailEscape(link)}</p>`
+        :`<p>Thanks for signing up, ${emailEscape(company)}. Send this link to your overseas buyers. The tech packs they start from it come to you with a Chinese version:</p>${hubButton(link,'Open the link')}<p style="word-break:break-all">${emailEscape(link)}</p>`)}).catch(e=>app.log.warn({err:e.message,partnerId:row.id},'factory link email not sent'));
+  }
+  return reply.code(201).send({code:row.code,link});
+});
+app.get('/v1/admin/partners',{preHandler:[authenticate,adminOnly]},async()=>{
+  const rows=(await pool.query(`select p.*,(select count(*)::int from clients c where c.acquisition->>'partnerId'=p.id::text) buyers from partners p order by p.created_at desc limit 500`)).rows;
+  return {partners:rows.map(r=>({...r,link:partnerLink(r.code,r.lang)}))};
+});
 app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
   if(!publicIntakeAllowed(req.ip,{bucket:'start',limit:Number(process.env.START_RATE_LIMIT)||12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
   const b=req.body||{};
   if(String(b.website||'').trim())return reply.code(202).send({ok:true});                       // honeypot
-  const email=typeof b.email==='string'?b.email.trim().toLowerCase():'',name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000),attribution=cleanAttribution(b.attribution);
+  const email=typeof b.email==='string'?b.email.trim().toLowerCase():'',name=String(b.name||'').trim().slice(0,140),title=String(b.title||'').trim().slice(0,200),notes=String(b.notes||'').trim().slice(0,3000),attribution=await withPartner(cleanAttribution(b.attribution));
   if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Enter the email you want us to reach you at'});
   if(!title)return reply.code(400).send({error:'Give the product a name'});
   if(emailDomain(email)==='thefuturebasics.com')return reply.code(400).send({error:'Use the work console to start a tech pack for a client'});
