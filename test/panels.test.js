@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
-import { checkColourway, combineVerdicts, checkerMode, identifyParts, assignColourway, panelPrompt, planDistance, planDifference, makeColourways } from '../src/panels.js';
+import { leadPlan, checkColourway, combineVerdicts, checkerMode, identifyParts, assignColourway, panelPrompt, planDistance, planDifference, makeColourways } from '../src/panels.js';
 import { normalizeTechPack } from '../src/techpack.js';
 
 const ref = () => sharp({ create: { width: 256, height: 256, channels: 3, background: '#cfd2d6' } }).jpeg().toBuffer();
@@ -92,4 +92,37 @@ test('checking runs both judges and survives one failing', async () => {
   assert.equal((await checkColourway({ reference: img, drawn: img, plan, mode: { claude: true, openai: true }, judges: { claude: good, openai: strict } })).score, 55);
   const one = await checkColourway({ reference: img, drawn: img, plan, mode: { claude: true, openai: true }, judges: { claude: good, openai: async () => { throw new Error('refused'); } } });
   assert.equal(one.score, 88); assert.equal(one.unchecked, undefined);
+});
+
+test('an answer that changes nothing is asked again, then replaced by the plain rule: the colourway is not dropped for the model\'s caution', async () => {
+  const parts = [{ label: 'Upper overlays', material: 'metallic PU', hex: '#b8bcc2' }, { label: 'Mesh', material: 'mesh', hex: '#9aa0a6' }, { label: 'Outsole', material: 'rubber', hex: '#202124' }, { label: 'Laces', material: 'cord', hex: '#f0f0f0' }];
+  let asked = 0;
+  const lazy = await assignColourway({ parts, colourway: { name: 'Champagne', swatch: '#c9b27c' }, ask: async () => { asked++; return parts.map(p => ({ label: p.label, hex: p.hex, changed: false })); } });
+  assert.equal(asked, 2, 'asked once more');
+  assert.ok(lazy.find(x => x.label === 'Upper overlays').changed && lazy.find(x => x.label === 'Mesh').changed, 'the parts that carry the design take the colour');
+  assert.ok(!lazy.find(x => x.label === 'Outsole').changed && !lazy.find(x => x.label === 'Laces').changed, 'soles and laces keep theirs');
+  const fixed = await assignColourway({ parts, colourway: { name: 'Champagne', swatch: '#c9b27c' }, ask: async () => { asked++; return [{ label: 'upper overlays', hex: '#C9B27C' }, { label: 'MESH!', hex: '#b09a66' }, { label: 'Outsole', hex: '#202124' }, { label: 'Laces', hex: '#f0f0f0' }]; } });
+  assert.equal(fixed.find(x => x.label === 'Upper overlays').hex, '#c9b27c', 'labels match ignoring case');
+  assert.equal(fixed.find(x => x.label === 'Mesh').hex, '#b09a66', 'and punctuation');
+});
+
+test('answers with different labels are read by position when there is one per part', async () => {
+  const parts = [{ label: 'Upper overlays', material: '', hex: '#b8bcc2' }, { label: 'Outsole', material: '', hex: '#202124' }];
+  const plan = await assignColourway({ parts, colourway: { name: 'Gold', swatch: '#c9b27c' }, ask: async () => [{ label: 'Overlays', hex: '#c9b27c' }, { label: 'Sole', hex: '#202124' }] });
+  assert.equal(plan[0].hex, '#c9b27c'); assert.equal(plan[0].changed, true); assert.equal(plan[1].changed, false);
+});
+
+test('the plain rule keeps each part\'s light and dark relative to the others', () => {
+  const plan = leadPlan([{ label: 'Overlays', hex: '#d0d0d0' }, { label: 'Heel counter', hex: '#505050' }, { label: 'Outsole', hex: '#111111' }], '#c9b27c');
+  const [a, b, c] = plan; assert.ok(a.changed && b.changed && !c.changed);
+  const lum = h => parseInt(h.slice(1, 3), 16) * 0.3 + parseInt(h.slice(3, 5), 16) * 0.59 + parseInt(h.slice(5, 7), 16) * 0.11;
+  assert.ok(lum(a.hex) > lum(b.hex), 'the light panel stays lighter than the dark one');
+});
+
+test('the limit counts pictures drawn, not colourways tried: skipped ones do not use up the places', async () => {
+  const parts = [{ label: 'A', material: '', hex: '#808080' }, { label: 'B', material: '', hex: '#303030' }];
+  const asks = { Same: parts.map(p => ({ label: p.label, hex: p.hex })), One: [{ label: 'A', hex: '#c9b27c' }, { label: 'B', hex: '#303030' }], Two: [{ label: 'A', hex: '#2a4a9a' }, { label: 'B', hex: '#303030' }] };
+  const out = await makeColourways({ reference: await ref(), colourways: [{ name: 'Same', swatch: '#808080' }, { name: 'One', swatch: '#c9b27c' }, { name: 'Two', swatch: '#2a4a9a' }], cfg: fx, parts,
+    deps: { assignColourway: async ({ colourway }) => asks[colourway.name].map((g, i) => ({ ...parts[i], from: parts[i].hex, hex: g.hex, name: 'x', code: 'PANTONE 1 C', changed: g.hex !== parts[i].hex })) } });
+  assert.deepEqual(out.tiles.map(t => t.name), ['One', 'Two']); assert.match(out.skipped[0].why, /same as the product already does \(0 of 2 parts/);
 });
