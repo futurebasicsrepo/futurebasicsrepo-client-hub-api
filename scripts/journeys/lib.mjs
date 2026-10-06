@@ -11,6 +11,7 @@ export const ok = (c, m, extra) => { nChecks++; if (!c) { nBad++; cur.fails.push
 // they are skipped there (and only there): every other journey must pass with the gate on and with it off.
 export const NEEDS_GATE_ON = new Set(['J08', 'J09', 'J26', 'J36', 'J37']);
 export async function journey(id, title, fn) {
+  if (process.env.JOURNEY_ONLY && !process.env.JOURNEY_ONLY.split(',').includes(id)) return; // JOURNEY_ONLY=J57,J48 runs just those
   if (process.env.JOURNEY_GATE === 'off' && NEEDS_GATE_ON.has(id)) { console.log(`skip ${id} ${title} (needs the payment gate on)`); return; }
   cur = { id, title, checks: 0, fails: [], ms: 0, error: null }; results.push(cur); const t = Date.now();
   try { await fn(); } catch (e) { cur.error = String(e.stack || e).split('\n').slice(0, 3).join(' | '); nBad++; }

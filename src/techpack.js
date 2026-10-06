@@ -237,7 +237,8 @@ export function techPackCompleteness(data) {
 
 // ---- verification: the acknowledgement chain and signatures for ONE published version ----
 export const calloutKey = (sketch, callout) => `${sketch.id}:${callout.n}`;
-export function emptyVerification(version = 0) { return { version, acks: {}, clientSign: null, brandSign: null, factorySign: null }; }
+// changes: the client's request for changes on this version ({ notes, at, by }); the next published version starts clean.
+export function emptyVerification(version = 0) { return { version, acks: {}, clientSign: null, brandSign: null, factorySign: null, changes: null }; }
 export function normalizeVerification(input, version) {
   const v = input && typeof input === 'object' ? input : {};
   if (Number(v.version) !== Number(version)) return emptyVerification(version);
@@ -246,7 +247,8 @@ export function normalizeVerification(input, version) {
   for (const [key, ack] of Object.entries(v.acks && typeof v.acks === 'object' ? v.acks : {}).slice(0, LIMITS.sketches * LIMITS.callouts)) {
     if (ack && typeof ack === 'object') acks[str(key, 60)] = { by: str(ack.by, 200), at: str(ack.at, 40) };
   }
-  return { version: Number(version) || 0, acks, clientSign: sig(v.clientSign), brandSign: sig(v.brandSign), factorySign: sig(v.factorySign) };
+  const changes = v.changes && typeof v.changes === 'object' && v.changes.notes ? { notes: str(v.changes.notes, 2000), at: str(v.changes.at, 40), by: str(v.changes.by, 200) } : null;
+  return { version: Number(version) || 0, acks, clientSign: sig(v.clientSign), brandSign: sig(v.brandSign), factorySign: sig(v.factorySign), changes };
 }
 
 // Readiness of a published version: the sign-off checklist from the reel, computed, never hand-ticked.
@@ -295,6 +297,24 @@ export function publishedTechPackView(row, extra = {}) {
       translations: extra.translations || {}
     }
   };
+}
+
+// What has to be true before Future Basics publishes a version for the client: both views exist, callouts are placed, every point
+// of measure has a spec and a tolerance, any artwork has Pantones and a placement (a pack with no artwork needs none), and the
+// independent spec check has looked at this exact pack and scored it at the bar. check: { status, score, verdict, stale } or null.
+// Callout acknowledgements are the factory's step, so they are not part of it. Staff can still publish with a written reason.
+export function publishGate(data, { check = null, threshold = 90, checkRequired = true } = {}) {
+  const d = normalizeTechPack(data), r = techPackReadiness(d, emptyVerification(0)), noArt = !d.artwork.length;
+  const problems = r.checks.filter(c => c.key !== 'callouts' && !c.ok && !(noArt && ['artwork', 'placement'].includes(c.key))).map(c => `${c.label} — ${c.detail}`);
+  if (!r.callouts.length) problems.push('No callouts placed yet');
+  if (checkRequired) {
+    if (!check) problems.push('The spec check has not run on this pack yet');
+    else if (check.status === 'pending') problems.push('The spec check is still running');
+    else if (check.status === 'failed') problems.push('The spec check could not finish');
+    else if (check.stale) problems.push('The pack changed after the last spec check');
+    else if (check.verdict !== 'cannot-judge' && Number(check.score) < threshold) problems.push(`The spec check scored ${check.score}/100, under the ${threshold} bar`);
+  }
+  return { ok: problems.length === 0, problems };
 }
 
 // ---- translation: every human-written string in a pack, deduplicated, for the factory-language pass ----

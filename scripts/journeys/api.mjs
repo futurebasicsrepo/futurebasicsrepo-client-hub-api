@@ -368,7 +368,7 @@ await journey('J44', 'the product card follows the tech pack: material, decorati
   const sid = made.json.product?.id || made.json.id; const got = (await call(`/v1/admin/products/${sid}/tech-pack`, { token: admin })).json; const sd = got.techPack?.data || got.seed; sd.bom = [{ component: 'Shell', material: 'Secret wool blend' }]; sd.colorways = [{ name: 'Unreleased' }];
   ok((await call(`/v1/admin/products/${sid}/tech-pack`, { method: 'PUT', token: admin, body: { data: sd } })).status === 200, 'staff save their draft');
   ok(!JSON.stringify((await call('/v1/dashboard', { token: room.token })).json).includes('Secret wool'), 'the customer sees none of it while it is a draft');
-  const pub = await call(`/v1/admin/products/${sid}/tech-pack/publish`, { method: 'POST', token: admin, body: {} }); ok(pub.status === 200, 'staff publish', [pub.status, pub.json.error]);
+  const pub = await call(`/v1/admin/products/${sid}/tech-pack/publish`, { method: 'POST', token: admin, body: { override: 'journey: card check only' } }); ok(pub.status === 200, 'staff publish', [pub.status, pub.json.error]);
   const pc = await card(room.token, sid); ok(pc?.material === 'Secret wool blend' && pc.colorways?.[0] === 'Unreleased', 'publishing puts it on the card', pc);
 });
 
@@ -382,7 +382,7 @@ await journey('J48', 'the console queues follow the real work: tech packs, quote
   // the tech pack chain: submit (on us) → publish (on the client) → the client approves (on us) → we countersign (on the factory)
   await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} });
   q = await queues(); let it = mine(q.approvals, 'review')[0]; ok(it && it.owner === 'us' && it.productId === id && /review it and publish/i.test(it.title) && it.since, 'a submitted pack waits on us: review and publish', it);
-  ok((await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: {} })).status === 200, 'staff publish v1');
+  ok((await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: queue check only' } })).status === 200, 'staff publish v1');
   q = await queues(); it = mine(q.approvals, 'client-approval')[0]; ok(it && it.owner === 'client' && !mine(q.approvals, 'review').length, 'once published it waits on the client, no longer on us', it);
   ok((await call(`/v1/products/${id}/tech-pack/approve`, { method: 'POST', token: room.token, body: { name: 'Pay Tester' } })).status === 200, 'the client approves');
   q = await queues(); it = mine(q.approvals, 'countersign')[0]; ok(it && it.owner === 'us' && /countersign/i.test(it.title), 'and it comes back to us to countersign', it);
@@ -520,6 +520,94 @@ await journey('J56', 'the independent spec check: runs at submit, staff only, st
   // the daily cap
   let last; for (let i = 0; i < 8; i++) { last = await adm(`/v1/admin/products/${id}/tech-pack/check`, { method: 'POST', body: {} }); if (last.status === 429) break; await sleep(120); }
   ok(last.status === 429 && /today/.test(last.json.error), 'staff are stopped at the daily limit with a plain message', [last.status, last.json]);
+});
+
+await journey('J57', 'the handoff from submission to delivery: every step names who it waits on, changes come back as new versions, money and signatures gate the factory', async () => {
+  const room = await newRoom('57'), cid = room.r.json.client.id, id = room.productId, tok = room.token;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const at = () => { const [stage, owner] = sql(`select current_stage||'|'||coalesce(waiting_on,'') from products where id='${id}'`).split('|'); return { stage, owner }; };
+  const cur = () => sql(`select name||'|'||responsible_party from milestones where product_id='${id}' and status='current'`);
+  const waiting = async () => (await call('/v1/dashboard', { token: tok })).json.waiting || [];
+  let w = at(); ok(w.stage === 'brief' && w.owner === 'client' && cur() === 'Brief|client', 'a client-started product is at Brief, waiting on the client', [w, cur()]);
+  // submit → Future Basics reviews
+  ok((await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: tok, body: {} })).status === 200, 'the client submits');
+  w = at(); ok(w.stage === 'concept' && w.owner === 'future-basics' && sql(`select status from milestones where product_id='${id}' and name='Brief'`) === 'complete', 'submitting moves it to Concept, waiting on Future Basics, and completes Brief', w);
+  // the publish gate
+  let pub = await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: {} });
+  ok(pub.status === 409 && pub.json.needsOverride && pub.json.problems.length > 0, 'publishing an unready pack is refused with the reasons', [pub.status, pub.json.problems]);
+  pub = await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: publish v1 anyway' } });
+  ok(pub.status === 200 && pub.json.techPack.version === 1, 'with a written reason it publishes v1', [pub.status, pub.json.error]);
+  ok(/Published before every check passed: journey/.test(JSON.stringify(pub.json.techPack.revisions)), 'and the reason is kept on the version');
+  w = at(); ok(w.owner === 'client' && (await waiting()).some(x => x.kind === 'tech-pack' && x.productId === id), 'v1 waits on the client and shows in their Waiting on you list', w);
+  // the client asks for changes instead of approving
+  ok((await call(`/v1/products/${id}/tech-pack/changes`, { method: 'POST', token: tok, body: { notes: 'x' } })).status === 400, 'an empty change request is refused');
+  const ch = await call(`/v1/products/${id}/tech-pack/changes`, { method: 'POST', token: tok, body: { notes: 'Make the heel tab longer' } });
+  ok(ch.status === 200 && ch.json.techPack.verification.changes?.notes === 'Make the heel tab longer', 'the client asks for changes on v1', [ch.status, ch.json.error]);
+  w = at(); ok(w.owner === 'future-basics' && !(await waiting()).some(x => x.kind === 'tech-pack'), 'it goes back to Future Basics and leaves the client list', w);
+  ok(Number(sql(`select count(*) from notifications where entity_id='${id}' and title like '%asked for changes%'`)) >= 1 && /heel tab/.test(sql(`select string_agg(body,' ') from project_messages where client_id='${cid}'`)), 'staff are told and the request is in the project thread');
+  // v2, approved
+  ok((await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: v2 with the longer tab' } })).status === 200, 'staff publish v2');
+  ok((await call(`/v1/products/${id}/tech-pack/approve`, { method: 'POST', token: tok, body: { name: 'Hand Off' } })).status === 200, 'the client approves v2');
+  w = at(); ok(w.stage === 'development' && w.owner === 'future-basics', 'approval moves it to Development, waiting on Future Basics to quote', w);
+  ok(sql(`select string_agg(tv.version::text||':'||coalesce(tv.verification->'changes'->>'notes','-')||':'||coalesce(tv.verification->'clientSign'->>'name','-'),',' order by tv.version) from tech_pack_versions tv join tech_packs tp on tp.id=tv.tech_pack_id where tp.product_id='${id}'`) === '1:Make the heel tab longer:-,2:-:Hand Off', 'both versions are kept, each with what happened to it');
+  // a factory link follows the approved version only
+  const share = await adm(`/v1/admin/products/${id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 57' } }); ok(share.status === 201, 'staff create a factory link for v2');
+  const token = share.json.url.split('/tp/')[1];
+  ok((await adm(`/v1/admin/products/${id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: v3 the client has not seen' } })).status === 200, 'staff publish v3');
+  let fv = await call(`/v1/tp/${token}`); ok(fv.status === 200 && fv.json.techPack.version === 2 && fv.json.held === true && /waiting for their approval/.test(fv.json.notice), 'the factory still sees v2, read-only, with a note', [fv.status, fv.json.techPack?.version, fv.json.notice]);
+  const key = fv.json.techPack.readiness.callouts[0]?.key;
+  ok((await call(`/v1/tp/${token}/ack`, { method: 'POST', body: { key } })).status === 409, 'and cannot acknowledge anything on it');
+  ok((await call(`/v1/products/${id}/tech-pack/approve`, { method: 'POST', token: tok, body: { name: 'Hand Off' } })).status === 200, 'the client approves v3');
+  fv = await call(`/v1/tp/${token}`); ok(fv.json.techPack.version === 3 && !fv.json.held, 'now the link shows v3');
+  // quote → deposit
+  ok((await adm(`/v1/admin/products/${id}/configuration`, { method: 'PUT', body: { material: 'Mesh', decorationMethod: 'Embroidery', colorways: ['Black'], sizes: ['9', '10'], moq: 100, leadTimeDays: 45, status: 'ready' } })).status === 200, 'staff set the configuration');
+  const tier = await adm(`/v1/admin/products/${id}/price-tiers`, { method: 'POST', body: { minQuantity: 100, unitCostCents: 2000, wholesaleCents: 4000, srpCents: 9000, setupCents: 10000, freightCents: 0, leadTimeDays: 45 } });
+  const quote = await adm(`/v1/admin/products/${id}/quotes/from-tier`, { method: 'POST', body: { priceTierId: tier.json.id, quantity: 100, depositPct: 40 } });
+  ok(quote.status === 201 && quote.json.tech_pack_version === 3 && quote.json.deposit_pct === 40, 'the quote records the version it priced and its deposit', [quote.status, quote.json.tech_pack_version, quote.json.deposit_pct, quote.json.error]);
+  w = at(); const wq = (await waiting()).find(x => x.kind === 'quote'); ok(w.owner === 'client' && wq && wq.totalCents === 410000 && wq.depositPct === 40, 'the quote waits on the client, with its total and deposit', [w, wq]);
+  const dec = await call(`/v1/quotes/${quote.json.id}/decision`, { method: 'POST', token: tok, body: { decision: 'approved' } });
+  ok(dec.status === 200 && dec.json.deposit && dec.json.deposit.amountCents === 164000, 'accepting it invoices a 40% sample deposit', [dec.status, dec.json.deposit, dec.json.error]);
+  w = at(); ok(w.owner === 'client' && (await waiting()).some(x => x.kind === 'invoice' && /deposit/.test(x.title)), 'the deposit waits on the client', w);
+  let sign = await adm(`/v1/admin/products/${id}/tech-pack/sign`, { method: 'POST', body: { name: 'Studio' } });
+  ok(sign.status === 409 && sign.json.depositDue, 'Future Basics cannot sign before the deposit lands', [sign.status, sign.json.error]);
+  ok((await adm(`/v1/admin/products/${id}/shopify-draft-order`, { method: 'POST', body: { quoteId: quote.json.id } })).status === 409, 'and the balance cannot be invoiced yet');
+  const depId = sql(`select id from invoices where product_id='${id}' and kind='deposit'`);
+  ok((await adm(`/v1/admin/invoices/${depId}`, { method: 'PATCH', body: { status: 'paid' } })).status === 200, 'staff mark the deposit paid (a bank transfer)');
+  w = at(); ok(w.stage === 'development' && w.owner === 'future-basics', 'a paid deposit puts it back with Future Basics to sign', w);
+  sign = await adm(`/v1/admin/products/${id}/tech-pack/sign`, { method: 'POST', body: { name: 'Studio' } }); ok(sign.status === 200, 'Future Basics signs v3');
+  w = at(); ok(w.owner === 'factory', 'then it waits on the factory', w);
+  // the factory countersigns → locked → sampling
+  fv = await call(`/v1/tp/${token}`); for (const c of fv.json.techPack.readiness.callouts) await call(`/v1/tp/${token}/ack`, { method: 'POST', body: { key: c.key } });
+  const cs = await call(`/v1/tp/${token}/sign`, { method: 'POST', body: { name: 'Factory Lead' } }); ok(cs.status === 200 && cs.json.techPack.lockedAt, 'the factory countersigns and v3 locks', [cs.status, cs.json.error]);
+  w = at(); ok(w.stage === 'sample' && w.owner === 'factory', 'the product is at Sample, with the factory', w);
+  // production waits for the sample
+  let run = await adm(`/v1/admin/products/${id}/production-runs`, { method: 'POST', body: { quantity: 100 } });
+  ok(run.status === 409 && run.json.needsReason, 'production cannot start before the client approves a sample', [run.status, run.json.error]);
+  const fd = new FormData(); fd.append('file', new Blob([Buffer.from(jpeg().split(',')[1], 'base64')], { type: 'image/jpeg' }), 'sample.jpg');
+  const asset = await call(`/v1/admin/products/${id}/assets?name=Sample%20photos&kind=sample`, { method: 'POST', token: admin, raw: fd });
+  ok(asset.status === 201, 'staff upload the sample photos', [asset.status, asset.json.error]);
+  const ap = await adm(`/v1/admin/products/${id}/approvals`, { method: 'POST', body: { title: 'Approve the sample', kind: 'sample', assetVersionId: asset.json.version.id } });
+  w = at(); const wa = (await waiting()).find(x => x.kind === 'approval'); ok(ap.status === 201 && w.stage === 'approval' && w.owner === 'client' && wa && wa.title === 'Approve the sample', 'a sample approval waits on the client in their list', [ap.status, w, wa]);
+  ok((await call(`/v1/approvals/${ap.json.id}/decision`, { method: 'POST', token: tok, body: { decision: 'approved' } })).status === 200, 'the client approves the sample');
+  w = at(); ok(w.stage === 'production' && w.owner === 'future-basics', 'it moves to Production', w);
+  run = await adm(`/v1/admin/products/${id}/production-runs`, { method: 'POST', body: { quantity: 100 } });
+  ok(run.status === 201 && run.json.tech_pack_version === 3 && at().owner === 'factory', 'the run starts on locked v3, with the factory', [run.status, run.json.tech_pack_version]);
+  await adm(`/v1/admin/production-runs/${run.json.id}/qc`, { method: 'POST', body: { status: 'passed', inspectedUnits: 100, defectUnits: 0 } });
+  w = at(); ok(w.stage === 'delivery' && w.owner === 'factory', 'a passed QC moves it to Delivery', w);
+  const ship = await adm(`/v1/admin/production-runs/${run.json.id}/shipments`, { method: 'POST', body: { status: 'shipped', carrier: 'DHL' } });
+  ok(at().owner === 'client', 'shipped: waiting on the client to receive it');
+  await adm(`/v1/admin/shipments/${ship.json.id}`, { method: 'PATCH', body: { status: 'delivered', deliveredAt: new Date().toISOString() } });
+  ok(at().stage === 'delivered' && sql(`select count(*) from milestones where product_id='${id}' and status<>'complete'`) === '0', 'delivered: every milestone complete');
+  ok(sql(`select status||'|'||milestone from projects where id=(select project_id from products where id='${id}')`) === 'complete|Delivered', 'and the project is complete');
+  ok(Number(sql(`select count(*) from activities where product_id='${id}' and type='flow'`)) >= 12, 'every move is in the product history');
+  // a hand override is checked and logged
+  const mid = sql(`select id from milestones where product_id='${id}' and name='Quality'`);
+  ok((await adm(`/v1/admin/milestones/${mid}`, { method: 'PATCH', body: { status: 'nearly' } })).status === 400, 'a made-up milestone status is refused');
+  ok((await adm(`/v1/admin/milestones/${mid}`, { method: 'PATCH', body: { status: 'blocked', notes: 'Re-inspect carton 4' } })).status === 200 && /Quality set by hand: complete → blocked · Re-inspect carton 4/.test(sql(`select summary from activities where product_id='${id}' order by id desc limit 1`)), 'a hand change is logged with its note');
+  // requests can be closed
+  const rq = await call('/v1/requests', { method: 'POST', token: tok, body: { type: 'question', title: 'Box colour?', details: 'Can the box be black?', productId: id } });
+  ok((await adm(`/v1/admin/requests/${rq.json.id}`, { method: 'PATCH', body: { status: 'done', reply: 'Yes, black boxes.' } })).status === 200 && sql(`select status from requests where id='${rq.json.id}'`) === 'done', 'staff close a request with a reply');
+  ok(!(await adm('/v1/admin/dashboard')).json.queues.approvals.some(x => x.key === `request:${rq.json.id}`), 'and it leaves the queue');
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
