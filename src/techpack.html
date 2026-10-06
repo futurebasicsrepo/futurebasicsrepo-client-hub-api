@@ -160,6 +160,9 @@ body.xchg-on{overflow:hidden}
 .chk-mdl dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 12px;font-size:13px}.chk-mdl dt{color:var(--mute,#8b8b92)}.chk-mdl dd{margin:0;font-variant-numeric:tabular-nums}
 .chk-mdl.big{grid-template-columns:minmax(0,400px) 1fr}.stl-wrap{display:grid;gap:8px;min-width:0}.stl-host{position:relative;width:100%;aspect-ratio:1/1;min-height:220px;border-radius:14px;overflow:hidden;background:radial-gradient(90% 80% at 50% 30%,rgba(255,255,255,.55),rgba(127,127,127,.12));border:1px solid rgba(127,127,127,.22)}.stl-host .stl-msg{position:absolute;inset:0;display:grid;place-items:center;padding:18px;text-align:center;font-size:13px}
 .stl-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.stl-tools .meta{margin-left:auto}.chk-img .sbtn{margin-top:10px}
+.hero-sw{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.hero-sw span{display:inline-flex;align-items:center;gap:8px;padding:5px 11px 5px 6px;border-radius:999px;border:1px solid var(--line);font-size:12.5px}.hero-sw i{width:20px;height:20px;border-radius:50%;border:1px solid rgba(127,127,127,.35);flex:none}.hero-sw em{font-style:normal;color:var(--dim);font-variant-numeric:tabular-nums}
+.hero-alts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.hero-alts button{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:4px;width:92px;font-size:11px;color:var(--dim);text-align:center}.hero-alts img{width:92px;height:92px;object-fit:contain;border-radius:10px;background:#ecebe4;border:2px solid transparent}.hero-alts .on img{border-color:#1c6b42}.hero-alts button:focus-visible img{outline:2px solid #1c6b42}
+.chk-bar.wait i{width:40%;animation:herowait 1.6s ease-in-out infinite alternate}@keyframes herowait{from{margin-left:0}to{margin-left:60%}}@media(prefers-reduced-motion:reduce){.chk-bar.wait i{animation:none;margin-left:30%}}
 .chk-bar{height:6px;border-radius:6px;background:rgba(127,127,127,.2);overflow:hidden;margin:10px 0 6px}.chk-bar i{display:block;height:100%;width:var(--w,5%);background:linear-gradient(90deg,#4bff9a,#ff8a5c);transition:width .8s ease}
 @media(max-width:700px){.chk-mdl,.chk-mdl.big{grid-template-columns:minmax(0,1fr)}.stl-host{aspect-ratio:4/3}.chk-shots{grid-template-columns:minmax(0,1fr)}.chk-attr{grid-template-columns:96px 1fr}.chk-attr span:last-child{grid-column:1/-1}.chk-verdict{flex-direction:column;align-items:flex-start}}
 .langbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}.langbar button{padding:6px 13px;border:1px solid var(--line);border-radius:999px;background:#fff;color:inherit;font:inherit;font-size:12.5px;cursor:pointer}.langbar button.on{background:#141416;border-color:#141416;color:#fff}.more{position:relative}.more>summary{list-style:none;cursor:pointer}.more>summary::-webkit-details-marker{display:none}.top .acts .more>summary.btn{font:400 12.5px/1.5 'Space Grotesk',system-ui,sans-serif;padding:8px 13px;text-transform:none;letter-spacing:0;color:#fff;gap:8px}.more>summary:after{content:"";flex:none;width:6px;height:6px;margin:-4px 0 0;border:solid currentColor;border-width:0 1.6px 1.6px 0;transform:rotate(45deg)}.more[open]>summary:after{margin:3px 0 0;transform:rotate(-135deg)}
@@ -316,11 +319,11 @@ function panelCheck(){
       const lp=c.loop,exch=lp&&lp.events.length?`<h3 class="chk-h">The assistants' exchange${lp.startScore!=null?` · ${lp.startScore}${lp.finalScore!=null&&lp.finalScore!==lp.startScore?' → '+lp.finalScore:''}/100`:''} <span class="chk-field">${lp.trigger==='build'?'ran after the draft':'handed back by staff'}</span> ${lp.outcome==='passed'?'<span class="chk-pill ok">Ready</span>':lp.outcome==='needs-review'?`<span class="chk-pill bad">Not ready · the bar is ${lp.bar||90}</span>`:''}</h3><div class="chk-ex">${lp.events.map(e=>`<div class="chk-ev ${esc(e.agent)}"><b>${e.agent==='design'?'Design':e.agent==='developer'?'Developer':'·'}</b><span>${esc(e.text)}${e.score!=null?` <b class="chk-sc">${e.score}/100</b>`:''}</span></div>`).join('')}</div>`:'';
       const live=lp?lp.changes.filter(x=>!x.undone):[],chg=lp&&lp.changes.length?`<h3 class="chk-h">What the design assistant changed${live.length>1?` <button type="button" class="sbtn" data-act="undochange" data-loop="${esc(lp.id)}">Undo all</button>`:''}</h3>${lp.changes.map(x=>`<div class="chk-chg ${x.undone?'undone':''}"><div><b>${esc(x.label)}</b><p><s>${esc(x.from||'(empty)')}</s> → ${esc(x.to)}</p>${x.reason?`<p class="meta">${esc(x.reason)}</p>`:''}</div>${x.undone?'<span class="meta">undone</span>':`<button type="button" class="sbtn" data-act="undochange" data-loop="${esc(lp.id)}" data-change="${esc(x.id)}">Undo</button>`}</div>`).join('')}`:'';
       body=noteHtml+shots+`<div class="chk-verdict"><div class="chk-score ${vc}"><b>${l.score}</b><small>/100</small></div><div><span class="chk-pill ${vc}">${esc(vl)}</span><p>${esc(l.summary)}</p></div></div>${attrs}${disc}${chg}${exch}
-        <p class="meta chk-meta">Checked ${fmtDate(l.completedAt)} · ${l.packVersion?'pack v'+l.packVersion:'draft pack'} · ${l.trigger==='submit'?'ran when the client submitted':'run by staff'} · written spec compared by ${esc(l.checkModel||'—')}${l.imageModel?' · drawn by '+esc(l.imageModel):''}</p>`;
+        <p class="meta chk-meta">Checked ${fmtDate(l.completedAt)} · ${l.packVersion?'pack v'+l.packVersion:'draft pack'} · ${l.trigger==='submit'?'ran when the client submitted':'run by staff'} · written spec compared by ${esc(l.checkModel||'—')}${l.imageModel?' · drawn by '+esc(l.imageModel):''}${l.heroId?' · guided by the hero image':''}</p>`;
     }
     if(c.history?.length)body+=`<p class="meta chk-meta">Earlier checks: ${c.history.map(h=>h.status==='done'?`${fmtDate(h.completedAt)} · ${h.score}`:`${fmtDate(h.createdAt)} · ${h.status}`).join(' | ')}</p>`;
   }
-  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check"><section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section>${panelModel()}</div>`;
+  return `<div class="panel ${S.tab==='check'?'on':''}" data-panel="check">${panelHero()}<section class="block">${head('11','check','Spec check','independent of the draft: built from the BOM, POMs and colours alone',run+hb)}${body}</section>${panelModel()}</div>`;
 }
 // The STL viewer: the script loads when someone first asks for it, the file is fetched with the staff sign-in, and a parsed model is kept so the panel can redraw without fetching again.
 const stlCache=new Map();let stlView=null,stlMounting='';
@@ -339,6 +342,26 @@ async function mountStl(host){
   finally{stlMounting=''}
 }
 new MutationObserver(()=>{const h=document.querySelector('.stl-host[data-stl]:not([data-mounted])');if(h)mountStl(h);else if(stlView&&!document.body.contains(stlView.canvas)){stlView.destroy();stlView=null}}).observe(document.body,{childList:true,subtree:true});
+function panelHero(){
+  const c=S.check;if(!c||c.error)return '';
+  const h=c.hero,cfg=c.heroConfig||{},hasPhoto=(S.pack?.sketches||[]).some(x=>x.image),photo=(S.pack?.sketches||[]).filter(x=>x.image&&!/^cutout-/.test(String(x.id||'')))[0]?.image,gen=S.heroBusy||h?.status==='generating';
+  const tools=(h&&h.status==='ready'?`<button type="button" class="sbtn" data-act="heroapprove" data-id="${esc(h.id)}">Approve this hero image</button>`:'')+`<button type="button" class="sbtn" data-act="herogen" ${gen||!cfg.configured||!hasPhoto?'disabled':''} title="The image model redraws the photo clean, three tries, and the most faithful is picked. It uses image credits.">${gen?'Making…':h&&['ready','approved'].includes(h.status)?'Make new ones':'Make hero image'}</button>`;
+  let body;
+  if(!cfg.configured)body=`<p class="note">No image model is connected. Add OPENAI_API_KEY to the service to make a hero image.</p>`;
+  else if(!hasPhoto)body='<p class="meta">Add a reference photo first: the hero image is made from it.</p>';
+  else if(gen)body=`<p class="note">The image model is redrawing the photo clean (three tries, then the most faithful is picked). This takes one to three minutes. You can leave this page.</p><div class="chk-bar wait"><i></i></div>`;
+  else if(!h)body=`<p class="meta">No hero image yet. It is made when the draft is written, or press <b>Make hero image</b>. The image model gets the client's photo as its reference and redraws the same product clean; you approve it, and the render, the spec check and the 3D model all start from that picture instead of from words alone.</p>`;
+  else if(h.status==='failed')body=`<p class="note">It did not work: ${esc(h.error||'unknown error')}. Press <b>Make hero image</b> to try again.</p>`;
+  else{
+    const ok=h.status==='approved';
+    body=`<div class="chk-shots"><figure><div class="chk-img">${photo?`<img src="${photo}" alt="The client's photo">`:''}</div><figcaption>The client's photo</figcaption></figure><figure><div class="chk-img">${h.image?`<img src="${h.image}" alt="The hero image">`:'<span class="meta">Image not found</span>'}</div><figcaption>The hero image · ${esc(h.model||'')}</figcaption></figure></div>
+      <p style="margin:0 0 6px"><span class="chk-pill ${ok?'ok':'warn'}">${ok?'Approved '+(h.approvedAt?fmtDate(h.approvedAt):''):'Waiting for approval'}</span> <span class="meta">Faithful to the photo: ${h.score??'–'}/100${h.drift!=null?` · colours within ${h.drift} of the photo's`:''}</span></p>
+      ${h.issues&&!/^none$/i.test(h.issues)?`<p class="note" style="margin:8px 0">Look closely: ${esc(h.issues)}</p>`:''}
+      ${h.candidates.length>1?`<div class="hero-alts" role="group" aria-label="Other tries">${h.candidates.map(a=>`<button type="button" class="${a.index===h.chosen?'on':''}" data-act="herochoose" data-id="${esc(h.id)}" data-i="${a.index}">${a.thumb?`<img src="${a.thumb}" alt="Try ${a.index+1}">`:'<span></span>'}<span>${a.index===h.chosen?'Chosen · ':''}${a.total}/100</span></button>`).join('')}</div>`:''}
+      ${h.measured&&h.measured.length?`<h3 class="chk-h">Colours measured from the photo</h3><div class="hero-sw">${h.measured.map(m=>`<span><i style="background:${esc(m.hex)}"></i>${esc(m.name)} <em>${esc(m.hex)} · ${Math.round(m.share*100)}%</em></span>`).join('')}</div><p class="meta">Taken from the pixels of the product, not estimated.</p>`:''}`;
+  }
+  return `<section class="block" data-hero>${head('10','hero','Hero image','the photo redrawn clean: approve it and everything after is built from it',tools)}${body}</section>`;
+}
 function panelModel(){
   const c=S.check;if(!c||c.error)return '';
   const m=c.model,cfg=c.modelConfig||{},g=c.modelGate||{},hasPhoto=(S.pack?.sketches||[]).some(x=>x.image),running=S.modelBusy||m?.status==='running';
@@ -363,7 +386,7 @@ async function loadCheck(){
   clearTimeout(S.checkTimer);
   try{S.check=await api(`/v1/admin/products/${S.product.id}/tech-pack/check`)}catch(e){S.check={error:e.status===404?'Save the tech pack to run a check.':e.message}}
   const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();renderTabs();
-  if(S.check?.latest?.status==='pending'||S.check?.model?.status==='running')S.checkTimer=setTimeout(loadCheck,S.check?.model?.status==='running'?5000:4000);
+  if(S.check?.latest?.status==='pending'||S.check?.model?.status==='running'||S.check?.hero?.status==='generating')S.checkTimer=setTimeout(loadCheck,S.check?.model?.status==='running'||S.check?.hero?.status==='generating'?5000:4000);
 }
 const TAB_LIST=()=>MODE==='admin'?[...TABS,['check','Check','M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3zM9 12l2 2 4-4']]:TABS;
 function renderTabs(){const r=readiness();const badge={calls:r&&r.pendingCalloutKeys.length?'●':'',sign:r?.locked?'✓':'',check:S.check?.latest&&S.check.latest.status==='pending'?'…':(S.check?.latest?.verdict==='does-not-resemble'?'●':'')};$('#tabs').style.gridTemplateColumns=`repeat(${TAB_LIST().length},1fr)`;$('#tabs').innerHTML=TAB_LIST().map(([k,l,d])=>`<button type="button" class="${S.tab===k?'on':''}" data-tab="${k}"><svg viewBox="0 0 24 24"><path d="${d}" stroke-linecap="round" stroke-linejoin="round"/></svg><b>${esc(MODE==='client'?(k==='sign'&&S.draft?'Submit':CLIENT_TAB_LABELS[k]||l):l)}${badge[k]?' '+badge[k]:''}</b></button>`).join('')}
@@ -584,6 +607,9 @@ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');i
   if(act==='morerow'){const tr=b.closest('tr');tr.classList.toggle('more');b.textContent=tr.classList.contains('more')?'Fewer details':b.dataset.n;return}
   if(act==='xhide'){xHide();return}if(act==='xshow'){xShow();return}if(act==='xclose'){xClose();document.querySelector('.ai-banner')?.scrollIntoView({block:'center',behavior:'smooth'});return}
   if(act==='handback'){handBack();return}if(act==='undochange'){undoChanges(b.dataset.loop,b.dataset.change||null);return}
+  if(act==='herogen'){(async()=>{try{if(S.dirty)await save();S.heroBusy=true;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();await api(`/v1/admin/products/${S.product.id}/tech-pack/hero`,{method:'POST',body:'{}'});toast('Making the hero image')}catch(e){toast(e.message)}finally{S.heroBusy=false;loadCheck()}})();return}
+  if(act==='heroapprove'){(async()=>{try{await api(`/v1/admin/tech-pack-heroes/${b.dataset.id}/approve`,{method:'POST',body:'{}'});toast('Hero image approved')}catch(e){toast(e.message)}finally{loadCheck()}})();return}
+  if(act==='herochoose'){(async()=>{try{await api(`/v1/admin/tech-pack-heroes/${b.dataset.id}/choose`,{method:'POST',body:JSON.stringify({index:Number(b.dataset.i)})})}catch(e){toast(e.message)}finally{loadCheck()}})();return}
   if(act==='view3d'){S.view3d=b.dataset.id;const el=document.querySelector('.panel[data-panel="check"]');if(el)el.outerHTML=panelCheck();return}
   if(act==='stlreset'){stlView?.reset();return}
   if(act==='stlup'){S.stlUp=S.stlUp==='z'?'y':'z';stlView?.setUp(S.stlUp);b.textContent='Up: '+(S.stlUp==='z'?'Z':'Y');return}

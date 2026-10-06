@@ -114,13 +114,33 @@ async function openaiImage(prompt, cfg) {
   throw new Error('The image model returned no image');
 }
 
+// An edit with reference images: the images go in, the model redraws them as the prompt says. Used for the hero image and for renders guided by it.
+export async function openaiEdit({ images, prompt, cfg }) {
+  const fd = new FormData();
+  fd.append('model', cfg.model); fd.append('prompt', prompt); fd.append('size', cfg.size || '1024x1024'); fd.append('quality', cfg.quality || 'medium'); fd.append('n', '1'); fd.append('output_format', 'jpeg');
+  const fidelity = process.env.IMAGE_INPUT_FIDELITY || (/^gpt-image-1/.test(String(cfg.model)) ? 'high' : ''); // the newer models do not take it
+  if (fidelity && fidelity !== 'off') fd.append('input_fidelity', fidelity);
+  images.slice(0, 4).forEach((b, i) => fd.append('image[]', new Blob([b], { type: 'image/jpeg' }), `reference-${i + 1}.jpg`));
+  const res = await trackedFetch('imagegen', 'https://api.openai.com/v1/images/edits', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd, signal: AbortSignal.timeout(180000) });
+  if (!res.ok) { const t = await res.text().catch(() => ''); throw Object.assign(new Error(`The image model refused the request (${res.status}): ${clip(t, 200)}`), { status: res.status }); }
+  const j = await res.json(), item = j?.data?.[0];
+  if (item?.b64_json) return Buffer.from(item.b64_json, 'base64');
+  if (item?.url) { const r = await fetch(item.url); if (r.ok) return Buffer.from(await r.arrayBuffer()); }
+  throw new Error('The image model returned no image');
+}
+
+// The render when an approved hero exists: the hero goes in as the reference, and the tech pack says what it must show.
+export function guidedPrompt(brief, view) {
+  return `The reference image is the approved picture of this product. Draw the same product as a photorealistic studio photograph, ${view.camera}.\nKeep its exact shape, proportions, materials, textures, colours and details. Where the tech pack below says something different from the reference image, follow the tech pack. Do not add any feature, logo, text, colour or material that is in neither the reference image nor the tech pack.\n\nTECH PACK:\n${renderPrompt(brief, view)}`.slice(0, 7000);
+}
+
 // Returns [{ view, label, buffer }]. Throws if the model fails; the caller decides whether the check goes on without a render.
-export async function renderViews(brief, views, cfg = imageConfig()) {
+export async function renderViews(brief, views, cfg = imageConfig(), hero = null) {
   if (!cfg.configured) return [];
   const out = [];
   for (const view of views) {
-    const prompt = renderPrompt(brief, view);
-    const buffer = cfg.provider === 'openai' ? await timed('imagegen-render', () => openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
+    const prompt = hero && cfg.provider === 'openai' ? guidedPrompt(brief, view) : renderPrompt(brief, view);
+    const buffer = cfg.provider === 'openai' ? await timed('imagegen-render', () => hero ? openaiEdit({ images: [hero], prompt, cfg }) : openaiImage(prompt, cfg)) : await fixtureRender(brief, view);
     out.push({ view: view.id, label: view.label, buffer, prompt });
   }
   return out;
@@ -166,6 +186,11 @@ Rules:
 - Score 90-100: a factory would build the same product. 75-89: resembles, with fixable details. 50-74: partly, a visible feature or material is wrong. Below 50: a different product.
 - Be specific and short. The reader is a production manager deciding whether to publish.`;
 
+// When the render was guided by an approved hero image (itself made from the photo) the reviewer is told so: the render now carries the photo's look,
+// and what the pack adds or contradicts is what shows up as a difference.
+const SYSTEM_GUIDED = SYSTEM + `
+Note on (C): these renders were drawn from an approved reference picture of the product (made from the client's photo) together with the tech pack. They should look like the photo. Where the pack says something the photo does not show (another material, colour, detail or proportion), the render follows the pack, so report that as a discrepancy and name the pack row. Also report anything in the render that the written spec (D) does not mention, because the pack is missing it.`;
+
 async function callJson(system, content, { model = CHECK_MODEL(), maxTokens = 3000 } = {}) {
   const client = new Anthropic();
   const base = { model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] };
@@ -202,7 +227,7 @@ function fixtureVerdict(brief, { renders }) {
     discrepancies: score < 75 ? [{ severity: 'high', field: 'bom', title: 'Test discrepancy', detail: 'The fixture score is below 75, so one difference is reported.', suggestion: 'Check the first BOM row against the photo.' }] : [] };
 }
 
-export async function compareToPhoto({ photos = [], promptText = '', renders = [], brief }) {
+export async function compareToPhoto({ photos = [], promptText = '', renders = [], brief, guided = false }) {
   if (!photos.length && !clip(promptText, 10)) return { verdict: normalizeVerdict({ score: 0, verdict: 'cannot-judge', summary: 'There is no photo or prompt to compare the pack with.' }), model: null };
   if (process.env.AI_FIXTURE) return { verdict: normalizeVerdict(fixtureVerdict(brief, { renders })), model: 'fixture' };
   const content = [{ type: 'text', text: `(A) The client's reference photo${photos.length === 1 ? '' : 's'}:` }];
@@ -214,7 +239,7 @@ export async function compareToPhoto({ photos = [], promptText = '', renders = [
     for (const r of renders.slice(0, 2)) { content.push({ type: 'text', text: `Render: ${r.label}` }); content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: r.buffer.toString('base64') } }); }
   } else content.push({ type: 'text', text: '(C) No render is available.' });
   content.push({ type: 'text', text: `(D) The written spec:\n${renderPrompt(brief)}` });
-  const { obj, model } = await timed('anthropic', () => callJson(SYSTEM, content));
+  const { obj, model } = await timed('anthropic', () => callJson(guided ? SYSTEM_GUIDED : SYSTEM, content));
   return { verdict: normalizeVerdict(obj), model };
 }
 
@@ -226,13 +251,13 @@ export function referencePhotos(input) {
   return [...withImage.filter(s => /reference|photo/i.test(s.label)), ...withImage.filter(s => !/reference|photo/i.test(s.label))].map(s => s.image).slice(0, 2);
 }
 
-export async function runSpecCheck({ pack, product = {}, promptText = '', cfg = imageConfig() }) {
+export async function runSpecCheck({ pack, product = {}, promptText = '', cfg = imageConfig(), hero = null }) {
   const brief = specBrief(pack, { title: product.title, productType: product.product_type });
   const views = viewsFor(brief.kind).slice(0, Math.max(1, Math.min(2, Number(process.env.CHECK_VIEWS) || 1)));
   let renders = [], renderStatus = cfg.configured ? 'rendered' : 'none', renderError = null;
   if (cfg.configured) {
-    try { renders = await renderViews(brief, views, cfg); } catch (e) { renders = []; renderStatus = 'failed'; renderError = clip(e.message, 300); }
+    try { renders = await renderViews(brief, views, cfg, hero); } catch (e) { renders = []; renderStatus = 'failed'; renderError = clip(e.message, 300); }
   }
-  const { verdict, model } = await compareToPhoto({ photos: referencePhotos(pack), promptText, renders, brief });
+  const { verdict, model } = await compareToPhoto({ photos: referencePhotos(pack), promptText, renders, brief, guided: Boolean(hero) });
   return { brief, views, renders, renderStatus, renderError, verdict, provider: cfg.provider, imageModel: cfg.model, checkModel: model };
 }
