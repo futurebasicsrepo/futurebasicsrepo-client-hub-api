@@ -699,6 +699,13 @@ export async function migrate() {
       notes text,
       created_at timestamptz not null default now()
     );
+    alter table partners add column if not exists job_title text;
+    alter table partners add column if not exists website text;
+    alter table partners add column if not exists moq_note text;
+    alter table partners add column if not exists rating integer;
+    alter table partners add column if not exists supplier_id uuid references suppliers(id) on delete set null;
+    alter table partners add column if not exists created_by uuid references users(id) on delete set null;
+    alter table partners add column if not exists updated_at timestamptz not null default now();
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,

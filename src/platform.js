@@ -86,6 +86,12 @@ export async function runChecks(d) {
       if ((n.failed24 || 0) > 0 && n.failed24 >= (n.done24 || 0) + 1) return { status: 'warn', summary: `${n.failed24} model${n.failed24 === 1 ? '' : 's'} failed in the last 24 hours (credits, a key, or a photo it could not read)`, facts };
       return { status: 'ok', summary: `${cfg.model} makes the models${tel ? ` · ${tel.calls} call${tel.calls === 1 ? '' : 's'} since deploy` : ''}`, facts };
     }),
+    runCheck('studio', 'Automatic studio (daily limit)', 'integration', async () => {
+      const n = d.studioStats || { used: 0, cap: 0 }, off = env.HERO_AUTO === 'off', facts = [['Packs given the full studio, last 24 h', String(n.used)], ['Daily limit', String(n.cap)], ['Reference picture', off ? 'off (HERO_AUTO)' : 'automatic'], ['Colourways', env.CW_AUTO === 'off' ? 'off (CW_AUTO)' : 'automatic'], ['3D shape', env.MESH_AUTO === 'off' ? 'off (MESH_AUTO)' : 'automatic']];
+      if (off) return { status: 'off', summary: 'The studio does not run by itself (HERO_AUTO=off): staff start it from the Check tab', facts };
+      if (n.cap > 0 && n.used >= n.cap) return { status: 'warn', summary: `The daily limit is reached (${n.used} of ${n.cap}): new packs wait for their reference picture. Raise STUDIO_DAILY_PACKS or run it by hand.`, facts };
+      return { status: 'ok', summary: `${n.used} of ${n.cap} packs today`, facts };
+    }),
     runCheck('cutout', 'Photo cutout service', 'integration', async () => {
       const p = d.cutoutProvider();
       if (!p) return { status: 'off', summary: 'Not set up: reference photos are not cut out', facts: [] };
