@@ -597,6 +597,23 @@ export async function migrate() {
       completed_at timestamptz
     );
     create index if not exists tech_pack_heroes_pack_idx on tech_pack_heroes(tech_pack_id, created_at desc);
+    create table if not exists tech_pack_colourways (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      status text not null default 'running',
+      trigger text,
+      requested_by uuid,
+      progress jsonb not null default '{}'::jsonb,
+      made int not null default 0,
+      skipped jsonb not null default '[]'::jsonb,
+      reference text,
+      error text,
+      created_at timestamptz not null default now(),
+      completed_at timestamptz
+    );
+    create index if not exists tech_pack_colourways_pack_idx on tech_pack_colourways(tech_pack_id, created_at desc);
     alter table tech_pack_heroes add column if not exists shared_at timestamptz;
     alter table tech_pack_checks add column if not exists hero_id uuid;
     create index if not exists tech_pack_models_product_idx on tech_pack_models(product_id, created_at desc);

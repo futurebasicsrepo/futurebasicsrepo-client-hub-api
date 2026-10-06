@@ -20,6 +20,7 @@ import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPaym
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
+import { makeColourways } from './panels.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -2415,7 +2416,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     // the colours the assistant saw are replaced by the colours the pixels have, so the colourways and the tiles made from them are real
     // only measured on a clean cut-out: on a raw photo a busy backdrop would be counted as product colour, and the assistant's own colours are better than that
     if(original&&cutout?.image){try{const snapped=snapColours(drafted,await measureColours(cutout.image));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}
-    if(original){try{drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
+    if(original){try{if(!cwOn())drafted.renderings=mergeColorwayTiles(drafted.renderings,await renderColorways(cutout?.image||photo,drafted.colorways));if(cutout)placeCutout(drafted,cutout)}catch(e){app.log.warn({err:e.message,packId},'colourway tiles not rendered')}}
     // 2. merge with what the client has saved meanwhile — under a row lock so a save cannot slip in between
     const origSeed=normalizeTechPack({...seedTechPack({product:{title:row.title,product_type:row.product_type,description_html:row.description_html}}),sketches:data.sketches});origSeed.style.designer=data.style.designer;
     const db=await pool.connect();let merged;
@@ -2709,7 +2710,7 @@ app.get('/v1/admin/products/:id/tech-pack/check',{preHandler:[authenticate,admin
   const heroRow=(await pool.query(`select * from tech_pack_heroes where product_id=$1 and status<>'superseded' order by (status in ('generating','ready','approved')) desc,created_at desc limit 1`,[req.params.id])).rows[0];
   const hero=await heroView(heroRow),heroCfg=heroConfig();
   const model=await modelView(mrows[0],{withThumb:true}),gate=await modelGate({id:pack.id,updated_at:pack.updated_at});if(model)model.stale=Boolean(model.status==='done'&&model.packVersion!==(pack.version||0));
-  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),hero,heroConfig:{provider:heroCfg.provider,configured:heroCfg.configured,model:heroCfg.model||null},model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
+  return {enabled:aiEnabled(),loopEnabled:LOOP_ON(),loop:loops[0]||null,loopHistory:loops.slice(1),hero,colourways:await latestColourways(pack.id),heroConfig:{provider:heroCfg.provider,configured:heroCfg.configured,model:heroCfg.model||null},model,modelGate:gate,modelAuto:process.env.MESH_AUTO!=='off',modelConfig:{provider:mc.provider,configured:mc.configured,model:mc.model},image:{provider:img.provider,configured:img.configured,model:img.model,note:img.note||null},latest,
     stale:Boolean(rows[0]&&rows[0].status==='done'&&rows[0].pack_updated_at&&new Date(pack.updated_at)>new Date(rows[0].pack_updated_at)),
     history:await Promise.all(rows.slice(1).map(r=>checkView(r))),manualLimit:CHECK_MANUAL_PER_DAY,
     renderChoices:rows.filter(r=>r.status==='done'&&r.render_status==='rendered'&&(r.renders||[]).length).map(r=>({id:r.id,score:r.score,completedAt:r.completed_at,packVersion:r.pack_version,stale:Boolean(r.pack_updated_at&&new Date(pack.updated_at)>new Date(r.pack_updated_at))}))};
@@ -2818,6 +2819,11 @@ app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,admi
   await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status='approved'`,[h.tech_pack_id,h.id]);
   await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now() where id=$1`,[h.id,req.auth.sub]);
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,req.auth.sub,`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id}]).catch(()=>{});
+  // with a hero a person has signed off, the colourway pictures are drawn from it, part by part (CW_AUTO=off leaves that to the button)
+  if(process.env.CW_AUTO!=='off'&&cwOn()){
+    const row=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[h.tech_pack_id])).rows[0];
+    if(row)startColourways(row,{actor:req.auth.sub,trigger:'hero'}).then(r=>{if(r.id&&!r.already)setImmediate(()=>runColourways(r.id))}).catch(()=>{});
+  }
   // the exchange may already have passed while it waited for this: now the 3D model can start
   if(process.env.MESH_AUTO!=='off'&&meshConfig().configured){
     const lp=(await pool.query(`select outcome,final_check_id from tech_pack_loops where tech_pack_id=$1 and status='done' order by created_at desc limit 1`,[h.tech_pack_id])).rows[0];
@@ -2847,6 +2853,83 @@ app.post('/v1/admin/tech-pack-heroes/:id/choose',{preHandler:[authenticate,admin
   return {chosen:i};
 });
 
+// ---- Colourway pictures, made by labelled panel: the product is broken up into its parts, each part gets a colour per colourway, the image model draws it
+// from the approved hero, and a vision check compares it with the plan. Runs in the background; every finished picture is saved onto the pack as it lands. ----
+const CW_PER_PRODUCT_DAY=Number(process.env.CW_PER_PRODUCT_DAY)||4,CW_STALE_MS=25*60*1000;
+const cwOn=()=>heroConfig().configured;
+async function startColourways(row,{actor=null,trigger='manual'}={}){
+  const cfg=heroConfig();
+  if(!cfg.configured)return {unavailable:cfg.provider==='off'?'Colourway pictures are switched off (HERO_DISABLED).':'No image model is connected: add OPENAI_API_KEY to the service.'};
+  const pack=normalizeTechPack(row.data);
+  if(!pack.colorways.some(c=>c.swatch))return {noColourways:true};
+  if(!packPhotos(row.data)[0]&&!pack.sketches.some(sk=>sk.image))return {noPhoto:true};
+  const open=(await pool.query(`select id from tech_pack_colourways where tech_pack_id=$1 and status='running' and created_at>now()-interval '25 minutes' limit 1`,[row.id])).rows[0];
+  if(open)return {already:true,id:open.id};
+  const n=Number((await pool.query(`select count(*)::int n from tech_pack_colourways where product_id=$1 and created_at>now()-interval '24 hours'`,[row.product_id])).rows[0].n);
+  if(n>=CW_PER_PRODUCT_DAY)return {limited:`That is ${CW_PER_PRODUCT_DAY} colourway runs on this product today. Try again tomorrow.`};
+  const made=(await pool.query(`insert into tech_pack_colourways(tech_pack_id,product_id,client_id,trigger,requested_by) values($1,$2,$3,$4,$5) returning id`,[row.id,row.product_id,row.client_id,trigger,actor])).rows[0];
+  return {id:made.id};
+}
+// The picture the colourways are drawn from: the approved hero, else the hero waiting for approval, else the clean cut-out, else the photo.
+async function colourwayReference(row,pack){
+  const hero=await currentHero(row.tech_pack_id||row.id);
+  if(hero){try{return {buffer:await heroBuffer(hero),from:hero.status==='approved'?'the approved hero image':'the hero image (not yet approved)'}}catch{}}
+  const dataUrl=pack.sketches.find(sk=>sk.image&&/^cutout-/.test(String(sk.id||'')))?.image,from=dataUrl?'the cut-out of the photo':'the photo',url=dataUrl||packPhotos(row.data)[0],m=/^data:image\/[a-z+]+;base64,(.+)$/i.exec(String(url||''));
+  return m?{buffer:Buffer.from(m[1],'base64'),from}:null;
+}
+// Saves one finished picture (and the parts list) onto the pack. The pack's edit time is left alone: a picture arriving must not make the spec check look out of date.
+async function saveColourwayTile(packId,tile,parts,{note}){
+  const c=await pool.connect();
+  try{
+    await c.query('begin');const cur=(await c.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!cur){await c.query('rollback');return}
+    const data=normalizeTechPack(cur.data);
+    data.parts=parts;
+    const own=data.renderings.filter(r=>!/^cw-/.test(String(r.id||''))),old=data.renderings.filter(r=>/^cw-/.test(String(r.id||''))&&r.parts?.length&&r.id!==tile.id);
+    data.renderings=[...own,...old,{id:tile.id,name:`Colourway — ${tile.name}`,note,image:`data:image/jpeg;base64,${tile.buffer.toString('base64')}`,parts:tile.parts}].slice(0,6);
+    await c.query('update tech_packs set data=$2 where id=$1',[packId,normalizeTechPack(data)]);await c.query('commit');
+  }catch(e){await c.query('rollback').catch(()=>{});throw e}finally{c.release()}
+}
+async function runColourways(id){
+  const j=(await pool.query('select j.*,tp.data,p.title from tech_pack_colourways j join tech_packs tp on tp.id=j.tech_pack_id join products p on p.id=j.product_id where j.id=$1',[id])).rows[0];
+  if(!j||j.status!=='running')return;
+  const step=async progress=>{await pool.query('update tech_pack_colourways set progress=$2 where id=$1',[id,JSON.stringify(progress)]).catch(()=>{})};
+  try{
+    const pack=normalizeTechPack(j.data),ref=await colourwayReference(j,pack);if(!ref)throw new Error('There is no picture to draw the colourways from.');
+    await pool.query('update tech_pack_colourways set reference=$2 where id=$1',[id,ref.from]);
+    const note=`Drawn from ${ref.from} · each part coloured as listed · concept visual, not a factory spec`;
+    const out=await makeColourways({reference:ref.buffer,colourways:pack.colorways,meta:{title:j.title,category:pack.style.category},onStep:step,onTile:(tile,parts)=>saveColourwayTile(j.tech_pack_id,tile,parts,{note})});
+    // the pack may carry the parts even when no tile passed: staff can still read the breakdown
+    if(!out.tiles.length&&out.parts?.length){const c=await pool.connect();try{const cur=(await c.query('select data from tech_packs where id=$1',[j.tech_pack_id])).rows[0];if(cur){const d=normalizeTechPack(cur.data);d.parts=out.parts;await c.query('update tech_packs set data=$2 where id=$1',[j.tech_pack_id,normalizeTechPack(d)])}}finally{c.release()}}
+    await pool.query(`update tech_pack_colourways set status='done',made=$2,skipped=$3,progress='{}'::jsonb,completed_at=now() where id=$1`,[id,out.tiles.length,JSON.stringify(out.skipped)]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[j.client_id,j.product_id,`Colourway pictures drawn for ${j.title} by labelled part: ${out.tiles.length} made${out.skipped.length?`, ${out.skipped.length} skipped`:''}`,{techPackId:j.tech_pack_id,colourwayRunId:id}]).catch(()=>{});
+  }catch(e){
+    app.log.warn({err:String(e.message||e).slice(0,300),colourwayRunId:id},'colourway pictures failed');
+    await pool.query(`update tech_pack_colourways set status='failed',error=$2,progress='{}'::jsonb,completed_at=now() where id=$1`,[id,checkErrorText(e).replace(/\(Anthropic\)/,'')]).catch(()=>{});
+  }
+}
+function colourwayView(r){
+  if(!r)return null;
+  const stale=r.status==='running'&&Date.now()-new Date(r.created_at)>CW_STALE_MS;
+  return {id:r.id,status:stale?'failed':r.status,progress:r.progress||{},made:r.made,skipped:r.skipped||[],reference:r.reference||null,error:stale?'It took too long and was stopped. Try again.':r.error||null,createdAt:r.created_at,completedAt:r.completed_at,running:r.status==='running'&&!stale};
+}
+const latestColourways=async packId=>colourwayView((await pool.query('select * from tech_pack_colourways where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
+app.post('/v1/admin/products/:id/tech-pack/colourways',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select id,product_id,client_id,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  if(!cwOn()){ // no image model: the older, flatter tiles (the photo recoloured), which are only fit for plain matte products
+    const ctx=await loadAdminTechPack(req.params.id),data=normalizeTechPack(ctx.techPack.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
+    data.renderings=made.renderings;const saved=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
+    return {count:made.count,renderings:data.renderings,techPack:techPackPayload(saved)};
+  }
+  const r=await startColourways(row,{actor:req.auth.sub});
+  if(r.unavailable)return reply.code(503).send({error:r.unavailable});
+  if(r.noColourways)return reply.code(400).send({error:'Add at least one colourway with a colour first.'});
+  if(r.noPhoto)return reply.code(400).send({error:'Add a photo first: the colourways are drawn from it.'});
+  if(r.limited)return reply.code(429).send({error:r.limited});
+  if(r.already)return reply.code(409).send({error:'The colourway pictures are already being drawn',id:r.id});
+  setImmediate(()=>runColourways(r.id));
+  return reply.code(202).send({started:true,id:r.id});
+});
 // Staff put a render in front of the client, whatever its score: it becomes a message from Future Basics in the client's project (with the picture attached), so it shows in their hub and they are notified.
 app.post('/v1/admin/products/:id/tech-pack/share-render',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
@@ -2896,7 +2979,7 @@ async function modelSource(row,{checkId=null}={}){
 // May the 3D model be made from the render? Only when the pack, as it stands, reads as the product in the photo.
 async function modelGate(row,opts){
   const min=MESH_MIN_SCORE(),src=await modelSource(row,opts);
-  const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off.'};
+  const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off. Choosing a different try, or making new ones, takes the approval away, and a client saying yes in their hub is not the same as pressing Approve here.'};
   if(src.reason==='nocheck')return {ok:false,reason:'nocheck',min,message:'The pack has not been tested since it last changed. Run the spec check first: the 3D model is made from its render.'};
   if(src.reason==='norender')return {ok:false,reason:'norender',min,score:src.score,message:'The last check had no render (the image model is not connected, or the render failed), so there is nothing to make the 3D model from.'};
   if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, make the model from this render anyway, or make it straight from the client photo.`};
@@ -3219,7 +3302,7 @@ async function colorwayTilesFor(data){const photo=data.sketches.find(s=>s.image)
 // Cut-out on demand: background removed from the first photo, placed as a view and the cover rendering, tiles re-made from it.
 async function cutoutForPack(data){if(!cutoutEnabled())return {error:'Background removal is not set up on the service yet'};const photo=data.sketches.find(s=>s.image&&!/^cutout-/.test(s.id))?.image;if(!photo)return {error:'Add a photo under Callouts first'};
   const c=await cutoutFromPhoto(photo);if(!c.image)return {error:`The cut-out was not clean enough to use (${c.quality.reasons.join('; ')}) — try a photo with the product on a plainer backdrop`,quality:c.quality};
-  placeCutout(data,c);if(data.colorways.length){try{data.renderings=[data.renderings[0],...mergeColorwayTiles(data.renderings.slice(1),await renderColorways(c.image,data.colorways))].slice(0,6)}catch{}}return {quality:c.quality,provider:c.provider}}
+  placeCutout(data,c);if(data.colorways.length&&!cwOn()){try{data.renderings=[data.renderings[0],...mergeColorwayTiles(data.renderings.slice(1),await renderColorways(c.image,data.colorways))].slice(0,6)}catch{}}return {quality:c.quality,provider:c.provider}}
 app.post('/v1/products/:id/tech-pack/draft/cutout',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
@@ -3239,16 +3322,22 @@ app.post('/v1/products/:id/tech-pack/draft/colorways',{preHandler:authenticate},
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
   if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  if(cwOn()){ // by labelled part, in the background: the page asks again until it is done
+    const r=await startColourways(row,{actor:req.auth.sub,trigger:'client'});
+    if(r.noColourways)return reply.code(400).send({error:'Add at least one colourway with a colour first'});
+    if(r.noPhoto)return reply.code(400).send({error:'Add a photo under Callouts first: the pictures are drawn from it'});
+    if(r.limited)return reply.code(429).send({error:r.limited});
+    if(r.id&&!r.already)setImmediate(()=>runColourways(r.id));
+    return reply.code(202).send({started:true,id:r.id});
+  }
   const data=normalizeTechPack(row.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
   data.renderings=made.renderings;const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   return {count:made.count,renderings:data.renderings,techPack:draftView({...row,...updated}).techPack};
 });
-app.post('/v1/admin/products/:id/tech-pack/colorways',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
-  const data=normalizeTechPack(ctx.techPack.data),made=await colorwayTilesFor(data);if(made.error)return reply.code(400).send({error:made.error});
-  data.renderings=made.renderings;const row=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[ctx.techPack.id,data])).rows[0];
-  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Colourway tiles rendered for ${ctx.product.title} (${made.count})`,{techPackId:row.id,count:made.count}]).catch(()=>{});
-  return {count:made.count,renderings:data.renderings,techPack:techPackPayload(row)};
+app.get('/v1/products/:id/tech-pack/draft/colourways',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  return {run:await latestColourways(row.id),renderings:normalizeTechPack(row.data).renderings,parts:normalizeTechPack(row.data).parts};
 });
 app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});

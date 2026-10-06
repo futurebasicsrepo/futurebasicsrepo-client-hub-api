@@ -82,4 +82,43 @@ await journey('J65', 'the hero image: made from the photo inside the exchange, t
   ok(last.status === 429 && /4 hero images on this product today/.test(last.json.error), 'the fifth in a day is refused with a sentence', [last.status, last.json.error]);
 });
 
+await journey('J67', 'the colourways by labelled part: once the hero is approved the product is broken up into parts, each colourway colours the parts on their own, and the pictures arrive on the pack with their parts and Pantone C codes', async () => {
+  const m = await room('67'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const lp = await waitLoop(m.token, m.id); ok(lp && lp.status === 'done', 'the exchange ran', lp && [lp.status, lp.error]);
+  let c = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json;
+  ok(c.colourways === null, 'before the hero is approved nothing has been drawn: no pictures made from a picture nobody signed off', c.colourways);
+  const before = sql(`select updated_at from tech_packs where product_id='${m.id}'`);
+  ok((await adm(`/v1/admin/tech-pack-heroes/${c.hero.id}/approve`, { method: 'POST', body: {} })).status === 200, 'staff approve the hero');
+  for (let i = 0; i < 80; i++) { c = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json; if (c.colourways && !c.colourways.running) break; await sleep(300); }
+  ok(c.colourways && c.colourways.status === 'done' && c.colourways.made >= 1, 'approving the hero starts the colourway run by itself, and it finishes with pictures', c.colourways);
+  ok(/approved hero/.test(c.colourways.reference || ''), 'drawn from the approved hero', c.colourways.reference);
+  const data = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data, tiles = data.renderings.filter(r => /^cw-/.test(r.id));
+  ok(data.parts.length >= 3 && data.parts.every(x => x.label && /^#[0-9a-f]{6}$/.test(x.hex) && /^PANTONE .+ C$/i.test(x.code)), 'the pack lists the product part by part, each with its colour and a Pantone C code', data.parts);
+  ok(tiles.length === c.colourways.made && tiles.every(t => /^data:image\/jpeg/.test(t.image) && t.parts.length === data.parts.length && t.parts.some(x => x.changed) && /Drawn from the approved hero/.test(t.note)), 'each colourway picture carries its own part-by-part colours', tiles.map(t => [t.id, t.parts.length]));
+  ok(tiles.every(t => t.parts.filter(x => x.changed).every(x => /^PANTONE .+ C$/i.test(x.code))), 'with Pantone C codes matched from the hex of each part');
+  ok(sql(`select updated_at from tech_packs where product_id='${m.id}'`) === before, 'pictures arriving do not count as an edit: the spec check is not made to look out of date');
+  ok(c.stale === false, 'and the check is not marked stale', c.stale);
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/colourways`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a client cannot start a run on staff\'s button');
+  const again = await adm(`/v1/admin/products/${m.id}/tech-pack/colourways`, { method: 'POST', body: {} }); ok(again.status === 202, 'staff can draw them again', [again.status, again.json]);
+  for (let i = 0; i < 80 && sql(`select status from tech_pack_colourways where id='${again.json.id}'`) === 'running'; i++) await sleep(300);
+  ok(sql(`select status from tech_pack_colourways where id='${again.json.id}'`) === 'done' && (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.data.renderings.filter(r => /^cw-/.test(r.id)).length === tiles.length, 'and the pictures are replaced, not doubled');
+  const client = (await call(`/v1/products/${m.id}/tech-pack/draft/colourways`, { token: m.token })); ok(client.status === 200 && client.json.run && client.json.parts.length >= 3, 'the client sees the same run and parts on their draft', client.status);
+  if (playwright) {
+    const pb = await playwright.chromium.launch();
+    try {
+      const pctx = await pb.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+      await pp.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#sheet .panel.on');
+      ok(await pp.locator('.rend .cwparts li').count() >= 3, 'on the pack, each colourway picture lists its parts and codes beneath it');
+      ok(await pp.locator('.ptab tbody tr').count() >= 3, 'with the part-by-part table of the product');
+      await pp.locator('.rend').first().scrollIntoViewIfNeeded(); await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j67-style.png` }).catch(() => {});
+      await pp.click('#tabs button[data-tab="check"]'); await pp.waitForSelector('[data-colourways]', { timeout: 8000 });
+      ok(/drawn from the approved hero/i.test(await pp.innerText('[data-colourways]')) && await pp.locator('[data-colourways] .ptab tbody tr').count() >= 3, 'the Check tab says what was drawn and from what, and lists the parts');
+      await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j67-check.png` }).catch(() => {});
+      const over = await pp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); ok(over <= 1, 'and nothing runs off a phone screen', over);
+      ok(pp.errs.length === 0, 'no script errors', pp.errs); await pctx.close();
+    } finally { await pb.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

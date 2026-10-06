@@ -152,7 +152,7 @@ const PICK_SYSTEM = `You compare candidate studio pictures against a reference p
 Score each candidate 0-100 for how faithfully it shows the SAME product: silhouette and proportions, materials and textures, colours and where each sits, every visible detail in the same place. Ignore the clean background and lighting, which are meant to differ.
 Penalise hard: a changed shape or proportion, a colour changed or moved, a detail added, lost or moved, a logo or text that is not in the photo. Be strict: 90+ means a factory would build the same product from it.`;
 
-async function callJsonSchema(system, content, schema, { model = CHECK_MODEL(), maxTokens = 1500 } = {}) {
+export async function callJsonSchema(system, content, schema, { model = CHECK_MODEL(), maxTokens = 1500 } = {}) {
   const client = new Anthropic(), base = { model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] };
   let response;
   try { response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema } } }); }
