@@ -2559,8 +2559,8 @@ async function checkView(row,{withImages=false}={}){
 // answers the findings and fixes descriptive fields; the developer assistant looks again. Every step is written to an event log that the pop-up shows as it
 // happens. Nothing here can fail a build: if any step goes wrong the draft stays as it was. A change that makes the score worse is taken back.
 const LOOP_ON=()=>process.env.BUILD_LOOP!=='off'&&aiEnabled();
-const LOOP_ROUNDS=()=>{const n=Number(process.env.BUILD_LOOP_ROUNDS);return Number.isFinite(n)&&process.env.BUILD_LOOP_ROUNDS!==undefined&&process.env.BUILD_LOOP_ROUNDS!==''?Math.max(0,Math.min(2,Math.floor(n))):1};
-const LOOP_THRESHOLD=()=>Number(process.env.BUILD_LOOP_THRESHOLD)||78;
+const LOOP_ROUNDS=()=>{const n=Number(process.env.BUILD_LOOP_ROUNDS);return Number.isFinite(n)&&process.env.BUILD_LOOP_ROUNDS!==undefined&&process.env.BUILD_LOOP_ROUNDS!==''?Math.max(0,Math.min(6,Math.floor(n))):4};
+const LOOP_THRESHOLD=()=>Number(process.env.BUILD_LOOP_THRESHOLD)||90; // the bar: below it a pack is never "ready"
 const trunc=(t,n)=>{const x=String(t??'').replace(/\s+/g,' ').trim();return x.length>n?x.slice(0,n-1)+'…':x};
 async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=null}){
   const ev={at:new Date().toISOString(),agent,kind,text:trunc(text,360),...(score!=null?{score}:{}),...(data?{data}:{})};
@@ -2569,7 +2569,7 @@ async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=
 }
 function loopView(row){
   if(!row)return null;
-  return {id:row.id,status:row.status,trigger:row.trigger,stage:row.stage,events:row.events||[],changes:(row.changes||[]).map(c=>({id:c.id,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)})),startScore:row.start_score,finalScore:row.final_score,rounds:row.rounds,error:row.error||null,createdAt:row.created_at,finishedAt:row.finished_at};
+  return {id:row.id,status:row.status,trigger:row.trigger,stage:row.stage,events:row.events||[],changes:(row.changes||[]).map(c=>({id:c.id,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)})),startScore:row.start_score,finalScore:row.final_score,rounds:row.rounds,outcome:row.outcome||null,bar:LOOP_THRESHOLD(),error:row.error||null,createdAt:row.created_at,finishedAt:row.finished_at};
 }
 const latestLoop=async packId=>loopView((await pool.query('select * from tech_pack_loops where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
 async function startLoop(packId,{trigger='build',actor=null}={}){
@@ -2596,7 +2596,7 @@ async function runLoopBody(loopId){
     if(r.status!=='done'){await pool.query(`update tech_pack_checks set status='failed',completed_at=now() where id=$1 and status<>'done'`,[made.id]);throw new Error(r.error||'The check could not finish')}
     return r;
   };
-  let applied=[],final=null,start=null,row=null;
+  let final=null,start=null,row=null;
   try{
     row=await load();if(!row)throw new Error('The tech pack no longer exists');
     const prompt=[`Title: ${row.title}`,await productBriefText(row.product_id,row.description_html)].filter(Boolean).join('\n');
@@ -2607,20 +2607,22 @@ async function runLoopBody(loopId){
     await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'I build the product from the materials, colours and measurements alone, without looking at the photo. Drawing it now…':'I read the materials, colours and measurements alone, without looking at the photo, and compare what they describe with it.'});
     const c1=await check(),v1=c1.verdict||{};start=c1.score;
     await pool.query('update tech_pack_loops set start_score=$2 where id=$1',[loopId,start]);
-    let curCheckId=c1.id; // the check that describes the pack as it stands now: the final render comes from it
     await say({agent:'developer',kind:'verdict',stage:'compare',score:start,text:v1.summary||'Here is what I found.'});
     for(const d of (v1.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`${d.title}. ${d.detail}`});
     final=start;
-    if(v1.verdict==='cannot-judge'||!(v1.discrepancies||[]).length||start>=threshold||rounds<1){
+    // The exchange goes on until the pack reads as the product in the photo (the bar), the design assistant has nothing left to try, or two rounds in a row gain nothing.
+    // It is only "ready" at or above the bar: below it, the pack is handed to a person with what is still open.
+    const all=[],history=[];let cur_=c1,curScore=start,curCheckId=c1.id,stalls=0,stopped='';
+    const unfixable=v1.verdict==='cannot-judge'||!(v1.discrepancies||[]).length||start>=threshold||rounds<1;
+    if(unfixable){
       await say({agent:'design',kind:'say',stage:'done',text:v1.verdict==='cannot-judge'?'The developer assistant could not judge this one, so I am leaving the draft as it is.':start>=threshold?'Nothing I would change: the pack reads as the product in your photo.':'I will leave the draft as it is for a person to review.'});
     }else{
       for(let round=1;round<=rounds;round++){
-        await say({agent:'design',kind:'think',stage:'review',text:'Going through those findings against your photo…'});
-        const cur=await load(),last=round===1?c1:applied.lastCheck;
-        const prevCheckId=curCheckId;
-        const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:last.verdict,promptText:prompt});
+        await say({agent:'design',kind:'think',stage:'review',text:round===1?'Going through those findings against your photo…':`Round ${round}: going back over what is still open (${curScore}/100, the bar is ${threshold})…`});
+        const cur=await load();
+        const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:cur_.verdict,promptText:prompt,history});
         for(const d of r.decisions)await say({agent:'design',kind:'decision',text:d.say});
-        if(!r.changes.length){await say({agent:'design',kind:'say',stage:'done',text:'I am keeping the draft as it is.'});break}
+        if(!r.changes.length){stopped='nothing';await say({agent:'design',kind:'say',stage:'done',text:round===1?'I am keeping the draft as it is.':'I have nothing more I can change from these findings.'});break}
         const db=await pool.connect();let done;
         try{
           await db.query('begin');
@@ -2629,41 +2631,48 @@ async function runLoopBody(loopId){
           if(done.applied.length)await db.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,done.pack]); // updated_at is left alone: it marks a person's last edit
           await db.query('commit');
         }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
-        if(!done.applied.length){await say({agent:'design',kind:'say',stage:'done',text:'The pack was edited or sent while I was reviewing, so I left it exactly as it is.'});break}
-        applied=done.applied;if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,done.pack);
-        await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(applied),round]);
+        if(!done.applied.length){stopped='edited';await say({agent:'design',kind:'say',stage:'done',text:'The pack was edited or sent while I was reviewing, so I left it exactly as it is.'});break}
+        const applied=done.applied;if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,done.pack);
+        all.push(...applied);
+        await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(all),round]);
         await say({agent:'design',kind:'say',stage:'revise',text:`Changing ${applied.length} thing${applied.length===1?'':'s'}:`});
         for(const c of applied)await say({agent:'design',kind:'change',data:{from:trunc(c.from,80),to:trunc(c.to,80)},text:`${c.label}: ${trunc(c.from,60)||'(empty)'} → ${trunc(c.to,60)}`});
         await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks. Testing the changed pack from scratch…'});
-        const c2=await check();applied.lastCheck=c2;
-        curCheckId=c2.id;
-        if(c2.score<start-2){
+        const c2=await check(),baseline=curScore;
+        if(c2.score<baseline-2){ // worse: take this round's changes back and try something else
           const live=(await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],back=revertChanges(live.data,applied);
           await pool.query('update tech_packs set data=$2 where id=$1',[L.tech_pack_id,back.pack]);
           if(cur.initiated_by==='client')await syncCardQuietly(cur.product_id,back.pack);
-          await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(applied.map(c=>({...c,undone:true})))]);
-          await say({agent:'developer',kind:'verdict',stage:'done',score:c2.score,text:`Lower than before (${start}). I am taking those changes back, and the original draft stays.`});final=start;curCheckId=prevCheckId;
+          const ids=new Set(applied.map(c=>c.id));for(let i=0;i<all.length;i++)if(ids.has(all[i].id)&&!all[i].undone)all[i]={...all[i],undone:true};
+          await pool.query('update tech_pack_loops set changes=$2 where id=$1',[loopId,JSON.stringify(all)]);
+          history.push({round,score:c2.score,result:'made it worse',tried:applied.map(c=>c.label)});stalls++;
+          await say({agent:'developer',kind:'verdict',stage:round<rounds&&stalls<2?'review':'done',score:c2.score,text:`Lower than before (${baseline}). I am taking those changes back.`});
         }else{
-          final=c2.score;
-          await say({agent:'developer',kind:'verdict',stage:'done',score:final,text:final>start?`Up from ${start}. That is better.`:`About the same as before (${start}).`});
+          const gain=c2.score-baseline;cur_=c2;curScore=c2.score;curCheckId=c2.id;final=c2.score;stalls=gain<=1?stalls+1:0;
+          history.push({round,score:c2.score,result:gain>1?'helped':'did not help',tried:applied.map(c=>c.label)});
+          await say({agent:'developer',kind:'verdict',stage:final>=threshold||round>=rounds||stalls>=2?'done':'review',score:final,text:final>=threshold?`Up to ${final}. That clears the bar of ${threshold}.`:gain>1?`Up from ${baseline} to ${final}. Still short of ${threshold}.`:`About the same as before (${baseline}). Still short of ${threshold}.`});
         }
-        if(final>=threshold)break;
+        final=curScore;
+        if(final>=threshold){stopped='passed';break}
+        if(stalls>=2){stopped='stalled';break}
       }
     }
+    const passed=final>=threshold&&v1.verdict!=='cannot-judge',kept=all.filter(c=>!c.undone).length;
+    // What is still open goes in front of the person who has to finish it.
+    if(!passed&&cur_!==c1)for(const d of (cur_.verdict?.discrepancies||[]).slice(0,3))await say({agent:'developer',kind:'finding',text:`Still open: ${d.title}. ${d.detail}`});
     // Once the pack reads as the product in the photo, its final render goes to Meshy for the STL (unless switched off or over the daily limit).
     let autoModelRow=null;
-    if(process.env.MESH_AUTO!=='off'&&meshConfig().configured&&final>=MESH_MIN_SCORE()&&curCheckId){
+    if(passed&&process.env.MESH_AUTO!=='off'&&meshConfig().configured&&final>=MESH_MIN_SCORE()&&curCheckId){
       const cr=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[L.tech_pack_id])).rows[0];
-      const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[L.tech_pack_id])).rows[0].n),kept=applied.length&&final>=start-2?applied.length:0;
+      const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[L.tech_pack_id])).rows[0].n);
       if(cr&&(!have||kept)&&(await modelSource(cr,{checkId:curCheckId})).file){autoModelRow=cr;await say({agent:'system',kind:'say',stage:'done',text:`The pack reads as the product in your photo (${final}/100). Sending its final render to Meshy to make the 3D model.`})}
     }
-    await say({agent:'system',kind:'done',stage:'done',text:'Ready for your review.'});
-    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,finished_at=now() where id=$1`,[loopId,final,curCheckId||null]);
+    await say({agent:'system',kind:'done',stage:'done',data:{outcome:passed?'passed':'needs-review',score:final,bar:threshold},text:passed?`Ready: ${final}/100, above the bar of ${threshold}.`:`Not ready: ${final}/100, and the bar is ${threshold}. A person needs to review what is still open.`});
+    await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,outcome=$4,finished_at=now() where id=$1`,[loopId,final,curCheckId||null,passed?'passed':'needs-review']);
     if(autoModelRow)startModel(autoModelRow,{actor:null,source:'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
-    const kept=applied.length&&final>=start-2?applied.length:0;
-    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}`,{techPackId:L.tech_pack_id,loopId,start,final}]).catch(()=>{});
-    const lastRow=(await pool.query(`select verdict_label from tech_pack_checks where loop_id=$1 and status='done' order by completed_at desc limit 1`,[loopId])).rows[0];
-    if(final<60||lastRow?.verdict_label==='does-not-resemble')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Spec check: ${row.client_name}'s ${row.title} still does not match its photo after the assistants went over it (${final}/100)`,row.product_id]).catch(()=>{});
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Design and developer assistants went over ${row.title}: ${start}/100${final!==start?` → ${final}/100`:''}${kept?`, ${kept} change${kept===1?'':'s'} made`:''}${passed?', ready':`, below the bar of ${threshold}: needs a person`}`,{techPackId:L.tech_pack_id,loopId,start,final,passed}]).catch(()=>{});
+    // every pack under the bar is in the console's queue; a message goes out only when it is far from the photo
+    if(!passed&&(final<60||cur_.verdict?.verdict==='does-not-resemble'))await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-check',$2,'product',$3)`,[row.client_id,`Needs a person: ${row.client_name}'s ${row.title} reached ${final}/100 after the assistants went over it (the bar is ${threshold})`,row.product_id]).catch(()=>{});
   }catch(e){
     const msg=checkErrorText(e);app.log.warn({err:String(e.message||e).slice(0,300),loopId},'exchange failed');
     await say({agent:'system',kind:'done',stage:'done',text:'The assistants could not finish going over this one. Your draft is unchanged.'});

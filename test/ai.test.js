@@ -9,7 +9,7 @@ const draft = {
   productType: 'footwear', category: 'Footwear — chunky runner', styleName: 'Layer Runner', description: 'A runner.', fabricSummary: 'Mesh · EVA', fitBlock: 'Runner last',
   callouts: [{ label: 'Heel wrap', spec: 'TPU', note: 'bond', x: 0.2, y: 0.3 }, { label: 'Toe bumper', spec: 'Rubber', note: '', x: 1.4, y: -0.2 }],
   pom: [{ code: 'A', sample: 11.5, step: 0.333, basis: 'size charts' }, { code: 'D', sample: 1.5, step: 0, basis: 'lab averages' }, { code: 'ZZ', sample: 9, step: 1, basis: 'ignored' }],
-  bom: [{ component: 'Upper', material: 'Mesh', spec: '260 gsm', placement: '' }, { component: 'Outsole', material: 'Rubber', spec: 'Shore A 55', placement: 'Sole unit' }],
+  bom: [{ component: 'Upper', material: 'Mesh', spec: '260 gsm', color: 'Grey #b8bcc0', placement: '' }, { component: 'Outsole', material: 'Rubber', spec: 'Shore A 55', color: 'White #ffffff', placement: 'Sole unit' }],
   construction: [{ area: 'Lasting', detail: 'Strobel' }],
   colorways: [{ name: 'Grey', hex: '#B8BCC0', pantone: '15-4101 TCX', role: 'upper', observed: true }, { name: 'Bad', hex: 'red', pantone: '', role: '', observed: false }],
   care: { fiber: 'Textile', instructions: 'Spot clean' }, notes: 'Open: colourway.', confidence: 'medium'
@@ -23,6 +23,7 @@ test('applyDraftToPack fills the seeded pack from the model draft', async () => 
   const pack = normalizeTechPack(await applyDraftToPack(seed, draft, { photos: [img], sizes, sampleSize, model: 'test-model' }));
   assert.equal(pack.style.category, 'Footwear — chunky runner');
   assert.equal(pack.sketches[0].callouts.length, 2);
+  assert.deepEqual(pack.bom.map(r => r.color), ['Grey #b8bcc0', 'White #ffffff'], 'each part keeps the colour the draft saw on it');
   assert.ok(pack.sketches[0].callouts[0].photo.startsWith('data:image/jpeg;base64,'), 'callout gets a detail crop');
   assert.deepEqual([pack.sketches[0].callouts[1].x, pack.sketches[0].callouts[1].y], [1, 0], 'coordinates are clamped to the photo');
   const A = pack.pom.find(r => r.code === 'A'), D = pack.pom.find(r => r.code === 'D');
