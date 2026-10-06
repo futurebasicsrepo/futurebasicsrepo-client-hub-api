@@ -557,6 +557,12 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
   const low = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: {} });
   ok(low.status === 409 && /does not look like the photo yet \(50\/100, it needs 78\)/.test(low.json.error), 'a pack that does not look like the photo yet gets no 3D model, and is told the score and the bar', [low.status, low.json.error]);
   ok(Number(sql(`select count(*) from tech_pack_models where product_id='${id}'`)) === 0, 'and nothing was charged');
+  // a person can still choose to make it from the render below the bar: it is recorded as made on purpose, and the card says so
+  const forcedModel = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'render', force: true } });
+  ok(forcedModel.status === 202, 'below the bar, staff can choose to make the 3D model from the render anyway', [forcedModel.status, forcedModel.json]);
+  for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${forcedModel.json.id}'`) === 'running'; k++) await sleep(300);
+  ok(sql(`select source||'|'||forced::text||'|'||source_score from tech_pack_models where id='${forcedModel.json.id}'`) === 'render|true|50', 'and it is recorded: made from the render, forced, at 50/100');
+  sql(`delete from tech_pack_models where product_id='${id}'`);
   const viaPhoto = await call(`/v1/admin/products/${id}/tech-pack/model`, { method: 'POST', token: admin, body: { source: 'photo' } });
   ok(viaPhoto.status === 202 && sql(`select source from tech_pack_models where id='${viaPhoto.json.id}'`) === 'photo', 'making it from the client photo instead is allowed, and recorded as such', [viaPhoto.status, viaPhoto.json]);
   for (let k = 0; k < 40 && sql(`select status from tech_pack_models where id='${viaPhoto.json.id}'`) === 'running'; k++) await sleep(300);
@@ -566,7 +572,12 @@ await journey('J63', 'the 3D model: staff make an STL from the client photo, wat
     sql(`delete from tech_pack_models where product_id='${id}'`);
     await w2.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await w2.waitForSelector('#sheet .panel.on'); await w2.click('#tabs button[data-tab="check"]'); await w2.waitForSelector('[data-model]', { timeout: 10000 });
     await w2.waitForFunction(() => /does not look like the photo yet/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 8000 });
-    ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-source="render"]:not([data-force])').isDisabled() && await w2.locator('[data-model] [data-act="makemodel"][data-source="photo"]').isEnabled(), 'the card closes the render button, says why, and offers the client photo instead');
+    ok(await w2.locator('[data-model] [data-act="makemodel"][data-force="1"]').isEnabled(), 'and offers to make it from the render anyway');
+    w2.on('dialog', d => d.accept()); await w2.click('[data-model] [data-act="makemodel"][data-force="1"]');
+    let fm = ''; for (let i = 0; i < 40 && fm !== 'done'; i++) { fm = sql(`select status from tech_pack_models where product_id='${id}' and forced order by created_at desc limit 1`); await sleep(300); }
+    ok(fm === 'done', 'pressing it, after a confirmation saying the score, makes the model', fm);
+    await w2.waitForFunction(() => /below the bar: made on purpose/i.test(document.querySelector('[data-model]')?.innerText || ''), null, { timeout: 10000 }); ok(true, 'and the card says it was made below the bar on purpose');
   } finally { await wctx2.close(); }
 });
 

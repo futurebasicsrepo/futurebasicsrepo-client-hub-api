@@ -603,6 +603,7 @@ export async function migrate() {
     alter table tech_pack_models add column if not exists source text not null default 'photo';
     alter table tech_pack_models add column if not exists source_check_id uuid;
     alter table tech_pack_models add column if not exists source_score int;
+    alter table tech_pack_models add column if not exists forced boolean not null default false;
     alter table tech_pack_loops add column if not exists final_check_id uuid;
     alter table tech_pack_loops add column if not exists outcome text;
     create index if not exists tech_pack_checks_product_idx on tech_pack_checks(product_id, created_at desc);

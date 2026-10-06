@@ -2885,16 +2885,17 @@ async function modelGate(row,opts){
   const hero=await currentHero(row.id);if(hero&&hero.status!=='approved')return {ok:false,reason:'hero',min,message:'Approve the hero image first: the 3D model is made from a picture a person has signed off.'};
   if(src.reason==='nocheck')return {ok:false,reason:'nocheck',min,message:'The pack has not been tested since it last changed. Run the spec check first: the 3D model is made from its render.'};
   if(src.reason==='norender')return {ok:false,reason:'norender',min,score:src.score,message:'The last check had no render (the image model is not connected, or the render failed), so there is nothing to make the 3D model from.'};
-  if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, or make the model straight from the client photo.`};
+  if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, make the model from this render anyway, or make it straight from the client photo.`};
   return {ok:true,min,score:src.score,checkId:src.check.id};
 }
-async function startModel(row,{actor=null,source='render',checkId=null}={}){
+async function startModel(row,{actor=null,source='render',checkId=null,force=false}={}){
   const cfg=meshConfig();
   if(!cfg.configured)return {unavailable:cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected: add MESHY_API_KEY to the service.'};
-  let image,src=null;
+  let image,src=null,forced=false;
   if(source==='render'){
-    const gate=await modelGate(row,{checkId});if(!gate.ok)return {gated:gate.message,gate};
-    src=await modelSource(row,{checkId});
+    // below the bar a person can still choose to make it (force): the render has to exist and the hero has to be approved, but the score is their call
+    const gate=await modelGate(row,{checkId});if(!gate.ok&&!(force&&gate.reason==='score'))return {gated:gate.message,gate};
+    forced=!gate.ok;src=await modelSource(row,{checkId:checkId||gate.checkId});
     try{image=await photoForMesh('data:image/jpeg;base64,'+(await readFile(src.file)).toString('base64'))}catch{return {gated:'The render file is missing. Run the spec check again.',gate:{ok:false,reason:'norender'}}}
   }else{
     const photo=packPhotos(row.data)[0];if(!photo)return {noPhoto:true};
@@ -2906,7 +2907,7 @@ async function startModel(row,{actor=null,source='render',checkId=null}={}){
   const n=(await pool.query(`select count(*) filter(where product_id=$1)::int p,count(*)::int t from tech_pack_models where created_at>now()-interval '24 hours'`,[row.product_id])).rows[0];
   if(n.p>=MESH_PER_PRODUCT_DAY)return {limited:`That is ${MESH_PER_PRODUCT_DAY} 3D models on this product today. Try again tomorrow.`};
   if(n.t>=MESH_PER_DAY)return {limited:`The daily limit of ${MESH_PER_DAY} 3D models is used up. It resets tomorrow, or raise MESH_PER_DAY.`};
-  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by,source,source_check_id,source_score) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor,source,src?src.check.id:null,src?src.score:null])).rows[0];
+  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by,source,source_check_id,source_score,forced) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor,source,src?src.check.id:null,src?src.score:null,forced])).rows[0];
   try{const t=await startMesh({imageDataUrl:image,cfg});await pool.query('update tech_pack_models set task_id=$2 where id=$1',[made.id,t.taskId])}
   catch(e){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[made.id,clipText(e.message,240)]);return {failed:clipText(e.message,240),id:made.id}}
   setImmediate(()=>followModel(made.id).catch(e=>app.log.warn({err:e.message,modelId:made.id},'3D model follow failed')));
@@ -2953,12 +2954,12 @@ async function runModelRecovery(){
 async function modelView(row,{withThumb=false}={}){
   if(!row)return null;
   let thumb=null;if(withThumb&&row.thumb_file){try{thumb='data:image/jpeg;base64,'+(await readFile(join(meshDir(),row.thumb_file))).toString('base64')}catch{}}
-  return {id:row.id,status:row.status,progress:row.progress,provider:row.provider,model:row.model,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,triangles:row.triangles,size:row.size,bytes:row.stl_bytes==null?null:Number(row.stl_bytes),credits:row.credits,error:row.error||null,thumb,hasFile:Boolean(row.stl_file),source:row.source||'photo',sourceScore:row.source_score};
+  return {id:row.id,status:row.status,progress:row.progress,provider:row.provider,model:row.model,createdAt:row.created_at,completedAt:row.completed_at,packVersion:row.pack_version,triangles:row.triangles,size:row.size,bytes:row.stl_bytes==null?null:Number(row.stl_bytes),credits:row.credits,error:row.error||null,thumb,hasFile:Boolean(row.stl_file),source:row.source||'photo',sourceScore:row.source_score,forced:Boolean(row.forced)};
 }
 app.post('/v1/admin/products/:id/tech-pack/model',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
-  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render'});
+  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render',force:req.body?.force===true});
   if(r.gated)return reply.code(409).send({error:r.gated,gate:r.gate});
   if(r.unavailable)return reply.code(503).send({error:r.unavailable});
   if(r.noPhoto)return reply.code(400).send({error:'Add a photo first.'});
