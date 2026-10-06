@@ -118,7 +118,7 @@ test('techPackReadiness computes the sign-off checklist from data + factory ackn
 
 test('normalizeTechPack keeps colour renderings with an image and drops empty ones', () => {
   const t = normalizeTechPack({ renderings: [{ id: 'r1', name: 'Bone / White', note: 'Lead colourway', image: 'data:image/jpeg;base64,AAAA' }, { name: 'no image' }, { image: 'javascript:alert(1)' }] });
-  assert.deepEqual(t.renderings, [{ id: 'r1', name: 'Bone / White', note: 'Lead colourway', image: 'data:image/jpeg;base64,AAAA' }]);
+  assert.deepEqual(t.renderings, [{ id: 'r1', name: 'Bone / White', note: 'Lead colourway', image: 'data:image/jpeg;base64,AAAA', parts: [] }]);
   assert.deepEqual(normalizeTechPack({}).renderings, []);
 });
 

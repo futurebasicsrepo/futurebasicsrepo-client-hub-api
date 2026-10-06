@@ -1,0 +1,72 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import sharp from 'sharp';
+import { identifyParts, assignColourway, panelPrompt, planDistance, planDifference, makeColourways } from '../src/panels.js';
+import { normalizeTechPack } from '../src/techpack.js';
+
+const ref = () => sharp({ create: { width: 256, height: 256, channels: 3, background: '#cfd2d6' } }).jpeg().toBuffer();
+const fx = { provider: 'fixture', configured: true };
+const PARTS = [
+  { label: 'Overlays', material: 'metallic PU', hex: '#b8bcc2', name: 'Silver', code: 'PANTONE 877 C', where: 'sides' },
+  { label: 'Mesh', material: 'open mesh', hex: '#9aa0a6', name: 'Grey', code: 'PANTONE 429 C', where: 'windows' },
+  { label: 'Outsole', material: 'rubber', hex: '#202124', name: 'Black', code: 'PANTONE Black 6 C', where: 'underneath' }
+];
+
+test('the product is broken up into labelled parts, each with a colour, a name and a Pantone C code', async () => {
+  const parts = await identifyParts({ image: 'x', fixture: true });
+  assert.ok(parts.length >= 3 && parts.every(p => /^#[0-9a-f]{6}$/.test(p.hex) && p.label && p.name));
+  assert.ok(parts.every(p => /^PANTONE .+ C$/i.test(p.code)), parts.map(p => p.code));
+});
+
+test('a colourway gives every part a colour; parts that keep theirs are marked unchanged', async () => {
+  const plan = await assignColourway({ parts: PARTS, colourway: { name: 'Champagne', swatch: '#c9b27c' }, fixture: true });
+  assert.equal(plan.length, PARTS.length, 'every part is in the plan');
+  assert.ok(plan.some(x => x.changed) && plan.some(x => !x.changed));
+  const same = plan.find(x => !x.changed); assert.equal(same.hex, PARTS.find(p => p.label === same.label).hex);
+  assert.ok(plan.filter(x => x.changed).every(x => /^PANTONE .+ C$/i.test(x.code)));
+});
+
+test('the drawing prompt names each part, keeps the others as they are, and forbids bleeding between parts', () => {
+  const plan = [{ label: 'Overlays', material: 'metallic PU', from: '#b8bcc2', hex: '#c9b27c', name: 'Champagne', changed: true }, { label: 'Outsole', material: 'rubber', from: '#202124', hex: '#202124', name: 'Black', changed: false }];
+  const t = panelPrompt({ plan, meta: { title: 'Trail runner' } });
+  assert.match(t, /Overlays.*#b8bcc2 to #c9b27c/); assert.match(t, /metallic sheen/); assert.match(t, /stay exactly as they are[\s\S]*Outsole/);
+  assert.match(t, /Do not blend, bleed or smear/);
+  assert.match(panelPrompt({ plan, problem: 'colour smeared into the mesh' }), /rejected: colour smeared into the mesh/);
+});
+
+test('two colourways that colour the parts alike are one colourway', () => {
+  const a = [{ hex: '#c9b27c' }, { hex: '#202124' }], b = [{ hex: '#c8b17b' }, { hex: '#202124' }], c = [{ hex: '#1d3a8a' }, { hex: '#202124' }];
+  assert.ok(planDistance(a, b) < 3 && planDistance(a, c) > 20);
+  assert.equal(planDifference([{ hex: '#000000', from: '#000000', changed: false }]).changed, 0);
+});
+
+test('a whole run: parts found, a picture per colourway, with its parts attached; look-alikes are skipped', async () => {
+  const tiles = [], steps = [];
+  const out = await makeColourways({ reference: await ref(), colourways: [{ name: 'Champagne', swatch: '#c9b27c' }, { name: 'Champagne 2', swatch: '#c9b17b' }, { name: 'Blue', swatch: '#1d3a8a' }, { name: 'No colour' }], meta: { title: 'Runner' }, cfg: fx, onStep: s => steps.push(s.stage), onTile: t => tiles.push(t.id) });
+  assert.deepEqual(out.tiles.map(t => t.id), ['cw-champagne', 'cw-blue'], out.skipped);
+  assert.ok(out.tiles.every(t => t.parts.length >= 3 && t.buffer.length > 500 && t.score >= 70));
+  assert.ok(out.skipped.some(s => s.name === 'Champagne 2' && /another colourway/.test(s.why)));
+  assert.deepEqual(tiles, ['cw-champagne', 'cw-blue'], 'each picture is handed over as soon as it is done');
+  assert.ok(steps.includes('parts') && steps.includes('colourway') && steps.includes('check'));
+});
+
+test('a smeared picture is redrawn once with the problem named; one that is still wrong is dropped, not shown', async () => {
+  const calls = [], plan = PARTS.map((p, i) => ({ ...p, from: p.hex, hex: i === 0 ? '#c9b27c' : p.hex, changed: i === 0 }));
+  const base = { identifyParts: async () => PARTS, assignColourway: async () => plan, drawColourway: async o => { calls.push(o.problem); return ref(); } };
+  let n = 0;
+  const fixed = await makeColourways({ reference: await ref(), colourways: [{ name: 'Gold', swatch: '#c9b27c' }], cfg: fx, deps: { ...base, checkColourway: async () => ({ score: n++ ? 92 : 40, issues: 'colour smeared into the mesh', parts: [] }) } });
+  assert.equal(fixed.tiles.length, 1); assert.deepEqual(calls, ['', 'colour smeared into the mesh']); assert.equal(fixed.tiles[0].score, 92);
+  calls.length = 0;
+  const bad = await makeColourways({ reference: await ref(), colourways: [{ name: 'Gold', swatch: '#c9b27c' }], cfg: fx, deps: { ...base, checkColourway: async () => ({ score: 35, issues: 'different shape', parts: [] }) } });
+  assert.equal(bad.tiles.length, 0); assert.match(bad.skipped[0].why, /did not hold together \(35\/100/); assert.equal(calls.length, 2);
+});
+
+test('a colourway that would look like the product already does is not drawn', async () => {
+  const out = await makeColourways({ reference: await ref(), colourways: [{ name: 'Grey', swatch: '#9aa0a6' }], cfg: fx, deps: { identifyParts: async () => PARTS, assignColourway: async () => PARTS.map(p => ({ ...p, from: p.hex, changed: false })), drawColourway: async () => { throw new Error('should not draw'); } } });
+  assert.equal(out.tiles.length, 0); assert.match(out.skipped[0].why, /look the same/);
+});
+
+test('parts and per-tile parts survive saving the pack', () => {
+  const p = normalizeTechPack({ parts: [{ label: 'Overlays', material: 'PU', hex: '#B8BCC2', name: 'Silver', code: 'PANTONE 877 C', where: 'sides' }, { label: '' }], renderings: [{ id: 'cw-gold', name: 'Colourway — Gold', image: 'data:image/jpeg;base64,AAAA', parts: [{ label: 'Overlays', name: 'Gold', hex: '#c9b27c', code: 'PANTONE 871 C', changed: true }] }] });
+  assert.equal(p.parts.length, 1); assert.equal(p.parts[0].hex, '#b8bcc2'); assert.equal(p.renderings[0].parts[0].code, 'PANTONE 871 C');
+});
