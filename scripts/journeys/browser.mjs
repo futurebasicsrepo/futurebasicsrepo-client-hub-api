@@ -586,9 +586,19 @@ await journey('J66', 'Pantone C: every colour on the pack gets a coated Pantone 
     await wp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await wp.waitForSelector('#sheet .panel.on');
     await wp.click('#tabs button[data-tab="calls"]'); await wp.waitForSelector('[data-act="matchc"]', { timeout: 8000 });
     ok(!/TCX/.test(await wp.innerText('[data-panel="calls"]')), 'the editor does not mention TCX any more');
-    await wp.click('[data-act="matchc"]');
-    let cw; for (let i = 0; i < 30; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
-    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'one press: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    // nothing is pressed: opening a pack that still has TCX or blank codes matches them by itself, and saves
+    let cw; for (let i = 0; i < 40; i++) { await sleep(400); cw = (await call(`/v1/admin/products/${id}/tech-pack`, { token: admin })).json.techPack.data.colorways; if (cw[0]?.code === 'PANTONE 186 C') break; }
+    ok(cw[0].code === 'PANTONE 186 C' && cw[1].code === 'PANTONE 877 C' && cw[2].code === 'PANTONE Black 6 C', 'opening the pack matches them: red becomes 186 C, the silver foil the metallic 877 C, and the person\'s own Black 6 C stays', cw.map(c => c.code));
+    await wp.click('[data-act="matchc"]'); await wp.waitForFunction(() => /already has a Pantone C code/.test(document.getElementById('toast')?.textContent || ''), null, { timeout: 5000 }); ok(true, 'and the button, pressed again, says every colour has one');
+    const rows = await wp.locator('[data-panel="calls"] .pt').first().evaluate(el => { const [a, b] = [el.children[1].getBoundingClientRect(), el.children[2].getBoundingClientRect()]; return { sameRow: Math.abs(a.top - b.top) < 4 }; }); ok(rows.sameRow, 'on a desktop the name and the code sit side by side', rows);
+    // on a phone the code has its own line under the name, wide enough to read "PANTONE 186 C"
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const pp = await pctx.newPage();
+    try {
+      await pp.goto(`${BASE}/tech-packs/${id}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#tabs button[data-tab="calls"]'); await pp.click('#tabs button[data-tab="calls"]'); await pp.waitForSelector('[data-panel="calls"] .pt input[data-path*="code"]', { timeout: 8000 });
+      const g = await pp.locator('[data-panel="calls"] .pt').first().evaluate(el => { const n = el.children[1].getBoundingClientRect(), c = el.children[2].getBoundingClientRect(); return { nameAbove: c.top > n.top + 10, codeWidth: Math.round(c.width), value: el.children[2].value }; });
+      ok(g.nameAbove && g.codeWidth >= 150 && /^PANTONE .+ C$/.test(g.value), 'on a phone the code is under the name and wide enough to read in full', g);
+    } finally { await pctx.close(); }
     ok(wp.errs.length === 0, 'no script errors', wp.errs);
   } finally { await wctx.close(); }
 });

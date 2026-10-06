@@ -67,7 +67,7 @@ input.t,select.t,textarea.t{font-size:16px}table.tp td input.t,table.tp td texta
 .co{grid-template-columns:30px minmax(0,1fr);gap:8px;padding:9px 10px}.co .n{width:26px;height:26px}.co .body{grid-template-columns:minmax(0,1fr) 72px}.co .thumb{width:72px;height:72px}.co .body .fields{grid-template-columns:1fr}
 body.draft-mode .co:not(.sel) .body .fields,body.draft-mode .co:not(.sel) .foot{display:none}body.draft-mode .co:not(.sel) .sum{display:grid}body.draft-mode .co:not(.sel) .thumb{width:56px;height:56px}body.draft-mode .co:not(.sel) .body{grid-template-columns:minmax(0,1fr) 56px;align-items:center}
 body.draft-mode .ack{display:none}
-.pt{grid-template-columns:40px minmax(0,1fr) 92px auto}
+.pt{grid-template-columns:40px minmax(0,1fr) auto;grid-template-rows:auto auto}.pt>:nth-child(1){grid-row:1/3}.pt>:nth-child(2){grid-column:2;grid-row:1}.pt>:nth-child(3){grid-column:2;grid-row:2}.pt>:nth-child(4){grid-column:3;grid-row:1/3;align-self:center}
 .tablewrap{border:0;border-radius:0;overflow:visible}table.tp{min-width:0;display:block}table.tp thead{display:none}table.tp tbody{display:grid;gap:8px}
 table.tp tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 8px;padding:10px;border:1px solid var(--line);border-radius:14px;background:#fff}
 table.tp td{display:block;padding:0;border:0;grid-column:1/-1;min-width:0;width:auto}table.tp td[data-l]:before{content:attr(data-l);display:block;font:500 8px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -232,6 +232,18 @@ const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 const rgbOf=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 function nearestName(hex){const c=rgbOf(hex);let best=NAMED[0],bd=1e9;for(const n of NAMED){const d=dist(c,rgbOf(n[1]));if(d<bd){bd=d;best=n}}return best[0]}
 // Dominant-colour extraction: quantise a small render, drop transparent and near-white background, merge near-duplicates.
+// Fills the Pantone C code on every colourway and artwork colour that has none (a C code that is already there is kept, a TCX one is replaced). Returns how many were set, or -1 if the list has not loaded.
+function matchPantoneC(){
+  if(!window.FBPantone)return -1;let n=0;
+  const fill=(o,hex,hint)=>{if(!hex||FBPantone.isC(o.code))return;const c=FBPantone.code(hex,{hint});if(c&&c!==o.code){o.code=c;n++}};
+  S.pack.colorways.forEach(c=>fill(c,c.swatch,`${c.name||''} ${c.notes||''}`));S.pack.artwork.forEach(a=>a.pantones.forEach(pt=>fill(pt,pt.hex,pt.name||'')));
+  return n;
+}
+// A pack someone is editing that still has TCX or blank colour codes gets Pantone C codes the moment it opens (the codes save with the pack).
+function autoPantoneC(){
+  if(!EDIT()||S.techPack?.lockedAt||!S.pack)return;
+  const n=matchPantoneC();if(n>0){rerender();markDirty();toast(`${n} colour${n===1?'':'s'} matched to Pantone C`)}
+}
 function extractPantones(dataUrl){return new Promise(resolve=>{const img=new Image();img.onload=()=>{const s=72,cv=document.createElement('canvas');cv.width=cv.height=s;const x=cv.getContext('2d');x.drawImage(img,0,0,s,s);const d=x.getImageData(0,0,s,s).data,bins=new Map();for(let i=0;i<d.length;i+=4){if(d[i+3]<128)continue;const r=d[i],g=d[i+1],b=d[i+2];if(r>244&&g>244&&b>244)continue;const k=((r>>4)<<8)|((g>>4)<<4)|(b>>4);const e=bins.get(k)||{n:0,r:0,g:0,b:0};e.n++;e.r+=r;e.g+=g;e.b+=b;bins.set(k,e)}const sorted=[...bins.values()].sort((a,b)=>b.n-a.n).map(e=>[Math.round(e.r/e.n),Math.round(e.g/e.n),Math.round(e.b/e.n),e.n]);const out=[];for(const c of sorted){if(out.some(o=>dist(o,c)<42))continue;out.push(c);if(out.length>=6)break}const total=sorted.reduce((s,c)=>s+c[3],0)||1;resolve(out.filter(c=>c[3]/total>=0.02).map(c=>{const h=hexOf(c[0],c[1],c[2]);return{hex:h,name:nearestName(h),code:(window.FBPantone?FBPantone.code(h,{hint:nearestName(h)}):'')}}))};img.onerror=()=>resolve([]);img.src=dataUrl})}
 
 // ---- renderers ----
@@ -647,8 +659,7 @@ document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');i
   if(act==='addco'){const sk=S.pack.sketches[+b.dataset.si];sk.callouts.push({n:nextN(sk),label:'',spec:'',note:'',photo:'',x:null,y:null});S.sel={si:+b.dataset.si,ci:sk.callouts.length-1};rerender();showTab('calls');markDirty();setTimeout(()=>document.querySelector('.co.sel input.t')?.focus(),0);return}
   if(act==='pinit'){const sk=S.pack.sketches[+b.dataset.si],c=sk.callouts[+b.dataset.ci];c.x=0.5;c.y=0.5;S.sel={si:+b.dataset.si,ci:+b.dataset.ci};rerender();showTab('calls');markDirty();toast('Pin placed at centre — drag it into position');return}
   if(act==='rmco'){const sk=S.pack.sketches[+b.dataset.si];sk.callouts.splice(+b.dataset.ci,1);sk.callouts.forEach((c,k)=>c.n=k+1);S.sel=null;rerender();showTab('calls');markDirty();return}
-  if(act==='matchc'){if(!window.FBPantone){toast('The Pantone list did not load — reload the page');return}let n=0;const fill=(o,hex,hint)=>{if(!hex||FBPantone.isC(o.code))return;const c=FBPantone.code(hex,{hint});if(c&&c!==o.code){o.code=c;n++}};
-    S.pack.colorways.forEach(c=>fill(c,c.swatch,`${c.name||''} ${c.notes||''}`));S.pack.artwork.forEach(a=>a.pantones.forEach(pt=>fill(pt,pt.hex,pt.name||'')));
+  if(act==='matchc'){const n=matchPantoneC();if(n<0){toast('The Pantone list did not load — reload the page');return}
     if(n){rerender();markDirty()}toast(n?`${n} colour${n===1?'':'s'} matched to Pantone C`:'Every colour already has a Pantone C code');return}
   if(act==='extract'){const a=S.pack.artwork[+b.dataset.ai];extractPantones(a.image).then(p=>{a.pantones=p;rerender();showTab('art');markDirty();toast(p.length?`${p.length} colours extracted`:'No colours found — is the artwork transparent or white?')});return}
   if(act==='rmpt'){const a=S.pack.artwork[+b.dataset.ai];a.pantones.splice(+b.dataset.pi,1);rerender();showTab('art');markDirty();return}
@@ -672,14 +683,14 @@ async function boot(){
     if(MODE==='admin'){
       if(!TOKEN)return gate('Sign in to the work console','Tech packs are built from the Future Basics work console.','/','Sign in');
       const d=await api(`/v1/admin/products/${productMatch[1]}/tech-pack`);S.product=d.product;S.cutoutEnabled=Boolean(d.cutoutEnabled);S.techPack=d.techPack;S.pack=d.techPack?d.techPack.data:d.seed;S.seed=d.seed;S.shares=d.shares;S.completeness=d.completeness;S.workHubUrl=d.workHubUrl;S.clientHubUrl=d.clientHubUrl;S.translations=d.translations||{};S.aiEnabled=Boolean(d.aiEnabled);
-      document.title=`Tech pack — ${S.product.title}`;render();if(!d.techPack)toast('Draft generated from the product configuration — edit anything to save it');
+      document.title=`Tech pack — ${S.product.title}`;render();autoPantoneC();if(!d.techPack)toast('Draft generated from the product configuration — edit anything to save it');
       if(d.techPack?.aiStatus==='pending')watchAiDraft();else if(d.techPack?.aiStatus==='failed')aiBanner('failed',d.techPack);else if(d.techPack?.aiStatus==='skipped')$('#noteSlot').insertAdjacentHTML('afterbegin',`<div class="note noprint ai-banner"><strong>Assistant draft was skipped</strong> — the client edited before it finished and the old rule kept their version. <button type="button" class="sbtn dark" data-act="airun" style="margin-left:6px">Run assistant now</button> (their edits are kept).</div>`);
     }else if(MODE==='client'){
       if(!TOKEN)return gate('Sign in to view this tech pack','Open your client hub, sign in, then come back to this link.','/','Open the client hub');
       let v=null;try{v=await api(`/v1/products/${productMatch[1]}/tech-pack`)}catch(e){if(e.status!==404)throw e}
       if(v){S.view=v;S.product=v.product;S.pack=v.techPack.data;document.title=`Tech pack — ${S.product.title}`;render()}
       else{const d=await api(`/v1/products/${productMatch[1]}/tech-pack/draft`);S.draft=true;S.product=d.product;S.cutoutEnabled=Boolean(d.cutoutEnabled);S.techPack=d.techPack;S.pack=d.techPack.data;S.completeness=d.completeness;S.clientHubUrl=d.clientHubUrl;S.pricing=d.pricing||null;RO=!d.editable;document.body.classList.add('draft-mode');
-        document.title=`Tech pack draft — ${S.product.title}`;render();
+        document.title=`Tech pack draft — ${S.product.title}`;render();autoPantoneC();
         $('#noteSlot').innerHTML=d.editable?`<details class="note noprint" ${isPhone()?'':'open'}><summary><strong>Your draft</strong> · saves as you go</summary><p>Add sketches and callouts, measurements, materials and colours — everything saves as you go. When it describes the product you want made, <strong>submit it to Future Basics</strong>; we finish the pack, publish v1, and send it back for your approval before anything goes to a factory.</p></details>`:`<p class="note noprint">Submitted to Future Basics ${fmtDate(d.techPack.submittedAt)} ${fmtTime(d.techPack.submittedAt)}. We are reviewing it and will publish v1 for your approval. Need to change something? Message us in the project thread and we will reopen the draft.</p>`;
         const fromStart=(()=>{try{const v=sessionStorage.getItem('fb.start.ai');sessionStorage.removeItem('fb.start.ai');return v==='1'}catch{return false}})();if(d.techPack.aiStatus==='pending')watchAiDraft();else if(d.techPack.aiStatus==='failed'&&d.editable)aiBanner('failed',d.techPack);else if(d.techPack.aiStatus==='locked'&&d.editable){aiBanner('locked',d.techPack);if(d.techPack.checkoutUrl)watchUnlock()}else if(fromStart&&d.techPack.aiStatus)aiBanner(d.techPack.aiStatus,d.techPack)}
     }else{
