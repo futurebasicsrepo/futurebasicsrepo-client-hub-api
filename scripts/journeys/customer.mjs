@@ -55,4 +55,41 @@ await journey('J68', 'a customer asks for a tech pack and the whole studio runs 
   const hero = await call(`/v1/admin/products/${m.id}/tech-pack/hero`, { method: 'POST', token: admin, body: {} }); ok(hero.status === 202, 'and make new hero images', hero.status);
 });
 
+await journey('J69', 'the product\'s own page in the hub shows its file: tech pack, reference picture, colourways with codes, 3D shape; the blank fields fill from the pack; a staff draft is shown only to staff previewing', async () => {
+  const m = await room('69');
+  let st = null; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && st.colourways && !st.colourways.running && st.model && st.model.status === 'done') break; await sleep(400); }
+  ok(st.visible === true && st.state.label === 'Your tech pack draft' && st.details.colourways.length >= 1, 'the customer\'s own pack is visible, with its details', st.state);
+  const card = (await call(`/v1/products/${m.id}/tech-pack/studio?view=card`, { token: m.token })).json;
+  ok(card.tiles.length >= 1 && card.tiles.every(t => /^data:image\/jpeg/.test(t.image) && t.image.length < 60000 && t.parts.length >= 1) && card.loop === null, 'the card version carries small pictures and no exchange, so a page of products stays light', card.tiles.map(t => t.image.length));
+  const uid = sql(`select id from users where client_id='${m.cid}' limit 1`), preview = await forge({ sub: uid, clientId: m.cid, role: 'client', preview: true });
+  // a staff-made pack that is not published: the customer sees nothing of it; staff previewing see it, marked as a draft
+  sql(`update tech_packs set initiated_by='brand' where product_id='${m.id}'`);
+  ok((await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).status === 404, 'a staff draft is hidden from the customer');
+  const pv = await call(`/v1/products/${m.id}/tech-pack/studio?view=card`, { token: preview }); ok(pv.status === 200 && pv.json.staffDraft === true && /staff draft/i.test(pv.json.state.label), 'but staff previewing the hub see it, marked as a draft', [pv.status, pv.json.state]);
+  ok(sql(`select count(*) from tech_packs where product_id='${m.id}' and published_at is null`) === '1');
+  // publishing it makes it the customer's to see
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data where product_id='${m.id}'`);
+  const pub = (await call(`/v1/products/${m.id}/tech-pack/studio?view=card`, { token: m.token })).json; ok(pub.visible && pub.staffDraft === false && pub.state.label === 'Tech pack v1' && pub.tiles.length >= 1, 'once published, the customer sees it, with its colourway pictures', pub.state);
+  if (playwright) {
+    const b = await playwright.chromium.launch();
+    try {
+      const pid = sql(`select project_id from products where id='${m.id}'`);
+      const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await p.waitForSelector('#techpacks .tp-card');
+      await p.evaluate(([a, c]) => window.openProject ? window.openProject(a, false) : null, [pid, m.id]); await p.waitForSelector('.project-product, #projectPageBody', { timeout: 10000 });
+      await p.evaluate(id => { const el = document.querySelector(`[data-sel="products"]`); if (el) el.click(); }, m.id);
+      await p.waitForSelector('.project-product .pfile .pf', { timeout: 10000 });
+      const t = await p.innerText('.project-product');
+      ok(/Tech pack v1/.test(t) && await p.locator('.project-product .pf-fig').count() >= 3, 'the product card in the project shows its file: the tech pack, the reference picture, the colourways', await p.locator('.project-product .pf-fig').count());
+      ok(!/Material:\s*TBD/i.test(t) && !/Colorways:\s*TBD/i.test(t), 'and the blank material and colourway fields are filled from the pack', t.slice(t.indexOf('Material'), t.indexOf('Material') + 120));
+      ok((await p.getAttribute('.project-product .tpstrip', 'href')) === `/tech-packs/${m.id}`, 'with a link that opens the tech pack');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j69-card.png`, fullPage: true }).catch(() => {});
+      await p.click('.project-product .card-actions button'); await p.waitForSelector('#productDialog[open] .pfile .pf', { timeout: 10000 });
+      ok(await p.locator('#productDialog .pf-fig').count() >= 3, 'the full product details open with the same file');
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    } finally { await b.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

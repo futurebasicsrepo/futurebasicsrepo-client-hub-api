@@ -3542,21 +3542,29 @@ app.post('/v1/admin/products/:id/tech-pack/cutout',{preHandler:[authenticate,adm
 });
 // What the customer sees of the studio: the approved reference picture, the colourway run, the 3D model and how the assistants built the pack. Only what is finished and
 // approved: a hero waiting for a person is not shown, and staff-only tools stay staff-only.
-async function studioForClient(productId,clientId,{lite=false}={}){
-  const tp=(await pool.query('select id,product_id,data,published_data from tech_packs where product_id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!tp)return null;
+async function studioForClient(productId,clientId,{lite=false,card=false,preview=false}={}){
+  const tp=(await pool.query('select id,product_id,initiated_by,published_at,version,status,submitted_at,data,published_data from tech_packs where product_id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!tp)return null;
+  // A customer sees their own drafts and what Future Basics has published. A staff draft that is not published yet is shown only to staff previewing the hub, and says so.
+  const theirs=tp.initiated_by==='client'||Boolean(tp.published_at),staffDraft=!theirs;
+  if(staffDraft&&!preview)return {visible:false};
   const heroRow=(await pool.query(`select * from tech_pack_heroes where tech_pack_id=$1 and status in ('approved','ready','generating') order by (status='approved') desc,created_at desc limit 1`,[tp.id])).rows[0];
-  let hero=null;if(heroRow?.status==='approved'){try{hero={image:lite?null:await heroThumb(await heroBuffer(heroRow),900,84),score:heroRow.candidates?.[heroRow.chosen]?.total??null,approvedAt:heroRow.approved_at,auto:Boolean(heroRow.auto_approved)}}catch{}}
+  const small=async (buf,w)=>heroThumb(buf,w,80),dataBuf=u=>{const m=/^data:image\/[a-z+]+;base64,(.+)$/i.exec(String(u||''));return m?Buffer.from(m[1],'base64'):null};
+  let hero=null;if(heroRow?.status==='approved'){try{hero={image:lite?null:await small(await heroBuffer(heroRow),card?420:900),score:heroRow.candidates?.[heroRow.chosen]?.total??null,approvedAt:heroRow.approved_at,auto:Boolean(heroRow.auto_approved)}}catch{}}
   const mrow=(await pool.query(`select * from tech_pack_models where tech_pack_id=$1 and status in ('running','done') order by created_at desc limit 1`,[tp.id])).rows[0],model=mrow?await modelView(mrow,{withThumb:!lite}):null;
   const colourways=await latestColourways(tp.id),loop=await latestLoop(tp.id),pack=normalizeTechPack(tp.published_data||tp.data);
   const working=Boolean(loop?.status==='running'||heroRow?.status==='generating'||colourways?.running||model?.status==='running');
-  const tiles=lite?undefined:pack.renderings.filter(r=>/^cw-/.test(String(r.id||''))&&r.image);
-  return {lite,working,hero,tiles,heroPending:Boolean(heroRow&&heroRow.status==='ready'),colourways:colourways?{status:colourways.status,running:colourways.running,progress:colourways.progress,made:colourways.made}:null,
+  let tiles=lite?undefined:pack.renderings.filter(r=>/^cw-/.test(String(r.id||''))&&r.image);
+  if(card&&tiles){const out=[];for(const t of tiles){const b=dataBuf(t.image);let image=t.image;if(b){try{image=await small(b,320)}catch{}}out.push({id:t.id,name:t.name,image,parts:(t.parts||[]).slice(0,8)})}tiles=out}
+  // what the pack says, for the product's own page: the card's fields fall back to it when nobody has typed them into the product
+  const details={category:pack.style.category||'',material:pack.style.fabricSummary||'',description:pack.style.description||'',sizes:pack.sizes||[],styleNumber:pack.style.styleNumber||'',colourways:pack.colorways.map(c=>({name:c.name,code:c.code,swatch:c.swatch}))};
+  const state=tp.published_at?{label:`Tech pack v${tp.version}`,note:`Issued ${new Date(tp.published_at).toLocaleDateString()} · open to review and approve`}:tp.status==='submitted'?{label:'Tech pack · submitted',note:'With Future Basics · v1 coming for your approval'}:staffDraft?{label:'Tech pack · staff draft',note:'Not shown to the client until it is published'}:{label:'Your tech pack draft',note:'Open to add detail, then submit'};
+  return {visible:true,staffDraft,state,details,lite,working,hero,tiles,heroPending:Boolean(heroRow&&heroRow.status==='ready'),colourways:colourways?{status:colourways.status,running:colourways.running,progress:colourways.progress,made:colourways.made}:null,
     model:model?{id:model.id,status:model.status,progress:model.progress,triangles:model.triangles,bytes:model.bytes,thumb:model.thumb,completedAt:model.completedAt}:null,
-    loop:loop?{status:loop.status,startScore:loop.startScore,finalScore:loop.finalScore,outcome:loop.outcome,events:loop.events}:null,parts:pack.parts};
+    loop:card?null:loop?{status:loop.status,startScore:loop.startScore,finalScore:loop.finalScore,outcome:loop.outcome,events:loop.events}:null,parts:pack.parts};
 }
 app.get('/v1/products/:id/tech-pack/studio',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
-  const v=await studioForClient(req.params.id,req.auth.clientId,{lite:req.query?.lite==='1'});if(!v)return reply.code(404).send({error:'Tech pack not found'});return v;
+  const v=await studioForClient(req.params.id,req.auth.clientId,{lite:req.query?.lite==='1',card:req.query?.view==='card',preview:Boolean(req.auth.preview)});if(!v||v.visible===false)return reply.code(404).send({error:'Tech pack not found'});return v;
 });
 // The 3D model's own files for the customer who owns the product (the shape and its preview; a download is the same file).
 app.get('/v1/products/:id/tech-pack/model/:file',{preHandler:authenticate},async(req,reply)=>{
