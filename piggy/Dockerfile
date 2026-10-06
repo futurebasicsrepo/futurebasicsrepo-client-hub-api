@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY src ./src
+COPY public ./public
 RUN mkdir -p /data
 ENV NODE_ENV=production PORT=3000 PIGGY_DB=/data/piggy.db
 EXPOSE 3000

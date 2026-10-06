@@ -7,7 +7,8 @@
 import http from 'node:http';
 import { EventEmitter } from 'node:events';
 import Stripe from 'stripe';
-import { openDb, getJar, listJars, createJar, recentPayments, credit, parseAmount, KINDS } from './db.js';
+import { readFileSync } from 'node:fs';
+import { openDb, getJar, listJars, createJar, recentPayments, countSince, setCheer, credit, parseAmount, KINDS } from './db.js';
 import { homePage, tapPage, displayPage, notFoundPage } from './pages.js';
 
 const env = process.env;
@@ -18,6 +19,7 @@ const stripe = env.STRIPE_SECRET_KEY ? new Stripe(env.STRIPE_SECRET_KEY) : null;
 const live = Boolean(stripe && env.STRIPE_PUBLISHABLE_KEY);
 const db = openDb();
 const bus = new EventEmitter().setMaxListeners(0);
+const FUN_JS = readFileSync(new URL('../public/fun.js', import.meta.url));
 
 const publicJar = (j) => ({
   slug: j.slug, kind: j.kind, label: KINDS[j.kind].label, name: j.name, owner: j.owner, tagline: j.tagline,
@@ -30,7 +32,10 @@ function announce(jar, amount_cents) {
 
 // Record a Stripe PaymentIntent once it has succeeded. Called from the webhook
 // and from the payer's browser right after confirmation, whichever is first.
-async function settle(piId) {
+// Start of the payer's day, as they sent it; falls back to the last 24 hours.
+const sinceOf = (v) => (Number.isFinite(Number(v)) && Number(v) > Date.now() - 2 * 864e5 ? Number(v) : Date.now() - 864e5);
+
+async function settle(piId, since) {
   const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['latest_charge'] });
   const slug = pi.metadata?.piggy_jar;
   if (pi.status !== 'succeeded' || !slug || !getJar(db, slug)) return { status: pi.status };
@@ -38,7 +43,10 @@ async function settle(piId) {
     || pi.latest_charge?.payment_method_details?.type || null;
   const jar = credit(db, { id: pi.id, slug, amount_cents: pi.amount_received, method });
   if (jar) announce(jar, pi.amount_received);
-  return { status: pi.status, jar: publicJar(jar || getJar(db, slug)), amount_cents: pi.amount_received };
+  return {
+    status: pi.status, jar: publicJar(jar || getJar(db, slug)), amount_cents: pi.amount_received,
+    payment_id: pi.id, today_count: countSince(db, slug, sinceOf(since)),
+  };
 }
 
 // ─── tiny router ────────────────────────────────────────────────────────────
@@ -79,6 +87,7 @@ const cfg = () => ({ live, publishable_key: live ? env.STRIPE_PUBLISHABLE_KEY : 
 
 const routes = [
   ['GET', /^\/health$/, (req, res) => send(res, 200, { ok: true, live })],
+  ['GET', /^\/static\/fun\.js$/, (req, res) => send(res, 200, FUN_JS, 'text/javascript; charset=utf-8', { 'cache-control': 'public, max-age=300' })],
   ['GET', /^\/$/, (req, res) => html(res, homePage({ jars: listJars(db).map(publicJar), live }))],
 
   // Apple Pay domain verification file, if Stripe hands you one to host.
@@ -152,7 +161,7 @@ const routes = [
   // confirms it, so the balance moves even before the webhook lands.
   ['POST', /^\/api\/payments\/(pi_[A-Za-z0-9]+)\/sync$/, async (req, res, [id]) => {
     if (!live) return send(res, 409, { error: 'Payments are in demo mode' });
-    send(res, 200, await settle(id));
+    send(res, 200, await settle(id, (await readJson(req)).since));
   }],
 
   // Demo mode only: pretend the wallet said yes.
@@ -160,10 +169,24 @@ const routes = [
     if (live) return send(res, 409, { error: 'Demo payments are off when Stripe is connected' });
     if (limited(req)) return send(res, 429, { error: 'Too many tries, give it a minute' });
     if (!getJar(db, slug)) return send(res, 404, { error: 'No such jar' });
-    const amount = parseAmount((await readJson(req)).amount_cents, { min: MIN, max: MAX });
-    const jar = credit(db, { id: `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, slug, amount_cents: amount, method: 'demo', demo: true });
+    const body = await readJson(req);
+    const amount = parseAmount(body.amount_cents, { min: MIN, max: MAX });
+    const id = `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const jar = credit(db, { id, slug, amount_cents: amount, method: 'demo', demo: true });
     announce(jar, amount);
-    send(res, 200, { status: 'succeeded', jar: publicJar(jar), amount_cents: amount });
+    send(res, 200, { status: 'succeeded', jar: publicJar(jar), amount_cents: amount, payment_id: id, today_count: countSince(db, slug, sinceOf(body.since)) });
+  }],
+
+  // After paying, the payer can send one emoji to the jar's display.
+  ['POST', /^\/api\/jars\/([a-z0-9-]+)\/cheer$/, async (req, res, [slug]) => {
+    if (limited(req)) return send(res, 429, { error: 'Too many tries, give it a minute' });
+    const jar = getJar(db, slug);
+    if (!jar) return send(res, 404, { error: 'No such jar' });
+    const { payment_id, cheer } = await readJson(req);
+    if (!KINDS[jar.kind].cheers.includes(cheer)) return send(res, 400, { error: 'Pick one of the cheers shown' });
+    if (typeof payment_id !== 'string' || !setCheer(db, { id: payment_id, slug, cheer })) return send(res, 409, { error: 'That payment already sent a cheer' });
+    bus.emit(slug, { balance_cents: jar.balance_cents, cheer, at: Date.now() });
+    send(res, 200, { ok: true });
   }],
 
   ['POST', /^\/webhooks\/stripe$/, async (req, res) => {

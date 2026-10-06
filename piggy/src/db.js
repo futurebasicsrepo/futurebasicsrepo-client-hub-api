@@ -7,10 +7,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
+// cheers: the emoji a payer can send after paying, shown on the jar's display.
+// treats: one playful label per preset chip, in order. The plate stays plain.
 export const KINDS = {
-  piggy: { label: 'Piggy bank', verb: 'Add', noun: 'savings' },
-  tip: { label: 'Tip jar', verb: 'Tip', noun: 'tips' },
-  plate: { label: 'Collection plate', verb: 'Give', noun: 'giving' },
+  piggy: { label: 'Piggy bank', verb: 'Add', noun: 'savings', cheers: ['🎉', '💖', '🌟', '🚀'], treats: ['🍬', '🍦', '🍿'] },
+  tip: { label: 'Tip jar', verb: 'Tip', noun: 'tips', cheers: ['🙌', '☕', '🔥', '⭐'], treats: ['☕', '🥐', '🙌'] },
+  plate: { label: 'Collection plate', verb: 'Give', noun: 'giving', cheers: ['🙏', '❤️', '✨', '🕊️'], treats: [] },
 };
 
 const SEED = [
@@ -47,6 +49,9 @@ export function openDb(file = process.env.PIGGY_DB || './data/piggy.db') {
     );
     CREATE INDEX IF NOT EXISTS payments_jar ON payments (jar_slug, created_at);
   `);
+  if (!db.prepare('PRAGMA table_info(payments)').all().some((c) => c.name === 'cheer')) {
+    db.exec('ALTER TABLE payments ADD COLUMN cheer TEXT');
+  }
   const count = db.prepare('SELECT COUNT(*) AS n FROM jars').get().n;
   if (count === 0) for (const j of SEED) createJar(db, j);
   return db;
@@ -70,7 +75,18 @@ export function createJar(db, j) {
 export const getJar = (db, slug) => row(db.prepare('SELECT * FROM jars WHERE slug = ?').get(slug));
 export const listJars = (db) => db.prepare('SELECT * FROM jars ORDER BY created_at').all().map(row);
 export const recentPayments = (db, slug, limit = 10) =>
-  db.prepare('SELECT id, amount_cents, method, demo, created_at FROM payments WHERE jar_slug = ? ORDER BY created_at DESC LIMIT ?').all(slug, limit);
+  db.prepare('SELECT amount_cents, method, demo, cheer, created_at FROM payments WHERE jar_slug = ? ORDER BY created_at DESC LIMIT ?').all(slug, limit);
+
+// How many payments a jar has had since a moment (the payer's local midnight),
+// so the success screen can say "you're the 7th tip today".
+export const countSince = (db, slug, since) =>
+  db.prepare('SELECT COUNT(*) AS n FROM payments WHERE jar_slug = ? AND created_at >= ?').get(slug, since).n;
+
+// Attach the payer's cheer to their payment, once. Returns false if the
+// payment isn't this jar's or already has one.
+export function setCheer(db, { id, slug, cheer }) {
+  return db.prepare('UPDATE payments SET cheer = ? WHERE id = ? AND jar_slug = ? AND cheer IS NULL').run(cheer, id, slug).changes === 1;
+}
 
 // Credit a payment exactly once. Stripe can deliver the same success through
 // the webhook and the payer's browser sync; the payment id is the guard.

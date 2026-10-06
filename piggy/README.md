@@ -63,6 +63,17 @@ Without Stripe keys the app runs in **demo mode**: the pages are the same, and a
 | `MIN_CENTS`, `MAX_CENTS` | Amount limits (default $1 to $500) |
 | `PIGGY_DB` | SQLite path (default `/data/piggy.db` in Docker) |
 
+## The fun part
+
+- Each jar has a mascot: a pig, a glass tip jar, or a plain wooden plate for churches. The pig and the jar react to the amount picked: a smile for $1, a grin for $3, star eyes for $5, heart eyes for $10 and up. Their eyes follow your finger.
+- When the payment goes through, the screen floods with colour from the pay button. A coin flies into the mascot's slot, then there's a burst of coins and confetti, and it rains coins at $5 and up. The balance counts up like a cash register, and crossing 25, 50, 75 or 100% of a goal sets off fireworks and a banner.
+- Sound is synthesised in the browser with no audio files. It's on for piggy banks and tip jars and off by default for plates, with a mute toggle. Android phones also vibrate.
+- The payer can send one emoji cheer, which floats up on the jar's live display. The success screen also says how many tips or deposits came in today.
+- The plate stays calm: a soft glow, rising sparks and a chime instead of confetti.
+- With reduced motion turned on, the big effects are skipped.
+
+The motion and sound kit is `public/fun.js`, which has no dependencies.
+
 ## Endpoints
 
 - `GET /j/:slug`: tap page (the URL written to the NFC tag)
@@ -72,6 +83,7 @@ Without Stripe keys the app runs in **demo mode**: the pages are the same, and a
 - `POST /api/jars/:slug/intents` `{ amount_cents }` returns `{ id, client_secret }`
 - `POST /api/payments/:pi/sync`: look up a confirmed intent and credit it
 - `POST /api/jars/:slug/demo-pay` `{ amount_cents }`: demo mode only
+- `POST /api/jars/:slug/cheer` `{ payment_id, cheer }`: one emoji per payment, from that jar's own set; it pops up on the display
 - `POST /webhooks/stripe`
 - `POST /api/jars` (admin) `{ slug, kind: piggy|tip|plate, name, owner?, tagline?, presets?, goal_cents? }` returns `{ device_key, tag_url }`
 
