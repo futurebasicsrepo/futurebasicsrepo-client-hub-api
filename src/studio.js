@@ -18,7 +18,7 @@ export const toHex = ([r, g, b]) => `#${hex2(r)}${hex2(g)}${hex2(b)}`;
 const NAMES = [
   ['White', '#f5f5f2'], ['Off-white', '#ebe7dc'], ['Cream', '#efe6cf'], ['Bone', '#e3dac6'], ['Ecru', '#d8cdb4'], ['Sand', '#cdb99a'], ['Beige', '#c8b79c'], ['Tan', '#b58a5a'], ['Camel', '#a87b45'], ['Khaki', '#a39467'],
   ['Light grey', '#c9cacc'], ['Grey', '#8d9094'], ['Heather grey', '#a7a9ad'], ['Charcoal', '#4a4d52'], ['Graphite', '#34363a'], ['Black', '#16161a'],
-  ['Brown', '#6b4a32'], ['Chocolate', '#47301f'], ['Tobacco', '#7a5230'], ['Rust', '#a4502a'], ['Terracotta', '#b9654a'], ['Burgundy', '#6d1f2f'], ['Maroon', '#541a26'], ['Wine', '#7a2540'],
+  ['Brown', '#6b4a32'], ['Chocolate', '#47301f'], ['Dark brown', '#3a281d'], ['Espresso', '#2a1c16'], ['Oxblood', '#4a1e22'], ['Mahogany', '#51271f'], ['Walnut', '#5b3c2a'], ['Chestnut', '#6c3d25'], ['Cognac', '#9a5b2e'], ['Black cherry', '#3c1621'], ['Bordeaux', '#4b1727'], ['Aubergine', '#35203a'], ['Deep green', '#16332a'], ['Deep navy', '#101a30'], ['Tobacco', '#7a5230'], ['Rust', '#a4502a'], ['Terracotta', '#b9654a'], ['Burgundy', '#6d1f2f'], ['Maroon', '#541a26'], ['Wine', '#7a2540'],
   ['Red', '#c8202a'], ['Scarlet', '#e03a2f'], ['Coral', '#ee6f5b'], ['Orange', '#ef7a1f'], ['Burnt orange', '#cc5a1a'], ['Amber', '#e4a21c'], ['Mustard', '#d2a02a'], ['Yellow', '#f0cf2c'], ['Lemon', '#f4e35a'],
   ['Lime', '#b5d334'], ['Olive', '#6a6b2e'], ['Moss', '#58642f'], ['Forest green', '#24502f'], ['Green', '#2f8a4a'], ['Emerald', '#12805a'], ['Sage', '#9aa88a'], ['Mint', '#a8dcc0'], ['Teal', '#1f7f80'],
   ['Aqua', '#52c4c8'], ['Sky blue', '#8cc4ec'], ['Light blue', '#a9c7e6'], ['Blue', '#2a63c5'], ['Royal blue', '#1f4fb5'], ['Cobalt', '#1f3fa0'], ['Denim', '#4a6a94'], ['Navy', '#1d2a4a'], ['Midnight', '#141d33'],
@@ -80,10 +80,13 @@ export function snapColours(input, measured) {
     const m = near(c.swatch, 32); if (!m) return c;
     used.add(m.hex); if (m.hex === c.swatch) return c;
     changed++;
-    const renamed = colourDistance(c.swatch, m.hex) > 14;
+    const renamed = colourDistance(c.swatch, m.hex) > 26; // the assistant's own name stays unless its colour was really far from the pixels
     const lead = String(c.notes || '').split(' · ')[0], role = lead && !/^(seen in|suggested)/i.test(lead) ? lead : '';
     return { ...c, name: renamed ? m.name : c.name, swatch: m.hex, notes: `${role ? role + ' · ' : ''}Seen in the photo, measured from the pixels (${Math.round(m.share * 100)}% of the product) — client to confirm` };
   });
+  // two observed colourways that now read as the same colour are one
+  const kept = [];
+  pack.colorways = pack.colorways.filter(c => { if (/suggested alternative/i.test(c.notes || '') || !hexToRgb(c.swatch)) return true; if (kept.some(k => colourDistance(k, c.swatch) < 10)) { changed++; return false; } kept.push(c.swatch); return true; });
   const have = pack.colorways.length;
   for (const m of measured) {
     if (pack.colorways.length >= 6) break;

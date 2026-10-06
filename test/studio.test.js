@@ -70,3 +70,15 @@ test('with a hero, the render is told to follow it and the pack', () => {
   const b = specBrief(p, { title: 'Runner' }), g = guidedPrompt(b, { camera: 'three-quarter front view' });
   assert.match(g, /reference image is the approved picture/); assert.match(g, /follow the tech pack/); assert.match(g, /TECH PACK:/); assert.match(g, /Mesh/);
 });
+
+test('a dark brown leather is not called graphite, and the assistant\'s own name stays unless its colour was far off', () => {
+  assert.notEqual(nearestName('#3b2a29'), 'Graphite'); assert.ok(['Dark brown', 'Espresso', 'Oxblood', 'Mahogany', 'Chocolate', 'Black cherry'].includes(nearestName('#3b2a29')), nearestName('#3b2a29'));
+  assert.equal(nearestName('#4a1e22'), 'Oxblood');
+  const measured = [{ hex: '#3b2a29', name: 'Dark brown', share: 0.7 }];
+  const pack = normalizeTechPack({ sizes: ['10'], colorways: [{ name: 'Dark Oxblood-Brown', swatch: '#4a2a2a', notes: 'upper · Seen in the photo — client to confirm' }] });
+  assert.equal(snapColours(pack, measured).pack.colorways[0].name, 'Dark Oxblood-Brown', 'a close colour keeps the assistant\'s name');
+  const far = normalizeTechPack({ sizes: ['10'], colorways: [{ name: 'Sky', swatch: '#6a8ae0', notes: 'upper · Seen in the photo — client to confirm' }] });
+  assert.equal(snapColours(far, [{ hex: '#7a96d8', name: 'Cobalt', share: 0.7 }]).pack.colorways[0].name, 'Sky');
+  const twins = normalizeTechPack({ sizes: ['10'], colorways: [{ name: 'Black', swatch: '#0f0f10', notes: 'sole · Seen in the photo — client to confirm' }, { name: 'Jet Black', swatch: '#141415', notes: 'trim · Seen in the photo — client to confirm' }, { name: 'Red', swatch: '#cc2222', notes: 'Suggested alternative — client to confirm' }] });
+  assert.deepEqual(snapColours(twins, [{ hex: '#101011', name: 'Black', share: 0.5 }]).pack.colorways.map(c => c.name), ['Black', 'Red'], 'two observed colourways that read as one are one; alternatives stay');
+});
