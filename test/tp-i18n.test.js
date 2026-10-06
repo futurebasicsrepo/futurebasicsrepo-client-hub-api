@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 globalThis.window = globalThis;
 await import('../src/tp-i18n.js');
-const I = globalThis.FBTP_I18N, LANGS = ['zh', 'es', 'pt', 'it'];
+const I = globalThis.FBTP_I18N, LANGS = ['zh', 'zh-hant', 'es', 'pt', 'it'];
 
 // every sentence the page builds around a pack's own text, one per pattern
 const SAMPLES = ['Spec (in)', 'Spec 10', 'Version 3', 'v2 published 5 Oct 2026', 'Published v2', 'printed 5 Oct 2026', '✓ Acknowledged by Mill A', 'Countersign as Mill A', 'Approve tech pack v2', 'Sign as Mill A',
@@ -12,7 +12,7 @@ const SAMPLES = ['Spec (in)', 'Spec 10', 'Version 3', 'v2 published 5 Oct 2026',
   '3 of 5 acknowledged by factory', '✓ Locked for production — v2 signed by every party', 'Acknowledge all callouts first — 3 still pending in the Calls tab.',
   'By approving, Maya confirms this tech pack describes the product they want made. It goes to Future Basics, then the factory.', '1.5 from left', '2 from top', 'Width 3.5', '4 in', 'garment width 12 (true scale)', 'Heel wrap on front'];
 
-test('every language covers the same phrases as Mandarin, and every phrase is filled in', () => {
+test('every language covers the same phrases as Simplified Chinese, and every phrase is filled in', () => {
   const keys = Object.keys(I.langs.zh.dict).sort();
   assert.ok(keys.length > 150);
   for (const l of LANGS) {
@@ -41,6 +41,19 @@ test('every sentence pattern produces text in every language, with nothing left 
     assert.ok(t && t !== s, `${l}: "${s}" is translated`);
     assert.ok(!/\$\d/.test(t) && !/undefined/.test(t), `${l}: "${s}" → "${t}" has no placeholders left`);
   }
+});
+
+test('Traditional Chinese is written in Traditional characters, with Hong Kong and Taiwan terms', () => {
+  const d = I.langs['zh-hant'];
+  assert.equal(d.html, 'zh-Hant');
+  assert.equal(I.langs.zh.label, 'Chinese (Simplified)');
+  assert.equal(d.label, 'Chinese (Traditional)');
+  const all = JSON.stringify(d.dict) + d.note('Mill A', 2, '5 Oct 2026') + SAMPLES.map(s => I.lookup('zh-hant', s, {})).join('');
+  const simplified = [...'艺单图发签确认无码说书检质设计划样数据过这为对应时们'].filter(c => all.includes(c));
+  assert.deepEqual(simplified, [], 'no Simplified-only characters');
+  assert.equal(I.lookup('zh-hant', 'Tech pack'), '工藝單');
+  assert.equal(I.lookup('zh-hant', 'Sign'), '簽核');
+  assert.ok(!all.includes('籤'), 'sign is 簽, not the lottery-slip 籤');
 });
 
 test('names and numbers inside a sentence are carried through', () => {

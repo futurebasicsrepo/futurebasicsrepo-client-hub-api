@@ -1,12 +1,13 @@
 // Factory languages for the tech pack page: the words around the pack's own text (headings, buttons, status lines).
 // The pack's own text comes from the server's translation map; anything not found here or there stays in English.
-// zh is Mandarin for mainland factories; es, pt and it are for factories in Spain, Portugal and Italy.
+// zh is Simplified Chinese for mainland factories, zh-hant Traditional Chinese for Hong Kong and Taiwan; es, pt and it are for
+// factories in Spain, Portugal and Italy.
 // Served at /tp-i18n.js and read by techpack.html through window.FBTP_I18N.
 (function(){
 const pl=(n,one,many)=>Number(n)===1?one:many;
 const LANGS={};
 
-LANGS.zh={native:'中文',label:'Mandarin',html:'zh-Hans',
+LANGS.zh={native:'简体中文',label:'Chinese (Simplified)',html:'zh-Hans',
   dict:{'Style':'款式','Calls':'工艺点','POMs':'尺寸','Art':'图案','BOM':'物料','Sign':'签核','Callouts':'工艺点','Measure':'尺寸','Artwork':'图案','Materials':'物料','PDF':'PDF',
 'Tech pack':'工艺单','Draft':'草稿','Published':'已发布','not yet published':'尚未发布','Style no.':'款号','Season':'季度','Category':'品类','Sample size':'样品尺码','Size run':'尺码范围','Designer':'设计师','Colour rendering':'配色效果图','Reference photo':'参考图','colour rendering to follow':'配色效果图待补','Rendering':'效果图','Shown on the cover':'显示在封面',
 'colour renderings':'配色效果图','Colour Renderings':'配色效果图','style summary':'款式概要','revision history':'版本记录','Revisions':'版本记录','Not yet published.':'尚未发布。','callouts':'工艺点','measurements':'尺寸','Points of Measure':'测量部位','artwork & colour':'图案与颜色','Pantone Extraction':'潘通色提取','placement':'位置','Position on Garment':'图案在成品上的位置','bill of materials':'物料清单','Materials & Trims':'面辅料','construction':'工艺','Construction':'工艺做法','labels, packaging & care':'唛头、包装与洗护','Labels, Packaging & Care':'唛头、包装与洗护','sign-off':'签核','Tech Pack Sign-Off':'工艺单签核','access':'访问权限','Who can see this':'谁可以查看',
@@ -35,6 +36,36 @@ LANGS.zh={native:'中文',label:'Mandarin',html:'zh-Hans',
     [/^(.+) on (front|back|side|lateral|medial|top|outsole|heel|detail)$/,(m,a,v)=>`${L(a)||a} · ${D[v]}`]],
   title:t=>`工艺单 — ${t}`,
   note:(who,ver,date)=>`<p class="note noprint">由 Future Basics 为 <strong>${who||'贵厂'}</strong> 准备 · 版本 ${ver}，发布于 ${date}。请在 <strong>工艺点</strong> 页逐条确认，在 <strong>图案</strong> 页下载图案文件，然后在 <strong>签核</strong> 页会签。</p>`};
+
+LANGS['zh-hant']={native:'繁體中文',label:'Chinese (Traditional)',html:'zh-Hant',
+  dict:{'Style':'款式','Calls':'工藝點','POMs':'尺寸','Art':'圖案','BOM':'物料','Sign':'簽核','Callouts':'工藝點','Measure':'尺寸','Artwork':'圖案','Materials':'物料','PDF':'PDF',
+'Tech pack':'工藝單','Draft':'草稿','Published':'已發布','not yet published':'尚未發布','Style no.':'款號','Season':'季度','Category':'品類','Sample size':'樣品尺碼','Size run':'尺碼範圍','Designer':'設計師','Colour rendering':'配色效果圖','Reference photo':'參考圖','colour rendering to follow':'配色效果圖待補','Rendering':'效果圖','Shown on the cover':'顯示在封面',
+'colour renderings':'配色效果圖','Colour Renderings':'配色效果圖','style summary':'款式概要','revision history':'版本記錄','Revisions':'版本記錄','Not yet published.':'尚未發布。','callouts':'工藝點','measurements':'尺寸','Points of Measure':'測量部位','artwork & colour':'圖案與顏色','Pantone Extraction':'潘通色提取','placement':'位置','Position on Garment':'圖案在成品上的位置','bill of materials':'物料清單','Materials & Trims':'面輔料','construction':'工藝','Construction':'工藝做法','labels, packaging & care':'嘜頭、包裝與洗護','Labels, Packaging & Care':'嘜頭、包裝與洗護','sign-off':'簽核','Tech Pack Sign-Off':'工藝單簽核','access':'存取權限','Who can see this':'誰可以查看',
+'Code':'代碼','POM':'測量部位','Point of measure':'測量部位','How to measure':'測量方法','Tolerance':'公差','Tol.':'公差','Component':'部件','Material':'材料','Spec':'規格','Supplier':'供應商','Ref':'編號','Color':'顏色','Placement':'位置','Qty':'數量','Unit':'單位','Notes':'備註','Area':'部位','Detail':'做法','Detail — stitch, seam, thread, SPI, finish':'做法 — 線跡、縫型、縫線、針距、後整理','Label / item':'嘜頭 / 項目',
+'Style number':'款號','Style name':'款名','Fit block / base pattern':'版型 / 基礎紙樣','Fabric summary':'面料概要','Description':'描述','View':'視圖','Label':'標簽','Garment width in this image (in)':'圖中成品寬度（英寸）','Callout':'工藝點','Note to factory':'給工廠的說明','Fold':'摺疊方式','Polybag':'膠袋','Carton':'外箱','Units per carton':'每箱數量','Packaging notes':'包裝備註','Fiber content':'成分','Country of origin':'原產國','Care instructions':'洗護說明','Compliance / testing':'合規 / 測試','Packaging':'包裝','Care & compliance':'洗護與合規','Notes to factory':'給工廠的備註','Width (in)':'寬度（英寸）','Name':'名稱','Note':'備註',
+'Fabric Pantones':'面料潘通色','Black outlines = construction only':'黑色輪廓線 = 僅表示結構','Acknowledge each callout below':'請逐條確認以下工藝點','Acknowledge':'確認','✓ Acknowledged':'✓ 已確認','Awaiting factory acknowledgement':'待工廠確認','No callouts on this view yet.':'此視圖暫無工藝點。','No photo':'無照片','No garment views yet':'暫無成品視圖',
+'front':'正面','back':'背面','side':'側面','lateral':'外側','medial':'內側','top':'俯視','outsole':'大底','heel':'後跟','detail':'細節',
+'Readiness check':'就緒檢查','Approval 01 · Client':'審批 01 · 客戶','Approval 02 · Design':'審批 02 · 設計方','Approval 01 · Design':'審批 01 · 設計方','Approval 03 · Factory countersign':'審批 03 · 工廠會簽','Approval 02 · Factory countersign':'審批 02 · 工廠會簽','Awaiting your countersignature':'待您會簽','Awaiting factory countersignature':'待工廠會簽','Awaiting Future Basics signature':'待 Future Basics 簽署','Awaiting client approval':'待客戶批准','Awaiting signature':'待簽署','Awaiting your approval':'待您批准','Type your full name':'請輸入您的全名','Future Basics signs before the factory countersigns.':'Future Basics 簽署後，工廠方可會簽。',
+'By signing, the factory confirms it can produce this style to spec. With every signature in, the tech pack locks — changes require a new version.':'工廠簽署即確認能夠按規格生產此款式。所有簽名完成後工藝單將鎖定，如需修改須發布新版本。',
+'By signing, Future Basics confirms the tech pack is complete and accurate. The factory may begin sample production.':'Future Basics 簽署即確認工藝單完整準確，工廠可開始打樣。',
+'every signature in locks the pack':'所有簽名完成後鎖定','client → Future Basics → factory':'客戶 → Future Basics → 工廠','Future Basics → factory':'Future Basics → 工廠','Approved':'已批准','Signed':'已簽署','Countersigned':'已會簽',
+'Lateral + medial mockups uploaded':'已上傳外側 + 內側視圖','Front + back garment mockups uploaded':'已上傳正面 + 背面視圖','Both views uploaded':'兩個視圖均已上傳','Factory acknowledged every callout':'工廠已確認全部工藝點','Artwork uploaded and Pantone matched':'圖案已上傳並匹配潘通色','Artwork placed on garment with spec':'圖案已定位並標註規格','No callouts placed yet':'尚未放置工藝點','No points of measure':'無測量部位','Artwork missing Pantone references':'圖案缺少潘通色參考',
+'↓ Download':'↓ 下載','No artwork uploaded yet.':'尚未上傳圖案。','No Pantone references':'無潘通色參考','No artwork placed on this view.':'此視圖上沒有圖案。','No materials yet.':'暫無物料。','No construction details yet.':'暫無工藝細節。','No labels yet.':'暫無嘜頭。','No measurements yet.':'暫無尺寸。','set garment width on the view for true scale':'在視圖上設定成品寬度以取得真實比例','True scale':'真實比例','not set':'未設定','Add a garment view first':'請先新增成品視圖',
+'all in inches':'單位：英寸','metric shown beneath':'下方為公制換算','Dominant colours are pulled from each file · Pantone C codes are matched, check them against a swatch book':'從每個檔案提取主色 · 填寫 Pantone C 色號為自動匹配，請對照色卡核實','Future Basics':'Future Basics','Client':'客戶','Factory':'工廠','Design':'設計方'},
+  rules:(D,L)=>[[/^Spec \((.+)\)$/,'規格（$1）'],[/^Spec (\S+)$/,'規格 $1'],[/^Version (\d+)$/,'版本 $1'],[/^v(\d+) published (.+)$/,'v$1 已發布 $2'],[/^Published v(\d+)$/,'已發布 v$1'],[/^printed (.+)$/,'列印於 $1'],
+    [/^✓ Acknowledged by (.+)$/,'✓ 已確認 · $1'],[/^Countersign as (.+)$/,'以 $1 身份會簽'],[/^Approve tech pack v(\d+)$/,'批准工藝單 v$1'],[/^Sign as (.+)$/,'以 $1 身份簽署'],
+    [/^All (\d+) callouts? acknowledged by factory$/,'全部 $1 個工藝點已由工廠確認'],[/^All (\d+) POMs? have spec \+ tolerance$/,'全部 $1 個測量部位均有規格和公差'],
+    [/^(\d+) pending: (.*)$/,(m,n,list)=>`${n} 項待確認：${list.split(', ').map(x=>L(x)||x).join('，')}`],
+    [/^Sample size (.+) specified with tolerances$/,'樣品尺碼 $1 已標註公差'],[/^(\d+) artwork files? with Pantone references$/,'$1 個圖案檔案含潘通色參考'],[/^(\d+) placements? with width in inches$/,'$1 個定位已標註英寸寬度'],
+    [/^No artwork uploaded.*$/,'尚未上傳圖案 — 投產必需'],[/^No placements yet.*$/,'尚無定位 — 投產必需'],
+    [/^(.+) view missing$/,(m,a)=>a.split(' and ').map(v=>D[v]||v).join(' 和 ')+' 視圖缺失'],[/^(Approved|Signed|Countersigned) (.+)$/,(m,v,rest)=>`${D[v]} ${rest}`],
+    [/^Sample size (.+)$/,'樣品尺碼 $1'],[/^(\d+) of (\d+) acknowledged by factory$/,'$1 / $2 已由工廠確認'],
+    [/^✓ Locked for production — v(\d+) signed by every party.*$/,'✓ 已鎖定可投產 — v$1 已由各方簽署'],[/^Acknowledge all callouts first — (\d+) still pending in the Calls tab\.$/,'請先確認全部工藝點 — 工藝點頁中仍有 $1 項待確認。'],
+    [/^By approving, (.+?) confirms this tech pack describes the product they want made.*$/,'$1 批准即確認此工藝單描述了其所需的產品 — 草圖與工藝點、尺寸、材料、工藝、顏色和圖案。批准後發送給 Future Basics，再發送給工廠。'],
+    [/^(.+) from left$/,'距左 $1'],[/^(.+) from top$/,'距上 $1'],[/^Width (.+)$/,'寬度 $1'],[/^(\d+(?:\.\d+)?) in$/,'$1 英寸'],[/^garment width (.+?) \((.+)\)$/,'成品寬度 $1（$2）'],
+    [/^(.+) on (front|back|side|lateral|medial|top|outsole|heel|detail)$/,(m,a,v)=>`${L(a)||a} · ${D[v]}`]],
+  title:t=>`工藝單 — ${t}`,
+  note:(who,ver,date)=>`<p class="note noprint">由 Future Basics 為 <strong>${who||'貴廠'}</strong> 準備 · 版本 ${ver}，發布於 ${date}。請在 <strong>工藝點</strong> 頁逐條確認，在 <strong>圖案</strong> 頁下載圖案檔案，然後在 <strong>簽核</strong> 頁會簽。</p>`};
 
 LANGS.es={native:'Español',label:'Spanish',html:'es',
   dict:{
@@ -592,5 +623,5 @@ function lookup(lang,k,packStrings){
   if(k.includes(' · ')){const parts=k.split(' · ');let hit=false;const out=parts.map(x=>{const r=L(x.trim());if(r)hit=true;return r||x});if(hit)return out.join(' · ')}
   return null;
 }
-window.FBTP_I18N={langs:LANGS,order:['zh','es','pt','it'],lookup,has:l=>Boolean(LANGS[l])};
+window.FBTP_I18N={langs:LANGS,order:['zh','zh-hant','es','pt','it'],lookup,has:l=>Boolean(LANGS[l])};
 })();
