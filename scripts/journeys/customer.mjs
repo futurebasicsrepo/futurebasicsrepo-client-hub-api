@@ -566,4 +566,49 @@ await journey('J81', 'staff and a factory can write to each other about a pack: 
   await adm(`/v1/admin/tech-pack-shares/${sid}`, { method: 'DELETE' }); ok((await call(`/v1/tp/${tok}/messages`)).status === 410 && (await call(`/v1/tp/${tok}/messages`, { body: { body: 'still here?' } })).status === 410, 'a revoked link can neither read nor write');
 });
 
+await journey('J82', 'Future Basics can record a client\'s approval when they gave it another way, so their project is never stuck: it says so and how, the client is told and can undo it until we have signed', async () => {
+  const m = await room('82');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const rec = body => adm(`/v1/admin/products/${m.id}/tech-pack/client-approval`, { method: 'POST', body });
+  const queue = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.productId === m.id).map(i => i.kind);
+  ok((await queue()).includes('client-approval'), 'before it, the pack is waiting on the client');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/client-approval`, { method: 'POST', token: m.token, body: { name: 'Me', how: 'x' } })).status === 403, 'a customer cannot record an approval, even their own, through this');
+  ok((await rec({ name: 'Jane Buyer' })).status === 400 && (await rec({ how: 'email' })).status === 400, 'it needs a name and how they approved');
+  const r1 = await rec({ name: 'Jane Buyer', how: 'email from Jane, 10 Oct' }), sig = r1.json.techPack?.verification?.clientSign;
+  ok(r1.status === 201 && sig.name === 'Jane Buyer' && /^Future Basics \(.+\) for Jane Buyer: email from Jane, 10 Oct$/.test(sig.by), 'staff record it, and the signature says who did it, for whom and how', sig);
+  ok((await rec({ name: 'Jane Buyer', how: 'again' })).status === 409, 'it cannot be recorded twice');
+  const qk = await queue(); ok(!qk.includes('client-approval') && qk.includes('countersign'), 'the pack moves on: it is now ours to countersign');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and metadata->>'onBehalf'='true'`) === '1' && sql(`select count(*) from notifications where client_id='${m.cid}' and title like 'Future Basics recorded your approval%'`) === '1', 'it is on the record, and the client is told');
+  const cv = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json; ok(/^Future Basics \(/.test(cv.techPack.verification.clientSign.by), 'the client\'s own page carries it');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const cctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); cp.on('dialog', d => d.accept());
+      await cp.goto(`${BASE}/tech-packs/${m.id}#sign`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#tabs button[data-tab="sign"]', { timeout: 10000 }); await cp.click('#tabs button[data-tab="sign"]');
+      await cp.waitForSelector('[data-act="undoapproval"]', { timeout: 10000 });
+      const t = await cp.innerText('.panel[data-panel="sign"]'); ok(/Recorded by Future Basics on your behalf/i.test(t) && /email from Jane, 10 Oct/.test(t) && !/Future Basics \(/.test(t), 'the client sees on a phone that Future Basics recorded it for them and how, without our staff address', t.slice(0, 200));
+      await cp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j82-client.png`, fullPage: true }).catch(() => {});
+      await cp.click('[data-act="undoapproval"]'); for (let i = 0; i < 20 && sql(`select verification->'clientSign'->>'name' is null from tech_packs where product_id='${m.id}'`) !== 't'; i++) await sleep(300);
+      ok(sql(`select verification->'clientSign'->>'name' is null from tech_packs where product_id='${m.id}'`) === 't' && sql(`select count(*) from activities where product_id='${m.id}' and summary like 'The client removed the approval%'`) === '1', 'the client can say it was not theirs and it is undone, on the record');
+      ok(cp.errs.length === 0, 'no script errors on the client side', cp.errs); await cctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message)); ap.on('dialog', d => d.accept());
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-clientapproval] #clientApprovalForm', { timeout: 10000 });
+      await ap.fill('#clientApprovalForm [name="how"]', 'call with Jane, 11 Oct'); await ap.click('#clientApprovalForm .dark');
+      await ap.waitForFunction(() => /Recorded by Future Basics on the client/i.test(document.querySelector('.panel[data-panel="sign"]').innerText), null, { timeout: 8000 });
+      ok(sql(`select verification->'clientSign'->>'by' from tech_packs where product_id='${m.id}'`).endsWith('call with Jane, 11 Oct') && await ap.locator('[data-clientapproval]').count() === 0, 'staff record it from the Sign tab, and the form gives way to the note');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j82-staff.png`, fullPage: true }).catch(() => {}); ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  } else await rec({ name: 'Jane Buyer', how: 'call with Jane, 11 Oct' }).then(() => {});
+  const rm = await rec({ undo: true }); ok(rm.status === 200 && !rm.json.techPack.verification.clientSign, 'staff can remove an approval they recorded');
+  await rec({ name: 'Jane Buyer', how: 'email, 12 Oct' });
+  sql(`update tech_packs set verification=jsonb_set(verification,'{brandSign}','{"name":"FB","at":"2026-01-02T00:00:00Z","by":"fb@x.com"}') where product_id='${m.id}'`);
+  ok((await rec({ undo: true })).status === 409 && (await call(`/v1/products/${m.id}/tech-pack/approval/undo`, { method: 'POST', token: m.token, body: {} })).status === 409, 'once Future Basics has signed on top of it, neither side can remove it');
+  sql(`update tech_packs set verification=jsonb_set(verification,'{clientSign}','{"name":"Real Client","at":"2026-01-01T00:00:00Z","by":"client@x.com"}') where product_id='${m.id}'`);
+  ok((await rec({ undo: true })).status === 409, 'and a client\'s own approval is never removed from here');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

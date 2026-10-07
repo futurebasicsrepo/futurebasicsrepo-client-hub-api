@@ -3917,6 +3917,45 @@ app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(re
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
   return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
 });
+// ---- Future Basics records the client's approval when they gave it another way (an email, a call, WeChat) and have not pressed the button themselves, so their project is never stuck ----
+// It says who recorded it, for whom and how it was given; the client is told and can undo it until Future Basics has signed.
+const staffApproval=sig=>/^Future Basics \(/.test(String(sig?.by||''));
+app.post('/v1/admin/products/:id/tech-pack/client-approval',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first'});
+  if(ctx.techPack.locked_at)return reply.code(409).send({error:'This tech pack is signed and locked'});
+  const cur=normalizeVerification(ctx.techPack.verification,ctx.techPack.version),tp=ctx.techPack;
+  if(req.body?.undo===true){
+    if(!cur.clientSign||!staffApproval(cur.clientSign))return reply.code(409).send({error:'Only an approval recorded by Future Basics can be removed here'});
+    if(cur.brandSign)return reply.code(409).send({error:'Future Basics has already signed on top of it, so it cannot be removed'});
+    const u=await updateVerification(tp.id,tp.version,v=>{v.clientSign=null});if(!u)return reply.code(409).send({error:'The tech pack changed: reload and try again'});
+    await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Approval recorded for the client on v${tp.version} was removed`]).catch(()=>{});
+    return {techPack:techPackPayload(u)};
+  }
+  if(cur.clientSign)return reply.code(409).send({error:`Version ${tp.version} is already approved by ${cur.clientSign.name}`});
+  const name=String(req.body?.name||'').trim().slice(0,120),how=String(req.body?.how||'').replace(/\s+/g,' ').trim().slice(0,200);
+  if(!name)return reply.code(400).send({error:'Type the name of the person at the client who approved it'});
+  if(!how)return reply.code(400).send({error:'Say how they approved it, e.g. "email from Jane, 10 Oct", so the record shows where it came from'});
+  const u=await updateVerification(tp.id,tp.version,v=>{v.clientSign={name,at:new Date().toISOString(),by:`Future Basics (${req.auth.email||'staff'}) for ${name}: ${how}`};v.changes=null});
+  if(!u)return reply.code(409).send({error:'A new version was published: reload and try again'});
+  recordDraftEdits(tp.id,'approved').catch(()=>{});
+  await flow(ctx.product.id,'pack-approved',{actorId:req.auth.sub,note:`v${tp.version} (recorded by Future Basics: ${how})`});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${tp.version} approval recorded by Future Basics for ${name} (${how})`,{techPackId:tp.id,version:tp.version,onBehalf:true}]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[ctx.product.client_id,`Future Basics recorded your approval of tech pack v${tp.version} for ${ctx.product.title} (${how}). If that is not right, open the tech pack and undo it.`,ctx.product.id]).catch(()=>{});
+  return reply.code(201).send({techPack:techPackPayload(u)});
+});
+// The client says an approval recorded for them was not theirs: it is removed, and Future Basics is told.
+app.post('/v1/products/:id/tech-pack/approval/undo',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Only the client can do this'});
+  const row=(await pool.query(`select tp.*,p.title from tech_packs tp join products p on p.id=tp.product_id where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null`,[req.params.id,req.auth.clientId])).rows[0];
+  if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  const cur=normalizeVerification(row.verification,row.version);
+  if(!cur.clientSign||!staffApproval(cur.clientSign))return reply.code(409).send({error:'There is no approval recorded for you by Future Basics on this version'});
+  if(cur.brandSign||row.locked_at)return reply.code(409).send({error:'Future Basics has already signed on top of it. Message us and we will sort it out.'});
+  const u=await updateVerification(row.id,row.version,v=>{v.clientSign=null});if(!u)return reply.code(409).send({error:'A new version was published: reload to review it'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[row.client_id,row.product_id,req.auth.sub,`The client removed the approval Future Basics had recorded for them on v${row.version}`]).catch(()=>{});
+  await notifyStaff(`Approval undone — ${row.title}`,`<p>The client says the approval recorded for them on tech pack v${row.version} for <strong>${emailEscape(row.title)}</strong> was not theirs, and removed it. Check with them before going further.</p>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`).catch(()=>{});
+  return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
+});
 // The client asks for changes to a published version instead of approving it. The note goes to Future Basics (console notice and
 // the project thread); the next publish is a new version, which the client approves again.
 app.post('/v1/products/:id/tech-pack/changes',{preHandler:authenticate},async(req,reply)=>{
