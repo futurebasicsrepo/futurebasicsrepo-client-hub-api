@@ -23,6 +23,7 @@ import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { makeColourways } from './panels.js';
 import { cleanQuote, compareQuotes, defaultCompareQty } from './rfq.js';
 import { cleanPartner, CARD_SCHEMA, CARD_SYSTEM, FIXTURE_CARD } from './booth.js';
+import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -581,6 +582,7 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
+app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
 app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
@@ -2709,6 +2711,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     try{await vetMeasurements(draft,{photo:original?photo:'',pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category},sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||'')})}
     catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
+    // an electronic product: the electrical facts and a first parts list, and the certifications that follow from them
+    {const elecText=`${draft.category||''} ${row.title||''} ${draft.description||''}`;
+     if(globalThis.FBElec.isElectronics(draft.category,row.title,draft.description)){try{applyElectronicsDraft(drafted,await draftElectronics({title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary}),{text:elecText});Object.assign(drafted,normalizeTechPack(drafted))}catch(e){app.log.warn({err:e.message,packId},'electronics draft failed')}}}
     // the colours the assistant saw are replaced by the colours the pixels have, so the colourways and the tiles made from them are real
     // only measured on a clean cut-out: on a raw photo a busy backdrop would be counted as product colour, and the assistant's own colours are better than that
     if(original&&cutout?.image){try{const snapped=snapColours(drafted,await measureColours(cutout.image));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}

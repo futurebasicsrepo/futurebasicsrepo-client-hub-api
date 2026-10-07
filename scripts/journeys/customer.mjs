@@ -365,4 +365,56 @@ await journey('J77', 'Future Basics can act for a factory that does not use its 
   }
 });
 
+await journey('J78', 'an electronic product gets its own pack: the assistant fills the electrical facts, certifications follow from them, staff edit them, a factory reads them in its language, and nothing changes for any other product', async () => {
+  const start = async (title, tag) => { const r = await call('/v1/public/start', { body: { email: em(tag), name: 'Gadget Maker', title, photos: [runner] } }); return { token: r.json.token, id: r.json.product.id, cid: r.json.client.id }; };
+  const a = await start('Wireless earbuds', '78a'), b = await start('Layer runner', '78b');
+  for (const m of [a, b]) for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const adminFor = m => forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' });
+  const admin = await adminFor(a), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const pack = async m => (await call(`/v1/admin/products/${m.id}/tech-pack`, { token: await adminFor(m) })).json;
+  const pa = await pack(a), e = pa.techPack.data.electronics;
+  ok(e.enabled === true && e.specs.batteryChemistry === 'Li-ion' && e.specs.radios.startsWith('Bluetooth') && e.components.length >= 1, 'the assistant fills the battery, radios and a first parts list for an electronic product', e.specs);
+  const names = e.certifications.map(c => c.name).join(' | ');
+  ok(/UN 38\.3/.test(names) && /CE-RED/.test(names) && /Bluetooth SIG/.test(names) && /IEC 60529 ingress test \(IPX4\)/.test(names), 'the certifications that follow from them are listed: lithium transport, radio, Bluetooth listing, water rating', names);
+  ok(e.stages.map(x => x.stage).join() === 'EVT,DVT,PVT,MP' && e.tests.length >= 6, 'with the build stages and the tests', e.stages.length);
+  ok(pa.completeness.checks.some(c => c.key === 'electronics' && c.ok === true), 'and the completeness check for electronics is satisfied');
+  const pb = await pack(b); ok(pb.techPack.data.electronics.enabled === false && !pb.completeness.checks.some(c => c.key === 'electronics'), 'a pack for anything else has no electronics section and no such check');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${a.id}'`);
+  const link = await adm(`/v1/admin/products/${a.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Shenzhen Audio' } }), tok = link.json.url.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${tok}`)).json; ok(fv.techPack.data.electronics.enabled && fv.techPack.data.electronics.specs.batteryChemistry === 'Li-ion', 'a factory link carries the electronics', fv.techPack.data.electronics.enabled);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${a.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="elec"]', { timeout: 10000 });
+      ok(await p.locator('#tabs button[data-tab="bom"] + button[data-tab="elec"]').count() === 1, 'staff see an Electronics tab right after the materials');
+      await p.click('#tabs button[data-tab="elec"]'); await p.waitForSelector('.panel[data-panel="elec"].on');
+      const txt = await p.innerText('.panel[data-panel="elec"]'); const vals = async () => p.$$eval('.panel[data-panel="elec"] input.t', els => els.map(e => e.value)); const v0 = await vals();
+      ok(/Battery/i.test(txt) && /Certifications/i.test(txt) && /Build Stages/i.test(txt) && /lithium battery · 4\.44 Wh/i.test(txt) && v0.includes('EVT') && v0.includes('PVT') && v0.includes('Li-ion'), 'it shows the groups, the stages and the watt-hours with the dangerous-goods note', [txt.slice(0, 120), v0.slice(0, 12)]);
+      await p.fill('.panel[data-panel="elec"] input[data-path*="\\"weight\\""]', '61 g'); await p.fill('.panel[data-panel="elec"] input[data-path*="\\"ingress\\""]', 'IPX7');
+      await p.click('.panel[data-panel="elec"] [data-act="elecsuggest"]'); await p.waitForFunction(() => [...document.querySelectorAll('.panel[data-panel="elec"] input.t')].some(e => /ingress test \(IPX7\)/.test(e.value)), null, { timeout: 8000 }).catch(() => {});
+      ok((await vals()).some(v => v === 'IEC 60529 ingress test (IPX7)') && !(await vals()).includes('IEC 60529 ingress test (IPX4)'), 'Add suggested adds what a changed water rating needs and drops the untouched row it replaces', (await vals()).filter(v => /IEC|CE|FCC/.test(v)));
+      await p.keyboard.press('Control+s'); for (let i = 0; i < 30 && sql(`select data->'electronics'->'specs'->>'weight' from tech_packs where product_id='${a.id}'`) !== '61 g'; i++) await sleep(300);
+      ok(sql(`select data->'electronics'->'specs'->>'weight' from tech_packs where product_id='${a.id}'`) === '61 g' && /IPX7/.test(sql(`select data->'electronics'->'certifications' from tech_packs where product_id='${a.id}'`)), 'edits to the specs and the list are saved');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j78-elec.png`, fullPage: true }).catch(() => {});
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+      // a pack that was not marked electronic can be turned into one from the Style tab
+      const bctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await bctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, await adminFor(b));
+      const bp = await bctx.newPage(); await bp.goto(`${BASE}/tech-packs/${b.id}`, { waitUntil: 'networkidle' }); await bp.waitForSelector('[data-act="elecon"]'); ok(await bp.locator('#tabs button[data-tab="elec"]').count() === 0, 'a shoe has no Electronics tab');
+      await bp.click('[data-act="elecon"]'); await bp.waitForSelector('.panel[data-panel="elec"].on'); ok(await bp.locator('#tabs button[data-tab="elec"]').count() === 1 && (await bp.$$eval('.panel[data-panel="elec"] input.t', els => els.map(e => e.value))).includes('EVT'), 'but the Style tab can add one, with the stages and tests already there');
+      await bctx.close();
+      // the factory, on a phone, in Chinese
+      sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Li-ion":"锂离子"}}}'::jsonb where product_id='${a.id}'`);
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      await fp.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' }); await fp.waitForSelector('#tabs button[data-tab="elec"]', { timeout: 10000 }); await fp.click('#tabs button[data-tab="elec"]');
+      const ft = await fp.innerText('.panel[data-panel="elec"]'); ok(/Li-ion/.test(ft) && /Bluetooth/.test(ft) && await fp.locator('.panel[data-panel="elec"] input, .panel[data-panel="elec"] textarea, .panel[data-panel="elec"] select').count() === 0, 'a factory reads the electronics, with nothing to edit');
+      ok(!/Not electronic|Add suggested|\+ Component/.test(ft), 'and none of the editing buttons');
+      await fp.click('.langbar [data-lang="zh"]'); await fp.click('#tabs button[data-tab="elec"]'); const zt = await fp.innerText('.panel[data-panel="elec"]'); ok(/电池/.test(zt) && /认证/.test(zt) && /试产阶段/.test(zt) && /锂离子/.test(zt), 'in Chinese the headings, labels and the pack\'s own words are translated', zt.slice(0, 200));
+      ok(await fp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && fp.errs.length === 0, 'nothing runs off the phone and there are no script errors', fp.errs);
+      await fp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j78-factory.png`, fullPage: true }).catch(() => {}); await fctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
