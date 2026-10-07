@@ -757,4 +757,30 @@ await journey('J84', 'one pack from start to lock across every party: a factory\
   }
 });
 
+await journey('J85', 'what the studio made reaches the people who read the pack: the approved hero image and the colourway pictures are on the published copy a factory opens, and pictures made after publishing can be put there without a new version', async () => {
+  const m = await room('85');
+  let st = null; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running) break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Pictures Mill ${stamp}`, contactEmail: `pics-${stamp}@mill.cn` } })).json;
+  const pub = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: pictures' } }); ok(pub.status === 200, 'staff publish', pub.json);
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  const seen = async () => ((await call(`/v1/tp/${ptok}`)).json.techPack.data.renderings || []);
+  let r = await seen();
+  ok(r.length >= 2 && /^hero-/.test(r[0].id) && r[0].name === 'Reference picture' && /^data:image\/jpeg/.test(r[0].image), 'the factory\'s copy opens with the approved hero image as its first picture', r.map(x => x.id));
+  ok(r.slice(1).some(x => /^cw-/.test(x.id) && x.parts && x.parts.length), 'followed by the colourway pictures, each with its parts', r.map(x => x.id));
+  const cl = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack.data.renderings; ok(/^hero-/.test(cl[0].id), 'the client\'s copy has the same pictures');
+  // pictures made after publishing: the published copy is the old one until staff update it
+  sql(`update tech_packs set published_data = jsonb_set(published_data,'{renderings}','[]'::jsonb) where product_id='${m.id}'`);
+  ok((await seen()).length === 0, 'a pack published before its pictures existed shows none');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot update them');
+  const ver0 = sql(`select version from tech_packs where product_id='${m.id}'`), vsig = sql(`select verification::text from tech_packs where product_id='${m.id}'`);
+  const up = await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} }); ok(up.status === 200 && up.json.updated === true && up.json.pictures >= 2, 'staff update the pictures on the published pack', up.json);
+  r = await seen(); ok(r.length >= 2 && /^hero-/.test(r[0].id), 'the factory now sees the hero and the colourways');
+  ok(sql(`select version from tech_packs where product_id='${m.id}'`) === ver0 && sql(`select verification::text from tech_packs where product_id='${m.id}'`) === vsig, 'with no new version and no signature undone');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Pictures updated on tech pack%'`) === '1', 'and it is on the record');
+  { const again = await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} }); ok(again.json.updated === false, 'doing it again changes nothing', [again.status, again.json, (await seen()).map(x => x.id), sql(`select jsonb_path_query_array(data,'$.renderings[*].id')::text from tech_packs where product_id='${m.id}'`)]); }
+  sql(`update tech_packs set locked_at=now() where product_id='${m.id}'`); sql(`update tech_packs set published_data = jsonb_set(published_data,'{renderings}','[]'::jsonb) where product_id='${m.id}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} })).status === 409, 'a locked pack is not changed: it needs a new version');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
