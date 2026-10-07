@@ -829,4 +829,37 @@ await journey('J86', 'a factory that opens a pack learns what the tool is and ho
   }
 });
 
+await journey('J87', 'the PDF of a tech pack is its own document in reading order: cover with the key facts, colourways, every view with its callouts, measurements, materials, sign-off; no blank pages, no working files, no quote form, and a quotation link never shows the client', async () => {
+  const m = await room('87');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running) break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Pdf' where id='${m.cid}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: pdf' } })).status === 200, 'published');
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Pdf Mill ${stamp}` } })).json;
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Layer Runner":"分层跑鞋"}}}'::jsonb where product_id='${m.id}'`);
+  const dir = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP, calloutViews = Number(sql(`select count(*) from tech_packs, jsonb_array_elements(published_data->'sketches') s where product_id='${m.id}' and jsonb_array_length(s->'callouts')>0`));
+  const bw = await playwright.chromium.launch();
+  try {
+    const open = async (url, token) => { const ctx = await bw.newContext({ viewport: { width: 1100, height: 900 } }); if (token) await ctx.addInitScript(([k, t]) => localStorage.setItem(k, t), token); const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(url, { waitUntil: 'networkidle' }); await p.waitForSelector('.sheet .panel', { state: 'attached', timeout: 15000 }); await p.waitForFunction(() => document.querySelector('#printDoc .pg'), null, { timeout: 8000 }); return { ctx, p }; };
+    const pdf = async (p, name) => { const buf = await p.pdf({ path: `${dir}/j87-${name}.pdf`, format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '8mm', right: '8mm' } }); return (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length; };
+    const outline = p => p.evaluate(() => [...document.querySelectorAll('#printDoc > .pg, #printDoc > .pp')].map(e => (e.querySelector('h1,h2,.eyebrow')?.textContent || e.querySelector('h2')?.textContent || '').trim().slice(0, 40)));
+    // staff
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.admin.token', admin]); const o = await outline(p), txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'admin');
+      ok(/^Tech pack/i.test(o[0]) && await p.$eval('#printDoc > :first-child', e => e.classList.contains('first')), 'the document opens with the cover, and the page break comes after it (no blank first page)', o);
+      ok(/Layer Runner/.test(await p.innerText('#printDoc h1')) && /Footwear/.test(txt) && /Size run/i.test(txt) && /PANTONE/i.test(txt) && /Secret Brand Pdf/.test(txt), 'the cover has the key facts, the colourways with their Pantone codes, and the client for staff');
+      const order = ['Colour renderings', 'Points of Measure', 'Materials & Trims', 'Approvals'].map(t => txt.indexOf(t)); ok(order.every(x => x > 0) && order.every((x, i) => i === 0 || x > order[i - 1]) && txt.indexOf('Callouts') > 0 && txt.indexOf('Callouts') < txt.indexOf('Points of Measure'), 'the sections follow in reading order: colourways, callouts, measurements, materials, sign-off', order);
+      ok(await p.locator('#printDoc .stage').count() === calloutViews && await p.locator('#printDoc .cotab').count() === calloutViews, `every view that has callouts is in the document with its callout list (${calloutViews})`);
+      ok(!/cutout/i.test(await p.$eval('#printDoc', e => e.innerHTML.replace(/data:image[^"]+/g, ''))) && !/Send your quotation|Spec check|Messages/.test(txt), 'working files, the quote form, the spec check and messages are not in it');
+      ok(pages >= 4 && pages <= 14, `as a PDF it is ${pages} pages, not a page per tab`, pages); ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close(); }
+    // the client
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Approvals/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); await pdf(p, 'client'); await ctx.close(); }
+    // the factory with a quotation link: the client is hidden and there is no sign-off
+    { const { ctx, p } = await open(`${BASE}/tp/${ptok}`); const txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'factory');
+      ok(!/Secret Brand Pdf/.test(txt) && !/Approvals/.test(txt) && !/Send your quotation/.test(txt), 'a quotation link\'s copy never names the client and has no sign-off or quote form');
+      ok(/Colour renderings|颜色/.test(txt) && pages >= 4, 'it still has the pictures, callouts and specs', pages);
+      ok(/分层跑鞋/.test(txt) || /[一-鿿]/.test(txt), 'and follows the page\'s language when the pack has a Chinese version', txt.slice(0, 80)); await ctx.close(); }
+  } finally { await bw.close(); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
