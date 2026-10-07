@@ -1936,13 +1936,13 @@ async function updateVerification(packId,version,mutate){
 }
 // Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
 const flow=(productId,event,opts={},q=pool)=>applyFlow(q,productId,event,opts).catch(err=>{app.log.warn({err:err.message,productId,event},'product flow not updated');return {changed:false}});
-const shareRow=s=>({id:s.id,kind:s.kind||'review',includeModel:Boolean(s.include_model),label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
+const shareRow=s=>({id:s.id,kind:s.kind||'review',includeModel:Boolean(s.include_model),supplierId:s.supplier_id||null,label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
   active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
 app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
+  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),suppliers:(await pool.query(`select id,name,contact_email,country from suppliers where status='active' order by lower(name)`)).rows.map(x=>({id:x.id,name:x.name,email:x.contact_email||'',country:x.country||''})),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 // The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
@@ -2100,12 +2100,14 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
   if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before sharing it with a factory'});
   const kind=req.body?.kind==='quote'?'quote':'review'; // a link for quotation needs no client approval: nothing is signed through it, and the client's name is not shown
   if(kind==='review'&&!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before factory links are created`});
-  const label=String(req.body?.label||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
-  const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
+  // a factory already in the supplier list: its name and email are the defaults, and the link is tied to it
+  let supplier=null;if(req.body?.supplierId){supplier=UUID_RE.test(String(req.body.supplierId))?(await pool.query('select id,name,contact_email from suppliers where id=$1',[req.body.supplierId])).rows[0]:null;if(!supplier)return reply.code(400).send({error:'That factory is not in the supplier list'})}
+  const label=String(req.body?.label||supplier?.name||'').trim().slice(0,120);if(!label)return reply.code(400).send({error:'Give this link a label, e.g. the factory name'});
+  const email=String(req.body?.email??supplier?.contact_email??'').trim().toLowerCase().slice(0,200)||null;
   const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||(kind==='quote'?30:0))));
   const token=randomBytes(24).toString('base64url');
-  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at,kind,include_model)
-    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end,$7,$8) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days,kind,req.body?.includeModel===true])).rows[0];
+  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at,kind,include_model,supplier_id)
+    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end,$7,$8,$9) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days,kind,req.body?.includeModel===true,supplier?.id||null])).rows[0];
   const url=`${clientHubUrl}/tp/${token}`;let emailed=false;
   if(email&&req.body?.sendEmail!==false){
     try{emailed=await sendHubEmail({to:email,replyTo:req.auth.email||intakeNotificationEmail,subject:kind==='quote'?`Request for quotation: ${ctx.product.title}`:`Tech pack for ${ctx.product.title} — please review and countersign`,
