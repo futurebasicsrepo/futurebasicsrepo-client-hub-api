@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Agency Console (Demo) | NursePartners × Future Basics</title>
+<meta name="description" content="Behind the NursePartners concept site: open-shift fill by text, caregiver recruiting, after-hours inquiries, family update approvals, referral-partner nurture and reviews.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1e0b2a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231e0b2a'/%3E%3Ccircle cx='32' cy='32' r='20' fill='%23e7eab5'/%3E%3Cpath d='M32 22v20M22 32h20' stroke='%231e0b2a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&display=swap">
+<link rel="stylesheet" href="../assets/site.css">
+<link rel="stylesheet" href="./console.css">
+</head>
+<body class="console">
+<a class="skip" href="#main">Skip to content</a>
+<header class="c-top">
+  <a class="c-brand" href="../"><span class="c-mark">NP</span><span><b>NursePartners</b><small>Agency console · demo</small></span></a>
+  <span class="c-tag">Fill the roster. Convert the daughter.</span>
+  <div class="c-top-r"><span class="c-clock" id="clock"></span><a class="btn btn-lime btn-sm" href="../">View the public site</a></div>
+</header>
+<div class="c-shell">
+  <nav class="c-nav" aria-label="Console">
+    <a href="#today" data-v="today"><i>◎</i>Today</a>
+    <a href="#shifts" data-v="shifts"><i>⇄</i>Open shifts <em id="n-shift">1</em></a>
+    <a href="#recruiting" data-v="recruiting"><i>＋</i>Recruiting <em id="n-app"></em></a>
+    <a href="#inbox" data-v="inbox"><i>✉</i>Inquiries <em id="n-lead"></em></a>
+    <a href="#digests" data-v="digests"><i>✎</i>Family updates <em>9</em></a>
+    <a href="#partners" data-v="partners"><i>☍</i>Referral partners</a>
+    <a href="#reviews" data-v="reviews"><i>★</i>Reviews &amp; local SEO</a>
+    <a href="#guardrails" data-v="guardrails"><i>⛨</i>Guardrails</a>
+  </nav>
+
+  <main id="main" class="c-main">
+
+    <!-- TODAY -->
+    <section class="view" id="v-today">
+      <div class="v-head"><div><span class="eyebrow">Good morning, Jessica</span><h1>What happened overnight</h1></div><p class="muted">Demo data. Anything you do on the public site (chat, assessment form, text-to-apply, referral) shows up here in this browser.</p></div>
+      <div class="tiles">
+        <a class="tile alert" href="#shifts"><span>Call-out at 5:52 am</span><b>1 open shift</b><small>South Philly · 9a–1p · auto-fill ready</small></a>
+        <a class="tile" href="#inbox"><span>After-hours inquiries</span><b id="t-leads">3 new</b><small>2 booked assessments while you slept</small></a>
+        <a class="tile" href="#recruiting"><span>Caregiver applicants</span><b id="t-apps">14 this week</b><small>6 interviews auto-booked</small></a>
+        <a class="tile" href="#digests"><span>Family updates</span><b>9 to approve</b><small>Send Friday 4:00 pm</small></a>
+      </div>
+      <div class="c-grid2">
+        <div class="panel">
+          <h3>The two funnels</h3>
+          <p class="muted small">Every home care agency runs two businesses: winning families and keeping caregivers. This console runs both from the same place.</p>
+          <div class="funnel">
+            <div><b>Families</b><span>Site visit</span><span>Care Line / calculator</span><span>Free assessment</span><span class="win">Client · $4–8k/mo</span></div>
+            <div><b>Caregivers</b><span>Indeed / flyer / site</span><span>Text screening</span><span>Interview booked</span><span class="win">Hired · on the roster</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Since launch <small class="muted">(demo)</small></h3>
+          <div class="kv"><span>Inquiries owned, not rented</span><b>61</b></div>
+          <div class="kv"><span>Arrived after office hours</span><b>38%</b></div>
+          <div class="kv"><span>Inquiry → assessment</span><b>44%</b></div>
+          <div class="kv"><span>Median time to fill a call-out</span><b>6 min</b></div>
+          <div class="kv"><span>Applicant → interview</span><b>1.6 days</b></div>
+          <div class="kv"><span>Ghosted applicants re-engaged</span><b>29%</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHIFTS -->
+    <section class="view" id="v-shifts" hidden>
+      <div class="v-head"><div><span class="eyebrow">Open-shift fill</span><h1>Keisha called out. Who covers?</h1></div><p class="muted">Today this is a 6am phone tree. Here, eligible carepartners get a text and the first YES is booked. A scheduler can step in at any point.</p></div>
+      <div class="c-grid2 wide-left">
+        <div>
+          <div class="panel">
+            <div class="row-between"><h3 style="margin:0">Open shift</h3><span class="pill warn" id="shift-status">Unfilled · 5:52 am</span></div>
+            <div class="shift-meta">
+              <div><span>Client</span><b>F.R. · Emerald (GEMS)</b></div>
+              <div><span>Where</span><b>South Philly · 19148</b></div>
+              <div><span>When</span><b>Today, 9:00 am – 1:00 pm</b></div>
+              <div><span>Care</span><b>Personal care · shower day</b></div>
+            </div>
+            <div class="callout"><b>5:52 am · text from Keisha W.</b> "so sorry, running a fever, can't make it today 😞" → logged as call-out, shift reopened automatically.</div>
+          </div>
+          <div class="panel">
+            <div class="row-between"><h3 style="margin:0">Eligible carepartners</h3><span class="tiny muted">Ranked: knows client · distance · overtime · skills</span></div>
+            <div class="tbl-wrap" style="margin-top:12px"><table class="tbl" id="elig-tbl"><thead><tr><th>Carepartner</th><th>Knows F.R.</th><th>Distance</th><th>Hours this wk</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+            <p class="tiny muted" style="margin:10px 0 0">Excluded automatically: 3 already booked at 9am, 1 would pass 40 hours (overtime needs client approval), 1 not dementia-credentialed.</p>
+            <div class="row-between" style="margin-top:16px;gap:12px;flex-wrap:wrap"><button class="btn btn-primary" id="fill-go" type="button">Text the top 5 now</button><button class="btn btn-ghost btn-sm" id="fill-reset" type="button">Reset demo</button></div>
+          </div>
+        </div>
+        <div>
+          <div class="phone"><div class="phone-screen"><div class="phone-top"><b>Shift line</b>What carepartners receive</div><div class="sms-log" id="fill-log"><span class="sms-time">Waiting to send…</span></div></div></div>
+          <div class="panel" id="fill-sum" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RECRUITING -->
+    <section class="view" id="v-recruiting" hidden>
+      <div class="v-head"><div><span class="eyebrow">Caregiver recruiting</span><h1>Applicants, screened and booked</h1></div><p class="muted">Text screening collects the basics and books the interview. Robert decides who moves forward; nothing is auto-rejected.</p></div>
+      <div class="tiles slim">
+        <div class="tile"><span>Applied this week</span><b id="r-total">14</b></div>
+        <div class="tile"><span>Finished screening</span><b>11</b><small>3-minute average</small></div>
+        <div class="tile"><span>Time to interview</span><b>1.6 days</b><small>was ~9 days via Indeed inbox</small></div>
+        <div class="tile"><span>Ghosted → back</span><b>4 of 14</b><small>after re-engagement texts</small></div>
+      </div>
+      <div class="kanban" id="kanban"></div>
+      <div class="c-grid2">
+        <div class="panel"><h3>Re-engagement for applicants who go quiet</h3><p class="muted small">Most applicants who stop replying aren't uninterested; they're working a double. Three gentle texts, then we stop.</p>
+          <ol class="seq"><li><b>After 1 day:</b> "Hi {first}, still interested in caring with NursePartners? Tap to pick up where you left off: {link}"</li><li><b>After 3 days:</b> "We have clients near {area} who need someone {availability}. Want to grab a 15-min call? Reply a time."</li><li><b>After 7 days:</b> "Last note from us. If now's not the time, reply LATER and we'll check in next month."</li></ol>
+          <button class="btn btn-ghost btn-sm" type="button" id="reengage">Run today's re-engagement</button><div id="re-out" class="small" style="margin-top:10px"></div>
+        </div>
+        <div class="panel"><h3>Human in the loop, by design</h3><ul class="check-list small"><li>Screening questions are job-related only: certification, experience, area, availability, transport</li><li>No criminal-history or salary-history questions before a conditional offer (Philadelphia Fair Chance and wage equity rules)</li><li>Low experience never auto-rejects; it's flagged for Robert</li><li>Every status change is logged with who made it</li></ul></div>
+      </div>
+    </section>
+
+    <!-- INBOX -->
+    <section class="view" id="v-inbox" hidden>
+      <div class="v-head"><div><span class="eyebrow">Family inquiries</span><h1>Leads you own, not rent</h1></div><p class="muted">Every chat, calculator, assessment request and referral, with where it came from and what happened next.</p></div>
+      <div class="tbl-wrap"><table class="tbl" id="lead-tbl"><thead><tr><th>Received</th><th>Who</th><th>Need</th><th>Source</th><th>Next step</th></tr></thead><tbody></tbody></table></div>
+      <div class="panel" style="margin-top:20px">
+        <h3>What one owned lead is worth</h3>
+        <div class="c-grid3">
+          <div class="field"><label for="roi-cpl">Aggregator cost per lead</label><div class="range-row"><input id="roi-cpl" type="range" min="25" max="300" step="5" value="95"><output></output></div></div>
+          <div class="field"><label for="roi-mo">Average monthly bill</label><div class="range-row"><input id="roi-mo" type="range" min="2000" max="12000" step="250" value="5500"><output></output></div></div>
+          <div class="field"><label for="roi-len">Average months of care</label><div class="range-row"><input id="roi-len" type="range" min="2" max="36" step="1" value="10"><output></output></div></div>
+          <div class="field"><label for="roi-n">Site inquiries per month</label><div class="range-row"><input id="roi-n" type="range" min="5" max="80" step="1" value="25"><output></output></div></div>
+          <div class="field"><label for="roi-cr">Inquiry → client</label><div class="range-row"><input id="roi-cr" type="range" min="5" max="50" step="1" value="20"><output></output></div></div>
+        </div>
+        <div class="roi" id="roi-out"></div>
+      </div>
+    </section>
+
+    <!-- DIGESTS -->
+    <section class="view" id="v-digests" hidden>
+      <div class="v-head"><div><span class="eyebrow">Family update digests</span><h1>9 drafts ready for nurse review</h1></div><p class="muted">Drafted from the week's visit notes. A nurse approves every one; clinical flags become follow-up tasks.</p></div>
+      <div class="c-grid2 wide-right">
+        <div class="panel" style="padding:8px"><ul class="dlist" id="dlist"></ul></div>
+        <div class="panel" id="dview"></div>
+      </div>
+    </section>
+
+    <!-- PARTNERS -->
+    <section class="view" id="v-partners" hidden>
+      <div class="v-head"><div><span class="eyebrow">Referral-partner nurture</span><h1>Stay top of mind with the people who refer</h1></div><p class="muted">Discharge planners get Monday capacity; attorneys and social workers get one useful family handout a month. Built from the schedule, so it's never stale.</p></div>
+      <div class="c-grid2">
+        <div class="panel"><h3>Referrals by source <small class="muted">(last 90 days, demo)</small></h3><div class="bars" id="src-bars"></div></div>
+        <div class="panel"><h3>Monday capacity update</h3><div class="kv"><span>Subscribers</span><b>42</b></div><div class="kv"><span>Open rate</span><b>71%</b></div><div class="kv"><span>Referrals within 48h of a send</span><b>9</b></div><div class="kv"><span>Next send</span><b id="next-mon">Mon 7:00 am</b></div><a class="btn btn-ghost btn-sm" href="../referral-partners/#digest" style="margin-top:12px">Preview what partners see</a></div>
+      </div>
+      <div class="panel"><h3>Partners who've gone quiet</h3><p class="muted small">No referral in 60+ days. The liaison gets a nudge with context for a visit or call.</p>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Partner</th><th>Type</th><th>Last referral</th><th>Suggested touch</th></tr></thead><tbody>
+          <tr><td>South Philly rehab · case management</td><td>Rehab / SNF</td><td>74 days</td><td>Drop off GEMS in-service flyer</td></tr>
+          <tr><td>Center City elder law firm</td><td>Attorney</td><td>91 days</td><td>Invite to co-host "Paying for care" workshop</td></tr>
+          <tr><td>Main Line senior living</td><td>Senior living</td><td>63 days</td><td>Share 24-hr care availability</td></tr>
+        </tbody></table></div>
+      </div>
+    </section>
+
+    <!-- REVIEWS -->
+    <section class="view" id="v-reviews" hidden>
+      <div class="v-head"><div><span class="eyebrow">Reviews &amp; local SEO</span><h1>Happy families, asked at the right moment</h1></div><p class="muted">Review requests go out when a family replies warmly to a Friday update, never in the first two weeks, and never to anyone who's raised a concern.</p></div>
+      <div class="c-grid2">
+        <div class="panel"><h3>The review engine</h3>
+          <ol class="seq"><li><b>Signal:</b> Dana taps "Send Maria a thank-you" on Frank's update (day 34 of care)</li><li><b>Ask:</b> "So glad the week went well. Would you share a few words about Maria and our team on Google? It helps other families find good care: {link}"</li><li><b>Unhappy?</b> Anything below 4 stars routes privately to the COO the same day, before it becomes a public review</li></ol>
+          <div class="kv"><span>Google rating (demo)</span><b>4.9 ★ · 31 reviews → 58</b></div><div class="kv"><span>Requests sent / reviewed</span><b>44 / 27</b></div>
+        </div>
+        <div class="panel"><h3>Local search pages</h3><p class="muted small">One genuinely useful page per neighborhood the agency serves, each with local detail (rowhomes, hospitals, minimums).</p>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Search</th><th>Page</th><th>Rank (demo)</th></tr></thead><tbody>
+            <tr><td>home care south philadelphia</td><td><a href="../south-philadelphia-home-care/">/south-philadelphia-home-care</a></td><td><span class="pill ok">#3 ↑5</span></td></tr>
+            <tr><td>dementia care at home philadelphia</td><td><a href="../dementia-care/">/dementia-care</a></td><td><span class="pill ok">#6 ↑9</span></td></tr>
+            <tr><td>does medicare pay for home care pa</td><td><a href="../paying-for-care/">/paying-for-care</a></td><td><span class="pill lime">#11 new</span></td></tr>
+            <tr><td>cna jobs philadelphia weekly pay</td><td><a href="../careers/">/careers</a></td><td><span class="pill lime">#8 new</span></td></tr>
+            <tr><td>home care center city philadelphia</td><td>/center-city-home-care</td><td><span class="pill">Next to build</span></td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GUARDRAILS -->
+    <section class="view" id="v-guardrails" hidden>
+      <div class="v-head"><div><span class="eyebrow">Guardrails</span><h1>Built for an agency near PHI</h1></div><p class="muted">The recruiting side is clean. The family side touches health information, so it's scoped tightly from day one.</p></div>
+      <div class="c-grid3">
+        <div class="panel"><h3>No PHI in plain text</h3><p class="muted small">SMS and email carry times and links only. Care Line chat tells families not to share medical details and flags if they do. Clinical detail lives behind an authenticated portal.</p></div>
+        <div class="panel"><h3>BAAs with every vendor</h3><p class="muted small">Only HIPAA-eligible services that sign a Business Associate Agreement touch visit notes or referrals: hosting, SMS, email, AI drafting. No model training on agency data.</p></div>
+        <div class="panel"><h3>Consent, logged</h3><p class="muted small">TCPA-compliant text opt-in on every form, STOP honored instantly, and family-update recipients authorized in writing by the client or POA.</p></div>
+        <div class="panel"><h3>People make hiring decisions</h3><p class="muted small">Automation schedules and reminds. It doesn't score or reject. Questions stay job-related; criminal and salary history wait until a conditional offer, as Philadelphia requires.</p></div>
+        <div class="panel"><h3>Nurse approves clinical content</h3><p class="muted small">Family digests are drafts until a nurse approves them. Any mention of pain, falls, skin, appetite change or confusion becomes a clinical task, not just a sentence.</p></div>
+        <div class="panel"><h3>Audit trail</h3><p class="muted small">Who saw what and who sent what, kept for six years. Exportable for a Department of Health survey.</p></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>window.NP_NO_CHAT=true;</script>
+<script src="../assets/site.js"></script>
+<script src="./console.js"></script>
+</body>
+</html>
