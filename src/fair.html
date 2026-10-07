@@ -30,8 +30,9 @@
     .door{display:grid;gap:14px;align-content:start;padding:clamp(22px,3vw,32px);border-radius:28px;background:var(--card);border:1px solid var(--line);min-width:0}
     .door.dark{background:var(--ink);color:#fff;border-color:var(--ink)}.door.dark .eyebrow{color:var(--cue)}.door.dark p{color:#c7c7cc}
     .door h2{margin:0;font-weight:500;font-size:clamp(24px,3vw,32px);line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
-    :lang(zh-Hans) .door h2,:lang(zh-Hant) .door h2,:lang(zh-Hans) h1,:lang(zh-Hant) h1{letter-spacing:0;text-wrap:pretty;word-break:keep-all;line-break:strict}
+    :lang(zh-Hans) .door h2,:lang(zh-Hant) .door h2,:lang(zh-Hans) h1,:lang(zh-Hant) h1{letter-spacing:0;text-wrap:pretty;word-break:normal;line-break:strict;overflow-wrap:anywhere}
     .door p{margin:0;color:var(--dim)}
+    .hero,.door{overflow-wrap:anywhere}
     .door ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}.door li{display:flex;gap:10px;align-items:baseline}.door li:before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--cue);transform:translateY(-1px)}
     .cta{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:54px;padding:0 24px;border-radius:999px;background:var(--cue);color:var(--ink);text-decoration:none;font-weight:600;border:0;cursor:pointer;width:100%}
     .cta.ink{background:var(--ink);color:#fff}
@@ -51,7 +52,7 @@
     .steps b{font:500 13px var(--mono);color:var(--dim)}
     footer{max-width:1080px;margin:0 auto;padding:0 clamp(16px,4vw,40px) 48px;color:var(--dim);font-size:13px}
     .hidden{display:none!important}
-    @media(max-width:800px){.doors{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.steps li:nth-child(3){padding-left:0;border-left:0}}
+    @media(max-width:800px){body.zh-first .door:not(.dark){order:-1}.doors{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.steps li:nth-child(3){padding-left:0;border-left:0}}
     @media(max-width:480px){form{grid-template-columns:minmax(0,1fr)}header img{width:120px}.steps{grid-template-columns:minmax(0,1fr)}.steps li+li{padding-left:0;border-left:0;border-top:1px solid var(--line);padding-top:12px}}
   </style>
 </head>
@@ -124,6 +125,9 @@
       document.getElementById('eyebrow').textContent=fair?`Future Basics · ${fair}`:'Future Basics';
       const u=new URLSearchParams({utm_source:src,utm_medium:'card',utm_campaign:'fairs-2026',utm_content:'brand'});if(lang!=='en')u.set('lang',lang);
       document.getElementById('brandGo').href='/start?'+u.toString()}
+    // a visitor reading Chinese is most likely a factory: on a phone its door comes first (the brand door is one scroll away)
+    const order=()=>document.body.classList.toggle('zh-first',/^zh/.test(HubI18n.lang)&&side!=='brand');
+    order();document.addEventListener('hub:lang',order);
     paint();document.addEventListener('hub:lang',paint);
     if(side==='factory')document.getElementById('factoryH').scrollIntoView({block:'start'});
     const form=document.getElementById('factoryForm'),msg=document.getElementById('factoryMsg'),go=document.getElementById('factoryGo');
