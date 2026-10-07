@@ -72,3 +72,7 @@ node sites/nursepartners/build.mjs
 ```
 
 Agency facts (phone, rates, benefit figures) live in one object at the top of `assets/site.js`. The photos are the agency's own images from their current site (`carepartner-walk` is stock). Replace them with a real photo shoot before launch.
+
+## Hosting
+
+`Dockerfile` + `Caddyfile` serve this folder on Railway (set the service's root directory to `/sites/nursepartners`). The preview sends `X-Robots-Tag: noindex` and a disallow-all `robots.txt` so the concept never competes with nursepartners.org in search; remove both if this becomes the agency's real site.
