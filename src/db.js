@@ -666,6 +666,10 @@ export async function migrate() {
     alter table tech_pack_shares add column if not exists kind text not null default 'review';
     alter table tech_pack_shares add column if not exists include_model boolean not null default false;
     alter table tech_pack_shares add column if not exists supplier_id uuid references suppliers(id) on delete set null;
+    alter table tech_pack_shares add column if not exists assigned boolean not null default false;
+    alter table suppliers add column if not exists page_epoch integer not null default 0;
+    alter table suppliers add column if not exists page_hash text;
+    create unique index if not exists suppliers_page_hash_idx on suppliers(page_hash) where page_hash is not null;
     create table if not exists factory_quotes (
       id uuid primary key default gen_random_uuid(),
       share_id uuid unique not null references tech_pack_shares(id) on delete cascade,

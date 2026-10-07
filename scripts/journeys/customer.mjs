@@ -237,4 +237,66 @@ await journey('J75', 'a factory sees the 3D shape only when Future Basics switch
   }
 });
 
+await journey('J76', 'a factory is assigned to a product: the product\'s supplier is set, the factory gets a page of everything assigned to it and a private link to each pack, and reassigning, unassigning or rotating switches the old access off at once', async () => {
+  const m = await room('76');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  const s1 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Assigned Mill ${stamp}`, contactEmail: 'mill1@factory.cn', country: 'China' } })).json, s2 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Second Mill ${stamp}` } })).json;
+  const assign = (supplierId, mode = 'quote', token = admin) => call(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', token, body: { supplierId, mode } });
+  sql(`update tech_packs set published_at=null where product_id='${m.id}'`);
+  ok((await assign(s1.id)).status === 409, 'a pack that is not published cannot be assigned: it is what the factory would see');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  ok((await assign(s1.id, 'quote', m.token)).status === 403, 'a customer cannot assign a factory');
+  ok((await assign('junk')).status === 400 && (await assign('00000000-0000-4000-8000-000000000000')).status === 400, 'a factory that is not in the list is refused');
+  const rv = await assign(s1.id, 'review'); ok(rv.status === 409 && /approves version 1/.test(rv.json.error), 'to produce waits for the client\'s approval, and says what to do meanwhile', rv.json.error);
+  const a = await assign(s1.id, 'quote'); ok(a.status === 201 && a.json.assignment.active && a.json.assignment.mode === 'quote' && /\/factory\//.test(a.json.assignment.pageUrl) && /\/tp\//.test(a.json.assignment.packUrl), 'assigning for quotation gives the factory a page and a pack link', a.json);
+  ok(sql(`select supplier_id from product_configurations where product_id='${m.id}'`) === s1.id, 'and the product\'s own supplier is that factory');
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.assignment.supplierId === s1.id, 'the staff page shows who is assigned');
+  const page1 = a.json.assignment.pageUrl.split('/factory/')[1], pack1 = a.json.assignment.packUrl.split('/tp/')[1];
+  const pg = await call(`/v1/factory/${page1}`); ok(pg.status === 200 && pg.json.factory === `Assigned Mill ${stamp}` && pg.json.packs.length === 1 && pg.json.packs[0].state === 'needs-quote' && pg.json.packs[0].client === '' && pg.json.packs[0].href === `/tp/${pack1}`, 'the factory\'s page lists the pack, waiting for a quote, with the client\'s name hidden', pg.json);
+  ok(!JSON.stringify(pg.json).includes('Secret Brand Co'), 'nowhere in it');
+  ok((await call('/factory/' + page1)).status === 200 && (await call('/factory/' + page1)).text.includes('Future Basics'), 'the page itself loads with no sign-in');
+  ok((await call('/v1/factory/nope')).status === 404 && (await call(`/v1/factory/${'a'.repeat(32)}`)).status === 404, 'a made-up page link gets nothing');
+  const tv = (await call(`/v1/tp/${pack1}`)).json; ok(tv.quoteMode === true && tv.product.clientName === '', 'the pack link opens the pack for quotation');
+  await call(`/v1/tp/${pack1}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5 }], email: 'mill1@factory.cn' } });
+  ok((await call(`/v1/factory/${page1}`)).json.packs[0].state === 'quoted', 'once it quotes, its page says so');
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.compare.some(r => r.company === `Assigned Mill ${stamp}`), 'and staff see the quote in the comparison');
+  const same = await assign(s1.id, 'quote'); ok(same.json.assignment.packUrl === a.json.assignment.packUrl, 'assigning the same factory again keeps its link');
+  // reassign: the old factory loses the pack, the new one gets it
+  const b = await assign(s2.id, 'quote'), page2 = b.json.assignment.pageUrl.split('/factory/')[1];
+  ok(b.status === 201 && (await call(`/v1/tp/${pack1}`)).status === 410 && (await call(`/v1/factory/${page1}`)).json.packs.length === 0, 'reassigning switches the old factory\'s link off at once and empties its page');
+  ok((await call(`/v1/factory/${page2}`)).json.packs.length === 1 && sql(`select supplier_id from product_configurations where product_id='${m.id}'`) === s2.id, 'the new factory has it, and is the product\'s supplier');
+  // produce, once the client has approved
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"}}'::jsonb where product_id='${m.id}'`);
+  const pr = await assign(s2.id, 'review'); ok(pr.status === 201 && pr.json.assignment.mode === 'review', 'after the client approves, the factory can be assigned to produce it');
+  const pg2 = (await call(`/v1/factory/${page2}`)).json; ok(pg2.packs.length === 1 && pg2.packs[0].kind === 'review' && pg2.packs[0].state === 'to-review' && pg2.packs[0].client === 'Secret Brand Co', 'its page now says to read and confirm, and shows who it is for');
+  const rv2 = (await call(`/v1/tp/${pr.json.assignment.packUrl.split('/tp/')[1]}`)).json; ok(!rv2.quoteMode && rv2.techPack.verification.clientSign, 'and the pack link is the one to read and sign');
+  // the factory page link
+  ok((await call(`/v1/admin/suppliers/${s2.id}/factory-page/email`, { method: 'POST', token: admin, body: {} })).status === 400, 'emailing a factory that has no email asks for one');
+  const rot = await call(`/v1/admin/suppliers/${s2.id}/factory-page/rotate`, { method: 'POST', token: admin, body: {} }); ok(rot.status === 200 && rot.json.pageUrl !== b.json.assignment.pageUrl && (await call(`/v1/factory/${page2}`)).status === 404 && (await call(`/v1/factory/${rot.json.pageUrl.split('/factory/')[1]}`)).json.packs.length === 1, 'a new page link switches the old one off and keeps everything on it');
+  ok((await call(`/v1/admin/suppliers/${s2.id}/factory-page/rotate`, { method: 'POST', token: m.token, body: {} })).status === 403, 'only staff can');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(rot.json.pageUrl.replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: 'networkidle' }); await p.waitForSelector('.pack', { timeout: 10000 });
+      const txt = await p.innerText('main'); ok(/Second Mill/.test(txt) && /To read and confirm/i.test(txt), 'on a phone the factory sees its name and the pack waiting for it', txt.slice(0, 160));
+      await p.click('#lang'); ok(/技术包|确认/.test(await p.innerText('main')), 'and can switch to Chinese');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j76-factory.png` }).catch(() => {});
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'nothing runs off the screen and there are no script errors', p.errs);
+      await p.click('.pack'); await p.waitForSelector('#tabs button[data-tab="sign"]', { timeout: 10000 }); ok(/\/tp\//.test(p.url()), 'tapping it opens the pack to read and sign'); await ctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-assign]', { timeout: 10000 });
+      ok(/Second Mill/.test(await ap.innerText('[data-assign]')) && await ap.locator('[data-assign] [data-fp]').inputValue() === rot.json.pageUrl, 'staff see who is assigned and the factory\'s page link');
+      ok(await ap.locator('[data-assign] #assignForm select[name="supplierId"] option').count() >= 3, 'with the factories to choose from');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j76-staff.png`, fullPage: true }).catch(() => {});
+      ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  }
+  const un = await assign(null); const pageNow = rot.json.pageUrl.split('/factory/')[1];
+  ok(un.status === 200 && un.json.assignment === null && (await call(`/v1/factory/${pageNow}`)).json.packs.length === 0 && (await call(`/v1/tp/${pr.json.assignment.packUrl.split('/tp/')[1]}`)).status === 410 && sql(`select supplier_id is null from product_configurations where product_id='${m.id}'`) === 't', 'unassigning empties the factory\'s page, switches its pack link off and clears the supplier');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
