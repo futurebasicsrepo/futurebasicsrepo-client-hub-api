@@ -862,4 +862,36 @@ await journey('J87', 'the PDF of a tech pack is its own document in reading orde
   } finally { await bw.close(); }
 });
 
+await journey('J88', 'every page a factory or a fair visitor can open fits a small phone in English and in both Chinese settings: nothing wider than the screen, Chinese headings wrap, and a Chinese reader sees the factory door first', async () => {
+  const m = await room('88');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const su = await call('/v1/public/factories', { body: { company: `Phone Mill ${stamp}`, email: `phone-${stamp}@mill.cn`, lang: 'zh' } }), ftok = su.json.pageUrl.split('/factory/')[1], supId = sql(`select supplier_id from partners where code='${su.json.code}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: phone' } })).status === 200, 'published');
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: supId, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  const inv = await adm(`/v1/admin/products/${m.id}/tech-pack/invite`, { method: 'POST', body: {} }), icode = inv.json.invite.url.split('/i/')[1];
+  sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Layer Runner":"分层跑鞋"}},"zh-hant":{"at":"2026-01-01T00:00:00Z","strings":{"Layer Runner":"分層跑鞋"}}}'::jsonb where product_id='${m.id}'`);
+  const pages = [['fair', '/fair?lang=LANG'], ['start', '/start?lang=LANG'], ['factory page', `/factory/${ftok}`], ['invite', `/i/${icode}`], ['pack', `/tp/${ptok}`]];
+  const bw = await playwright.chromium.launch();
+  try {
+    for (const [lang, locale] of [['en', 'en-US'], ['zh', 'zh-CN'], ['zh-hk', 'zh-HK']]) for (const width of [360, 393]) {
+      const ctx = await bw.newContext({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true, locale }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      const wide = [];
+      for (const [name, path] of pages) {
+        await p.goto(`${BASE}${path.replace('LANG', lang)}`, { waitUntil: 'networkidle' }); await sleep(500);
+        if (name === 'factory page' || name === 'invite' || name === 'pack') { const btn = lang === 'en' ? null : await p.$(`#lang, [data-lang="${lang === 'zh' ? 'zh' : 'zh-hant'}"], .lang-switch button[data-lang="${lang}"]`); if (btn && lang !== 'en') await btn.click().catch(() => {}); await sleep(400); }
+        const w = await p.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: document.documentElement.clientWidth })); if (w.sw > w.iw + 1) wide.push(`${name} ${w.sw}>${w.iw}`);
+      }
+      ok(wide.length === 0, `at ${width}px in ${lang}: nothing is wider than the screen on any of ${pages.length} pages`, wide); ok(p.errs.length === 0, `at ${width}px in ${lang}: no script errors`, p.errs);
+      if (lang !== 'en' && width === 360) {
+        await p.goto(`${BASE}/fair?lang=${lang}`, { waitUntil: 'networkidle' }); await sleep(500);
+        const lay = await p.evaluate(() => { const h = document.querySelector('.door h2'), f = document.querySelector('#factoryH').getBoundingClientRect().top, b = document.querySelector('#brandH').getBoundingClientRect().top; return { lines: Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)), factoryFirst: f < b }; });
+        ok(lay.lines >= 2, 'a Chinese heading wraps onto lines instead of running off the screen', lay); ok(lay.factoryFirst, 'a Chinese reader sees the factory door first');
+        await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j88-fair-${lang}.png` }).catch(() => {});
+      }
+      await ctx.close();
+    }
+  } finally { await bw.close(); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
