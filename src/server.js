@@ -1925,7 +1925,7 @@ const packEtag=row=>{const t=Math.max(row?.updated_at?new Date(row.updated_at).g
 function techPackPayload(row){
   if(!row)return null;
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
-  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
+  return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiReviewedAt:row.ai_reviewed_at||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row)};
 }
@@ -2010,7 +2010,7 @@ async function recordDraftEdits(packId,stage){
     return stats;
   }catch(e){app.log.warn({err:e.message,packId,stage},'draft edit stats not recorded');return null}
 }
-const STAGE_ORDER=['submitted','published','approved','countersigned'];
+const STAGE_ORDER=['submitted','checked','published','approved','countersigned'];
 async function learningRows(limit=300){
   // the furthest milestone each pack reached, so a pack counts once
   return (await pool.query(`select distinct on (s.tech_pack_id) s.*,p.title product_title,c.name client_name from tech_pack_edit_stats s join products p on p.id=s.product_id join clients c on c.id=s.client_id
@@ -2048,7 +2048,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   try{
     await client.query('begin');
     // A new version starts a fresh acknowledgement chain: acks and both signatures reset, and the pack unlocks.
-    const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=data,published_at=now(),published_by=$2,updated_at=now(),
+    const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=data,published_at=now(),published_by=$2,updated_at=now(),ai_reviewed_at=coalesce(ai_reviewed_at,case when ai_status='done' then now() end),ai_reviewed_by=coalesce(ai_reviewed_by,case when ai_status='done' then $2::uuid end),
       verification=$5::jsonb,locked_at=null,
       revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text))
       where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1))])).rows[0];
@@ -2101,6 +2101,16 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
     [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} signed by Future Basics (${name})`,{techPackId:row.id,version:row.version,locked:Boolean(row.locked_at)}]);
   await flow(ctx.product.id,row.locked_at?'pack-locked':'pack-signed',{actorId:req.auth.sub,note:`v${row.version}`});
   return {techPack:techPackPayload(row)};
+});
+// Future Basics has looked at what the assistants wrote for a customer's pack, and corrected what was off. Publishing the pack counts as checking it.
+app.post('/v1/admin/products/:id/tech-pack/analysis-checked',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  if(ctx.techPack.ai_status!=='done')return reply.code(409).send({error:'The assistants have not drafted this pack'});
+  const on=req.body?.checked!==false;
+  const row=(await pool.query(`update tech_packs set ai_reviewed_at=case when $2 then coalesce(ai_reviewed_at,now()) else null end,ai_reviewed_by=case when $2 then $3::uuid else null end where id=$1 returning *`,[ctx.techPack.id,on,req.auth.sub])).rows[0];
+  if(on){recordDraftEdits(ctx.techPack.id,'checked').catch(()=>{});
+    await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Assistant analysis checked by Future Basics for ${ctx.product.title}`]).catch(()=>{})}
+  return {aiReviewedAt:row.ai_reviewed_at||null};
 });
 app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
@@ -3803,7 +3813,7 @@ app.post('/v1/admin/products/:id/tech-pack/cutout',{preHandler:[authenticate,adm
 // What the customer sees of the studio: the approved reference picture, the colourway run, the 3D model and how the assistants built the pack. Only what is finished and
 // approved: a hero waiting for a person is not shown, and staff-only tools stay staff-only.
 async function studioForClient(productId,clientId,{lite=false,card=false,preview=false}={}){
-  const tp=(await pool.query('select id,product_id,initiated_by,published_at,version,status,submitted_at,data,published_data from tech_packs where product_id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!tp)return null;
+  const tp=(await pool.query('select id,product_id,initiated_by,published_at,version,status,submitted_at,data,published_data,ai_status,ai_reviewed_at from tech_packs where product_id=$1 and client_id=$2',[productId,clientId])).rows[0];if(!tp)return null;
   // A customer sees their own drafts and what Future Basics has published. A staff draft that is not published yet is shown only to staff previewing the hub, and says so.
   const theirs=tp.initiated_by==='client'||Boolean(tp.published_at),staffDraft=!theirs;
   if(staffDraft&&!preview)return {visible:false};
@@ -3819,7 +3829,7 @@ async function studioForClient(productId,clientId,{lite=false,card=false,preview
   // what the pack says, for the product's own page: the card's fields fall back to it when nobody has typed them into the product
   const details={category:pack.style.category||'',material:pack.style.fabricSummary||'',description:pack.style.description||'',sizes:pack.sizes||[],styleNumber:pack.style.styleNumber||'',colourways:pack.colorways.map(c=>({name:c.name,code:c.code,swatch:c.swatch}))};
   const state=tp.published_at?{label:`Tech pack v${tp.version}`,note:`Issued ${new Date(tp.published_at).toLocaleDateString()} · open to review and approve`}:tp.status==='submitted'?{label:'Tech pack · submitted',note:'With Future Basics · v1 coming for your approval'}:staffDraft?{label:'Tech pack · staff draft',note:'Not shown to the client until it is published'}:{label:'Your tech pack draft',note:'Open to add detail, then submit'};
-  return {visible:true,staffDraft,state,details,lite,working,queued,hero,tiles,heroPending:Boolean(heroRow&&heroRow.status==='ready'),colourways:colourways?{status:colourways.status,running:colourways.running,progress:colourways.progress,made:colourways.made}:null,
+  return {visible:true,staffDraft,state,details,lite,working,queued,assistantsUsed:tp.ai_status==='done',checkedAt:tp.ai_reviewed_at||null,hero,tiles,heroPending:Boolean(heroRow&&heroRow.status==='ready'),colourways:colourways?{status:colourways.status,running:colourways.running,progress:colourways.progress,made:colourways.made}:null,
     model:model?{id:model.id,status:model.status,progress:model.progress,triangles:model.triangles,bytes:model.bytes,thumb:model.thumb,completedAt:model.completedAt}:null,
     loop:card?null:loop?{status:loop.status,startScore:loop.startScore,finalScore:loop.finalScore,outcome:loop.outcome,events:loop.events}:null,parts:pack.parts};
 }

@@ -471,4 +471,46 @@ await journey('J79', 'a factory has a start link and QR for its own customers, a
   ok((await call(`/v1/factory/${tok}x`)).status === 404, 'a page link with a letter changed gets nothing');
 });
 
+await journey('J80', 'customers can set up their own pack, but when they use the assistants it comes to Future Basics to check the analysis: a queue item until it is checked, the customer is told, and publishing counts as checking', async () => {
+  const m = await room('80'), hand = await room('80b');
+  for (const x of [m, hand]) for (let i = 0; i < 160; i++) { const st = await studio(x); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const items = async pid => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.kind === 'analysis-check' && i.productId === pid);
+  ok(sql(`select ai_status from tech_packs where product_id='${m.id}'`) === 'done', 'the assistants drafted the customer\'s pack');
+  let it = (await items(m.id))[0]; ok(it && it.owner === 'us' && /check the analysis/i.test(it.title) && /tested it at \d+\/100/.test(it.detail) && it.clientId === m.cid, 'so it is in Future Basics\' queue to check, with the score the assistants gave it', it);
+  sql(`update tech_packs set ai_status=null, ai_draft=null where product_id='${hand.id}'`);
+  ok((await items(hand.id)).length === 0, 'a pack the customer set up by hand, without the assistants, is not');
+  const st0 = await studio(m); ok(st0.assistantsUsed === true && st0.checkedAt === null, 'the customer\'s own page knows the assistants were used and that it is not checked yet');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/analysis-checked`, { method: 'POST', token: m.token, body: {} })).status === 403, 'only staff can mark it checked');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const open = async () => { const c = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await c.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token); const p = await c.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="studio"]', { timeout: 10000 }); await p.click('#tabs button[data-tab="studio"]'); await p.waitForSelector('.panel[data-panel="studio"].on', { timeout: 10000 }); return { c, p }; };
+      const A = await open(); await A.p.waitForFunction(() => /checks the assistants/i.test(document.querySelector('.panel[data-panel="studio"]').innerText), null, { timeout: 8000 }).catch(() => {});
+      ok(/Future Basics checks the assistants' work on every pack/.test(await A.p.innerText('.panel[data-panel="studio"]')), 'the customer is told Future Basics checks the assistants\' work', (await A.p.innerText('.panel[data-panel="studio"]')).slice(0, 120)); await A.c.close();
+    } finally { await bw.close(); }
+  }
+  const chk = await adm(`/v1/admin/products/${m.id}/tech-pack/analysis-checked`, { method: 'POST', body: {} }); ok(chk.status === 200 && chk.json.aiReviewedAt, 'staff mark it checked', chk.json);
+  ok((await items(m.id)).length === 0 && (await studio(m)).checkedAt, 'it leaves the queue, and the customer sees it was checked');
+  ok(sql(`select count(*) from tech_pack_edit_stats where tech_pack_id=(select id from tech_packs where product_id='${m.id}') and stage='checked'`) === '1' && sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Assistant analysis checked%'`) === '1', 'what staff changed is recorded for the assistant\'s learning, and the check is on the record');
+  ok(((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.aiReviewedAt), 'the pack page knows');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="check"]'); await p.click('#tabs button[data-tab="check"]'); await p.waitForSelector('[data-acheck]', { timeout: 10000 });
+      ok(/Checked by Future Basics/i.test(await p.innerText('[data-acheck]')) && /Mark as not checked/i.test(await p.innerText('[data-acheck]')), 'staff see on the Check tab that it is checked, with the way to undo it');
+      await p.click('[data-acheck] [data-act="analysischecked"]'); await p.waitForFunction(() => /Mark analysis checked/i.test(document.querySelector('[data-acheck]').innerText), null, { timeout: 8000 });
+      ok(sql(`select ai_reviewed_at is null from tech_packs where product_id='${m.id}'`) === 't' && (await items(m.id)).length === 1, 'undoing it puts it back in the queue');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j80-check.png` }).catch(() => {}); ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  // submitted: it has its own review item, so it is not listed twice
+  sql(`update tech_packs set status='submitted', submitted_at=now() where product_id='${m.id}'`); ok((await items(m.id)).length === 0 && ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).some(i => i.kind === 'review' && i.productId === m.id), 'a pack the customer submits has its review item instead of a second one');
+  sql(`update tech_packs set status='draft', submitted_at=null where product_id='${m.id}'`);
+  // publishing counts as checking it
+  const pub = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: queue check only' } }); ok(pub.status === 200, 'staff publish it', [pub.status, pub.json]);
+  ok(sql(`select ai_reviewed_at is not null from tech_packs where product_id='${m.id}'`) === 't' && (await items(m.id)).length === 0, 'and that counts as checking it');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
