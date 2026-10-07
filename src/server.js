@@ -257,7 +257,15 @@ async function sendIntakeNotification(intake,uploads){
 // Future Basics hub emails to clients (intake confirmation, room activation). Resend-backed like the login code;
 // without RESEND_API_KEY they log and return false so local runs never block on delivery.
 const hubFromEmail=process.env.AUTH_FROM_EMAIL||'Future Basics <hub@thefuturebasics.com>';
+// Test rig: with EMAIL_CAPTURE=1 nothing is sent; every email is kept (the last 300) and can be read at /v1/dev/outbox, so a journey can check who was told what.
+const emailOutbox=[];
+app.get('/v1/dev/outbox',async(req,reply)=>{
+  if(process.env.EMAIL_CAPTURE!=='1')return reply.code(404).send({error:'Not found'});
+  const to=String(req.query?.to||'').toLowerCase(),since=Number(req.query?.since)||0;
+  return {emails:emailOutbox.filter(e=>e.at>=since&&(!to||e.to===to)).map(e=>({to:e.to,subject:e.subject,at:e.at,text:e.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,600),links:[...e.html.matchAll(/href="([^"]+)"/g)].map(m=>m[1].replace(/&amp;/g,'&'))}))};
+});
 async function sendHubEmail({to,subject,html,replyTo,from,headers}){
+  if(process.env.EMAIL_CAPTURE==='1'){emailOutbox.push({to:String(to).toLowerCase(),subject,html,at:Date.now()});if(emailOutbox.length>300)emailOutbox.shift();return true}
   if(!process.env.RESEND_API_KEY){app.log.warn({to,subject},'RESEND_API_KEY missing; hub email not sent');return false}
   const response=await trackedFetch('resend','https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},
     body:JSON.stringify({from:from||hubFromEmail,to:[to],reply_to:replyTo||intakeNotificationEmail,subject,html,...(headers?{headers}:{})})});
@@ -278,6 +286,47 @@ async function notifyClientContact(clientId,{subject,title,body,replyTo}){
     const first=String(c.contact_name||'').split(' ')[0]||'there';
     return await sendHubEmail({to:c.contact_email,subject,replyTo,html:hubEmailShell(title||subject,`<p>Hi ${emailEscape(first)},</p>${body}<p style="font-size:12px;color:#717177">Sign in with your work email — no password, we send a six-digit code.</p>`)});
   }catch(e){app.log.warn({err:e.message,clientId,subject},'client email not sent');return false}
+}
+// Tell a factory it is its turn: by email to the link's own address or the supplier's, with the pack link when it can be worked out again
+// (assigned and referred packs). It never fails the action that triggered it.
+async function emailFactoryShare(shareId,{subject,intro,button='Open the tech pack'}){
+  try{
+    const r=(await pool.query(`select s.id,s.label,s.email,s.assigned,s.referral,s.revoked_at,s.expires_at,su.contact_email from tech_pack_shares s left join suppliers su on su.id=s.supplier_id where s.id=$1`,[shareId])).rows[0];
+    if(!r||r.revoked_at||(r.expires_at&&new Date(r.expires_at)<new Date()))return false;
+    const to=String(r.email||r.contact_email||'').trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to))return false;
+    const link=(r.assigned||r.referral)?`${clientHubUrl}/tp/${factoryShareToken(r.id)}`:null;
+    return await sendHubEmail({to,replyTo:intakeNotificationEmail,subject,html:hubEmailShell(subject,`<p>Hello ${emailEscape(r.label)},</p>${intro}${link?hubButton(link,button):'<p>Open your tech pack link to see it.</p>'}<p style="font-size:12px;color:#717177">Free, no account needed. The page can switch language at the top. Reply to this email with any questions.</p>`)});
+  }catch(e){app.log.warn({err:e.message,shareId},'factory email not sent');return false}
+}
+// A customer who started through a factory's link: once their pack is published the factory gets a quotation link and an email, at once and
+// without waiting for it to open its page. (The page also makes the link if it is opened first.)
+async function provisionReferralShare(tpId){
+  const r=(await pool.query(`select c.acquisition->>'partnerId' pid,p.title from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id where tp.id=$1`,[tpId])).rows[0];
+  if(!r?.pid||!UUID_RE.test(r.pid))return false;
+  const partner=(await pool.query('select * from partners where id=$1',[r.pid])).rows[0];if(!partner)return false;
+  const sup=await supplierForPartner(partner),name=(await pool.query('select name from suppliers where id=$1',[sup])).rows[0]?.name||partner.company;
+  if((await pool.query('select 1 from tech_pack_shares where tech_pack_id=$1 and supplier_id=$2 and referral',[tpId,sup])).rowCount)return false;
+  const sid=randomUUID(),ins=await pool.query(`insert into tech_pack_shares(id,tech_pack_id,token_hash,label,kind,supplier_id,referral) values($1,$2,$3,$4,'quote',$5,true) on conflict do nothing returning id`,[sid,tpId,hash(factoryShareToken(sid)),name,sup]);
+  if(!ins.rowCount)return false;
+  await emailFactoryShare(sid,{subject:`A customer's tech pack is ready for your quote: ${r.title}`,intro:`<p>A customer who started through your link has a tech pack ready: <strong>${emailEscape(r.title)}</strong>. Future Basics has checked and published it. Read it and send your price. The customer's details stay with Future Basics.</p>`,button:'Open the tech pack and quote'});
+  return true;
+}
+// After a publish: a referring factory gets its first link; a factory holding an older version is told a new one replaces it.
+async function factoriesAfterPublish(tp,title){
+  try{
+    await provisionReferralShare(tp.id);
+    if(Number(tp.version)>1){
+      const rows=(await pool.query(`select id,kind from tech_pack_shares where tech_pack_id=$1 and revoked_at is null and waived_at is null and (expires_at is null or expires_at>now())`,[tp.id])).rows;
+      for(const r of rows)await emailFactoryShare(r.id,{subject:`New version of ${title}: v${tp.version}`,intro:`<p>Future Basics published version ${tp.version} of <strong>${emailEscape(title)}</strong>. It replaces the version you have: open it to see what changed${r.kind==='review'?', then acknowledge and countersign it':' and update your quote if it changes your price'}.</p>`});
+    }
+  }catch(e){app.log.warn({err:e.message,packId:tp.id},'factories not told about the publish')}
+}
+// Future Basics has signed: a factory assigned to produce it (read and sign) is next, and is told so.
+async function factoriesAfterBrandSign(tpId,title,version){
+  try{
+    const rows=(await pool.query(`select id from tech_pack_shares where tech_pack_id=$1 and kind='review' and revoked_at is null and (expires_at is null or expires_at>now())`,[tpId])).rows;
+    for(const r of rows)await emailFactoryShare(r.id,{subject:`Ready for you to countersign: ${title}`,intro:`<p>The tech pack for <strong>${emailEscape(title)}</strong> (version ${version}) is approved by the client and signed by Future Basics. It is your turn: acknowledge each callout, then countersign to confirm you can make it to spec.</p>`,button:'Open the tech pack and countersign'});
+  }catch(e){app.log.warn({err:e.message,packId:tpId},'factories not told it is their turn')}
 }
 // The assistant stopping for a reason only we can fix (empty credit, a rejected key) emails staff once, then stays quiet for a few hours
 // so a stuck queue is one email, not hundreds. The slot is claimed before sending so failures landing together send one; a delivery that
@@ -1652,6 +1701,10 @@ async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
   const packs=(await pool.query(`select product_id,version,verification,published_at from tech_packs where client_id=$1 and published_at is not null`,[clientId])).rows;
   for(const tp of packs){const p=live.get(tp.product_id);if(!p)continue;const v=normalizeVerification(tp.verification,tp.version);if(v.clientSign||v.changes)continue;
     out.push({kind:'tech-pack',id:`tp-${tp.product_id}`,productId:p.id,projectId:p.project_id,title:`Approve tech pack v${tp.version}`,product:p.title,at:tp.published_at,href:`/tech-packs/${p.id}#sign`})}
+  // their own pack that they started and have not sent to us yet: it waits on them, so it shows here until they submit it
+  const drafts=(await pool.query(`select product_id,updated_at from tech_packs where client_id=$1 and initiated_by='client' and status='draft' and submitted_at is null and published_at is null`,[clientId])).rows;
+  for(const d of drafts){const p=live.get(d.product_id);if(!p)continue;
+    out.push({kind:'draft',id:`draft-${p.id}`,productId:p.id,projectId:p.project_id,title:'Finish your tech pack and send it to us',product:p.title,at:d.updated_at,href:`/tech-packs/${p.id}`})}
   const latest=new Map();for(const q of quotes)if(!latest.has(q.product_id)||q.version>latest.get(q.product_id).version)latest.set(q.product_id,q);
   for(const q of latest.values()){const p=live.get(q.product_id);if(!p||q.status!=='issued')continue;if(!quoteReadiness(p,p.configuration||null,q).ready)continue;
     const total=Number(q.quantity||0)*Number(q.wholesale_cents||q.unit_cost_cents||0)+Number(q.tooling_cents||0)+Number(q.freight_cents||0);
@@ -2065,6 +2118,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await flow(ctx.product.id,'pack-published',{actorId:req.auth.sub,note:`v${row.version}`});
     await flagRequote(ctx.product,ctx.techPack.published_data,row);
     await syncCardQuietly(ctx.product.id,row.published_data);
+    await factoriesAfterPublish(row,ctx.product.title);
     let clientNotified=false;
     if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
       try{
@@ -2103,6 +2157,7 @@ app.post('/v1/admin/products/:id/tech-pack/sign',{preHandler:[authenticate,admin
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} signed by Future Basics (${name})`,{techPackId:row.id,version:row.version,locked:Boolean(row.locked_at)}]);
   await flow(ctx.product.id,row.locked_at?'pack-locked':'pack-signed',{actorId:req.auth.sub,note:`v${row.version}`});
+  if(!row.locked_at)await factoriesAfterBrandSign(row.id,ctx.product.title,row.version);
   return {techPack:techPackPayload(row)};
 });
 // Future Basics has looked at what the assistants wrote for a customer's pack, and corrected what was off. Publishing the pack counts as checking it.
@@ -2177,8 +2232,10 @@ app.post('/v1/admin/products/:id/tech-pack/factory',{preHandler:[authenticate,ad
     await db.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,sup?`Factory assigned: ${sup.name} (${mode==='review'?'to read and sign':'for quotation'})`:'Factory unassigned']);
     await db.query('commit');
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+  let emailed=false;
+  if(share&&req.body?.email!==false)emailed=await emailFactoryShare(share.id,mode==='review'?{subject:`Tech pack to read and countersign: ${ctx.product.title}`,intro:`<p>Future Basics has assigned you the tech pack for <strong>${emailEscape(ctx.product.title)}</strong> to produce. Read it, acknowledge each callout and countersign once Future Basics has signed. Everything assigned to you is on your page.</p>`,button:'Open the tech pack'}:{subject:`Request for quotation: ${ctx.product.title}`,intro:`<p>Future Basics would like a quotation for <strong>${emailEscape(ctx.product.title)}</strong>. Open the tech pack, then use the <strong>Quote</strong> tab to give your prices by quantity, minimum order, sample cost and lead time.</p>`,button:'Open the tech pack and quote'});
   const fresh=await loadAdminTechPack(req.params.id);
-  return reply.code(sup?201:200).send({assignment:await assignmentView(fresh)});
+  return reply.code(sup?201:200).send({assignment:await assignmentView(fresh),emailed});
 });
 // The factory page link can be sent to the factory from here, or switched off and replaced.
 app.post('/v1/admin/suppliers/:id/factory-page/:action',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -2217,7 +2274,10 @@ app.get('/v1/factory/:token',async(req,reply)=>{
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))
     order by s.created_at desc limit 300`,[sup.id])).rows;
   const assignedPacks=new Set(rows.filter(r=>!r.referral).map(r=>r.tp_id)); // a pack that is both assigned and referred is listed once, as assigned
-  return {factory:sup.name,startLink:page.startUrl,started:counts.started,packs:rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id)).map(r=>{
+  const listed=rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id));
+  const stateOf=r=>{const v=normalizeVerification(r.verification,r.version);return r.kind==='quote'?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review')};
+  const needsAction=listed.filter(r=>{const st=stateOf(r);return st==='needs-quote'||st==='to-review'||r.unread>0}).length;
+  return {factory:sup.name,startLink:page.startUrl,started:counts.started,needsAction,packs:listed.map(r=>{
     const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
     const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
     return {unread:r.unread||0,title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
