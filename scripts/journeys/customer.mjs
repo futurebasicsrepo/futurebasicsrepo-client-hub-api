@@ -180,6 +180,12 @@ await journey('J75', 'a factory sees the 3D shape only when Future Basics switch
   const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
   sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
   sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  // a factory already in the supplier list: pick it, and the link takes its name and email and is tied to it
+  const sup = await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Old Friend Mill ${stamp}`, contactEmail: 'Sales@OldFriend.cn', country: 'China' } });
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.suppliers.some(x => x.id === sup.json.id && x.email === 'Sales@OldFriend.cn'), 'the pack page offers the suppliers staff already have');
+  const ps = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', supplierId: sup.json.id, sendEmail: false } });
+  ok(ps.status === 201 && ps.json.share.label === `Old Friend Mill ${stamp}` && ps.json.share.email === 'sales@oldfriend.cn' && ps.json.share.supplierId === sup.json.id, 'a link for a factory you already use takes its name and email and is tied to it', ps.json.share);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', supplierId: '00000000-0000-4000-8000-000000000000' } })).status === 400 && (await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', supplierId: 'junk' } })).status === 400, 'a supplier that does not exist is refused');
   const send = body => adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body });
   ok((await send({ source: 'quotes' })).status === 409, 'quotations cannot be sent before any factory has quoted');
   const a = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Mill A' } }), tokA = a.json.url.split('/tp/')[1];
@@ -221,6 +227,12 @@ await journey('J75', 'a factory sees the 3D shape only when Future Basics switch
       ok(!/could not be loaded/i.test(await B.p.innerText('[data-fmodel] .stl-host')), 'it opens in the viewer');
       const [d] = await Promise.all([B.p.waitForEvent('download', { timeout: 10000 }), B.p.click('[data-act="dlfactorymodel"]')]); ok(/\.stl$/.test(d.suggestedFilename()), 'and downloads as an STL file', d.suggestedFilename());
       ok(await B.p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && B.p.errs.length === 0, 'with nothing off the screen and no script errors', B.p.errs); await B.c.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('#quoteLinkForm select[name="supplierId"]', { timeout: 10000 });
+      await ap.selectOption('#quoteLinkForm select[name="supplierId"]', sup.json.id);
+      ok(await ap.inputValue('#quoteLinkForm [name="label"]') === `Old Friend Mill ${stamp}` && await ap.inputValue('#quoteLinkForm [name="email"]') === 'Sales@OldFriend.cn', 'staff pick a factory they use and the name and email fill in');
+      ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
     } finally { await bw.close(); }
   }
 });
