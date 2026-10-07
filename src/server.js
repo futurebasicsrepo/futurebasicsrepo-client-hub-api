@@ -1470,7 +1470,8 @@ app.post('/v1/admin/products/:id/shopify-draft-order',{preHandler:[authenticate,
   if(Number(row.tooling_cents)>0)lineItems.push({title:`Tooling / setup — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.tooling_cents)});
   if(Number(row.freight_cents)>0)lineItems.push({title:`Freight — ${row.product_title}`,quantity:1,requiresShipping:false,originalUnitPriceWithCurrency:money(row.freight_cents)});
   const input={lineItems,email:req.body?.email||undefined,customerId:row.shopify_customer_id||undefined,
-    ...(deposit?{appliedDiscount:{title:`Sample deposit ${deposit.number} paid`,value:Number((deposit.amount_cents/100).toFixed(2)),valueType:'FIXED_AMOUNT'}}:{}),
+    // the balance after a sample deposit carries no tax, same as the deposit itself
+    ...(deposit?{taxExempt:true,appliedDiscount:{title:`Sample deposit ${deposit.number} paid`,value:Number((deposit.amount_cents/100).toFixed(2)),valueType:'FIXED_AMOUNT'}}:{}),
     note:req.body?.note||`Future Basics client hub quote v${row.version}${deposit?' · balance after the sample deposit':''}`,tags:['future-basics-client-hub',`client-${row.client_name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`],visibleToCustomer:true};
   const result=requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE,{input})).draftOrderCreate),draft=result.draftOrder;
   const updated=(await pool.query(`update quotes set shopify_draft_order_id=$1,shopify_draft_order_name=$2,shopify_draft_order_status=$3,
