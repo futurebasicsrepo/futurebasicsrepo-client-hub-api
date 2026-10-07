@@ -611,4 +611,61 @@ await journey('J82', 'Future Basics can record a client\'s approval when they ga
   ok((await rec({ undo: true })).status === 409, 'and a client\'s own approval is never removed from here');
 });
 
+await journey('J83', 'an open invite for a pack: a one-page sheet with a code, a factory that scans it gives its details and gets a quotation link of its own, and staff control how many and for how long', async () => {
+  const m = await room('83'), un = await room('83u');
+  for (const x of [m, un]) for (let i = 0; i < 160; i++) { const st = await studio(x); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Quiet Brand Co' where id='${m.cid}'`);
+  const inv = path => `/v1/admin/products/${m.id}/tech-pack/invite${path || ''}`;
+  ok((await adm(`/v1/admin/products/${un.id}/tech-pack/invite`, { method: 'POST', body: {} })).status === 409, 'a pack that is not published has no invite');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  ok((await adm(inv())).json.invite === null, 'before staff make one, there is none');
+  ok((await call(inv(), { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot make one');
+  const a = await adm(inv(), { method: 'POST', body: { ensure: true } }), code = a.json.invite.url.split('/i/')[1];
+  ok(a.status === 201 && a.json.invite.active && a.json.invite.maxUses === 30 && /^[0-9a-f]{14}$/.test(code), 'staff make one: a short code, thirty factories, thirty days', a.json.invite);
+  ok((await adm(inv(), { method: 'POST', body: { ensure: true } })).json.invite.url === a.json.invite.url, 'asking again for the sheet gives the same code');
+  const pub = await call(`/v1/invite/${code}`); ok(pub.status === 200 && pub.json.title && pub.json.image && !JSON.stringify(pub.json).includes('Quiet Brand'), 'the landing page knows the product, and never the client', pub.json);
+  ok((await call('/v1/invite/nonsense')).status === 404, 'a made-up code gets nothing');
+  const join = body => call(`/v1/invite/${code}`, { body });
+  ok((await join({ email: 'a@mill.cn' })).status === 400 && (await join({ company: 'Mill A' })).status === 400 && (await join({ company: 'Mill A', email: 'not-an-email' })).status === 400, 'a company and a way to reach it are needed, and the email must look like one');
+  ok((await join({ company: 'Bot Co', email: 'bot@x.cn', website: 'http://spam' })).status === 202 && sql(`select uses from tech_pack_invites where tech_pack_id=(select id from tech_packs where product_id='${m.id}') and revoked_at is null`) === '0', 'a bot that fills the hidden field is waved through and counted for nothing');
+  const j1 = await join({ company: 'Mill A Dongguan', contact: 'Mr Li', email: 'li@milla.cn', wechat: 'milla' }); ok(j1.status === 201 && /\/tp\//.test(j1.json.url), 'a factory gives its details and gets a link', j1.json);
+  const tok = j1.json.url.split('/tp/')[1], view = (await call(`/v1/tp/${tok}`)).json; ok(view.quoteMode === true && view.product.clientName === '' && !JSON.stringify(view).includes('Quiet Brand'), 'the link is the quotation view, with the client hidden');
+  const again = await join({ company: 'Mill A Dongguan', email: 'LI@milla.cn' }); ok(again.status === 200 && again.json.url === j1.json.url && again.json.again === true, 'the same email scanning again gets the same link back, not a second one');
+  const j2 = await join({ company: 'Mill B Shenzhen', phone: '+86 755 0000 1111' }); ok(j2.status === 201 && j2.json.url !== j1.json.url, 'another factory gets its own');
+  ok((await call(`/v1/tp/${tok}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5.5 }], email: 'li@milla.cn' } })).status === 201, 'and can quote through it');
+  const cmp = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json; ok(cmp.links.some(l => l.label === 'Mill A Dongguan' && l.quoted) && cmp.links.some(l => l.label === 'Mill B Shenzhen'), 'staff see each factory by its company name, with the quote', cmp.links.map(l => l.label));
+  ok(sql(`select uses from tech_pack_invites where revoked_at is null and tech_pack_id=(select id from tech_packs where product_id='${m.id}')`) === '2' && sql(`select count(*) from notifications where client_id='${m.cid}' and type='factory-invite'`) === '2', 'the invite counts them, and staff are told about each');
+  // the printed sheet
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1000, height: 1200 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/print/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('.sheet', { timeout: 10000 });
+      const txt = await p.innerText('.sheet'); ok(/工艺单/.test(txt) && /扫码查看完整工艺单并报价/.test(txt) && await p.locator('.sheet .qr img').count() === 1 && txt.includes(a.json.invite.url) && !/Quiet Brand/.test(txt), 'the sheet is in English and Chinese, carries the QR and the short link, and does not name the client', txt.slice(0, 160));
+      await p.emulateMedia({ media: 'print' }); ok(await p.evaluate(() => { const e = document.querySelector('.sheet'); return e.scrollHeight <= e.clientHeight + 1; }), 'on paper it fits on one A4 page');
+      ok(/2 of 30 factories so far/.test(await p.innerText('#barNote')), 'staff see how many factories have used the code'); ok(p.errs.length === 0, 'no script errors on the sheet', p.errs);
+      await p.emulateMedia({ media: 'screen' }); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j83-sheet.png`, fullPage: true }).catch(() => {}); await ctx.close();
+      const nctx = await bw.newContext({ viewport: { width: 1000, height: 900 } }), np = await nctx.newPage(); await np.goto(`${BASE}/print/${m.id}`, { waitUntil: 'networkidle' }); await np.waitForSelector('.msg', { timeout: 8000 }); ok(/Sign in/.test(await np.innerText('.msg')), 'without a staff sign-in the sheet says so'); await nctx.close();
+      const pctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+      await pp.goto(`${BASE}/i/${code}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#f', { timeout: 10000 });
+      ok(/Quote on|tech pack/i.test(await pp.innerText('.lede')) && !/Quiet Brand/.test(await pp.innerText('main')), 'scanning the code on a phone shows the product and a short form');
+      await pp.click('#lang'); ok(/邀请您对这份工艺单报价/.test(await pp.innerText('.lede')), 'in Chinese too'); await pp.click('#lang');
+      await pp.fill('#fCompany', 'Mill C Foshan'); await pp.fill('#fEmail', 'c@millc.cn'); await Promise.all([pp.waitForURL(/\/tp\//, { timeout: 15000 }), pp.click('#go')]); await pp.waitForSelector('#tabs button[data-tab="quote"]', { timeout: 10000 });
+      ok(await pp.locator('#tabs button[data-tab="quote"]').count() === 1 && sql(`select count(*) from tech_pack_shares where label='Mill C Foshan' and kind='quote'`) === '1', 'filling it in opens the tech pack with its Quote tab, on a link of its own');
+      ok(await pp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && pp.errs.length === 0, 'nothing runs off the phone and there are no script errors', pp.errs);
+      await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j83-invite.png` }).catch(() => {}); await pctx.close();
+    } finally { await bw.close(); }
+  }
+  // the limits
+  const one = await adm(inv(), { method: 'POST', body: { max: 1, days: 5 } }), c1 = one.json.invite.url.split('/i/')[1];
+  ok(one.status === 201 && one.json.invite.maxUses === 1 && (await call(`/v1/invite/${code}`)).status === 410, 'a new invite withdraws the old code');
+  ok((await call(`/v1/invite/${c1}`, { body: { company: 'Only One Ltd', email: 'one@x.cn' } })).status === 201 && (await call(`/v1/invite/${c1}`, { body: { company: 'Too Late Ltd', email: 'late@x.cn' } })).status === 410, 'an invite for one factory stops after one');
+  const two = await adm(inv(), { method: 'POST', body: {} }), c2 = two.json.invite.url.split('/i/')[1];
+  sql(`update tech_pack_invites set expires_at=now()-interval '1 day' where code_hash='${(await import('node:crypto')).createHash('sha256').update(c2).digest('hex')}'`);
+  ok((await call(`/v1/invite/${c2}`)).status === 410, 'an expired one is refused');
+  const three = await adm(inv(), { method: 'POST', body: {} }), c3 = three.json.invite.url.split('/i/')[1]; ok((await adm(inv(), { method: 'DELETE' })).json.revoked === 1 && (await call(`/v1/invite/${c3}`)).status === 410, 'staff can withdraw it at once');
+  ok((await call(`/v1/tp/${tok}`)).status === 200, 'factories that already opened it keep their own links');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

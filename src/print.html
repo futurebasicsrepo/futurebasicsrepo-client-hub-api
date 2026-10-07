@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>One-page tech pack · Future Basics</title>
+<link href="/fonts/fonts.css" rel="stylesheet">
+<style>
+:root{--ink:#141416;--dim:#6b6b72;--line:#cfcec8;--paper:#fff;--acc:#17603a}
+*{box-sizing:border-box}
+.hidden{display:none!important}i{font-style:normal;color:var(--dim)}
+html{background:#e9e8e2}
+body{margin:0;font-family:'Space Grotesk',system-ui,'PingFang SC','Microsoft YaHei',sans-serif;color:var(--ink);font-size:10.5pt;line-height:1.35;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--ink);color:#fff;font-size:14px}
+.bar .grow{flex:1}.bar button,.bar a{border:1px solid #666;background:#222;color:#fff;border-radius:999px;padding:7px 14px;font:inherit;cursor:pointer;text-decoration:none}
+.bar button.primary{background:#fff;color:var(--ink);border-color:#fff;font-weight:600}
+.msg{max-width:720px;margin:40px auto;padding:24px;background:#fff;border-radius:16px;text-align:center;color:#a02a20}
+.sheet{width:210mm;min-height:297mm;margin:16px auto;background:var(--paper);padding:12mm 13mm;display:grid;grid-template-rows:auto auto 1fr auto;gap:5mm;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+.top{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--ink);padding-bottom:3mm;font-size:8.5pt;letter-spacing:.14em;text-transform:uppercase}
+.top b{font-size:10pt;letter-spacing:.18em}
+h1{margin:0;font-size:25pt;line-height:1.05;letter-spacing:-.02em;text-wrap:balance}
+.sub{margin:1mm 0 0;color:var(--dim);font-size:10.5pt}
+.hero{display:grid;grid-template-columns:78mm 1fr;gap:6mm}
+.pic{height:78mm;border:1px solid var(--line);border-radius:3mm;background:#f2f1ec center/contain no-repeat}
+h2{margin:0 0 1.5mm;font-size:7.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);font-weight:600;display:flex;gap:6px}h2 span{margin-left:auto}
+h2 i{font-style:normal;letter-spacing:.04em;text-transform:none;font-size:8pt}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:1.2mm 4mm;margin:0;font-size:9.5pt}.facts dt{color:var(--dim)}.facts dd{margin:0;font-weight:500}
+.chips{display:flex;flex-wrap:wrap;gap:1.5mm}.chip{display:inline-flex;align-items:center;gap:1.5mm;border:1px solid var(--line);border-radius:99px;padding:.6mm 2.5mm .6mm 1mm;font-size:8.5pt}.chip i{width:4mm;height:4mm;border-radius:50%;border:1px solid rgba(0,0,0,.2)}
+.desc{margin:3mm 0 0;font-size:9.5pt;color:#34343a;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:6mm;align-content:start}
+.cols section{min-width:0}
+table{width:100%;border-collapse:collapse;font-size:8.8pt}th,td{text-align:left;padding:.9mm 1.5mm;border-bottom:1px solid var(--line);vertical-align:top}th{font-weight:500;color:var(--dim);font-size:7.5pt;letter-spacing:.06em;text-transform:uppercase}td.n{text-align:right;white-space:nowrap}
+.elec{grid-column:1/-1;border:1px solid var(--line);border-radius:3mm;padding:3mm 4mm;background:#fafaf7}
+.elec .g{display:grid;grid-template-columns:repeat(4,1fr);gap:2mm 5mm;font-size:9pt}.elec .g div span{display:block;color:var(--dim);font-size:7.5pt;letter-spacing:.06em;text-transform:uppercase}
+.elec p{margin:2mm 0 0;font-size:8.5pt}
+.foot{display:grid;grid-template-columns:1fr auto;gap:6mm;align-items:center;border-top:2px solid var(--ink);padding-top:4mm}
+.foot .t{font-size:13pt;font-weight:600;line-height:1.2}.foot .t small{display:block;font-weight:400;color:var(--dim);font-size:9.5pt;margin-top:1mm}
+.foot .u{margin-top:2mm;font-size:8.5pt;color:var(--dim);word-break:break-all}
+.foot .qr img{display:block;width:34mm;height:34mm}
+.legal{grid-column:1/-1;font-size:7.5pt;color:var(--dim);margin-top:1mm}
+@page{size:A4;margin:0}
+@media print{html{background:#fff}.bar{display:none}.sheet{margin:0;box-shadow:none;width:210mm;height:297mm;min-height:0;overflow:hidden}}
+</style>
+</head>
+<body>
+<div class="bar" id="bar"><b>One-page tech pack</b><span class="grow" id="barNote"></span><button id="expire" type="button" class="hidden"></button><button id="print" class="primary" type="button">Print or save as PDF</button></div>
+<div id="out"><div class="msg" style="background:transparent">Loading…</div></div>
+<script src="/qrcode.js"></script>
+<script>
+const id=location.pathname.split('/')[2]||'',TOKEN=(()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}})();
+const $=x=>document.getElementById(x),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const both=(en,zh)=>`${esc(en)} <i>${esc(zh)}</i>`;
+async function api(p,o={}){const r=await fetch(p,{...o,headers:{...(o.headers||{}),Authorization:'Bearer '+TOKEN,...(o.body?{'Content-Type':'application/json'}:{})}});const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.error||r.statusText);e.status=r.status;throw e}return d}
+function fail(t){$('out').innerHTML=`<div class="msg">${esc(t)}</div>`;$('print').disabled=true}
+(async()=>{
+  if(!TOKEN)return fail('Sign in to the work console first, then open this page again.');
+  let d,inv;
+  try{d=await api(`/v1/admin/products/${encodeURIComponent(id)}/tech-pack`)}catch(e){return fail(e.status===401?'Sign in to the work console first, then open this page again.':e.message)}
+  if(!d.techPack||!d.techPack.publishedAt)return fail('Publish the tech pack first: the sheet shows the published version, and the code on it opens that version.');
+  try{inv=(await api(`/v1/admin/products/${encodeURIComponent(id)}/tech-pack/invite`,{method:'POST',body:JSON.stringify({ensure:true})})).invite}catch(e){return fail(e.message)}
+  const p=d.techPack.publishedData||d.techPack.data,st=p.style||{},e=p.electronics||{},sample=st.sampleSize||(p.sizes||[])[0]||'';
+  const pom=(p.pom||[]).filter(r=>r.values&&r.values[sample]).slice(0,8),bom=(p.bom||[]).slice(0,8),cw=(p.colorways||[]).slice(0,8);
+  const cm=v=>{const n=parseFloat(v);return Number.isFinite(n)?` (${(n*2.54).toFixed(1)} cm)`:''};
+  const spec=e.enabled?e.specs||{}:null,certs=e.enabled?(e.certifications||[]).filter(c=>c.status!=='not required').slice(0,9).map(c=>c.name.replace(/\s*\(.*$/,'')):[];
+  const qr=(()=>{try{const q=qrcode(0,'M');q.addData(inv.url);q.make();return q.createImgTag(6,0,'QR code')}catch{return ''}})();
+  const when=new Date(d.techPack.publishedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  $('out').innerHTML=`<article class="sheet">
+    <div class="top"><b>Future Basics · ${both('Tech pack','工艺单')}</b><span>${esc([st.styleNumber,'v'+d.techPack.version,when].filter(Boolean).join(' · '))}</span></div>
+    <div><h1>${esc(st.styleName||d.product.title)}</h1><p class="sub">${esc([st.category,st.season].filter(Boolean).join(' · '))}</p></div>
+    <div style="display:grid;gap:5mm;align-content:start">
+      <div class="hero"><div class="pic" style="background-image:url('${esc(inv.image)}')"></div><div>
+        <h2>${both('Key facts','概要')}</h2><dl class="facts">${[['Materials / 材料',st.fabricSummary],['Sizes / 尺码',(p.sizes||[]).join(', ')],['Sample size / 样品尺码',sample]].filter(r=>r[1]).map(r=>`<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>
+        ${cw.length?`<h2 style="margin-top:3mm">${both('Colourways','配色')}</h2><div class="chips">${cw.map(c=>`<span class="chip"><i style="background:${esc(c.swatch||'#ddd')}"></i>${esc(c.name)}${c.code?' · '+esc(c.code):''}</span>`).join('')}</div>`:''}
+        ${st.description?`<p class="desc">${esc(st.description)}</p>`:''}</div></div>
+      <div class="cols">
+        ${pom.length?`<section><h2>${both('Measurements','尺寸')}<span>${esc(sample)}</span></h2><table><thead><tr><th>${both('Point','部位')}</th><th class="n">in</th><th class="n">±</th></tr></thead><tbody>${pom.map(r=>`<tr><td>${esc(r.name)}</td><td class="n">${esc(r.values[sample])}${esc(cm(r.values[sample]))}</td><td class="n">${esc(r.tolerance||'')}</td></tr>`).join('')}</tbody></table></section>`:''}
+        ${bom.length?`<section><h2>${both('Materials','物料')}</h2><table><thead><tr><th>${both('Part','部件')}</th><th>${both('Material','材料')}</th></tr></thead><tbody>${bom.map(r=>`<tr><td>${esc(r.component)}</td><td>${esc(r.material||r.spec||'')}</td></tr>`).join('')}</tbody></table></section>`:''}
+        ${spec?`<div class="elec"><h2>${both('Electronics','电子')}</h2><div class="g">${[['Battery / 电池',[spec.batteryChemistry,spec.batteryCapacity&&spec.batteryCapacity+' mAh',spec.batteryVoltage&&spec.batteryVoltage+' V'].filter(Boolean).join(' · ')],['Power input / 电源输入',spec.inputPower],['Radios / 无线',spec.radios],['Water rating / 防水',spec.ingress]].map(([k,v])=>`<div><span>${esc(k)}</span>${esc(v||'—')}</div>`).join('')}</div>${certs.length?`<p><b>${both('Certifications','认证')}:</b> ${esc(certs.join(' · '))}</p>`:''}${(e.stages||[]).length?`<p><b>${both('Build stages','试产阶段')}:</b> ${esc(e.stages.map(s=>s.stage).join(' → '))}</p>`:''}</div>`:''}
+      </div>
+    </div>
+    <div class="foot"><div><div class="t">${both('Scan to read the full tech pack and send your quote','扫码查看完整工艺单并报价')}<small>${both('Free for factories. No account needed.','对工厂免费，无需注册账号。')}</small></div><div class="u">${esc(inv.url)}</div></div><div class="qr">${qr}</div><div class="legal">Future Basics · thefuturebasics.com · ${both('The client is not named on this sheet.','此页不显示客户名称。')}</div></div>
+  </article>`;
+  const left=inv.expiresAt?Math.max(0,Math.ceil((new Date(inv.expiresAt)-Date.now())/864e5)):null;
+  $('barNote').textContent=`The code opens this pack for quotation. ${inv.uses} of ${inv.maxUses} factories so far${left!=null?`, valid ${left} more day${left===1?'':'s'}`:''}.`;
+  const ex=$('expire');ex.textContent='Withdraw the code';ex.classList.remove('hidden');ex.onclick=async()=>{if(!confirm('Withdraw the code? Sheets already printed stop working.'))return;try{await api(`/v1/admin/products/${encodeURIComponent(id)}/tech-pack/invite`,{method:'DELETE'});fail('The code is withdrawn. Open this page again to make a new one.')}catch(e){alert(e.message)}};
+})();
+$('print').onclick=()=>window.print();
+</script>
+</body>
+</html>

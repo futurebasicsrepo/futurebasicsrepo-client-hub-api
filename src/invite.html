@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Quote on a tech pack · Future Basics</title>
+<link href="/fonts/fonts.css" rel="stylesheet">
+<style>
+:root{--ink:#141416;--dim:#6f6f76;--line:#d9d8d2;--bg:#f5f4ef;--paper:#fff;--hot:#d9342b;--ok:#0b6b3e}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:'Space Grotesk',system-ui,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--ink);font-size:16px}
+.hidden{display:none!important}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--ink);color:#fff}
+header .brand{font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}header .grow{flex:1}
+header button{border:1px solid #555;background:#222;color:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+.pic{aspect-ratio:4/3;background:#ecebe5 center/contain no-repeat;border-bottom:1px solid var(--line)}
+.body{padding:18px}
+h1{font-size:24px;line-height:1.15;margin:0 0 4px;text-wrap:balance}.cat{color:var(--dim);font-size:14px;margin:0 0 12px}
+.lede{margin:0 0 16px;color:#3a3a3e;font-size:15px}
+label.f{display:grid;gap:4px;margin:12px 0 0}label.f>span{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+input[type=text],input[type=email],input[type=tel]{width:100%;font:inherit;font-size:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fbfbf8}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:440px){.two{grid-template-columns:1fr}}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+button.go{width:100%;margin-top:18px;padding:15px;border-radius:14px;border:0;background:var(--ink);color:#fff;font:inherit;font-weight:600;font-size:17px;cursor:pointer}
+button.go:disabled{opacity:.5}
+.msg{min-height:20px;margin:10px 2px 0;font-size:14px;color:var(--hot)}
+.fine{margin:14px 2px 0;color:var(--dim);font-size:12.5px}
+.err{padding:30px 18px;text-align:center;color:var(--hot)}
+</style>
+</head>
+<body>
+<header><span class="brand">Future Basics</span><span class="grow"></span><button id="lang" type="button" aria-label="Language">中文</button></header>
+<main>
+  <div class="card" id="card">
+    <div class="pic hidden" id="pic" role="img"></div>
+    <div class="body" id="body"><p id="loading">…</p></div>
+  </div>
+</main>
+<script>
+const T={
+  en:{other:'中文',lede:'Future Basics sent you this tech pack to quote on. Tell us who you are, then read every detail and send your price. It is free and needs no account.',company:'Company',contact:'Your name',email:'Email',wechat:'WeChat',phone:'Phone',need:'Give at least one way to reach you: email, WeChat or phone.',go:'Open the tech pack and quote',busy:'Opening…',fine:'Your details go to Future Basics only. The link you get after this is yours: it is the way back to this tech pack.',bad:'This invitation is not valid. Ask Future Basics for a new one.',gone:'This invitation has been withdrawn, has expired or is full. Ask Future Basics for a new one.',slow:'Could not load. Check your connection and try again.',err:'Could not open it. Check your details and try again.'},
+  zh:{other:'English',lede:'Future Basics 邀请您对这份工艺单报价。请先告诉我们您是谁，然后查看全部细节并提交报价。免费，无需注册账号。',company:'公司名称',contact:'联系人',email:'邮箱',wechat:'微信',phone:'电话',need:'请至少留下一种联系方式：邮箱、微信或电话。',go:'打开工艺单并报价',busy:'正在打开…',fine:'您的资料只会发给 Future Basics。之后得到的链接属于您，用它可以随时回到这份工艺单。',bad:'此邀请无效，请向 Future Basics 索取新的邀请。',gone:'此邀请已撤回、已过期或名额已满，请向 Future Basics 索取新的邀请。',slow:'无法加载，请检查网络后重试。',err:'无法打开，请检查填写的资料后重试。'}
+};
+const code=location.pathname.split('/')[2]||'';
+let lang=(()=>{try{const s=localStorage.getItem('fb.invite.lang');if(s==='en'||s==='zh')return s}catch{}return /^zh/i.test(navigator.language||'')?'zh':'en'})();
+let info=null,failed='',msg='',busy=false;
+const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function draw(){
+  const t=T[lang];document.documentElement.lang=lang==='zh'?'zh-Hans':'en';$('lang').textContent=t.other;
+  if(failed){$('pic').classList.add('hidden');$('body').innerHTML=`<div class="err">${esc(t[failed])}</div>`;return}
+  if(!info)return;
+  document.title=`${info.title} · Future Basics`;$('pic').style.backgroundImage=`url('${info.image}')`;$('pic').setAttribute('aria-label',info.title);$('pic').classList.remove('hidden');
+  const keep=id=>{const e=$(id);return e?e.value:''},v={company:keep('fCompany'),contact:keep('fContact'),email:keep('fEmail'),wechat:keep('fWechat'),phone:keep('fPhone')};
+  $('body').innerHTML=`<h1>${esc(info.title)}</h1>${info.category?`<p class="cat">${esc(info.category)}</p>`:''}<p class="lede">${esc(t.lede)}</p>
+  <form id="f" novalidate><label class="f"><span>${esc(t.company)}</span><input type="text" id="fCompany" required autocomplete="organization" value="${esc(v.company)}"></label>
+  <label class="f"><span>${esc(t.contact)}</span><input type="text" id="fContact" autocomplete="name" value="${esc(v.contact)}"></label>
+  <div class="two"><label class="f"><span>${esc(t.email)}</span><input type="email" id="fEmail" autocomplete="email" autocapitalize="none" value="${esc(v.email)}"></label><label class="f"><span>${esc(t.wechat)}</span><input type="text" id="fWechat" autocapitalize="none" value="${esc(v.wechat)}"></label></div>
+  <label class="f"><span>${esc(t.phone)}</span><input type="tel" id="fPhone" autocomplete="tel" value="${esc(v.phone)}"></label>
+  <input class="hp" id="fSite" tabindex="-1" autocomplete="off" aria-hidden="true">
+  <button class="go" id="go" type="submit" ${busy?'disabled':''}>${esc(busy?t.busy:t.go)}</button><p class="msg" id="msg" aria-live="polite">${esc(msg)}</p><p class="fine">${esc(t.fine)}</p></form>`;
+  $('f').onsubmit=submit;
+}
+async function submit(e){
+  e.preventDefault();const t=T[lang],g=id=>$(id).value.trim();
+  if(!g('fCompany')){msg=t.company+' *';draw();$('fCompany').focus();return}
+  if(!g('fEmail')&&!g('fWechat')&&!g('fPhone')){msg=t.need;draw();return}
+  busy=true;msg='';draw();
+  try{
+    const r=await fetch(`/v1/invite/${encodeURIComponent(code)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company:g('fCompany'),contact:g('fContact'),email:g('fEmail'),wechat:g('fWechat'),phone:g('fPhone'),website:g('fSite')})});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok&&d.url){location.href=d.url;return}
+    msg=r.status===410?t.gone:(d.error||t.err);
+  }catch{msg=t.slow}
+  busy=false;draw();
+}
+$('lang').onclick=()=>{lang=lang==='zh'?'en':'zh';try{localStorage.setItem('fb.invite.lang',lang)}catch{}draw()};
+(async()=>{try{const r=await fetch(`/v1/invite/${encodeURIComponent(code)}`);if(r.status===404)failed='bad';else if(r.status===410)failed='gone';else if(!r.ok)failed='slow';else info=await r.json()}catch{failed='slow'}draw()})();
+</script>
+</body>
+</html>

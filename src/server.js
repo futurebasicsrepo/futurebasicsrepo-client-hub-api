@@ -56,6 +56,7 @@ const renderingSig = id => createHash('sha256').update(`rendering:${id}:${Buffer
 // Only the hash of each is kept, so a link can be switched off (a pack link by revoking its share, the page by rotating it).
 const factoryPageToken = (supplierId, epoch) => createHash('sha256').update(`factory-page:${supplierId}:${epoch}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
 const factoryShareToken = shareId => createHash('sha256').update(`factory-share:${shareId}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
+const inviteCode = id => createHash('sha256').update(`pack-invite:${id}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 14);
 const renderingUrl = id => `${clientHubUrl}/r/${id}/${renderingSig(id)}.jpg`;
 const withRendering = row => row ? { ...row, rendering_url: row.has_rendering ? renderingUrl(row.id) : null } : row;
 // A pack has a cover image when it carries a colour rendering, or — for photo-start drafts — the uploaded reference photo in its first view.
@@ -600,6 +601,8 @@ const sendConsign=(_req,reply)=>reply.header('cache-control','no-store, max-age=
 app.get('/consign', sendConsign);
 app.get('/consign/:id', sendConsign);
 app.get('/tp/:token', sendTechPack);
+app.get('/i/:code',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./invite.html',import.meta.url),'utf8')));
+app.get('/print/:id',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./print.html',import.meta.url),'utf8')));
 app.get('/v1/public/config', async () => ({ workHubUrl, clientHubUrl, startProjectUrl, googleSsoEnabled }));
 app.get('/v1/session', { preHandler: authenticate }, async (req, reply) => {
   const client = (await pool.query('select id,slug,name,status,archived_at from clients where id=$1', [req.auth.clientId])).rows[0];
@@ -4123,6 +4126,63 @@ app.post('/v1/admin/products/:id/tech-pack/factory-sign',{preHandler:[authentica
   if(updated.locked_at)await flow(ctx.product.id,'pack-locked',{actorId:req.auth.sub,note:`v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})`});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})${updated.locked_at?' — locked for production':''}`,{techPackId:ctx.techPack.id,version:ctx.techPack.version,locked:Boolean(updated.locked_at),onBehalf:true}]).catch(()=>{});
   return {locked:Boolean(updated.locked_at),factorySign:normalizeVerification(updated.verification,updated.version).factorySign,techPack:techPackPayload(updated)};
+});
+// ---- An open invite for a pack: the code on a printed one-pager or a booth card. A factory that scans it says who it is and gets a quotation link of its own (client hidden, free).
+const inviteView=(i,tp)=>i?{id:i.id,url:`${clientHubUrl}/i/${inviteCode(i.id)}`,expiresAt:i.expires_at,maxUses:i.max_uses,uses:i.uses,active:!i.revoked_at&&(!i.expires_at||new Date(i.expires_at)>new Date())&&i.uses<i.max_uses,revoked:Boolean(i.revoked_at),image:renderingUrl(tp.product_id)}:null;
+async function activeInvite(tpId){return (await pool.query('select * from tech_pack_invites where tech_pack_id=$1 and revoked_at is null order by created_at desc limit 1',[tpId])).rows[0]||null}
+app.get('/v1/admin/products/:id/tech-pack/invite',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id,product_id from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return reply.code(404).send({error:'Tech pack not found'});
+  return {invite:inviteView(await activeInvite(tp.id),tp)};
+});
+app.post('/v1/admin/products/:id/tech-pack/invite',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx?.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack first: a factory that scans the code reads the published version'});
+  const tp=ctx.techPack,cur=await activeInvite(tp.id),days=Math.min(180,Math.max(1,Math.round(Number(req.body?.days)||30))),max=Math.min(200,Math.max(1,Math.round(Number(req.body?.max)||30)));
+  if(cur&&req.body?.ensure===true&&(!cur.expires_at||new Date(cur.expires_at)>new Date())&&cur.uses<cur.max_uses)return {invite:inviteView(cur,tp)};
+  if(cur)await pool.query('update tech_pack_invites set revoked_at=now() where id=$1',[cur.id]);
+  const id=randomUUID(),row=(await pool.query(`insert into tech_pack_invites(id,tech_pack_id,code_hash,created_by,expires_at,max_uses) values($1,$2,$3,$4,now()+make_interval(days=>$5::int),$6) returning *`,[id,tp.id,hash(inviteCode(id)),req.auth.sub,days,max])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Open invite made for ${ctx.product.title} (${days} days, up to ${max} factories)`]).catch(()=>{});
+  return reply.code(201).send({invite:inviteView(row,tp)});
+});
+app.delete('/v1/admin/products/:id/tech-pack/invite',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id,product_id from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return reply.code(404).send({error:'Tech pack not found'});
+  const r=await pool.query('update tech_pack_invites set revoked_at=now() where tech_pack_id=$1 and revoked_at is null',[tp.id]);
+  return {revoked:r.rowCount};
+});
+async function loadInvite(code){
+  const inv=(await pool.query(`select i.*,tp.id tp_id,tp.product_id,tp.published_at,p.title,c.slug client_slug from tech_pack_invites i join tech_packs tp on tp.id=i.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id where i.code_hash=$1`,[hash(String(code||''))])).rows[0];
+  if(!inv||inviteCode(inv.id)!==String(code))return {error:{code:404,message:'This invitation is not valid'}};
+  if(inv.revoked_at||!inv.published_at)return {error:{code:410,message:'This invitation has been withdrawn'}};
+  if(inv.expires_at&&new Date(inv.expires_at)<new Date())return {error:{code:410,message:'This invitation has expired'}};
+  if(inv.uses>=inv.max_uses)return {error:{code:410,message:'This invitation has reached the number of factories it was meant for'}};
+  return {inv};
+}
+app.get('/v1/invite/:code',async(req,reply)=>{
+  if(!throttle(`invite-view:${req.ip}`,{limit:120,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests: try again in a while'});
+  const {inv,error}=await loadInvite(req.params.code);if(error)return reply.code(error.code).send({error:error.message});
+  const d=normalizeTechPack((await pool.query('select published_data from tech_packs where id=$1',[inv.tp_id])).rows[0]?.published_data);
+  return {title:inv.title,category:d.style.category||'',image:renderingUrl(inv.product_id)};
+});
+app.post('/v1/invite/:code',async(req,reply)=>{
+  if(!throttle(`invite-join:${req.ip}`,{limit:12,windowMs:3600_000}))return reply.code(429).send({error:'Too many sign-ups from here. Please try again in an hour.'});
+  const b=req.body||{};if(String(b.website||'').trim())return reply.code(202).send({ok:true}); // honeypot
+  const {inv,error}=await loadInvite(req.params.code);if(error)return reply.code(error.code).send({error:error.message});
+  const f=(k,n)=>String(b[k]??'').replace(/\s+/g,' ').trim().slice(0,n)||null,company=f('company',120),email=(f('email',200)||'').toLowerCase()||null,wechat=f('wechat',80),phone=f('phone',60),contact=f('contact',120);
+  if(!company)return reply.code(400).send({error:'Enter your company name'});
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Check the email address'});
+  if(!email&&!wechat&&!phone)return reply.code(400).send({error:'Leave a way to reach you: email, WeChat or phone'});
+  // the same email opening the invite again gets the same link back
+  if(email){const again=(await pool.query('select id from tech_pack_shares where invite_id=$1 and lower(email)=$2 and revoked_at is null limit 1',[inv.id,email])).rows[0];if(again)return {url:`${clientHubUrl}/tp/${factoryShareToken(again.id)}`,again:true}}
+  const sid=randomUUID(),label=company.slice(0,120);
+  const share=(await pool.query(`insert into tech_pack_shares(id,tech_pack_id,token_hash,label,email,kind,invite_id,expires_at) values($1,$2,$3,$4,$5,'quote',$6,now()+interval '60 days') returning id`,[sid,inv.tp_id,hash(factoryShareToken(sid)),label,email,inv.id])).rows[0];
+  await pool.query('update tech_pack_invites set uses=uses+1 where id=$1',[inv.id]);
+  const who=[contact,email,wechat&&`WeChat ${wechat}`,phone].filter(Boolean).join(' · ');
+  const prod=(await pool.query('select p.id,p.client_id,p.title from products p join tech_packs tp on tp.product_id=p.id where tp.id=$1',[inv.tp_id])).rows[0];
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[prod.client_id,prod.id,`${label} opened ${prod.title} from the invite (${who})`,{inviteId:inv.id,shareId:share.id}]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-invite',$2,'product',$3)`,[prod.client_id,`${label} opened ${prod.title} from the invite: ${who}`,prod.id]).catch(()=>{});
+  await notifyStaff(`Factory opened a pack from the invite: ${label}`,`<p><strong>${emailEscape(label)}</strong> scanned the invite for <strong>${emailEscape(prod.title)}</strong>.</p><p>${emailEscape(who)}</p>${hubButton(`${workHubUrl}/tech-packs/${prod.id}`,'Open the tech pack')}`).catch(()=>{});
+  return reply.code(201).send({url:`${clientHubUrl}/tp/${factoryShareToken(share.id)}`});
 });
 // ---- Messages between Future Basics and a factory about one pack: one thread per factory link, never shown to the client ----
 const cleanMsg=v=>String(v??'').replace(/\r/g,'').trim().slice(0,2000);
