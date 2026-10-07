@@ -462,6 +462,8 @@ export async function migrate() {
     alter table tech_packs add column if not exists ai_error text;
     alter table tech_packs add column if not exists ai_model text;
     alter table tech_packs add column if not exists ai_completed_at timestamptz;
+    alter table tech_packs add column if not exists ai_reviewed_at timestamptz;
+    alter table tech_packs add column if not exists ai_reviewed_by uuid references users(id) on delete set null;
     alter table tech_packs add column if not exists translations jsonb not null default '{}';
     alter table tech_packs add column if not exists ai_attempts int not null default 0;
     alter table tech_packs add column if not exists ai_started_at timestamptz;

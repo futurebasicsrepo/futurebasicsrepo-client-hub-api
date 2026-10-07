@@ -378,7 +378,7 @@ await journey('J48', 'the console queues follow the real work: tech packs, quote
   const queues = async () => (await adm('/v1/admin/dashboard')).json.queues;
   const mine = (list, kind) => list.filter(x => x.clientId === cid && (!kind || x.kind === kind));
   let q = await queues(); ok(q && Array.isArray(q.approvals) && Array.isArray(q.attention) && q.assistant, 'the dashboard returns the three queues', q && Object.keys(q));
-  ok(mine(q.approvals).length === 0, 'a drafted pack nobody has submitted is not in anyone\'s queue yet');
+  ok(mine(q.approvals).every(x => x.kind === 'analysis-check'), 'a drafted pack nobody has submitted is waiting on nobody to approve it (if the assistants drafted it, it is only listed for us to check the analysis)', mine(q.approvals).map(x => x.kind));
   // the tech pack chain: submit (on us) → publish (on the client) → the client approves (on us) → we countersign (on the factory)
   await call(`/v1/products/${id}/tech-pack/submit`, { method: 'POST', token: room.token, body: {} });
   q = await queues(); let it = mine(q.approvals, 'review')[0]; ok(it && it.owner === 'us' && it.productId === id && /review it and publish/i.test(it.title) && it.since, 'a submitted pack waits on us: review and publish', it);

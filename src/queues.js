@@ -11,7 +11,7 @@
 const LIVE_CLIENT = `c.archived_at is null and c.status not in ('archive','archived') and c.slug<>'future-basics'`;
 const LIVE_PROJECT = a => `not exists(select 1 from projects ap where ap.id=${a}.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`;
 const DAY = 86400000;
-const iso = v => (v ? new Date(v).toISOString() : null);
+const iso = v => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null; }; // a date that does not parse is left out, never allowed to take the whole console down
 const clip = (s, n = 160) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 const age = since => (since ? Date.now() - new Date(since).getTime() : 0);
 
@@ -41,6 +41,15 @@ export function packItems(rows) {
 }
 
 const waitAgo = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000)); return m < 2 ? 'just now' : m < 90 ? `${m} minutes ago` : m < 2880 ? `${Math.round(m / 60)} hours ago` : `${Math.round(m / 1440)} days ago`; };
+// A customer used the assistants on their own pack and nobody at Future Basics has looked at the analysis yet. It is checked here, whether or not the customer submits,
+// so what the assistants wrote is dialed in before it goes any further. A pack the customer has submitted has its own review item, so it is not listed twice.
+export function analysisItems(rows) {
+  return rows.map(r => {
+    const since = iso(r.ai_completed_at || r.updated_at), score = r.final_score == null ? '' : ` (the assistants tested it at ${r.final_score}/100)`;
+    return { key: `analysis:${r.tp_id}`, stream: 'assistant', kind: 'analysis-check', owner: 'us', severity: age(since) > 3 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
+      title: 'A customer used the assistants: check the analysis', detail: `The assistants drafted this pack${score}. Open the Check tab, correct anything off, and mark it checked.`, since };
+  });
+}
 export const AUTO_RETRY_LIMIT = 5;
 export function assistantRerunItems(rows) {
   return rows.map(r => {
@@ -59,7 +68,12 @@ const order = { urgent: 0, normal: 1, info: 2 };
 export const sortItems = items => [...items].sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || age(b.since) - age(a.since));
 
 export async function buildQueues(pool, { learning = null } = {}) {
-  const [packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
+  const [analysis, packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
+    pool.query(`select tp.id tp_id,tp.ai_completed_at,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name,
+        (select l.final_score from tech_pack_loops l where l.tech_pack_id=tp.id and l.status='done' order by l.created_at desc limit 1) final_score
+      from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
+      where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and tp.initiated_by='client' and tp.ai_status='done' and tp.ai_reviewed_at is null and tp.published_at is null and tp.status<>'submitted'
+      order by tp.ai_completed_at desc nulls last limit 60`),
     pool.query(`select tp.id tp_id,tp.status,tp.version,tp.submitted_at,tp.published_at,tp.locked_at,tp.verification,tp.ai_status,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} and (tp.status='submitted' or tp.published_at is not null)`),
@@ -110,6 +124,7 @@ export async function buildQueues(pool, { learning = null } = {}) {
 
   const A = []; // waiting on approval
   A.push(...packItems(packs.rows));
+  A.push(...analysisItems(analysis.rows));
   for (const r of approvals.rows) A.push({ key: `approval:${r.id}`, stream: 'assets', kind: 'asset-approval', owner: 'client', severity: age(r.requested_at) > 5 * DAY ? 'urgent' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: clip(r.title, 120), detail: r.asset_name ? `Locked to ${clip(r.asset_name, 60)} v${r.asset_version}` : 'Waiting for the client to decide.', since: iso(r.requested_at) });
   for (const r of quotes.rows) { const expired = r.expires_at && new Date(r.expires_at) < new Date(); A.push({ key: `quote:${r.id}`, stream: 'quotes', kind: 'quote', owner: 'client', severity: expired ? 'urgent' : age(r.created_at) > 7 * DAY ? 'normal' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: `Quote v${r.version} for ${r.quantity} units is out`, detail: expired ? 'The quote has expired. Reissue it or follow up.' : r.expires_at ? `Valid until ${new Date(r.expires_at).toLocaleDateString('en-US')}.` : 'Waiting for the client to accept.', since: iso(r.created_at) }); }
   for (const r of requests.rows) A.push({ key: `request:${r.id}`, stream: 'requests', kind: 'request', owner: 'us', severity: age(r.created_at) > 2 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '', title: `New request: ${clip(r.title, 100)}`, detail: clip(r.type, 40), since: iso(r.created_at) });
