@@ -664,6 +664,7 @@ export async function migrate() {
     );
     create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
     alter table tech_pack_shares add column if not exists kind text not null default 'review';
+    alter table tech_pack_shares add column if not exists include_model boolean not null default false;
     create table if not exists factory_quotes (
       id uuid primary key default gen_random_uuid(),
       share_id uuid unique not null references tech_pack_shares(id) on delete cascade,

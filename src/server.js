@@ -1936,7 +1936,7 @@ async function updateVerification(packId,version,mutate){
 }
 // Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
 const flow=(productId,event,opts={},q=pool)=>applyFlow(q,productId,event,opts).catch(err=>{app.log.warn({err:err.message,productId,event},'product flow not updated');return {changed:false}});
-const shareRow=s=>({id:s.id,kind:s.kind||'review',label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
+const shareRow=s=>({id:s.id,kind:s.kind||'review',includeModel:Boolean(s.include_model),label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
   active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
 app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
@@ -2104,8 +2104,8 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
   const email=String(req.body?.email||'').trim().toLowerCase().slice(0,200)||null;
   const days=Math.min(365,Math.max(0,Math.round(Number(req.body?.expiresDays)||(kind==='quote'?30:0))));
   const token=randomBytes(24).toString('base64url');
-  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at,kind)
-    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end,$7) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days,kind])).rows[0];
+  const row=(await pool.query(`insert into tech_pack_shares(tech_pack_id,token_hash,label,email,created_by,expires_at,kind,include_model)
+    values($1,$2,$3,$4,$5,case when $6::int>0 then now()+make_interval(days=>$6::int) else null end,$7,$8) returning *`,[ctx.techPack.id,hash(token),label,email,req.auth.sub,days,kind,req.body?.includeModel===true])).rows[0];
   const url=`${clientHubUrl}/tp/${token}`;let emailed=false;
   if(email&&req.body?.sendEmail!==false){
     try{emailed=await sendHubEmail({to:email,replyTo:req.auth.email||intakeNotificationEmail,subject:kind==='quote'?`Request for quotation: ${ctx.product.title}`:`Tech pack for ${ctx.product.title} — please review and countersign`,
@@ -2114,6 +2114,14 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
     }catch(e){app.log.warn({err:e.message,shareId:row.id},'factory link email not sent')}
   }
   return reply.code(201).send({share:shareRow(row),url,emailed});
+});
+// Staff decide, link by link, whether this factory may see and download the 3D shape. Off by default; it can be switched either way at any time.
+app.patch('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id))||typeof req.body?.includeModel!=='boolean')return reply.code(400).send({error:'Say whether this link includes the 3D shape'});
+  const row=(await pool.query('update tech_pack_shares set include_model=$2 where id=$1 returning *',[req.params.id,req.body.includeModel])).rows[0];
+  if(!row)return reply.code(404).send({error:'Share link not found'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) select tp.client_id,tp.product_id,$2,'tech-pack',$3 from tech_packs tp where tp.id=$1`,[row.tech_pack_id,req.auth.sub,`3D shape ${row.include_model?'opened to':'hidden from'} ${row.label}`]).catch(()=>{});
+  return {share:shareRow(row)};
 });
 app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=(await pool.query('update tech_pack_shares set revoked_at=coalesce(revoked_at,now()) where id=$1 returning *',[req.params.id])).rows[0];
@@ -3180,32 +3188,55 @@ app.post('/v1/admin/products/:id/tech-pack/colourways',{preHandler:[authenticate
   setImmediate(()=>runColourways(r.id));
   return reply.code(202).send({started:true,id:r.id});
 });
-// Staff put a render in front of the client, whatever its score: it becomes a message from Future Basics in the client's project (with the picture attached), so it shows in their hub and they are notified.
+// Staff send work to the client's portal, whatever its score: it becomes a message from Future Basics in the client's project (with the picture or file attached), so it shows in their hub and they are notified.
+// Sources: a hero picture or a spec-check render (pictures), the 3D shape (preview picture and the STL file), the factory quotations side by side (factories are Factory A, B... unless staff say to show names), and a link to the tech pack.
 app.post('/v1/admin/products/:id/tech-pack/share-render',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const prod=(await pool.query('select id,title,client_id,project_id from products where id=$1',[req.params.id])).rows[0];if(!prod)return reply.code(404).send({error:'Product not found'});
   const project=prod.project_id?(await pool.query(`select id,client_id,name from projects where id=$1 and archived_at is null and status not in ('archive','archived')`,[prod.project_id])).rows[0]:null;
-  if(!project)return reply.code(409).send({error:'This product is not in an active project yet. Put it in a project first: the picture is shared in the project\'s messages.'});
-  const src=String(req.body?.source||''),itemId=String(req.body?.id||'');let buf,label,hero=null;
+  if(!project)return reply.code(409).send({error:'This product is not in an active project yet. Put it in a project first: what you send is shared in the project\'s messages.'});
+  const src=String(req.body?.source||''),itemId=String(req.body?.id||''),files=[]; // files: {buf,name,mime}
+  let hero=null,label='',text='',sentence='';
+  const slug=String(prod.title||'product').replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'product',fname=(l,ext)=>`${slug}-${l.replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'')}.${ext}`;
+  const packUrl=`${clientHubUrl}/tech-packs/${prod.id}`;
   try{
     if(src==='hero'){
       hero=UUID_RE.test(itemId)?(await pool.query(`select * from tech_pack_heroes where id=$1 and product_id=$2 and status in ('ready','approved')`,[itemId,prod.id])).rows[0]:null;
-      if(!hero)return reply.code(404).send({error:'That hero image is not available'});buf=await heroBuffer(hero);label='reference picture';
+      if(!hero)return reply.code(404).send({error:'That hero image is not available'});label='reference picture';files.push({buf:await heroBuffer(hero),name:fname(label,'jpg'),mime:'image/jpeg'});
     }else if(src==='check'){
       const c=UUID_RE.test(itemId)?(await pool.query(`select * from tech_pack_checks where id=$1 and product_id=$2 and status='done'`,[itemId,prod.id])).rows[0]:null,r=c?.renders?.[Number(req.body?.index)||0];
-      if(!r)return reply.code(404).send({error:'That render is not available'});buf=await readFile(join(checkDir(),r.file));label=`render (${String(r.label||'').toLowerCase()||'view'})`;
-    }else return reply.code(400).send({error:'Choose a hero image or a render to share'});
-  }catch(e){if(e.code==='ENOENT')return reply.code(404).send({error:'The picture file is missing. Make it again.'});throw e}
-  const slug=String(prod.title||'product').replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'product',name=`${slug}-${label.replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'')}.jpg`,storageName=`${randomBytes(18).toString('hex')}-${name}`;
-  const text=clipText(req.body?.message,1500)||`A work-in-progress ${label} of ${prod.title}. It is a concept to react to, not a final sample. Tell us what you would change.`;
-  await writeFile(join(uploadDir,storageName),buf);
+      if(!r)return reply.code(404).send({error:'That render is not available'});label=`render (${String(r.label||'').toLowerCase()||'view'})`;files.push({buf:await readFile(join(checkDir(),r.file)),name:fname(label,'jpg'),mime:'image/jpeg'});
+    }else if(src==='model'){
+      const m=(await pool.query(`select m.* from tech_pack_models m where m.product_id=$1 and m.status='done' and m.stl_file is not null order by m.created_at desc limit 1`,[prod.id])).rows[0];
+      if(!m)return reply.code(404).send({error:'There is no 3D shape to send yet'});label='3D shape';
+      if(m.thumb_file)files.push({buf:await readFile(join(meshDir(),m.thumb_file)),name:fname('3D-shape-preview','jpg'),mime:'image/jpeg'});
+      const stl=await readFile(join(meshDir(),m.stl_file));if(stl.length<=25*1048576)files.push({buf:stl,name:fname('3D-shape','stl'),mime:'model/stl'});
+      sentence=`A 3D shape of ${prod.title}, made from one picture to show the form. It is not to scale and the back is a best guess, so the tech pack's measurements decide the size. The preview is attached with the file you can open in any 3D viewer.`;
+    }else if(src==='techpack'){
+      const tp=(await pool.query('select version,published_at from tech_packs where product_id=$1',[prod.id])).rows[0];
+      if(!tp?.published_at)return reply.code(409).send({error:'Publish the tech pack before sending it to the client'});label='tech pack';
+      sentence=`The tech pack for ${prod.title} (version ${tp.version}) is ready for you to read and approve. Open it here: ${packUrl}`;
+    }else if(src==='quotes'){
+      const tp=(await pool.query('select id from tech_packs where product_id=$1',[prod.id])).rows[0];
+      const quotes=tp?(await pool.query('select q.*,s.label share_label from factory_quotes q join tech_pack_shares s on s.id=q.share_id where q.tech_pack_id=$1 order by q.updated_at desc',[tp.id])).rows.map(q=>({...quoteRow(q),label:q.share_label})):[];
+      if(!quotes.length)return reply.code(409).send({error:'No factory has quoted yet'});label='quotations';
+      const qty=Math.max(1,Math.round(Number(req.body?.qty))||defaultCompareQty(quotes)),rows=compareQuotes(quotes,qty),names=req.body?.showNames===true,usd=n=>String(Math.round(n*100)/100);
+      if(!rows.length)return reply.code(409).send({error:`No quotation prices at ${qty} units`});
+      sentence=`Factory quotations for ${prod.title} at ${qty} units, cheapest first:\n`+rows.map((r,i)=>`${i+1}. ${names?(r.company||r.label):`Factory ${String.fromCharCode(65+i)}`}: ${r.currency} ${usd(r.atUnit)} per unit${r.moq?`, MOQ ${r.moq}`:''}${r.leadDays?`, ${r.leadDays} days to produce`:''}${r.sampleCost!=null?`, sample ${r.currency} ${usd(r.sampleCost)}`:''}${r.tooling?`, tooling ${r.currency} ${usd(r.tooling)}`:''}`).join('\n')+`\nPrices are as the factories quoted them, in their own currency. Tell us which one you would like to go ahead with.`;
+    }else return reply.code(400).send({error:'Choose what to send: a picture, the 3D shape, the quotations or the tech pack'});
+  }catch(e){if(e.code==='ENOENT')return reply.code(404).send({error:'The file is missing. Make it again.'});throw e}
+  text=String(req.body?.message||'').trim().slice(0,1500)||sentence||`A work-in-progress ${label} of ${prod.title}. It is a concept to react to, not a final sample. Tell us what you would change.`;
   const msg=(await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4) returning *`,[project.id,project.client_id,req.auth.sub,text])).rows[0];
-  const file=(await pool.query(`insert into project_files(project_id,client_id,message_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes) values($1,$2,$3,$4,'admin',$5,$6,'image/jpeg',$7) returning id`,[project.id,project.client_id,msg.id,req.auth.sub,name,storageName,buf.length])).rows[0];
+  const fileIds=[];
+  for(const f of files){
+    const storageName=`${randomBytes(18).toString('hex')}-${f.name}`;await writeFile(join(uploadDir,storageName),f.buf);
+    fileIds.push((await pool.query(`insert into project_files(project_id,client_id,message_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes) values($1,$2,$3,$4,'admin',$5,$6,$7,$8) returning id`,[project.id,project.client_id,msg.id,req.auth.sub,f.name,storageName,f.mime,f.buf.length])).rows[0].id);
+  }
   await pool.query('update projects set updated_at=now() where id=$1',[project.id]);
-  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'project-file',$2,'project',$3)`,[project.client_id,`New picture in ${project.name}: ${name}`,project.id]);
-  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[prod.client_id,prod.id,req.auth.sub,`Shared a ${label} of ${prod.title} with the client`,{messageId:msg.id,fileId:file.id,source:src}]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,'project',$4)`,[project.client_id,files.length?'project-file':'project-message',files.length?(/^(reference picture|render)/.test(label)?`New picture in ${project.name}: ${files[0].name}`:`New ${label} in ${project.name}`):`New message in ${project.name}`,project.id]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[prod.client_id,prod.id,req.auth.sub,`Sent the ${label} of ${prod.title} to the client's portal`,{messageId:msg.id,fileIds,source:src}]).catch(()=>{});
   if(hero)await pool.query('update tech_pack_heroes set shared_at=now() where id=$1',[hero.id]);
-  return reply.code(201).send({shared:true,messageId:msg.id,project:project.name});
+  return reply.code(201).send({shared:true,messageId:msg.id,project:project.name,files:fileIds.length});
 });
 
 // ---- A 3D model (STL) from the client's photo, made by Meshy. Staff start it by hand: it costs credits and sends the photo to the vendor. ----
@@ -3790,7 +3821,7 @@ async function loadShareByToken(token){
   return {row:{...row,version:approved.version,published_data:approved.data,verification:approved.verification,published_at:approved.published_at,locked_at:approved.locked_at,held:true,newerVersion:row.version}};
 }
 async function loadShareRow(token){
-  const row=(await pool.query(`select s.id share_id,s.label share_label,s.kind share_kind,s.email share_email,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
+  const row=(await pool.query(`select s.id share_id,s.label share_label,s.kind share_kind,s.include_model share_model,s.email share_email,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
     p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,c.slug client_slug,pr.name project_name
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
@@ -3805,10 +3836,26 @@ app.get('/v1/tp/:token',async(req,reply)=>{
   if(row.quote){ // a quotation link: the pack, without the client's name, signatures or the staff's notes, and the factory's own quote if it already sent one
     const clean={...row,client_name:'',project_name:null,verification:emptyVerification(row.version),revisions:[],published_data:{...normalizeTechPack(row.published_data),style:{...normalizeTechPack(row.published_data).style,designer:''}}};
     const mine=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
-    return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''}};
+    return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''},model:await factoryModel(row)};
   }
   const view=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
-  return row.held?{...view,held:true,notice:`This is version ${row.version}, the one ${row.client_name} approved. Version ${row.newerVersion} is waiting for their approval, so this page is read-only until then.`}:view;
+  const withModel={...view,model:await factoryModel(row)};
+  return row.held?{...withModel,held:true,notice:`This is version ${row.version}, the one ${row.client_name} approved. Version ${row.newerVersion} is waiting for their approval, so this page is read-only until then.`}:withModel;
+});
+// The 3D shape reaches a factory only through a link staff switched it on for: a preview and a size, and the file itself through the same link.
+async function factoryModel(row){
+  if(!row.share_model)return null;
+  const m=(await pool.query(`select * from tech_pack_models where tech_pack_id=$1 and status='done' and stl_file is not null order by created_at desc limit 1`,[row.id])).rows[0];if(!m)return null;
+  const v=await modelView(m,{withThumb:true});return {id:v.id,triangles:v.triangles,bytes:v.bytes,thumb:v.thumb,completedAt:v.completedAt};
+}
+app.get('/v1/tp/:token/model/:file',async(req,reply)=>{
+  if(!['stl','thumb'].includes(req.params.file))return reply.code(404).send({error:'Not found'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(!row.share_model)return reply.code(404).send({error:'The 3D shape is not part of this link'});
+  const m=(await pool.query(`select stl_file,thumb_file from tech_pack_models where tech_pack_id=$1 and status='done' order by created_at desc limit 1`,[row.id])).rows[0];
+  const file=req.params.file==='stl'?m?.stl_file:m?.thumb_file;if(!file)return reply.code(404).send({error:'Not found'});
+  const safe=String(row.title||'product').replace(/[^\w]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'product';
+  return req.params.file==='stl'?reply.type('model/stl').header('Content-Disposition',`attachment; filename="${safe}-3d.stl"`).send(createReadStream(join(meshDir(),file))):reply.type('image/jpeg').send(createReadStream(join(meshDir(),file)));
 });
 // The factory works the acknowledgement chain through its link: tick callouts, then countersign.
 app.post('/v1/tp/:token/ack',async(req,reply)=>{
