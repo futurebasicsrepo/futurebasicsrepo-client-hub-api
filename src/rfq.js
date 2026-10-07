@@ -9,7 +9,7 @@ const num = v => { if (v === '' || v == null) return null; const n = Number(Stri
 const int = v => { const n = num(v); return n == null ? null : Number.isFinite(n) ? Math.round(n) : NaN; };
 
 // → { q } with clean values, or { error } with a sentence the factory can act on.
-export function cleanQuote(b = {}) {
+export function cleanQuote(b = {}, { requireContact = true } = {}) {
   const currency = CURRENCIES.includes(String(b.currency).toUpperCase()) ? String(b.currency).toUpperCase() : 'USD';
   const tiers = [];
   for (const t of Array.isArray(b.tiers) ? b.tiers.slice(0, 5) : []) {
@@ -27,7 +27,7 @@ export function cleanQuote(b = {}) {
   for (const [v, lab] of [[sampleCost, 'sample cost'], [tooling, 'tooling cost']]) if (Number.isNaN(v) || (v != null && (v < 0 || v > 1e8))) return { error: `Check the ${lab}: it should be a number` };
   const email = clip(b.email, 200).toLowerCase() || null, wechat = clip(b.wechat, 80) || null, phone = clip(b.phone, 60) || null;
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: 'Check the email address' };
-  if (!email && !wechat && !phone) return { error: 'Leave a way to reach you: email, WeChat or phone' };
+  if (requireContact && !email && !wechat && !phone) return { error: 'Leave a way to reach you: email, WeChat or phone' };
   const incoterm = clip(b.incoterm, 12).toUpperCase() || null;
   let validUntil = clip(b.validUntil, 10) || null; if (validUntil && !/^\d{4}-\d{2}-\d{2}$/.test(validUntil)) validUntil = null;
   return { q: { company: clip(b.company, 160) || null, contactName: clip(b.contactName, 140) || null, email, wechat, phone, currency, tiers, moq, sampleCost, sampleDays, leadDays, tooling,

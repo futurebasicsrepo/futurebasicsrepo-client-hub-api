@@ -40,3 +40,11 @@ test('the marker names the party, or says "Your move" to the party it belongs to
   assert.equal(ballHtml({}), '');
   assert.ok(!/<script/.test(ballHtml({ milestones: [{ name: '<script>', status: 'current', responsible_party: 'client' }] })));
 });
+
+test('a pack out for quotation is with the factory until it quotes, whoever still has to sign', () => {
+  const pub = o => ({ tech_pack: { initiated_by: 'client', published_at: '2026-10-01', version: 1, ...o } });
+  assert.equal(ballFor(pub({ quote_waiting: true })).who, 'factory');
+  assert.match(ballFor(pub({ quote_waiting: true })).why, /quotation/);
+  assert.equal(ballFor(pub({ quote_waiting: false })).who, 'client', 'once it has quoted the signing chain carries on');
+  assert.equal(ballFor({ tech_pack: { initiated_by: 'client', status: 'draft', quote_waiting: true } }).who, 'client', 'a pack that is not published cannot be out for quotation');
+});

@@ -27,7 +27,7 @@ h1{font-size:26px;line-height:1.15;margin:4px 2px 6px;text-wrap:balance}
 .sub{color:var(--dim);font-size:13px;margin-top:3px}
 .state{display:inline-flex;align-items:center;gap:7px;margin-top:9px;font-size:13px;font-weight:600;border-radius:999px;padding:5px 11px;background:#ecebe5}
 .state i{width:8px;height:8px;border-radius:50%;background:var(--warn)}
-.state.quoted i,.state.signed i{background:var(--ok)}
+.state.quoted i,.state.signed i{background:var(--ok)}.state.closed i{background:#b9b8b0}
 .state.needs-quote i,.state.to-review i{animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.25;transform:scale(1.4)}}
 @media (prefers-reduced-motion:reduce){.state i{animation:none!important}.pack{transition:none}}
@@ -47,8 +47,8 @@ footer{max-width:760px;margin:0 auto;padding:0 16px 40px;color:var(--dim);font-s
 <footer id="foot"></footer>
 <script>
 const T={
-  en:{hello:n=>`${n}: your tech packs`,lede:'Every tech pack Future Basics has sent you is here. Open one to read it, give a price, or confirm you can make it. It is free, and no account is needed.',none:'Nothing is assigned to you yet. When Future Basics sends you a tech pack it appears here.',bad:'This link is not valid any more. Ask Future Basics for a new one.',slow:'Could not load. Check your connection and try again.',v:v=>`Version ${v}`,'needs-quote':'Waiting for your quote','quoted':'Quote sent · open to change it','to-review':'To read and confirm','signed':'Confirmed','forquote':'For quotation','toproduce':'To produce',foot:'This page is private to you. Keep the link to yourself.',other:'中文',since:d=>`Sent ${d}`},
-  zh:{hello:n=>`${n}：您的技术包`,lede:'Future Basics 发给您的所有技术包都在这里。打开即可查看、报价或确认能否生产。免费，无需注册账号。',none:'目前没有分配给您的技术包。Future Basics 发给您后会显示在这里。',bad:'此链接已失效，请向 Future Basics 索取新链接。',slow:'无法加载，请检查网络后重试。',v:v=>`版本 ${v}`,'needs-quote':'等待您的报价','quoted':'已报价 · 可点开修改','to-review':'待阅读并确认','signed':'已确认','forquote':'询价','toproduce':'生产',foot:'此页面仅供您本人使用，请勿转发链接。',other:'English',since:d=>`发送于 ${d}`}
+  en:{hello:n=>`${n}: your tech packs`,lede:'Every tech pack Future Basics has sent you is here. Open one to read it, give a price, or confirm you can make it. It is free, and no account is needed.',none:'Nothing is assigned to you yet. When Future Basics sends you a tech pack it appears here.',bad:'This link is not valid any more. Ask Future Basics for a new one.',slow:'Could not load. Check your connection and try again.',v:v=>`Version ${v}`,'needs-quote':'Waiting for your quote','quoted':'Quote sent · open to change it','to-review':'To read and confirm','signed':'Confirmed','closed':'Not needed right now','forquote':'For quotation','toproduce':'To produce',foot:'This page is private to you. Keep the link to yourself.',other:'中文',since:d=>`Sent ${d}`},
+  zh:{hello:n=>`${n}：您的技术包`,lede:'Future Basics 发给您的所有技术包都在这里。打开即可查看、报价或确认能否生产。免费，无需注册账号。',none:'目前没有分配给您的技术包。Future Basics 发给您后会显示在这里。',bad:'此链接已失效，请向 Future Basics 索取新链接。',slow:'无法加载，请检查网络后重试。',v:v=>`版本 ${v}`,'needs-quote':'等待您的报价','quoted':'已报价 · 可点开修改','to-review':'待阅读并确认','signed':'已确认','closed':'暂不需要','forquote':'询价','toproduce':'生产',foot:'此页面仅供您本人使用，请勿转发链接。',other:'English',since:d=>`发送于 ${d}`}
 };
 const token=location.pathname.split('/')[2]||'';
 let lang=(()=>{try{const s=localStorage.getItem('fb.factory.lang');if(s==='en'||s==='zh')return s}catch{}return /^zh/i.test(navigator.language||'')?'zh':'en'})();

@@ -252,6 +252,7 @@ await journey('J76', 'a factory is assigned to a product: the product\'s supplie
   const rv = await assign(s1.id, 'review'); ok(rv.status === 409 && /approves version 1/.test(rv.json.error), 'to produce waits for the client\'s approval, and says what to do meanwhile', rv.json.error);
   const a = await assign(s1.id, 'quote'); ok(a.status === 201 && a.json.assignment.active && a.json.assignment.mode === 'quote' && /\/factory\//.test(a.json.assignment.pageUrl) && /\/tp\//.test(a.json.assignment.packUrl), 'assigning for quotation gives the factory a page and a pack link', a.json);
   ok(sql(`select supplier_id from product_configurations where product_id='${m.id}'`) === s1.id, 'and the product\'s own supplier is that factory');
+  { const bp = (await adm(`/v1/admin/clients/${m.cid}`)).json; const prod = (bp.products || []).find(x => x.id === m.id); ok(prod && prod.tech_pack && prod.tech_pack.quote_waiting === true, 'while it waits for a quote, the ball is the factory\'s in the console', prod && prod.tech_pack); }
   ok((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.assignment.supplierId === s1.id, 'the staff page shows who is assigned');
   const page1 = a.json.assignment.pageUrl.split('/factory/')[1], pack1 = a.json.assignment.packUrl.split('/tp/')[1];
   const pg = await call(`/v1/factory/${page1}`); ok(pg.status === 200 && pg.json.factory === `Assigned Mill ${stamp}` && pg.json.packs.length === 1 && pg.json.packs[0].state === 'needs-quote' && pg.json.packs[0].client === '' && pg.json.packs[0].href === `/tp/${pack1}`, 'the factory\'s page lists the pack, waiting for a quote, with the client\'s name hidden', pg.json);
@@ -261,6 +262,7 @@ await journey('J76', 'a factory is assigned to a product: the product\'s supplie
   const tv = (await call(`/v1/tp/${pack1}`)).json; ok(tv.quoteMode === true && tv.product.clientName === '', 'the pack link opens the pack for quotation');
   await call(`/v1/tp/${pack1}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5 }], email: 'mill1@factory.cn' } });
   ok((await call(`/v1/factory/${page1}`)).json.packs[0].state === 'quoted', 'once it quotes, its page says so');
+  { const bp = (await adm(`/v1/admin/clients/${m.cid}`)).json; const prod = (bp.products || []).find(x => x.id === m.id); ok(prod && prod.tech_pack && prod.tech_pack.quote_waiting === false, 'and the ball comes back once it has quoted', prod && prod.tech_pack); }
   ok((await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.compare.some(r => r.company === `Assigned Mill ${stamp}`), 'and staff see the quote in the comparison');
   const same = await assign(s1.id, 'quote'); ok(same.json.assignment.packUrl === a.json.assignment.packUrl, 'assigning the same factory again keeps its link');
   // reassign: the old factory loses the pack, the new one gets it
@@ -297,6 +299,70 @@ await journey('J76', 'a factory is assigned to a product: the product\'s supplie
   }
   const un = await assign(null); const pageNow = rot.json.pageUrl.split('/factory/')[1];
   ok(un.status === 200 && un.json.assignment === null && (await call(`/v1/factory/${pageNow}`)).json.packs.length === 0 && (await call(`/v1/tp/${pr.json.assignment.packUrl.split('/tp/')[1]}`)).status === 410 && sql(`select supplier_id is null from product_configurations where product_id='${m.id}'`) === 't', 'unassigning empties the factory\'s page, switches its pack link off and clears the supplier');
+});
+
+await journey('J77', 'Future Basics can act for a factory that does not use its page, so a client\'s project is never stuck: stop waiting, type in its quote, acknowledge for it, countersign for it, each marked as ours with how it arrived', async () => {
+  const m = await room('77');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const s1 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Quiet Mill ${stamp}` } })).json, s2 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Silent Works ${stamp}` } })).json;
+  const assign = (supplierId, mode = 'quote') => adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId, mode } });
+  const ballOf = async () => ((await adm(`/v1/admin/clients/${m.cid}`)).json.products || []).find(x => x.id === m.id)?.tech_pack;
+  const a = await assign(s1.id), shareId = a.json.assignment.shareId, page = a.json.assignment.pageUrl.split('/factory/')[1], packTok = a.json.assignment.packUrl.split('/tp/')[1];
+  ok((await ballOf()).quote_waiting === true, 'a pack out for quotation puts the ball with the factory');
+  // stop waiting
+  ok((await call(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot do any of this');
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: true } })).json.waived === true && (await ballOf()).quote_waiting === false && (await call(`/v1/factory/${page}`)).json.packs[0].state === 'closed', 'stopping the wait takes the ball back, and the factory\'s page says it is not needed right now');
+  ok((await call(`/v1/tp/${packTok}`)).status === 200, 'its link still works');
+  await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: false } }); ok((await ballOf()).quote_waiting === true, 'and waiting again puts it back');
+  // type in the quote
+  const body = { currency: 'CNY', tiers: [{ qty: 500, unit: 31 }, { qty: 2000, unit: 27 }], moq: 500, leadDays: 40, wechat: 'quiet_mill' };
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body })).status === 400, 'a typed-in quote must say how it arrived');
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body: { how: 'WeChat, 10 Oct', tiers: [] } })).status === 400, 'and still needs a price');
+  const q = await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body: { ...body, how: 'WeChat, 10 Oct' } }); ok(q.status === 201 && q.json.quote.byStaff === true && /Entered by Future Basics from: WeChat, 10 Oct/.test(q.json.quote.notes), 'staff can type in what the factory sent, marked as theirs', q.json);
+  ok((await ballOf()).quote_waiting === false && (await call(`/v1/factory/${page}`)).json.packs[0].state === 'quoted', 'the ball is released and the page says quoted');
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json.compare[0].byStaff === true, 'the comparison shows it was entered by us');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Future Basics recorded Quiet Mill%quote%'`) === '1', 'and it is on the record');
+  await call(`/v1/tp/${packTok}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 4.5 }], email: 'q@mill.cn' } }); ok(sql(`select entered_by is null from factory_quotes where share_id='${shareId}'`) === 't', 'if the factory later sends its own, it is no longer marked as ours');
+  // produce: acknowledge and countersign for them
+  const t0 = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack, pending = t0.readiness.pendingCalloutKeys.length;
+  const b = await assign(s2.id, 'review'); ok(b.status === 409, 'to produce still waits for the client\'s approval');
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"}}'::jsonb where product_id='${m.id}'`);
+  const b2 = await assign(s2.id, 'review'); ok(b2.status === 201, 'then it is assigned');
+  const fsign = body => adm(`/v1/admin/products/${m.id}/tech-pack/factory-sign`, { method: 'POST', body });
+  ok((await fsign({ name: 'Silent Works', how: 'WeChat' })).status === 409, 'Future Basics signs before the factory does, for a factory too');
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"},"brandSign":{"name":"FB","at":"2026-01-02T00:00:00Z","by":"fb@x.com"}}'::jsonb where product_id='${m.id}'`);
+  ok((await fsign({ name: 'Silent Works' })).status === 400 && (await fsign({ how: 'WeChat' })).status === 400, 'it needs a name and how they confirmed');
+  const pend = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.readiness.pendingCalloutKeys.length;
+  if (pend > 0) {
+    ok((await fsign({ name: 'Silent Works', how: 'WeChat, 11 Oct' })).status === 409, 'callouts still open are not skipped by accident');
+    const ack = await adm(`/v1/admin/products/${m.id}/tech-pack/factory-ack`, { method: 'POST', body: { name: 'Silent Works' } }); ok(ack.status === 200 && ack.json.acknowledged === pend && ack.json.techPack.readiness.pendingCalloutKeys.length === 0, 'staff can acknowledge every callout for the factory', [ack.status, ack.json.acknowledged]);
+  }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/factory-ack`, { method: 'POST', body: {} })).status === 409, 'and nothing is left to acknowledge afterwards');
+  const sg = await fsign({ name: 'Silent Works', how: 'WeChat, 11 Oct', ackAll: true }); ok(sg.status === 200 && sg.json.locked === true && /Future Basics .* for Silent Works: WeChat, 11 Oct/.test(sg.json.factorySign.by), 'countersigning for the factory locks the pack, and the signature says who did it and how', sg.json);
+  ok((await fsign({ name: 'Silent Works', how: 'again' })).status === 409, 'it cannot be signed twice');
+  ok((await call(`/v1/factory/${(b2.json.assignment.pageUrl.split('/factory/')[1])}`)).json.packs[0].state === 'signed', 'the factory\'s page says confirmed');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and metadata->>'onBehalf'='true'`) === '1', 'and it is on the record');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"x"},"brandSign":{"name":"FB","at":"x"}}'::jsonb, locked_at=null where product_id='${m.id}'`);
+      await assign(s1.id, 'quote'); await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: false } });
+      const sid2 = (await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: s1.id, mode: 'quote' } })).json.assignment.shareId;
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="sign"]'); await p.click('#tabs button[data-tab="sign"]'); await p.waitForSelector(`[data-quotes] [data-act="enterquote"][data-id="${sid2}"]`, { timeout: 10000 });
+      await p.click(`[data-quotes] [data-act="enterquote"][data-id="${sid2}"]`); await p.waitForSelector('#enterQuoteForm');
+      await p.fill('#enterQuoteForm [name="how"]', 'Email, 12 Oct'); await p.fill('#enterQuoteForm [name="qty0"]', '300'); await p.fill('#enterQuoteForm [name="unit0"]', '5.5'); await p.click('#enterQuoteForm .dark');
+      await p.waitForFunction(() => /Entered by us/i.test(document.querySelector('[data-quotes]').innerText), null, { timeout: 10000 }).catch(async () => { ok(false, 'the typed-in quote appeared', [(await p.innerText('[data-quotes]')).slice(0, 700), await p.locator('#toast, .toast').allInnerTexts()]); });
+      ok(/Entered by us/i.test(await p.innerText('[data-quotes]')), 'staff type a quote in from the Sign tab and the table marks it as entered by us');
+      ok(await p.locator('[data-quotes] [data-act="waive"]').count() === 0, 'a factory that has quoted has no stop-waiting button');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j77-staff.png`, fullPage: true }).catch(() => {});
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    } finally { await bw.close(); }
+  }
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
