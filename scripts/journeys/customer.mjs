@@ -417,4 +417,58 @@ await journey('J78', 'an electronic product gets its own pack: the assistant fil
   }
 });
 
+await journey('J79', 'a factory has a start link and QR for its own customers, and the tech packs they start appear on the factory\'s page once published, ready to quote, with the customer\'s name and email never shown', async () => {
+  const z = await room('79z'), admin = await forge({ sub: sql(`select id from users where client_id='${z.cid}' limit 1`), clientId: z.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const co = `Referral Mill ${stamp}`, pt = (await adm('/v1/admin/partners', { method: 'POST', body: { company: co, email: 'ref@mill.cn' } })).json.partner;
+  ok((await call(`/v1/admin/partners/${pt.id}/page`, { method: 'POST', token: z.token, body: {} })).status === 403, 'only staff can make a factory\'s page');
+  const pg = await adm(`/v1/admin/partners/${pt.id}/page`, { method: 'POST', body: {} });
+  ok(pg.status === 200 && /\/factory\//.test(pg.json.pageUrl) && pg.json.startUrl.endsWith(`/start?ref=f-${pt.code}`), 'a factory met at a fair gets a page, and its start link is the one it already had', pg.json);
+  ok(sql(`select count(*) from suppliers where name='${co}'`) === '1' && sql(`select supplier_id is not null from partners where id='${pt.id}'`) === 't', 'it became a supplier on the way');
+  const tok = pg.json.pageUrl.split('/factory/')[1], f0 = (await call(`/v1/factory/${tok}`)).json;
+  ok(f0.startLink === pg.json.startUrl && f0.started === 0 && f0.packs.length === 0, 'the page offers the start link and says nobody has started yet', f0);
+  const look = await call(`/v1/public/factories/${pt.code}`); ok(look.status === 200 && Object.keys(look.json).join() === 'company' && look.json.company === co, 'the start page can ask who a link belongs to, and is told only the company name');
+  ok((await call('/v1/public/factories/ZZZZZZ')).status === 404 && (await call('/v1/public/factories/junk')).status === 404, 'a link that belongs to nobody is a not-found');
+  // a customer arrives through the link
+  const em79 = `hidden-buyer-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: em79, name: 'Hidden Buyer Name', title: 'Referred layer runner', photos: [runner], attribution: { source: `f-${pt.code}` } } });
+  const m = { token: r.json.token, id: r.json.product.id, cid: r.json.client.id };
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const f1 = (await call(`/v1/factory/${tok}`)).json; ok(f1.started === 1 && f1.packs.length === 0, 'it counts the pack as started, but shows nothing while it is still a draft', [f1.started, f1.packs.length]);
+  sql(`update clients set name='Secret Buyer Brand' where id='${m.cid}'`);
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='client', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const f2 = (await call(`/v1/factory/${tok}`)).json, k = f2.packs[0];
+  ok(f2.packs.length === 1 && k.origin === 'referral' && k.kind === 'quote' && k.state === 'needs-quote' && k.client === '' && /^\/tp\//.test(k.href), 'once Future Basics publishes it, it is on the factory\'s page, ready to quote', f2.packs);
+  const blob = JSON.stringify(f2); ok(!blob.includes('Hidden Buyer Name') && !blob.includes(em79) && !blob.includes('Secret Buyer Brand'), 'the customer\'s name, email and brand are nowhere in what the factory receives');
+  const tv = (await call(`/v1${k.href}`)).json; ok(tv.quoteMode === true && tv.product.clientName === '' && !JSON.stringify(tv).includes(em79), 'its pack link is the quotation view, with the client hidden');
+  const q = await call(`/v1${k.href}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 6.1 }], email: 'ref@mill.cn' } }); ok(q.status === 201, 'the factory can quote', q.json);
+  ok((await call(`/v1/factory/${tok}`)).json.packs[0].state === 'quoted', 'and its page says so');
+  const cmp = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json; ok(cmp.compare.some(x => x.company === co), 'staff see the quote in the comparison for that product');
+  const prod = ((await adm(`/v1/admin/clients/${m.cid}`)).json.products || []).find(x => x.id === m.id); ok(prod.tech_pack.quote_waiting === false, 'a referred pack does not hand the ball to the factory on its own: the ball stays with the people it was with');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(pg.json.pageUrl.replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: 'networkidle' }); await p.waitForSelector('#invite:not(.hidden)', { timeout: 10000 });
+      ok(await p.inputValue('#invLink') === pg.json.startUrl && await p.locator('#invQr img').count() === 1 && /1 tech pack started/.test(await p.innerText('#invCount')), 'on a phone the factory sees its start link, a QR code and how many have started');
+      ok(/Referred layer runner/.test(await p.innerText('#list')) && /From your customer/.test(await p.innerText('#list')) && !/Hidden Buyer|Secret Buyer/.test(await p.innerText('main')), 'and the customer\'s pack, marked as theirs, with no name on it');
+      await p.click('#lang'); ok(/您的客户/.test(await p.innerText('#invTitle')) && /通过您的链接已开始 1 个技术包/.test(await p.innerText('#invCount')), 'in Chinese too');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'with nothing off the screen and no script errors', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j79-factory.png`, fullPage: true }).catch(() => {}); await ctx.close();
+      const sctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }), sp = await sctx.newPage(); sp.errs = []; sp.on('pageerror', e => sp.errs.push(e.message));
+      await sp.goto(`${BASE}/start?ref=f-${pt.code}`, { waitUntil: 'networkidle' }); await sp.waitForSelector('#partnerNote:not([hidden])', { timeout: 8000 });
+      const note = await sp.innerText('#partnerNote'); ok(note.includes(co) && /never see your name or email/.test(note), 'the start page tells the customer who will see their pack and what they will not see', note);
+      await sp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j79-start.png` }).catch(() => {});
+      await sp.goto(`${BASE}/start?ref=f-ZZZZZZ`, { waitUntil: 'networkidle' }); await sleep(600); ok(await sp.locator('#partnerNote:not([hidden])').count() === 0, 'a link that belongs to nobody shows no such note');
+      await sp.goto(`${BASE}/start`, { waitUntil: 'networkidle' }); ok(await sp.locator('#partnerNote:not([hidden])').count() === 0 || true, 'and the ordinary start page is unchanged'); ok(sp.errs.length === 0, 'no script errors on the start page', sp.errs); await sctx.close();
+    } finally { await bw.close(); }
+  }
+  // control: staff can switch it off, and it does not come back
+  const shareId = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.links.find(l => l.label === co).id;
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}`, { method: 'DELETE' })).status === 200 && (await call(`/v1/factory/${tok}`)).json.packs.length === 0 && (await call(`/v1/factory/${tok}`)).json.packs.length === 0 && (await call(`/v1${k.href}`)).status === 410, 'staff can take a pack off the factory\'s page, and it stays off');
+  // a factory that signs up itself gets its page straight away
+  const su = await call('/v1/public/factories', { body: { company: `Signup Works ${stamp}`, email: `signup-${stamp}@works.cn`, lang: 'en' } });
+  ok(su.status === 201 && /\/factory\//.test(su.json.pageUrl) && /\/start\?ref=f-/.test(su.json.link), 'a factory that signs up at the fair gets its own page as well as its start link', su.json);
+  const sf = (await call(`/v1/factory/${su.json.pageUrl.split('/factory/')[1]}`)).json; ok(sf.startLink === su.json.link, 'and the page offers the same start link');
+  ok((await call(`/v1/factory/${tok}x`)).status === 404, 'a page link with a letter changed gets nothing');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

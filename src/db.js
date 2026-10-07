@@ -668,6 +668,8 @@ export async function migrate() {
     alter table tech_pack_shares add column if not exists supplier_id uuid references suppliers(id) on delete set null;
     alter table tech_pack_shares add column if not exists assigned boolean not null default false;
     alter table tech_pack_shares add column if not exists waived_at timestamptz;
+    alter table tech_pack_shares add column if not exists referral boolean not null default false;
+    create unique index if not exists tech_pack_shares_referral_idx on tech_pack_shares(tech_pack_id,supplier_id) where referral;
     alter table suppliers add column if not exists page_epoch integer not null default 0;
     alter table suppliers add column if not exists page_hash text;
     create unique index if not exists suppliers_page_hash_idx on suppliers(page_hash) where page_hash is not null;
