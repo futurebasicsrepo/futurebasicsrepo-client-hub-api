@@ -2085,6 +2085,17 @@ app.get('/v1/admin/learning',{preHandler:[authenticate,adminOnly]},async()=>{
   const rows=await learningRows(500);
   return {summary:aggregateDiffs(rows),packs:rows.map(r=>({techPackId:r.tech_pack_id,productId:r.product_id,productTitle:r.product_title,clientName:r.client_name,stage:r.stage,version:r.version,keptRate:r.stats?.keptRate??null,at:r.created_at}))};
 });
+// What the client and the factories read is a copy of the pack taken at publish. The approved hero (the reference picture the pack is built from) lives
+// beside the pack, not in it, so it is put on the copy as the first picture, with the colourway pictures that are in the pack after it.
+async function withApprovedHero(packId,data){
+  try{
+    const h=(await pool.query(`select * from tech_pack_heroes where tech_pack_id=$1 and status='approved' order by approved_at desc nulls last limit 1`,[packId])).rows[0];
+    if(!h)return data;
+    const image=await heroThumb(await heroBuffer(h),900,80);
+    const rest=(data.renderings||[]).filter(r=>!/^hero-/.test(String(r?.id||'')));
+    return {...data,renderings:[{id:`hero-${String(h.id).replace(/-/g,"").slice(0,16)}`,name:'Reference picture',note:'The approved picture this pack is built from',image},...rest].slice(0,6)};
+  }catch(e){app.log.warn({err:e.message,packId},'approved hero not added to the published copy');return data}
+}
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
@@ -2100,14 +2111,15 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started});
   }
   if(!gate.ok)note=[note,`Published before every check passed: ${override}`].filter(Boolean).join(' · ');
+  const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(ctx.techPack.data));
   const client=await pool.connect();
   try{
     await client.query('begin');
     // A new version starts a fresh acknowledgement chain: acks and both signatures reset, and the pack unlocks.
-    const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=data,published_at=now(),published_by=$2,updated_at=now(),ai_reviewed_at=coalesce(ai_reviewed_at,case when ai_status='done' then now() end),ai_reviewed_by=coalesce(ai_reviewed_by,case when ai_status='done' then $2::uuid end),
+    const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=$6::jsonb,published_at=now(),published_by=$2,updated_at=now(),ai_reviewed_at=coalesce(ai_reviewed_at,case when ai_status='done' then now() end),ai_reviewed_by=coalesce(ai_reviewed_by,case when ai_status='done' then $2::uuid end),
       verification=$5::jsonb,locked_at=null,
       revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text))
-      where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1))])).rows[0];
+      where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1)),JSON.stringify(pubData)])).rows[0];
     await client.query(`insert into tech_pack_versions(tech_pack_id,version,data,verification,note,published_by) values($1,$2,$3,$4,$5,$6)
       on conflict(tech_pack_id,version) do update set data=excluded.data,verification=excluded.verification,note=excluded.note,published_at=now(),published_by=excluded.published_by,locked_at=null`,
       [row.id,row.version,row.published_data,row.verification,note||null,req.auth.sub]);
@@ -2129,6 +2141,24 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     }
     return {techPack:techPackPayload(row),clientNotified};
   }catch(error){await client.query('rollback').catch(()=>{});throw error}finally{client.release()}
+});
+// Pictures made after a version was published (the hero image, the colourway pictures) are not in what the client and factories read. This puts the current ones
+// into that published copy without a new version: nothing that is specified changes, so nobody has to sign again. A locked pack needs a new version instead.
+app.post('/v1/admin/products/:id/tech-pack/refresh-pictures',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  const tp=ctx.techPack;if(!tp?.published_at)return reply.code(409).send({error:'Publish the tech pack first: there is nothing published to update'});
+  if(tp.locked_at)return reply.code(409).send({error:'This version is signed and locked. Publish a new version to change what the factory sees'});
+  const draft=normalizeTechPack(tp.data),pub=normalizeTechPack(tp.published_data);
+  const mine=draft.renderings.filter(r=>r.image&&!/^hero-/.test(String(r.id||'')));
+  const next=await withApprovedHero(tp.id,{...pub,renderings:mine});
+  const before=JSON.stringify((pub.renderings||[]).map(r=>r.id)),after=JSON.stringify((next.renderings||[]).map(r=>r.id));
+  if(before===after)return reply.send({updated:false,pictures:next.renderings.length,message:'The published pack already has the latest pictures'});
+  const row=(await pool.query(`update tech_packs set published_data=$2::jsonb where id=$1 and locked_at is null returning *`,[tp.id,JSON.stringify(next)])).rows[0];
+  if(!row)return reply.code(409).send({error:'This version was just locked. Publish a new version to change what the factory sees'});
+  await pool.query(`update tech_pack_versions set data=$3::jsonb where tech_pack_id=$1 and version=$2`,[tp.id,tp.version,JSON.stringify(next)]).catch(()=>{});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Pictures updated on tech pack v${tp.version} for ${ctx.product.title} (nothing specified changed)`,{techPackId:tp.id,version:tp.version,pictures:next.renderings.length}]).catch(()=>{});
+  await syncCardQuietly(ctx.product.id,next);
+  return {updated:true,pictures:next.renderings.length};
 });
 // A new version that changes what was priced (material, decoration, colourways, sizes) behind a live quote tells staff to re-quote.
 async function flagRequote(product,before,row){
