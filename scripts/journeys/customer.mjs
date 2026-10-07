@@ -513,4 +513,248 @@ await journey('J80', 'customers can set up their own pack, but when they use the
   ok(sql(`select ai_reviewed_at is not null from tech_packs where product_id='${m.id}'`) === 't' && (await items(m.id)).length === 0, 'and that counts as checking it');
 });
 
+await journey('J81', 'staff and a factory can write to each other about a pack: a Messages tab for the factory, a thread per link on the Sign tab, unread dots, a queue item, and the client never sees any of it', async () => {
+  const m = await room('81');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Hush Brand Co' where id='${m.cid}'`);
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const link = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Chat Mill' } }), tok = link.json.url.split('/tp/')[1], sid = link.json.share.id;
+  const qitems = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.kind === 'factory-message' && i.productId === m.id);
+  ok((await call(`/v1/tp/${tok}/messages`)).json.messages.length === 0 && (await qitems()).length === 0, 'a new link has an empty thread and nothing in the queue');
+  ok((await call(`/v1/tp/${tok}/messages`, { body: { body: '   ' } })).status === 400 && (await call('/v1/tp/nonsense/messages')).status === 404, 'an empty message is refused, and so is a link that is not one');
+  const f1 = await call(`/v1/tp/${tok}/messages`, { body: { body: 'Can you confirm the sole is 4 mm EVA?' } }); ok(f1.status === 201 && f1.json.message.author_role === 'factory' && f1.json.message.author_name === 'Chat Mill', 'the factory writes', f1.json);
+  const th = (await adm(`/v1/admin/products/${m.id}/tech-pack/factory-threads`)).json.threads.find(t => t.shareId === sid); ok(th && th.unread === 1 && th.total === 1 && th.active, 'staff see one unread message on that link', th);
+  const qi = (await qitems())[0]; ok(qi && qi.owner === 'us' && /Chat Mill wrote about this pack/.test(qi.title) && /sole is 4 mm/.test(qi.detail), 'and it is in the console queue until someone reads it', qi);
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='factory-message'`) === '1', 'with a notification');
+  ok((await call(`/v1/admin/tech-pack-shares/${sid}/messages`, { token: m.token })).status === 403, 'a customer cannot read the thread');
+  const sm = (await adm(`/v1/admin/tech-pack-shares/${sid}/messages`)).json.messages; ok(sm.length === 1 && sm[0].author_role === 'factory', 'staff read it');
+  ok((await qitems()).length === 0 && (await adm(`/v1/admin/products/${m.id}/tech-pack/factory-threads`)).json.threads.find(t => t.shareId === sid).unread === 0, 'reading it clears the queue item and the dot');
+  const a1 = await adm(`/v1/admin/tech-pack-shares/${sid}/messages`, { method: 'POST', body: { body: 'Yes: 4 mm EVA, Asker C 55.' } }); ok(a1.status === 201 && a1.json.message.author_name === 'Future Basics' && a1.json.emailed === false, 'staff answer (no email on this link, so it says so by not claiming one)', a1.json);
+  const fm = (await call(`/v1/tp/${tok}/messages`)).json.messages; ok(fm.length === 2 && fm[1].author_role === 'admin' && /Asker C 55/.test(fm[1].body), 'the factory sees the answer');
+  ok(!JSON.stringify((await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).json).includes('sole is 4 mm') && !JSON.stringify((await call(`/v1/tp/${tok}`)).json).includes('Hush Brand'), 'the customer\'s pages do not carry it, and the factory still never sees the client\'s name');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="msgs"]', { timeout: 10000 }); await p.click('#tabs button[data-tab="msgs"]');
+      await p.waitForSelector('#fmText', { timeout: 10000 }); await p.waitForFunction(() => /Asker C 55/.test(document.querySelector('#fchat').innerText), null, { timeout: 8000 });
+      ok(/4 mm EVA/.test(await p.innerText('#fchat')) && /Asker C 55/.test(await p.innerText('#fchat')), 'on a phone the factory has a Messages tab with the conversation');
+      await p.fill('#fmText', 'Thanks. Lead time is 35 days from sample approval.'); await p.click('#fmSendBtn');
+      for (let i = 0; i < 20 && sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='factory'`) !== '2'; i++) await sleep(300);
+      ok(sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='factory'`) === '2' && /35 days/.test(await p.innerText('#fchat')), 'and writes back from the page');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'with nothing off the screen and no script errors', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j81-factory.png` }).catch(() => {}); await ctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForFunction(() => document.querySelector('#tabs button[data-tab="sign"]')?.innerText.includes('●'), null, { timeout: 8000 }).catch(() => {});
+      ok(/●/.test(await ap.innerText('#tabs button[data-tab="sign"]')), 'staff see a dot on the Sign tab when a factory has written');
+      await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-threads] #ftText', { timeout: 10000 }); await ap.waitForFunction(() => /35 days/.test(document.querySelector('#fthread').innerText), null, { timeout: 8000 });
+      ok(/Chat Mill/.test(await ap.innerText('[data-thr-row]')) && /35 days/.test(await ap.innerText('#fthread')), 'the thread is there on the Sign tab, opened on the factory that wrote');
+      await ap.fill('#ftText', 'Great, noted.'); await ap.click('#ftSendBtn');
+      for (let i = 0; i < 20 && sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='admin'`) !== '2'; i++) await sleep(300);
+      ok(sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='admin'`) === '2', 'and staff reply from there');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j81-staff.png`, fullPage: true }).catch(() => {}); ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  }
+  // the factory page flags a pack with a message waiting
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Chat Works ${stamp}` } })).json, as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } });
+  const pageTok = as.json.assignment.pageUrl.split('/factory/')[1], aTok = as.json.assignment.packUrl.split('/tp/')[1], aSid = as.json.assignment.shareId;
+  await adm(`/v1/admin/tech-pack-shares/${aSid}/messages`, { method: 'POST', body: { body: 'Please quote by Friday.' } });
+  ok((await call(`/v1/factory/${pageTok}`)).json.packs[0].unread === 1, 'a pack on the factory\'s page says when Future Basics has written to it');
+  await call(`/v1/tp/${aTok}/messages`); ok((await call(`/v1/factory/${pageTok}`)).json.packs[0].unread === 0, 'and stops saying so once it has read it');
+  await adm(`/v1/admin/tech-pack-shares/${sid}`, { method: 'DELETE' }); ok((await call(`/v1/tp/${tok}/messages`)).status === 410 && (await call(`/v1/tp/${tok}/messages`, { body: { body: 'still here?' } })).status === 410, 'a revoked link can neither read nor write');
+});
+
+await journey('J82', 'Future Basics can record a client\'s approval when they gave it another way, so their project is never stuck: it says so and how, the client is told and can undo it until we have signed', async () => {
+  const m = await room('82');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const rec = body => adm(`/v1/admin/products/${m.id}/tech-pack/client-approval`, { method: 'POST', body });
+  const queue = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.productId === m.id).map(i => i.kind);
+  ok((await queue()).includes('client-approval'), 'before it, the pack is waiting on the client');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/client-approval`, { method: 'POST', token: m.token, body: { name: 'Me', how: 'x' } })).status === 403, 'a customer cannot record an approval, even their own, through this');
+  ok((await rec({ name: 'Jane Buyer' })).status === 400 && (await rec({ how: 'email' })).status === 400, 'it needs a name and how they approved');
+  const r1 = await rec({ name: 'Jane Buyer', how: 'email from Jane, 10 Oct' }), sig = r1.json.techPack?.verification?.clientSign;
+  ok(r1.status === 201 && sig.name === 'Jane Buyer' && /^Future Basics \(.+\) for Jane Buyer: email from Jane, 10 Oct$/.test(sig.by), 'staff record it, and the signature says who did it, for whom and how', sig);
+  ok((await rec({ name: 'Jane Buyer', how: 'again' })).status === 409, 'it cannot be recorded twice');
+  const qk = await queue(); ok(!qk.includes('client-approval') && qk.includes('countersign'), 'the pack moves on: it is now ours to countersign');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and metadata->>'onBehalf'='true'`) === '1' && sql(`select count(*) from notifications where client_id='${m.cid}' and title like 'Future Basics recorded your approval%'`) === '1', 'it is on the record, and the client is told');
+  const cv = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json; ok(/^Future Basics \(/.test(cv.techPack.verification.clientSign.by), 'the client\'s own page carries it');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const cctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); cp.on('dialog', d => d.accept());
+      await cp.goto(`${BASE}/tech-packs/${m.id}#sign`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#tabs button[data-tab="sign"]', { timeout: 10000 }); await cp.click('#tabs button[data-tab="sign"]');
+      await cp.waitForSelector('[data-act="undoapproval"]', { timeout: 10000 });
+      const t = await cp.innerText('.panel[data-panel="sign"]'); ok(/Recorded by Future Basics on your behalf/i.test(t) && /email from Jane, 10 Oct/.test(t) && !/Future Basics \(/.test(t), 'the client sees on a phone that Future Basics recorded it for them and how, without our staff address', t.slice(0, 200));
+      await cp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j82-client.png`, fullPage: true }).catch(() => {});
+      await cp.click('[data-act="undoapproval"]'); for (let i = 0; i < 20 && sql(`select verification->'clientSign'->>'name' is null from tech_packs where product_id='${m.id}'`) !== 't'; i++) await sleep(300);
+      ok(sql(`select verification->'clientSign'->>'name' is null from tech_packs where product_id='${m.id}'`) === 't' && sql(`select count(*) from activities where product_id='${m.id}' and summary like 'The client removed the approval%'`) === '1', 'the client can say it was not theirs and it is undone, on the record');
+      ok(cp.errs.length === 0, 'no script errors on the client side', cp.errs); await cctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message)); ap.on('dialog', d => d.accept());
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-clientapproval] #clientApprovalForm', { timeout: 10000 });
+      await ap.fill('#clientApprovalForm [name="how"]', 'call with Jane, 11 Oct'); await ap.click('#clientApprovalForm .dark');
+      await ap.waitForFunction(() => /Recorded by Future Basics on the client/i.test(document.querySelector('.panel[data-panel="sign"]').innerText), null, { timeout: 8000 });
+      ok(sql(`select verification->'clientSign'->>'by' from tech_packs where product_id='${m.id}'`).endsWith('call with Jane, 11 Oct') && await ap.locator('[data-clientapproval]').count() === 0, 'staff record it from the Sign tab, and the form gives way to the note');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j82-staff.png`, fullPage: true }).catch(() => {}); ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  } else await rec({ name: 'Jane Buyer', how: 'call with Jane, 11 Oct' }).then(() => {});
+  const rm = await rec({ undo: true }); ok(rm.status === 200 && !rm.json.techPack.verification.clientSign, 'staff can remove an approval they recorded');
+  await rec({ name: 'Jane Buyer', how: 'email, 12 Oct' });
+  sql(`update tech_packs set verification=jsonb_set(verification,'{brandSign}','{"name":"FB","at":"2026-01-02T00:00:00Z","by":"fb@x.com"}') where product_id='${m.id}'`);
+  ok((await rec({ undo: true })).status === 409 && (await call(`/v1/products/${m.id}/tech-pack/approval/undo`, { method: 'POST', token: m.token, body: {} })).status === 409, 'once Future Basics has signed on top of it, neither side can remove it');
+  sql(`update tech_packs set verification=jsonb_set(verification,'{clientSign}','{"name":"Real Client","at":"2026-01-01T00:00:00Z","by":"client@x.com"}') where product_id='${m.id}'`);
+  ok((await rec({ undo: true })).status === 409, 'and a client\'s own approval is never removed from here');
+});
+
+await journey('J83', 'an open invite for a pack: a one-page sheet with a code, a factory that scans it gives its details and gets a quotation link of its own, and staff control how many and for how long', async () => {
+  const m = await room('83'), un = await room('83u');
+  for (const x of [m, un]) for (let i = 0; i < 160; i++) { const st = await studio(x); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Quiet Brand Co' where id='${m.cid}'`);
+  const inv = path => `/v1/admin/products/${m.id}/tech-pack/invite${path || ''}`;
+  ok((await adm(`/v1/admin/products/${un.id}/tech-pack/invite`, { method: 'POST', body: {} })).status === 409, 'a pack that is not published has no invite');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  ok((await adm(inv())).json.invite === null, 'before staff make one, there is none');
+  ok((await call(inv(), { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot make one');
+  const a = await adm(inv(), { method: 'POST', body: { ensure: true } }), code = a.json.invite.url.split('/i/')[1];
+  ok(a.status === 201 && a.json.invite.active && a.json.invite.maxUses === 30 && /^[0-9a-f]{14}$/.test(code), 'staff make one: a short code, thirty factories, thirty days', a.json.invite);
+  ok((await adm(inv(), { method: 'POST', body: { ensure: true } })).json.invite.url === a.json.invite.url, 'asking again for the sheet gives the same code');
+  const pub = await call(`/v1/invite/${code}`); ok(pub.status === 200 && pub.json.title && pub.json.image && !JSON.stringify(pub.json).includes('Quiet Brand'), 'the landing page knows the product, and never the client', pub.json);
+  ok((await call('/v1/invite/nonsense')).status === 404, 'a made-up code gets nothing');
+  const join = body => call(`/v1/invite/${code}`, { body });
+  ok((await join({ email: 'a@mill.cn' })).status === 400 && (await join({ company: 'Mill A' })).status === 400 && (await join({ company: 'Mill A', email: 'not-an-email' })).status === 400, 'a company and a way to reach it are needed, and the email must look like one');
+  ok((await join({ company: 'Bot Co', email: 'bot@x.cn', website: 'http://spam' })).status === 202 && sql(`select uses from tech_pack_invites where tech_pack_id=(select id from tech_packs where product_id='${m.id}') and revoked_at is null`) === '0', 'a bot that fills the hidden field is waved through and counted for nothing');
+  const j1 = await join({ company: 'Mill A Dongguan', contact: 'Mr Li', email: 'li@milla.cn', wechat: 'milla' }); ok(j1.status === 201 && /\/tp\//.test(j1.json.url), 'a factory gives its details and gets a link', j1.json);
+  const tok = j1.json.url.split('/tp/')[1], view = (await call(`/v1/tp/${tok}`)).json; ok(view.quoteMode === true && view.product.clientName === '' && !JSON.stringify(view).includes('Quiet Brand'), 'the link is the quotation view, with the client hidden');
+  const again = await join({ company: 'Mill A Dongguan', email: 'LI@milla.cn' }); ok(again.status === 200 && again.json.url === j1.json.url && again.json.again === true, 'the same email scanning again gets the same link back, not a second one');
+  const j2 = await join({ company: 'Mill B Shenzhen', phone: '+86 755 0000 1111' }); ok(j2.status === 201 && j2.json.url !== j1.json.url, 'another factory gets its own');
+  ok((await call(`/v1/tp/${tok}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5.5 }], email: 'li@milla.cn' } })).status === 201, 'and can quote through it');
+  const cmp = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json; ok(cmp.links.some(l => l.label === 'Mill A Dongguan' && l.quoted) && cmp.links.some(l => l.label === 'Mill B Shenzhen'), 'staff see each factory by its company name, with the quote', cmp.links.map(l => l.label));
+  ok(sql(`select uses from tech_pack_invites where revoked_at is null and tech_pack_id=(select id from tech_packs where product_id='${m.id}')`) === '2' && sql(`select count(*) from notifications where client_id='${m.cid}' and type='factory-invite'`) === '2', 'the invite counts them, and staff are told about each');
+  // the printed sheet
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1000, height: 1200 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/print/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('.sheet', { timeout: 10000 });
+      const txt = await p.innerText('.sheet'); ok(/工艺单/.test(txt) && /扫码查看完整工艺单并报价/.test(txt) && await p.locator('.sheet .qr img').count() === 1 && txt.includes(a.json.invite.url) && !/Quiet Brand/.test(txt), 'the sheet is in English and Chinese, carries the QR and the short link, and does not name the client', txt.slice(0, 160));
+      await p.emulateMedia({ media: 'print' }); ok(await p.evaluate(() => { const e = document.querySelector('.sheet'); return e.scrollHeight <= e.clientHeight + 1; }), 'on paper it fits on one A4 page');
+      ok(/2 of 30 factories so far/.test(await p.innerText('#barNote')), 'staff see how many factories have used the code'); ok(p.errs.length === 0, 'no script errors on the sheet', p.errs);
+      await p.emulateMedia({ media: 'screen' }); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j83-sheet.png`, fullPage: true }).catch(() => {}); await ctx.close();
+      const nctx = await bw.newContext({ viewport: { width: 1000, height: 900 } }), np = await nctx.newPage(); await np.goto(`${BASE}/print/${m.id}`, { waitUntil: 'networkidle' }); await np.waitForSelector('.msg', { timeout: 8000 }); ok(/Sign in/.test(await np.innerText('.msg')), 'without a staff sign-in the sheet says so'); await nctx.close();
+      const pctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), pp = await pctx.newPage(); pp.errs = []; pp.on('pageerror', e => pp.errs.push(e.message));
+      await pp.goto(`${BASE}/i/${code}`, { waitUntil: 'networkidle' }); await pp.waitForSelector('#f', { timeout: 10000 });
+      ok(/Quote on|tech pack/i.test(await pp.innerText('.lede')) && !/Quiet Brand/.test(await pp.innerText('main')), 'scanning the code on a phone shows the product and a short form');
+      await pp.click('#lang'); ok(/邀请您对这份工艺单报价/.test(await pp.innerText('.lede')), 'in Chinese too'); await pp.click('#lang');
+      await pp.fill('#fCompany', 'Mill C Foshan'); await pp.fill('#fEmail', 'c@millc.cn'); await Promise.all([pp.waitForURL(/\/tp\//, { timeout: 15000 }), pp.click('#go')]); await pp.waitForSelector('#tabs button[data-tab="quote"]', { timeout: 10000 });
+      ok(await pp.locator('#tabs button[data-tab="quote"]').count() === 1 && sql(`select count(*) from tech_pack_shares where label='Mill C Foshan' and kind='quote'`) === '1', 'filling it in opens the tech pack with its Quote tab, on a link of its own');
+      ok(await pp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && pp.errs.length === 0, 'nothing runs off the phone and there are no script errors', pp.errs);
+      await pp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j83-invite.png` }).catch(() => {}); await pctx.close();
+    } finally { await bw.close(); }
+  }
+  // the limits
+  const one = await adm(inv(), { method: 'POST', body: { max: 1, days: 5 } }), c1 = one.json.invite.url.split('/i/')[1];
+  ok(one.status === 201 && one.json.invite.maxUses === 1 && (await call(`/v1/invite/${code}`)).status === 410, 'a new invite withdraws the old code');
+  ok((await call(`/v1/invite/${c1}`, { body: { company: 'Only One Ltd', email: 'one@x.cn' } })).status === 201 && (await call(`/v1/invite/${c1}`, { body: { company: 'Too Late Ltd', email: 'late@x.cn' } })).status === 410, 'an invite for one factory stops after one');
+  const two = await adm(inv(), { method: 'POST', body: {} }), c2 = two.json.invite.url.split('/i/')[1];
+  sql(`update tech_pack_invites set expires_at=now()-interval '1 day' where code_hash='${(await import('node:crypto')).createHash('sha256').update(c2).digest('hex')}'`);
+  ok((await call(`/v1/invite/${c2}`)).status === 410, 'an expired one is refused');
+  const three = await adm(inv(), { method: 'POST', body: {} }), c3 = three.json.invite.url.split('/i/')[1]; ok((await adm(inv(), { method: 'DELETE' })).json.revoked === 1 && (await call(`/v1/invite/${c3}`)).status === 410, 'staff can withdraw it at once');
+  ok((await call(`/v1/tp/${tok}`)).status === 200, 'factories that already opened it keep their own links');
+});
+
+await journey('J84', 'one pack from start to lock across every party: a factory\'s customer starts it, Future Basics checks and publishes it, the factory quotes, the client approves, the producing factory countersigns, and at each handoff the next party is told and has it in their queue', async () => {
+  const t0 = Date.now() - 1000, mail = async (match, to) => ((await call(`/v1/dev/outbox?since=${t0}${to ? '&to=' + encodeURIComponent(to) : ''}`)).json.emails || []).filter(e => match.test(e.subject));
+  const waitFor = async (fn, ms = 6000) => { for (let i = 0; i < ms / 200; i++) { if (await fn()) return true; await sleep(200); } return false; };
+  // 1. a factory signs up at the fair: it gets its page and a start link, and nothing is waiting on it yet
+  const co = `Fair Mill ${stamp}`, fem = `fair-${stamp}@mill.cn`, su = await call('/v1/public/factories', { body: { company: co, email: fem, lang: 'en' } });
+  ok(su.status === 201, 'the factory signs up'); const ftok = su.json.pageUrl.split('/factory/')[1], code = su.json.link.split('f-')[1];
+  ok((await mail(/New factory sign-up/)).some(e => e.text.includes(co)), 'Future Basics are emailed that a factory signed up');
+  ok((await mail(/Your Future Basics factory link/, fem)).length === 1, 'and the factory is emailed its link');
+  ok((await call(`/v1/factory/${ftok}`)).json.needsAction === 0, 'its page says nothing needs its action yet');
+  // 2. its customer starts a pack through that link, and has the assistants draft it
+  const cem = `buyer84-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: cem, name: 'Buyer Eighty-Four', title: 'Journey layer runner', photos: [runner], attribution: { source: `f-${code}` } } });
+  const m = { token: r.json.token, id: r.json.product.id, cid: r.json.client.id };
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const mine = async () => (await call('/v1/dashboard', { token: m.token })).json, waiting = async () => ((await mine()).waiting || []).filter(w => w.productId === m.id).map(w => w.kind);
+  const queue = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.productId === m.id).map(i => i.kind);
+  const ballOf = async () => { const p = ((await adm(`/v1/admin/clients/${m.cid}`)).json.products || []).find(x => x.id === m.id); return p.tech_pack; };
+  ok((await waiting()).includes('draft'), 'the customer\'s own unsent pack is in their "Waiting on you"', await waiting());
+  ok((await queue()).includes('analysis-check'), 'the assistants\' draft is in Future Basics\' queue to check', await queue());
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const cctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); await cp.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await cp.waitForSelector('.wait-item', { timeout: 10000 });
+      ok(/Finish your tech pack and send it to us/.test(await cp.innerText('.wait-item')) && await cp.locator('.wait-item a.btn[href$="/tech-packs/' + m.id + '"]').count() === 1, 'on a phone their hub says "Finish your tech pack and send it to us" with a button that opens it');
+      ok(cp.errs.length === 0, 'no script errors in the hub', cp.errs); await cp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j84-client.png` }).catch(() => {}); await cctx.close();
+    } finally { await bw.close(); }
+  }
+  ok((await call(`/v1/factory/${ftok}`)).json.packs.length === 0, 'the factory sees nothing yet: it is still a draft');
+  // 3. the customer sends it to Future Basics
+  const sub = await call(`/v1/products/${m.id}/tech-pack/submit`, { method: 'POST', token: m.token, body: { note: 'Please check the sizing' } }); ok(sub.status === 200, 'the customer submits it', sub.json);
+  ok(!(await waiting()).includes('draft'), 'it leaves the customer\'s waiting list');
+  ok((await mail(/submitted a tech pack/)).some(e => /Journey layer runner/.test(e.text)), 'Future Basics are emailed that it was submitted');
+  { const q = await queue(); ok(q.includes('review') && !q.includes('analysis-check'), 'it is a review item in Future Basics\' queue, not a second item', q); }
+  { const tp = await ballOf(); ok(tp.status === 'submitted' && tp.initiated_by === 'client', 'the ball is Future Basics\''); }
+  // 4. Future Basics publish: the client is told, and so is the factory the customer came through, without the customer's details
+  const pub = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: end to end' } }); ok(pub.status === 200 && pub.json.clientNotified === true, 'Future Basics publish it, and the client is emailed', pub.json);
+  const cm = await mail(/is ready for your approval/, cem); ok(cm.length === 1 && cm[0].links.some(l => l.includes(`/tech-packs/${m.id}`)), 'the email to the client links straight to the pack', cm);
+  ok((await waiting()).includes('tech-pack'), 'and it is in their "Waiting on you" to approve');
+  { const fm = await mail(/A customer's tech pack is ready for your quote/, fem); ok(fm.length === 1 && fm[0].links.some(l => /\/tp\//.test(l)), 'the factory the customer came through is emailed a quotation link at once', fm);
+    ok(!JSON.stringify(fm).includes('Buyer Eighty-Four') && !JSON.stringify(fm).includes(cem), 'and the email does not carry the customer\'s name or email'); }
+  { const f = (await call(`/v1/factory/${ftok}`)).json; ok(f.needsAction === 1 && f.packs[0].state === 'needs-quote', 'its page says one needs its action', [f.needsAction, f.packs.map(p => p.state)]); }
+  // 5. the factory quotes; staff are told; it is off the factory's list of actions; staff send the quotes to the client
+  const fpack = (await call(`/v1/factory/${ftok}`)).json.packs[0].href;
+  ok((await call(`/v1${fpack}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5.2 }], email: fem } })).status === 201, 'the factory quotes');
+  ok((await mail(/New quote: /)).some(e => e.text.includes(co)), 'Future Basics are emailed the quote');
+  ok((await call(`/v1/factory/${ftok}`)).json.needsAction === 0, 'and the factory\'s page no longer asks for anything');
+  { const sq = await adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body: { source: 'quotes' } });
+    if (sq.status === 409) ok(true, 'the project is not in a room yet, so quotes cannot go to a portal message (skipped)', sq.json); else ok(sq.status === 201 && sql(`select count(*) from notifications where client_id='${m.cid}' and type like 'project-%' and created_at>now()-interval '1 minute'`) >= '1', 'staff send the quotes to the client\'s portal and the client has a notification'); }
+  // 6. the client approves: Future Basics are told and it is theirs to countersign
+  const ap = await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Buyer Eighty-Four' } }); ok(ap.status === 200, 'the client approves');
+  ok(!(await waiting()).includes('tech-pack'), 'it leaves their waiting list');
+  ok((await mail(/Tech pack v1 approved/)).length >= 1, 'Future Basics are emailed the approval');
+  { const q = await queue(); ok(q.includes('countersign') && !q.includes('client-approval'), 'and it is in their queue to sign', q); }
+  ok((await ballOf()).client_signed === true, 'the ball moves to Future Basics');
+  // 7. a factory is assigned to produce it: told at once, its page asks for action
+  const pe = `prod-${stamp}@maker.cn`, prod = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Producer ${stamp}`, contactEmail: pe, country: 'China' } })).json;
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: prod.id, mode: 'review' } }); ok(as.status === 201 && as.json.emailed === true, 'staff assign the producing factory and it is emailed', as.json);
+  ok((await mail(/Tech pack to read and countersign/, pe)).length === 1, 'the email says to read and countersign');
+  const ptok = as.json.assignment.pageUrl.split('/factory/')[1], ppack = as.json.assignment.packUrl.split('/tp/')[1];
+  ok((await call(`/v1/factory/${ptok}`)).json.needsAction === 1, 'its page asks for one thing');
+  // 8. Future Basics sign: now it really is the factory's turn, and it is told so again
+  const bs = await adm(`/v1/admin/products/${m.id}/tech-pack/sign`, { method: 'POST', body: { name: 'FB Staff', skipDeposit: true } }); ok(bs.status === 200, 'Future Basics sign', bs.json);
+  ok((await mail(/Ready for you to countersign/, pe)).length === 1, 'the producing factory is emailed that it is its turn to countersign');
+  ok(!(await queue()).includes('countersign') && (await ballOf()).brand_signed === true, 'it leaves Future Basics\' queue; the ball is the factory\'s');
+  // 9. the factory acknowledges and countersigns: locked, and everyone else hears
+  const keys = (await call(`/v1/tp/${ppack}`)).json.readiness?.pendingCalloutKeys || (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.readiness.pendingCalloutKeys;
+  for (const key of keys) ok((await call(`/v1/tp/${ppack}/ack`, { body: { key } })).status === 200, `the factory acknowledges ${key}`);
+  const fs = await call(`/v1/tp/${ppack}/sign`, { body: { name: 'Producer Manager' } }); ok(fs.status === 200, 'the factory countersigns', fs.json);
+  ok(sql(`select locked_at is not null from tech_packs where product_id='${m.id}'`) === 't', 'the pack is locked for production');
+  ok((await mail(/countersigned/)).some(e => e.text.includes(`Producer ${stamp}`)), 'Future Basics are emailed that it is signed and locked');
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and title like '%countersigned%'`) === '1', 'and the client has a notification');
+  { const f = (await call(`/v1/factory/${ptok}`)).json; ok(f.needsAction === 0 && f.packs[0].state === 'signed', 'the factory\'s page says confirmed and asks for nothing'); }
+  ok(!(await queue()).includes('countersign'), 'nothing in this pack is left in Future Basics\' queue');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const shot = n => `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j84-${n}.png`;
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      sql(`update tech_pack_shares set waived_at=null where supplier_id=(select supplier_id from partners where code='${code}') and referral`);
+      sql(`delete from factory_quotes where share_id in (select id from tech_pack_shares where supplier_id=(select supplier_id from partners where code='${code}'))`);
+      await fp.goto(`${BASE}/factory/${ftok}`, { waitUntil: 'networkidle' }); await fp.waitForSelector('#action:not(.hidden)', { timeout: 10000 });
+      ok(/1 needs your action/.test(await fp.innerText('#action')) && /^\(1\)/.test(await fp.title()), 'on a phone the factory sees "1 needs your action" at the top and in the tab title');
+      await fp.click('#lang'); ok(/1 个需要您处理/.test(await fp.innerText('#action')), 'in Chinese too'); ok(fp.errs.length === 0, 'no script errors', fp.errs);
+      await fp.screenshot({ path: shot('factory'), fullPage: true }).catch(() => {}); await fctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

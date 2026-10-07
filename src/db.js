@@ -671,6 +671,20 @@ export async function migrate() {
     alter table tech_pack_shares add column if not exists assigned boolean not null default false;
     alter table tech_pack_shares add column if not exists waived_at timestamptz;
     alter table tech_pack_shares add column if not exists referral boolean not null default false;
+    -- An open invite for a pack: one code on a printed sheet or a booth card. A factory that scans it gives its details and gets a quotation link of its own.
+    create table if not exists tech_pack_invites (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      code_hash text unique not null,
+      created_by uuid references users(id) on delete set null,
+      expires_at timestamptz,
+      revoked_at timestamptz,
+      max_uses integer not null default 30,
+      uses integer not null default 0,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists tech_pack_invites_pack_idx on tech_pack_invites(tech_pack_id, created_at desc);
+    alter table tech_pack_shares add column if not exists invite_id uuid references tech_pack_invites(id) on delete set null;
     create unique index if not exists tech_pack_shares_referral_idx on tech_pack_shares(tech_pack_id,supplier_id) where referral;
     alter table suppliers add column if not exists page_epoch integer not null default 0;
     alter table suppliers add column if not exists page_hash text;
@@ -690,6 +704,20 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists factory_quotes_pack_idx on factory_quotes(tech_pack_id, updated_at desc);
+    -- A conversation between Future Basics and a factory about one pack, one thread per factory link. The client never sees it.
+    create table if not exists factory_messages (
+      id uuid primary key default gen_random_uuid(),
+      share_id uuid not null references tech_pack_shares(id) on delete cascade,
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      author_role text not null check (author_role in ('admin','factory')),
+      author_id uuid references users(id) on delete set null,
+      author_name text,
+      body text not null,
+      staff_read_at timestamptz,
+      factory_read_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists factory_messages_share_idx on factory_messages(share_id, created_at);
     alter table factory_quotes add column if not exists entered_by uuid references users(id) on delete set null;
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.
