@@ -666,6 +666,11 @@ export async function migrate() {
     alter table tech_pack_shares add column if not exists kind text not null default 'review';
     alter table tech_pack_shares add column if not exists include_model boolean not null default false;
     alter table tech_pack_shares add column if not exists supplier_id uuid references suppliers(id) on delete set null;
+    alter table tech_pack_shares add column if not exists assigned boolean not null default false;
+    alter table tech_pack_shares add column if not exists waived_at timestamptz;
+    alter table suppliers add column if not exists page_epoch integer not null default 0;
+    alter table suppliers add column if not exists page_hash text;
+    create unique index if not exists suppliers_page_hash_idx on suppliers(page_hash) where page_hash is not null;
     create table if not exists factory_quotes (
       id uuid primary key default gen_random_uuid(),
       share_id uuid unique not null references tech_pack_shares(id) on delete cascade,
@@ -681,6 +686,7 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists factory_quotes_pack_idx on factory_quotes(tech_pack_id, updated_at desc);
+    alter table factory_quotes add column if not exists entered_by uuid references users(id) on delete set null;
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.
     -- Factories that signed up at a trade fair (or anywhere): each gets a referral code. Buyers who start a tech pack through

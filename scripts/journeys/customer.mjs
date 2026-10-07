@@ -237,4 +237,184 @@ await journey('J75', 'a factory sees the 3D shape only when Future Basics switch
   }
 });
 
+await journey('J76', 'a factory is assigned to a product: the product\'s supplier is set, the factory gets a page of everything assigned to it and a private link to each pack, and reassigning, unassigning or rotating switches the old access off at once', async () => {
+  const m = await room('76');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  const s1 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Assigned Mill ${stamp}`, contactEmail: 'mill1@factory.cn', country: 'China' } })).json, s2 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Second Mill ${stamp}` } })).json;
+  const assign = (supplierId, mode = 'quote', token = admin) => call(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', token, body: { supplierId, mode } });
+  sql(`update tech_packs set published_at=null where product_id='${m.id}'`);
+  ok((await assign(s1.id)).status === 409, 'a pack that is not published cannot be assigned: it is what the factory would see');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  ok((await assign(s1.id, 'quote', m.token)).status === 403, 'a customer cannot assign a factory');
+  ok((await assign('junk')).status === 400 && (await assign('00000000-0000-4000-8000-000000000000')).status === 400, 'a factory that is not in the list is refused');
+  const rv = await assign(s1.id, 'review'); ok(rv.status === 409 && /approves version 1/.test(rv.json.error), 'to produce waits for the client\'s approval, and says what to do meanwhile', rv.json.error);
+  const a = await assign(s1.id, 'quote'); ok(a.status === 201 && a.json.assignment.active && a.json.assignment.mode === 'quote' && /\/factory\//.test(a.json.assignment.pageUrl) && /\/tp\//.test(a.json.assignment.packUrl), 'assigning for quotation gives the factory a page and a pack link', a.json);
+  ok(sql(`select supplier_id from product_configurations where product_id='${m.id}'`) === s1.id, 'and the product\'s own supplier is that factory');
+  { const bp = (await adm(`/v1/admin/clients/${m.cid}`)).json; const prod = (bp.products || []).find(x => x.id === m.id); ok(prod && prod.tech_pack && prod.tech_pack.quote_waiting === true, 'while it waits for a quote, the ball is the factory\'s in the console', prod && prod.tech_pack); }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.assignment.supplierId === s1.id, 'the staff page shows who is assigned');
+  const page1 = a.json.assignment.pageUrl.split('/factory/')[1], pack1 = a.json.assignment.packUrl.split('/tp/')[1];
+  const pg = await call(`/v1/factory/${page1}`); ok(pg.status === 200 && pg.json.factory === `Assigned Mill ${stamp}` && pg.json.packs.length === 1 && pg.json.packs[0].state === 'needs-quote' && pg.json.packs[0].client === '' && pg.json.packs[0].href === `/tp/${pack1}`, 'the factory\'s page lists the pack, waiting for a quote, with the client\'s name hidden', pg.json);
+  ok(!JSON.stringify(pg.json).includes('Secret Brand Co'), 'nowhere in it');
+  ok((await call('/factory/' + page1)).status === 200 && (await call('/factory/' + page1)).text.includes('Future Basics'), 'the page itself loads with no sign-in');
+  ok((await call('/v1/factory/nope')).status === 404 && (await call(`/v1/factory/${'a'.repeat(32)}`)).status === 404, 'a made-up page link gets nothing');
+  const tv = (await call(`/v1/tp/${pack1}`)).json; ok(tv.quoteMode === true && tv.product.clientName === '', 'the pack link opens the pack for quotation');
+  await call(`/v1/tp/${pack1}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5 }], email: 'mill1@factory.cn' } });
+  ok((await call(`/v1/factory/${page1}`)).json.packs[0].state === 'quoted', 'once it quotes, its page says so');
+  { const bp = (await adm(`/v1/admin/clients/${m.cid}`)).json; const prod = (bp.products || []).find(x => x.id === m.id); ok(prod && prod.tech_pack && prod.tech_pack.quote_waiting === false, 'and the ball comes back once it has quoted', prod && prod.tech_pack); }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.compare.some(r => r.company === `Assigned Mill ${stamp}`), 'and staff see the quote in the comparison');
+  const same = await assign(s1.id, 'quote'); ok(same.json.assignment.packUrl === a.json.assignment.packUrl, 'assigning the same factory again keeps its link');
+  // reassign: the old factory loses the pack, the new one gets it
+  const b = await assign(s2.id, 'quote'), page2 = b.json.assignment.pageUrl.split('/factory/')[1];
+  ok(b.status === 201 && (await call(`/v1/tp/${pack1}`)).status === 410 && (await call(`/v1/factory/${page1}`)).json.packs.length === 0, 'reassigning switches the old factory\'s link off at once and empties its page');
+  ok((await call(`/v1/factory/${page2}`)).json.packs.length === 1 && sql(`select supplier_id from product_configurations where product_id='${m.id}'`) === s2.id, 'the new factory has it, and is the product\'s supplier');
+  // produce, once the client has approved
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"}}'::jsonb where product_id='${m.id}'`);
+  const pr = await assign(s2.id, 'review'); ok(pr.status === 201 && pr.json.assignment.mode === 'review', 'after the client approves, the factory can be assigned to produce it');
+  const pg2 = (await call(`/v1/factory/${page2}`)).json; ok(pg2.packs.length === 1 && pg2.packs[0].kind === 'review' && pg2.packs[0].state === 'to-review' && pg2.packs[0].client === 'Secret Brand Co', 'its page now says to read and confirm, and shows who it is for');
+  const rv2 = (await call(`/v1/tp/${pr.json.assignment.packUrl.split('/tp/')[1]}`)).json; ok(!rv2.quoteMode && rv2.techPack.verification.clientSign, 'and the pack link is the one to read and sign');
+  // the factory page link
+  ok((await call(`/v1/admin/suppliers/${s2.id}/factory-page/email`, { method: 'POST', token: admin, body: {} })).status === 400, 'emailing a factory that has no email asks for one');
+  const rot = await call(`/v1/admin/suppliers/${s2.id}/factory-page/rotate`, { method: 'POST', token: admin, body: {} }); ok(rot.status === 200 && rot.json.pageUrl !== b.json.assignment.pageUrl && (await call(`/v1/factory/${page2}`)).status === 404 && (await call(`/v1/factory/${rot.json.pageUrl.split('/factory/')[1]}`)).json.packs.length === 1, 'a new page link switches the old one off and keeps everything on it');
+  ok((await call(`/v1/admin/suppliers/${s2.id}/factory-page/rotate`, { method: 'POST', token: m.token, body: {} })).status === 403, 'only staff can');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(rot.json.pageUrl.replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: 'networkidle' }); await p.waitForSelector('.pack', { timeout: 10000 });
+      const txt = await p.innerText('main'); ok(/Second Mill/.test(txt) && /To read and confirm/i.test(txt), 'on a phone the factory sees its name and the pack waiting for it', txt.slice(0, 160));
+      await p.click('#lang'); ok(/技术包|确认/.test(await p.innerText('main')), 'and can switch to Chinese');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j76-factory.png` }).catch(() => {});
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'nothing runs off the screen and there are no script errors', p.errs);
+      await p.click('.pack'); await p.waitForSelector('#tabs button[data-tab="sign"]', { timeout: 10000 }); ok(/\/tp\//.test(p.url()), 'tapping it opens the pack to read and sign'); await ctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="sign"]'); await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-assign]', { timeout: 10000 });
+      ok(/Second Mill/.test(await ap.innerText('[data-assign]')) && await ap.locator('[data-assign] [data-fp]').inputValue() === rot.json.pageUrl, 'staff see who is assigned and the factory\'s page link');
+      ok(await ap.locator('[data-assign] #assignForm select[name="supplierId"] option').count() >= 3, 'with the factories to choose from');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j76-staff.png`, fullPage: true }).catch(() => {});
+      ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  }
+  const un = await assign(null); const pageNow = rot.json.pageUrl.split('/factory/')[1];
+  ok(un.status === 200 && un.json.assignment === null && (await call(`/v1/factory/${pageNow}`)).json.packs.length === 0 && (await call(`/v1/tp/${pr.json.assignment.packUrl.split('/tp/')[1]}`)).status === 410 && sql(`select supplier_id is null from product_configurations where product_id='${m.id}'`) === 't', 'unassigning empties the factory\'s page, switches its pack link off and clears the supplier');
+});
+
+await journey('J77', 'Future Basics can act for a factory that does not use its page, so a client\'s project is never stuck: stop waiting, type in its quote, acknowledge for it, countersign for it, each marked as ours with how it arrived', async () => {
+  const m = await room('77');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const s1 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Quiet Mill ${stamp}` } })).json, s2 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Silent Works ${stamp}` } })).json;
+  const assign = (supplierId, mode = 'quote') => adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId, mode } });
+  const ballOf = async () => ((await adm(`/v1/admin/clients/${m.cid}`)).json.products || []).find(x => x.id === m.id)?.tech_pack;
+  const a = await assign(s1.id), shareId = a.json.assignment.shareId, page = a.json.assignment.pageUrl.split('/factory/')[1], packTok = a.json.assignment.packUrl.split('/tp/')[1];
+  ok((await ballOf()).quote_waiting === true, 'a pack out for quotation puts the ball with the factory');
+  // stop waiting
+  ok((await call(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot do any of this');
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: true } })).json.waived === true && (await ballOf()).quote_waiting === false && (await call(`/v1/factory/${page}`)).json.packs[0].state === 'closed', 'stopping the wait takes the ball back, and the factory\'s page says it is not needed right now');
+  ok((await call(`/v1/tp/${packTok}`)).status === 200, 'its link still works');
+  await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: false } }); ok((await ballOf()).quote_waiting === true, 'and waiting again puts it back');
+  // type in the quote
+  const body = { currency: 'CNY', tiers: [{ qty: 500, unit: 31 }, { qty: 2000, unit: 27 }], moq: 500, leadDays: 40, wechat: 'quiet_mill' };
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body })).status === 400, 'a typed-in quote must say how it arrived');
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body: { how: 'WeChat, 10 Oct', tiers: [] } })).status === 400, 'and still needs a price');
+  const q = await adm(`/v1/admin/tech-pack-shares/${shareId}/quote`, { method: 'POST', body: { ...body, how: 'WeChat, 10 Oct' } }); ok(q.status === 201 && q.json.quote.byStaff === true && /Entered by Future Basics from: WeChat, 10 Oct/.test(q.json.quote.notes), 'staff can type in what the factory sent, marked as theirs', q.json);
+  ok((await ballOf()).quote_waiting === false && (await call(`/v1/factory/${page}`)).json.packs[0].state === 'quoted', 'the ball is released and the page says quoted');
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/quotes?qty=500`)).json.compare[0].byStaff === true, 'the comparison shows it was entered by us');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Future Basics recorded Quiet Mill%quote%'`) === '1', 'and it is on the record');
+  await call(`/v1/tp/${packTok}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 4.5 }], email: 'q@mill.cn' } }); ok(sql(`select entered_by is null from factory_quotes where share_id='${shareId}'`) === 't', 'if the factory later sends its own, it is no longer marked as ours');
+  // produce: acknowledge and countersign for them
+  const t0 = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack, pending = t0.readiness.pendingCalloutKeys.length;
+  const b = await assign(s2.id, 'review'); ok(b.status === 409, 'to produce still waits for the client\'s approval');
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"}}'::jsonb where product_id='${m.id}'`);
+  const b2 = await assign(s2.id, 'review'); ok(b2.status === 201, 'then it is assigned');
+  const fsign = body => adm(`/v1/admin/products/${m.id}/tech-pack/factory-sign`, { method: 'POST', body });
+  ok((await fsign({ name: 'Silent Works', how: 'WeChat' })).status === 409, 'Future Basics signs before the factory does, for a factory too');
+  sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"2026-01-01T00:00:00Z","by":"c@x.com"},"brandSign":{"name":"FB","at":"2026-01-02T00:00:00Z","by":"fb@x.com"}}'::jsonb where product_id='${m.id}'`);
+  ok((await fsign({ name: 'Silent Works' })).status === 400 && (await fsign({ how: 'WeChat' })).status === 400, 'it needs a name and how they confirmed');
+  const pend = (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack.readiness.pendingCalloutKeys.length;
+  if (pend > 0) {
+    ok((await fsign({ name: 'Silent Works', how: 'WeChat, 11 Oct' })).status === 409, 'callouts still open are not skipped by accident');
+    const ack = await adm(`/v1/admin/products/${m.id}/tech-pack/factory-ack`, { method: 'POST', body: { name: 'Silent Works' } }); ok(ack.status === 200 && ack.json.acknowledged === pend && ack.json.techPack.readiness.pendingCalloutKeys.length === 0, 'staff can acknowledge every callout for the factory', [ack.status, ack.json.acknowledged]);
+  }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/factory-ack`, { method: 'POST', body: {} })).status === 409, 'and nothing is left to acknowledge afterwards');
+  const sg = await fsign({ name: 'Silent Works', how: 'WeChat, 11 Oct', ackAll: true }); ok(sg.status === 200 && sg.json.locked === true && /Future Basics .* for Silent Works: WeChat, 11 Oct/.test(sg.json.factorySign.by), 'countersigning for the factory locks the pack, and the signature says who did it and how', sg.json);
+  ok((await fsign({ name: 'Silent Works', how: 'again' })).status === 409, 'it cannot be signed twice');
+  ok((await call(`/v1/factory/${(b2.json.assignment.pageUrl.split('/factory/')[1])}`)).json.packs[0].state === 'signed', 'the factory\'s page says confirmed');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and metadata->>'onBehalf'='true'`) === '1', 'and it is on the record');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      sql(`update tech_packs set verification='{"version":1,"acks":{},"clientSign":{"name":"Client Person","at":"x"},"brandSign":{"name":"FB","at":"x"}}'::jsonb, locked_at=null where product_id='${m.id}'`);
+      await assign(s1.id, 'quote'); await adm(`/v1/admin/tech-pack-shares/${shareId}/waive`, { method: 'POST', body: { waived: false } });
+      const sid2 = (await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: s1.id, mode: 'quote' } })).json.assignment.shareId;
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="sign"]'); await p.click('#tabs button[data-tab="sign"]'); await p.waitForSelector(`[data-quotes] [data-act="enterquote"][data-id="${sid2}"]`, { timeout: 10000 });
+      await p.click(`[data-quotes] [data-act="enterquote"][data-id="${sid2}"]`); await p.waitForSelector('#enterQuoteForm');
+      await p.fill('#enterQuoteForm [name="how"]', 'Email, 12 Oct'); await p.fill('#enterQuoteForm [name="qty0"]', '300'); await p.fill('#enterQuoteForm [name="unit0"]', '5.5'); await p.click('#enterQuoteForm .dark');
+      await p.waitForFunction(() => /Entered by us/i.test(document.querySelector('[data-quotes]').innerText), null, { timeout: 10000 }).catch(async () => { ok(false, 'the typed-in quote appeared', [(await p.innerText('[data-quotes]')).slice(0, 700), await p.locator('#toast, .toast').allInnerTexts()]); });
+      ok(/Entered by us/i.test(await p.innerText('[data-quotes]')), 'staff type a quote in from the Sign tab and the table marks it as entered by us');
+      ok(await p.locator('[data-quotes] [data-act="waive"]').count() === 0, 'a factory that has quoted has no stop-waiting button');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j77-staff.png`, fullPage: true }).catch(() => {});
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
+await journey('J78', 'an electronic product gets its own pack: the assistant fills the electrical facts, certifications follow from them, staff edit them, a factory reads them in its language, and nothing changes for any other product', async () => {
+  const start = async (title, tag) => { const r = await call('/v1/public/start', { body: { email: em(tag), name: 'Gadget Maker', title, photos: [runner] } }); return { token: r.json.token, id: r.json.product.id, cid: r.json.client.id }; };
+  const a = await start('Wireless earbuds', '78a'), b = await start('Layer runner', '78b');
+  for (const m of [a, b]) for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const adminFor = m => forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' });
+  const admin = await adminFor(a), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const pack = async m => (await call(`/v1/admin/products/${m.id}/tech-pack`, { token: await adminFor(m) })).json;
+  const pa = await pack(a), e = pa.techPack.data.electronics;
+  ok(e.enabled === true && e.specs.batteryChemistry === 'Li-ion' && e.specs.radios.startsWith('Bluetooth') && e.components.length >= 1, 'the assistant fills the battery, radios and a first parts list for an electronic product', e.specs);
+  const names = e.certifications.map(c => c.name).join(' | ');
+  ok(/UN 38\.3/.test(names) && /CE-RED/.test(names) && /Bluetooth SIG/.test(names) && /IEC 60529 ingress test \(IPX4\)/.test(names), 'the certifications that follow from them are listed: lithium transport, radio, Bluetooth listing, water rating', names);
+  ok(e.stages.map(x => x.stage).join() === 'EVT,DVT,PVT,MP' && e.tests.length >= 6, 'with the build stages and the tests', e.stages.length);
+  ok(pa.completeness.checks.some(c => c.key === 'electronics' && c.ok === true), 'and the completeness check for electronics is satisfied');
+  const pb = await pack(b); ok(pb.techPack.data.electronics.enabled === false && !pb.completeness.checks.some(c => c.key === 'electronics'), 'a pack for anything else has no electronics section and no such check');
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${a.id}'`);
+  const link = await adm(`/v1/admin/products/${a.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Shenzhen Audio' } }), tok = link.json.url.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${tok}`)).json; ok(fv.techPack.data.electronics.enabled && fv.techPack.data.electronics.specs.batteryChemistry === 'Li-ion', 'a factory link carries the electronics', fv.techPack.data.electronics.enabled);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${a.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="elec"]', { timeout: 10000 });
+      ok(await p.locator('#tabs button[data-tab="bom"] + button[data-tab="elec"]').count() === 1, 'staff see an Electronics tab right after the materials');
+      await p.click('#tabs button[data-tab="elec"]'); await p.waitForSelector('.panel[data-panel="elec"].on');
+      const txt = await p.innerText('.panel[data-panel="elec"]'); const vals = async () => p.$$eval('.panel[data-panel="elec"] input.t', els => els.map(e => e.value)); const v0 = await vals();
+      ok(/Battery/i.test(txt) && /Certifications/i.test(txt) && /Build Stages/i.test(txt) && /lithium battery · 4\.44 Wh/i.test(txt) && v0.includes('EVT') && v0.includes('PVT') && v0.includes('Li-ion'), 'it shows the groups, the stages and the watt-hours with the dangerous-goods note', [txt.slice(0, 120), v0.slice(0, 12)]);
+      await p.fill('.panel[data-panel="elec"] input[data-path*="\\"weight\\""]', '61 g'); await p.fill('.panel[data-panel="elec"] input[data-path*="\\"ingress\\""]', 'IPX7');
+      await p.click('.panel[data-panel="elec"] [data-act="elecsuggest"]'); await p.waitForFunction(() => [...document.querySelectorAll('.panel[data-panel="elec"] input.t')].some(e => /ingress test \(IPX7\)/.test(e.value)), null, { timeout: 8000 }).catch(() => {});
+      ok((await vals()).some(v => v === 'IEC 60529 ingress test (IPX7)') && !(await vals()).includes('IEC 60529 ingress test (IPX4)'), 'Add suggested adds what a changed water rating needs and drops the untouched row it replaces', (await vals()).filter(v => /IEC|CE|FCC/.test(v)));
+      await p.keyboard.press('Control+s'); for (let i = 0; i < 30 && sql(`select data->'electronics'->'specs'->>'weight' from tech_packs where product_id='${a.id}'`) !== '61 g'; i++) await sleep(300);
+      ok(sql(`select data->'electronics'->'specs'->>'weight' from tech_packs where product_id='${a.id}'`) === '61 g' && /IPX7/.test(sql(`select data->'electronics'->'certifications' from tech_packs where product_id='${a.id}'`)), 'edits to the specs and the list are saved');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j78-elec.png`, fullPage: true }).catch(() => {});
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+      // a pack that was not marked electronic can be turned into one from the Style tab
+      const bctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await bctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, await adminFor(b));
+      const bp = await bctx.newPage(); await bp.goto(`${BASE}/tech-packs/${b.id}`, { waitUntil: 'networkidle' }); await bp.waitForSelector('[data-act="elecon"]'); ok(await bp.locator('#tabs button[data-tab="elec"]').count() === 0, 'a shoe has no Electronics tab');
+      await bp.click('[data-act="elecon"]'); await bp.waitForSelector('.panel[data-panel="elec"].on'); ok(await bp.locator('#tabs button[data-tab="elec"]').count() === 1 && (await bp.$$eval('.panel[data-panel="elec"] input.t', els => els.map(e => e.value))).includes('EVT'), 'but the Style tab can add one, with the stages and tests already there');
+      await bctx.close();
+      // the factory, on a phone, in Chinese
+      sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Li-ion":"锂离子"}}}'::jsonb where product_id='${a.id}'`);
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      await fp.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' }); await fp.waitForSelector('#tabs button[data-tab="elec"]', { timeout: 10000 }); await fp.click('#tabs button[data-tab="elec"]');
+      const ft = await fp.innerText('.panel[data-panel="elec"]'); ok(/Li-ion/.test(ft) && /Bluetooth/.test(ft) && await fp.locator('.panel[data-panel="elec"] input, .panel[data-panel="elec"] textarea, .panel[data-panel="elec"] select').count() === 0, 'a factory reads the electronics, with nothing to edit');
+      ok(!/Not electronic|Add suggested|\+ Component/.test(ft), 'and none of the editing buttons');
+      await fp.click('.langbar [data-lang="zh"]'); await fp.click('#tabs button[data-tab="elec"]'); const zt = await fp.innerText('.panel[data-panel="elec"]'); ok(/电池/.test(zt) && /认证/.test(zt) && /试产阶段/.test(zt) && /锂离子/.test(zt), 'in Chinese the headings, labels and the pack\'s own words are translated', zt.slice(0, 200));
+      ok(await fp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && fp.errs.length === 0, 'nothing runs off the phone and there are no script errors', fp.errs);
+      await fp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j78-factory.png`, fullPage: true }).catch(() => {}); await fctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

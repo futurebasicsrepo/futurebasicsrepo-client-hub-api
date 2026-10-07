@@ -4,12 +4,15 @@
 // verification chain (factory acknowledgements + two signatures) that turns the
 // pack from a document into a live sign-off instrument.
 
+import './elec.js'; // electronic products: attaches FBElec (also served to the page at /elec.js)
+const ELEC = globalThis.FBElec;
+
 export const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
 export const SKETCH_VIEWS = ['front', 'back', 'side', 'lateral', 'medial', 'top', 'outsole', 'heel', 'detail', 'flat', 'other'];
 export const FOOTWEAR_SIZES = ['7', '8', '9', '10', '11', '12', '13'];
 // Garment packs need front + back; footwear packs need lateral + medial.
 export const mockupsComplete = sketches => { const has = v => sketches.some(s => s.view === v && s.image); return (has('front') && has('back')) || (has('lateral') && has('medial')); };
-const LIMITS = { renderings: 6, parts: 14, sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200 };
+const LIMITS = { renderings: 6, parts: 14, sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200, components: 150, certifications: 30, tests: 40, stages: 6 };
 const MAX_IMAGE_CHARS = 2_600_000;   // ~1.9MB decoded; the editor downsizes before upload
 const MAX_PHOTO_CHARS = 700_000;     // callout detail photos are small crops
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i;
@@ -41,6 +44,7 @@ export function emptyTechPack() {
     labels: [],
     packaging: { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: '' },
     care: { fiber: '', instructions: '', countryOfOrigin: '', compliance: '' },
+    electronics: { enabled: false, specs: {}, components: [], certifications: [], tests: [], stages: [] },
     notes: ''
   };
 }
@@ -100,7 +104,23 @@ export function normalizeTechPack(input) {
     labels: list(src.labels, LIMITS.labels, r => ({ item: str(r?.item, 120), spec: str(r?.spec, 400), placement: str(r?.placement, 200) })).filter(r => r.item),
     packaging: Object.fromEntries(Object.keys(base.packaging).map(k => [k, str(packaging[k], k === 'notes' ? 1500 : 200)])),
     care: Object.fromEntries(Object.keys(base.care).map(k => [k, str(care[k], k === 'instructions' || k === 'compliance' ? 1500 : 300)])),
+    electronics: normalizeElectronics(src.electronics),
     notes: str(src.notes, 6000)
+  };
+}
+
+// Electronic products carry one more section. Anything else gets the empty one, so older packs read as they always did.
+function normalizeElectronics(input) {
+  const e = input && typeof input === 'object' ? input : {};
+  const specs = e.specs && typeof e.specs === 'object' ? e.specs : {};
+  const pick = (v, allowed, fallback) => (allowed.includes(String(v)) ? String(v) : fallback);
+  return {
+    enabled: e.enabled === true,
+    specs: Object.fromEntries(ELEC.SPEC_KEYS.map(k => [k, str(specs[k], 200)])),
+    components: list(e.components, LIMITS.components, r => ({ ref: str(r?.ref, 40), part: str(r?.part, 160), mpn: str(r?.mpn, 80), maker: str(r?.maker, 80), qty: str(r?.qty, 12), notes: str(r?.notes, 300) })).filter(r => r.part || r.mpn),
+    certifications: list(e.certifications, LIMITS.certifications, r => ({ name: str(r?.name, 160), market: str(r?.market, 80), required: r?.required !== false, status: pick(r?.status, ELEC.CERT_STATUS, 'needed'), lab: str(r?.lab, 120), report: str(r?.report, 120), notes: str(r?.notes, 400) })).filter(r => r.name),
+    tests: list(e.tests, LIMITS.tests, r => ({ name: str(r?.name, 160), method: str(r?.method, 400), accept: str(r?.accept, 300), stage: str(r?.stage, 40) })).filter(r => r.name),
+    stages: list(e.stages, LIMITS.stages, r => ({ stage: str(r?.stage, 12), qty: str(r?.qty, 40), goal: str(r?.goal, 500), exit: str(r?.exit, 500), status: pick(r?.status, ELEC.STAGE_STATUS, 'planned') })).filter(r => r.stage)
   };
 }
 
@@ -152,14 +172,16 @@ const BAG_POM = [
   ['E', 'Strap length', 'End to end, buckle at the longest setting', '±0.5'],
   ['F', 'Opening width', 'Edge to edge across the top opening', '±0.25']
 ];
+const ELECTRONICS_POM = ELEC.POM;
 export const isFootwear = text => /(shoe|sneaker|trainer|boot|mule|footwear|slide|sandal|loafer|court|runner|cleat|cupsole|clog|moc)/.test(String(text || '').toLowerCase());
 export function pomTemplateFor(text) {
   const t = String(text || '').toLowerCase();
   if (isFootwear(t)) return FOOTWEAR_POM;
   if (/(cap|hat|beanie|bucket|visor|headwear)/.test(t)) return HEADWEAR_POM;
   if (/(\bbag\b|tote|backpack|pouch|duffle|duffel|crossbody|satchel|clutch|wallet|cardholder|card holder|belt bag|fanny|sling)/.test(t)) return BAG_POM;
+  if (ELEC.isElectronics(t)) return ELECTRONICS_POM;
   if (/(pant|short|trouser|jogger|bottom|denim|jean)/.test(t)) return BOTTOMS_POM;
-  if (/(tee|shirt|tank|polo|knit|hoodie|sweat|crew|jacket|shell|top|apparel|dress|vest|fleece|layer)/.test(t)) return TOPS_POM;
+  if (/(tee|shirt|tank|polo|knit|hoodie|sweat|crew|jacket|shell|\btops?\b|apparel|dress|vest|fleece|layer)/.test(t)) return TOPS_POM;
   return [];
 }
 
@@ -168,8 +190,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   const pack = emptyTechPack();
   const c = configuration || {};
   const descriptor = `${product.title || ''} ${product.product_type || ''} ${c.blank_name || ''}`;
-  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM, bag = apparel === BAG_POM;
-  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length && !bag ? [...DEFAULT_SIZES] : ['One size']);
+  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM, bag = apparel === BAG_POM, electronic = apparel === ELECTRONICS_POM;
+  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length && !bag && !electronic ? [...DEFAULT_SIZES] : ['One size']);
   const month = now.getMonth(), year = String(now.getFullYear()).slice(-2);
   pack.style = {
     styleNumber: String(product.shopify_handle || '').toUpperCase().slice(0, 40),
@@ -196,6 +218,7 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
     { component: 'Outsole', material: 'Rubber', spec: 'Hardness Shore A TBD, tread per sketch', supplier: '', ref: '', color: '', placement: 'Sole unit', qty: '1', unit: 'pair', notes: '' },
     { component: 'Footbed', material: 'Die-cut EVA / PU', spec: 'Removable, top cloth printed', supplier: '', ref: '', color: '', placement: 'Inside', qty: '1', unit: 'pair', notes: '' },
     { component: 'Heel counter + toe puff', material: 'Thermoplastic', spec: 'Internal, heat-activated', supplier: '', ref: '', color: '', placement: 'Heel, toe', qty: '1', unit: 'set', notes: '' });
+  else if (electronic) pack.bom.push(...ELEC.BOM.map(r => ({ ...r })));
   else if (c.material || c.blank_name) pack.bom.push({ component: 'Main body', material: str(c.material, 200), spec: str(c.blank_name, 300), supplier: str(c.supplier_name, 120), ref: '', color: '', placement: 'Body', qty: '1', unit: 'pc', notes: '' });
   if (c.decoration_method) {
     const size = c.artwork_width_in && c.artwork_height_in ? `${c.artwork_width_in}" × ${c.artwork_height_in}"` : '';
@@ -206,12 +229,15 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   pack.colorways = (Array.isArray(c.colorways) ? c.colorways : []).slice(0, LIMITS.colorways).map(name => ({ name: str(name, 80), code: '', swatch: '', notes: '' }));
   if (footwear) {
     pack.labels = [{ item: 'Tongue label', spec: 'Woven, client artwork', placement: 'Tongue, centred below top edge' }, { item: 'Size / country of origin label', spec: 'Printed, size + width + CO + article no.', placement: 'Inside tongue' }, { item: 'Footbed print', spec: 'Pad print on top cloth, client artwork', placement: 'Footbed, heel area' }, { item: 'Heel tab', spec: 'Woven or embossed', placement: 'Heel collar' }];
+  } else if (electronic) {
+    pack.labels = [{ item: 'Rating label', spec: 'Printed or laser-etched: model, ratings, serial number, country of origin, certification marks (CE, UKCA, FCC ID if it has a radio, WEEE bin)', placement: 'Underside or inside the battery door' }, { item: 'Retail box label', spec: 'Barcode, model, battery warning and watt-hours if it has a lithium battery', placement: 'Box end' }];
   } else if (apparel.length) {
     pack.labels = bag ? [{ item: 'Main label', spec: 'Woven or debossed leather patch, client artwork', placement: 'Inside body, centred below the opening' }, { item: 'Care / content label', spec: 'Printed satin, materials + care + country of origin', placement: 'Inside pocket seam' }]
       : apparel === HEADWEAR_POM
       ? [{ item: 'Main label', spec: 'Woven, Future Basics / client artwork', placement: 'Inside back crown' }, { item: 'Care / content label', spec: 'Printed satin', placement: 'Inside sweatband' }]
       : [{ item: 'Main label', spec: 'Woven, client artwork', placement: 'Center back neck, inside' }, { item: 'Size label', spec: 'Woven or printed', placement: 'Below main label' }, { item: 'Care / content label', spec: 'Printed satin, fiber content + care + country of origin', placement: 'Inside left side seam' }];
   }
+  if (electronic) pack.electronics = ELEC.defaults(descriptor);
   pack.packaging = { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: str(c.packaging || brief?.packaging, 1500) };
   pack.care = { fiber: str(c.material, 300), instructions: '', countryOfOrigin: '', compliance: '' };
   pack.notes = str(c.notes, 6000);
@@ -230,7 +256,8 @@ export function techPackCompleteness(data) {
     ['placement', 'Artwork placed on garment', d.artwork.some(a => a.placements.some(p => p.widthIn))],
     ['bom', 'Bill of materials', d.bom.length > 0],
     ['colorways', 'Fabric Pantones', d.colorways.length > 0],
-    ['care', 'Care instructions', Boolean(d.care.instructions)]
+    ['care', 'Care instructions', Boolean(d.care.instructions)],
+    ...(d.electronics.enabled ? [['electronics', 'Electronics: battery, power, radios, parts and certifications', ELEC.missing(d.electronics).length === 0]] : [])
   ].map(([key, label, ok]) => ({ key, label, ok }));
   return { checks, missing: checks.filter(c => !c.ok).map(c => c.label), complete: checks.every(c => c.ok) };
 }
@@ -334,6 +361,13 @@ export function packStrings(data) {
   d.labels.forEach(r => { add(r.item); add(r.spec); add(r.placement); });
   Object.values(d.packaging).forEach(add);
   Object.values(d.care).forEach(add);
+  if (d.electronics.enabled) {
+    Object.values(d.electronics.specs).forEach(add);
+    d.electronics.components.forEach(r => { add(r.part); add(r.notes); });
+    d.electronics.certifications.forEach(r => { add(r.market); add(r.notes); });
+    d.electronics.tests.forEach(r => { add(r.name); add(r.method); add(r.accept); });
+    d.electronics.stages.forEach(r => { add(r.goal); add(r.exit); });
+  }
   d.artwork.forEach(a => { add(a.name); a.pantones.forEach(p => add(p.name)); a.placements.forEach(p => add(p.label)); });
   add(d.notes);
   return [...out];
@@ -379,6 +413,7 @@ export function mergeClientEdits(orig, current, drafted) {
   keep('bom', r => r.component.toLowerCase()); keep('construction', r => r.area.toLowerCase()); keep('colorways', r => r.name.toLowerCase()); keep('labels', r => r.item.toLowerCase());
   for (const k of Object.keys(o.packaging)) if (c.packaging[k] !== o.packaging[k]) out.packaging[k] = c.packaging[k];
   for (const k of Object.keys(o.care)) if (c.care[k] !== o.care[k]) out.care[k] = c.care[k];
+  if (!same(c.electronics, o.electronics)) out.electronics = c.electronics; // whatever the client entered under Electronics is theirs
   if (c.notes !== o.notes) out.notes = [c.notes, out.notes].filter(Boolean).join('\n\n');
   // pictures the client uploaded stay; pictures the assistant made (cut-out, colourway tiles) come from the new draft
   const generated = r => /^(cw-|cutout-)/.test(String(r.id || ''));

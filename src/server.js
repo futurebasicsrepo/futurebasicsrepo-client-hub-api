@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
-import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
@@ -23,6 +23,7 @@ import { renderColorways, mergeColorwayTiles } from './colorway.js';
 import { makeColourways } from './panels.js';
 import { cleanQuote, compareQuotes, defaultCompareQty } from './rfq.js';
 import { cleanPartner, CARD_SCHEMA, CARD_SYSTEM, FIXTURE_CARD } from './booth.js';
+import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -51,6 +52,10 @@ const clientHubUrl = process.env.CLIENT_HUB_URL || 'https://hub.thefuturebasics.
 // Tech pack colour renderings double as the product's visual when there is no Shopify image. They are served through a
 // signed public URL so <img> tags can load them without a bearer token; the signature is derived from the server secret.
 const renderingSig = id => createHash('sha256').update(`rendering:${id}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
+// A factory's page and the pack links on it are not stored: they are worked out from the server secret, so staff can always copy the link again and the factory never needs a login.
+// Only the hash of each is kept, so a link can be switched off (a pack link by revoking its share, the page by rotating it).
+const factoryPageToken = (supplierId, epoch) => createHash('sha256').update(`factory-page:${supplierId}:${epoch}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
+const factoryShareToken = shareId => createHash('sha256').update(`factory-share:${shareId}:${Buffer.from(secret).toString('hex')}`).digest('hex').slice(0, 32);
 const renderingUrl = id => `${clientHubUrl}/r/${id}/${renderingSig(id)}.jpg`;
 const withRendering = row => row ? { ...row, rendering_url: row.has_rendering ? renderingUrl(row.id) : null } : row;
 // A pack has a cover image when it carries a colour rendering, or — for photo-start drafts — the uploaded reference photo in its first view.
@@ -577,6 +582,7 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
+app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
 app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
@@ -968,7 +974,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
       left join users u on u.id=av.uploader_id join clients c on c.id=p.client_id
       where p.client_id=$1 and coalesce(u.role,'client')<>'admin' order by av.created_at desc`,[client.id]),
     pool.query(`select p.*,to_jsonb(b) brief,${HAS_RENDERING_SQL},
-      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at,'ai_status',tp.ai_status,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('version',tp.version,'status',tp.status,'published_at',tp.published_at,'updated_at',tp.updated_at,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'source',tp.source,'followup_sent_at',tp.followup_sent_at,'ai_status',tp.ai_status,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at,'quote_waiting',exists(select 1 from tech_pack_shares qs where qs.tech_pack_id=tp.id and qs.assigned and qs.kind='quote' and qs.revoked_at is null and qs.waived_at is null and (qs.expires_at is null or qs.expires_at>now()) and not exists(select 1 from factory_quotes fq where fq.share_id=qs.id))) from tech_packs tp where tp.product_id=p.id) tech_pack,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
       coalesce((select json_agg(json_build_object('min_quantity',pt.min_quantity,'max_quantity',pt.max_quantity,
         'unit_cost_cents',pt.unit_cost_cents,'wholesale_cents',pt.wholesale_cents,'srp_cents',pt.srp_cents,
@@ -1675,7 +1681,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query(`select p.*,
       (select tp.version from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_version,
       (select tp.published_at from tech_packs tp where tp.product_id=p.id and tp.published_at is not null) tech_pack_published_at,
-      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at) from tech_packs tp where tp.product_id=p.id) tech_pack,
+      (select json_build_object('status',tp.status,'initiated_by',tp.initiated_by,'submitted_at',tp.submitted_at,'version',tp.version,'published_at',tp.published_at,'client_signed',(tp.verification->'clientSign'->>'name') is not null,'brand_signed',(tp.verification->'brandSign'->>'name') is not null,'factory_signed',(tp.verification->'factorySign'->>'name') is not null,'locked_at',tp.locked_at,'quote_waiting',exists(select 1 from tech_pack_shares qs where qs.tech_pack_id=tp.id and qs.assigned and qs.kind='quote' and qs.revoked_at is null and qs.waived_at is null and (qs.expires_at is null or qs.expires_at>now()) and not exists(select 1 from factory_quotes fq where fq.share_id=qs.id))) from tech_packs tp where tp.product_id=p.id) tech_pack,
       ${HAS_RENDERING_SQL},
       (select pc.moq from product_configurations pc where pc.product_id=p.id) moq,
       (select to_jsonb(pc) from product_configurations pc where pc.product_id=p.id) configuration,
@@ -1937,13 +1943,13 @@ async function updateVerification(packId,version,mutate){
 }
 // Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
 const flow=(productId,event,opts={},q=pool)=>applyFlow(q,productId,event,opts).catch(err=>{app.log.warn({err:err.message,productId,event},'product flow not updated');return {changed:false}});
-const shareRow=s=>({id:s.id,kind:s.kind||'review',includeModel:Boolean(s.include_model),supplierId:s.supplier_id||null,label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
+const shareRow=s=>({id:s.id,kind:s.kind||'review',includeModel:Boolean(s.include_model),supplierId:s.supplier_id||null,assigned:Boolean(s.assigned),waived:Boolean(s.waived_at),label:s.label,email:s.email,createdAt:s.created_at,expiresAt:s.expires_at,revokedAt:s.revoked_at,lastViewedAt:s.last_viewed_at,viewCount:s.view_count,
   active:!s.revoked_at&&(!s.expires_at||new Date(s.expires_at)>new Date())});
 app.get('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   const shares=ctx.techPack?(await pool.query('select * from tech_pack_shares where tech_pack_id=$1 order by created_at desc',[ctx.techPack.id])).rows:[];
   const seed=seedTechPack(ctx);
-  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),suppliers:(await pool.query(`select id,name,contact_email,country from suppliers where status='active' order by lower(name)`)).rows.map(x=>({id:x.id,name:x.name,email:x.contact_email||'',country:x.country||''})),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
+  return {product:ctx.product,techPack:ctx.techPack?{...techPackPayload(ctx.techPack),loop:await latestLoop(ctx.techPack.id)}:null,seed,completeness:techPackCompleteness(ctx.techPack?.data||seed),shares:shares.map(shareRow),assignment:await assignmentView(ctx),suppliers:(await pool.query(`select id,name,contact_email,country from suppliers where status='active' order by lower(name)`)).rows.map(x=>({id:x.id,name:x.name,email:x.contact_email||'',country:x.country||''})),workHubUrl,clientHubUrl,translations:packTranslations(ctx.techPack),aiEnabled:aiEnabled(),loopEnabled:LOOP_ON(),cutoutEnabled:cutoutEnabled()};
 });
 // Sketches travel inline as data URLs, so this route accepts a larger body than the default 1MB.
 // The card at the front of a product (hub and work console) reads product_configurations. The tech pack feeds it, so editing the pack updates the card
@@ -2118,6 +2124,76 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
   }
   return reply.code(201).send({share:shareRow(row),url,emailed});
 });
+// ---- Assigning a factory to a product: the product's supplier, a private link to the pack for it, and a factory page that lists everything assigned to it ----
+async function ensureFactoryPage(supplierId){
+  const sup=(await pool.query('select id,name,contact_email,page_epoch from suppliers where id=$1',[supplierId])).rows[0];if(!sup)return null;
+  await pool.query('update suppliers set page_hash=$2 where id=$1 and page_hash is distinct from $2',[sup.id,hash(factoryPageToken(sup.id,sup.page_epoch))]);
+  return {...sup,url:`${clientHubUrl}/factory/${factoryPageToken(sup.id,sup.page_epoch)}`};
+}
+async function assignmentView(ctx){
+  const sid=ctx.configuration?.supplier_id;if(!sid)return null;
+  const sup=await ensureFactoryPage(sid);if(!sup)return null;
+  const sh=ctx.techPack?(await pool.query(`select * from tech_pack_shares where tech_pack_id=$1 and supplier_id=$2 and assigned and revoked_at is null order by created_at desc limit 1`,[ctx.techPack.id,sid])).rows[0]:null;
+  return {supplierId:sid,name:sup.name,email:sup.contact_email||'',mode:sh?.kind||null,active:Boolean(sh),shareId:sh?.id||null,pageUrl:sup.url,packUrl:sh?`${clientHubUrl}/tp/${factoryShareToken(sh.id)}`:null};
+}
+app.post('/v1/admin/products/:id/tech-pack/factory',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
+  const sid=req.body?.supplierId||null,mode=req.body?.mode==='review'?'review':'quote';
+  if(sid&&!UUID_RE.test(String(sid)))return reply.code(400).send({error:'That factory is not in the supplier list'});
+  if(sid){
+    if(!ctx.techPack?.published_at)return reply.code(409).send({error:'Publish the tech pack before assigning a factory: it is what the factory will see'});
+    if(mode==='review'&&!normalizeVerification(ctx.techPack.verification,ctx.techPack.version).clientSign&&ctx.product.client_slug!=='future-basics')return reply.code(409).send({error:`${ctx.product.client_name} approves version ${ctx.techPack.version} before a factory can read and sign it. Assign it for quotation now, and switch it to produce once they approve.`});
+  }
+  const sup=sid?(await pool.query('select id,name from suppliers where id=$1',[sid])).rows[0]:null;if(sid&&!sup)return reply.code(400).send({error:'That factory is not in the supplier list'});
+  const db=await pool.connect();let share=null;
+  try{
+    await db.query('begin');
+    // whoever held this pack's assigned link before loses it: a new factory, or the same one switched between quote and produce
+    const old=(await db.query(`select id,supplier_id,kind from tech_pack_shares where tech_pack_id=$1 and assigned and revoked_at is null`,[ctx.techPack?.id||null])).rows;
+    const keep=sup?old.find(x=>x.supplier_id===sup.id&&x.kind===mode):null;
+    for(const o of old)if(!keep||o.id!==keep.id)await db.query('update tech_pack_shares set revoked_at=now() where id=$1',[o.id]);
+    if(sup&&!keep){
+      const id=randomUUID();
+      share=(await db.query(`insert into tech_pack_shares(id,tech_pack_id,token_hash,label,email,created_by,kind,supplier_id,assigned) values($1,$2,$3,$4,null,$5,$6,$7,true) returning *`,[id,ctx.techPack.id,hash(factoryShareToken(id)),sup.name,req.auth.sub,mode,sup.id])).rows[0];
+    }
+    if(sup)await db.query(`insert into product_configurations(product_id,supplier_id) values($1,$2) on conflict(product_id) do update set supplier_id=excluded.supplier_id,updated_at=now()`,[ctx.product.id,sup.id]);
+    else await db.query('update product_configurations set supplier_id=null,updated_at=now() where product_id=$1',[ctx.product.id]);
+    await db.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,sup?`Factory assigned: ${sup.name} (${mode==='review'?'to read and sign':'for quotation'})`:'Factory unassigned']);
+    await db.query('commit');
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+  const fresh=await loadAdminTechPack(req.params.id);
+  return reply.code(sup?201:200).send({assignment:await assignmentView(fresh)});
+});
+// The factory page link can be sent to the factory from here, or switched off and replaced.
+app.post('/v1/admin/suppliers/:id/factory-page/:action',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id))||!['rotate','email'].includes(req.params.action))return reply.code(404).send({error:'Not found'});
+  if(req.params.action==='rotate')await pool.query('update suppliers set page_epoch=page_epoch+1 where id=$1',[req.params.id]);
+  const sup=await ensureFactoryPage(req.params.id);if(!sup)return reply.code(404).send({error:'Supplier not found'});
+  if(req.params.action==='rotate')return {pageUrl:sup.url};
+  const to=String(req.body?.email||sup.contact_email||'').trim().toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to))return reply.code(400).send({error:'Add an email for this factory first'});
+  try{
+    const sent=await sendHubEmail({to,replyTo:req.auth.email||intakeNotificationEmail,subject:'Your Future Basics page: tech packs for you',html:hubEmailShell('Your tech packs',`<p>Hello ${emailEscape(sup.name)},</p><p>Every tech pack Future Basics has sent you is on one private page: open one to read it, ask for a quotation price, or confirm you can make it. No account is needed, it is free, and the page can switch language at the top.</p>${hubButton(sup.url,'Open your page')}<p style="font-size:12px;color:#717177">Keep this link private. Reply to this email with any questions.</p>`)});
+    if(!sent)return reply.code(502).send({error:'The email could not be sent. Copy the link and send it yourself.'});
+  }catch{return reply.code(502).send({error:'The email could not be sent. Copy the link and send it yourself.'})}
+  return {emailed:true,to};
+});
+// The factory's own page: what is assigned to it, and where each pack stands.
+app.get('/v1/factory/:token',async(req,reply)=>{
+  if(!throttle(`factorypage:${req.ip}`,{limit:300,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests: try again in a while'});
+  const sup=(await pool.query('select id,name,page_epoch from suppliers where page_hash=$1',[hash(String(req.params.token||''))])).rows[0];
+  if(!sup||factoryPageToken(sup.id,sup.page_epoch)!==String(req.params.token))return reply.code(404).send({error:'This factory page link is not valid'});
+  const rows=(await pool.query(`select s.id share_id,s.kind,s.waived_at,s.created_at assigned_at,tp.version,tp.verification,tp.locked_at,tp.updated_at,p.id product_id,p.title,c.name client_name,q.updated_at quoted_at
+    from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id
+    left join factory_quotes q on q.share_id=s.id
+    where s.supplier_id=$1 and s.assigned and s.revoked_at is null and (s.expires_at is null or s.expires_at>now()) and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))
+    order by s.created_at desc limit 200`,[sup.id])).rows;
+  return {factory:sup.name,packs:rows.map(r=>{
+    const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
+    const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
+    return {title:r.title,version:r.version,kind:r.kind,client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
+});
+app.get('/factory/:token',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./factory.html',import.meta.url),'utf8')));
 // Staff decide, link by link, whether this factory may see and download the 3D shape. Off by default; it can be switched either way at any time.
 app.patch('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id))||typeof req.body?.includeModel!=='boolean')return reply.code(400).send({error:'Say whether this link includes the 3D shape'});
@@ -2636,6 +2712,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     try{await vetMeasurements(draft,{photo:original?photo:'',pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),product:{title:row.title,category:draft.category},sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||'')})}
     catch(e){app.log.warn({err:e.message,packId},'measurement check failed')}
     const drafted=normalizeTechPack(await applyDraftToPack(seed,draft,{photos,sizes:seed.sizes,sampleSize:seed.style.sampleSize||(data.style.sampleSize||''),model:first.model}));
+    // an electronic product: the electrical facts and a first parts list, and the certifications that follow from them
+    {const elecText=`${draft.category||''} ${row.title||''} ${draft.description||''}`;
+     if(globalThis.FBElec.isElectronics(draft.category,row.title,draft.description)){try{applyElectronicsDraft(drafted,await draftElectronics({title:row.title,category:draft.category,description:draft.description,fabricSummary:draft.fabricSummary}),{text:elecText});Object.assign(drafted,normalizeTechPack(drafted))}catch(e){app.log.warn({err:e.message,packId},'electronics draft failed')}}}
     // the colours the assistant saw are replaced by the colours the pixels have, so the colourways and the tiles made from them are real
     // only measured on a clean cut-out: on a raw photo a busy backdrop would be counted as product colour, and the assistant's own colours are better than that
     if(original&&cutout?.image){try{const snapped=snapColours(drafted,await measureColours(cutout.image));if(snapped.changed){drafted.colorways=snapped.pack.colorways;drafted.bom=snapped.pack.bom;app.log.info({packId,changed:snapped.changed},'colours measured from the photo')}}catch(e){app.log.warn({err:e.message,packId},'colours not measured')}}
@@ -3873,13 +3952,9 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
 });
-const quoteRow=q=>({id:q.id,shareId:q.share_id,version:q.version,company:q.company,contactName:q.contact_name,email:q.email,wechat:q.wechat,phone:q.phone,currency:q.currency,tiers:q.tiers||[],moq:q.moq,sampleCost:q.sample_cost==null?null:Number(q.sample_cost),sampleDays:q.sample_days,leadDays:q.lead_days,tooling:q.tooling==null?null:Number(q.tooling),incoterm:q.incoterm,paymentTerms:q.payment_terms,validUntil:q.valid_until?String(q.valid_until).slice(0,10):null,notes:q.notes,revisions:(q.history||[]).length,createdAt:q.created_at,updatedAt:q.updated_at});
-// A factory sends (or revises) its quotation through its link: free, no account. Staff are told; earlier versions of the same factory's quote are kept.
-app.post('/v1/tp/:token/quote',async(req,reply)=>{
-  if(!throttle(`quote:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many sends from this link. Please try again in an hour.'});
-  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
-  if(!row.quote)return reply.code(403).send({error:'This link is not for quotations'});
-  const c=cleanQuote(req.body||{});if(c.error)return reply.code(400).send({error:c.error});const q=c.q;
+const quoteRow=q=>({byStaff:Boolean(q.entered_by),id:q.id,shareId:q.share_id,version:q.version,company:q.company,contactName:q.contact_name,email:q.email,wechat:q.wechat,phone:q.phone,currency:q.currency,tiers:q.tiers||[],moq:q.moq,sampleCost:q.sample_cost==null?null:Number(q.sample_cost),sampleDays:q.sample_days,leadDays:q.lead_days,tooling:q.tooling==null?null:Number(q.tooling),incoterm:q.incoterm,paymentTerms:q.payment_terms,validUntil:q.valid_until?String(q.valid_until).slice(0,10):null,notes:q.notes,revisions:(q.history||[]).length,createdAt:q.created_at,updatedAt:q.updated_at});
+// A quotation is saved the same way whoever it comes from: the factory through its link, or Future Basics typing in what the factory sent another way (staff = {id,email}).
+async function saveFactoryQuote(row,q,staff=null){
   const prev=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
   let saved;
   if(prev){
@@ -3888,11 +3963,81 @@ app.post('/v1/tp/:token/quote',async(req,reply)=>{
       [prev.id,row.version,q.company||row.share_label,q.contactName,q.email,q.wechat,q.phone,q.currency,JSON.stringify(q.tiers),q.moq,q.sampleCost,q.sampleDays,q.leadDays,q.tooling,q.incoterm,q.paymentTerms,q.validUntil,q.notes,JSON.stringify(history)])).rows[0];
   }else saved=(await pool.query(`insert into factory_quotes(share_id,tech_pack_id,version,company,contact_name,email,wechat,phone,currency,tiers,moq,sample_cost,sample_days,lead_days,tooling,incoterm,payment_terms,valid_until,notes)
     values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,[row.share_id,row.id,row.version,q.company||row.share_label,q.contactName,q.email,q.wechat,q.phone,q.currency,JSON.stringify(q.tiers),q.moq,q.sampleCost,q.sampleDays,q.leadDays,q.tooling,q.incoterm,q.paymentTerms,q.validUntil,q.notes])).rows[0];
-  const first=q.tiers[0],summary=`${row.share_label} ${prev?'revised its quote':'quoted'} for ${row.title}: ${q.currency} ${first.unit} at ${first.qty}${q.moq?`, MOQ ${q.moq}`:''}${q.leadDays?`, ${q.leadDays} days`:''}`;
+  saved=(await pool.query('update factory_quotes set entered_by=$2 where id=$1 returning *',[saved.id,staff?.id||null])).rows[0];
+  const first=q.tiers[0],summary=`${staff?`Future Basics recorded ${row.share_label}'s ${prev?'revised quote':'quote'}`:`${row.share_label} ${prev?'revised its quote':'quoted'}`} for ${row.title}: ${q.currency} ${first.unit} at ${first.qty}${q.moq?`, MOQ ${q.moq}`:''}${q.leadDays?`, ${q.leadDays} days`:''}`;
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,quoteId:saved.id,shareId:row.share_id}]).catch(()=>{});
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-quote',$2,'product',$3)`,[row.client_id,summary,row.product_id]).catch(()=>{});
-  await notifyStaff(`${prev?'Revised quote':'New quote'}: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> ${prev?'revised its quotation':'sent a quotation'} for <strong>${emailEscape(row.title)}</strong>.</p><p>${emailEscape(q.currency)} ${first.unit} at ${first.qty} units${q.moq?` · MOQ ${q.moq}`:''}${q.leadDays?` · ${q.leadDays} days`:''}</p><p>Compare it with the others in the tech pack's Sign tab.</p>`).catch(()=>{});
+  if(!staff)await notifyStaff(`${prev?'Revised quote':'New quote'}: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> ${prev?'revised its quotation':'sent a quotation'} for <strong>${emailEscape(row.title)}</strong>.</p><p>${emailEscape(q.currency)} ${first.unit} at ${first.qty} units${q.moq?` · MOQ ${q.moq}`:''}${q.leadDays?` · ${q.leadDays} days`:''}</p><p>Compare it with the others in the tech pack's Sign tab.</p>`).catch(()=>{});
+  return {saved,prev};
+}
+// A factory sends (or revises) its quotation through its link: free, no account. Staff are told; earlier versions of the same factory's quote are kept.
+app.post('/v1/tp/:token/quote',async(req,reply)=>{
+  if(!throttle(`quote:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many sends from this link. Please try again in an hour.'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  if(!row.quote)return reply.code(403).send({error:'This link is not for quotations'});
+  const c=cleanQuote(req.body||{});if(c.error)return reply.code(400).send({error:c.error});const q=c.q;
+  const {saved,prev}=await saveFactoryQuote(row,q);
   return reply.code(prev?200:201).send({quote:quoteRow(saved)});
+});
+// ---- Future Basics acts for a factory that does not use its page, so a client's project never waits on it ----
+async function loadShareForStaff(id){
+  if(!UUID_RE.test(String(id)))return null;
+  return (await pool.query(`select s.id share_id,s.label share_label,s.kind,s.revoked_at,s.waived_at,tp.id,tp.version,tp.client_id,tp.product_id,p.title from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id where s.id=$1`,[id])).rows[0]||null;
+}
+// Type in the quotation a factory sent another way (WeChat, email, at the booth). It is marked as entered by Future Basics and says how it arrived.
+app.post('/v1/admin/tech-pack-shares/:id/quote',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await loadShareForStaff(req.params.id);if(!row)return reply.code(404).send({error:'Quotation link not found'});
+  if(row.kind!=='quote')return reply.code(409).send({error:'This link is not for quotations'});
+  if(row.revoked_at)return reply.code(409).send({error:'This link was revoked: make a new one first'});
+  const how=String(req.body?.how||'').replace(/\s+/g,' ').trim().slice(0,200);if(!how)return reply.code(400).send({error:'Say how you got it, e.g. "WeChat, 10 Oct", so the record shows where it came from'});
+  const c=cleanQuote(req.body||{},{requireContact:false});if(c.error)return reply.code(400).send({error:c.error});
+  const q={...c.q,notes:[c.q.notes,`Entered by Future Basics from: ${how}`].filter(Boolean).join('\n').slice(0,1500)};
+  const {saved,prev}=await saveFactoryQuote(row,q,{id:req.auth.sub,email:req.auth.email||''});
+  return reply.code(prev?200:201).send({quote:quoteRow(saved)});
+});
+// Stop waiting for a quote that is not coming (or wait again): the factory's link keeps working, but it no longer holds the ball.
+app.post('/v1/admin/tech-pack-shares/:id/waive',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await loadShareForStaff(req.params.id);if(!row)return reply.code(404).send({error:'Link not found'});
+  const on=req.body?.waived!==false;
+  await pool.query('update tech_pack_shares set waived_at=case when $2 then coalesce(waived_at,now()) else null end where id=$1',[row.share_id,on]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[row.client_id,row.product_id,req.auth.sub,on?`Stopped waiting for ${row.share_label}'s quote`:`Waiting for ${row.share_label}'s quote again`]).catch(()=>{});
+  return {waived:on};
+});
+// Acknowledge the callouts, and countersign, on the factory's behalf. Each says who did it and how the factory confirmed.
+async function staffFactoryCtx(req,reply){
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx){reply.code(404).send({error:'Product not found'});return null}
+  if(!ctx.techPack?.published_at){reply.code(409).send({error:'Publish the tech pack first'});return null}
+  if(ctx.techPack.locked_at){reply.code(409).send({error:'This tech pack is signed and locked'});return null}
+  return ctx;
+}
+const forFactory=async(ctx,body)=>String(body?.name||'').trim().slice(0,120)||(await assignmentView(ctx))?.name||'the factory';
+app.post('/v1/admin/products/:id/tech-pack/factory-ack',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await staffFactoryCtx(req,reply);if(!ctx)return;
+  const who=`Future Basics for ${await forFactory(ctx,req.body)}`,r=techPackReadiness(normalizeTechPack(ctx.techPack.published_data),normalizeVerification(ctx.techPack.verification,ctx.techPack.version));
+  if(!r.pendingCalloutKeys.length)return reply.code(409).send({error:'Every callout is already acknowledged'});
+  const n=r.pendingCalloutKeys.length,updated=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{for(const k of r.pendingCalloutKeys)v.acks[k]={by:who,at:new Date().toISOString()}});
+  if(!updated)return reply.code(409).send({error:'The tech pack changed: reload and try again'});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'tech-pack',$4)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`${n} callout${n===1?'':'s'} acknowledged by Future Basics for ${await forFactory(ctx,req.body)}`]).catch(()=>{});
+  return {acknowledged:n,techPack:techPackPayload(updated)};
+});
+app.post('/v1/admin/products/:id/tech-pack/factory-sign',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await staffFactoryCtx(req,reply);if(!ctx)return;
+  const name=String(req.body?.name||'').trim().slice(0,120),how=String(req.body?.how||'').replace(/\s+/g,' ').trim().slice(0,200);
+  if(!name)return reply.code(400).send({error:'Type the name of the factory or the person who confirmed'});
+  if(!how)return reply.code(400).send({error:'Say how they confirmed, e.g. "WeChat, 10 Oct", so the record shows where it came from'});
+  const r=techPackReadiness(normalizeTechPack(ctx.techPack.published_data),normalizeVerification(ctx.techPack.verification,ctx.techPack.version));
+  if(r.factorySign)return reply.code(409).send({error:`Version ${ctx.techPack.version} is already countersigned by ${r.factorySign.name}`});
+  if(!r.brandSign)return reply.code(409).send({error:'Future Basics signs the tech pack before the factory countersigns'});
+  if(r.pendingCalloutKeys.length&&req.body?.ackAll!==true)return reply.code(409).send({error:`${r.pendingCalloutKeys.length} callout${r.pendingCalloutKeys.length===1?' is':'s are'} not acknowledged yet: tick "acknowledge every callout for them" to do both`});
+  const at=new Date().toISOString(),updated=await updateVerification(ctx.techPack.id,ctx.techPack.version,v=>{
+    for(const k of r.pendingCalloutKeys)v.acks[k]={by:`Future Basics for ${name}`,at};
+    v.factorySign={name,at,by:`Future Basics (${req.auth.email||'staff'}) for ${name}: ${how}`};
+  });
+  if(!updated)return reply.code(409).send({error:'The tech pack changed: reload and try again'});
+  recordDraftEdits(ctx.techPack.id,'countersigned').catch(()=>{});
+  if(updated.locked_at)await flow(ctx.product.id,'pack-locked',{actorId:req.auth.sub,note:`v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})`});
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})${updated.locked_at?' — locked for production':''}`,{techPackId:ctx.techPack.id,version:ctx.techPack.version,locked:Boolean(updated.locked_at),onBehalf:true}]).catch(()=>{});
+  return {locked:Boolean(updated.locked_at),factorySign:normalizeVerification(updated.verification,updated.version).factorySign,techPack:techPackPayload(updated)};
 });
 // Staff: the links sent for quotation, and what came back, side by side at one quantity.
 app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{

@@ -18,6 +18,7 @@
         return { who: 'future-basics', why: 'Future Basics is writing the tech pack' };
       }
       const v = t.version;
+      if (t.quote_waiting) return { who: 'factory', why: 'Out for quotation: waiting for the factory\'s price' }; // a factory asked to quote holds the ball until it answers, whoever still has to sign
       if (!t.client_signed) return { who: 'client', why: `Tech pack v${v} is waiting for the client to review and sign` };
       if (!t.brand_signed) return { who: 'future-basics', why: `Tech pack v${v} is waiting for Future Basics to sign` };
       if (!t.factory_signed && !t.locked_at) return { who: 'factory', why: `Tech pack v${v} is waiting for the factory to acknowledge` };
