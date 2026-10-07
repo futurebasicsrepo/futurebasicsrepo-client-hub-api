@@ -664,6 +664,7 @@ export async function migrate() {
     );
     create index if not exists tech_pack_shares_pack_idx on tech_pack_shares(tech_pack_id,created_at desc);
     alter table tech_pack_shares add column if not exists kind text not null default 'review';
+    alter table tech_pack_shares add column if not exists include_model boolean not null default false;
     create table if not exists factory_quotes (
       id uuid primary key default gen_random_uuid(),
       share_id uuid unique not null references tech_pack_shares(id) on delete cascade,
@@ -699,6 +700,13 @@ export async function migrate() {
       notes text,
       created_at timestamptz not null default now()
     );
+    alter table partners add column if not exists job_title text;
+    alter table partners add column if not exists website text;
+    alter table partners add column if not exists moq_note text;
+    alter table partners add column if not exists rating integer;
+    alter table partners add column if not exists supplier_id uuid references suppliers(id) on delete set null;
+    alter table partners add column if not exists created_by uuid references users(id) on delete set null;
+    alter table partners add column if not exists updated_at timestamptz not null default now();
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,

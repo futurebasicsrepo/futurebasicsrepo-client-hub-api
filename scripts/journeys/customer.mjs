@@ -174,4 +174,55 @@ await journey('J71', 'a factory is asked to quote: a private link with the clien
   }
 });
 
+await journey('J75', 'a factory sees the 3D shape only when Future Basics switches it on for that link, can download it, and staff can send the shape, the quotations and the pack to the client\'s portal', async () => {
+  const m = await room('75'), other = await room('75b');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done' && st.model && st.model.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+  const send = body => adm(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', body });
+  ok((await send({ source: 'quotes' })).status === 409, 'quotations cannot be sent before any factory has quoted');
+  const a = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Mill A' } }), tokA = a.json.url.split('/tp/')[1];
+  const b = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Mill B', includeModel: true } }), tokB = b.json.url.split('/tp/')[1];
+  ok(a.json.share.includeModel === false && b.json.share.includeModel === true, 'a link does not include the 3D shape unless staff say so');
+  ok((await call(`/v1/tp/${tokA}`)).json.model === null && (await call(`/v1/tp/${tokA}/model/stl`)).status === 404 && (await call(`/v1/tp/${tokA}/model/thumb`)).status === 404, 'so the first factory is shown none of it and cannot fetch the file');
+  const vb = (await call(`/v1/tp/${tokB}`)).json; ok(vb.model && /^data:image\/jpeg/.test(vb.model.thumb) && vb.model.triangles > 0, 'the second gets a preview and the size of the file', vb.model && Object.keys(vb.model));
+  const stl = await call(`/v1/tp/${tokB}/model/stl`); ok(stl.status === 200 && stl.ct.includes('model/stl') && stl.text.length > 84, 'and can load the file with no sign-in', [stl.status, stl.ct]);
+  ok(!JSON.stringify(vb).includes('Secret Brand Co'), 'the client\'s name is still nowhere in what it receives');
+  ok((await call(`/v1/tp/nonsense-token/model/stl`)).status === 404, 'a made-up link gets nothing');
+  const ids = (await adm(`/v1/admin/products/${m.id}/tech-pack/quotes`)).json.links, idA = ids.find(l => l.label === 'Mill A').id;
+  ok((await call(`/v1/admin/tech-pack-shares/${idA}`, { method: 'PATCH', token: m.token, body: { includeModel: true } })).status === 403, 'a customer cannot switch it on');
+  ok((await adm(`/v1/admin/tech-pack-shares/${idA}`, { method: 'PATCH', body: { includeModel: 'yes' } })).status === 400, 'a switch that is not on or off is refused');
+  const on = await adm(`/v1/admin/tech-pack-shares/${idA}`, { method: 'PATCH', body: { includeModel: true } }); ok(on.status === 200 && on.json.share.includeModel === true && (await call(`/v1/tp/${tokA}/model/stl`)).status === 200, 'staff can switch it on later for the first factory');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary='3D shape opened to Mill A'`) === '1', 'and it is on the record');
+  await adm(`/v1/admin/tech-pack-shares/${idA}`, { method: 'PATCH', body: { includeModel: false } }); ok((await call(`/v1/tp/${tokA}/model/stl`)).status === 404, 'and off again, at once');
+  // factories quote, then staff send the work to the client's portal
+  await call(`/v1/tp/${tokA}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 5.2 }], moq: 500, leadDays: 35, email: 'a@mill.cn' } });
+  await call(`/v1/tp/${tokB}/quote`, { body: { currency: 'USD', tiers: [{ qty: 500, unit: 4.4 }], moq: 300, leadDays: 40, email: 'b@mill.cn' } });
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/share-render`, { method: 'POST', token: m.token, body: { source: 'model' } })).status === 403 && (await send({ source: 'nope' })).status === 400, 'only staff can send, and only what exists');
+  const sm = await send({ source: 'model' }); ok(sm.status === 201 && sm.json.files === 2, 'the 3D shape goes to the client portal as a preview and a file', [sm.status, sm.json]);
+  const fid = sql(`select pf.id from project_files pf join project_messages pm on pm.id=pf.message_id where pm.id='${sm.json.messageId}' and pf.mime_type='model/stl'`);
+  const dl = await call(`/v1/project-files/${fid}/download`, { token: m.token }); ok(dl.status === 200 && dl.ct.includes('model/stl') && dl.text.length > 84, 'the customer downloads the STL from their own project', dl.status);
+  ok((await call(`/v1/project-files/${fid}/download`, { token: other.token })).status === 404, 'and nobody else can');
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='project-file' and title like 'New 3D shape in%'`) === '1', 'they are told');
+  const sq = await send({ source: 'quotes' }), qbody = sql(`select body from project_messages where id='${sq.json.messageId}'`);
+  ok(sq.status === 201 && /Factory A: USD 4.4/.test(qbody) && /Factory B: USD 5.2/.test(qbody) && !/Mill/.test(qbody) && !/Secret/.test(qbody), 'the quotations go cheapest first with the factories shown as Factory A, B', qbody);
+  const sn = await send({ source: 'quotes', showNames: true }); ok(/1\. Mill B: USD 4.4/.test(sql(`select body from project_messages where id='${sn.json.messageId}'`)), 'and with their names only when staff choose');
+  const st = await send({ source: 'techpack' }); ok(st.status === 201 && sql(`select body from project_messages where id='${st.json.messageId}'`).includes(`/tech-packs/${m.id}`), 'the tech pack link goes too');
+  sql(`update tech_packs set published_at=null where product_id='${m.id}'`); ok((await send({ source: 'techpack' })).status === 409, 'but not before the pack is published'); sql(`update tech_packs set published_at=now() where product_id='${m.id}'`);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const open = async tok => { const c = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, acceptDownloads: true }), p = await c.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="art"]', { timeout: 10000 }); await p.click('#tabs button[data-tab="art"]'); return { c, p }; };
+      const A = await open(tokA); ok(await A.p.locator('[data-fmodel]').count() === 0, 'on the first factory\'s page there is no 3D section'); await A.c.close();
+      const B = await open(tokB); await B.p.waitForSelector('[data-fmodel] .stl-prev', { timeout: 10000 });
+      ok(/3D shape/i.test(await B.p.innerText('[data-fmodel]')) && /not to scale/i.test(await B.p.innerText('[data-fmodel]')), 'on the second there is a 3D section that says it is not to scale');
+      await B.p.click('[data-fmodel] .stl-prev .btn'); await B.p.waitForSelector('[data-fmodel] .stl-host canvas, [data-fmodel] .stl-msg', { timeout: 15000 });
+      ok(!/could not be loaded/i.test(await B.p.innerText('[data-fmodel] .stl-host')), 'it opens in the viewer');
+      const [d] = await Promise.all([B.p.waitForEvent('download', { timeout: 10000 }), B.p.click('[data-act="dlfactorymodel"]')]); ok(/\.stl$/.test(d.suggestedFilename()), 'and downloads as an STL file', d.suggestedFilename());
+      ok(await B.p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && B.p.errs.length === 0, 'with nothing off the screen and no script errors', B.p.errs); await B.c.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

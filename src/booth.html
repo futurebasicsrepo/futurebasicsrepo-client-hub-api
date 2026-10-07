@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Fair notes · Work</title>
+<link href="/fonts/fonts.css" rel="stylesheet">
+<style>
+:root{--ink:#141416;--dim:#6f6f76;--line:#d9d8d2;--bg:#f5f4ef;--paper:#fff;--cue:#2edc83;--hot:#d9342b;--warn:#f5c518}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;font-family:'Space Grotesk',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;padding-bottom:env(safe-area-inset-bottom)}
+a{color:inherit}.hidden{display:none!important}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--ink);color:#fff}
+header h1{font-size:15px;margin:0;letter-spacing:.08em;text-transform:uppercase;font-weight:600}header .grow{flex:1}header a{font-size:13px;color:#cfcfd4;text-decoration:none}
+header select{max-width:46vw;padding:6px 8px;border-radius:8px;border:1px solid #444;background:#222;color:#fff;font:inherit;font-size:13px}
+main{max-width:720px;margin:0 auto;padding:14px 14px 80px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+.scan{display:flex;align-items:center;justify-content:center;gap:10px;min-height:72px;border:2px dashed var(--ink);border-radius:16px;background:#fff;font-weight:600;font-size:17px;cursor:pointer;text-align:center;padding:10px}
+.scan input{display:none}.scan.busy{opacity:.6;pointer-events:none}
+.hint{margin:8px 2px 0;color:var(--dim);font-size:13px;min-height:18px}
+label.f{display:grid;gap:4px;margin:10px 0 0}label.f>span{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+input[type=text],input[type=email],input[type=tel],input[type=url],input[type=search],textarea{width:100%;font:inherit;font-size:16px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff}
+textarea{min-height:84px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 14px;font:inherit;font-size:14px;cursor:pointer}.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.stars{display:flex;gap:4px;margin-top:4px}.stars button{border:0;background:none;font-size:34px;line-height:1;padding:2px 4px;cursor:pointer;color:#cfcec7}.stars button.on{color:#f0a500}
+button.primary{width:100%;margin-top:14px;padding:15px;border-radius:14px;border:0;background:var(--ink);color:#fff;font:inherit;font-weight:600;font-size:17px;cursor:pointer}
+button.primary:disabled{opacity:.5}button.ghost{padding:8px 12px;border-radius:10px;border:1px solid var(--ink);background:#fff;font:inherit;font-size:13px;cursor:pointer}
+.msg{margin:10px 2px 0;font-size:14px;min-height:20px}.msg.err{color:var(--hot)}.msg.ok{color:#0b6b3e}
+.outbox{display:flex;align-items:center;gap:10px;background:#fff6d6;border:1px solid #eed27a;border-radius:14px;padding:10px 14px;margin-bottom:14px;font-size:14px}
+h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:22px 2px 10px;font-weight:600}
+.row{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.row .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}.row b{font-size:16px}.row .sub{color:var(--dim);font-size:13px;margin-top:2px}
+.row .st{color:#f0a500;letter-spacing:1px;white-space:nowrap}.tag{display:inline-block;background:#ecebe5;border-radius:999px;padding:2px 9px;font-size:12px;margin:6px 6px 0 0}
+.more{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:8px;font-size:14px}.more .btns{display:flex;flex-wrap:wrap;gap:8px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.empty{color:var(--dim);text-align:center;padding:26px 10px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;z-index:10;max-width:90vw}
+</style>
+</head>
+<body>
+<header><h1>Fair notes</h1><span class="grow"></span><select id="src" aria-label="Which fair"></select><a href="/admin">Work</a></header>
+<div id="auth" class="hidden card" style="margin:16px"><p>Sign in on <a href="/admin">Work</a> first, then come back here.</p></div>
+<main id="app" class="hidden">
+  <div id="outbox" class="outbox hidden"><span id="outboxText"></span><button class="ghost" id="sendNow" type="button">Send now</button></div>
+  <section class="card">
+    <label class="scan" id="scanBtn"><span id="scanLabel">Scan a business card</span><input type="file" id="card" accept="image/*" capture="environment"></label>
+    <p class="hint" id="scanMsg">Take a photo of their card and the form fills itself. Check it, add what you learned, save.</p>
+    <form id="f" autocomplete="off" novalidate>
+      <label class="f"><span>Company</span><input type="text" name="company" required></label>
+      <div class="grid2"><label class="f"><span>Contact</span><input type="text" name="contactName"></label><label class="f"><span>Title</span><input type="text" name="jobTitle"></label></div>
+      <div class="grid2"><label class="f"><span>WeChat</span><input type="text" name="wechat" autocapitalize="none"></label><label class="f"><span>Phone</span><input type="tel" name="phone"></label></div>
+      <div class="grid2"><label class="f"><span>Email</span><input type="email" name="email" autocapitalize="none"></label><label class="f"><span>City</span><input type="text" name="city"></label></div>
+      <label class="f"><span>Website</span><input type="url" name="website" autocapitalize="none"></label>
+      <label class="f"><span>What they make</span></label><div class="chips" id="makes"></div>
+      <label class="f"><span>Other products</span><input type="text" name="makesOther" placeholder="e.g. EVA soles, zippers"></label>
+      <label class="f"><span>MOQ, prices, lead time</span><input type="text" name="moqNote" placeholder="MOQ 300, ~$6 FOB, 35 days"></label>
+      <label class="f"><span>How good were they?</span></label><div class="stars" id="stars" role="group" aria-label="Rating"></div>
+      <label class="f"><span>Notes</span><textarea name="notes" placeholder="Samples they showed, who to ask for, what to follow up"></textarea></label>
+      <button class="primary" id="save" type="submit">Save factory</button>
+      <p class="msg" id="msg"></p>
+    </form>
+  </section>
+  <h2 id="listHead">Factories met</h2>
+  <input type="search" id="q" placeholder="Search name, city, what they make, notes" style="margin-bottom:10px">
+  <div class="filters" id="filters"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</main>
+<div id="toast" class="toast hidden"></div>
+<script>
+const API=location.origin,KEY='fb.admin.token',OUT='fb.booth.outbox',SRC='fb.booth.source',MAKES=['Apparel','Footwear','Bags','Accessories','Electronics','Packaging','Printing','Other'];
+const FAIRS=['Canton Fair 2026','HK Electronics Fair 2026','Other'];
+let token='',partners=[],rating=null,open=null,filterTag='',sending=false;
+const $=id=>document.getElementById(id),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+try{token=localStorage.getItem(KEY)||''}catch{}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add('hidden'),2600)}
+async function api(p,o={}){o.headers=o.headers||{};if(token)o.headers.Authorization='Bearer '+token;if(o.body&&typeof o.body!=='string')o.body=JSON.stringify(o.body);if(o.body)o.headers['Content-Type']='application/json';const r=await fetch(API+p,o);let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||r.statusText);e.status=r.status;e.data=d;throw e}return d}
+// ---- the fair this phone is at ----
+const srcSel=$('src');srcSel.innerHTML=FAIRS.map(f=>`<option>${f}</option>`).join('');srcSel.value=FAIRS.includes(store.get(SRC,''))?store.get(SRC,''):FAIRS[0];srcSel.onchange=()=>{store.set(SRC,srcSel.value);renderList()};
+// ---- the form ----
+const form=$('f');
+$('makes').innerHTML=MAKES.map(m=>`<button type="button" class="chip" data-m="${m}">${m}</button>`).join('');
+$('makes').onclick=e=>{const b=e.target.closest('.chip');if(b)b.classList.toggle('on')};
+function drawStars(){$('stars').innerHTML=[1,2,3,4,5].map(n=>`<button type="button" data-n="${n}" class="${rating>=n?'on':''}" aria-label="${n} of 5">★</button>`).join('')}
+$('stars').onclick=e=>{const b=e.target.closest('button');if(!b)return;const n=Number(b.dataset.n);rating=rating===n?null:n;drawStars()};drawStars();
+function readForm(){const fd=new FormData(form),chips=[...document.querySelectorAll('#makes .chip.on')].map(c=>c.dataset.m),other=String(fd.get('makesOther')||'').split(',').map(x=>x.trim()).filter(Boolean);
+  return {company:fd.get('company'),contactName:fd.get('contactName'),jobTitle:fd.get('jobTitle'),wechat:fd.get('wechat'),phone:fd.get('phone'),email:fd.get('email'),city:fd.get('city'),website:fd.get('website'),makes:[...chips,...other],moqNote:fd.get('moqNote'),rating,notes:fd.get('notes'),source:srcSel.value,lang:langOf(fd.get('company'))}}
+const langOf=t=>/[一-鿿]/.test(String(t||''))?'zh':'en';
+function resetForm(){form.reset();rating=null;drawStars();document.querySelectorAll('#makes .chip.on').forEach(c=>c.classList.remove('on'));$('msg').textContent='';$('scanMsg').textContent='Take a photo of their card and the form fills itself. Check it, add what you learned, save.'}
+// ---- the card ----
+$('card').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;const btn=$('scanBtn');btn.classList.add('busy');$('scanLabel').textContent='Reading the card…';$('scanMsg').textContent='';
+  try{
+    const image=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)});
+    const {fields}=await api('/v1/admin/partners/scan',{method:'POST',body:{image}});
+    for(const k of ['company','contactName','jobTitle','wechat','phone','email','city','website'])if(fields[k]&&form[k])form[k].value=fields[k];
+    const tags=String(fields.makes||'').split(',').map(x=>x.trim()).filter(Boolean),known=[];
+    for(const t of tags){const m=MAKES.find(x=>x.toLowerCase()===t.toLowerCase());if(m)known.push(m)}
+    document.querySelectorAll('#makes .chip').forEach(c=>c.classList.toggle('on',known.includes(c.dataset.m)));form.makesOther.value=tags.filter(t=>!MAKES.some(x=>x.toLowerCase()===t.toLowerCase())).join(', ');
+    $('scanMsg').textContent='Read from the card. Check each field before you save.';
+  }catch(err){$('scanMsg').textContent=err.status===401?'Sign in again on Work.':(err.message||'Could not read that card: type it in.')}
+  finally{btn.classList.remove('busy');$('scanLabel').textContent='Scan another card';e.target.value=''}
+};
+// ---- saving, even when the fair's wifi is not there ----
+const outbox=()=>store.get(OUT,[]);
+function drawOutbox(){const o=outbox();$('outbox').classList.toggle('hidden',!o.length);$('outboxText').textContent=o.length?`${o.length} saved on this phone, waiting for a connection`:''}
+async function flush(){
+  if(sending)return;sending=true;
+  try{for(const item of outbox()){
+    try{await api('/v1/admin/partners',{method:'POST',body:{...item.body,allowDuplicate:true}});store.set(OUT,outbox().filter(x=>x.id!==item.id))}
+    catch(e){if(!e.status||e.status>=500)break;if(e.status===401)break;store.set(OUT,outbox().filter(x=>x.id!==item.id))} // a refusal that will not change is dropped, a bad connection waits
+  }}finally{sending=false;drawOutbox();loadList()}
+}
+form.onsubmit=async e=>{
+  e.preventDefault();const body=readForm(),btn=$('save'),msg=$('msg');msg.className='msg';
+  if(!String(body.company||'').trim()){msg.className='msg err';msg.textContent='Enter the company name';form.company.focus();return}
+  btn.disabled=true;
+  try{
+    const r=await api('/v1/admin/partners',{method:'POST',body});partners.unshift(r.partner);toast(`Saved ${r.partner.company}`);resetForm();renderList();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){
+    if(err.status===409){if(confirm(`${err.message}. Save it again anyway?`)){try{const r=await api('/v1/admin/partners',{method:'POST',body:{...body,allowDuplicate:true}});partners.unshift(r.partner);toast(`Saved ${r.partner.company}`);resetForm();renderList()}catch(e2){msg.className='msg err';msg.textContent=e2.message}}}
+    else if(!err.status){const o=outbox();o.push({id:Date.now()+Math.random(),body});store.set(OUT,o);drawOutbox();toast('Saved on this phone: it will send when you are online');resetForm()}
+    else{msg.className='msg err';msg.textContent=err.status===401?'Sign in again on Work.':err.message}
+  }finally{btn.disabled=false}
+};
+$('sendNow').onclick=flush;addEventListener('online',flush);setInterval(()=>{if(outbox().length)flush()},20000);
+// ---- the list ----
+async function loadList(){try{partners=(await api('/v1/admin/partners')).partners;renderList()}catch(e){if(e.status===401){$('app').classList.add('hidden');$('auth').classList.remove('hidden')}else if(!partners.length)$('list').innerHTML='<div class="empty">Could not load the list. It will try again.</div>'}}
+function matches(p,q){return !q||[p.company,p.contactName,p.city,p.makes,p.notes,p.wechat,p.moqNote].some(x=>String(x||'').toLowerCase().includes(q))}
+function renderList(){
+  const q=$('q').value.trim().toLowerCase(),here=partners.filter(p=>p.source===srcSel.value),tags=[...new Set(here.flatMap(p=>String(p.makes||'').split(',').map(x=>x.trim()).filter(Boolean)))].slice(0,14);
+  $('listHead').textContent=`Factories met · ${srcSel.value} · ${here.length}`;
+  $('filters').innerHTML=tags.map(t=>`<button class="chip ${filterTag===t?'on':''}" data-t="${esc(t)}">${esc(t)}</button>`).join('');
+  const shown=here.filter(p=>matches(p,q)&&(!filterTag||String(p.makes||'').split(',').map(x=>x.trim()).includes(filterTag)));
+  $('list').innerHTML=shown.length?shown.map(p=>`<div class="row" data-id="${p.id}"><div class="top"><div><b>${esc(p.company)}</b><div class="sub">${[p.contactName,p.jobTitle,p.city].filter(Boolean).map(esc).join(' · ')||'&nbsp;'}</div>${String(p.makes||'').split(',').map(x=>x.trim()).filter(Boolean).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div><span class="st">${'★'.repeat(p.rating||0)}${'☆'.repeat(p.rating?5-p.rating:0)}</span></div>${open===p.id?more(p):''}</div>`).join(''):`<div class="empty">${here.length?'No match.':'Nobody saved from this fair yet.'}</div>`;
+}
+function more(p){return `<div class="more">${p.moqNote?`<div><b>MOQ / price:</b> ${esc(p.moqNote)}</div>`:''}${p.notes?`<div>${esc(p.notes)}</div>`:''}${p.wechat?`<div><b>WeChat:</b> ${esc(p.wechat)}</div>`:''}<div class="btns">${p.phone?`<a class="ghost" style="text-decoration:none;display:inline-block" href="tel:${esc(p.phone.replace(/[^+\d]/g,''))}">Call</a>`:''}${p.email?`<a class="ghost" style="text-decoration:none;display:inline-block" href="mailto:${esc(p.email)}">Email</a>`:''}${p.wechat?`<button class="ghost" data-a="copy" data-v="${esc(p.wechat)}">Copy WeChat</button>`:''}<button class="ghost" data-a="copy" data-v="${esc(p.link)}">Copy their link</button><button class="ghost" data-a="note">Add a note</button><button class="ghost" data-a="rate">Rate</button>${p.supplierId?'<span class="tag">In suppliers</span>':'<button class="ghost" data-a="supplier">Add to suppliers</button>'}</div></div>`}
+$('q').oninput=renderList;
+$('filters').onclick=e=>{const b=e.target.closest('[data-t]');if(!b)return;filterTag=filterTag===b.dataset.t?'':b.dataset.t;renderList()};
+$('list').onclick=async e=>{
+  const row=e.target.closest('.row');if(!row)return;const p=partners.find(x=>x.id===row.dataset.id),a=e.target.closest('[data-a]');
+  if(!a){open=open===p.id?null:p.id;renderList();return}
+  const act=a.dataset.a;
+  try{
+    if(act==='copy'){await navigator.clipboard.writeText(a.dataset.v);toast('Copied')}
+    else if(act==='note'){const t=prompt('Add a note for '+p.company);if(!t)return;const r=await api('/v1/admin/partners/'+p.id,{method:'PATCH',body:{notes:[p.notes,t].filter(Boolean).join('\n')}});Object.assign(p,r.partner);renderList()}
+    else if(act==='rate'){const t=prompt('Rating, 1 to 5',p.rating||'');if(t==null)return;const r=await api('/v1/admin/partners/'+p.id,{method:'PATCH',body:{rating:t}});Object.assign(p,r.partner);renderList()}
+    else if(act==='supplier'){const r=await api('/v1/admin/partners/'+p.id+'/supplier',{method:'POST',body:{}});p.supplierId=r.supplierId;toast(r.already?'Already a supplier':'Added to suppliers');renderList()}
+  }catch(err){toast(err.message||'That did not work')}
+};
+// ---- start ----
+if(!token){$('auth').classList.remove('hidden')}else{$('app').classList.remove('hidden');drawOutbox();loadList();if(outbox().length)flush()}
+</script>
+</body>
+</html>
