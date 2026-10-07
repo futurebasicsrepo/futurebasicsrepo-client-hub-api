@@ -2206,7 +2206,8 @@ app.get('/v1/factory/:token',async(req,reply)=>{
     for(const id of ids)if(!have.has(id)){const sid=randomUUID();await pool.query(`insert into tech_pack_shares(id,tech_pack_id,token_hash,label,kind,supplier_id,referral) values($1,$2,$3,$4,'quote',$5,true) on conflict do nothing`,[sid,id,hash(factoryShareToken(sid)),sup.name,sup.id]).catch(()=>{})}
   }
   const counts=page.partnerId?(await pool.query(`select count(*)::int started from clients c join products p on p.client_id=c.id join tech_packs tp on tp.product_id=p.id where c.acquisition->>'partnerId'=$1`,[String(page.partnerId)])).rows[0]:{started:0};
-  const rows=(await pool.query(`select s.id share_id,s.kind,s.referral,s.waived_at,s.created_at assigned_at,tp.id tp_id,tp.version,tp.verification,tp.locked_at,tp.updated_at,p.id product_id,p.title,c.name client_name,q.updated_at quoted_at
+  const rows=(await pool.query(`select s.id share_id,s.kind,s.referral,s.waived_at,s.created_at assigned_at,tp.id tp_id,tp.version,tp.verification,tp.locked_at,tp.updated_at,p.id product_id,p.title,c.name client_name,q.updated_at quoted_at,
+      (select count(*)::int from factory_messages m where m.share_id=s.id and m.author_role='admin' and m.factory_read_at is null) unread
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id
     left join factory_quotes q on q.share_id=s.id
     where s.supplier_id=$1 and (s.assigned or s.referral) and s.revoked_at is null and (s.expires_at is null or s.expires_at>now()) and tp.published_at is not null
@@ -2216,7 +2217,7 @@ app.get('/v1/factory/:token',async(req,reply)=>{
   return {factory:sup.name,startLink:page.startUrl,started:counts.started,packs:rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id)).map(r=>{
     const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
     const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
-    return {title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
+    return {unread:r.unread||0,title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
 });
 app.get('/factory/:token',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./factory.html',import.meta.url),'utf8')));
 // Staff decide, link by link, whether this factory may see and download the 3D shape. Off by default; it can be switched either way at any time.
@@ -4083,6 +4084,56 @@ app.post('/v1/admin/products/:id/tech-pack/factory-sign',{preHandler:[authentica
   if(updated.locked_at)await flow(ctx.product.id,'pack-locked',{actorId:req.auth.sub,note:`v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})`});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${ctx.techPack.version} countersigned for ${name} by Future Basics (${how})${updated.locked_at?' — locked for production':''}`,{techPackId:ctx.techPack.id,version:ctx.techPack.version,locked:Boolean(updated.locked_at),onBehalf:true}]).catch(()=>{});
   return {locked:Boolean(updated.locked_at),factorySign:normalizeVerification(updated.verification,updated.version).factorySign,techPack:techPackPayload(updated)};
+});
+// ---- Messages between Future Basics and a factory about one pack: one thread per factory link, never shown to the client ----
+const cleanMsg=v=>String(v??'').replace(/\r/g,'').trim().slice(0,2000);
+const msgRow=(m,label)=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='admin'?'Future Basics':(m.author_name||label||'Factory'),body:m.body,created_at:m.created_at});
+app.get('/v1/tp/:token/messages',async(req,reply)=>{
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  const rows=(await pool.query('select * from factory_messages where share_id=$1 order by created_at',[row.share_id])).rows;
+  await pool.query(`update factory_messages set factory_read_at=now() where share_id=$1 and author_role='admin' and factory_read_at is null`,[row.share_id]);
+  return {messages:rows.map(m=>msgRow(m,row.share_label)),events:[]};
+});
+app.post('/v1/tp/:token/messages',async(req,reply)=>{
+  if(!throttle(`fmsg:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many messages from this link. Please try again in an hour.'});
+  const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
+  const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_name,body,factory_read_at) values($1,$2,'factory',$3,$4,now()) returning *`,[row.share_id,row.id,row.share_label,body])).rows[0];
+  const summary=`${row.share_label} wrote about ${row.title}: ${body.slice(0,140)}`;
+  await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,shareId:row.share_id,messageId:m.id}]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-message',$2,'product',$3)`,[row.client_id,summary,row.product_id]).catch(()=>{});
+  await notifyStaff(`Factory message: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> wrote about <strong>${emailEscape(row.title)}</strong>:</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack and answer')}`).catch(()=>{});
+  return reply.code(201).send({message:msgRow(m,row.share_label)});
+});
+// Staff: every factory link on a pack with how many unread messages it has, then the thread itself.
+app.get('/v1/admin/products/:id/tech-pack/factory-threads',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return {threads:[]};
+  const rows=(await pool.query(`select s.id,s.label,s.kind,s.assigned,s.referral,s.revoked_at,
+      (select count(*)::int from factory_messages m where m.share_id=s.id and m.author_role='factory' and m.staff_read_at is null) unread,
+      (select count(*)::int from factory_messages m where m.share_id=s.id) total,(select max(created_at) from factory_messages m where m.share_id=s.id) last_at
+    from tech_pack_shares s where s.tech_pack_id=$1 order by (s.revoked_at is not null), s.created_at desc`,[tp.id])).rows;
+  return {threads:rows.map(r=>({shareId:r.id,label:r.label,kind:r.kind,active:!r.revoked_at,unread:r.unread,total:r.total,lastAt:r.last_at}))};
+});
+app.get('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const sh=await loadShareForStaff(req.params.id);if(!sh)return reply.code(404).send({error:'Link not found'});
+  const rows=(await pool.query('select * from factory_messages where share_id=$1 order by created_at',[sh.share_id])).rows;
+  await pool.query(`update factory_messages set staff_read_at=now() where share_id=$1 and author_role='factory' and staff_read_at is null`,[sh.share_id]);
+  return {messages:rows.map(m=>msgRow(m,sh.share_label)),events:[]};
+});
+app.post('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const sh=await loadShareForStaff(req.params.id);if(!sh)return reply.code(404).send({error:'Link not found'});
+  const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_id,author_name,body,staff_read_at) values($1,$2,'admin',$3,'Future Basics',$4,now()) returning *`,[sh.share_id,sh.id,req.auth.sub,body])).rows[0];
+  await pool.query(`update factory_messages set staff_read_at=now() where share_id=$1 and author_role='factory' and staff_read_at is null`,[sh.share_id]); // answering counts as having read what came before
+  // tell the factory: by email when we have one for it, with a link when the link can be worked out again (assigned and referred packs)
+  const info=(await pool.query(`select s.email,s.assigned,s.referral,s.supplier_id,su.contact_email,su.page_epoch from tech_pack_shares s left join suppliers su on su.id=s.supplier_id where s.id=$1`,[sh.share_id])).rows[0];
+  const to=String(info?.email||info?.contact_email||'').trim().toLowerCase();let emailed=false;
+  if(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)){
+    const link=(info.assigned||info.referral)?`${clientHubUrl}/tp/${factoryShareToken(sh.share_id)}`:null;
+    try{emailed=await sendHubEmail({to,replyTo:req.auth.email||intakeNotificationEmail,subject:`Future Basics wrote to you about ${sh.title}`,html:hubEmailShell(`About ${sh.title}`,`<p>Hello ${emailEscape(sh.share_label)},</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${link?hubButton(link,'Open the tech pack and reply'):'<p>Open your tech pack link and use the <strong>Messages</strong> tab to reply.</p>'}`)})}catch(e){app.log.warn({err:e.message,shareId:sh.share_id},'factory message email not sent')}
+  }
+  return reply.code(201).send({message:msgRow(m,sh.share_label),emailed:Boolean(emailed)});
 });
 // Staff: the links sent for quotation, and what came back, side by side at one quantity.
 app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{

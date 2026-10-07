@@ -513,4 +513,57 @@ await journey('J80', 'customers can set up their own pack, but when they use the
   ok(sql(`select ai_reviewed_at is not null from tech_packs where product_id='${m.id}'`) === 't' && (await items(m.id)).length === 0, 'and that counts as checking it');
 });
 
+await journey('J81', 'staff and a factory can write to each other about a pack: a Messages tab for the factory, a thread per link on the Sign tab, unread dots, a queue item, and the client never sees any of it', async () => {
+  const m = await room('81');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Hush Brand Co' where id='${m.cid}'`);
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const link = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: 'Chat Mill' } }), tok = link.json.url.split('/tp/')[1], sid = link.json.share.id;
+  const qitems = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.kind === 'factory-message' && i.productId === m.id);
+  ok((await call(`/v1/tp/${tok}/messages`)).json.messages.length === 0 && (await qitems()).length === 0, 'a new link has an empty thread and nothing in the queue');
+  ok((await call(`/v1/tp/${tok}/messages`, { body: { body: '   ' } })).status === 400 && (await call('/v1/tp/nonsense/messages')).status === 404, 'an empty message is refused, and so is a link that is not one');
+  const f1 = await call(`/v1/tp/${tok}/messages`, { body: { body: 'Can you confirm the sole is 4 mm EVA?' } }); ok(f1.status === 201 && f1.json.message.author_role === 'factory' && f1.json.message.author_name === 'Chat Mill', 'the factory writes', f1.json);
+  const th = (await adm(`/v1/admin/products/${m.id}/tech-pack/factory-threads`)).json.threads.find(t => t.shareId === sid); ok(th && th.unread === 1 && th.total === 1 && th.active, 'staff see one unread message on that link', th);
+  const qi = (await qitems())[0]; ok(qi && qi.owner === 'us' && /Chat Mill wrote about this pack/.test(qi.title) && /sole is 4 mm/.test(qi.detail), 'and it is in the console queue until someone reads it', qi);
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='factory-message'`) === '1', 'with a notification');
+  ok((await call(`/v1/admin/tech-pack-shares/${sid}/messages`, { token: m.token })).status === 403, 'a customer cannot read the thread');
+  const sm = (await adm(`/v1/admin/tech-pack-shares/${sid}/messages`)).json.messages; ok(sm.length === 1 && sm[0].author_role === 'factory', 'staff read it');
+  ok((await qitems()).length === 0 && (await adm(`/v1/admin/products/${m.id}/tech-pack/factory-threads`)).json.threads.find(t => t.shareId === sid).unread === 0, 'reading it clears the queue item and the dot');
+  const a1 = await adm(`/v1/admin/tech-pack-shares/${sid}/messages`, { method: 'POST', body: { body: 'Yes: 4 mm EVA, Asker C 55.' } }); ok(a1.status === 201 && a1.json.message.author_name === 'Future Basics' && a1.json.emailed === false, 'staff answer (no email on this link, so it says so by not claiming one)', a1.json);
+  const fm = (await call(`/v1/tp/${tok}/messages`)).json.messages; ok(fm.length === 2 && fm[1].author_role === 'admin' && /Asker C 55/.test(fm[1].body), 'the factory sees the answer');
+  ok(!JSON.stringify((await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).json).includes('sole is 4 mm') && !JSON.stringify((await call(`/v1/tp/${tok}`)).json).includes('Hush Brand'), 'the customer\'s pages do not carry it, and the factory still never sees the client\'s name');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${tok}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="msgs"]', { timeout: 10000 }); await p.click('#tabs button[data-tab="msgs"]');
+      await p.waitForSelector('#fmText', { timeout: 10000 }); await p.waitForFunction(() => /Asker C 55/.test(document.querySelector('#fchat').innerText), null, { timeout: 8000 });
+      ok(/4 mm EVA/.test(await p.innerText('#fchat')) && /Asker C 55/.test(await p.innerText('#fchat')), 'on a phone the factory has a Messages tab with the conversation');
+      await p.fill('#fmText', 'Thanks. Lead time is 35 days from sample approval.'); await p.click('#fmSendBtn');
+      for (let i = 0; i < 20 && sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='factory'`) !== '2'; i++) await sleep(300);
+      ok(sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='factory'`) === '2' && /35 days/.test(await p.innerText('#fchat')), 'and writes back from the page');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'with nothing off the screen and no script errors', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j81-factory.png` }).catch(() => {}); await ctx.close();
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForFunction(() => document.querySelector('#tabs button[data-tab="sign"]')?.innerText.includes('●'), null, { timeout: 8000 }).catch(() => {});
+      ok(/●/.test(await ap.innerText('#tabs button[data-tab="sign"]')), 'staff see a dot on the Sign tab when a factory has written');
+      await ap.click('#tabs button[data-tab="sign"]'); await ap.waitForSelector('[data-threads] #ftText', { timeout: 10000 }); await ap.waitForFunction(() => /35 days/.test(document.querySelector('#fthread').innerText), null, { timeout: 8000 });
+      ok(/Chat Mill/.test(await ap.innerText('[data-thr-row]')) && /35 days/.test(await ap.innerText('#fthread')), 'the thread is there on the Sign tab, opened on the factory that wrote');
+      await ap.fill('#ftText', 'Great, noted.'); await ap.click('#ftSendBtn');
+      for (let i = 0; i < 20 && sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='admin'`) !== '2'; i++) await sleep(300);
+      ok(sql(`select count(*) from factory_messages where share_id='${sid}' and author_role='admin'`) === '2', 'and staff reply from there');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j81-staff.png`, fullPage: true }).catch(() => {}); ok(ap.errs.length === 0, 'no script errors on the staff side', ap.errs); await actx.close();
+    } finally { await bw.close(); }
+  }
+  // the factory page flags a pack with a message waiting
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Chat Works ${stamp}` } })).json, as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } });
+  const pageTok = as.json.assignment.pageUrl.split('/factory/')[1], aTok = as.json.assignment.packUrl.split('/tp/')[1], aSid = as.json.assignment.shareId;
+  await adm(`/v1/admin/tech-pack-shares/${aSid}/messages`, { method: 'POST', body: { body: 'Please quote by Friday.' } });
+  ok((await call(`/v1/factory/${pageTok}`)).json.packs[0].unread === 1, 'a pack on the factory\'s page says when Future Basics has written to it');
+  await call(`/v1/tp/${aTok}/messages`); ok((await call(`/v1/factory/${pageTok}`)).json.packs[0].unread === 0, 'and stops saying so once it has read it');
+  await adm(`/v1/admin/tech-pack-shares/${sid}`, { method: 'DELETE' }); ok((await call(`/v1/tp/${tok}/messages`)).status === 410 && (await call(`/v1/tp/${tok}/messages`, { body: { body: 'still here?' } })).status === 410, 'a revoked link can neither read nor write');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

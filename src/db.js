@@ -690,6 +690,20 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     create index if not exists factory_quotes_pack_idx on factory_quotes(tech_pack_id, updated_at desc);
+    -- A conversation between Future Basics and a factory about one pack, one thread per factory link. The client never sees it.
+    create table if not exists factory_messages (
+      id uuid primary key default gen_random_uuid(),
+      share_id uuid not null references tech_pack_shares(id) on delete cascade,
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      author_role text not null check (author_role in ('admin','factory')),
+      author_id uuid references users(id) on delete set null,
+      author_name text,
+      body text not null,
+      staff_read_at timestamptz,
+      factory_read_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists factory_messages_share_idx on factory_messages(share_id, created_at);
     alter table factory_quotes add column if not exists entered_by uuid references users(id) on delete set null;
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.

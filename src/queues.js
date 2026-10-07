@@ -50,6 +50,14 @@ export function analysisItems(rows) {
       title: 'A customer used the assistants: check the analysis', detail: `The assistants drafted this pack${score}. Open the Check tab, correct anything off, and mark it checked.`, since };
   });
 }
+// A factory wrote about a pack and nobody here has read it.
+export function factoryMessageItems(rows) {
+  return rows.map(r => {
+    const since = iso(r.first_at);
+    return { key: `factory-msg:${r.share_id}`, stream: 'factories', kind: 'factory-message', owner: 'us', severity: age(since) > DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
+      title: `${clip(r.label, 60)} wrote about this pack`, detail: `${r.n} new message${Number(r.n) === 1 ? '' : 's'}: "${clip(r.last_body, 100)}". Open the Sign tab to read and answer.`, since };
+  });
+}
 export const AUTO_RETRY_LIMIT = 5;
 export function assistantRerunItems(rows) {
   return rows.map(r => {
@@ -68,7 +76,10 @@ const order = { urgent: 0, normal: 1, info: 2 };
 export const sortItems = items => [...items].sort((a, b) => (order[a.severity] ?? 1) - (order[b.severity] ?? 1) || age(b.since) - age(a.since));
 
 export async function buildQueues(pool, { learning = null } = {}) {
-  const [analysis, packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
+  const [fmsgs, analysis, packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
+    pool.query(`select m.share_id,s.label,count(*)::int n,min(m.created_at) first_at,(array_agg(m.body order by m.created_at desc))[1] last_body,p.id product_id,p.title product_title,c.id client_id,c.name client_name
+      from factory_messages m join tech_pack_shares s on s.id=m.share_id join tech_packs tp on tp.id=m.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id
+      where m.author_role='factory' and m.staff_read_at is null and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} group by m.share_id,s.label,p.id,p.title,c.id,c.name order by min(m.created_at) limit 40`),
     pool.query(`select tp.id tp_id,tp.ai_completed_at,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name,
         (select l.final_score from tech_pack_loops l where l.tech_pack_id=tp.id and l.status='done' order by l.created_at desc limit 1) final_score
       from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id
@@ -125,6 +136,7 @@ export async function buildQueues(pool, { learning = null } = {}) {
   const A = []; // waiting on approval
   A.push(...packItems(packs.rows));
   A.push(...analysisItems(analysis.rows));
+  A.push(...factoryMessageItems(fmsgs.rows));
   for (const r of approvals.rows) A.push({ key: `approval:${r.id}`, stream: 'assets', kind: 'asset-approval', owner: 'client', severity: age(r.requested_at) > 5 * DAY ? 'urgent' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: clip(r.title, 120), detail: r.asset_name ? `Locked to ${clip(r.asset_name, 60)} v${r.asset_version}` : 'Waiting for the client to decide.', since: iso(r.requested_at) });
   for (const r of quotes.rows) { const expired = r.expires_at && new Date(r.expires_at) < new Date(); A.push({ key: `quote:${r.id}`, stream: 'quotes', kind: 'quote', owner: 'client', severity: expired ? 'urgent' : age(r.created_at) > 7 * DAY ? 'normal' : 'info', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title, title: `Quote v${r.version} for ${r.quantity} units is out`, detail: expired ? 'The quote has expired. Reissue it or follow up.' : r.expires_at ? `Valid until ${new Date(r.expires_at).toLocaleDateString('en-US')}.` : 'Waiting for the client to accept.', since: iso(r.created_at) }); }
   for (const r of requests.rows) A.push({ key: `request:${r.id}`, stream: 'requests', kind: 'request', owner: 'us', severity: age(r.created_at) > 2 * DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: null, productTitle: '', title: `New request: ${clip(r.title, 100)}`, detail: clip(r.type, 40), since: iso(r.created_at) });
