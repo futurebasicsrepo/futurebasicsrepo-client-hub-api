@@ -184,6 +184,7 @@
           <div class="step"><b>02</b><span data-i18n="step.2">Pin callouts on it, add sizes, materials, colours — or leave it to us.</span></div>
           <div class="step"><b>03</b><span data-i18n="step.3">Submit. We finish it, you approve, then it goes to a factory.</span></div>
         </div>
+        <p class="fine" id="partnerNote" hidden style="color:#17603a"></p>
         <p class="fine" data-i18n-html="start.fine">Already have a room? <a href="/">Sign in to the client hub</a> · <a href="/help">How it works</a>. By continuing you agree we may contact you about this product.</p>
       </div>
     </main>
@@ -195,6 +196,11 @@
     "use strict";
     const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const T=(k,en,v)=>window.HubI18n?HubI18n.t(k,en,v):en.replace(/\{(\w+)\}/g,(m,x)=>v&&v[x]!=null?v[x]:m);
+    // someone who arrived through a factory's link is told who will see their tech pack, before they start
+    (()=>{try{const q=new URLSearchParams(location.search);let src=(q.get('utm_source')||q.get('ref')||q.get('source')||'').trim();if(!src){try{src=(JSON.parse(localStorage.getItem('fb.attr')||'null')||{}).source||''}catch{}}
+      const m=/^f-([A-Z0-9]{6})$/i.exec(src);if(!m)return;
+      fetch('/v1/public/factories/'+m[1]).then(r=>r.ok?r.json():null).then(d=>{if(!d||!d.company)return;const el=document.getElementById('partnerNote');if(!el)return;const name=String(d.company).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        el.innerHTML=T('start.partner','You are starting this through <b>{name}</b>. Once Future Basics has published your tech pack, {name} can see it (the product and where it stands) and send a quote. They never see your name or email.',{name});el.hidden=false}).catch(()=>{})}catch{}})();
     const KEY='fb.client.token',shots=[];                           // {src, trimmed, original, name}
     const MAX=4;
     const STATUS_WORDS={413:'Your images are too large to send together — remove one, or use smaller ones.',429:'Too many tries — wait a few minutes and try again.',502:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',503:'Future Basics is restarting for a moment. Wait a few seconds and try again — your images are still here.',504:'That took too long. Try again — your images are still here.'};

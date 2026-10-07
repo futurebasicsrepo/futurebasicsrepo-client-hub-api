@@ -35,6 +35,14 @@ h1{font-size:26px;line-height:1.15;margin:4px 2px 6px;text-wrap:balance}
 .err{color:var(--hot);border-color:var(--hot)}
 footer{max-width:760px;margin:0 auto;padding:0 16px 40px;color:var(--dim);font-size:12px}
 @media (max-width:420px){.pack{grid-template-columns:78px 1fr}.pic{width:78px;height:78px}}
+.invite{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px;margin:0 0 22px}
+.invite h2{margin:0 0 6px;font-size:18px}.invite p{margin:0 0 10px;color:var(--dim);font-size:14px;max-width:56ch}.invite .row{display:flex;gap:8px;flex-wrap:wrap}
+.invite input{flex:1 1 220px;min-width:0;font:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fbfbf8}
+.invite button{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;font:inherit;font-size:14px;cursor:pointer}
+#invQr img{display:block;width:120px;height:120px;border-radius:8px;border:1px solid var(--line);padding:4px;background:#fff}
+.tagref{display:inline-block;margin-left:6px;border-radius:999px;padding:1px 8px;background:#e6f4ec;color:var(--ok);font-size:11px;font-weight:600}
+h2.lh{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:6px 2px 10px;font-weight:600}
+@media (max-width:560px){.invite{grid-template-columns:1fr}#invQr{justify-self:start}}
 </style>
 </head>
 <body>
@@ -42,13 +50,16 @@ footer{max-width:760px;margin:0 auto;padding:0 16px 40px;color:var(--dim);font-s
 <main>
   <h1 id="title">Your tech packs</h1>
   <p class="lede" id="lede"></p>
+  <section id="invite" class="invite hidden"><div><h2 id="invTitle"></h2><p id="invText"></p><div class="row"><input id="invLink" readonly aria-label="Link"><button id="invCopy" type="button"></button></div><p id="invCount" style="margin:10px 0 0"></p></div><div id="invQr" aria-hidden="true"></div></section>
+  <h2 class="lh hidden" id="listHead"></h2>
   <div id="list" class="list"><div class="empty" id="loading">…</div></div>
 </main>
 <footer id="foot"></footer>
+<script src="/qrcode.js"></script>
 <script>
 const T={
-  en:{hello:n=>`${n}: your tech packs`,lede:'Every tech pack Future Basics has sent you is here. Open one to read it, give a price, or confirm you can make it. It is free, and no account is needed.',none:'Nothing is assigned to you yet. When Future Basics sends you a tech pack it appears here.',bad:'This link is not valid any more. Ask Future Basics for a new one.',slow:'Could not load. Check your connection and try again.',v:v=>`Version ${v}`,'needs-quote':'Waiting for your quote','quoted':'Quote sent · open to change it','to-review':'To read and confirm','signed':'Confirmed','closed':'Not needed right now','forquote':'For quotation','toproduce':'To produce',foot:'This page is private to you. Keep the link to yourself.',other:'中文',since:d=>`Sent ${d}`},
-  zh:{hello:n=>`${n}：您的技术包`,lede:'Future Basics 发给您的所有技术包都在这里。打开即可查看、报价或确认能否生产。免费，无需注册账号。',none:'目前没有分配给您的技术包。Future Basics 发给您后会显示在这里。',bad:'此链接已失效，请向 Future Basics 索取新链接。',slow:'无法加载，请检查网络后重试。',v:v=>`版本 ${v}`,'needs-quote':'等待您的报价','quoted':'已报价 · 可点开修改','to-review':'待阅读并确认','signed':'已确认','closed':'暂不需要','forquote':'询价','toproduce':'生产',foot:'此页面仅供您本人使用，请勿转发链接。',other:'English',since:d=>`发送于 ${d}`}
+  en:{inv:'Your customers',invText:'Send this link to your own customers. They start a tech pack, Future Basics finishes it, and it appears below once it is published, ready for your quote. You see the product and where it stands, never the customer\'s name or email.',copy:'Copy link',copied:'Copied',started:n=>`${n} tech pack${n===1?'':'s'} started through your link so far`,head:'Tech packs for you',fromYou:'From your customer',hello:n=>`${n}: your tech packs`,lede:'Every tech pack Future Basics has sent you is here. Open one to read it, give a price, or confirm you can make it. It is free, and no account is needed.',none:'Nothing is assigned to you yet. When Future Basics sends you a tech pack it appears here.',bad:'This link is not valid any more. Ask Future Basics for a new one.',slow:'Could not load. Check your connection and try again.',v:v=>`Version ${v}`,'needs-quote':'Waiting for your quote','quoted':'Quote sent · open to change it','to-review':'To read and confirm','signed':'Confirmed','closed':'Not needed right now','forquote':'For quotation','toproduce':'To produce',foot:'This page is private to you. Keep the link to yourself.',other:'中文',since:d=>`Sent ${d}`},
+  zh:{inv:'您的客户',invText:'把这个链接发给您自己的客户。他们开始技术包，Future Basics 完善并发布后，会出现在下方，供您报价。您只能看到产品和进度，看不到客户的姓名或邮箱。',copy:'复制链接',copied:'已复制',started:n=>`通过您的链接已开始 ${n} 个技术包`,head:'给您的技术包',fromYou:'来自您的客户',hello:n=>`${n}：您的技术包`,lede:'Future Basics 发给您的所有技术包都在这里。打开即可查看、报价或确认能否生产。免费，无需注册账号。',none:'目前没有分配给您的技术包。Future Basics 发给您后会显示在这里。',bad:'此链接已失效，请向 Future Basics 索取新链接。',slow:'无法加载，请检查网络后重试。',v:v=>`版本 ${v}`,'needs-quote':'等待您的报价','quoted':'已报价 · 可点开修改','to-review':'待阅读并确认','signed':'已确认','closed':'暂不需要','forquote':'询价','toproduce':'生产',foot:'此页面仅供您本人使用，请勿转发链接。',other:'English',since:d=>`发送于 ${d}`}
 };
 const token=location.pathname.split('/')[2]||'';
 let lang=(()=>{try{const s=localStorage.getItem('fb.factory.lang');if(s==='en'||s==='zh')return s}catch{}return /^zh/i.test(navigator.language||'')?'zh':'en'})();
@@ -59,8 +70,12 @@ function draw(){
   if(failed){$('title').textContent='Future Basics';$('list').innerHTML=`<div class="err">${esc(t[failed])}</div>`;$('lede').textContent='';return}
   if(!data){return}
   $('title').textContent=t.hello(data.factory);document.title=`${data.factory} · Future Basics`;
-  $('list').innerHTML=data.packs.length?data.packs.map(p=>`<a class="pack" href="${esc(p.href)}"><div class="pic" style="background-image:url('${esc(p.image)}')" role="img" aria-label="${esc(p.title)}"></div><div><b>${esc(p.title)}</b><div class="sub">${esc(t.v(p.version))} · ${esc(p.kind==='quote'?t.forquote:t.toproduce)}${p.client?' · '+esc(p.client):''}</div><span class="state ${esc(p.state)}"><i></i>${esc(t[p.state]||p.state)}</span></div></a>`).join(''):`<div class="empty">${esc(t.none)}</div>`;
+  $('invite').classList.toggle('hidden',!data.startLink);$('listHead').classList.toggle('hidden',!data.startLink);
+  if(data.startLink){$('invTitle').textContent=t.inv;$('invText').textContent=t.invText;$('invLink').value=data.startLink;$('invCopy').textContent=t.copy;$('invCount').textContent=t.started(data.started||0);$('listHead').textContent=t.head;
+    if(window.qrcode&&$('invQr').dataset.for!==data.startLink){try{const qr=qrcode(0,'M');qr.addData(data.startLink);qr.make();$('invQr').innerHTML=qr.createImgTag(5,6,'QR code');$('invQr').dataset.for=data.startLink}catch{}}}
+  $('list').innerHTML=data.packs.length?data.packs.map(p=>`<a class="pack" href="${esc(p.href)}"><div class="pic" style="background-image:url('${esc(p.image)}')" role="img" aria-label="${esc(p.title)}"></div><div><b>${esc(p.title)}${p.origin==='referral'?`<span class="tagref">${esc(t.fromYou)}</span>`:''}</b><div class="sub">${esc(t.v(p.version))} · ${esc(p.kind==='quote'?t.forquote:t.toproduce)}${p.client?' · '+esc(p.client):''}</div><span class="state ${esc(p.state)}"><i></i>${esc(t[p.state]||p.state)}</span></div></a>`).join(''):`<div class="empty">${esc(t.none)}</div>`;
 }
+$('invCopy').onclick=()=>{const v=$('invLink').value,done=()=>{$('invCopy').textContent=T[lang].copied;setTimeout(()=>$('invCopy').textContent=T[lang].copy,1600)};try{navigator.clipboard.writeText(v).then(done).catch(()=>{$('invLink').select();document.execCommand('copy');done()})}catch{$('invLink').select();document.execCommand('copy');done()}};
 $('lang').onclick=()=>{lang=lang==='zh'?'en':'zh';try{localStorage.setItem('fb.factory.lang',lang)}catch{}draw()};
 async function load(){
   try{

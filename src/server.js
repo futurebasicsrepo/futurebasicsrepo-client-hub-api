@@ -2128,7 +2128,10 @@ app.post('/v1/admin/products/:id/tech-pack/shares',{preHandler:[authenticate,adm
 async function ensureFactoryPage(supplierId){
   const sup=(await pool.query('select id,name,contact_email,page_epoch from suppliers where id=$1',[supplierId])).rows[0];if(!sup)return null;
   await pool.query('update suppliers set page_hash=$2 where id=$1 and page_hash is distinct from $2',[sup.id,hash(factoryPageToken(sup.id,sup.page_epoch))]);
-  return {...sup,url:`${clientHubUrl}/factory/${factoryPageToken(sup.id,sup.page_epoch)}`};
+  // every factory with a page also has a start link for its own customers: the partner record that carries the referral code
+  let partner=(await pool.query('select id,code,lang from partners where supplier_id=$1 order by created_at limit 1',[sup.id])).rows[0];
+  for(let i=0;i<5&&!partner;i++)partner=(await pool.query(`insert into partners(code,company,email,source,lang,supplier_id) values($1,$2,$3,'Factory page','en',$4) on conflict(code) do nothing returning id,code,lang`,[partnerCode(),sup.name,sup.contact_email||null,sup.id])).rows[0];
+  return {...sup,url:`${clientHubUrl}/factory/${factoryPageToken(sup.id,sup.page_epoch)}`,partnerId:partner?.id||null,startUrl:partner?partnerLink(partner.code,partner.lang):null};
 }
 async function assignmentView(ctx){
   const sid=ctx.configuration?.supplier_id;if(!sid)return null;
@@ -2182,16 +2185,28 @@ app.get('/v1/factory/:token',async(req,reply)=>{
   if(!throttle(`factorypage:${req.ip}`,{limit:300,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests: try again in a while'});
   const sup=(await pool.query('select id,name,page_epoch from suppliers where page_hash=$1',[hash(String(req.params.token||''))])).rows[0];
   if(!sup||factoryPageToken(sup.id,sup.page_epoch)!==String(req.params.token))return reply.code(404).send({error:'This factory page link is not valid'});
-  const rows=(await pool.query(`select s.id share_id,s.kind,s.waived_at,s.created_at assigned_at,tp.version,tp.verification,tp.locked_at,tp.updated_at,p.id product_id,p.title,c.name client_name,q.updated_at quoted_at
+  const page=await ensureFactoryPage(sup.id);
+  // the customers who started a tech pack through this factory's link: a pack they have had published gets a quotation link for this factory,
+  // made the first time the page is opened after it was published. Their names are never given out.
+  const referred=page.partnerId?(await pool.query(`select tp.id tp_id,p.title from clients c join products p on p.client_id=c.id join tech_packs tp on tp.product_id=p.id
+    where c.acquisition->>'partnerId'=$1 and tp.published_at is not null
+    and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived'))) limit 200`,[String(page.partnerId)])).rows:[];
+  if(referred.length){
+    const ids=referred.map(r=>r.tp_id),have=new Set((await pool.query('select tech_pack_id from tech_pack_shares where supplier_id=$1 and referral and tech_pack_id=any($2::uuid[])',[sup.id,ids])).rows.map(r=>r.tech_pack_id));
+    for(const id of ids)if(!have.has(id)){const sid=randomUUID();await pool.query(`insert into tech_pack_shares(id,tech_pack_id,token_hash,label,kind,supplier_id,referral) values($1,$2,$3,$4,'quote',$5,true) on conflict do nothing`,[sid,id,hash(factoryShareToken(sid)),sup.name,sup.id]).catch(()=>{})}
+  }
+  const counts=page.partnerId?(await pool.query(`select count(*)::int started from clients c join products p on p.client_id=c.id join tech_packs tp on tp.product_id=p.id where c.acquisition->>'partnerId'=$1`,[String(page.partnerId)])).rows[0]:{started:0};
+  const rows=(await pool.query(`select s.id share_id,s.kind,s.referral,s.waived_at,s.created_at assigned_at,tp.id tp_id,tp.version,tp.verification,tp.locked_at,tp.updated_at,p.id product_id,p.title,c.name client_name,q.updated_at quoted_at
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id
     left join factory_quotes q on q.share_id=s.id
-    where s.supplier_id=$1 and s.assigned and s.revoked_at is null and (s.expires_at is null or s.expires_at>now()) and tp.published_at is not null
+    where s.supplier_id=$1 and (s.assigned or s.referral) and s.revoked_at is null and (s.expires_at is null or s.expires_at>now()) and tp.published_at is not null
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))
-    order by s.created_at desc limit 200`,[sup.id])).rows;
-  return {factory:sup.name,packs:rows.map(r=>{
+    order by s.created_at desc limit 300`,[sup.id])).rows;
+  const assignedPacks=new Set(rows.filter(r=>!r.referral).map(r=>r.tp_id)); // a pack that is both assigned and referred is listed once, as assigned
+  return {factory:sup.name,startLink:page.startUrl,started:counts.started,packs:rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id)).map(r=>{
     const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
     const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
-    return {title:r.title,version:r.version,kind:r.kind,client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
+    return {title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
 });
 app.get('/factory/:token',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./factory.html',import.meta.url),'utf8')));
 // Staff decide, link by link, whether this factory may see and download the 3D shape. Off by default; it can be switched either way at any time.
@@ -3540,14 +3555,23 @@ app.post('/v1/public/factories',async(req,reply)=>{
   const who=[row.contact_name,row.email,row.wechat&&`WeChat ${row.wechat}`,row.phone].filter(Boolean).join(' · ');
   if(fb)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'partner',$2,'partner',$3)`,[fb.id,`New factory${source?` from ${source}`:''}: ${company}${row.city?` (${row.city})`:''} — ${who}`,row.id]).catch(()=>{});
   await notifyStaff(`New factory sign-up${source?` · ${source}`:''}: ${company}`,`<p><strong>${emailEscape(company)}</strong>${row.city?` · ${emailEscape(row.city)}`:''} signed up${source?` at <strong>${emailEscape(source)}</strong>`:''}.</p><p>${emailEscape(who)}</p>${row.makes?`<p>Makes: ${emailEscape(row.makes)}</p>`:''}<p>Their referral link: ${emailEscape(link)}</p>`);
+  // the factory also gets its own page: the packs its buyers start appear there, ready for a quote
+  let pageUrl=null;try{pageUrl=(await ensureFactoryPage(await supplierForPartner(row))).url}catch(e){app.log.warn({err:e.message,partnerId:row.id},'factory page not made')}
   if(email){
     const zh=lang!=='en',hk=lang==='zh-hk';
     sendHubEmail({to:email,subject:zh?(hk?'你的 Future Basics 工廠連結':'你的 Future Basics 工厂链接'):'Your Future Basics factory link',
       html:hubEmailShell(zh?(hk?'這是你的工廠連結':'这是你的工厂链接'):'Your factory link',zh
-        ?`<p>${emailEscape(company)}，${hk?'多謝登記。把這個連結發給你的海外客戶，他們由這裡開始的技術包會連同中文版直接交到你手上：':'感谢注册。把这个链接发给你的海外客户，他们从这里开始的技术包会带着中文版直接给到你：'}</p>${hubButton(link,hk?'打開連結':'打开链接')}<p style="word-break:break-all">${emailEscape(link)}</p>`
-        :`<p>Thanks for signing up, ${emailEscape(company)}. Send this link to your overseas buyers. The tech packs they start from it come to you with a Chinese version:</p>${hubButton(link,'Open the link')}<p style="word-break:break-all">${emailEscape(link)}</p>`)}).catch(e=>app.log.warn({err:e.message,partnerId:row.id},'factory link email not sent'));
+        ?`<p>${emailEscape(company)}，${hk?'多謝登記。把這個連結發給你的海外客戶，他們由這裡開始的技術包會連同中文版直接交到你手上：':'感谢注册。把这个链接发给你的海外客户，他们从这里开始的技术包会带着中文版直接给到你：'}</p>${hubButton(link,hk?'打開連結':'打开链接')}<p style="word-break:break-all">${emailEscape(link)}</p>${pageUrl?`<p>${hk?'客戶開始並由我們發佈的技術包，會出現在你的專屬頁面，可直接報價（免費、無需帳號）：':'客户开始并由我们发布的技术包，会出现在你的专属页面，可直接报价（免费、无需账号）：'}</p>${hubButton(pageUrl,hk?'打開我的頁面':'打开我的页面')}`:''}`
+        :`<p>Thanks for signing up, ${emailEscape(company)}. Send this link to your overseas buyers. The tech packs they start from it come to you with a Chinese version:</p>${hubButton(link,'Open the link')}<p style="word-break:break-all">${emailEscape(link)}</p>${pageUrl?`<p>The tech packs your buyers start, once Future Basics has published them, appear on your own page, ready for your quote. It is free and needs no account:</p>${hubButton(pageUrl,'Open my page')}<p style="font-size:12px;color:#717177">Keep this page link private.</p>`:''}`)}).catch(e=>app.log.warn({err:e.message,partnerId:row.id},'factory link email not sent'));
   }
-  return reply.code(201).send({code:row.code,link});
+  return reply.code(201).send({code:row.code,link,pageUrl});
+});
+// The start page names the factory a visitor came through, so they know who will see their pack. Only the company name is given out.
+app.get('/v1/public/factories/:code',async(req,reply)=>{
+  if(!throttle(`partnerlookup:${req.ip}`,{limit:120,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests'});
+  const m=/^(?:f-)?([A-Z0-9]{6})$/i.exec(String(req.params.code||''));if(!m)return reply.code(404).send({error:'Not found'});
+  const p=(await pool.query('select company from partners where code=$1',[m[1].toUpperCase()])).rows[0];
+  return p?{company:p.company}:reply.code(404).send({error:'Not found'});
 });
 const partnerView=(r,buyers)=>({id:r.id,code:r.code,company:r.company,contactName:r.contact_name,jobTitle:r.job_title,email:r.email,wechat:r.wechat,phone:r.phone,city:r.city,website:r.website,makes:r.makes,moqNote:r.moq_note,rating:r.rating,notes:r.notes,source:r.source,lang:r.lang,supplierId:r.supplier_id,createdAt:r.created_at,buyers:buyers??r.buyers??0,link:partnerLink(r.code,r.lang)});
 app.get('/v1/admin/partners',{preHandler:[authenticate,adminOnly]},async()=>{
@@ -3575,14 +3599,25 @@ app.patch('/v1/admin/partners/:id',{preHandler:[authenticate,adminOnly]},async(r
   return {partner:partnerView(row)};
 });
 // A factory met at a fair becomes a supplier record the production runs can use.
+async function supplierForPartner(p){
+  if(p.supplier_id)return p.supplier_id;
+  const note=[p.makes&&`Makes: ${p.makes}`,p.moq_note&&`MOQ/price: ${p.moq_note}`,p.notes,p.source&&`Met at ${p.source}`,p.wechat&&`WeChat ${p.wechat}`].filter(Boolean).join('\n');
+  const sup=(await pool.query(`insert into suppliers(name,contact_email,contact_phone,country,notes) values($1,$2,$3,$4,$5) on conflict(name) do update set updated_at=now() returning id`,[p.company,p.email,p.phone,'China',note||null])).rows[0];
+  await pool.query('update partners set supplier_id=$2,updated_at=now() where id=$1',[p.id,sup.id]);
+  return sup.id;
+}
 app.post('/v1/admin/partners/:id/supplier',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
   const p=(await pool.query('select * from partners where id=$1',[req.params.id])).rows[0];if(!p)return reply.code(404).send({error:'Not found'});
   if(p.supplier_id)return reply.code(200).send({supplierId:p.supplier_id,already:true});
-  const note=[p.makes&&`Makes: ${p.makes}`,p.moq_note&&`MOQ/price: ${p.moq_note}`,p.notes,p.source&&`Met at ${p.source}`,p.wechat&&`WeChat ${p.wechat}`].filter(Boolean).join('\n');
-  const sup=(await pool.query(`insert into suppliers(name,contact_email,contact_phone,country,notes) values($1,$2,$3,$4,$5) on conflict(name) do update set updated_at=now() returning id`,[p.company,p.email,p.phone,'China',note||null])).rows[0];
-  await pool.query('update partners set supplier_id=$2,updated_at=now() where id=$1',[p.id,sup.id]);
-  return reply.code(201).send({supplierId:sup.id});
+  return reply.code(201).send({supplierId:await supplierForPartner(p)});
+});
+// The factory's own page for a factory met at a fair (it becomes a supplier first if it is not one): copy it, or email it.
+app.post('/v1/admin/partners/:id/page',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const p=(await pool.query('select * from partners where id=$1',[req.params.id])).rows[0];if(!p)return reply.code(404).send({error:'Not found'});
+  const sid=await supplierForPartner(p),page=await ensureFactoryPage(sid);
+  return {supplierId:sid,pageUrl:page.url,startUrl:page.startUrl,email:p.email||''};
 });
 // A business card photo read into fields to confirm. Nothing is kept from the photo.
 app.post('/v1/admin/partners/scan',{preHandler:[authenticate,adminOnly],bodyLimit:12_000_000},async(req,reply)=>{
