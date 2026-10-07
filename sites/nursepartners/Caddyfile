@@ -8,5 +8,7 @@
 	header X-Robots-Tag "noindex, nofollow"
 	header /assets/* Cache-Control "public, max-age=86400"
 	respond /health 200
-	file_server
+	file_server {
+		hide README.md Dockerfile Caddyfile build.mjs .dockerignore
+	}
 }
