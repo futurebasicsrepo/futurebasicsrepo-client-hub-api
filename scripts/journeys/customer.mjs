@@ -783,4 +783,83 @@ await journey('J85', 'what the studio made reaches the people who read the pack:
   ok((await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} })).status === 409, 'a locked pack is not changed: it needs a new version');
 });
 
+await journey('J86', 'a factory that opens a pack learns what the tool is and how it helps, can bring its own buyers (Alibaba ones too) and pass the tool to other factories, and staff can see who referred whom', async () => {
+  const m = await room('86');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const co = `Sharing Mill ${stamp}`, su = await call('/v1/public/factories', { body: { company: co, email: `share-${stamp}@mill.cn`, lang: 'en' } }), ftok = su.json.pageUrl.split('/factory/')[1], code = su.json.code;
+  const supId = sql(`select supplier_id from partners where code='${code}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: sharing' } })).status === 200, 'staff publish');
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: supId, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  const want = `/fair?side=factory&src=ff-${code.toLowerCase()}`;
+  ok((await call(`/v1/tp/${ptok}`)).json.fairLink.endsWith(want), 'the pack a factory opens carries a link to pass on, with that factory\'s own code in it', (await call(`/v1/tp/${ptok}`)).json.fairLink);
+  ok((await call(`/v1/factory/${ftok}`)).json.fairLink.endsWith(want), 'and so does its page');
+  const loose = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { kind: 'quote', label: `Loose Link ${stamp}`, sendEmail: false } }), pk2 = String(loose.json.url || loose.json.share?.url || '').split('/tp/')[1], fl2 = (await call(`/v1/tp/${pk2}`)).json.fairLink;
+  ok(/\/fair\?side=factory$/.test(fl2), 'a link made for a factory we know nothing about still gets the plain link', [loose.status, fl2]);
+  ok(!JSON.stringify((await call(`/v1/tp/${pk2}`)).json).includes(m.token), 'and nothing private rides along');
+  // another factory arrives through that link: staff can see who passed it on
+  const t0 = Date.now() - 1000, a = await call('/v1/public/factories', { body: { company: `Friend Mill ${stamp}`, email: `friend-${stamp}@mill.cn`, source: `ff-${code.toLowerCase()}` } }); ok(a.status === 201, 'a friend signs up through the shared link');
+  ok(sql(`select source from partners where company='Friend Mill ${stamp}'`) === `Referred by ${co}`.slice(0, 60), 'staff see it was referred, and by whom', sql(`select source from partners where company='Friend Mill ${stamp}'`));
+  ok(sql(`select count(*) from notifications where title like 'New factory from Referred by ${co}%'`.slice(0, 200)) !== '0' || sql(`select count(*) from notifications where title like '%Friend Mill ${stamp}%'`) === '1', 'and the notice to staff says so');
+  await call('/v1/public/factories', { body: { company: `Odd Mill ${stamp}`, email: `odd-${stamp}@mill.cn`, source: 'ff-zzzzzz' } }); ok(sql(`select source from partners where company='Odd Mill ${stamp}'`) === 'fair', 'a made-up code is ignored');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const shot = n => `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j86-${n}.png`;
+      sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Layer Runner":"分层跑鞋"}}}'::jsonb where product_id='${m.id}'`);
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, permissions: ['clipboard-read', 'clipboard-write'] }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ptok}`, { waitUntil: 'networkidle' }); await p.waitForSelector('[data-about]', { timeout: 10000 });
+      const zt = await p.innerText('[data-about]');
+      ok(await p.$eval('[data-about]', e => e.open) && /这是什么/.test(zt) && /阿里巴巴/.test(zt) && /看不到他们的姓名或邮箱/.test(zt), 'on a phone, with a Chinese version of the pack, the first thing a factory sees is in Chinese: what this is, that it is free, that Alibaba buyers can use it', zt.slice(0, 120));
+      await p.screenshot({ path: shot('pack') }).catch(() => {});
+      await p.click('[data-act="tellfactory"]'); await p.waitForFunction(() => /已复制/.test(document.querySelector('#toast').textContent), null, { timeout: 5000 }).catch(() => {});
+      const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => '')); ok(clip.includes(`/fair?side=factory&src=ff-${code.toLowerCase()}`) && !clip.includes('/tp/') && /一个免费工具/.test(clip), 'tell another factory copies a Chinese message with the fair link, never the pack\'s own link', clip);
+      await p.reload({ waitUntil: 'networkidle' }); await p.waitForSelector('[data-about]'); ok(!(await p.$eval('[data-about]', e => e.open)), 'the second time it is folded away, with the question still there');
+      await p.click('[data-about] summary'); await p.click('button[data-act="flang"][data-lang="en"]'); await sleep(400);
+      ok(/What is this\?/.test(await p.innerText('[data-about]')) && /Alibaba/.test(await p.innerText('[data-about]')) && /Tell another factory/.test(await p.innerText('[data-about]')), 'and in English');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'nothing runs off the phone, no script errors', p.errs); await ctx.close();
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      await fp.goto(`${BASE}/factory/${ftok}`, { waitUntil: 'networkidle' }); await fp.waitForSelector('#share:not(.hidden)', { timeout: 10000 });
+      ok(/Alibaba/.test(await fp.innerText('#buyH')) && (await fp.inputValue('#buyMsg')).includes('/start?ref=f-') && (await fp.inputValue('#fcMsg')).includes(`src=ff-${code.toLowerCase()}`), 'the factory\'s page has a message to paste to its buyers and one to send to other factories');
+      await fp.click('#lang'); ok(/带来更多买家/.test(await fp.innerText('#shTitle')) && /一个免费工具/.test(await fp.inputValue('#fcMsg')), 'the second one is in Chinese when the page is'); ok(fp.errs.length === 0, 'no script errors', fp.errs);
+      await fp.screenshot({ path: shot('factory'), fullPage: true }).catch(() => {}); await fctx.close();
+      const gctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }), gp = await gctx.newPage(); await gp.goto(`${BASE}/fair?side=factory&src=ff-${code.toLowerCase()}`, { waitUntil: 'networkidle' });
+      ok(/Works with Alibaba too/.test(await gp.innerText('main')), 'the fair page tells a factory it works with Alibaba'); await gctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
+await journey('J87', 'the PDF of a tech pack is its own document in reading order: cover with the key facts, colourways, every view with its callouts, measurements, materials, sign-off; no blank pages, no working files, no quote form, and a quotation link never shows the client', async () => {
+  const m = await room('87');
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running) break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  sql(`update clients set name='Secret Brand Pdf' where id='${m.cid}'`);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: pdf' } })).status === 200, 'published');
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Pdf Mill ${stamp}` } })).json;
+  const as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  sql(`update tech_packs set translations='{"zh":{"at":"2026-01-01T00:00:00Z","strings":{"Layer Runner":"分层跑鞋"}}}'::jsonb where product_id='${m.id}'`);
+  const dir = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP, calloutViews = Number(sql(`select count(*) from tech_packs, jsonb_array_elements(published_data->'sketches') s where product_id='${m.id}' and jsonb_array_length(s->'callouts')>0`));
+  const bw = await playwright.chromium.launch();
+  try {
+    const open = async (url, token) => { const ctx = await bw.newContext({ viewport: { width: 1100, height: 900 } }); if (token) await ctx.addInitScript(([k, t]) => localStorage.setItem(k, t), token); const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(url, { waitUntil: 'networkidle' }); await p.waitForSelector('.sheet .panel', { state: 'attached', timeout: 15000 }); await p.waitForFunction(() => document.querySelector('#printDoc .pg'), null, { timeout: 8000 }); return { ctx, p }; };
+    const pdf = async (p, name) => { const buf = await p.pdf({ path: `${dir}/j87-${name}.pdf`, format: 'A4', printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '8mm', right: '8mm' } }); return (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length; };
+    const outline = p => p.evaluate(() => [...document.querySelectorAll('#printDoc > .pg, #printDoc > .pp')].map(e => (e.querySelector('h1,h2,.eyebrow')?.textContent || e.querySelector('h2')?.textContent || '').trim().slice(0, 40)));
+    // staff
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.admin.token', admin]); const o = await outline(p), txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'admin');
+      ok(/^Tech pack/i.test(o[0]) && await p.$eval('#printDoc > :first-child', e => e.classList.contains('first')), 'the document opens with the cover, and the page break comes after it (no blank first page)', o);
+      ok(/Layer Runner/.test(await p.innerText('#printDoc h1')) && /Footwear/.test(txt) && /Size run/i.test(txt) && /PANTONE/i.test(txt) && /Secret Brand Pdf/.test(txt), 'the cover has the key facts, the colourways with their Pantone codes, and the client for staff');
+      const order = ['Colour renderings', 'Points of Measure', 'Materials & Trims', 'Approvals'].map(t => txt.indexOf(t)); ok(order.every(x => x > 0) && order.every((x, i) => i === 0 || x > order[i - 1]) && txt.indexOf('Callouts') > 0 && txt.indexOf('Callouts') < txt.indexOf('Points of Measure'), 'the sections follow in reading order: colourways, callouts, measurements, materials, sign-off', order);
+      ok(await p.locator('#printDoc .stage').count() === calloutViews && await p.locator('#printDoc .cotab').count() === calloutViews, `every view that has callouts is in the document with its callout list (${calloutViews})`);
+      ok(!/cutout/i.test(await p.$eval('#printDoc', e => e.innerHTML.replace(/data:image[^"]+/g, ''))) && !/Send your quotation|Spec check|Messages/.test(txt), 'working files, the quote form, the spec check and messages are not in it');
+      ok(pages >= 4 && pages <= 14, `as a PDF it is ${pages} pages, not a page per tab`, pages); ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close(); }
+    // the client
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Approvals/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); await pdf(p, 'client'); await ctx.close(); }
+    // the factory with a quotation link: the client is hidden and there is no sign-off
+    { const { ctx, p } = await open(`${BASE}/tp/${ptok}`); const txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'factory');
+      ok(!/Secret Brand Pdf/.test(txt) && !/Approvals/.test(txt) && !/Send your quotation/.test(txt), 'a quotation link\'s copy never names the client and has no sign-off or quote form');
+      ok(/Colour renderings|颜色/.test(txt) && pages >= 4, 'it still has the pictures, callouts and specs', pages);
+      ok(/分层跑鞋/.test(txt) || /[一-鿿]/.test(txt), 'and follows the page\'s language when the pack has a Chinese version', txt.slice(0, 80)); await ctx.close(); }
+  } finally { await bw.close(); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

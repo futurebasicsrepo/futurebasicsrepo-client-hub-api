@@ -2307,7 +2307,7 @@ app.get('/v1/factory/:token',async(req,reply)=>{
   const listed=rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id));
   const stateOf=r=>{const v=normalizeVerification(r.verification,r.version);return r.kind==='quote'?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review')};
   const needsAction=listed.filter(r=>{const st=stateOf(r);return st==='needs-quote'||st==='to-review'||r.unread>0}).length;
-  return {factory:sup.name,startLink:page.startUrl,started:counts.started,needsAction,packs:listed.map(r=>{
+  return {factory:sup.name,startLink:page.startUrl,fairLink:await fairLinkFor(sup.id),started:counts.started,needsAction,packs:listed.map(r=>{
     const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
     const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
     return {unread:r.unread||0,title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
@@ -3647,7 +3647,9 @@ app.post('/v1/public/factories',async(req,reply)=>{
   const b=req.body||{},f=(k,n=200)=>String(b[k]??'').trim().slice(0,n)||null;
   if(f('website'))return reply.code(202).send({ok:true}); // honeypot
   const company=f('company',160),email=(f('email',254)||'').toLowerCase()||null,wechat=f('wechat',80),phone=f('phone',60);
-  const lang=['en','zh','zh-hk'].includes(b.lang)?b.lang:'en',source=f('source',60);
+  const lang=['en','zh','zh-hk'].includes(b.lang)?b.lang:'en';let source=f('source',60);
+  { const ref=/^ff-([a-z0-9]{6})$/i.exec(source||''); // passed on by another factory: say which one, so staff can see who is spreading it
+    if(ref){const from=(await pool.query('select company from partners where code=$1',[ref[1].toUpperCase()])).rows[0];source=from?`Referred by ${from.company}`.slice(0,60):'fair'} }
   if(!company)return reply.code(400).send({error:'Enter the company name'});
   if(!email&&!wechat&&!phone)return reply.code(400).send({error:'Leave at least one way to reach you: email, WeChat or phone'});
   if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Check the email address'});
@@ -4081,7 +4083,7 @@ async function loadShareByToken(token){
   return {row:{...row,version:approved.version,published_data:approved.data,verification:approved.verification,published_at:approved.published_at,locked_at:approved.locked_at,held:true,newerVersion:row.version}};
 }
 async function loadShareRow(token){
-  const row=(await pool.query(`select s.id share_id,s.label share_label,s.kind share_kind,s.include_model share_model,s.email share_email,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
+  const row=(await pool.query(`select s.id share_id,s.label share_label,s.kind share_kind,s.include_model share_model,s.email share_email,s.supplier_id share_supplier,s.expires_at,s.revoked_at,tp.id,tp.product_id,tp.client_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,
     p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,c.slug client_slug,pr.name project_name
     from tech_pack_shares s join tech_packs tp on tp.id=s.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where s.token_hash=$1`,[hash(String(token||''))])).rows[0];
@@ -4090,16 +4092,22 @@ async function loadShareRow(token){
   if(row.expires_at&&new Date(row.expires_at)<new Date())return {error:{code:410,message:'This tech pack link has expired'}};
   return {row};
 }
+// The link a factory passes to other factories: the fair page opened on the factory door. When we know which factory is sharing it, the code is carried
+// in the link so staff can see who referred whom. (The pack's own link is never what is shared: it is private to that factory.)
+async function fairLinkFor(supplierId){
+  const p=supplierId?(await pool.query('select code from partners where supplier_id=$1 limit 1',[supplierId])).rows[0]:null;
+  return `${clientHubUrl}/fair?side=factory${p?`&src=ff-${String(p.code).toLowerCase()}`:''}`;
+}
 app.get('/v1/tp/:token',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   await pool.query('update tech_pack_shares set view_count=view_count+1,last_viewed_at=now() where id=$1',[row.share_id]);
   if(row.quote){ // a quotation link: the pack, without the client's name, signatures or the staff's notes, and the factory's own quote if it already sent one
     const clean={...row,client_name:'',project_name:null,verification:emptyVerification(row.version),revisions:[],published_data:{...normalizeTechPack(row.published_data),style:{...normalizeTechPack(row.published_data).style,designer:''}}};
     const mine=(await pool.query('select * from factory_quotes where share_id=$1',[row.share_id])).rows[0];
-    return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''},model:await factoryModel(row)};
+    return {...publishedTechPackView(clean,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)}),quoteMode:true,quote:mine?quoteRow(mine):null,quoteDefaults:{company:row.share_label,email:row.share_email||''},model:await factoryModel(row),fairLink:await fairLinkFor(row.share_supplier)};
   }
   const view=publishedTechPackView(row,{audience:'factory',shareLabel:row.share_label,translations:translationsForPack(row,row.published_data)});
-  const withModel={...view,model:await factoryModel(row)};
+  const withModel={...view,model:await factoryModel(row),fairLink:await fairLinkFor(row.share_supplier)};
   return row.held?{...withModel,held:true,notice:`This is version ${row.version}, the one ${row.client_name} approved. Version ${row.newerVersion} is waiting for their approval, so this page is read-only until then.`}:withModel;
 });
 // The 3D shape reaches a factory only through a link staff switched it on for: a preview and a size, and the file itself through the same link.
