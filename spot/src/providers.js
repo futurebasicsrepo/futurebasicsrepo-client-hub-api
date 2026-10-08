@@ -215,7 +215,8 @@ export function stripeProvider(env = process.env) {
     // confirms with Stripe.js: the card number goes to Stripe, never here.
     async setupFunding(user, saved) {
       const customer = saved?.customer || (await stripe.customers.create({ email: user.email || undefined, name: user.name || undefined, metadata: { spot_user_id: user.id } }, { idempotencyKey: `spot-cus-${user.id}` })).id;
-      const si = await stripe.setupIntents.create({ customer, usage: 'off_session', automatic_payment_methods: { enabled: true, allow_redirects: 'never' }, metadata: { spot_user_id: user.id } });
+      // Cards only: no Link, BLIK or bank redirects, which can't pay later off-session.
+      const si = await stripe.setupIntents.create({ customer, usage: 'off_session', payment_method_types: ['card'], metadata: { spot_user_id: user.id } });
       return { mode: 'stripe', customer, publishable_key: env.STRIPE_PUBLISHABLE_KEY, client_secret: si.client_secret };
     },
     async saveFunding(user, saved, input = {}) {
