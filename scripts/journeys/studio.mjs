@@ -72,7 +72,7 @@ await journey('J65', 'the hero image: made from the photo inside the exchange, t
   }
   // approval lets the 3D model start by itself, from the render of the pack as it passed
   let mdl = ''; for (let i = 0; i < 40 && mdl !== 'done'; i++) { mdl = sql(`select status from tech_pack_models where product_id='${m.id}' order by created_at limit 1`); await sleep(300); }
-  ok(mdl === 'done' && sql(`select source from tech_pack_models where product_id='${m.id}' limit 1`) === 'render', 'once approved, the 3D model started by itself from the render', mdl);
+  ok(mdl === 'done' && sql(`select source from tech_pack_models where product_id='${m.id}' limit 1`) === 'hero', 'once approved, the 3D model started by itself from the approved hero image', mdl);
   // new hero images replace the old one and need approving again; there is a daily limit
   const again = await adm(`/v1/admin/products/${m.id}/tech-pack/hero`, { method: 'POST', body: {} }); ok(again.status === 202, 'staff can make new hero images', again.status);
   for (let i = 0; i < 60 && sql(`select status from tech_pack_heroes where id='${again.json.id}'`) === 'generating'; i++) await sleep(300);

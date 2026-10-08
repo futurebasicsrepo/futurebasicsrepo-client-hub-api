@@ -3119,7 +3119,7 @@ async function runLoopBody(loopId){
     const heroNow=await currentHero(L.tech_pack_id),heroPending=Boolean(heroNow&&heroNow.status!=='approved');
     await say({agent:'system',kind:'done',stage:'done',data:{outcome:passed?'passed':'needs-review',score:final,bar:threshold,heroPending},text:passed?(heroPending?`Scored ${final}/100, above the bar of ${threshold}. One step left: a person approves the reference picture (Check tab).`:`Ready: ${final}/100, above the bar of ${threshold}.`):`Not ready: ${final}/100, and the bar is ${threshold}. A person needs to review what is still open.`});
     await pool.query(`update tech_pack_loops set status='done',stage='done',final_score=$2,final_check_id=$3,outcome=$4,finished_at=now() where id=$1`,[loopId,final,curCheckId||null,passed?'passed':'needs-review']);
-    if(autoModelRow)startModel(autoModelRow,{actor:null,source:'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
+    if(autoModelRow)startModel(autoModelRow,{actor:null,source:heroNow&&heroNow.status==='approved'?'hero':'render',checkId:curCheckId}).catch(e=>app.log.warn({err:e.message},'automatic 3D model failed'));
     // the colourway pictures, drawn from the approved reference once the pack has settled (what a customer gets without anyone starting it)
     if(process.env.CW_AUTO!=='off'&&cwOn()&&(await currentHero(L.tech_pack_id))?.status==='approved'){
       const cr=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],cs=cr?await startColourways(cr,{actor:L.requested_by,trigger:'build'}):{};
@@ -3309,7 +3309,7 @@ async function approveHero(h,{actor=null,auto=false,followUps=true}={}){
   if(process.env.MESH_AUTO!=='off'&&meshConfig().configured){
     const lp=(await pool.query(`select outcome,final_check_id from tech_pack_loops where tech_pack_id=$1 and status='done' order by created_at desc limit 1`,[h.tech_pack_id])).rows[0];
     const have=Number((await pool.query(`select count(*)::int n from tech_pack_models where tech_pack_id=$1 and status in ('running','done')`,[h.tech_pack_id])).rows[0].n);
-    if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor,source:'render',checkId:lp.final_check_id}).catch(()=>{})}
+    if(lp?.outcome==='passed'&&lp.final_check_id&&!have){const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(row)startModel(row,{actor,source:'hero'}).catch(()=>{})}
   }
 }
 app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -3503,11 +3503,19 @@ async function modelGate(row,opts){
   if(src.verdict==='cannot-judge'||src.score<min)return {ok:false,reason:'score',min,score:src.score,checkId:src.check.id,message:`The pack does not look like the photo yet (${src.score}/100, it needs ${min}). Hand it back to the design assistant first, make the model from this render anyway, or make it straight from the client photo.`};
   return {ok:true,min,score:src.score,checkId:src.check.id};
 }
+// The 3D model can be made from the approved hero image (a person signed it off, and its own score is how faithful the redraw is to the client's photo), from a
+// render of the written pack (scored on how well the pack reads as the product), or straight from the client's photo. Where a hero is approved it is used first.
+const heroModelImage=async h=>photoForMesh('data:image/jpeg;base64,'+(await heroBuffer(h)).toString('base64'));
 async function startModel(row,{actor=null,source='render',checkId=null,force=false}={}){
   const cfg=meshConfig();
   if(!cfg.configured)return {unavailable:cfg.provider==='off'?'The 3D step is switched off (MESH_DISABLED).':'No 3D service is connected: add MESHY_API_KEY to the service.'};
-  let image,src=null,forced=false;
-  if(source==='render'){
+  let image,src=null,forced=false,heroScore=null;
+  if(source==='hero'){
+    const h=await currentHero(row.id);
+    if(!h||h.status!=='approved')return {gated:'Approve the hero image first: the 3D model is made from a picture a person has signed off.',gate:{ok:false,reason:'hero'}};
+    try{image=await heroModelImage(h)}catch{return {gated:'The hero image file is missing. Make the hero image again.',gate:{ok:false,reason:'nohero'}}}
+    heroScore=h.candidates?.[h.chosen]?.total??null;
+  }else if(source==='render'){
     // below the bar a person can still choose to make it (force): the render has to exist and the hero has to be approved, but the score is their call
     const gate=await modelGate(row,{checkId});if(!gate.ok&&!(force&&gate.reason==='score'))return {gated:gate.message,gate};
     forced=!gate.ok;src=await modelSource(row,{checkId:checkId||gate.checkId});
@@ -3522,7 +3530,7 @@ async function startModel(row,{actor=null,source='render',checkId=null,force=fal
   const n=(await pool.query(`select count(*) filter(where product_id=$1)::int p,count(*)::int t from tech_pack_models where created_at>now()-interval '24 hours'`,[row.product_id])).rows[0];
   if(n.p>=MESH_PER_PRODUCT_DAY)return {limited:`That is ${MESH_PER_PRODUCT_DAY} 3D models on this product today. Try again tomorrow.`};
   if(n.t>=MESH_PER_DAY)return {limited:`The daily limit of ${MESH_PER_DAY} 3D models is used up. It resets tomorrow, or raise MESH_PER_DAY.`};
-  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by,source,source_check_id,source_score,forced) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor,source,src?src.check.id:null,src?src.score:null,forced])).rows[0];
+  const made=(await pool.query(`insert into tech_pack_models(tech_pack_id,product_id,client_id,provider,model,pack_version,requested_by,source,source_check_id,source_score,forced) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,[row.id,row.product_id,row.client_id,cfg.provider,cfg.model,row.version||0,actor,source,src?src.check.id:null,src?src.score:heroScore,forced])).rows[0];
   try{const t=await startMesh({imageDataUrl:image,cfg});await pool.query('update tech_pack_models set task_id=$2 where id=$1',[made.id,t.taskId])}
   catch(e){await pool.query(`update tech_pack_models set status='failed',error=$2,completed_at=now() where id=$1`,[made.id,clipText(e.message,240)]);return {failed:clipText(e.message,240),id:made.id}}
   setImmediate(()=>followModel(made.id).catch(e=>app.log.warn({err:e.message,modelId:made.id},'3D model follow failed')));
@@ -3575,7 +3583,7 @@ app.post('/v1/admin/products/:id/tech-pack/model',{preHandler:[authenticate,admi
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const row=(await pool.query('select id,product_id,client_id,version,data,updated_at from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
   const pick=UUID_RE.test(String(req.body?.checkId||''))?String(req.body.checkId):null; // the render staff picked; it is used as it is, even if the pack has changed since
-  const r=await startModel(row,{actor:req.auth.sub,source:req.body?.source==='photo'?'photo':'render',checkId:pick,force:req.body?.force===true});
+  const r=await startModel(row,{actor:req.auth.sub,source:['photo','hero'].includes(req.body?.source)?req.body.source:'render',checkId:pick,force:req.body?.force===true});
   if(r.gated)return reply.code(409).send({error:r.gated,gate:r.gate});
   if(r.unavailable)return reply.code(503).send({error:r.unavailable});
   if(r.noPhoto)return reply.code(400).send({error:'Add a photo first.'});

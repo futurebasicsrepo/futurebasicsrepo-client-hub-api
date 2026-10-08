@@ -937,13 +937,53 @@ await journey('J89', 'once the hero image is approved the callouts are shown on 
     ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
     // staff: moving a pin on the hero moves the hero position only
     const actx = await bw.newContext({ viewport: { width: 1280, height: 950 } }); await actx.addInitScript(t => localStorage.setItem('fb.admin.token', t), admin);
-    const ap = await actx.newPage(); await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 15000 }); await ap.click('#tabs button[data-tab="calls"]'); await ap.waitForSelector('.panel[data-panel="calls"].on [data-pin][data-hero]', { timeout: 10000 }); await sleep(600);
+    const ap = await actx.newPage(); await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 15000 }); await ap.click('#tabs button[data-tab="calls"]'); await ap.waitForSelector('.panel[data-panel="calls"].on [data-pin][data-onhero]', { timeout: 10000 }); await sleep(600);
     const before = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0];
     const box = await ap.locator('.panel[data-panel="calls"].on [data-pin] .n').first().boundingBox(); await ap.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await ap.mouse.down(); await ap.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 6 }); await ap.mouse.up(); await sleep(400);
     await ap.click('[data-act="save"]'); for (let i = 0; i < 30; i++) { const c = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0]; if (c.hx !== before.hx) break; await sleep(300); }
     const after = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0];
     ok(after.x === before.x && after.y === before.y && (after.hx !== before.hx || after.hy !== before.hy), 'staff can drag a pin on the hero: the hero position moves and the original one does not', [[before.x, before.y, before.hx, before.hy], [after.x, after.y, after.hx, after.hy]]); await actx.close();
   } finally { await bw.close(); }
+});
+
+await journey('J90', 'the 3D model can be made from the approved hero image, shown with the hero\'s own score and offered first: the hero\'s 87 and the pack renders\' lower scores are labelled as the different things they are, and a hero that is not approved cannot be used', async () => {
+  const m = await room('90');
+  let st = null; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running && st.model && st.model.status === 'done') break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const chk = async () => (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json;
+  const c0 = await chk(); ok(c0.hero && c0.hero.status === 'approved' && typeof c0.hero.score === 'number', 'the hero is approved and has its own score', c0.hero && [c0.hero.status, c0.hero.score]);
+  // a hero that is not approved cannot be used
+  const hid = sql(`select id from tech_pack_heroes where product_id='${m.id}' and status='approved' limit 1`); sql(`update tech_pack_heroes set status='ready' where id='${hid}'`);
+  const no = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(no.status === 409 && /Approve the hero image/.test(no.json.error), 'a hero that is not approved is refused, and it says what to do', no.json); sql(`update tech_pack_heroes set status='approved' where id='${hid}'`);
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', token: m.token, body: { source: 'hero' } })).status === 403, 'a customer cannot start it');
+  // make it from the hero
+  for (let i = 0; i < 40 && sql(`select count(*) from tech_pack_models where product_id='${m.id}' and status='running'`) !== '0'; i++) await sleep(300);
+  const go = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(go.status === 202, 'staff make the 3D model from the approved hero', go.json);
+  let mdl = null; for (let i = 0; i < 60; i++) { mdl = (await chk()).model; if (mdl && mdl.status === 'done' && mdl.source === 'hero') break; await sleep(400); }
+  ok(mdl && mdl.source === 'hero' && mdl.status === 'done' && mdl.sourceScore === c0.hero.score, 'it is recorded as made from the hero with the hero\'s score, not a pack render\'s', mdl && [mdl.source, mdl.sourceScore, c0.hero.score]);
+  const rc = c0.renderChoices || []; ok(rc.length === 0 || rc.every(r => typeof r.score === 'number'), 'the pack renders still have their own scores, which are a different measure');
+  // the truest picture should be the hero: when a pack render scores higher than the hero it can be made the hero (it needs approving), and the 3D model then follows it
+  { const c1 = await chk(), best = (c1.renderChoices || []).slice().sort((a, b) => b.score - a.score)[0];
+    if (best && best.score > c1.hero.score) {
+      const ad = await adm(`/v1/admin/tech-pack-heroes/${c1.hero.id}/adopt`, { method: 'POST', body: { checkId: best.id } }); ok(ad.status === 200, 'a pack render that scored higher than the hero can be made the hero', ad.json);
+      const c2 = await chk(); ok(c2.hero.status === 'ready' && c2.hero.score === best.score, 'it is the hero\'s chosen try with its score, and waits for approval like any hero', [c2.hero.status, c2.hero.score]);
+      ok((await adm(`/v1/admin/tech-pack-heroes/${c2.hero.id}/approve`, { method: 'POST', body: {} })).status === 200, 'staff approve it');
+      for (let i = 0; i < 40 && sql(`select count(*) from tech_pack_models where product_id='${m.id}' and status='running'`) !== '0'; i++) await sleep(300);
+      const g2 = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(g2.status === 202, 'and the 3D model is made from it', g2.json);
+      let m2 = null; for (let i = 0; i < 60; i++) { m2 = (await chk()).model; if (m2 && m2.status === 'done' && m2.sourceScore === best.score) break; await sleep(400); } ok(m2 && m2.source === 'hero' && m2.sourceScore === best.score, 'recorded as made from the hero, with the higher score', m2 && [m2.source, m2.sourceScore]);
+    } else ok(true, 'no pack render outscored the hero here, so nothing to adopt (skipped)'); }
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 950 } }); await ctx.addInitScript(t => localStorage.setItem('fb.admin.token', t), admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="check"]', { timeout: 15000 }); await p.click('#tabs button[data-tab="check"]'); await p.waitForSelector('[data-model]', { timeout: 15000 });
+      const heroNow = (await chk()).hero, first = await p.$eval('[data-model] .tools [data-act="makemodel"]', e => e.textContent.trim()); ok(new RegExp(`approved hero · ${heroNow.score}/100`).test(first), 'in the 3D section the first button is "Make STL from the approved hero" with its score', first);
+      const txt = await p.innerText('[data-model]'); ok(/made from the approved hero image/i.test(txt) && /two different scores/i.test(txt) && /made from the approved hero image \(it scored \d+\/100/i.test(txt), 'and the section says the two scores are different things, and what this model was made from', txt.slice(0, 260));
+      ok(await p.evaluate(() => { const m = document.querySelector('[data-model]'), spec = [...document.querySelectorAll('.panel[data-panel="check"] section.block')].find(x => /Spec check/.test(x.querySelector('h2')?.textContent || '')); return Boolean(m && spec && (m.compareDocumentPosition(spec) & Node.DOCUMENT_POSITION_FOLLOWING)); }), 'the 3D model section sits above the spec check and the assistants\' exchange');
+      { const pills = await p.$$eval('.chk-disc > .chk-pill', els => els.map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })); ok(pills.every(([w, h]) => h <= 32 && w <= 100), 'in "What to fix" the severity tag is a small pill, not stretched to the height of its row', pills); }
+      ok(p.errs.length === 0, 'no script errors', p.errs); await p.locator('[data-model]').first().screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j90-model.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
