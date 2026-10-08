@@ -210,6 +210,19 @@ body.xchg-on{overflow:hidden}
 #printDoc .sigline{height:22px;border-bottom:1px solid #000}
 #printDoc .foot{margin-top:14px;font:500 8px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:#777}
 }
+
+/* Materials & trims: ten columns that share the width by what each one holds, not by what the longest word in it needs. Fixed widths (Color wide enough for "PANTONE Neutral Black C", Qty and Unit narrow), headers aligned with the text under them, and room to breathe. Narrow screens keep the stacked card layout. */
+@media(min-width:701px){
+table.tp th{padding:12px 14px}
+table.tp td{padding:8px 6px;line-height:1.45}
+table.tp td .ro{padding:6px 8px;line-height:1.45;overflow-wrap:break-word;word-break:normal}
+table.tp[data-tbl="bom"]{table-layout:fixed;min-width:940px}
+table.tp[data-tbl="bom"] th:nth-child(1){width:12%}table.tp[data-tbl="bom"] th:nth-child(2){width:13%}table.tp[data-tbl="bom"] th:nth-child(3){width:15%}table.tp[data-tbl="bom"] th:nth-child(4){width:6%}table.tp[data-tbl="bom"] th:nth-child(5){width:4%}table.tp[data-tbl="bom"] th:nth-child(6){width:13%}table.tp[data-tbl="bom"] th:nth-child(7){width:16%}table.tp[data-tbl="bom"] th:nth-child(8){width:4%}table.tp[data-tbl="bom"] th:nth-child(9){width:4.5%}table.tp[data-tbl="bom"] th:nth-child(10){width:auto}
+table.tp[data-tbl="bom"] th:nth-child(11){width:96px}
+table.tp[data-tbl="bom"] td.num{width:auto}table.tp[data-tbl="bom"] td.num input.t{min-width:0;width:100%}
+table.tp[data-tbl="bom"] td input.t,table.tp[data-tbl="bom"] td textarea.t,table.tp[data-tbl="bom"] td select.t{min-width:0;width:100%}
+table.tp[data-tbl="bom"] td{border-bottom-color:rgba(20,20,22,.12)}
+}
 </style><link rel="stylesheet" href="/chat.css">
 </head>
 <body>
