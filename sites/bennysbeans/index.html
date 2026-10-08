@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Benny's Beans | Fresh Roasted Coffee from the Russian River · Guerneville, CA</title>
+<meta name="description" content="Small-batch single-origin coffee roasted to order every Monday and Wednesday in Guerneville, CA, and shipped the next day. Free shipping on $60+, will-call pickup and farmers markets.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Benny's Beans · Roasted after you order.">
+<meta property="og:description" content="Single origins roasted every Monday and Wednesday on the Russian River, shipped the next day.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./assets/site.css?v=efd88e54">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":["Store","LocalBusiness"],"@id":"https://russianriverroastery.com/#roastery","name":"Benny's Beans · Russian River Roastery","description":"Small-batch coffee roaster. Every bag roasted to order on Mondays and Wednesdays.","url":"https://russianriverroastery.com/","telephone":"+1-707-899-4183","foundingDate":"2023","image":"https://russianriverroastery.com/assets/og.jpg","priceRange":"$$","address":{"@type":"PostalAddress","addressLocality":"Guerneville","addressRegion":"CA","postalCode":"95446","addressCountry":"US"},"areaServed":"US","hasOfferCatalog":{"@type":"OfferCatalog","name":"Fresh roasted coffee","itemListElement":[{"@type":"Offer","price":"20.00","priceCurrency":"USD","itemOffered":{"@type":"Product","name":"Single-origin coffee, 1 lb"}},{"@type":"Offer","price":"80.00","priceCurrency":"USD","itemOffered":{"@type":"Product","name":"Single-origin coffee, 5 lb"}}]}}]}
+</script>
+<style>
+  .hero { padding: clamp(36px, 6vw, 80px) 0 clamp(56px, 7vw, 100px); overflow: hidden; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+  .hero h1 { margin: 0 0 26px; font-size: clamp(54px, 8.2vw, 128px); }
+  @media (min-width: 901px) and (max-width: 1240px) { .hero h1 { font-size: 7.4vw; } }
+  .hero h1 .red { display: inline-block; }
+  .hero .lede { margin-bottom: 28px; }
+  .clock { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 26px; padding: 16px 20px 16px 16px; max-width: 520px; margin-bottom: 26px; }
+  .clock .dial { width: 76px; height: 76px; border-radius: 50%; background: var(--ink); color: var(--gold); display: grid; place-items: center; text-align: center; font: 500 10px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+  .clock .dial b { display: block; font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 125; color: #fff; }
+  .clock p { margin: 0; font-size: 15px; line-height: 1.4; }
+  .clock .cd { font: 500 13px var(--mono); color: var(--cherry); margin-top: 4px; display: block; }
+  .stage-hero { position: relative; aspect-ratio: 1; max-width: 620px; justify-self: center; width: 100%; }
+  .stage-hero .big-ring { position: absolute; inset: 0; color: var(--ink); }
+  .stage-hero .big-ring svg { width: 100%; height: 100%; }
+  .stage-hero .disc { position: absolute; inset: 15%; border-radius: 50%; overflow: hidden; background: var(--kraft-l); }
+  .stage-hero .disc img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+  .stage-hero .hero-bag { position: absolute; right: 2%; bottom: -4%; width: 44%; transform: rotate(8deg); filter: drop-shadow(0 30px 30px rgba(60,40,20,.35)); animation: floaty 6s ease-in-out infinite; }
+  .stage-hero .stamp { position: absolute; left: 0; top: 4%; background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); width: 136px; height: 136px; }
+  @keyframes floaty { 50% { transform: rotate(5deg) translateY(-10px); } }
+  @media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } .stage-hero { max-width: 460px; } }
+
+  .journey { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid #3a312a; }
+  .journey li { padding: 28px 22px 8px 0; border-right: 1px solid #3a312a; margin-right: 22px; }
+  .journey li:last-child { border-right: 0; }
+  .journey .n { font: 500 12px var(--mono); color: var(--gold); letter-spacing: .12em; }
+  .journey h3 { font-size: clamp(24px, 2.4vw, 34px); text-transform: uppercase; font-variation-settings: "wdth" 125; font-weight: 900; margin: 10px 0 8px; }
+  .journey p { color: #bfb3a5; font-size: 15px; }
+  .journey .when { font: 500 13px var(--mono); color: #fff; background: #2a231e; border-radius: var(--pill); padding: 6px 12px; display: inline-block; }
+  @media (max-width: 860px) { .journey { grid-template-columns: 1fr 1fr; } .journey li:nth-child(2) { border-right: 0; } }
+  @media (max-width: 520px) { .journey { grid-template-columns: 1fr; } .journey li { border-right: 0; border-bottom: 1px solid #3a312a; margin: 0; padding-right: 0; } }
+
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .lineup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  @media (max-width: 1100px) { .lineup { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 780px) { .lineup { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .lineup { grid-template-columns: 1fr; } }
+  .pcard[hidden] { display: none; }
+  @media (max-width: 480px) { .lineup .bag { aspect-ratio: 1.25; } .lineup .bag svg { width: 54%; } }
+  .pcard .add { width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--ink); background: var(--ink); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .2s var(--ease), background .2s; flex: none; }
+  .pcard .add:hover { background: var(--cherry); border-color: var(--cherry); transform: rotate(90deg); }
+  .pcard .notes li { font-size: 12.5px; padding: 4px 10px; }
+  .pcard .cover { position: absolute; inset: 0; z-index: 1; }
+  .pcard .add, .pcard .badges { position: relative; z-index: 2; }
+
+  .statement { text-align: center; }
+  .statement .display { font-size: clamp(44px, 8.4vw, 132px); }
+  .statement .display .script { color: var(--cherry); font-size: 1.15em; display: inline-block; transform: rotate(-4deg); line-height: .5; }
+
+  .craft .card h3 { text-transform: uppercase; font-variation-settings: "wdth" 120; font-weight: 900; font-size: 22px; }
+  .craft .icon { width: 54px; height: 54px; border-radius: 50%; background: var(--ink); color: var(--gold); display: grid; place-items: center; margin-bottom: 18px; font: 500 13px var(--mono); }
+
+  .mini-sub { background: var(--paper); color: var(--ink); border-radius: 28px; padding: clamp(20px, 3vw, 34px); }
+  .mini-sub .row + .row { margin-top: 16px; }
+  .mini-sub .total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 18px; }
+  .mini-sub .total b { font-size: 34px; font-variation-settings: "wdth" 125; font-weight: 900; }
+
+  .where { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 900px) { .where { grid-template-columns: 1fr; } }
+  .where .card { display: flex; flex-direction: column; gap: 10px; }
+  .where .day { font-weight: 900; font-variation-settings: "wdth" 125; text-transform: uppercase; font-size: 40px; line-height: .9; }
+  .live { display: inline-flex; align-items: center; gap: 8px; font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .live i { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); }
+  .live.on i { background: var(--ok); animation: pulse 2s infinite; box-shadow: 0 0 0 0 rgba(47,122,79,.6); }
+
+  .reviews { columns: 3 300px; column-gap: 18px; }
+  .reviews .card { break-inside: avoid; margin-bottom: 18px; }
+  .reviews .card.hl { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .reviews .who { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: 0; }
+  .reviews .card.hl .who { color: var(--gold); }
+
+  .wh { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: 34px; overflow: hidden; }
+  .wh .photo { border-radius: 0; min-height: 380px; }
+  .wh .txt { padding: clamp(28px, 5vw, 64px); }
+  @media (max-width: 860px) { .wh { grid-template-columns: 1fr; } .wh .photo { min-height: 260px; } }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="./roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="./shop/">Shop</a><a href="./subscribe/">Subscribe</a><a href="./brew/">Brew</a><a href="./wholesale/">Wholesale</a><a href="./find-us/">Find us</a></nav>
+    <a class="brand" href="./" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="./shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="./shop/">Shop</a><a href="./subscribe/">Subscribe</a><a href="./brew/">Brew</a><a href="./wholesale/">Wholesale</a><a href="./find-us/">Find us</a><a href="./gifts/">Gifts</a><a href="./story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Russian River Roastery · Guerneville, CA · Est. 2023</p>
+        <h1 class="display">Roasted<br>after you<br><span class="red">order.</span></h1>
+        <p class="lede">Small-batch single origins, roasted every Monday and Wednesday and shipped the next day. Nothing sits on a shelf. Every bag starts as green coffee the day you click buy.</p>
+        <div class="clock" aria-live="polite">
+          <div class="dial"><span>Roast<b data-hero-day>MON</b><span data-hero-date></span></span></div>
+          <p><b>Order now, it roasts <span data-next-roast="long"></span></b> and ships <span data-next-ship></span>.<span class="cd">Cutoff in <span data-cutoff></span></span></p>
+        </div>
+        <div class="row">
+          <a class="btn btn-red" href="./shop/">Shop this week's roast <span class="arr">→</span></a>
+          <a class="btn btn-ghost" href="./subscribe/">Never run out</a>
+        </div>
+      </div>
+      <div class="stage-hero" aria-hidden="true">
+        <div class="big-ring mark-spin"></div>
+        <div class="disc"><img src="./assets/img/bag-latte.webp" alt="" width="1100" height="1467" fetchpriority="high"></div>
+        <div class="hero-bag" data-bag="halfcaff"></div>
+        <div class="stamp">Roasting<b data-hero-stamp>MON</b>Ships next day</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec ink" aria-labelledby="journey-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">The roast clock</p><h2 class="h2" id="journey-h">Four days from<br>green to your mug.</h2></div>
+        <p class="lede">Most grocery-store coffee was roasted weeks or months before you buy it. Here is exactly when yours happens, live.</p>
+      </div>
+      <ol class="journey" style="list-style:none;padding:0;margin:0">
+        <li class="reveal"><span class="n">01</span><h3>You order</h3><p>Pick the bean, the roast (or Roaster's Choice) and how you brew.</p><span class="when">Cutoff in <span data-cutoff></span></span></li>
+        <li class="reveal" style="--d:.08s"><span class="n">02</span><h3>Benny roasts</h3><p>Small batches, cooled Benny's way for a sweeter bean, ground slow if you asked.</p><span class="when" data-next-roast="long"></span></li>
+        <li class="reveal" style="--d:.16s"><span class="n">03</span><h3>It ships</h3><p>Packed and out the next morning. Or grab it at will-call in Guerneville.</p><span class="when" data-next-ship="long"></span></li>
+        <li class="reveal" style="--d:.24s"><span class="n">04</span><h3>You brew</h3><p>Peak flavor lands at your door, days off the roaster instead of months.</p><span class="when">Usually <span data-arrive></span></span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec" id="lineup" aria-labelledby="lineup-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">On the roaster this week</p><h2 class="h2" id="lineup-h">The lineup.</h2></div>
+        <div class="filters" role="group" aria-label="Filter coffees">
+          <button class="chip on" type="button" aria-pressed="true" data-f="all">All</button>
+          <button class="chip" type="button" aria-pressed="false" data-f="bright">Bright &amp; fruity</button>
+          <button class="chip" type="button" aria-pressed="false" data-f="rich">Rich</button>
+          <button class="chip" type="button" aria-pressed="false" data-f="bold">Bold</button>
+          <button class="chip" type="button" aria-pressed="false" data-f="smooth">Smooth</button>
+          <button class="chip" type="button" aria-pressed="false" data-f="decaf">Decaf + half-caff</button>
+        </div>
+      </div>
+      <div class="lineup" data-lineup></div>
+      <p class="tiny mt2">Every coffee: <b>$20 / 1 lb</b> or <b>$80 / 5 lb</b>. Light, Medium, Medium Dark, Dark, French or Roaster's Choice. Whole bean or ground for your brewer. The + adds 1 lb, Roaster's Choice, whole bean.</p>
+    </div>
+  </section>
+
+  <section class="sec paper statement" aria-label="What people call Benny">
+    <div class="wrap">
+      <p class="eyebrow plain" style="justify-content:center">What the river says</p>
+      <p class="display reveal">Known as<br>the best roaster<br>on the <span class="script">Russian River</span></p>
+      <p class="lede mt2" style="margin-inline:auto">Self-taught, single-origin obsessed and roasting since 2023. One person, two roast days a week and a short list of beans he'd drink himself.</p>
+      <a class="btn mt1" href="./story/">Meet Benny <span class="arr">→</span></a>
+    </div>
+  </section>
+
+  <section class="sec craft" aria-labelledby="craft-h">
+    <div class="wrap">
+      <div class="split">
+        <div class="photo reveal" style="aspect-ratio:4/5"><img src="./assets/img/beans.webp" alt="Freshly roasted coffee beans" loading="lazy" width="784" height="1168"><span class="cap tag ink">Roasted Mon + Wed</span></div>
+        <div>
+          <p class="eyebrow">Why it tastes different</p>
+          <h2 class="h2" id="craft-h">Four small things<br>Benny won't skip.</h2>
+          <div class="grid g2 mt2">
+            <div class="card reveal"><div class="icon">01</div><h3>Roasted to order</h3><p class="small mb0">No inventory of roasted coffee. Your bag is roasted for your order, in small batches.</p></div>
+            <div class="card reveal" style="--d:.06s"><div class="icon">02</div><h3>Cooled for sweetness</h3><p class="small mb0">A specialized cooling process after the roast, which makes a noticeably sweeter bean.</p></div>
+            <div class="card reveal" style="--d:.12s"><div class="icon">03</div><h3>Ground slow</h3><p class="small mb0">The grinder is modified to run at a much lower RPM. Heat strips flavor while grinding.</p></div>
+            <div class="card reveal" style="--d:.18s"><div class="icon">04</div><h3>Roaster's Choice</h3><p class="small mb0">Don't know your roast? Let Benny pick the best level for each batch, based on how it roasts.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec redbg" aria-labelledby="sub-h">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Subscriptions</p>
+        <h2 class="display" id="sub-h" style="font-size:clamp(48px,7.4vw,112px)">Never<br>run out.</h2>
+        <p class="lede" style="color:#ffe2dd">Fresh coffee on your schedule, roasted the same week it ships. Skip, swap or pause from a text. Or switch to Guerneville pickup and save the shipping.</p>
+      </div>
+      <div class="mini-sub" data-mini-sub>
+        <div class="row between"><span class="label">Coffee</span></div>
+        <div class="seg mt1" data-pick="coffee">
+          <button type="button" aria-pressed="true" data-v="choice">Benny's pick</button>
+          <button type="button" aria-pressed="false" data-v="light">Light rotation</button>
+          <button type="button" aria-pressed="false" data-v="dark">Dark rotation</button>
+          <button type="button" aria-pressed="false" data-v="halfcaff">Half-Caff</button>
+        </div>
+        <div class="row between mt2"><span class="label">How much</span></div>
+        <div class="seg mt1" data-pick="size">
+          <button type="button" aria-pressed="true" data-v="1">1 lb<small>$20</small></button>
+          <button type="button" aria-pressed="false" data-v="2">2 lb<small>$40</small></button>
+          <button type="button" aria-pressed="false" data-v="5">5 lb<small>$80</small></button>
+        </div>
+        <div class="row between mt2"><span class="label">How often</span></div>
+        <div class="seg mt1" data-pick="every">
+          <button type="button" aria-pressed="false" data-v="1">Weekly</button>
+          <button type="button" aria-pressed="true" data-v="2">Every 2 weeks</button>
+          <button type="button" aria-pressed="false" data-v="4">Monthly</button>
+        </div>
+        <div class="total"><span><span class="label">Each delivery</span><br><span class="tiny" data-ms-note></span></span><b data-ms-price>$20</b></div>
+        <a class="btn btn-block mt1" data-ms-go href="./subscribe/">Build my subscription <span class="arr">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" aria-labelledby="where-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Skip the shipping</p><h2 class="h2" id="where-h">Where's Benny<br>this week?</h2></div>
+        <a class="btn btn-ghost" href="./find-us/">Pre-order for pickup <span class="arr">→</span></a>
+      </div>
+      <div class="where" data-where></div>
+    </div>
+  </section>
+
+  <section class="sec paper" aria-labelledby="rev-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Customer reviews</p><h2 class="h2" id="rev-h">"Best coffee<br>I've ever tasted."</h2></div>
+        <p class="lede">What people have told Benny, posted on his site. Unedited.</p>
+      </div>
+      <div class="reviews">
+        <div class="card hl reveal"><p class="stars" aria-label="5 stars">★★★★★</p><p class="quote">We are on our 4th round of coffee beans from Benny (recently upgraded to 5lb bags)… we were previously ordering beans from brands like Blue Bottle, Equator, and Red Bay and are very satisfied with how Benny's product compares.</p><p class="who">Sarah M.</p></div>
+        <div class="card reveal"><p class="quote">Benny is my favorite roaster around for sure! For all you light roast people who are on the fence, I get you. Trust me when I say, he does not burn the beans, take the leap and you won't be disappointed.</p><p class="who">Lucas E.</p></div>
+        <div class="card reveal"><p class="quote">I love Benny's beans. He is an excellent roaster. I am a coffee snob and I give him 5 stars! I am ordering beans for my vacation rental and hopefully, my guests will order these beans.</p><p class="who">Suzie M.</p></div>
+        <div class="card reveal"><p class="quote">Currently working through our first order of beans from Benny! My wife and I are in love… The taste is wonderful and the smell is intoxicating, we couldn't be happier with the beans and found a local go-to!</p><p class="who">Ryan U.</p></div>
+        <div class="card reveal"><p class="quote">The only coffee that I buy is Benny's Beans. I've known Benny for 16 plus years… he makes the best coffee ever. So amazing. And so many different flavors of roasts.</p><p class="who">Jacob B.</p></div>
+        <div class="card reveal"><p class="quote">Whether thou seekest a jolt to awaken the senses or a warm embrace on a chilly morn, Benny's Beans hath a potion for thee… Verily, this is coffee fit for a king!</p><p class="who">Jenn B.</p></div>
+        <div class="card reveal"><p class="quote">Oh yeah, I've been using a batch of Ben's beans and yeah, it's good stuff. It's been making my mornings nice. Nice guy, too!</p><p class="who">Liam B.</p></div>
+        <div class="card reveal"><p class="quote">Best coffee ever! Ben knows what he's doing and he is great to do business with! ❤️☕️</p><p class="who">Ginny B.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" aria-labelledby="wh-h">
+    <div class="wrap">
+      <div class="wh ink">
+        <div class="photo"><img src="./assets/img/latte-heart.webp" alt="A latte with heart latte art" loading="lazy" width="784" height="1168"></div>
+        <div class="txt">
+          <p class="eyebrow">Wholesale</p>
+          <h2 class="h2" id="wh-h">Pour Benny's<br>where you work.</h2>
+          <p class="lede">Cafés, restaurants, offices and Russian River vacation rentals. Standing orders on the Monday or Wednesday roast, delivered or at will-call, with volume pricing and a welcome-bag program guests can reorder from.</p>
+          <div class="row mt2"><a class="btn btn-light" href="./wholesale/">Get wholesale pricing <span class="arr">→</span></a><a class="btn btn-outline-light" href="./wholesale/#samples">Request samples</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec-sm" aria-labelledby="faq-h">
+    <div class="narrow faq">
+      <h2 class="h2" id="faq-h">Good questions.</h2>
+      <details><summary>How fresh is "fresh"?</summary><p>Benny doesn't keep roasted coffee on hand. Your bag is roasted on the next Monday or Wednesday after you order and ships the following day, so it usually arrives two to four days off the roaster.</p></details>
+      <details><summary>What's Roaster's Choice?</summary><p>Instead of choosing Light through French yourself, you let Benny roast each batch to the level he thinks shows that bean best. It's new, and the easiest way to taste a coffee the way the roaster intends.</p></details>
+      <details><summary>Whole bean or ground?</summary><p>Whole bean keeps its flavor longest. If you don't grind at home, choose Coarse (French press, cold brew), Auto-Drip, Espresso, Fine or Turkish. Benny's grinder runs at a low RPM so the grind doesn't heat and flatten the coffee.</p></details>
+      <details><summary>How much is shipping?</summary><p>Free on orders of $60 or more. Under that, shipping is calculated at checkout. Will-call pickup at True Value Hardware in Guerneville and market pickup are always free.</p></details>
+      <details><summary>Can I talk to Benny?</summary><p>Yes, really. Text <a class="link" href="sms:+17078994183">707-899-4183</a>. He's happy to talk coffee, roast levels and wholesale.</p></details>
+    </div>
+  </section>
+</main>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="./shop/">Shop all coffee</a></li><li><a href="./subscribe/">Subscriptions</a></li><li><a href="./brew/">Brew guides &amp; bean quiz</a></li><li><a href="./gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="./story/">Our story</a></li><li><a href="./wholesale/">Wholesale &amp; rentals</a></li><li><a href="./find-us/">Markets &amp; pickup</a></li><li><a href="./coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="./roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="./assets/site.js?v=b4e1355a" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc;
+  // hero dial + stamp
+  var r = BB.nextRoast();
+  $$("[data-hero-day], [data-hero-stamp]").forEach(function (el) { el.textContent = BB.DS[r.roast.getDay()].toUpperCase(); });
+  $("[data-hero-date]").textContent = BB.MON[r.roast.getMonth()] + " " + r.roast.getDate();
+  $(".big-ring").innerHTML = BB.ring({ words: false });
+
+  // lineup cards
+  var grid = $("[data-lineup]");
+  grid.innerHTML = BB.COFFEES.map(function (c, i) {
+    var group = c.caf === "decaf" || c.caf === "half" ? "decaf" : c.flavor;
+    return '<article class="pcard reveal" style="--d:' + (i % 4) * .06 + 's" data-g="' + group + '">' +
+      '<div class="stage" style="--c:' + c.c + '26"><div class="badges">' + (c.badge ? '<span class="tag red">' + esc(c.badge) + "</span>" : "") + (c.caf === "decaf" ? '<span class="tag ink">Decaf</span>' : "") + '</div><div class="bag">' + BB.bag(c.id) + "</div></div>" +
+      '<div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><ul class="notes">' + c.notes.slice(0, 3).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" + BB.roastBar(c.roast) +
+      '<div class="foot"><span class="price">$20 <small>/ 1 lb</small></span><button class="add" type="button" data-quick="' + c.id + '" aria-label="Add 1 lb of ' + esc(c.name) + ' to your bag">+</button></div></div>' +
+      '<a class="cover" href="./coffee/?c=' + c.id + '" aria-label="' + esc(c.name) + ', details"></a></article>';
+  }).join("");
+  grid.insertAdjacentHTML("beforeend", '<article class="pcard reveal" data-g="all" style="background:var(--ink);color:var(--paper);border-color:var(--ink);--d:.18s"><div class="body" style="justify-content:space-between;padding:28px 24px"><div><span class="origin" style="color:var(--gold)">Can\'t decide?</span><h3 style="font-size:34px;text-transform:uppercase;font-variation-settings:\'wdth\' 125;font-weight:900;line-height:.95;margin-top:12px">Take the 30-second bean quiz.</h3><p class="small" style="color:#bfb3a5;margin-top:14px">Tell Benny how you brew and what you like in a cup. Get a bag matched to you, roast and grind included.</p></div><div style="width:150px;color:var(--cherry);margin:10px 0">' + BB.ring({ words: false }) + '</div><a class="btn btn-light btn-block" href="./brew/#quiz">Find my bean <span class="arr">→</span></a></div></article>');
+  $$("[data-f]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      $$("[data-f]").forEach(function (x) { x.classList.toggle("on", x === b); x.setAttribute("aria-pressed", x === b); });
+      $$(".pcard", grid).forEach(function (p) { p.hidden = b.dataset.f !== "all" && p.dataset.g !== b.dataset.f && p.dataset.g !== "all"; });
+    });
+  });
+
+  // mini subscription builder
+  var ms = { coffee: "choice", size: 1, every: 2 };
+  var names = { choice: "Benny's pick, rotating", light: "Light roast rotation", dark: "Dark roast rotation", halfcaff: "Roaster's Half-Caff" };
+  function paintMs() {
+    var price = ms.size === 5 ? 80 : 20 * ms.size;
+    $("[data-ms-price]").textContent = "$" + price;
+    var perMonth = Math.round(price * 4.33 / ms.every);
+    $("[data-ms-note]").textContent = names[ms.coffee] + " · about $" + perMonth + "/mo · free shipping " + (price >= 60 ? "included" : "at $60+");
+    $("[data-ms-go]").href = "./subscribe/?coffee=" + ms.coffee + "&size=" + ms.size + "&every=" + ms.every;
+  }
+  $$("[data-mini-sub] [data-pick]").forEach(function (g) {
+    g.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      $$("button", g).forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+      ms[g.dataset.pick] = g.dataset.pick === "coffee" ? b.dataset.v : +b.dataset.v; paintMs();
+    });
+  });
+  paintMs();
+
+  // where's Benny
+  var now = BB.now(), next = BB.nextMarket();
+  var cards = BB.markets.map(function (m) {
+    var live = next && next.m.id === m.id && next.live;
+    return '<div class="card reveal"><span class="live' + (live ? " on" : "") + '"><i></i>' + (live ? "At the market now" : "Farmers market") + '</span><div class="day">' + m.dayName.slice(0, 3) + '</div><b>' + esc(m.name) + '</b><p class="small mb0">' + m.dayName + "s, " + m.hours + '</p><p class="tiny mb0">Pre-order by the night before and your bag is waiting, bagged and labeled.</p><a class="link small" href="./find-us/?market=' + m.id + '">Pre-order for ' + m.town + " →</a></div>";
+  });
+  var r2 = BB.nextRoast();
+  cards.unshift('<div class="card reveal" style="background:var(--ink);color:var(--paper);border-color:var(--ink)"><span class="live on" style="color:#bfb3a5"><i></i>Will-call pickup</span><div class="day" style="color:var(--gold)">' + BB.DS[r2.ship.getDay()] + '</div><b>' + esc(BB.pickup.name) + '</b><p class="small mb0" style="color:#bfb3a5">' + esc(BB.pickup.addr) + '</p><p class="tiny mb0" style="color:#bfb3a5">Order today, it roasts ' + BB.fmt(r2.roast) + " and is ready " + BB.fmt(r2.ship) + '. Free.</p><a class="link small" style="color:#fff" href="./find-us/#willcall">How pickup works →</a></div>');
+  $("[data-where]").innerHTML = cards.join("");
+  BB.reveal();
+});
+</script>
+</body>
+</html>
