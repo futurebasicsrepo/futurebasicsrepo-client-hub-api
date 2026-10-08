@@ -53,7 +53,7 @@
 
   /* ---------- builder ---------- */
   .builder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
-  @media (max-width: 960px) { .builder { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 960px) { .builder { grid-template-columns: minmax(0, 1fr); } .preview { order: -1; position: static; } }
   .controls { display: grid; gap: 22px; }
   .controls .label { display: block; margin-bottom: 10px; }
   .amts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -104,6 +104,7 @@
   .merch .mbody { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
   .merch h3 { margin: 0; font-size: 20px; }
   .merch .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 6px; }
+  @media (max-width: 640px) { .merch .card { flex-direction: row; } .merch .card .photo { width: 40%; flex: none; } .merch .mbody { padding: 14px 14px 16px; } .merch .foot { flex-direction: column; align-items: flex-start; } .merch .cap { left: 8px; bottom: 8px; } }
   .pcard .add-row { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 6px; }
   .pcard .why { font-size: 14px; color: var(--ink-2); margin: 0; }
 
@@ -404,7 +405,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var sendOn = g.when === "now" ? BB.ymd(now) : form.sendOn.value;
     if (g.when === "later" && (!sendOn || sendOn < BB.ymd(tmr))) { err.textContent = "Pick a send date from tomorrow on."; form.sendOn.focus(); return; }
     var dn = { river: "River", cherry: "Cherry", kraft: "Kraft" }[g.design];
-    BB.add({ kind: "gift", amount: g.amount, to: to, note: "Email to " + toEmail + " · " + dn + " design · " + (g.when === "now" ? "sends after checkout" : "sends " + sendLabel()) + (form.note.value.trim() ? " · “" + form.note.value.trim().slice(0, 60) + (form.note.value.trim().length > 60 ? "…" : "") + "”" : "") + " · from " + from });
+    BB.add({ kind: "gift", amount: g.amount, to: to, note: "Email to " + toEmail + " · " + dn + " design · " + (g.when === "now" ? "sends after checkout" : "sends " + sendLabel()) + " · from " + from });
     BB.log("gift", { amount: g.amount, to: to, toEmail: toEmail, from: from, sendOn: sendOn, design: g.design, note: form.note.value.trim() });
   });
 

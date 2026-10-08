@@ -23,8 +23,9 @@
   [hidden] { display: none !important; }
   .co-hero { padding: clamp(28px, 4vw, 56px) 0 clamp(24px, 3vw, 36px); }
   .co-hero .hrow { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
-  .co-hero h1 { margin: 0; font-size: clamp(54px, 8vw, 116px); }
-  .ticket { display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--paper); border-radius: 30px; padding: 14px 26px 14px 14px; max-width: 560px; }
+  .co-hero h1 { margin: 0; font-size: clamp(36px, 10.2vw, 84px); }
+  .co-hero .hrow > div { min-width: 0; }
+  .ticket { display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--paper); border-radius: 30px; padding: 14px 26px 14px 14px; max-width: 470px; }
   .ticket .stamp { flex: none; width: 112px; height: 112px; background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); font-size: 10px; }
   .ticket .stamp b { font-size: 24px; }
   .ticket p { margin: 0; }
@@ -32,7 +33,7 @@
   .ticket .big span { color: var(--gold); }
   .ticket .sub { font: 500 12.5px/1.5 var(--mono); color: #bfb3a5; margin-top: 8px; }
   .ticket .sub b { color: #fff; font-weight: 500; }
-  @media (max-width: 520px) { .ticket { padding: 12px 16px 12px 12px; gap: 14px; border-radius: 24px; } .ticket .stamp { width: 88px; height: 88px; font-size: 8.5px; padding: 8px; } .ticket .stamp b { font-size: 19px; } }
+  @media (max-width: 520px) { .ticket { padding: 12px 16px 12px 12px; gap: 14px; border-radius: 24px; } .ticket .stamp { width: 88px; height: 88px; font-size: 8.5px; padding: 8px; } .ticket .stamp b { font-size: 19px; } .ticket .big { font-size: 18px; } .ticket .sub { font-size: 11.5px; } }
 
   .co { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; padding-bottom: clamp(64px, 8vw, 110px); }
   @media (max-width: 960px) { .co { grid-template-columns: 1fr; } }
@@ -70,8 +71,8 @@
     .fcard .tick { top: 50%; margin-top: -12px; }
   }
   .fpanel { margin-top: 16px; padding: 18px; border-radius: 20px; background: var(--bone); border: 1px dashed var(--kraft-d); }
-  .fpanel .note { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 14px 0 0; }
-  .fpanel .note::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cherry); margin-top: 7px; flex: none; }
+  .fpanel .note { font-size: 14px; margin: 14px 0 0; padding-left: 18px; position: relative; }
+  .fpanel .note::before { content: ""; position: absolute; left: 0; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--cherry); }
   .mk { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .mk button { text-align: left; border: 2px solid var(--line); background: var(--paper); border-radius: 18px; padding: 14px; cursor: pointer; display: grid; gap: 2px; transition: border-color .15s; }
   .mk button:hover { border-color: var(--ink); }
@@ -106,7 +107,15 @@
 
   /* summary */
   .sum { position: sticky; top: calc(var(--head-h) + 16px); background: var(--paper); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; }
-  @media (max-width: 960px) { .sum { position: static; order: -1; } }
+  .sum-toggle { display: none; }
+  @media (max-width: 960px) {
+    .sum { position: static; order: -1; }
+    .sum-toggle { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 10px; background: none; border: 0; border-top: 1px solid var(--line); padding: 14px 22px; cursor: pointer; font-weight: 700; font-size: 15px; }
+    .sum-toggle .chev { transition: transform .25s var(--ease); }
+    .sum.open .sum-toggle .chev { transform: rotate(180deg); }
+    .sum:not(.open) .lines, .sum:not(.open) .when { display: none; }
+    .sum header { padding-bottom: 8px; }
+  }
   .sum header { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 22px 14px; }
   .sum header h2 { font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin: 0; }
   .sum .lines { padding: 0 22px; }
@@ -119,7 +128,7 @@
   .sum .up .t { width: 40px; height: 46px; border-radius: 10px; display: grid; place-items: end center; overflow: hidden; flex: none; }
   .sum .up .t svg { width: 30px; }
   .sum .tot { padding: 16px 22px 20px; }
-  .sum .tot dl { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 0; font-size: 15px; }
+  .sum .tot dl { display: grid; grid-template-columns: 1fr auto; gap: 8px 0; margin: 0; font-size: 15px; }
   .sum .tot dd { margin: 0; text-align: right; font-weight: 700; }
   .sum .tot .grand { font: 900 26px/1 var(--sans); font-variation-settings: "wdth" 120; padding-top: 12px; border-top: 1px solid var(--line); margin-top: 6px; }
   .sum .when { margin: 0 22px 22px; background: var(--ink); color: var(--paper); border-radius: 18px; padding: 14px 16px; font-size: 14px; display: flex; gap: 12px; align-items: center; }
@@ -292,7 +301,8 @@
 
       <aside class="sum" aria-labelledby="sum-h">
         <header><h2 id="sum-h">Your bag</h2><a class="link small" href="../shop/">Keep shopping</a></header>
-        <div class="lines" data-lines></div>
+        <button class="sum-toggle" type="button" aria-expanded="false" aria-controls="sum-lines" data-sum-toggle><span data-sum-tlabel>Show items</span><span class="chev" aria-hidden="true">▾</span></button>
+        <div class="lines" id="sum-lines" data-lines></div>
         <div class="shipbox" aria-live="polite" data-shipbox><p data-ship-msg></p><div class="meter"><i data-ship-bar></i></div><div data-upsell></div></div>
         <div class="tot">
           <dl>
@@ -427,6 +437,7 @@ document.addEventListener("DOMContentLoaded", function () {
       return '<div class="line">' + BB.thumb(it) + "<div><b>" + esc(BB.lineName(it)) + '</b><div class="opt">' + BB.lineOpts(it) + '</div><div class="qty"><button type="button" data-q="' + i + '" data-d="-1" aria-label="One less ' + esc(BB.lineName(it)) + '">−</button><span aria-live="polite">' + it.qty + '</span><button type="button" data-q="' + i + '" data-d="1" aria-label="One more ' + esc(BB.lineName(it)) + '">+</button></div></div><div class="lp">' + BB.money(BB.linePrice(it) * it.qty) + '<button class="rm" type="button" data-rm="' + i + '">Remove</button></div></div>';
     }).join("");
     $("#sum-h").textContent = "Your bag (" + BB.count() + ")";
+    if (!$(".sum").classList.contains("open")) $("[data-sum-tlabel]").textContent = "Show " + BB.count() + " item" + (BB.count() === 1 ? "" : "s") + " · edit quantities";
     var need = Math.max(0, BB.freeShip - sh), box = $("[data-shipbox]");
     box.hidden = st.fulfil !== "ship" || sh === 0;
     $("[data-ship-msg]").innerHTML = need > 0 ? "You're <b>" + BB.money(need) + "</b> from free shipping" : "<b>Free shipping</b> unlocked.";
@@ -481,6 +492,7 @@ document.addEventListener("DOMContentLoaded", function () {
   $("[data-gift]").addEventListener("change", function (e) { $("[data-gift-more]").hidden = !e.target.checked; if (e.target.checked) $("[data-gift-more] textarea").focus(); });
   $("[data-sub]").addEventListener("change", function (e) { $("[data-sub-more]").hidden = !e.target.checked; });
   $("[data-every]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; st.every = +b.dataset.v; $$("[data-every] button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); paintSummary(); });
+  $("[data-sum-toggle]").addEventListener("click", function () { var sm = $(".sum"), o = !sm.classList.contains("open"); sm.classList.toggle("open", o); this.setAttribute("aria-expanded", o); $("[data-sum-tlabel]").textContent = o ? "Hide items" : "Show " + BB.count() + " item" + (BB.count() === 1 ? "" : "s") + " · edit quantities"; });
   $("[data-ring-gold]").innerHTML = BB.ring({ words: false });
   $("[data-empty-ring]").innerHTML = BB.ring({ words: false });
 
