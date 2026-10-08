@@ -28,14 +28,14 @@ export function finishMessage(cart, link) {
     const trip = cart.items[0]?.title || 'your flight';
     return {
       subject: `Your flight is ready: ${trip}`,
-      text: `Spot: Your flight is ready ✈️ ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a bit. Finish on your phone: ${link}`,
+      text: `Spot: Your flight is ready to book. ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a short time. Finish here: ${link}`,
     };
   }
   const first = cart.items[0]?.title || 'your cart';
   const more = cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : '';
   return {
     subject: `Your cart is ready: ${first}${more}`,
-    text: `Spot: Your cart is ready 🛒 ${first}${more} from ${cart.merchant.name}, ${usd(cart.total_cents)}. Finish on your phone: ${link}`,
+    text: `Spot: Your cart is ready. ${first}${more} from ${cart.merchant.name}, ${usd(cart.total_cents)}. Review and finish here: ${link}`,
   };
 }
 

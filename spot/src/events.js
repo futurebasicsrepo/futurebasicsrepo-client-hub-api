@@ -73,7 +73,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `🎉 ${payer} spotted you!`,
           text: `${payer} covered your cart from ${stores}. Tell Spot where to ship it: ${blink}`,
           html: mail({ preheader: `${carts.length} stores, covered`, title: `🎉 ${payer} spotted you!`, lines: [`Your cart from <b>${esc(stores)}</b> is covered.`, 'Spot orders from each store for you, and you tap once per store to confirm.'], cta: { label: 'Get it ordered →', url: blink } }),
-          sms: `Spot: 🎉 ${payer} spotted you! Your cart from ${carts.length} stores is covered. Get it ordered: ${blink}`,
+          sms: `Spot: ${payer} paid for your order from ${carts.length} stores. Confirm your shipping address so we can place it: ${blink}`,
         }];
       }
       const email = cart.payer_contact?.email;
@@ -106,7 +106,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `🎉 ${payer} spotted you!`,
           text: `${payer} covered your ${item} from ${store} (${usd(cart.cart_cents)}). Tell Spot where to ship it: ${link}`,
           html: mail({ preheader: `${item} is covered`, title: `🎉 ${payer} spotted you!`, lines: [`<b>${esc(item)}</b> from ${esc(store)} is covered: ${usd(cart.cart_cents)}.`, `Tell Spot where to ship it. Spot buys it from ${esc(store)} for you, and you tap once to confirm.`], cta: { label: 'Get it ordered →', url: link } }),
-          sms: `Spot: 🎉 ${payer} spotted you! ${item} from ${store} is covered. Get it ordered: ${link}`,
+          sms: `Spot: ${payer} paid for your ${store} order (${item}). Confirm your shipping address so we can place it: ${link}`,
         }];
       case 'confirm_needed':
         return [{
@@ -115,7 +115,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `👆 One tap to order your ${item}`,
           text: `Spot filled in ${store}'s checkout: ${usd(f.total_cents || 0)}. Tap Place order within 10 minutes: ${link}`,
           html: mail({ preheader: 'Your checkout is ready', title: 'One tap to order 👆', lines: [`Spot filled in ${esc(store)}’s checkout for <b>${esc(item)}</b>. Total: <b>${usd(f.total_cents || 0)}</b>.`, 'Nothing is ordered until you tap Place order. It waits for 10 minutes.'], cta: { label: 'Review and place order →', url: link } }),
-          sms: `Spot: Your ${store} checkout is ready, ${usd(f.total_cents || 0)}. Tap Place order within 10 min: ${link}`,
+          sms: `Spot: Your ${store} order total is ${usd(f.total_cents || 0)}. Confirm within 10 minutes to place it: ${link}`,
         }];
       case 'needs_you':
         return [{
@@ -153,7 +153,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `✈️ You're booked: ${route}`,
           text: `You're booked! Confirmation ${ref}. ${route}, ${store}. The airline emails your e-ticket. ${link}`,
           html: mail({ preheader: `Confirmation ${ref}`, title: '✈️ You’re booked!', lines: [`Confirmation code <b style="font:800 20px ui-monospace,Menlo,monospace;letter-spacing:.12em">${esc(ref)}</b>`, `${esc(route)} · ${esc(store)}`, `${esc(store)} emails your e-ticket. Use the code to check in.`], cta: { label: 'See your trip →', url: link } }),
-          sms: `Spot: ✈️ You're booked! Confirmation ${ref}. ${route}. Details: ${link}`,
+          sms: `Spot: Your flight is booked. Confirmation ${ref}, ${route}. Details: ${link}`,
         }];
       }
       case 'booking_failed':
@@ -173,7 +173,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           to: tap ? requesterContact(cart) : { email: extra?.email || requesterContact(cart).email },
           subject: tap ? `🤖 Approve ${usd(cart.total_cents)} at ${store}?` : `🤖 ${msg.subject}`,
           text: tap ? `Your AI wants ${item} from ${store}, ${usd(cart.total_cents)}. Tap Approve and your ${tap.label} pays: ${link}` : msg.text,
-          ...(tap ? { sms: `Spot: Your AI wants ${item} from ${store}, ${usd(cart.total_cents)}. Approve with your ${tap.label}: ${link}` } : {}),
+          ...(tap ? { sms: `Spot: Your AI assistant requested ${item} from ${store}, ${usd(cart.total_cents)}. Review and approve it here: ${link}` } : {}),
           html: cart.saved_card
             ? mail({ preheader: `One tap pays with your ${cart.saved_card.label}`, title: 'Approve what your AI picked? 🤖', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, `Tap Approve and your ${esc(cart.saved_card.label)} pays. Spot gets a card just for this order, capped at this amount and locked to ${esc(store)}, and orders it for you.`, 'Nothing is charged unless you tap.'], cta: { label: `Approve ${usd(cart.total_cents)} →`, url: link } })
             : mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
