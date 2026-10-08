@@ -126,6 +126,59 @@
     });
   });
 
+  // ---------- motion: manifesto, counters, campaign rotator ----------
+  var calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Manifesto: wrap each word; words light up as the block scrolls through the viewport.
+  // Words wrapped in <b> in the source are lit in the volt accent.
+  $$(".manifesto").forEach(function (m) {
+    var out = [];
+    Array.prototype.forEach.call(m.childNodes, function (n) {
+      var accent = n.nodeType === 1 && n.tagName === "B";
+      (n.textContent || "").split(/(\s+)/).forEach(function (t) {
+        if (!t) return;
+        out.push(/^\s+$/.test(t) ? t : '<span class="w' + (accent ? " v" : "") + '">' + NP.esc(t) + "</span>");
+      });
+    });
+    m.setAttribute("aria-label", m.textContent.replace(/\s+/g, " ").trim());
+    m.innerHTML = out.join("");
+    var words = $$(".w", m);
+    $$(".w", m).forEach(function (w) { w.setAttribute("aria-hidden", "true"); });
+    if (calm) { words.forEach(function (w) { w.classList.add("on"); }); return; }
+    var paint = function () {
+      var r = m.getBoundingClientRect(), vh = window.innerHeight;
+      var p = Math.min(1, Math.max(0, (vh * 0.85 - r.top) / (r.height + vh * 0.35)));
+      var lit = Math.round(p * words.length);
+      words.forEach(function (w, i) { w.classList.toggle("on", i < lit); });
+    };
+    window.addEventListener("scroll", paint, { passive: true }); window.addEventListener("resize", paint); paint();
+  });
+  // Count-up numbers: <b data-count="2002">2002</b>
+  var counters = $$("[data-count]");
+  if (counters.length && "IntersectionObserver" in window && !calm) {
+    var cio = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return; cio.unobserve(e.target);
+        var el = e.target, to = +el.dataset.count, from = +(el.dataset.from || 0), t0 = performance.now(), dur = 1400;
+        var suffix = el.dataset.suffix || "";
+        (function step(t) {
+          var k = Math.min(1, (t - t0) / dur), v = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+          el.firstChild.nodeValue = v + "";
+          if (k < 1) requestAnimationFrame(step);
+        })(t0);
+      });
+    }, { threshold: 0.6 });
+    counters.forEach(function (c) { if (c.firstChild && c.firstChild.nodeType === 3) cio.observe(c); });
+  }
+  // Campaign rotator: "Still Mom. / Still Dad. / …"
+  $$("[data-rotate]").forEach(function (box) {
+    var inner = box.querySelector(".rot"), n = inner ? inner.children.length : 0, i = 0;
+    if (!inner || n < 2 || calm) return;
+    setInterval(function () {
+      i = (i + 1) % n;
+      inner.style.transform = "translateY(" + (-i * 100 / n) + "%)";
+    }, 2200);
+  });
+
   // ---------- the after-hours care agent ----------
   if (window.NP_NO_CHAT) return;
   var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';

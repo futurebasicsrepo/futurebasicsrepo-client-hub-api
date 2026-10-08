@@ -86,3 +86,10 @@ a.tile:hover{border-color:var(--plum-3);color:var(--ink)}
 .bars i.lime{background:var(--lime-2)}
 @media (max-width:520px){.bars div{grid-template-columns:110px 1fr 30px}}
 .view{padding:0}
+/* v2 type */
+.tile b{font-stretch:68%;font-weight:850;text-transform:uppercase;font-size:clamp(30px,2.6vw,40px);line-height:.95;letter-spacing:-.005em;margin:10px 0 6px}
+.c-tag{font-style:normal;font-stretch:68%;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
+.c-nav a em{background:var(--ink)}
+.c-nav a[aria-current=page]{background:var(--volt);color:var(--ink)}
+.panel h3{letter-spacing:-.01em}
+.roi b{font-stretch:68%;font-weight:850}
