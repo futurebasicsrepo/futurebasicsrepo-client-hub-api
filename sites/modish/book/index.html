@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Book a Visit | Modish Nail Spa</title>
+<meta name="description" content="Book a manicure, pedicure, gel, dip or acrylics at Modish Nail Spa in Roxborough or Conshohocken. See the time and total before you confirm.">
+<meta name="theme-color" content="#1b1310">
+<link rel="canonical" href="https://modishnailspaphiladelphia.com/book/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%231b1310'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Didot,Georgia,serif' font-size='34' fill='%23e6cb92'%3EM%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Modish Nail Spa">
+<meta property="og:title" content="Book a Visit | Modish Nail Spa">
+<meta property="og:description" content="Book a manicure, pedicure, gel, dip or acrylics at Modish Nail Spa in Roxborough or Conshohocken. See the time and total before you confirm.">
+<meta property="og:image" content="https://modishnailspaphiladelphia.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300..600&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=b35c7bd5">
+</head>
+<body>
+<!--md:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Modish Nail Spa · booking and demo data are illustrative · <a href="../owner/">See the salon console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../menu/">Menu</a><a href="../looks/">Looks</a><a href="../gift-cards/">Gift cards</a><a href="../parties/">Parties</a></nav>
+    <a class="wordmark" href="../" aria-label="Modish Nail Spa home"><b>MODISH</b><span>Nail Spa</span></a>
+    <div class="head-cta">
+      <a class="phone" href="tel:+12673355234">267-335-5234</a>
+      <a class="btn btn-dark btn-sm" href="../book/">Book</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../menu/">Menu</a><a href="../looks/">Looks</a><a href="../gift-cards/">Gift cards</a><a href="../parties/">Parties</a><a href="../book/"><em>Book a visit</em></a><a class="mn-meta" href="tel:+12673355234">Call 267-335-5234 · Mon–Sat 9:30–7</a></nav>
+  </div>
+</header>
+<!--/md:header-->
+
+<main id="main">
+  <section class="page-hero" style="padding-bottom:24px">
+    <div class="wrap">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">Home</a> / Book</nav>
+      <span class="eyebrow">Book a visit</span>
+      <h1>Your <em>chair</em> awaits.</h1>
+    </div>
+  </section>
+  <section style="padding-top:20px">
+    <div class="wrap bk">
+      <div class="bk-steps">
+        <div class="bk-step" data-s="1"><h3><span>01</span> Spa</h3>
+          <div class="choices" id="b-loc"><label class="choice"><input type="radio" name="loc" value="rox"><span>Roxborough · 7126 Ridge Ave</span></label><label class="choice"><input type="radio" name="loc" value="con"><span>Conshohocken · 34 Ridge Pike</span></label></div></div>
+
+        <div class="bk-step" data-s="2"><h3><span>02</span> Services</h3>
+          <div id="b-items"></div>
+          <p class="legend" style="margin:22px 0 10px">Popular add-ons</p>
+          <div class="choices" id="b-quick"></div>
+          <p style="margin-top:18px"><a class="link" href="../menu/">Browse the full menu →</a></p></div>
+
+        <div class="bk-step" data-s="3"><h3><span>03</span> Technician</h3>
+          <div class="choices"><label class="choice"><input type="radio" name="tech" value="Any available" checked><span>Any available (soonest)</span></label><label class="choice"><input type="radio" name="tech" value="request"><span>Request someone</span></label></div>
+          <div class="field" id="tech-name-wrap" hidden style="margin-top:14px"><label for="tech-name">Who would you like?</label><input class="input" id="tech-name" placeholder="Their first name"></div></div>
+
+        <div class="bk-step" data-s="4"><h3><span>04</span> Day &amp; time</h3>
+          <div class="days" id="b-days"></div>
+          <div class="slots" id="b-slots"></div>
+          <p class="tiny muted" id="b-slot-note"></p></div>
+
+        <div class="bk-step" data-s="5"><h3><span>05</span> Your details</h3>
+          <div class="grid g2" style="gap:0 14px">
+            <div class="field"><label for="b-name">Name</label><input class="input" id="b-name" autocomplete="name"></div>
+            <div class="field"><label for="b-phone">Mobile</label><input class="input" id="b-phone" type="tel" autocomplete="tel"></div>
+          </div>
+          <div class="field"><label for="b-note">Anything we should know? <span class="muted" style="text-transform:none;letter-spacing:0">(optional)</span></label><textarea class="input" id="b-note" placeholder="Inspo photo? Text it to us after you book. Celebrating something? Tell us."></textarea></div>
+          <label class="consent"><input type="checkbox" id="b-sms" checked><span>Text me a confirmation and a reminder the day before. Reply STOP to opt out.</span></label></div>
+        <div id="b-err" class="tiny" style="color:#9a2a1a;margin-top:10px" aria-live="assertive"></div>
+      </div>
+
+      <aside class="bk-sum" aria-label="Your visit">
+        <div class="bk-card">
+          <span class="eyebrow" style="margin-bottom:14px">Your visit</span>
+          <div id="s-items" class="s-items"></div>
+          <div class="divider" style="margin:18px 0"></div>
+          <div class="s-row"><span>Spa</span><b id="s-loc">Choose</b></div>
+          <div class="s-row"><span>When</span><b id="s-when">Choose</b></div>
+          <div class="s-row"><span>Time in the chair</span><b id="s-mins">0 min</b></div>
+          <div class="s-total"><span>Estimated total</span><b id="s-total">$0</b></div>
+          <p class="tiny muted" style="margin:6px 0 18px">Pay at the spa, cash or card. Complimentary drinks included.</p>
+          <button class="btn btn-gold" type="button" id="b-go" style="width:100%">Confirm booking</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="done" hidden style="padding-top:0">
+    <div class="wrap" style="max-width:760px;text-align:center">
+      <div class="arch" style="width:120px;height:150px;margin:0 auto 28px"><img src="../assets/looks/rose-gold-chrome-stiletto.webp" alt="" width="878" height="852"></div>
+      <span class="eyebrow">You're booked</span>
+      <h2 id="d-title">See you soon.</h2>
+      <p class="lede" id="d-text" style="margin:0 auto 26px"></p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap"><a class="btn btn-dark" id="d-ics" download="modish-nail-spa.ics" href="#">Add to calendar</a><a class="btn btn-line" id="d-map" href="#">Directions</a></div>
+      <p class="tiny muted" style="margin-top:26px">Concept demo: nothing was sent. Live, this books straight into the salon's appointment system and texts the confirmation. <a href="../owner/#today">See it in the salon console →</a></p>
+    </div>
+  </section>
+</main>
+<style>
+.bk>*{min-width:0}
+.bk{display:grid;grid-template-columns:1fr 380px;gap:clamp(28px,4vw,64px);align-items:start}
+@media (max-width:980px){.bk{grid-template-columns:1fr}}
+.bk-step{padding:32px 0;border-top:1px solid var(--line)}
+.bk-step:first-child{border-top:1px solid var(--espresso)}
+.bk-step h3{display:flex;align-items:baseline;gap:16px;margin-bottom:20px}
+.bk-step h3 span{font-family:var(--sans);font-size:13px;letter-spacing:.2em;color:var(--gold)}
+.bk-sum{position:sticky;top:110px}
+.bk-card{background:var(--ivory);border:1px solid var(--line);border-radius:var(--r);padding:clamp(22px,2.6vw,34px)}
+.s-items .si{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:16px}
+.s-items .si span:last-child{font-family:var(--serif);font-size:19px}
+.s-row{display:flex;justify-content:space-between;gap:12px;font-size:15px;padding:5px 0;color:var(--ink-2)}
+.s-row b{font-weight:500;color:var(--espresso);text-align:right}
+.s-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:14px;border-top:1px solid var(--espresso)}
+.s-total span{font-size:12px;letter-spacing:.2em;text-transform:uppercase}
+.s-total b{font-family:var(--serif);font-weight:400;font-size:40px;line-height:1}
+.bi{display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.bi .pr{font-family:var(--serif);font-size:22px}
+.bi button{background:none;border:0;color:var(--mute);cursor:pointer;font-size:13px;letter-spacing:.1em;text-transform:uppercase;text-decoration:underline}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:16px}
+.day{flex:none;width:76px;padding:12px 6px;border-radius:999px 999px 8px 8px;border:1px solid var(--line-2);background:var(--ivory);text-align:center;cursor:pointer;line-height:1.2;transition:all .2s}
+.day b{display:block;font-family:var(--serif);font-weight:400;font-size:26px}
+.day small{font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.day[aria-pressed=true]{background:var(--espresso);border-color:var(--espresso);color:var(--ivory)}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.slot{min-height:46px;border-radius:999px;border:1px solid var(--line-2);background:transparent;cursor:pointer;font-size:15px;transition:all .2s}
+.slot:hover{border-color:var(--espresso)}
+.slot[aria-pressed=true]{background:var(--espresso);color:var(--ivory);border-color:var(--espresso)}
+.slot:disabled{opacity:.3;text-decoration:line-through;cursor:not-allowed}
+@media (max-width:980px){.bk-sum{position:static}}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  var M=window.MODISH,$=function(s){return document.querySelector(s)},v=M.visit(),pick={loc:null,day:null,time:null};
+  var qs=new URLSearchParams(location.search);pick.loc=qs.get('loc')||v.loc||'rox';
+  document.querySelectorAll('input[name=loc]').forEach(function(r){r.checked=r.value===pick.loc;r.addEventListener('change',function(){pick.loc=r.value;M.setLoc(r.value);sum()})});
+  var QUICK=['gelmani','spaped','delped','chrome','cateye','french','shape','brows'];
+  function items(){
+    var v=M.visit();
+    $('#b-items').innerHTML=v.items.length?v.items.map(function(id){var s=M.BY[id];return '<div class="bi"><span>'+M.esc(s.name)+'<br><small class="muted">About '+M.fmtMins(s.mins)+'</small></span><span class="pr">$'+s.price+(s.up?'+':'')+'</span><button type="button" data-rm="'+id+'">Remove</button></div>'}).join(''):'<p class="muted">No services yet. Add a favorite below or browse the menu.</p>';
+    $('#b-quick').innerHTML=QUICK.filter(function(id){return v.items.indexOf(id)<0}).map(function(id){var s=M.BY[id];return '<button class="chip" type="button" data-add="'+id+'">+ '+s.name+' · $'+s.price+'</button>'}).join('');
+    sum();slots();
+  }
+  document.addEventListener('click',function(e){var r=e.target.closest('[data-rm]');if(r){M.remove(r.dataset.rm)}});
+  document.addEventListener('visit:change',items);
+  document.querySelectorAll('input[name=tech]').forEach(function(r){r.addEventListener('change',function(){$('#tech-name-wrap').hidden=r.value!=='request'})});
+  // days: next 7 open days (closed Sundays)
+  var days=[],d=new Date();d.setHours(0,0,0,0);
+  while(days.length<7){if(d.getDay()!==0)days.push(new Date(d));d.setDate(d.getDate()+1)}
+  $('#b-days').innerHTML=days.map(function(x,i){return '<button class="day" type="button" data-i="'+i+'" aria-pressed="false"><small>'+(i===0&&x.toDateString()===new Date().toDateString()?'Today':x.toLocaleDateString('en-US',{weekday:'short'}))+'</small><b>'+x.getDate()+'</b><small>'+x.toLocaleDateString('en-US',{month:'short'})+'</small></button>'}).join('');
+  $('#b-days').addEventListener('click',function(e){var b=e.target.closest('.day');if(!b)return;pick.day=days[+b.dataset.i];pick.time=null;document.querySelectorAll('.day').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});slots();sum()});
+  function slots(){
+    if(!pick.day){$('#b-slots').innerHTML='<p class="muted" style="grid-column:1/-1">Choose a day to see open times.</p>';return}
+    var mins=Math.max(30,M.total().mins),out=[],now=new Date(),seed=pick.day.getDate()*7+(pick.loc==='con'?3:0);
+    for(var t=9.5;t+mins/60<=19;t+=0.5){
+      var at=new Date(pick.day);at.setHours(Math.floor(t),(t%1)*60);
+      var past=at-now<45*60000,taken=((Math.floor(t*2)+seed)%5===0)||((Math.floor(t*2)*3+seed)%7===0);
+      var lbl=at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      out.push('<button class="slot" type="button" data-t="'+t+'" '+(past||taken?'disabled':'')+' aria-pressed="'+(pick.time===t)+'">'+lbl+'</button>');
+    }
+    $('#b-slots').innerHTML=out.join('');
+    $('#b-slot-note').textContent='Times fit your '+M.fmtMins(mins)+' visit. Crossed-out times are taken.';
+  }
+  $('#b-slots').addEventListener('click',function(e){var b=e.target.closest('.slot');if(!b||b.disabled)return;pick.time=+b.dataset.t;document.querySelectorAll('.slot').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});sum()});
+  function when(){if(!pick.day||pick.time==null)return null;var at=new Date(pick.day);at.setHours(Math.floor(pick.time),(pick.time%1)*60);return at}
+  function sum(){
+    var v=M.visit(),t=M.total();
+    $('#s-items').innerHTML=v.items.length?v.items.map(function(id){var s=M.BY[id];return '<div class="si"><span>'+M.esc(s.name)+'</span><span>$'+s.price+(s.up?'+':'')+'</span></div>'}).join(''):'<p class="muted small" style="margin:0">Nothing added yet.</p>';
+    $('#s-loc').textContent=M.locations[pick.loc].name;
+    var w=when();$('#s-when').textContent=w?w.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+', '+w.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'Choose';
+    $('#s-mins').textContent=M.fmtMins(t.mins);$('#s-total').textContent='$'+t.price+(t.up?'+':'');
+  }
+  $('#b-go').addEventListener('click',function(){
+    var v=M.visit(),w=when(),err='';
+    if(!v.items.length)err='Add at least one service.';else if(!w)err='Choose a day and time.';else if(!$('#b-name').value.trim())err='Add your name.';else if($('#b-phone').value.replace(/\D/g,'').length<10)err='Add a 10-digit mobile number.';
+    $('#b-err').textContent=err;if(err){return}
+    var t=M.total(),tech=document.querySelector('input[name=tech]:checked').value==='request'?($('#tech-name').value.trim()||'Requested'):'Any available',L=M.locations[pick.loc];
+    var b={name:$('#b-name').value.trim(),phone:$('#b-phone').value,loc:pick.loc,at:w.toISOString(),items:v.items.slice(),look:v.look||null,total:t.price,up:t.up,mins:t.mins,tech:tech,note:$('#b-note').value,sms:$('#b-sms').checked,created:new Date().toISOString()};
+    var B=M.store('md_bookings')||[];B.unshift(b);M.store('md_bookings',B.slice(0,20));
+    var end=new Date(w.getTime()+t.mins*60000),f=function(d){return d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')};
+    var ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Modish Nail Spa//Concept//EN','BEGIN:VEVENT','UID:'+Date.now()+'@modish','DTSTAMP:'+f(new Date()),'DTSTART:'+f(w),'DTEND:'+f(end),'SUMMARY:Modish Nail Spa: '+v.items.map(function(id){return M.BY[id].name}).join(', '),'LOCATION:Modish Nail Spa\\, '+L.addr+'\\, '+L.city.replace(/,/g,'\\,'),'DESCRIPTION:Estimated total $'+t.price+(t.up?'+':'')+'. Call 267-335-5234 to change.','END:VEVENT','END:VCALENDAR'].join('\r\n');
+    $('#d-ics').href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);$('#d-map').href=L.maps;
+    $('#d-title').innerHTML='See you '+w.toLocaleDateString('en-US',{weekday:'long'})+', <em>'+M.esc(b.name.split(' ')[0])+'.</em>';
+    $('#d-text').textContent=w.toLocaleDateString('en-US',{month:'long',day:'numeric'})+' at '+w.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+', '+L.name+' ('+L.addr+'). About '+M.fmtMins(t.mins)+', estimated $'+t.price+(t.up?'+':'')+'.'+(b.sms?' We\'ll text a reminder the day before.':'')+' Your first drink is on us.';
+    document.querySelector('section:not(#done) .bk').parentElement.hidden=true;document.querySelector('.page-hero').hidden=true;$('#done').hidden=false;window.scrollTo(0,0);
+    M.clear();
+  });
+  items();
+});
+</script>
+
+
+<!--md:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-family:var(--serif);font-size:30px;line-height:1.15;color:#fff8ec;margin-bottom:18px">Polished, <em style="color:var(--gold-hi)">with a pour.</em></p>
+        <p>Manicures, gel, SNS dip, acrylics and spa pedicures in Roxborough and Conshohocken, with complimentary wine, beer and soft drinks.</p>
+        <p><a href="tel:+12673355234" style="font-size:20px">267-335-5234</a><br><a href="mailto:modishnailsparox@gmail.com" class="tiny">modishnailsparox@gmail.com</a></p>
+      </div>
+      <div><h4>Visit</h4><ul><li><a href="../book/">Book a visit</a></li><li><a href="../menu/">Menu &amp; prices</a></li><li><a href="../looks/">Lookbook</a></li><li><a href="../#waitlist">Walk-in waitlist</a></li></ul></div>
+      <div><h4>Treat someone</h4><ul><li><a href="../gift-cards/">Gift cards</a></li><li><a href="../parties/">Parties &amp; bridal</a></li><li><a href="https://www.google.com/search?q=Modish+Nail+Spa+7126+Ridge+Ave+Philadelphia+PA+19128">Google reviews</a></li><li><a href="https://www.yelp.com/biz/modish-nail-spa-philadelphia">Yelp</a> · <a href="https://www.facebook.com/ModishNailSpaRox/">Facebook</a></li></ul></div>
+      <div><h4>Spas</h4><p class="small"><a href="../nail-salon-roxborough/">7126 Ridge Ave<br>Roxborough, Philadelphia 19128</a></p><p class="small">34 Ridge Pike<br>Conshohocken, PA 19428</p><p class="small">Mon–Sat 9:30 am – 7 pm<br>Sunday closed</p></div>
+    </div>
+    <div class="foot-mark" aria-hidden="true">MODISH</div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Modish Nail Spa · Concept by Future Basics</span><span>Complimentary wine &amp; beer for guests 21+</span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=89d81a3c" defer></script>
+<!--/md:footer-->
+</body>
+</html>

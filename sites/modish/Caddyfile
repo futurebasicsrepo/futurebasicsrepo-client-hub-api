@@ -1,0 +1,19 @@
+{
+	admin off
+}
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+	# Concept preview: keep it out of search results so it never competes with modishnailspaphiladelphia.com.
+	header X-Robots-Tag "noindex, nofollow"
+	# Pages, CSS and JS always revalidate (a cheap 304 when unchanged) so a new deploy shows up on
+	# the next load; CSS/JS links are also fingerprinted by build.mjs. Images can cache for a day.
+	@static path *.webp *.png *.jpg *.jpeg *.svg *.ico *.woff2
+	header @static Cache-Control "public, max-age=86400"
+	@fresh not path *.webp *.png *.jpg *.jpeg *.svg *.ico *.woff2
+	header @fresh Cache-Control "no-cache"
+	respond /health 200
+	file_server {
+		hide README.md Dockerfile Caddyfile build.mjs .dockerignore
+	}
+}
