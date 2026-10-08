@@ -81,8 +81,10 @@ Pages are plain HTML. The shared header and footer sit between `<!--np:header-->
 node sites/nursepartners/build.mjs
 ```
 
+The build also fingerprints every CSS/JS link with a hash of the file (`site.css?v=3fa9c1`), so run it after editing `site.css`, `site.js`, `console.css` or `console.js`. Browsers then fetch the new file on their next visit instead of showing a cached copy.
+
 Agency facts (phone, rates, benefit figures) live in one object at the top of `assets/site.js`. The photos are the agency's own images from their current site (`carepartner-walk` is stock). Replace them with a real photo shoot before launch.
 
 ## Hosting
 
-`Dockerfile` + `Caddyfile` serve this folder on Railway (set the service's root directory to `/sites/nursepartners`). The preview sends `X-Robots-Tag: noindex` and a disallow-all `robots.txt` so the concept never competes with nursepartners.org in search; remove both if this becomes the agency's real site.
+`Dockerfile` + `Caddyfile` serve this folder on Railway (set the service's root directory to `/sites/nursepartners`). Pages, CSS and JS are served `Cache-Control: no-cache` (revalidated by ETag, so a deploy shows up on the next load), and images cache for a day. The preview sends `X-Robots-Tag: noindex` and a disallow-all `robots.txt` so the concept never competes with nursepartners.org in search; remove both if this becomes the agency's real site.
