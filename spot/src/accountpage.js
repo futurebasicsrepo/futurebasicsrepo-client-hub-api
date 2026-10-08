@@ -1,6 +1,9 @@
 // /signin and /account pages. Data comes from /v1/auth/* and /v1/me.
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
 import { PASSKEY_JS } from './passkeys.js';
+import { SMS_CONSENT } from './notify.js';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const CSS = `
 .acct{padding:40px 0 90px}
@@ -89,7 +92,7 @@ export function signinPage({ origin, providers = {} }) {
   <h1 style="font-size:38px">Sign in</h1>
   <p class="sub" id="lead">We’ll send you a 6-digit code. No password needed.</p>
   <div class="seg" role="tablist" aria-label="Send the code by" id="seg"><button type="button" role="tab" aria-selected="true" data-mode="email">Email</button><button type="button" role="tab" aria-selected="false" data-mode="phone">Text</button></div>
-  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>Msg &amp; data rates may apply. Reply STOP to opt out.</p></form>
+  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>${esc(SMS_CONSENT)} <a href="/terms#texts">Terms</a> · <a href="/privacy">Privacy</a></p></form>
   <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
   <div class="or" id="or"><span>or</span></div><div class="sso" id="sso"><button type="button" class="btn ghost pk-b" id="pkBtn" hidden>🔑 Use Face ID or a passkey</button>${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>
   <p class="err" id="err"></p>
@@ -244,7 +247,7 @@ let adding=null,addWhat='';
 const addReset=()=>{adding=null;$('#addForm').hidden=true;$('#addCode').hidden=true;$('#addDev').hidden=true};
 document.addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;adding=b.dataset.add;$('#addOk').textContent='';$('#addCode').hidden=true;
   const ph=adding==='phone',v=$('#addVal');v.type=ph?'tel':'email';v.autocomplete=ph?'tel':'email';v.inputMode=ph?'tel':'email';v.placeholder=ph?'Mobile number':'you@email.com';v.value='';
-  $('#addLabel').textContent=ph?'We’ll text a code to confirm it’s yours. Msg & data rates may apply. Reply STOP to opt out.':'We’ll email a code to confirm it’s yours.';
+  $('#addLabel').textContent=ph?'We’ll text a code to confirm it’s yours. '+${JSON.stringify(SMS_CONSENT)}:'We’ll email a code to confirm it’s yours.';
   $('#addForm').hidden=false;v.focus()});
 $('#addForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#addSend');b.disabled=true;
   try{addWhat=$('#addVal').value.trim();const r=await post('/v1/me/link/start',{[adding]:addWhat});$('#addForm').hidden=true;$('#addCode').hidden=false;

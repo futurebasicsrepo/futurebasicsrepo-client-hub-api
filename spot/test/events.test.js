@@ -61,7 +61,11 @@ test('🎉 covered: the requester is emailed a private link that opens their Spo
 });
 
 test('✈️ booked: text + email to the traveler, once', async (t) => {
-  const { call, emails, texts } = app(t);
+  const db = openDb(':memory:');
+  const { call, emails, texts } = app(t, { db });
+  // Texts only go to a number confirmed with a code on Spot.
+  db.users.create('u1', null);
+  db.identities.add('phone', '+15125550100', 'u1');
   const H = { authorization: 'Bearer s3cret' };
   const day = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
   const offers = (await call('POST', '/v1/agent/flights/search', { origin: 'AUS', destination: 'SFO', departure_date: day }, H)).body.offers;
@@ -83,6 +87,22 @@ test('✈️ booked: text + email to the traveler, once', async (t) => {
   await call('GET', `/v1/carts/${token}/manage?k=${k}`);
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(texts.length, before);
+});
+
+test('a number nobody confirmed gets email, never a text', async (t) => {
+  const { call, emails, texts } = app(t);
+  const H = { authorization: 'Bearer s3cret' };
+  const day = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
+  const offers = (await call('POST', '/v1/agent/flights/search', { origin: 'AUS', destination: 'SFO', departure_date: day }, H)).body.offers;
+  const ask = (await call('POST', '/v1/agent/flights/asks', { offer_id: offers[1].offer_id, requester: { name: 'Kyle' }, notify: { phone: '512-555-0177', email: 'kyle@example.com' } }, H)).body;
+  assert.deepEqual(ask.delivered, { email: 'sent', text: 'not_verified' });
+  const u = new URL(ask.finish_link);
+  const token = u.pathname.split('/')[2];
+  await call('POST', `/v1/carts/${token}/manage/travelers`, { k: u.searchParams.get('k'), travelers: [{ given_name: 'Kyle', family_name: 'Riggle', born_on: '1990-04-02', gender: 'm' }], contact: { email: 'kyle@example.com', phone: '5125550177' } });
+  await call('POST', `/v1/carts/${token}/sandbox-pay`, {});
+  await until(() => emails.some((m) => /booked/.test(m.subject)), 'the booked email');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(texts.length, 0);
 });
 
 test('📦 ordered: the requester hears it, and the payer gets a thank-you', async (t) => {

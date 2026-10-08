@@ -11,6 +11,13 @@ const env = { SPOT_API_KEYS: 'claude:s3cret-a, shopbot:s3cret-b' };
 const items = [{ title: 'Dunk Low', variant: '10.5', quantity: 1, price_cents: 11500, url: 'https://www.nike.com/t/dunk-low' }];
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com' };
 
+// A number confirmed with a code on Spot (a phone sign-in): texts can go to it.
+function verifyPhone(db, e164) {
+  const id = `u-${e164}`;
+  db.users.create(id, null);
+  db.identities.add('phone', e164, id);
+}
+
 function app(t, extra = {}) {
   const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env, ...extra });
   t.after(() => a.close());
@@ -109,16 +116,25 @@ test('for_me: agent hands the cart to its user to finish on their phone', async 
     sent.push({ url: String(url), init });
     return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
   };
+  const db = openDb(':memory:');
   const a = buildApp({
-    db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, notifyFetch,
+    db, provider: sandboxProvider(), cfg, logger: false, notifyFetch,
     env: { ...env, RESEND_API_KEY: 're_test', SPOT_FROM_EMAIL: 'Spot <hi@spot.test>', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15550000000' },
   });
   t.after(() => a.close());
-
-  const r = await a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: {
+  const askFor = (phone) => a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: {
     for: 'self', requester: { name: 'Kyle' }, merchant: { name: 'Nike', url: 'https://www.nike.com' }, items,
-    ship_to: shipping, expires_minutes: 30, notify: { email: 'kyle@example.com', phone: '(512) 555-0100' },
+    ship_to: shipping, expires_minutes: 30, notify: { email: 'kyle@example.com', phone },
   } });
+
+  // A number nobody confirmed on Spot gets email only.
+  const unconfirmed = (await askFor('(512) 555-0199')).json();
+  assert.deepEqual(unconfirmed.delivered, { email: 'sent', text: 'not_verified' });
+  assert.equal(sent.filter((s) => s.url.includes('api.twilio.com')).length, 0, 'no text to an unconfirmed number');
+  sent.length = 0;
+  verifyPhone(db, '+15125550100');
+
+  const r = await askFor('(512) 555-0100');
   assert.equal(r.statusCode, 201, r.body);
   const ask = r.json();
   assert.equal(ask.for, 'self');
@@ -219,7 +235,9 @@ test('texts: branded, say how to opt out, and STOP replies stop them', async (t)
     return new Response('{}', { status: 200 });
   };
   const twilio = { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15125550000', PUBLIC_URL: 'https://spotmeplease.com' };
-  const a = app(t, { notifyFetch, env: { ...env, ...twilio } });
+  const db = openDb(':memory:');
+  const a = app(t, { db, notifyFetch, env: { ...env, ...twilio } });
+  verifyPhone(db, '+15125550100');
   const base = { requester: { name: 'Kyle' }, merchant: { name: 'Nike' }, items: [{ title: 'Dunk', price_cents: 11500 }], for: 'self' };
   const ask = () => a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: { ...base, notify: { phone: '512-555-0100' } } });
 
