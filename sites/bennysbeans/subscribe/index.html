@@ -454,7 +454,7 @@
     <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
   </div>
 </footer>
-<script src="../assets/site.js?v=06a043db" defer></script>
+<script src="../assets/site.js?v=9ca9fe3b" defer></script>
 <!--/bb:footer-->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -488,7 +488,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function bag(k, size) {
     if (BY[k]) return BB.bag(k, { size: size });
     var r = ROT[k];
-    return BB.bag("_", { size: size, label: r.label, roastLabel: r.sub }).replace('fill="#16120f"', 'fill="' + r.c + '"').replace(/fill="#fff"/g, 'fill="' + r.ink + '"');
+    return BB.bag("_", { size: size, label: r.label, roastLabel: r.sub, color: r.c, ink: r.ink });
   }
   function price() { return PRICES[S.size]; }
   function perMonth(p, every) { return every === 4 ? p : Math.round(p * (every === 1 ? 52 : 26) / 12); }
