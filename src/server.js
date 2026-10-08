@@ -2111,7 +2111,11 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started});
   }
   if(!gate.ok)note=[note,`Published before every check passed: ${override}`].filter(Boolean).join(' · ');
-  const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(ctx.techPack.data));
+  let draftNow=ctx.techPack.data;
+  { const ah=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.tech_pack_id=$1 and h.status='approved' order by h.approved_at desc nulls last limit 1`,[ctx.techPack.id])).rows[0];
+    const sk=normalizeTechPack(draftNow).sketches.find(x=>x.callouts.length&&!/^cutout-/.test(String(x.id||'')));
+    if(ah&&sk&&!(sk.hero&&sk.hero.id===String(ah.id).replace(/-/g,'').slice(0,16))&&await placeCalloutsOnHero(ah))draftNow=(await pool.query('select data from tech_packs where id=$1',[ctx.techPack.id])).rows[0].data; }
+  const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(draftNow));
   const client=await pool.connect();
   try{
     await client.query('begin');
@@ -2150,8 +2154,10 @@ app.post('/v1/admin/products/:id/tech-pack/refresh-pictures',{preHandler:[authen
   if(tp.locked_at)return reply.code(409).send({error:'This version is signed and locked. Publish a new version to change what the factory sees'});
   const draft=normalizeTechPack(tp.data),pub=normalizeTechPack(tp.published_data);
   const mine=draft.renderings.filter(r=>r.image&&!/^hero-/.test(String(r.id||'')));
-  const next=await withApprovedHero(tp.id,{...pub,renderings:mine});
-  const before=JSON.stringify((pub.renderings||[]).map(r=>r.id)),after=JSON.stringify((next.renderings||[]).map(r=>r.id));
+  const heroOf=new Map(draft.sketches.filter(k=>k.hero).map(k=>[k.id,k]));
+  const nextBase={...pub,renderings:mine,sketches:pub.sketches.map(k=>{const d=heroOf.get(k.id);if(!d)return k;return {...k,hero:d.hero,callouts:k.callouts.map(c=>{const o=d.callouts.find(y=>y.n===c.n);return o?{...c,hx:o.hx,hy:o.hy,hphoto:o.hphoto}:c})}})};
+  const next=await withApprovedHero(tp.id,nextBase);
+  const sig=d=>JSON.stringify([(d.renderings||[]).map(r=>r.id),d.sketches.map(k=>k.hero?k.hero.id:'')]),before=sig(pub),after=sig(next);
   if(before===after)return reply.send({updated:false,pictures:next.renderings.length,message:'The published pack already has the latest pictures'});
   const row=(await pool.query(`update tech_packs set published_data=$2::jsonb where id=$1 and locked_at is null returning *`,[tp.id,JSON.stringify(next)])).rows[0];
   if(!row)return reply.code(409).send({error:'This version was just locked. Publish a new version to change what the factory sees'});
@@ -3312,6 +3318,14 @@ app.post('/v1/admin/tech-pack-heroes/:id/approve',{preHandler:[authenticate,admi
   if(!['ready','approved'].includes(h.status))return reply.code(409).send({error:'This hero image is not ready to approve'});
   await approveHero(h,{actor:req.auth.sub});
   return {approved:true};
+});
+// For a hero approved before callouts were placed on it (or after the callouts changed): do it now.
+app.post('/v1/admin/tech-pack-heroes/:id/place-callouts',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const h=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.id=$1`,[req.params.id])).rows[0];if(!h)return reply.code(404).send({error:'Not found'});
+  if(h.status!=='approved')return reply.code(409).send({error:'Approve the hero image first: the callouts are placed on the approved one'});
+  const placed=await placeCalloutsOnHero(h);
+  return placed?{placed:true}:reply.code(409).send({error:'The callouts could not be found on this picture. They stay on the photo.'});
 });
 app.post('/v1/admin/tech-pack-heroes/:id/adopt',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});

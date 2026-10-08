@@ -911,10 +911,19 @@ await journey('J89', 'once the hero image is approved the callouts are shown on 
   ok(sk0.callouts.some(c => c.hphoto !== c.photo), 'and the detail pictures really come from the hero, not the photo');
   ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Callouts placed on the hero image%'`) >= '1', 'it is on the record');
   // what the people who read the pack see
-  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: hero callouts' } })).status === 200, 'staff publish');
+  { const pb = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: hero callouts' } }); ok(pb.status === 200, 'staff publish', [pb.status, pb.json]); }
   const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Hero Mill ${stamp}` } })).json, as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
   const fv = (await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.find(s => s.callouts.length); ok(fv.hero && fv.callouts.every(c => c.hphoto), 'the factory\'s copy has the hero view with its pins and detail pictures');
   { const rd = (await call(`/v1/tp/${ptok}`)).json.techPack.readiness; ok(rd.callouts.length === sk0.callouts.length && rd.pendingCalloutKeys.every(k => k.startsWith(sk0.id + ':')), 'acknowledgement keys are what they were: one per callout, not doubled', rd.pendingCalloutKeys.slice(0, 3)); }
+  // a pack whose hero was approved before this existed: staff can place the callouts on it, update the published copy without a new version, and publishing does it by itself
+  { const strip = col => sql(`update tech_packs set ${col} = jsonb_set(${col},'{sketches}',(select jsonb_agg((s - 'hero') || jsonb_build_object('callouts',(select coalesce(jsonb_agg(c - 'hx' - 'hy' - 'hphoto'),'[]'::jsonb) from jsonb_array_elements(s->'callouts') c))) from jsonb_array_elements(${col}->'sketches') s)) where product_id='${m.id}'`);
+    const heroId = sql(`select id from tech_pack_heroes where product_id='${m.id}' and status='approved' order by approved_at desc limit 1`), heroed = async () => (await pack()).data.sketches.some(k => k.hero), ver = () => sql(`select version from tech_packs where product_id='${m.id}'`);
+    strip('data'); strip('published_data'); ok(!(await heroed()) && !(await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero), 'a pack from before has callouts on the photo only');
+    ok((await call(`/v1/admin/tech-pack-heroes/${heroId}/place-callouts`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot ask for it');
+    const pl = await adm(`/v1/admin/tech-pack-heroes/${heroId}/place-callouts`, { method: 'POST', body: {} }); ok(pl.status === 200 && await heroed(), 'staff put the callouts on the approved hero', pl.json);
+    ok(!(await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero), 'the published copy is the old one until staff update it');
+    const v0 = ver(), up = await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} }); ok(up.status === 200 && up.json.updated === true && (await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero) && ver() === v0, 'updating the pictures on the published pack brings the hero view too, with no new version', up.json);
+    strip('data'); const pub2 = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: hero callouts again' } }); ok(pub2.status === 200 && (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack.data.sketches.some(k => k.hero), 'publishing a pack whose callouts are not on the approved hero does it first', pub2.status); }
   const bw = await playwright.chromium.launch();
   try {
     const dir = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP;
