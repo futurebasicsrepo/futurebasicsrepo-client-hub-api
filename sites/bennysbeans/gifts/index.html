@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coffee Gifts: E-Gift Cards, Gift Subscriptions &amp; Coasters | Benny's Beans</title>
+<meta name="description" content="Give fresh-roasted coffee from the Russian River. Email gift cards from $10 to $500, 3, 6 or 12-month gift subscriptions with a printable note, slate and cork coasters, and 1 lb gift bags.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/gifts/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Give fresh coffee. Gifts from Benny's Beans.">
+<meta property="og:description" content="E-gift cards, gift subscriptions, coasters and 1 lb bags, roasted to order in Guerneville.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<style>
+  [hidden] { display: none !important; }
+  /* ---------- hero ---------- */
+  .g-hero { overflow: hidden; }
+  .g-hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+  @media (max-width: 920px) { .g-hero-grid { grid-template-columns: minmax(0, 1fr); } }
+  .g-hero h1 { font-size: clamp(56px, 8vw, 124px); margin: 0 0 24px; }
+  .fan { position: relative; aspect-ratio: 1.15; width: 100%; max-width: 580px; justify-self: center; }
+  .fan .gc { position: absolute; width: 72%; left: 14%; top: 22%; transition: transform .6s var(--ease); }
+  .fan .gc:nth-child(1) { transform: rotate(-14deg) translate(-16%, -14%); }
+  .fan .gc:nth-child(2) { transform: rotate(-2deg) translate(4%, -2%); }
+  .fan .gc:nth-child(3) { transform: rotate(9deg) translate(14%, 18%); }
+  .fan:hover .gc:nth-child(1) { transform: rotate(-18deg) translate(-22%, -18%); }
+  .fan:hover .gc:nth-child(3) { transform: rotate(13deg) translate(20%, 22%); }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .jump a { text-decoration: none; }
+
+  /* ---------- the gift card ---------- */
+  .gc { position: relative; aspect-ratio: 1.586; border-radius: 22px; overflow: hidden; padding: 6% 7%; display: flex; flex-direction: column; justify-content: space-between; color: #fbf8f2; box-shadow: 0 30px 50px -26px rgba(22,18,15,.6); container-type: inline-size; }
+  .gc.river { background: var(--river); }
+  .gc.cherry { background: var(--cherry); }
+  .gc.kraft { background: linear-gradient(115deg, #b48d5d, #d7b68b 45%, #c39d6d 80%, #a98251); color: #2a1d12; }
+  .gc .tex { position: absolute; inset: 0; pointer-events: none; }
+  .gc .tex svg { width: 100%; height: 100%; }
+  .gc .top, .gc .bot { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .gc .bot { align-items: flex-end; }
+  .gc .mark { width: 24cqi; color: currentColor; }
+  .gc .mark svg { width: 100%; }
+  .gc .kind { font: 500 3.2cqi/1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; text-align: right; opacity: .9; }
+  .gc .amt { font-weight: 900; font-variation-settings: "wdth" 125; font-size: 19cqi; line-height: .82; letter-spacing: -.02em; }
+  .gc .to { font: 500 3.2cqi/1.35 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: right; max-width: 52%; overflow-wrap: anywhere; }
+  .gc .to b { display: block; font: 400 8.6cqi/1 var(--script); letter-spacing: 0; text-transform: none; margin-top: 1cqi; }
+
+  /* ---------- builder ---------- */
+  .builder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+  @media (max-width: 960px) { .builder { grid-template-columns: minmax(0, 1fr); } }
+  .controls { display: grid; gap: 22px; }
+  .controls .label { display: block; margin-bottom: 10px; }
+  .amts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .amts .chip { min-height: 48px; padding: 0 20px; font-size: 16px; font-weight: 800; }
+  .custom { display: flex; align-items: center; gap: 8px; }
+  .custom input { width: 130px; min-height: 48px; border-radius: var(--pill); padding: 10px 16px; }
+  .designs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .designs button { border: 2px solid var(--line); background: var(--paper); border-radius: 18px; padding: 8px 8px 10px; cursor: pointer; text-align: left; transition: border-color .15s; }
+  .designs button:hover { border-color: var(--ink); }
+  .designs button[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
+  .designs .sw { display: block; aspect-ratio: 1.586; border-radius: 10px; margin-bottom: 8px; }
+  .designs b { font-size: 14px; }
+  .preview { position: sticky; top: calc(var(--head-h) + 16px); display: grid; gap: 18px; }
+  .preview .gc { max-width: 560px; }
+  .mail { background: var(--paper); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; }
+  .mail header { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bone); }
+  .mail header i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .mail .body { padding: 16px 18px 18px; font-size: 14.5px; }
+  .mail dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 13.5px; }
+  .mail dt { font: 500 11px/1.9 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .mail dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .mail .msg-p { font-size: 16px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid var(--cherry); padding-left: 12px; margin: 0 0 10px; }
+  .cnt { font: 500 11.5px var(--mono); color: var(--mute); text-align: right; margin-top: 4px; }
+  .err { color: var(--cherry); font-weight: 700; font-size: 14px; margin: 10px 0 0; min-height: 1em; }
+
+  /* ---------- gift subscriptions ---------- */
+  .gsub { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+  @media (max-width: 960px) { .gsub { grid-template-columns: minmax(0, 1fr); } }
+  .gs-panel { background: var(--paper); color: var(--ink); border-radius: 30px; padding: clamp(22px, 3vw, 36px); display: grid; gap: 20px; }
+  .gs-panel .label { display: block; margin-bottom: 10px; }
+  .gs-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; flex-wrap: wrap; }
+  .gs-total b { font-weight: 900; font-variation-settings: "wdth" 125; font-size: 40px; line-height: 1; }
+  .gnote { background: #fbf8f2; color: var(--ink); border-radius: 8px; padding: clamp(24px, 4vw, 44px); position: relative; box-shadow: 0 30px 60px -30px rgba(0,0,0,.6); transform: rotate(1.5deg); }
+  .gnote::before { content: ""; position: absolute; inset: 12px; border: 1.5px solid var(--kraft); border-radius: 4px; pointer-events: none; }
+  .gnote .gn-ring { width: 84px; color: var(--cherry); margin-bottom: 10px; }
+  .gnote .gn-k { font: 500 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--mute); }
+  .gnote .gn-to { font-family: var(--script); font-size: clamp(44px, 5vw, 64px); line-height: 1; margin: 6px 0 12px; color: var(--river); overflow-wrap: anywhere; }
+  .gnote .gn-what { font-weight: 900; font-variation-settings: "wdth" 125; text-transform: uppercase; font-size: clamp(24px, 2.6vw, 34px); line-height: .95; margin: 0 0 14px; }
+  .gnote .gn-msg { font-size: 16px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 14px; }
+  .gnote .gn-from { font-family: var(--script); font-size: 34px; line-height: 1; margin: 0; overflow-wrap: anywhere; }
+  .gnote .gn-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px dashed var(--line); margin-top: 18px; padding-top: 12px; font: 500 11px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+  .redbg .gs-panel .seg button[aria-pressed="true"] { background: var(--ink); }
+
+  /* ---------- merch + bags ---------- */
+  .merch .photo { aspect-ratio: 3 / 4; border-radius: 22px; }
+  .merch .card { padding: 0; overflow: hidden; display: flex; flex-direction: column; border-radius: 28px; }
+  .merch .card .photo { border-radius: 0; }
+  .merch .mbody { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .merch h3 { margin: 0; font-size: 20px; }
+  .merch .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 6px; }
+  .pcard .add-row { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 6px; }
+  .pcard .why { font-size: 14px; color: var(--ink-2); margin: 0; }
+
+  .corp { border-radius: 34px; padding: clamp(28px, 5vw, 64px); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+  .corp-ring { color: var(--cherry); max-width: 300px; width: 100%; justify-self: center; }
+  @media (max-width: 860px) { .corp { grid-template-columns: minmax(0, 1fr); } .corp-ring { max-width: 170px; justify-self: start; } }
+
+  /* ---------- print: only the gift note ---------- */
+  @media print {
+    @page { margin: 14mm; }
+    body { background: #fff !important; }
+    body * { visibility: hidden !important; }
+    .gnote, .gnote * { visibility: visible !important; }
+    .gnote { position: absolute; left: 0; top: 0; width: 100%; transform: none; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="page-hero g-hero" aria-labelledby="g-h">
+    <div class="wrap g-hero-grid">
+      <div>
+        <p class="breadcrumb"><a href="../">Home</a> / Gifts</p>
+        <p class="eyebrow">Gifts · Cards · Subscriptions · Coasters</p>
+        <h1 class="display" id="g-h">Give fresh<br><span class="red">coffee.</span></h1>
+        <p class="lede">The gift that gets roasted after you give it. E-gift cards land by email, gift subscriptions roast a fresh bag every month, and the coasters bring them back for more.</p>
+        <div class="row">
+          <a class="btn btn-red" href="#card">Build a gift card <span class="arr">→</span></a>
+          <a class="btn btn-ghost" href="#subs">Gift a subscription</a>
+        </div>
+        <div class="jump"><a class="chip" href="#coasters">Coasters</a><a class="chip" href="#bags">1 lb gift bags</a><a class="chip" href="#corporate">Team &amp; host gifts</a></div>
+      </div>
+      <div class="fan" data-fan aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <section class="sec paper" id="card" aria-labelledby="card-h" style="scroll-margin-top:80px">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">E-gift card</p><h2 class="h2" id="card-h">Make it<br>theirs.</h2></div>
+        <p class="lede">Pick an amount and a design, write a note, and choose when it arrives. They redeem it online or at the market booth.</p>
+      </div>
+      <form class="builder" data-gc-form novalidate>
+        <div class="controls">
+          <div>
+            <span class="label" id="amt-l">Amount</span>
+            <div class="amts" role="group" aria-labelledby="amt-l" data-amts>
+              <button class="chip" type="button" data-v="20" aria-pressed="false">$20</button>
+              <button class="chip" type="button" data-v="40" aria-pressed="true">$40</button>
+              <button class="chip" type="button" data-v="60" aria-pressed="false">$60</button>
+              <button class="chip" type="button" data-v="80" aria-pressed="false">$80</button>
+              <button class="chip" type="button" data-v="100" aria-pressed="false">$100</button>
+              <label class="custom"><span class="sr">Custom amount, $10 to $500</span><input type="number" min="10" max="500" step="1" placeholder="Custom $" inputmode="numeric" data-custom></label>
+            </div>
+            <p class="tiny mt1 mb0">$40 is two 1 lb bags. $80 is a 5 lb bag. Custom: $10–$500.</p>
+          </div>
+          <div>
+            <span class="label" id="des-l">Design</span>
+            <div class="designs" role="group" aria-labelledby="des-l" data-designs>
+              <button type="button" data-v="river" aria-pressed="true"><span class="sw" style="background:var(--river)"></span><b>River</b></button>
+              <button type="button" data-v="cherry" aria-pressed="false"><span class="sw" style="background:var(--cherry)"></span><b>Cherry</b></button>
+              <button type="button" data-v="kraft" aria-pressed="false"><span class="sw" style="background:linear-gradient(115deg,#b48d5d,#d7b68b 45%,#a98251)"></span><b>Kraft</b></button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field"><span>Recipient name</span><input type="text" name="to" maxlength="28" autocomplete="off" required></label>
+            <label class="field"><span>Recipient email</span><input type="email" name="toEmail" autocomplete="off" required></label>
+            <label class="field full"><span>From</span><input type="text" name="from" maxlength="40" autocomplete="name" required></label>
+            <label class="field full"><span>Message</span><textarea name="note" maxlength="200" placeholder="Happy birthday. Get the Ethiopia, light roast. Trust me."></textarea><span class="cnt" data-cnt>0 / 200</span></label>
+          </div>
+          <div>
+            <span class="label" id="when-l">Delivery</span>
+            <div class="seg" role="group" aria-labelledby="when-l" data-when>
+              <button type="button" data-v="now" aria-pressed="true">Send now</button>
+              <button type="button" data-v="later" aria-pressed="false">Schedule</button>
+            </div>
+            <label class="field mt1" data-date-wrap hidden><span>Send on</span><input type="date" name="sendOn"></label>
+          </div>
+          <div class="hp" aria-hidden="true"><label>Leave this empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+          <div>
+            <button class="btn btn-red btn-block" type="submit" data-gc-add>Add $40 gift card to bag <span class="arr">→</span></button>
+            <p class="err" role="alert" data-err></p>
+          </div>
+        </div>
+        <div class="preview" aria-live="polite">
+          <div data-gc-preview></div>
+          <div class="mail" aria-label="Email preview">
+            <header aria-hidden="true"><i></i><i></i><i></i></header>
+            <div class="body">
+              <dl><dt>To</dt><dd data-m-to>Recipient &lt;their email&gt;</dd><dt>Subject</dt><dd data-m-sub></dd><dt>Arrives</dt><dd data-m-when></dd></dl>
+              <p class="msg-p" data-m-msg></p>
+              <p class="tiny mb0">Includes a redeem code for the online shop or the Benny's Beans booth at the Occidental and Cloverdale markets.</p>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="sec redbg" id="subs" aria-labelledby="subs-h" style="scroll-margin-top:80px">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Gift subscriptions</p><h2 class="h2" id="subs-h">A fresh bag<br>every month.</h2></div>
+        <p class="lede" style="color:#ffe2dd">Roasted to order each month and shipped the next day. Print the note for under the tree, or for the card on the counter.</p>
+      </div>
+      <div class="gsub">
+        <div class="gs-panel">
+          <div>
+            <span class="label" id="mo-l">Length</span>
+            <div class="seg" role="group" aria-labelledby="mo-l" data-gs="months">
+              <button type="button" data-v="3" aria-pressed="false">3 months</button>
+              <button type="button" data-v="6" aria-pressed="true">6 months</button>
+              <button type="button" data-v="12" aria-pressed="false">12 months</button>
+            </div>
+          </div>
+          <div>
+            <span class="label" id="sz-l">Each month</span>
+            <div class="seg" role="group" aria-labelledby="sz-l" data-gs="size">
+              <button type="button" data-v="1" aria-pressed="true">1 lb<small>$20 / month</small></button>
+              <button type="button" data-v="5" aria-pressed="false">5 lb<small>$80 / month</small></button>
+            </div>
+          </div>
+          <div>
+            <span class="label" id="gc-l">Coffee</span>
+            <div class="seg" role="group" aria-labelledby="gc-l" data-gs="coffee">
+              <button type="button" data-v="Benny's pick" aria-pressed="true">Benny's pick</button>
+              <button type="button" data-v="Light roast rotation" aria-pressed="false">Light rotation</button>
+              <button type="button" data-v="Dark roast rotation" aria-pressed="false">Dark rotation</button>
+              <button type="button" data-v="Roaster's Half-Caff" aria-pressed="false">Half-Caff</button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field"><span>For</span><input type="text" data-gsi="to" maxlength="28" placeholder="Their name"></label>
+            <label class="field"><span>From</span><input type="text" data-gsi="from" maxlength="40" placeholder="Your name"></label>
+            <label class="field"><span>Starts</span><select data-gsi="start"></select></label>
+            <label class="field"><span>Grind</span><select data-gsi="grind"></select></label>
+            <label class="field full"><span>Note</span><textarea data-gsi="msg" maxlength="240" placeholder="For your mornings this year."></textarea></label>
+          </div>
+          <div class="gs-total" aria-live="polite"><span><span class="label" style="margin:0 0 4px">Gift total</span><span class="tiny" data-gs-note></span></span><b data-gs-total>$120</b></div>
+          <div class="row">
+            <button class="btn btn-red" type="button" data-gs-add>Add to bag <span class="arr">→</span></button>
+            <button class="btn btn-ghost" type="button" data-print>Print the gift note</button>
+          </div>
+          <p class="err" role="alert" data-gs-err style="margin:0"></p>
+        </div>
+        <div>
+          <article class="gnote" data-gnote aria-label="Printable gift note">
+            <div class="gn-ring" data-gn-ring></div>
+            <p class="gn-k">A gift of fresh coffee for</p>
+            <p class="gn-to" data-gn-to>Someone lovely</p>
+            <p class="gn-what" data-gn-what></p>
+            <p class="gn-msg" data-gn-msg></p>
+            <p class="gn-from" data-gn-from></p>
+            <div class="gn-foot"><span>Benny's Beans · Russian River Roastery</span><span>Guerneville, CA · 707-899-4183</span></div>
+          </article>
+          <p class="tiny mt2" style="color:#ffd9d3">Printing shows only the note. Real subscriptions today: 5 lb monthly light or dark roast, $80/month; the other gift options are illustrative.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="coasters" aria-labelledby="co-h" style="scroll-margin-top:80px">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Coasters</p><h2 class="h2" id="co-h">Gifts that<br>reorder.</h2></div>
+        <p class="lede">Engraved with the coffee-ring logo and a QR code that brings them back to the shop when the bag runs low.</p>
+      </div>
+      <div class="grid g3 merch" data-merch-grid></div>
+    </div>
+  </section>
+
+  <section class="sec-sm kraft" id="bags" aria-labelledby="bags-h" style="scroll-margin-top:80px">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Gift a bag</p><h2 class="h2" id="bags-h">Three safe bets.</h2></div>
+        <p class="lede">Not sure what they drink? Start here. Each adds 1 lb, Roaster's Choice, whole bean; change roast and grind at checkout.</p>
+      </div>
+      <div class="grid g3" data-bags></div>
+    </div>
+  </section>
+
+  <section class="sec" id="corporate" aria-labelledby="corp-h" style="scroll-margin-top:80px">
+    <div class="wrap">
+      <div class="ink corp">
+        <div>
+          <p class="eyebrow">Corporate &amp; hostess gifts</p>
+          <h2 class="h2" id="corp-h">Gifting for<br>a whole team?</h2>
+          <p class="lede">Client gifts, team thank-yous, wedding welcome bags or a host gift for every guest. Benny roasts the batch and can co-brand the card. Volume pricing through the wholesale program.</p>
+          <div class="row mt2"><a class="btn btn-light" href="../wholesale/">Talk wholesale <span class="arr">→</span></a><a class="btn btn-outline-light" href="../wholesale/#rentals">Rental welcome bags</a></div>
+        </div>
+        <div class="corp-ring" data-corp-ring></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec-sm paper" aria-labelledby="faq-h">
+    <div class="narrow faq">
+      <h2 class="h2" id="faq-h">Gift questions.</h2>
+      <details><summary>How is a gift card delivered?</summary><p>By email, to the address you enter, either right away or on the date you schedule. It includes your note, the design you picked and a redeem code.</p></details>
+      <details><summary>Do gift cards expire?</summary><p>No. They never expire (illustrative policy; Benny confirms the final terms).</p></details>
+      <details><summary>Where can they redeem it?</summary><p>Online at checkout, or in person at the Benny's Beans booth at the Occidental Farmers Market (Thursdays 4–8 pm) and the Cloverdale Certified Farmers Market (Sundays 9:30 am–1 pm).</p></details>
+      <details><summary>When does a gift subscription start?</summary><p>On the first roast day of the month you choose. Each month's bag is roasted to order on a Monday or Wednesday and ships the next day.</p></details>
+      <details><summary>Can I ship a gift bag straight to them?</summary><p>Yes. Add the coffee, then enter their address at checkout. Orders of $60 or more ship free.</p></details>
+    </div>
+  </section>
+</main>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc;
+  var now = BB.now();
+  function press(g, b) { $$("button", g).forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); }
+
+  // ---------- card renderer ----------
+  var TEX = {
+    river: '<svg viewBox="0 0 320 200" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-opacity=".09" stroke-width="2"><path d="M-10 130c40-18 80 18 120 0s80-18 120 0 80 18 120 0"/><path d="M-10 152c40-18 80 18 120 0s80-18 120 0 80 18 120 0"/><path d="M-10 174c40-18 80 18 120 0s80-18 120 0 80 18 120 0"/></g></svg>',
+    cherry: '<svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid slice"><g fill="#fff" fill-opacity=".1"><circle cx="270" cy="40" r="70"/><circle cx="300" cy="170" r="40"/></g></svg>',
+    kraft: '<svg viewBox="0 0 320 200" preserveAspectRatio="none"><g stroke="#5b4126" stroke-opacity=".08" stroke-width="1"><path d="M0 20h320M0 47h320M0 81h320M0 112h320M0 139h320M0 171h320"/></g><rect x="0" y="0" width="320" height="10" fill="#8d9296" fill-opacity=".35"/></svg>'
+  };
+  function card(d, amount, to) {
+    return '<div class="gc ' + d + '"><div class="tex">' + TEX[d] + '</div><div class="top"><span class="mark">' + BB.ring({ words: true }) + '</span><span class="kind">Gift card<br>Russian River Roastery</span></div><div class="bot"><span class="amt">' + BB.money(amount) + '</span><span class="to">' + (to ? "For<b>" + esc(to) + "</b>" : "Good for<br>fresh coffee") + "</span></div></div>";
+  }
+  $("[data-fan]").innerHTML = card("kraft", 20, "") + card("cherry", 100, "") + card("river", 40, "Mom");
+
+  // ---------- gift card builder ----------
+  var form = $("[data-gc-form]");
+  var g = { amount: 40, design: "river", when: "now" };
+  var tmr = BB.addDays(now, 1);
+  form.sendOn.min = BB.ymd(tmr); form.sendOn.max = BB.ymd(BB.addDays(now, 365)); form.sendOn.value = BB.ymd(tmr);
+  function sendLabel() { if (g.when === "now") return "Right after checkout"; var v = form.sendOn.value; if (!v) return "Pick a date"; var p = v.split("-"); return BB.fmt(new Date(+p[0], +p[1] - 1, +p[2]), true); }
+  function paintGc() {
+    var to = form.to.value.trim(), from = form.from.value.trim(), note = form.note.value;
+    $("[data-gc-preview]").innerHTML = card(g.design, g.amount, to);
+    $("[data-m-to]").textContent = (to || "Recipient") + " <" + (form.toEmail.value.trim() || "their email") + ">";
+    $("[data-m-sub]").textContent = (from || "Someone") + " sent you " + BB.money(g.amount) + " of fresh coffee";
+    $("[data-m-when]").textContent = sendLabel();
+    $("[data-m-msg]").textContent = note.trim() || "Your note shows up here.";
+    $("[data-cnt]").textContent = note.length + " / 200";
+    $("[data-gc-add]").innerHTML = "Add " + BB.money(g.amount) + ' gift card to bag <span class="arr">→</span>';
+  }
+  $("[data-amts]").addEventListener("click", function (e) { var b = e.target.closest("[data-v]"); if (!b) return; press(this, b); g.amount = +b.dataset.v; $("[data-custom]").value = ""; paintGc(); });
+  $("[data-custom]").addEventListener("input", function () {
+    var v = Math.round(+this.value);
+    if (v >= 10 && v <= 500) { g.amount = v; $$("[data-amts] .chip").forEach(function (x) { x.setAttribute("aria-pressed", false); }); }
+    paintGc();
+  });
+  $("[data-designs]").addEventListener("click", function (e) { var b = e.target.closest("[data-v]"); if (!b) return; press(this, b); g.design = b.dataset.v; paintGc(); });
+  $("[data-when]").addEventListener("click", function (e) { var b = e.target.closest("[data-v]"); if (!b) return; press(this, b); g.when = b.dataset.v; $("[data-date-wrap]").hidden = g.when === "now"; paintGc(); });
+  form.addEventListener("input", paintGc);
+  paintGc();
+  form.addEventListener("submit", function (e) {
+    e.preventDefault(); var err = $("[data-err]", form); err.textContent = "";
+    if (form.website.value) return;
+    var cv = $("[data-custom]").value;
+    if (cv && !(+cv >= 10 && +cv <= 500)) { err.textContent = "Custom amounts run from $10 to $500."; $("[data-custom]").focus(); return; }
+    var to = form.to.value.trim(), toEmail = form.toEmail.value.trim(), from = form.from.value.trim();
+    if (!to) { err.textContent = "Who's it for? Add the recipient's name."; form.to.focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) { err.textContent = "Add the recipient's email so the card can be delivered."; form.toEmail.focus(); return; }
+    if (!from) { err.textContent = "Add who it's from."; form.from.focus(); return; }
+    var sendOn = g.when === "now" ? BB.ymd(now) : form.sendOn.value;
+    if (g.when === "later" && (!sendOn || sendOn < BB.ymd(tmr))) { err.textContent = "Pick a send date from tomorrow on."; form.sendOn.focus(); return; }
+    var dn = { river: "River", cherry: "Cherry", kraft: "Kraft" }[g.design];
+    BB.add({ kind: "gift", amount: g.amount, to: to, note: "Email to " + toEmail + " · " + dn + " design · " + (g.when === "now" ? "sends after checkout" : "sends " + sendLabel()) + (form.note.value.trim() ? " · “" + form.note.value.trim().slice(0, 60) + (form.note.value.trim().length > 60 ? "…" : "") + "”" : "") + " · from " + from });
+    BB.log("gift", { amount: g.amount, to: to, toEmail: toEmail, from: from, sendOn: sendOn, design: g.design, note: form.note.value.trim() });
+  });
+
+  // ---------- gift subscriptions ----------
+  var s = { months: 6, size: 1, coffee: "Benny's pick" };
+  var startSel = $("[data-gsi=start]"), grindSel = $("[data-gsi=grind]");
+  var opts = []; for (var i = 0; i < 4; i++) { var d = new Date(now.getFullYear(), now.getMonth() + i, 1); opts.push('<option value="' + BB.ymd(d) + '">' + (i === 0 ? "Right away" : BB.MON[d.getMonth()] + " " + d.getFullYear()) + "</option>"); }
+  startSel.innerHTML = opts.join("");
+  grindSel.innerHTML = BB.GRINDS.map(function (x) { return "<option>" + esc(x) + "</option>"; }).join("");
+  $("[data-gn-ring]").innerHTML = BB.ring({ words: true });
+  function startLabel() { return startSel.selectedIndex === 0 ? "the next roast, " + BB.fmt(BB.nextRoast().roast) : startSel.options[startSel.selectedIndex].text; }
+  function paintGs() {
+    var total = BB.PRICE[s.size] * s.months;
+    var to = $("[data-gsi=to]").value.trim(), from = $("[data-gsi=from]").value.trim(), msg = $("[data-gsi=msg]").value.trim();
+    $("[data-gs-total]").textContent = BB.money(total);
+    $("[data-gs-note]").textContent = s.months + " × " + BB.money(BB.PRICE[s.size]) + " · shipping on us at $60+";
+    $("[data-gn-to]").textContent = to || "Someone lovely";
+    $("[data-gn-what]").textContent = s.months + " months of " + s.size + " lb · " + s.coffee;
+    $("[data-gn-msg]").textContent = (msg ? msg + "\n\n" : "") + "A fresh bag, roasted to order in Guerneville and shipped the next day, every month starting " + startLabel() + ". Ground " + grindSel.value.toLowerCase() + ".";
+    $("[data-gn-from]").textContent = from ? "— " + from : "";
+  }
+  $$("[data-gs]").forEach(function (grp) {
+    grp.addEventListener("click", function (e) { var b = e.target.closest("[data-v]"); if (!b) return; press(grp, b); var k = grp.dataset.gs; s[k] = k === "coffee" ? b.dataset.v : +b.dataset.v; paintGs(); });
+  });
+  $$("[data-gsi]").forEach(function (el) { el.addEventListener("input", paintGs); el.addEventListener("change", paintGs); });
+  paintGs();
+  $("[data-print]").addEventListener("click", function () { window.print(); });
+  $("[data-gs-add]").addEventListener("click", function () {
+    var to = $("[data-gsi=to]").value.trim(), err = $("[data-gs-err]"); err.textContent = "";
+    if (!to) { err.textContent = "Add who it's for, so the note and the label are right."; $("[data-gsi=to]").focus(); return; }
+    BB.add({ kind: "giftsub", amount: BB.PRICE[s.size] * s.months, to: to, note: s.months + " months · " + s.size + " lb " + s.coffee + " · " + grindSel.value + " · starts " + startLabel() + ($("[data-gsi=from]").value.trim() ? " · from " + $("[data-gsi=from]").value.trim() : "") });
+  });
+
+  // ---------- coasters ----------
+  $("[data-merch-grid]").innerHTML = BB.MERCH.map(function (m, i) {
+    return '<article class="card reveal" style="--d:' + i * .06 + 's"><div class="photo"><img src="../assets/img/' + m.img + '" alt="' + esc(m.name) + ', engraved with the Benny\'s Beans coffee-ring logo" loading="lazy" width="768" height="1024"><span class="cap tag ' + (m.badge === "Limited" ? "red" : "ink") + '">' + esc(m.badge) + '</span></div><div class="mbody"><h3>' + esc(m.name) + '</h3><p class="small mb0" style="color:var(--ink-2)">' + esc(m.blurb) + '</p><div class="foot"><span class="price">' + BB.money(m.price) + '</span><button class="btn btn-sm" type="button" data-merch="' + m.id + '">Add to bag</button></div></div></article>';
+  }).join("");
+
+  // ---------- gift-a-bag quick picks ----------
+  var picks = [["halfcaff", "Our top seller. Real flavor, half the buzz: safe for anyone."], ["ethiopia", "For the friend who orders pour-over: honey, maple, lemon."], ["coorg-robusta", "For the one who needs it strong. Big crema, high octane."]];
+  $("[data-bags]").innerHTML = picks.map(function (p, i) {
+    var c = BB.BY[p[0]];
+    return '<article class="pcard reveal" style="--d:' + i * .06 + 's"><div class="stage" style="--c:' + c.c + '30"><div class="badges">' + (c.badge ? '<span class="tag red">' + esc(c.badge) + "</span>" : "") + '</div><div class="bag">' + BB.bag(c.id) + '</div></div><div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><p class="why">' + esc(p[1]) + '</p><div class="add-row"><span class="price">$20 <small>/ 1 lb</small></span><button class="btn btn-sm btn-red" type="button" data-quick="' + c.id + '">Add 1 lb</button></div><a class="link small" href="../coffee/?c=' + c.id + '">Tasting notes →</a></div></article>';
+  }).join("");
+  $("[data-corp-ring]").innerHTML = BB.ring({ words: true, sub: "GIFTS · GUERNEVILLE CA" });
+  BB.reveal();
+});
+</script>
+</body>
+</html>

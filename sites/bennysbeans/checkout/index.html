@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Checkout | Benny's Beans · Russian River Roastery</title>
+<meta name="description" content="Check out your Benny's Beans order: ship it (free on $60+), pick it up at will-call in Guerneville, or grab it at the Occidental or Cloverdale farmers market.">
+<meta name="theme-color" content="#16120f">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="https://russianriverroastery.com/checkout/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Checkout · Benny's Beans">
+<meta property="og:description" content="Roasted after you order. Ship it, pick it up in Guerneville, or grab it at the market.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css">
+<style>
+  [hidden] { display: none !important; }
+  .co-hero { padding: clamp(28px, 4vw, 56px) 0 clamp(24px, 3vw, 36px); }
+  .co-hero .hrow { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .co-hero h1 { margin: 0; font-size: clamp(54px, 8vw, 116px); }
+  .ticket { display: flex; align-items: center; gap: 18px; background: var(--ink); color: var(--paper); border-radius: 30px; padding: 14px 26px 14px 14px; max-width: 560px; }
+  .ticket .stamp { flex: none; width: 112px; height: 112px; background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); font-size: 10px; }
+  .ticket .stamp b { font-size: 24px; }
+  .ticket p { margin: 0; }
+  .ticket .big { font: 900 clamp(22px, 2.2vw, 28px)/1.02 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; }
+  .ticket .big span { color: var(--gold); }
+  .ticket .sub { font: 500 12.5px/1.5 var(--mono); color: #bfb3a5; margin-top: 8px; }
+  .ticket .sub b { color: #fff; font-weight: 500; }
+  @media (max-width: 520px) { .ticket { padding: 12px 16px 12px 12px; gap: 14px; border-radius: 24px; } .ticket .stamp { width: 88px; height: 88px; font-size: 8.5px; padding: 8px; } .ticket .stamp b { font-size: 19px; } }
+
+  .co { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; padding-bottom: clamp(64px, 8vw, 110px); }
+  @media (max-width: 960px) { .co { grid-template-columns: 1fr; } }
+  .fs { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: clamp(20px, 2.6vw, 32px); margin: 0 0 16px; min-width: 0; }
+  .fs legend, .fs .fs-h { display: flex; align-items: center; gap: 12px; font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; padding: 0; margin: 0 0 20px; float: left; width: 100%; }
+  .fs legend + * { clear: both; }
+  .fs .num { width: 34px; height: 34px; border-radius: 50%; background: var(--ink); color: var(--gold); display: grid; place-items: center; font: 500 12px var(--mono); flex: none; }
+  .fs .opt-tag { margin-left: auto; font: 500 11px var(--mono); letter-spacing: .08em; color: var(--mute); }
+  .err { color: var(--cherry); font-size: 13px; font-weight: 600; margin: 2px 0 0; }
+  [aria-invalid="true"] { border-color: var(--cherry) !important; background: #fff6f4 !important; }
+  .field .hint { font-size: 12.5px; color: var(--mute); }
+
+  .fcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .fcard { position: relative; display: flex; flex-direction: column; gap: 6px; border: 2px solid var(--line); border-radius: 22px; padding: 16px 16px 14px; cursor: pointer; background: var(--bone); transition: border-color .15s, background .15s, transform .2s var(--ease); }
+  .fcard:hover { border-color: var(--ink); }
+  .fcard input { position: absolute; opacity: 0; pointer-events: none; }
+  .fcard .ic { width: 40px; height: 40px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--line); display: grid; place-items: center; margin-bottom: 4px; }
+  .fcard .ic svg { width: 20px; height: 20px; }
+  .fcard b { font: 900 18px/1.05 var(--sans); font-variation-settings: "wdth" 118; text-transform: uppercase; }
+  .fcard .pr { font: 600 13px var(--mono); color: var(--ok); }
+  .fcard .pr.cost { color: var(--ink-2); }
+  .fcard .wh { font-size: 13px; color: var(--ink-2); line-height: 1.35; }
+  .fcard .tick { position: absolute; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); background: var(--paper); }
+  .fcard:has(input:checked) { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+  .fcard:has(input:checked) .wh { color: #cfc4b6; }
+  .fcard:has(input:checked) .pr { color: var(--gold); }
+  .fcard:has(input:checked) .ic { background: var(--cherry); border-color: var(--cherry); color: #fff; }
+  .fcard:has(input:checked) .tick { border-color: var(--gold); background: var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.5l3.2 3L15 6.5' fill='none' stroke='%2316120f' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat; }
+  .fcard:has(input:focus-visible) { outline: 3px solid var(--cherry); outline-offset: 3px; }
+  .fcard.on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+  @media (max-width: 720px) {
+    .fcards { grid-template-columns: 1fr; }
+    .fcard { display: grid; grid-template-columns: 40px 1fr; column-gap: 14px; padding: 14px 52px 14px 14px; }
+    .fcard .ic { grid-row: span 3; margin: 0; }
+    .fcard .tick { top: 50%; margin-top: -12px; }
+  }
+  .fpanel { margin-top: 16px; padding: 18px; border-radius: 20px; background: var(--bone); border: 1px dashed var(--kraft-d); }
+  .fpanel .note { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin: 14px 0 0; }
+  .fpanel .note::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cherry); margin-top: 7px; flex: none; }
+  .mk { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mk button { text-align: left; border: 2px solid var(--line); background: var(--paper); border-radius: 18px; padding: 14px; cursor: pointer; display: grid; gap: 2px; transition: border-color .15s; }
+  .mk button:hover { border-color: var(--ink); }
+  .mk button[aria-pressed="true"] { border-color: var(--cherry); box-shadow: inset 0 0 0 1px var(--cherry); }
+  .mk b { font: 900 17px/1.1 var(--sans); font-variation-settings: "wdth" 115; text-transform: uppercase; }
+  .mk span { font-size: 13px; color: var(--ink-2); }
+  .mk .d { font: 600 12.5px var(--mono); color: var(--cherry); }
+  @media (max-width: 520px) { .mk { grid-template-columns: 1fr; } }
+  .wc { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+  .wc .pin { width: 52px; height: 52px; border-radius: 16px; background: var(--river); color: #fff; display: grid; place-items: center; }
+  .wc .pin svg { width: 24px; }
+
+  .tog { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; border-top: 1px solid var(--line); }
+  .tog:first-of-type { border-top: 0; padding-top: 0; }
+  .tog input { width: 22px; height: 22px; accent-color: var(--cherry); margin-top: 2px; flex: none; }
+  .tog label b { display: block; font-size: 16px; }
+  .tog label span { font-size: 13.5px; color: var(--mute); }
+  .tog .more { margin-top: 12px; }
+  .subcalc { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--ink); color: var(--paper); border-radius: 18px; padding: 14px 16px; margin-top: 12px; flex-wrap: wrap; }
+  .subcalc b { font: 900 26px/1 var(--sans); font-variation-settings: "wdth" 125; }
+  .subcalc small { display: block; font: 500 11.5px/1.5 var(--mono); color: #bfb3a5; }
+
+  .pay { border: 2px dashed var(--kraft-d); border-radius: 22px; padding: 20px; background: repeating-linear-gradient(135deg, var(--bone) 0 14px, var(--paper) 14px 28px); }
+  .pay .demo { display: inline-flex; margin-bottom: 12px; }
+  .pay p { font-size: 14.5px; }
+  .paybtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .paybtns span { height: 48px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 14px; background: var(--ink); color: #fff; opacity: .9; }
+  .paybtns span.card { background: var(--paper); color: var(--ink); border: 1.5px solid var(--line); }
+  .placebar { margin-top: 18px; }
+  .placebar .btn { min-height: 64px; font-size: 18px; }
+  .errsum { background: #fff1ee; border: 1.5px solid var(--cherry); color: var(--cherry-d); border-radius: 16px; padding: 12px 16px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+  /* summary */
+  .sum { position: sticky; top: calc(var(--head-h) + 16px); background: var(--paper); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; }
+  @media (max-width: 960px) { .sum { position: static; order: -1; } }
+  .sum header { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 22px 14px; }
+  .sum header h2 { font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin: 0; }
+  .sum .lines { padding: 0 22px; }
+  .sum .line { grid-template-columns: 64px 1fr auto; }
+  .sum .line:last-child { border-bottom: 0; }
+  .sum .qty button:hover { background: var(--bone); border-radius: 50%; }
+  .sum .shipbox { padding: 14px 22px; background: var(--bone); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sum .shipbox p { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+  .sum .up { display: flex; gap: 12px; align-items: center; margin-top: 12px; font-size: 13.5px; }
+  .sum .up .t { width: 40px; height: 46px; border-radius: 10px; display: grid; place-items: end center; overflow: hidden; flex: none; }
+  .sum .up .t svg { width: 30px; }
+  .sum .tot { padding: 16px 22px 20px; }
+  .sum .tot dl { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 0; font-size: 15px; }
+  .sum .tot dd { margin: 0; text-align: right; font-weight: 700; }
+  .sum .tot .grand { font: 900 26px/1 var(--sans); font-variation-settings: "wdth" 120; padding-top: 12px; border-top: 1px solid var(--line); margin-top: 6px; }
+  .sum .when { margin: 0 22px 22px; background: var(--ink); color: var(--paper); border-radius: 18px; padding: 14px 16px; font-size: 14px; display: flex; gap: 12px; align-items: center; }
+  .sum .when .r { width: 38px; flex: none; color: var(--gold); }
+  .sum .when b { color: var(--gold); }
+
+  /* empty */
+  .emptyv { text-align: center; padding: clamp(20px, 4vw, 40px) 0 clamp(64px, 8vw, 110px); }
+  .emptyv .ringbig { width: 160px; margin: 0 auto 18px; color: var(--kraft-d); }
+  .emptyv .picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; text-align: left; margin-top: 40px; }
+  .emptyv .pcard .add { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--ink); background: var(--ink); color: #fff; font-size: 22px; cursor: pointer; position: relative; z-index: 2; }
+  .emptyv .pcard .cover { position: absolute; inset: 0; z-index: 1; border-radius: 28px; }
+  @media (max-width: 860px) { .emptyv .picks { grid-template-columns: 1fr; } .emptyv .pcard { display: grid; grid-template-columns: 38% 1fr; } }
+
+  /* confirmation */
+  .done { padding: clamp(28px, 4vw, 56px) 0 clamp(64px, 8vw, 110px); }
+  .done h1 { font-size: clamp(48px, 7.6vw, 112px); margin: 0 0 18px; }
+  .done h1:focus { outline: none; }
+  .done .grid2 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: start; margin-top: 34px; }
+  @media (max-width: 900px) { .done .grid2 { grid-template-columns: 1fr; } }
+  .tl { list-style: none; margin: 0; padding: 0; position: relative; }
+  .tl li { position: relative; padding: 0 0 30px 64px; }
+  .tl li::before { content: ""; position: absolute; left: 21px; top: 44px; bottom: 0; width: 3px; background: var(--line); border-radius: 3px; }
+  .tl li:last-child::before { display: none; }
+  .tl .dot { position: absolute; left: 0; top: 0; width: 45px; height: 45px; border-radius: 50%; display: grid; place-items: center; background: var(--paper); border: 2px solid var(--line); font: 500 12px var(--mono); }
+  .tl li.ok .dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .tl li.ok::before { background: var(--ok); }
+  .tl li.next .dot { background: var(--cherry); border-color: var(--cherry); color: #fff; animation: pulse 2s infinite; }
+  .tl .k { font: 500 11.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
+  .tl h3 { font: 900 clamp(22px, 2.4vw, 30px)/1 var(--sans); font-variation-settings: "wdth" 122; text-transform: uppercase; margin: 4px 0 6px; }
+  .tl p { margin: 0; color: var(--ink-2); font-size: 15px; }
+  .acts { display: grid; gap: 10px; }
+  .acts .btn { justify-content: space-between; }
+  .recap { margin-top: 18px; }
+  .recap .line { grid-template-columns: 56px 1fr auto; padding: 10px 0; }
+  .recap .line .thumb { width: 56px; height: 62px; }
+  .recap .line .thumb svg { width: 40px; }
+  .recap .kv { margin-top: 12px; }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<!--/bb:header-->
+
+<main id="main">
+  <!-- ======== checkout ======== -->
+  <div data-view="checkout" hidden>
+    <section class="co-hero" aria-labelledby="co-h">
+      <div class="wrap">
+        <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../shop/">Shop</a> › <span aria-current="page">Checkout</span></nav>
+        <div class="hrow">
+          <div>
+            <h1 class="display" id="co-h">Checkout.</h1>
+            <p class="tiny mt1 mb0">Concept demo. Nothing is charged and nothing leaves your browser.</p>
+          </div>
+          <div class="ticket" aria-live="polite">
+            <div class="stamp" aria-hidden="true">Roasting<b data-tk-day>MON</b><span data-tk-date></span></div>
+            <div><p class="big" data-tk-big>Your coffee roasts <span>Monday Oct 12</span></p><p class="sub" data-tk-sub></p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="wrap co">
+      <form class="coform" novalidate data-form>
+        <fieldset class="fs">
+          <legend><span class="num">01</span>Contact</legend>
+          <div class="form-grid">
+            <label class="field full"><span>Full name</span><input type="text" name="name" autocomplete="name" required><p class="err" hidden></p></label>
+            <label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required><p class="err" hidden></p></label>
+            <label class="field"><span>Mobile <i class="hint" style="font-style:normal;text-transform:none;letter-spacing:0;font-family:var(--sans)">(for roast-day texts)</i></span><input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="707-555-0123"><p class="err" hidden></p></label>
+            <label class="check full"><input type="checkbox" name="sms" data-sms> <span><b>Text me when my coffee is roasted and when it ships.</b> Two texts per order from Benny's. Reply STOP any time.</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="fs">
+          <legend><span class="num">02</span>How do you want it?</legend>
+          <div class="fcards" data-fcards>
+            <label class="fcard"><input type="radio" name="fulfil" value="ship" checked><span class="tick" aria-hidden="true"></span>
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg></span>
+              <b>Ship it</b><span class="pr" data-pr-ship>Free</span><span class="wh" data-wh-ship></span></label>
+            <label class="fcard"><input type="radio" name="fulfil" value="willcall"><span class="tick" aria-hidden="true"></span>
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 10l8-6 8 6v10H4z"/><path d="M10 20v-6h4v6"/></svg></span>
+              <b>Will-call</b><span class="pr">Free · Guerneville</span><span class="wh" data-wh-wc></span></label>
+            <label class="fcard"><input type="radio" name="fulfil" value="market"><span class="tick" aria-hidden="true"></span>
+              <span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 9l2-5h14l2 5M3 9h18M3 9c0 2 4 2 4 0 0 2 5 2 5 0 0 2 5 2 5 0 0 2 4 2 4 0M5 11v9h14v-9"/></svg></span>
+              <b>Farmers market</b><span class="pr">Free · Thu or Sun</span><span class="wh" data-wh-mk></span></label>
+          </div>
+
+          <div class="fpanel" data-panel="ship">
+            <div class="form-grid">
+              <label class="field full"><span>Street address</span><input type="text" name="line1" autocomplete="address-line1"><p class="err" hidden></p></label>
+              <label class="field full"><span>Apt, suite <i class="hint" style="font-style:normal">(optional)</i></span><input type="text" name="line2" autocomplete="address-line2"></label>
+              <label class="field"><span>City</span><input type="text" name="city" autocomplete="address-level2"><p class="err" hidden></p></label>
+              <div class="form-grid" style="grid-template-columns:1fr 1.3fr;gap:12px">
+                <label class="field"><span>State</span><input type="text" name="state" autocomplete="address-level1" value="CA" maxlength="2" style="text-transform:uppercase"><p class="err" hidden></p></label>
+                <label class="field"><span>ZIP</span><input type="text" name="zip" autocomplete="postal-code" inputmode="numeric" maxlength="10"><p class="err" hidden></p></label>
+              </div>
+            </div>
+            <p class="note" data-ship-note></p>
+          </div>
+
+          <div class="fpanel" data-panel="willcall" hidden>
+            <div class="wc">
+              <span class="pin" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span>
+              <div><b>True Value Hardware of Guerneville</b><br><span class="small">15600 River Rd, Guerneville, CA 95446 · <a class="link" href="https://maps.google.com/?q=True+Value+Hardware+Guerneville+CA" target="_blank" rel="noopener">Map</a></span></div>
+            </div>
+            <p class="note" data-wc-note></p>
+          </div>
+
+          <div class="fpanel" data-panel="market" hidden>
+            <div class="mk" role="group" aria-label="Choose a market" data-mk></div>
+            <p class="note" data-mk-note></p>
+          </div>
+        </fieldset>
+
+        <fieldset class="fs">
+          <legend><span class="num">03</span>Extras<span class="opt-tag">Optional</span></legend>
+          <div class="tog">
+            <input type="checkbox" id="gift" data-gift>
+            <div style="flex:1"><label for="gift"><b>Add a gift note</b><span>Handwritten by Benny on a card in the bag.</span></label>
+              <div class="more" data-gift-more hidden><label class="field"><span>Your note</span><textarea name="giftNote" maxlength="240" placeholder="Happy birthday. Fresh beans, roasted Monday."></textarea></label><label class="check mt1"><input type="checkbox" name="hidePrices" checked> Leave prices off the packing slip</label></div>
+            </div>
+          </div>
+          <div class="tog">
+            <input type="checkbox" id="subon" data-sub>
+            <div style="flex:1"><label for="subon"><b>Make this a subscription</b><span>Same coffee, same roast and grind, on repeat. Skip, swap or pause by text.</span></label>
+              <div class="more" data-sub-more hidden>
+                <div class="seg" role="group" aria-label="How often" data-every>
+                  <button type="button" aria-pressed="false" data-v="1">Every week</button>
+                  <button type="button" aria-pressed="true" data-v="2">Every 2 weeks</button>
+                  <button type="button" aria-pressed="false" data-v="4">Every 4 weeks</button>
+                </div>
+                <div class="subcalc" aria-live="polite"><span><span class="label" style="color:#bfb3a5">Each delivery</span><small data-sub-note></small></span><b data-sub-price>$0</b></div>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="fs">
+          <legend><span class="num">04</span>Payment</legend>
+          <div class="pay">
+            <span class="tag gold demo">Demo placeholder</span>
+            <p class="mb0"><b>In the live build this is Shopify/Square checkout</b> with Apple Pay, Google Pay and cards. No payment details are collected in this concept.</p>
+            <div class="paybtns" aria-hidden="true"><span>Apple Pay</span><span>Google Pay</span><span class="card">Card</span></div>
+          </div>
+        </fieldset>
+
+        <div class="placebar">
+          <div class="errsum" role="alert" data-errsum hidden></div>
+          <button class="btn btn-red btn-block" type="submit" data-place>Place demo order <span class="arr">→</span></button>
+          <p class="tiny mt1 center">By placing this demo order, you're sending it to the demo roaster console on this device only.</p>
+        </div>
+      </form>
+
+      <aside class="sum" aria-labelledby="sum-h">
+        <header><h2 id="sum-h">Your bag</h2><a class="link small" href="../shop/">Keep shopping</a></header>
+        <div class="lines" data-lines></div>
+        <div class="shipbox" aria-live="polite" data-shipbox><p data-ship-msg></p><div class="meter"><i data-ship-bar></i></div><div data-upsell></div></div>
+        <div class="tot">
+          <dl>
+            <dt>Subtotal</dt><dd data-t-sub>$0</dd>
+            <dt data-t-ship-l>Shipping</dt><dd data-t-ship>Free</dd>
+            <dt class="grand">Total</dt><dd class="grand" data-t-total aria-live="polite">$0</dd>
+          </dl>
+          <p class="tiny mt1 mb0">Coffee beans aren't taxed in California. Shipping rates under $60 are illustrative.</p>
+        </div>
+        <div class="when"><span class="r" data-ring-gold></span><span data-when></span></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ======== empty ======== -->
+  <section class="emptyv" data-view="empty" hidden aria-labelledby="empty-h">
+    <div class="wrap">
+      <div class="ringbig" data-empty-ring></div>
+      <h1 class="h1" id="empty-h">Nothing to<br>roast yet.</h1>
+      <p class="lede" style="margin:12px auto 24px">Your bag is empty. Every bag is roasted after you order, and the next roast is <b data-next-roast="long"></b>.</p>
+      <div class="row" style="justify-content:center"><a class="btn btn-red" href="../shop/">Shop coffee <span class="arr">→</span></a><a class="btn btn-ghost" href="../brew/#quiz">Take the bean quiz</a></div>
+      <div class="picks" data-picks></div>
+    </div>
+  </section>
+
+  <!-- ======== confirmation ======== -->
+  <section class="done" data-view="done" hidden aria-labelledby="done-h">
+    <div class="wrap">
+      <p class="eyebrow" data-d-eyebrow>Order placed</p>
+      <h1 class="display" id="done-h" tabindex="-1" data-d-h>It's on<br>the list.</h1>
+      <p class="lede" data-d-lede></p>
+      <div class="grid2">
+        <div>
+          <ol class="tl" data-tl></ol>
+        </div>
+        <div>
+          <div class="card">
+            <p class="label mb0">Next steps</p>
+            <div class="acts mt1">
+              <button class="btn btn-red" type="button" data-ics>Add roast day to calendar <span class="arr">↓</span></button>
+              <a class="btn btn-ghost" data-text-benny href="sms:+17078994183">Text Benny <span class="arr">→</span></a>
+              <a class="btn btn-ghost" href="../roaster/">See it in the roaster console <span class="arr">→</span></a>
+            </div>
+            <div class="recap" data-recap></div>
+          </div>
+          <p class="tiny mt1">Demo: your order is saved on this device only, so the roaster console can show it as "You, just now". In the live build you'd get an email receipt<span data-d-sms></span>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!--bb:footer-->
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc;
+  var SHIP_EST = 8.95; // illustrative flat rate under the free-shipping line
+  var form = $("[data-form]");
+  var st = { fulfil: "ship", market: "occidental", every: 2, placed: null };
+
+  // ---------- dates ----------
+  function marketDate(m, roast) {
+    var d = new Date(roast); d.setHours(0, 0, 0, 0);
+    for (var i = 0; i < 8 && d.getDay() !== m.day; i++) d = BB.addDays(d, 1);
+    d.setHours(Math.floor(m.open), (m.open % 1) * 60, 0, 0);
+    return d;
+  }
+  function plan() {
+    var r = BB.nextRoast(), m = BB.markets.filter(function (x) { return x.id === st.market; })[0];
+    var p = { r: r, roast: r.roast, ship: r.ship, arrive: r.arrive, cutoff: r.cutoff };
+    if (st.fulfil === "willcall") p.pickup = r.ship;
+    if (st.fulfil === "market") { p.pickup = marketDate(m, r.roast); p.m = m; }
+    return p;
+  }
+  function range(a, b) { return BB.MON[a.getMonth()] + " " + a.getDate() + "–" + (a.getMonth() !== b.getMonth() ? BB.MON[b.getMonth()] + " " : "") + b.getDate(); }
+  function clock(d) { var h = d.getHours(), m = d.getMinutes(); return (h % 12 || 12) + (m ? ":" + ("0" + m).slice(-2) : "") + (h < 12 ? " am" : " pm"); }
+
+  // ---------- money ----------
+  function shipCost() { var s = BB.shippable(); if (st.fulfil !== "ship" || s === 0) return 0; return s >= BB.freeShip ? 0 : SHIP_EST; }
+  function coffeeSub() { return BB.cart().filter(function (it) { return it.kind === "coffee"; }).reduce(function (n, it) { return n + BB.linePrice(it) * it.qty; }, 0); }
+
+  // ---------- views ----------
+  function show(v) { $$("[data-view]").forEach(function (el) { el.hidden = el.dataset.view !== v; }); }
+
+  // ---------- render ----------
+  function paintDates() {
+    var p = plan(), r = p.r;
+    $("[data-tk-day]").textContent = BB.DS[r.roast.getDay()].toUpperCase();
+    $("[data-tk-date]").textContent = BB.MON[r.roast.getMonth()] + " " + r.roast.getDate();
+    $("[data-tk-big]").innerHTML = "Your coffee roasts <span>" + BB.fmt(r.roast, true) + "</span>";
+    var sub = st.fulfil === "ship" ? "Ships <b>" + BB.fmt(r.ship) + "</b> · arrives ~<b>" + range(r.arrive[0], r.arrive[1]) + "</b>"
+      : st.fulfil === "willcall" ? "Ready at True Value, Guerneville <b>" + BB.fmt(r.ship) + "</b>"
+      : "Pick up at " + esc(p.m.town) + " <b>" + BB.fmt(p.pickup) + ", " + esc(p.m.hours) + "</b>";
+    $("[data-tk-sub]").innerHTML = sub + "<br>Order in the next " + BB.left(r.msLeft) + " to make this roast.";
+    $("[data-wh-ship]").textContent = "Ships " + BB.fmt(r.ship) + ", arrives ~" + range(r.arrive[0], r.arrive[1]);
+    $("[data-wh-wc]").textContent = "Ready " + BB.fmt(r.ship) + " at True Value";
+    var nm = marketDate(BB.markets[0], r.roast), nc = marketDate(BB.markets[1], r.roast);
+    var first = nm < nc ? [BB.markets[0], nm] : [BB.markets[1], nc];
+    $("[data-wh-mk]").textContent = "Next: " + first[0].town + " " + BB.fmt(first[1]);
+    $("[data-ship-note]").innerHTML = "Roasts <b>" + BB.fmt(r.roast, true) + "</b>, ships " + BB.fmt(r.ship) + ". Usually arrives " + range(r.arrive[0], r.arrive[1]) + " in California (transit times illustrative).";
+    $("[data-wc-note]").innerHTML = "Roasted <b>" + BB.fmt(r.roast, true) + "</b>, bagged with your name and on the will-call shelf <b>" + BB.fmt(r.ship, true) + "</b>. We'll text when it's ready if you opted in.";
+    $("[data-mk]").innerHTML = BB.markets.map(function (m) {
+      var d = marketDate(m, r.roast);
+      return '<button type="button" aria-pressed="' + (st.market === m.id) + '" data-m="' + m.id + '"><b>' + esc(m.town) + '</b><span>' + esc(m.name) + '</span><span class="d">' + BB.fmt(d) + " · " + esc(m.hours) + "</span></button>";
+    }).join("");
+    if (p.m) $("[data-mk-note]").innerHTML = "Roasted <b>" + BB.fmt(r.roast, true) + "</b>, waiting at Benny's table at the " + esc(p.m.name) + " <b>" + BB.fmt(p.pickup, true) + ", " + esc(p.m.hours) + "</b>.";
+    $("[data-when]").innerHTML = "Roasts <b>" + BB.fmt(r.roast, true) + "</b> · " + (st.fulfil === "ship" ? "ships " + BB.fmt(r.ship) : st.fulfil === "willcall" ? "ready " + BB.fmt(r.ship) + " in Guerneville" : "pick up " + BB.fmt(p.pickup) + " in " + esc(p.m.town));
+  }
+
+  function paintSummary() {
+    var cart = BB.cart(), s = BB.subtotal(), ship = shipCost(), sh = BB.shippable();
+    $("[data-lines]").innerHTML = cart.map(function (it, i) {
+      return '<div class="line">' + BB.thumb(it) + "<div><b>" + esc(BB.lineName(it)) + '</b><div class="opt">' + BB.lineOpts(it) + '</div><div class="qty"><button type="button" data-q="' + i + '" data-d="-1" aria-label="One less ' + esc(BB.lineName(it)) + '">−</button><span aria-live="polite">' + it.qty + '</span><button type="button" data-q="' + i + '" data-d="1" aria-label="One more ' + esc(BB.lineName(it)) + '">+</button></div></div><div class="lp">' + BB.money(BB.linePrice(it) * it.qty) + '<button class="rm" type="button" data-rm="' + i + '">Remove</button></div></div>';
+    }).join("");
+    $("[data-sum-count]") ;
+    $("#sum-h").textContent = "Your bag (" + BB.count() + ")";
+    var need = Math.max(0, BB.freeShip - sh), box = $("[data-shipbox]");
+    box.hidden = st.fulfil !== "ship" || sh === 0;
+    $("[data-ship-msg]").innerHTML = need > 0 ? "You're <b>" + BB.money(need) + "</b> from free shipping" : "<b>Free shipping</b> unlocked.";
+    $("[data-ship-bar]").style.width = Math.min(100, sh / BB.freeShip * 100) + "%";
+    $(".meter", box).classList.toggle("done", need === 0);
+    var up = "";
+    if (st.fulfil === "ship" && need > 0 && need <= 20) {
+      var have = cart.filter(function (it) { return it.kind === "coffee"; }).map(function (it) { return it.id; });
+      var pick = ["halfcaff", "ethiopia", "colombia", "plantation-aa", "mneb", "decaf", "coorg-robusta"].filter(function (x) { return have.indexOf(x) < 0; })[0] || "halfcaff";
+      var c = BB.BY[pick];
+      up = '<div class="up"><span class="t" style="background:' + c.c + '33">' + BB.bag(pick) + '</span><span style="flex:1">Add 1 lb of <b>' + esc(c.short) + "</b> and shipping's free. Same price as shipping, plus a pound of coffee.</span>" + '<button class="btn btn-sm" type="button" data-up="' + pick + '">Add $20</button></div>';
+    }
+    $("[data-upsell]").innerHTML = up;
+    $("[data-t-sub]").textContent = BB.money(s);
+    $("[data-t-ship-l]").textContent = st.fulfil === "ship" ? "Shipping" : st.fulfil === "willcall" ? "Will-call pickup" : "Market pickup";
+    $("[data-t-ship]").innerHTML = st.fulfil !== "ship" || sh === 0 ? "Free" : ship === 0 ? "Free" : "est. " + BB.money(ship) + ' <span class="tiny">(illustrative)</span>';
+    $("[data-t-total]").textContent = BB.money(s + ship);
+    $("[data-pr-ship]").textContent = sh >= BB.freeShip ? "Free shipping" : "est. " + BB.money(SHIP_EST) + " · free at $60";
+    $("[data-pr-ship]").classList.toggle("cost", sh < BB.freeShip);
+    $("[data-place]").innerHTML = "Place demo order · " + BB.money(s + ship) + ' <span class="arr">→</span>';
+    // subscription calc
+    var cs = coffeeSub(), lbs = cart.filter(function (it) { return it.kind === "coffee"; }).reduce(function (n, it) { return n + (it.size || 1) * it.qty; }, 0);
+    $("[data-sub-price]").textContent = BB.money(cs);
+    $("[data-sub-note]").textContent = cs ? lbs + " lb every " + (st.every === 1 ? "week" : st.every + " weeks") + " · about " + BB.money(Math.round(cs * 4.33 / st.every)) + "/mo · " + (cs >= BB.freeShip || st.fulfil !== "ship" ? "ships free" : "free shipping at $60") : "Add coffee to subscribe; coasters and gift cards ship once.";
+    $("[data-sub]").disabled = !cs;
+  }
+
+  function render() {
+    if (st.placed) return show("done");
+    if (!BB.cart().length) { show("empty"); return; }
+    show("checkout"); paintDates(); paintSummary();
+  }
+
+  // ---------- events ----------
+  $("[data-lines]").addEventListener("click", function (e) {
+    var cart = BB.cart();
+    var q = e.target.closest("[data-q]"); if (q) { var i = +q.dataset.q; BB.setQty(i, cart[i].qty + +q.dataset.d); var again = $('[data-lines] [data-q="' + i + '"][data-d="' + q.dataset.d + '"]'); if (again) again.focus(); return; }
+    var r = e.target.closest("[data-rm]"); if (r) BB.setQty(+r.dataset.rm, 0);
+  });
+  $("[data-upsell]").addEventListener("click", function (e) { var b = e.target.closest("[data-up]"); if (b) { BB.add({ kind: "coffee", id: b.dataset.up, size: 1, roast: "Roaster's Choice", grind: "Whole Bean" }, true); BB.toast("Added 1 lb of " + esc(BB.BY[b.dataset.up].short) + ". Shipping's on Benny."); } });
+  document.addEventListener("cart:change", render);
+  $$('input[name="fulfil"]').forEach(function (r) {
+    r.addEventListener("change", function () {
+      st.fulfil = r.value;
+      $$("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== st.fulfil; });
+      $$(".fcard").forEach(function (c) { c.classList.toggle("on", $("input", c).checked); });
+      render();
+    });
+  });
+  $$(".fcard").forEach(function (c) { c.classList.toggle("on", $("input", c).checked); });
+  $("[data-mk]").addEventListener("click", function (e) { var b = e.target.closest("[data-m]"); if (!b) return; st.market = b.dataset.m; render(); var f = $('[data-mk] [data-m="' + st.market + '"]'); if (f) f.focus(); });
+  $("[data-gift]").addEventListener("change", function (e) { $("[data-gift-more]").hidden = !e.target.checked; if (e.target.checked) $("[data-gift-more] textarea").focus(); });
+  $("[data-sub]").addEventListener("change", function (e) { $("[data-sub-more]").hidden = !e.target.checked; });
+  $("[data-every]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; st.every = +b.dataset.v; $$("[data-every] button").forEach(function (x) { x.setAttribute("aria-pressed", x === b); }); paintSummary(); });
+  $("[data-ring-gold]").innerHTML = BB.ring({ words: false });
+  $("[data-empty-ring]").innerHTML = BB.ring({ words: false });
+
+  // remember contact details on this device (convenience only)
+  var saved = BB.store("bb_contact") || {};
+  ["name", "email", "phone", "line1", "line2", "city", "state", "zip"].forEach(function (k) { if (saved[k] && form[k]) form[k].value = saved[k]; });
+
+  // ---------- validation ----------
+  function setErr(input, msg) {
+    var p = input.parentNode.querySelector(".err");
+    input.setAttribute("aria-invalid", msg ? "true" : "false");
+    if (p) { p.textContent = msg || ""; p.hidden = !msg; if (msg) { p.id = p.id || "err-" + input.name; input.setAttribute("aria-describedby", p.id); } else input.removeAttribute("aria-describedby"); }
+  }
+  function validate() {
+    var bad = [];
+    function need(name, ok, msg) { var el = form[name]; var v = el.value.trim(); var good = ok(v); setErr(el, good ? "" : msg); if (!good) bad.push(el); }
+    need("name", function (v) { return v.length > 1; }, "Who's this coffee for?");
+    need("email", function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v); }, "Enter an email so we can send the receipt.");
+    var smsOn = $("[data-sms]").checked;
+    need("phone", function (v) { var d = v.replace(/\D/g, ""); return smsOn ? d.length >= 10 : (!v || d.length >= 10); }, smsOn ? "Add a mobile number for roast-day texts." : "That number looks short.");
+    if (st.fulfil === "ship") {
+      need("line1", function (v) { return v.length > 3; }, "Where should it ship?");
+      need("city", function (v) { return v.length > 1; }, "Add a city.");
+      need("state", function (v) { return /^[a-z]{2}$/i.test(v); }, "2 letters, e.g. CA.");
+      need("zip", function (v) { return /^\d{5}(-\d{4})?$/.test(v); }, "5-digit ZIP.");
+    } else ["line1", "city", "state", "zip"].forEach(function (n) { setErr(form[n], ""); });
+    return bad;
+  }
+  form.addEventListener("input", function (e) { if (e.target.getAttribute("aria-invalid") === "true") setErr(e.target, ""); });
+
+  // ---------- place order ----------
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var bad = validate(), sum = $("[data-errsum]");
+    if (bad.length) {
+      sum.hidden = false; sum.textContent = "Almost there. Check the " + bad.length + " highlighted field" + (bad.length === 1 ? "" : "s") + ".";
+      bad[0].focus(); return;
+    }
+    sum.hidden = true;
+    var p = plan(), cart = BB.cart(), s = BB.subtotal(), ship = shipCost();
+    var v = function (n) { return form[n].value.trim(); };
+    var order = {
+      id: "BB-" + (1000 + Math.floor(Math.random() * 9000)),
+      name: v("name"), email: v("email"), phone: v("phone"), sms: $("[data-sms]").checked,
+      items: cart, subtotal: s, shipping: ship, total: Math.round((s + ship) * 100) / 100,
+      fulfil: st.fulfil, roastDate: BB.ymd(p.roast), shipDate: BB.ymd(p.ship)
+    };
+    if (st.fulfil === "market") { order.market = st.market; order.pickupDate = BB.ymd(p.pickup); }
+    if (st.fulfil === "willcall") order.pickupDate = BB.ymd(p.pickup);
+    if (st.fulfil === "ship") order.address = { line1: v("line1"), line2: v("line2"), city: v("city"), state: v("state").toUpperCase(), zip: v("zip") };
+    if ($("[data-gift]").checked && form.giftNote.value.trim()) order.giftNote = form.giftNote.value.trim();
+    BB.log("order", order);
+    if ($("[data-sub]").checked && coffeeSub()) {
+      var coffees = cart.filter(function (it) { return it.kind === "coffee"; });
+      BB.log("subscription", { id: "SUB-" + order.id.slice(3), name: order.name, email: order.email, coffee: coffees[0].id, coffees: coffees.map(function (it) { return it.id; }), size: coffees.reduce(function (n, it) { return n + (it.size || 1) * it.qty; }, 0), every: st.every, roast: coffees[0].roast, grind: coffees[0].grind, fulfil: st.fulfil, price: coffeeSub(), firstRoast: order.roastDate });
+      order.subscription = st.every;
+    }
+    BB.store("bb_contact", { name: order.name, email: order.email, phone: order.phone, line1: v("line1"), line2: v("line2"), city: v("city"), state: v("state"), zip: v("zip") });
+    st.placed = { order: order, plan: p };
+    paintDone();
+    BB.clearCart(); // triggers render() → done view
+    scrollTo(0, 0);
+    setTimeout(function () { $("[data-d-h]").focus(); }, 60);
+  });
+
+  // ---------- confirmation ----------
+  function paintDone() {
+    var o = st.placed.order, p = st.placed.plan, first = o.name.split(" ")[0];
+    $("[data-d-eyebrow]").textContent = "Order " + o.id + " · " + BB.money(o.total);
+    $("[data-d-h]").innerHTML = "Order " + esc(o.id) + "<br><span class=\"red\">is in.</span>";
+    $("[data-d-lede]").innerHTML = "Thanks, " + esc(first) + ". Your coffee is on Benny's roast list for <b>" + BB.fmt(p.roast, true) + "</b>." + (o.subscription ? " Your subscription repeats every " + (o.subscription === 1 ? "week" : o.subscription + " weeks") + "." : "");
+    var now = BB.now(), steps = [["ok", "✓", "Ordered", BB.fmt(now) + ", " + clock(now), "Green coffee reserved for your batch."],
+      ["next", "02", "Roasting", BB.fmt(p.roast, true), "Small batch, cooled Benny's way for a sweeter bean" + (o.items.some(function (it) { return it.kind === "coffee" && it.grind !== "Whole Bean"; }) ? ", then ground slow." : ".")]];
+    if (o.fulfil === "ship") {
+      steps.push(["", "03", "Ships", BB.fmt(p.ship, true), "Packed and out the door. " + (o.sms ? "We'll text the tracking link." : "Tracking comes by email.")]);
+      steps.push(["", "04", "Arrives", "~" + range(p.arrive[0], p.arrive[1]), "To " + esc(o.address.line1) + ", " + esc(o.address.city) + ". Estimated."]);
+    } else if (o.fulfil === "willcall") {
+      steps.push(["", "03", "Ready for pickup", BB.fmt(p.pickup, true), "On the will-call shelf at True Value Hardware, 15600 River Rd, Guerneville. Ask at the counter."]);
+      steps.push(["", "04", "In your mug", "Same day", "Peak flavor is a few days off the roast. Good timing."]);
+    } else {
+      steps.push(["", "03", "At the market", BB.fmt(p.pickup, true), esc(p.m.name) + ", " + esc(p.m.hours) + ". Bagged with your name at Benny's table."]);
+      steps.push(["", "04", "In your mug", BB.fmt(p.pickup), "Say hi to Benny while you're there."]);
+    }
+    $("[data-tl]").innerHTML = steps.map(function (s) { return '<li class="' + s[0] + '"><span class="dot" aria-hidden="true">' + s[1] + '</span><span class="k">' + s[2] + "</span><h3>" + s[3] + "</h3><p>" + s[4] + "</p></li>"; }).join("");
+    $("[data-recap]").innerHTML = '<p class="label mb0 mt2">Your order</p>' + o.items.map(function (it) { return '<div class="line">' + BB.thumb(it) + "<div><b>" + esc(BB.lineName(it)) + '</b><div class="opt">' + BB.lineOpts(it) + " · qty " + it.qty + '</div></div><div class="lp">' + BB.money(BB.linePrice(it) * it.qty) + "</div></div>"; }).join("") +
+      '<dl class="kv"><dt>Subtotal</dt><dd>' + BB.money(o.subtotal) + "</dd><dt>" + (o.fulfil === "ship" ? "Shipping" : "Pickup") + "</dt><dd>" + (o.shipping ? BB.money(o.shipping) + " (est.)" : "Free") + "</dd><dt>Total</dt><dd>" + BB.money(o.total) + "</dd>" + (o.giftNote ? "<dt>Gift note</dt><dd>" + esc(o.giftNote) + "</dd>" : "") + "</dl>";
+    $("[data-text-benny]").href = BB.sms + "?&body=" + encodeURIComponent("Hi Benny, it's " + first + ", order " + o.id + ". ");
+    $("[data-d-sms]").textContent = o.sms ? " and texts when your coffee is roasted and when it ships" : "";
+  }
+
+  // ---------- .ics ----------
+  function icsDate(d) { return d.getFullYear() + ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2); }
+  function icsTime(d) { return icsDate(d) + "T" + ("0" + d.getHours()).slice(-2) + ("0" + d.getMinutes()).slice(-2) + "00"; }
+  function icsText(s) { return String(s).replace(/\\/g, "\\\\").replace(/[,;]/g, function (c) { return "\\" + c; }).replace(/\n/g, "\\n"); }
+  function fold(line) { var out = []; while (line.length > 73) { out.push(line.slice(0, 73)); line = " " + line.slice(73); } out.push(line); return out.join("\r\n"); }
+  function vevent(uid, start, end, allDay, summary, desc, loc) {
+    var stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+    var l = ["BEGIN:VEVENT", "UID:" + uid + "@russianriverroastery.com", "DTSTAMP:" + stamp,
+      allDay ? "DTSTART;VALUE=DATE:" + icsDate(start) : "DTSTART:" + icsTime(start),
+      allDay ? "DTEND;VALUE=DATE:" + icsDate(end) : "DTEND:" + icsTime(end),
+      "SUMMARY:" + icsText(summary), "DESCRIPTION:" + icsText(desc)];
+    if (loc) l.push("LOCATION:" + icsText(loc));
+    l.push("END:VEVENT"); return l.map(fold).join("\r\n");
+  }
+  $("[data-ics]").addEventListener("click", function () {
+    if (!st.placed) return;
+    var o = st.placed.order, p = st.placed.plan, ev = [];
+    ev.push(vevent(o.id + "-roast", p.roast, BB.addDays(p.roast, 1), true, "Benny's Beans roasts your coffee (" + o.id + ")", "Your order " + o.id + " goes in the roaster today in Guerneville. Questions? Text Benny at " + BB.phone + ".", "Guerneville, CA"));
+    if (o.fulfil === "ship") ev.push(vevent(o.id + "-arrive", p.arrive[0], BB.addDays(p.arrive[1], 1), true, "Coffee arriving from Benny's Beans (est.)", "Order " + o.id + " shipped " + BB.fmt(p.ship) + ". Estimated delivery window.", ""));
+    if (o.fulfil === "willcall") ev.push(vevent(o.id + "-pickup", p.pickup, BB.addDays(p.pickup, 1), true, "Pick up Benny's Beans at True Value (" + o.id + ")", "Will-call pickup at True Value Hardware of Guerneville. Ask at the counter for order " + o.id + ".", BB.pickup.addr));
+    if (o.fulfil === "market") { var end = new Date(p.pickup); end.setHours(Math.floor(p.m.close), (p.m.close % 1) * 60, 0, 0); ev.push(vevent(o.id + "-market", p.pickup, end, false, "Pick up Benny's Beans at " + p.m.town + " market (" + o.id + ")", "Your bag is waiting at Benny's table at the " + p.m.name + ", " + p.m.hours + ".", p.m.name)); }
+    var ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Benny's Beans//Roast day//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", ev.join("\r\n"), "END:VCALENDAR", ""].join("\r\n");
+    var blob = new Blob([ics], { type: "text/calendar;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = "bennys-beans-" + o.id + ".ics"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    BB.toast("Calendar file downloaded. Roast day: " + BB.fmt(p.roast, true) + ".");
+  });
+
+  // ---------- empty-state picks ----------
+  $("[data-picks]").innerHTML = ["halfcaff", "ethiopia", "colombia"].map(function (id) {
+    var c = BB.BY[id];
+    return '<article class="pcard"><div class="stage" style="--c:' + c.c + '26">' + (c.badge ? '<div class="badges"><span class="tag red">' + esc(c.badge) + "</span></div>" : "") + '<div class="bag">' + BB.bag(id) + '</div></div><div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><ul class="notes">' + c.notes.slice(0, 2).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + '</ul><div class="foot"><span class="price">$20 <small>/ lb</small></span><button class="add" type="button" data-quick="' + id + '" aria-label="Add 1 lb of ' + esc(c.name) + '">+</button></div></div><a class="cover" href="../coffee/?c=' + id + '" aria-label="' + esc(c.name) + ', details"></a></article>';
+  }).join("");
+
+  render();
+  setInterval(function () { if (!st.placed && BB.cart().length) paintDates(); }, 60000);
+});
+</script>
+</body>
+</html>
