@@ -40,7 +40,9 @@ nav .wrap{display:flex;align-items:center;gap:22px;height:66px}
 nav .links{display:flex;gap:22px;margin-left:auto;font-weight:600;font-size:15px}
 nav .links a{text-decoration:none;color:var(--muted)}nav .links a:hover,nav .links a[aria-current]{color:var(--ink)}
 nav .btn{padding:10px 18px;font-size:15px}
-@media (max-width:760px){nav .links{display:none}nav .btn{margin-left:auto}}
+nav #navAcct{margin-left:-10px}
+@media (max-width:760px){nav .links{display:none}nav #navAcct{margin-left:auto}nav .wrap{gap:10px}}
+@media (max-width:400px){nav .btn{padding:9px 13px;font-size:14px}.logo{font-size:20px}}
 
 /* hero */
 .hero{padding:64px 0 90px;position:relative}
@@ -249,8 +251,8 @@ export function siteNav(active = '') {
   const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/agent-card', 'Your AI’s card', 'card')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
-  <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/agent-card', 'Your AI’s card', 'card')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}</div>
+  <a class="btn ghost" href="/signin?next=/account" id="navAcct">Sign in</a><a class="btn primary" href="/new" id="navCta">Make a Spot</a>
 </div></nav>`;
 }
 
@@ -263,6 +265,7 @@ export const SITE_JS = `
   const nav=document.getElementById('nav');
   addEventListener('scroll',()=>nav&&nav.classList.toggle('scrolled',scrollY>8),{passive:true});
   try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
+  try{const n=document.getElementById('navAcct');if(n&&localStorage.getItem('spot:in')){n.textContent='My Spots';n.href='/account'}}catch{}
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
   const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;

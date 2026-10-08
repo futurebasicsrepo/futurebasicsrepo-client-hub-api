@@ -39,6 +39,8 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .signin{max-width:460px;margin:30px auto 0}
 .code{letter-spacing:.4em;font:800 28px ui-monospace,monospace!important;text-align:center}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border:1.5px solid var(--line);border-radius:999px;padding:4px;margin:14px 0 10px}.seg[hidden]{display:none}
+.seg.three{grid-template-columns:repeat(3,1fr)}
+.st.ai{background:color-mix(in srgb,var(--spot) 14%,transparent);color:var(--ink)}
 .seg button{font:600 15px Bricolage,system-ui,sans-serif;border:0;background:none;color:var(--muted);padding:9px;border-radius:999px;cursor:pointer}
 .seg button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 4px rgba(27,23,18,.12)}
 .seg button:focus-visible{outline:3px solid var(--spot);outline-offset:1px}
@@ -125,14 +127,15 @@ $('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err')
     if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no '+(mode==='phone'?'texting':'email')+' service yet): your code is '+r.code;$('#code').value=r.code}
     $('#code').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=e.target.querySelector('button');b.disabled=true;
-  try{await post('/v1/auth/verify',{[mode==='phone'?'phone':'email']:who,code:$('#code').value});location.href=next}catch(err){$('#err').textContent=err.message;b.disabled=false}});
+  try{await post('/v1/auth/verify',{[mode==='phone'?'phone':'email']:who,code:$('#code').value});signedIn();location.href=next}catch(err){$('#err').textContent=err.message;b.disabled=false}});
 // Phones that support it fill the code straight from the text (WebOTP).
 if('OTPCredential' in window){const ac=new AbortController();$('#codeForm').addEventListener('submit',()=>ac.abort());
   $('#emailForm').addEventListener('submit',()=>{if(mode==='phone')navigator.credentials.get({otp:{transport:['sms']},signal:ac.signal}).then(o=>{if(o&&o.code){$('#code').value=o.code;$('#codeForm').requestSubmit()}}).catch(()=>{})})}
 document.querySelectorAll('.sso-b').forEach(a=>{a.href='/auth/'+a.dataset.p+'/start?next='+encodeURIComponent(next)});
 // Passkeys: a button, plus the browser's autofill offering saved passkeys
 // right in the email box (conditional UI).
-const pkDone=()=>{location.href=next};
+const signedIn=()=>{try{localStorage.setItem('spot:in','1')}catch{}};
+const pkDone=()=>{signedIn();location.href=next};
 if(${!texts}&&pkOK()){$('#pkBtn').hidden=false;
   // A fresh challenge ready before the tap (they last 5 minutes).
   let pkPre=null;const pkLoad=()=>pkOptions().then(o=>{pkPre=o}).catch(()=>{pkPre=null});pkLoad();setInterval(pkLoad,4*60_000);
@@ -158,7 +161,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     body: `<div class="btnrow" style="justify-content:space-between"><h1 id="hi">Your Spot</h1><button class="btn ghost" id="out">Sign out</button></div>
 <p class="sub" id="who"></p>
 <section id="readySec" hidden><h2>Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
-<section><h2>Your Spots</h2><p class="sub">Everything you’ve asked for, on any device.</p><div class="box list" id="carts"></div></section>
+<section><h2>Your Spots</h2><p class="sub">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section>
 <section><h2>Saved details</h2><p class="sub">Filled in for you at checkout.</p>
   <form class="box f" id="shipForm">
     <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
@@ -212,12 +215,12 @@ const fmtPhone=p=>{const m=/^\\+1(\\d{3})(\\d{3})(\\d{4})$/.exec(p||'');return m
 const LABEL={open:['waiting',''],paid:['paid','warn'],card_issued:['paid','ok'],completed:['done','ok'],canceled:['canceled',''],expired:['expired',''],refunded:['refunded','']};
 let me=null;
 async function load(){
-  const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/account';return}
+  const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}const na=document.getElementById('navAcct');if(na){na.textContent='My Spots';na.href='/account'}
   me=await r.json();const u=me.user;
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
   $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
-  $('#carts').innerHTML=me.carts.length?me.carts.map(c=>{const [l,t]=LABEL[c.status]||[c.status,''];return '<a class="item" href="'+esc(c.manage_url)+'"><span>'+esc(c.items[0]?.title||'Cart')+(c.items.length>1?' +'+(c.items.length-1):'')+'<span class="st '+(c.held?'warn':t)+'">'+(c.held?'checking':l)+'</span><small>'+esc(c.merchant.name)+(c.for==='self'?' · for you':' · '+(c.payer_name?esc(c.payer_name)+' spotted you':'someone else pays'))+' · '+new Date(c.created_at).toLocaleDateString()+'</small></span><span class="amt">'+usd(c.total_cents)+'</span></a>'}).join(''):'<p class="sub" style="margin:0">No Spots yet. <a href="/new">Make one</a>, or ask your AI.</p>';
+  renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
@@ -235,6 +238,17 @@ async function load(){
   const rm=$('#apvRm');if(rm)rm.onclick=async()=>{if(!confirm('Remove your approver? AI keys that sent asks to them will refuse instead.'))return;try{await post('/v1/me/approver/remove');load()}catch(err){$('#err').textContent=err.message}};
 }
 // One AI key: its rules, this month, what it did, and the off switch.
+// Your Spots, with who made each one: you, or one of your AIs.
+const AI_NAME={claude:'Claude',chatgpt:'ChatGPT','my-ai':'Your AI'};
+const aiName=n=>AI_NAME[n]||n;
+let cartFilter='all';
+function renderCarts(){
+  const all=me.carts,mine=all.filter(c=>cartFilter==='all'||(cartFilter==='ai')===Boolean(c.built_by));
+  $('#cartSeg').hidden=!all.some(c=>c.built_by);
+  $('#carts').innerHTML=mine.length?mine.map(c=>{const [l,t]=LABEL[c.status]||[c.status,''];return '<a class="item" href="'+esc(c.manage_url)+'"><span>'+esc(c.items[0]?.title||'Cart')+(c.items.length>1?' +'+(c.items.length-1):'')+'<span class="st '+(c.held?'warn':t)+'">'+(c.held?'checking':l)+'</span>'+(c.built_by?'<span class="st ai">🤖 '+esc(aiName(c.built_by))+'</span>':'')+'<small>'+esc(c.merchant.name)+(c.for==='self'?' · for you':' · '+(c.payer_name?esc(c.payer_name)+' spotted you':'someone else pays'))+' · '+new Date(c.created_at).toLocaleDateString()+'</small></span><span class="amt">'+usd(c.total_cents)+'</span></a>'}).join('')
+    :all.length?'<p class="sub" style="margin:0">'+(cartFilter==='ai'?'Your AI hasn’t asked for anything yet.':'Nothing you made yourself yet.')+'</p>':'<p class="sub" style="margin:0">No Spots yet. <a href="/new">Make one</a>, or ask your AI.</p>';
+}
+$('#cartSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cartFilter=b.dataset.f;document.querySelectorAll('#cartSeg button').forEach(x=>x.setAttribute('aria-selected',String(x===b)));renderCarts()});
 const ACT={connected:'Connected',ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
 const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
 const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
@@ -320,7 +334,7 @@ $('#fundForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
     if(MODE==='stripe'){const {error,setupIntent}=await fundStripe.stripe.confirmSetup({elements:fundStripe.elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;body={setup_intent:setupIntent.id}}
     else body={test_card:$('#fundTest').value};
     me.funding=await post('/v1/me/funding',body);$('#fundForm').hidden=true;$('#fundEl').innerHTML='';load()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
-$('#out').onclick=async()=>{await post('/v1/auth/logout');location.href='/'};
+$('#out').onclick=async()=>{await post('/v1/auth/logout');try{localStorage.removeItem('spot:in')}catch{}location.href='/'};
 claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
   });
 }
