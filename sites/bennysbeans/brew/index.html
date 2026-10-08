@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brew Guides, Bean Quiz + Coffee Calculator | Benny's Beans · Russian River Roastery</title>
+<meta name="description" content="Find your bean in five taps, then dial it in: a coffee-to-water calculator, a step-by-step brew timer and guides for pour-over, drip, French press, espresso, moka, cold brew and AeroPress.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/brew/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Brew it like Benny. · Benny's Beans">
+<meta property="og:description" content="Bean quiz, brew calculator, step-by-step timer and guides for every brewer.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<style>
+  /* ---------- hero ---------- */
+  .brew-hero { overflow: hidden; }
+  .brew-hero .grid2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+  .brew-hero h1 { margin: 0 0 24px; font-size: clamp(56px, 8.8vw, 136px); }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .jump a { text-decoration: none; }
+  .jump .chip { min-height: 44px; padding: 0 18px; }
+  .jump .chip b { font: 500 11px var(--mono); color: var(--cherry); }
+  .dial { position: relative; aspect-ratio: 1; width: 100%; max-width: 480px; justify-self: center; }
+  .dial .ringw { position: absolute; inset: 0; color: var(--ink); }
+  .dial .ringw svg { width: 100%; height: 100%; }
+  .dial .face { position: absolute; inset: 16%; border-radius: 50%; background: var(--cherry); color: #fff; display: grid; place-items: center; text-align: center; }
+  .dial .face b { display: block; font-weight: 900; font-variation-settings: "wdth" 125; font-size: clamp(64px, 10vw, 128px); line-height: .85; letter-spacing: -.03em; }
+  .dial .face span { font: 500 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .dial .tick { position: absolute; inset: 9%; }
+  .dial .tick svg { width: 100%; height: 100%; animation: spin 60s linear infinite reverse; }
+  @media (max-width: 900px) { .brew-hero .grid2 { grid-template-columns: 1fr; } .dial { max-width: 340px; } }
+
+  .sec-label { display: flex; align-items: baseline; gap: 14px; }
+  .sec-label .n { font: 500 13px var(--mono); color: var(--cherry); }
+
+  /* ---------- quiz ---------- */
+  .quiz { background: var(--paper); border-radius: 34px; border: 1px solid var(--line); overflow: hidden; color: var(--ink); }
+  .quiz .bar { height: 8px; background: var(--line); }
+  .quiz .bar i { display: block; height: 100%; width: 0; background: var(--cherry); transition: width .5s var(--ease); }
+  .quiz .qtop { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px clamp(20px, 3vw, 36px) 0; font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .quiz .qtop button { background: none; border: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--ink); cursor: pointer; padding: 6px 0; text-decoration: underline; text-underline-offset: 3px; }
+  .quiz .qtop button[hidden] { display: none; }
+  .quiz .qbody { padding: 14px clamp(20px, 3vw, 36px) clamp(24px, 3vw, 36px); }
+  .quiz h3.q { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: clamp(30px, 4vw, 54px); line-height: .95; margin: 6px 0 22px; }
+  .answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .ans { position: relative; text-align: left; min-height: 120px; border: 1.5px solid var(--line); border-radius: 24px; background: var(--bone); padding: 18px; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; transition: transform .2s var(--ease), border-color .15s, background .15s; }
+  .ans:hover { border-color: var(--ink); transform: translateY(-3px); }
+  .ans[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .ans .ic { width: 44px; height: 44px; border-radius: 50%; background: var(--paper); display: grid; place-items: center; color: var(--ink); }
+  .ans[aria-pressed="true"] .ic { background: var(--cherry); color: #fff; }
+  .ans .ic svg { width: 24px; height: 24px; }
+  .ans b { font-size: 18px; line-height: 1.15; display: block; }
+  .ans small { display: block; font-size: 13px; color: var(--mute); margin-top: 3px; line-height: 1.35; }
+  .ans[aria-pressed="true"] small { color: #bfb3a5; }
+  .qanim { animation: qin .45s var(--ease); }
+  @keyframes qin { from { opacity: 0; transform: translateX(24px); } }
+  @media (max-width: 520px) { .answers { grid-template-columns: 1fr 1fr; gap: 10px; } .ans { min-height: 112px; padding: 14px; border-radius: 20px; } .ans b { font-size: 16px; } .ans small { font-size: 12px; } }
+
+  .result { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 0; }
+  .result .stage { background: var(--c, var(--kraft-l)); display: grid; place-items: center; padding: 28px; position: relative; min-height: 360px; }
+  .result .stage .bagw { width: min(78%, 300px); filter: drop-shadow(0 30px 26px rgba(60,40,20,.35)); animation: drop .7s var(--ease); }
+  @keyframes drop { from { opacity: 0; transform: translateY(-30px) rotate(-6deg); } }
+  .result .stage .tag { position: absolute; top: 18px; left: 18px; }
+  .result .info { padding: clamp(22px, 3vw, 40px); }
+  .result h3 { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: clamp(30px, 3.6vw, 48px); line-height: .95; margin: 8px 0 12px; }
+  .why { display: grid; gap: 8px; margin: 16px 0; }
+  .why li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; font-size: 15px; line-height: 1.4; }
+  .why li::before { content: ""; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: var(--cherry) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat; }
+  .picks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  .picks .label { display: block; margin-bottom: 8px; }
+  @media (max-width: 520px) { .picks { grid-template-columns: 1fr; } }
+  .runner { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; font-size: 14px; }
+  .runner b { display: block; font-size: 15px; }
+  @media (max-width: 760px) { .result { grid-template-columns: 1fr; } .result .stage { min-height: 280px; } .result .stage .bagw { width: 52%; } }
+
+  /* ---------- calculator ---------- */
+  .calc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+  @media (max-width: 900px) { .calc { grid-template-columns: 1fr; } }
+  .methods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 520px) { .methods { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .methods button { min-height: 62px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--paper); cursor: pointer; font-weight: 700; font-size: 14px; line-height: 1.15; padding: 8px; transition: all .15s; }
+  .methods button small { display: block; font: 500 11px var(--mono); color: var(--mute); margin-top: 3px; }
+  .methods button:hover { border-color: var(--ink); }
+  .methods button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .methods button[aria-pressed="true"] small { color: var(--gold); }
+  .ctl { display: grid; gap: 20px; margin-top: 22px; }
+  .ctl .row { gap: 10px; }
+  .stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: var(--pill); background: var(--paper); }
+  .stepper button { width: 48px; height: 48px; border: 0; background: none; font-size: 22px; cursor: pointer; border-radius: 50%; }
+  .stepper button:hover { background: var(--bone); }
+  .stepper input { width: 84px; min-height: 48px; border: 0; background: transparent; text-align: center; font-weight: 800; font-size: 20px; padding: 0; border-radius: 0; -moz-appearance: textfield; }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper input:focus { box-shadow: none; }
+  .seg.sm button { min-height: 38px; font-size: 13.5px; padding: 0 14px; }
+  input[type=range] { width: 100%; accent-color: var(--cherry); height: 30px; margin: 0; cursor: pointer; }
+  .rlab { display: flex; justify-content: space-between; font: 500 11px var(--mono); color: var(--mute); text-transform: uppercase; letter-spacing: .08em; }
+  .out { background: var(--ink); color: var(--paper); border-radius: 30px; padding: clamp(22px, 3vw, 36px); display: flex; flex-direction: column; gap: 18px; }
+  .out .big2 { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: end; }
+  .out .big2 .k { font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #bfb3a5; }
+  .out .num { font-weight: 900; font-variation-settings: "wdth" 125; font-size: clamp(48px, 6vw, 84px); line-height: .9; letter-spacing: -.02em; }
+  .out .num small { font-size: .38em; letter-spacing: 0; margin-left: 4px; color: var(--gold); }
+  .out .plus { font-weight: 900; font-size: 34px; color: var(--cherry); padding-bottom: 10px; }
+  .out .sub { font: 500 12px var(--mono); color: #bfb3a5; margin-top: 6px; }
+  .out .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .out .facts div { background: #241e1a; border-radius: 18px; padding: 14px 16px; }
+  .out .facts .k { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #8d8174; }
+  .out .facts b { display: block; font-size: 18px; margin-top: 4px; }
+  .out .facts small { display: block; font-size: 12.5px; color: #bfb3a5; margin-top: 2px; }
+  @media (max-width: 420px) { .out .big2 { grid-template-columns: 1fr; } .out .plus { display: none; } }
+
+  /* ---------- timer ---------- */
+  .timer { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: clamp(20px, 4vw, 56px); align-items: center; }
+  @media (max-width: 900px) { .timer { grid-template-columns: 1fr; } }
+  .ringbox { position: relative; width: min(100%, 440px); aspect-ratio: 1; margin: 0 auto; }
+  .ringbox svg.pr { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ringbox .trk { fill: none; stroke: #2e2722; stroke-width: 16; }
+  .ringbox .prog { fill: none; stroke: var(--cherry); stroke-width: 16; stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+  .ringbox .seg-ticks line { stroke: var(--river); stroke-width: 3; }
+  .ringbox .mid { position: absolute; inset: 14%; border-radius: 50%; display: grid; place-items: center; text-align: center; padding: 10px; }
+  .ringbox .clock { font-weight: 900; font-variation-settings: "wdth" 125; font-size: clamp(54px, 8vw, 92px); line-height: .9; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .ringbox .stg { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+  .ringbox .say { font-size: 15px; color: #e6ddd1; margin-top: 8px; line-height: 1.35; max-width: 240px; }
+  .ringbox .of { font: 500 12px var(--mono); color: #8d8174; margin-top: 8px; }
+  .tctl { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  .tctl .go { min-width: 150px; }
+  .snd { display: inline-flex; align-items: center; gap: 8px; }
+  .snd[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+  .stages { counter-reset: s; display: grid; gap: 8px; margin-top: 20px; }
+  .stages li { display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 18px; background: #221c18; border: 1.5px solid #2e2722; transition: all .25s; }
+  .stages li .no { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid #4a4038; display: grid; place-items: center; font: 500 12px var(--mono); }
+  .stages li b { display: block; font-size: 16px; }
+  .stages li span.s { font-size: 13.5px; color: #bfb3a5; line-height: 1.35; }
+  .stages li .tm { font: 500 12px var(--mono); color: #8d8174; white-space: nowrap; }
+  .stages li.now { border-color: var(--cherry); background: #2a1512; }
+  .stages li.now .no { background: var(--cherry); border-color: var(--cherry); color: #fff; }
+  .stages li.done { opacity: .55; }
+  .stages li.done .no { background: var(--river); border-color: var(--river); color: #fff; }
+  .tmeth { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tmeth button { background: transparent; color: var(--paper); border-color: #3a312a; }
+  .tmeth button[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+
+  /* ---------- guides ---------- */
+  .guides { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 18px; }
+  .guide { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: clamp(20px, 2.4vw, 28px); display: flex; flex-direction: column; gap: 14px; }
+  .guide .gh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .guide h3 { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: 28px; line-height: .95; margin: 0; }
+  .guide .ratio { flex: none; width: 74px; height: 74px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; text-align: center; font: 900 19px/1 var(--sans); font-variation-settings: "wdth" 125; }
+  .guide .ratio small { display: block; font: 500 9px var(--mono); letter-spacing: .1em; color: var(--gold); margin-top: 3px; }
+  .guide .gear { font: 500 12px var(--mono); color: var(--mute); letter-spacing: .04em; }
+  .guide dl.kv { font-size: 14px; }
+  .guide ol { margin: 0; padding: 0; list-style: none; counter-reset: g; display: grid; gap: 8px; }
+  .guide ol li { counter-increment: g; display: grid; grid-template-columns: 26px 1fr; gap: 8px; font-size: 14.5px; line-height: 1.4; }
+  .guide ol li::before { content: counter(g); width: 22px; height: 22px; border-radius: 50%; background: var(--kraft-l); display: grid; place-items: center; font: 500 11px var(--mono); margin-top: 1px; }
+  .guide .best { border-top: 1px solid var(--line); padding-top: 14px; margin-top: auto; }
+  .guide .best .row { gap: 8px; margin-top: 8px; }
+  .bean { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 4px 12px 4px 4px; border-radius: var(--pill); background: var(--bone); border: 1px solid var(--line); font-size: 13px; font-weight: 650; transition: border-color .15s; }
+  .bean:hover { border-color: var(--ink); }
+  .bean span { width: 28px; height: 34px; display: block; }
+  .bean span svg { width: 100%; height: 100%; }
+
+  /* ---------- freshness ---------- */
+  .tl { position: relative; margin: 34px 0 10px; }
+  .tl .bar { display: grid; grid-template-columns: 3fr 11fr 14fr 14fr; height: 64px; border-radius: 18px; overflow: hidden; }
+  .tl .bar div { display: flex; flex-direction: column; justify-content: center; padding: 0 14px; font-size: 13px; font-weight: 700; line-height: 1.15; min-width: 0; }
+  .tl .bar div small { font: 500 10.5px var(--mono); font-weight: 400; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl .z1 { background: var(--kraft); }
+  .tl .z2 { background: var(--cherry); color: #fff; }
+  .tl .z3 { background: var(--gold); }
+  .tl .z4 { background: var(--line); color: var(--mute); }
+  .tl .axis { display: grid; grid-template-columns: repeat(7, 1fr); font: 500 11px var(--mono); color: var(--mute); margin-top: 8px; }
+  .tl .axis span { border-left: 1px solid var(--line); padding-left: 6px; }
+  .tl .pin { position: absolute; top: -30px; transform: translateX(-50%); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); padding: 5px 10px; border-radius: var(--pill); white-space: nowrap; }
+  .tl .pin::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: var(--ink); transform: translateX(-50%) rotate(45deg); z-index: -1; }
+  @media (max-width: 640px) {
+    .tl .bar { grid-template-columns: 1fr; height: auto; }
+    .tl .bar div { padding: 14px 16px; flex-direction: row; justify-content: space-between; align-items: center; gap: 10px; }
+    .tl .axis, .tl .pin { display: none; }
+  }
+  .tips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
+  @media (max-width: 960px) { .tips { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .tips { grid-template-columns: 1fr; } }
+  .tips .card h3 { font-size: 18px; margin-bottom: 6px; }
+  .tips .card p { font-size: 14.5px; color: var(--ink-2); margin: 0; }
+  .tips .card .n { font: 500 12px var(--mono); color: var(--cherry); display: block; margin-bottom: 10px; }
+
+  /* ---------- arabica vs robusta ---------- */
+  .ar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+  @media (max-width: 900px) { .ar { grid-template-columns: 1fr; } }
+  .ar .photo { aspect-ratio: 1100 / 740; background: #fff; }
+  .cmp { width: 100%; border-collapse: collapse; font-size: 14.5px; margin-top: 18px; }
+  .cmp th, .cmp td { text-align: left; padding: 11px 10px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .cmp thead th { font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .cmp tbody th { font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); width: 26%; }
+  .robo { display: grid; grid-template-columns: 90px 1fr; gap: 18px; align-items: center; background: var(--ink); color: var(--paper); border-radius: 24px; padding: 18px 20px; margin-top: 22px; }
+  .robo .bagw svg { width: 100%; filter: drop-shadow(0 10px 10px rgba(0,0,0,.4)); }
+  .robo p { margin: 4px 0 12px; font-size: 14.5px; color: #e6ddd1; }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/" aria-current="page">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="page-hero brew-hero">
+    <div class="wrap grid2">
+      <div>
+        <p class="breadcrumb"><a href="../">Home</a> / Brew</p>
+        <p class="eyebrow">Brew guides · tools · bean quiz</p>
+        <h1 class="display">Brew it<br>like <span class="red">Benny.</span></h1>
+        <p class="lede">Fresh beans deserve a good recipe. Find the coffee that fits how you drink it, work out the exact dose, then let the timer walk you through the pour.</p>
+        <nav class="jump" aria-label="On this page">
+          <a class="chip" href="#quiz"><b>01</b> Find your bean</a>
+          <a class="chip" href="#calc"><b>02</b> Calculator</a>
+          <a class="chip" href="#timer"><b>03</b> Brew timer</a>
+          <a class="chip" href="#guides"><b>04</b> Guides</a>
+          <a class="chip" href="#fresh"><b>05</b> Freshness</a>
+        </nav>
+      </div>
+      <div class="dial" aria-hidden="true">
+        <div class="ringw" data-heroring></div>
+        <div class="tick"><svg viewBox="0 0 100 100"><g stroke="#16120f" stroke-width=".6" stroke-linecap="round" data-ticks></g></svg></div>
+        <div class="face"><div><span>Benny's pour-over</span><b>1:16</b><span>Coffee to water</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== quiz ===== -->
+  <section class="sec-sm kraft" id="quiz" aria-labelledby="quiz-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">01 · 30 seconds</p><h2 class="h2" id="quiz-h">Find your bean.</h2></div>
+        <p class="lede">Five taps. Benny's lineup, matched to how you brew and what you like in the cup, with the roast and grind to order.</p>
+      </div>
+      <div class="quiz" data-quiz>
+        <div class="bar" role="progressbar" aria-label="Quiz progress" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><i></i></div>
+        <div class="qtop"><span data-qcount>Question 1 of 5</span><button type="button" data-qback hidden>← Back</button></div>
+        <div class="qbody" data-qbody aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== calculator ===== -->
+  <section class="sec" id="calc" aria-labelledby="calc-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">02 · Brew calculator</p><h2 class="h2" id="calc-h">Dial it in.</h2></div>
+        <p class="lede">Pick a brewer and how much you're making. Get the dose, water, grind, temperature and time. Then start the timer with those numbers.</p>
+      </div>
+      <div class="calc">
+        <div>
+          <span class="label" id="meth-l">Brew method</span>
+          <div class="methods mt1" role="group" aria-labelledby="meth-l" data-methods></div>
+          <div class="ctl">
+            <div>
+              <div class="row between"><span class="label" id="amt-l" data-amtlabel>How much</span><div class="seg sm" role="group" aria-label="Measure by" data-mode><button type="button" data-v="cups" aria-pressed="true">Cups</button><button type="button" data-v="water" aria-pressed="false">Water</button></div></div>
+              <div class="row mt1">
+                <div class="stepper"><button type="button" data-step="-1" aria-label="Less">−</button><input type="number" inputmode="decimal" id="amt" aria-labelledby="amt-l" value="2" min="1"><button type="button" data-step="1" aria-label="More">+</button></div>
+                <span class="small muted" data-amthint></span>
+              </div>
+            </div>
+            <div>
+              <div class="row between"><label class="label" for="strength">Strength</label><span class="small" data-strlabel><b>Balanced</b></span></div>
+              <input type="range" id="strength" min="-2" max="2" step="1" value="0" class="mt1" aria-describedby="str-d">
+              <div class="rlab" id="str-d"><span>Lighter</span><span>Benny's ratio</span><span>Stronger</span></div>
+            </div>
+            <div class="row between">
+              <span class="label">Units</span>
+              <div class="seg sm" role="group" aria-label="Units" data-units><button type="button" data-v="g" aria-pressed="true">Grams + ml</button><button type="button" data-v="oz" aria-pressed="false">Ounces</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="out" aria-live="polite" data-out></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== timer ===== -->
+  <section class="sec ink" id="timer" aria-labelledby="timer-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">03 · Brew timer</p><h2 class="h2" id="timer-h">Pour with<br>a coach.</h2></div>
+        <div class="tmeth seg sm" role="group" aria-label="Timer method" data-tmeth></div>
+      </div>
+      <div class="timer">
+        <div>
+          <div class="ringbox">
+            <svg class="pr" viewBox="0 0 220 220" aria-hidden="true"><circle class="trk" cx="110" cy="110" r="96"/><g class="seg-ticks" data-segticks></g><circle class="prog" cx="110" cy="110" r="96" data-prog/></svg>
+            <div class="mid"><div><div class="stg" data-tstage>Ready</div><div class="clock" data-tclock>0:00</div><div class="say" data-tsay></div><div class="of" data-tof></div></div></div>
+          </div>
+          <div class="tctl">
+            <button type="button" class="btn btn-red go" data-tgo>Start <span class="arr">→</span></button>
+            <button type="button" class="btn btn-outline-light" data-treset>Reset</button>
+            <button type="button" class="btn btn-outline-light snd" data-tsound aria-pressed="false">Sound off</button>
+          </div>
+          <p class="sr" aria-live="assertive" data-tannounce></p>
+        </div>
+        <div>
+          <p class="lede mb0" data-trecipe></p>
+          <ol class="stages" data-tstages style="padding:0;list-style:none"></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== guides ===== -->
+  <section class="sec" id="guides" aria-labelledby="guides-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">04 · Brew guides</p><h2 class="h2" id="guides-h">Every brewer,<br>one card each.</h2></div>
+        <p class="lede">Gear, ratio, grind and the short version of the steps. Plus which of Benny's coffees he rates for it.</p>
+      </div>
+      <div class="guides" data-guides></div>
+    </div>
+  </section>
+
+  <!-- ===== freshness ===== -->
+  <section class="sec paper" id="fresh" aria-labelledby="fresh-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">05 · Freshness</p><h2 class="h2" id="fresh-h">Why roast<br>date matters.</h2></div>
+        <p class="lede">Coffee is a fresh food. Right after roasting it releases CO₂, then it peaks, then it slowly goes flat. Benny roasts after you order so you get the whole good part.</p>
+      </div>
+      <div class="tl" role="img" aria-label="Freshness timeline: degassing days 0 to 3, peak about days 4 to 14, still great to about day 28, fading after about 4 weeks.">
+        <span class="pin" style="left:6%">Your bag lands ~day 2–4</span>
+        <div class="bar">
+          <div class="z1">Rest<small>Day 0–3 · degassing</small></div>
+          <div class="z2">Peak<small>~Day 4–14 · sweetest, most aromatic</small></div>
+          <div class="z3">Still great<small>Day 14–28 · softer aroma</small></div>
+          <div class="z4">Fading<small>After ~4 weeks · flat, papery</small></div>
+        </div>
+        <div class="axis" aria-hidden="true"><span>Roast</span><span>Day 7</span><span>Day 14</span><span>Day 21</span><span>Day 28</span><span>Day 35</span><span>Day 42</span></div>
+      </div>
+      <p class="tiny">General guidance. It varies by bean, roast level and brew method: espresso often tastes best after a week of rest, darker roasts move faster than lighter ones, and whole bean holds far longer than ground.</p>
+      <div class="tips">
+        <div class="card"><span class="n">01</span><h3>Airtight, dark, cool</h3><p>Keep beans sealed in the bag (squeeze the air out) or an opaque canister, away from the stove and sunny windows.</p></div>
+        <div class="card"><span class="n">02</span><h3>Skip the fridge</h3><p>Moisture and fridge smells get in every time you open it. For long storage, freeze sealed portions and don't refreeze.</p></div>
+        <div class="card"><span class="n">03</span><h3>Grind right before</h3><p>Ground coffee loses aroma within minutes. Whole bean plus a burr grinder is the biggest upgrade most kitchens can make.</p></div>
+        <div class="card"><span class="n">04</span><h3>Buy for 2–4 weeks</h3><p>Order what you'll drink by the end of the peak. A <a class="link" href="../subscribe/">subscription</a> does the timing for you.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== arabica vs robusta ===== -->
+  <section class="sec" aria-labelledby="ar-h">
+    <div class="wrap ar">
+      <figure class="photo" style="margin:0"><img src="../assets/img/arabica-robusta.webp" alt="An arabica bean, oval with a curving center crease, beside a robusta bean, rounder with a straight crease" width="1100" height="740" loading="lazy"></figure>
+      <div>
+        <p class="eyebrow">Two species</p>
+        <h2 class="h2" id="ar-h">Arabica vs<br>Robusta.</h2>
+        <p class="lede">Most specialty coffee is arabica. Robusta is the tougher, lower-growing cousin with more caffeine, more body and that thick crema. A well-grown one is no compromise.</p>
+        <table class="cmp">
+          <thead><tr><th scope="col"><span class="sr">Trait</span></th><th scope="col">Arabica</th><th scope="col">Robusta</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Caffeine</th><td>About 1.2–1.5%</td><td>About 2.2–2.7%, nearly double</td></tr>
+            <tr><th scope="row">In the cup</th><td>Sweeter, brighter, more acidity</td><td>Bolder, earthy, cocoa and malt</td></tr>
+            <tr><th scope="row">Body + crema</th><td>Lighter body</td><td>Heavy body, big lasting crema</td></tr>
+            <tr><th scope="row">Bean</th><td>Oval, curved crease</td><td>Rounder, straight crease</td></tr>
+          </tbody>
+        </table>
+        <p class="tiny mt1">General figures; every lot differs.</p>
+        <div class="robo">
+          <div class="bagw" data-robobag></div>
+          <div><b>Benny's Coorg Cherry Robusta</b><p>Natural-process robusta from the shade-grown estates of Coorg and Karnataka. High caffeine, cocoa and malt, excellent crema.</p><div class="row"><button type="button" class="btn btn-sm btn-red" data-quick="coorg-robusta" data-grind="Whole Bean">Add 1 lb · $20</button><a class="btn btn-sm btn-outline-light" href="../coffee/?c=coorg-robusta">Details</a></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc, BY = BB.BY;
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- brew methods (ratios + recipes) ----------
+  var ICON = {
+    pourover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16l-6 8h-4z"/><path d="M8 17h8v3H8z"/><path d="M12 13v4"/></svg>',
+    drip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="3" width="16" height="5" rx="1.5"/><path d="M6 8v12h12V8"/><path d="M9 13h6v5H9z"/></svg>',
+    frenchpress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2v6M8 2h8"/><rect x="6" y="8" width="11" height="13" rx="1.5"/><path d="M17 11h2v6h-2M6 12h11"/></svg>',
+    espresso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M5 10h11v4a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 11h2a2 2 0 0 1 0 4h-2.4M8 3c0 2 2 2 2 4M12 3c0 2 2 2 2 4"/></svg>',
+    moka: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 3h8l-1 8H9z"/><path d="M9 11h6l2 10H7z"/><path d="M16 5h3l-2 4"/></svg>',
+    coldbrew: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 4h12l-1.5 17h-9z"/><rect x="9" y="9" width="4" height="4" rx="1" transform="rotate(12 11 11)"/><path d="M13 14h3v3h-3z"/></svg>',
+    aeropress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 2h8M9 2v6M15 2v6"/><rect x="7" y="8" width="10" height="11" rx="1"/><path d="M5 19h14v2H5z"/></svg>',
+    black: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9h13v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6z"/><path d="M17 10h2a2.5 2.5 0 0 1 0 5h-2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    milk: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9h13v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6z"/><path d="M17 10h2a2.5 2.5 0 0 1 0 5h-2.5"/><path d="M8 12.5c1.2-1.6 3.8-1.6 5 0-1.2 1.6-3.8 1.6-5 0z" fill="currentColor"/></svg>',
+    sweet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="9" width="7" height="7" rx="1"/><rect x="12" y="5" width="7" height="7" rx="1"/></svg>',
+    bright: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
+    choc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 9h14M5 15h14M12 3v18"/></svg>',
+    bold: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 2-5 3-6 0 2 1 3 2 3 0-4-1-6 1-9z"/></svg>',
+    smooth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 9c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0"/></svg>',
+    full: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+    extra: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 2L2 13h5l-1 7 7-10H8zM18 4l-5 8h4l-1 6 5-8h-4z"/></svg>',
+    half: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+    none: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6a9 9 0 1 0 0 12A7 7 0 0 1 18 6z"/></svg>',
+    light: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="6" ry="8.5" fill="#c9a36b" transform="rotate(-18 12 12)"/></svg>',
+    mid: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="6" ry="8.5" fill="#7d4b23" transform="rotate(-18 12 12)"/></svg>',
+    dark: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="6" ry="8.5" fill="#2b170b" transform="rotate(-18 12 12)"/></svg>',
+    benny: '<svg viewBox="0 0 40 40">' + BB.face("#e9b949").replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "") + "</svg>"
+  };
+  var r0 = function (n) { return Math.round(n); };
+  var METHODS = {
+    pourover: { name: "Pour-over", short: "Pour-over", ratio: 16, step: 1, grind: "Auto-Drip", grindNote: "Medium-fine, like table salt", temp: "200–205°F", tempC: "93–96°C", time: "3:00–3:30", best: ["pourover"], gear: "V60, Kalita Wave or Chemex · paper filter · gooseneck kettle · scale",
+      stages: function (c, w) { return [{ t: 45, n: "Bloom", s: "Pour " + r0(c * 2) + " g of water to wet every ground. Let it puff up and settle." }, { t: 30, n: "First pour", s: "Slow spirals out from the center to " + r0(w * .6) + " g." }, { t: 30, n: "Second pour", s: "Finish at " + r0(w) + " g, then give the brewer a gentle swirl." }, { t: 90, n: "Drawdown", s: "Let it drain. Aim to finish around 3:15. Faster? Grind finer." }]; },
+      steps: ["Rinse the filter with hot water, dump the rinse.", "Bloom with twice the coffee's weight in water for 45 s.", "Pour in slow spirals to 60%, then to 100% by 1:45.", "Swirl and let it draw down by about 3:15."] },
+    drip: { name: "Drip machine", short: "Drip", ratio: 17, step: 1, grind: "Auto-Drip", grindNote: "Medium, like sand", temp: "195–205°F", tempC: "90–96°C", time: "~5 min", best: ["drip"], gear: "Auto-drip coffee maker · flat or cone paper filter",
+      stages: function (c, w) { return [{ t: 30, n: "Load + start", s: "Fill with " + r0(w) + " g of cold, filtered water. " + r0(c) + " g of coffee in the basket. Start." }, { t: 270, n: "Brew", s: "Let it run. Leave the lid shut so the bed stays hot." }, { t: 20, n: "Swirl + serve", s: "Swirl the carafe so the first and last drips mix. Pour." }]; },
+      steps: ["Use fresh, cold, filtered water.", "Level the grounds so water passes evenly.", "Brew, then swirl the carafe before pouring.", "Don't leave it on the hot plate; pour into a thermal carafe."] },
+    frenchpress: { name: "French press", short: "French press", ratio: 15, step: 1, grind: "Coarse", grindNote: "Coarse, like sea salt", temp: "200°F", tempC: "93°C", time: "4:00 steep", best: ["frenchpress"], gear: "French press · kettle · spoon",
+      stages: function (c, w) { return [{ t: 20, n: "Pour", s: "Pour all " + r0(w) + " g of water over the grounds." }, { t: 220, n: "Steep", s: "Lid on, plunger up. Leave it alone." }, { t: 30, n: "Break + skim", s: "Stir the crust, then skim off the foam and floaters." }, { t: 30, n: "Press + pour", s: "Press slowly and pour it all out, so it stops brewing." }]; },
+      steps: ["Coarse grind, then add all the water at once.", "Steep 4 minutes with the plunger up.", "Break the crust, skim the foam.", "Press gently, then decant everything."] },
+    espresso: { name: "Espresso", short: "Espresso", ratio: 2, step: .25, kind: "espresso", grind: "Espresso", grindNote: "Fine, like powdered sugar with grit", temp: "199–203°F", tempC: "93–95°C", time: "25–30 s", best: ["espresso"], gear: "Espresso machine · tamper · scale under the cup",
+      stages: function (c, w) { return [{ t: 6, n: "Pre-infuse", s: "Start the shot. The puck wets before it flows." }, { t: 22, n: "Extract", s: "Stop at " + r0(w) + " g in the cup, around 28 s." }]; },
+      steps: ["Dose 18 g for a double into a dry basket.", "Distribute, then tamp level and firm.", "Pull to about twice the dose in liquid.", "Too sour: grind finer. Too bitter: coarser."] },
+    moka: { name: "Moka pot", short: "Moka", ratio: 7, step: .5, grind: "Fine", grindNote: "Fine, a touch coarser than espresso", temp: "Start with hot water", tempC: "just off the boil", time: "4–5 min", best: ["moka"], gear: "Stovetop moka pot · kettle",
+      stages: function (c, w) { return [{ t: 30, n: "Fill", s: "Hot water to just under the valve, " + r0(w) + " g. Fill the basket level, no tamping." }, { t: 150, n: "Heat", s: "Medium-low heat, lid open so you can watch." }, { t: 60, n: "Flow", s: "When it turns honey-colored and sputters, pull it off." }, { t: 15, n: "Cool", s: "Run the base under cold water to stop extraction." }]; },
+      steps: ["Fill the base with hot water to the valve.", "Fill the basket level; don't tamp.", "Medium-low heat, lid open.", "Pull off at the sputter, cool the base."] },
+    coldbrew: { name: "Cold brew", short: "Cold brew", ratio: 5, step: .5, kind: "cold", grind: "Coarse", grindNote: "Extra coarse", temp: "Cold or room temp", tempC: "no heat", time: "12–18 h", best: ["frenchpress"], gear: "Big jar or pitcher · filter or fine sieve",
+      stages: function (c, w) { return [{ t: 60, n: "Stir", s: "Stir " + r0(c) + " g of grounds into " + r0(w) + " g of cold water until all wet." }, { t: 14 * 3600, n: "Steep", s: "Cover, fridge or counter, about 14 hours." }, { t: 300, n: "Strain", s: "Strain through a paper filter. Dilute 1:1 with water or milk." }]; },
+      steps: ["Coarse grind, cold filtered water at 1:5.", "Stir, cover, steep 12–18 hours.", "Strain twice: sieve then paper.", "Dilute about 1:1. Keeps a week in the fridge."] },
+    aeropress: { name: "AeroPress", short: "AeroPress", ratio: 13, step: 1, grind: "Fine", grindNote: "Medium-fine to fine", temp: "185–195°F", tempC: "85–90°C", time: "2:00", best: ["pourover", "espresso"], gear: "AeroPress · paper filter · kettle",
+      stages: function (c, w) { return [{ t: 30, n: "Bloom", s: "Pour " + r0(c * 2) + " g of water and stir three times." }, { t: 15, n: "Fill", s: "Top up to " + r0(w) + " g." }, { t: 45, n: "Steep", s: "Insert the plunger a little to hold the vacuum. Wait." }, { t: 30, n: "Press", s: "Press slowly for 30 s. Stop at the hiss." }]; },
+      steps: ["Rinse the paper in the cap.", "Bloom 30 s, then fill to the full weight.", "Steep a minute, plunger resting on top.", "Press slow, stop at the hiss."] }
+  };
+  var ORDER = ["pourover", "drip", "frenchpress", "espresso", "moka", "coldbrew", "aeropress"];
+  var ratioText = function (m) { return m.kind === "espresso" ? "1:" + m.ratio + " out" : "1:" + m.ratio; };
+
+  // ---------- hero ----------
+  $("[data-heroring]").innerHTML = BB.ring({ words: false });
+  var ticks = ""; for (var i = 0; i < 60; i++) { var a = i / 60 * Math.PI * 2, r1 = i % 5 ? 46 : 43; ticks += '<line x1="' + (50 + Math.cos(a) * r1).toFixed(2) + '" y1="' + (50 + Math.sin(a) * r1).toFixed(2) + '" x2="' + (50 + Math.cos(a) * 48).toFixed(2) + '" y2="' + (50 + Math.sin(a) * 48).toFixed(2) + '"/>'; }
+  $("[data-ticks]").innerHTML = ticks;
+  $("[data-robobag]").innerHTML = BB.bag("coorg-robusta");
+
+  // ================= QUIZ =================
+  var QS = [
+    { k: "method", q: "How do you brew?", a: [["pourover", "Pour-over", "V60, Chemex, Kalita", "pourover"], ["drip", "Drip machine", "Press the button, walk away", "drip"], ["frenchpress", "French press", "Full-bodied, no filter", "frenchpress"], ["espresso", "Espresso", "Shots, lattes, cappuccinos", "espresso"], ["moka", "Moka pot", "Stovetop, strong and short", "moka"], ["coldbrew", "Cold brew", "Steeped overnight", "coldbrew"], ["aeropress", "AeroPress", "Quick, clean, travels well", "aeropress"]] },
+    { k: "take", q: "How do you take it?", a: [["black", "Black", "Nothing in the way", "black"], ["milk", "With milk", "Splash to latte", "milk"], ["sweet", "Milk + sweet", "Cozy, dessert-ish", "sweet"]] },
+    { k: "love", q: "What do you love in a cup?", a: [["bright", "Fruity + bright", "Berry, citrus, honey", "bright"], ["choc", "Chocolate + nutty", "Cocoa, caramel, almond", "choc"], ["bold", "Bold + smoky", "Dark, heavy, intense", "bold"], ["smooth", "Smooth + mellow", "Low acid, easy-going", "smooth"]] },
+    { k: "caf", q: "How much caffeine?", a: [["full", "Full", "Regular coffee", "full"], ["extra", "Extra", "Maximum lift", "extra"], ["half", "Half", "Gentle, all day", "half"], ["none", "None", "Decaf, all flavor", "none"]] },
+    { k: "roast", q: "How do you like it roasted?", a: [["light", "Lighter", "Sweet, bright, lively", "light"], ["mid", "In the middle", "Balanced and round", "mid"], ["dark", "Darker", "Toasty, bittersweet", "dark"], ["benny", "Let Benny decide", "Roaster's Choice", "benny"]] }
+  ];
+  var GRIND_FOR = { pourover: "Auto-Drip", drip: "Auto-Drip", frenchpress: "Coarse", espresso: "Espresso", moka: "Fine", coldbrew: "Coarse", aeropress: "Fine" };
+  var BEST_FOR = { pourover: ["pourover"], drip: ["drip"], frenchpress: ["frenchpress"], espresso: ["espresso"], moka: ["moka"], coldbrew: ["frenchpress"], aeropress: ["pourover", "espresso"] };
+  var LOVE_FLAVOR = { bright: { bright: 6, rich: 2 }, choc: { rich: 5, smooth: 3, bold: 1 }, bold: { bold: 6, rich: 2 }, smooth: { smooth: 6, rich: 1 } };
+  var qi = 0, A = {};
+
+  function score(c) {
+    var s = 0, why = [];
+    // caffeine is a hard preference
+    if (A.caf === "none") { s += c.caf === "decaf" ? 14 : c.caf === "half" ? 2 : -14; }
+    else if (A.caf === "half") { s += c.caf === "half" ? 12 : c.caf === "decaf" ? 3 : -2; }
+    else if (A.caf === "extra") { s += c.caf === "high" ? 9 : c.caf === "regular" ? 1 : -8; if (c.id === "mneb") s += 1; }
+    else { s += c.caf === "regular" ? 2 : c.caf === "high" ? 1 : c.caf === "half" ? -4 : -8; }
+    s += (LOVE_FLAVOR[A.love] || {})[c.flavor] || 0;
+    if (A.love === "choc" && /chocolate|cacao|cocoa/i.test(c.notes.join(" "))) s += 2;
+    var bests = BEST_FOR[A.method] || [];
+    if (c.best.some(function (b) { return bests.indexOf(b) > -1; })) s += 3;
+    if (A.take !== "black") { if (c.flavor === "rich" || c.flavor === "bold") s += 2; if (c.flavor === "bright") s -= 1; }
+    else if (c.flavor === "bright" || c.flavor === "smooth") s += 1;
+    if (A.roast === "light") s += c.roast[0] <= 1 ? 3 : c.roast[0] <= 2 ? 1 : -2;
+    if (A.roast === "dark") s += c.roast[1] >= 5 ? 3 : c.roast[1] >= 4 ? 1 : -2;
+    if (A.roast === "mid") s += c.roast[0] <= 3 && c.roast[1] >= 3 ? 2 : 0;
+    return s;
+  }
+  function reasons(c) {
+    var out = [], m = METHODS[A.method], notes = c.notes.slice(0, 3).join(", ").toLowerCase();
+    if (A.caf === "none" && c.caf === "decaf") out.push("Water Process decaf: no chemicals, still " + notes + ".");
+    else if (A.caf === "half" && c.caf === "half") out.push("A deliberate 50/50 of decaf and regular, matched for flavor and body.");
+    else if (A.caf === "extra" && c.caf === "high") out.push("Robusta: about double the caffeine of arabica, with big crema.");
+    var lv = { bright: "fruity and bright", choc: "chocolate and nutty", bold: "bold", smooth: "smooth and mellow" }[A.love];
+    out.push("You like it " + lv + ": this one brings " + notes + ".");
+    var bests = BEST_FOR[A.method];
+    if (c.best.some(function (b) { return bests.indexOf(b) > -1; })) out.push("Benny rates it for " + m.name.toLowerCase() + (A.take !== "black" && (c.flavor === "rich" || c.flavor === "bold") ? ", with the body to stand up to milk." : "."));
+    else if (A.take !== "black" && (c.flavor === "rich" || c.flavor === "bold")) out.push("Enough body to stand up to milk.");
+    return out.slice(0, 2);
+  }
+  function roastFor(c) {
+    if (A.roast === "benny") return "Roaster's Choice";
+    var lo = c.roast[0], hi = c.roast[1], t = A.roast === "light" ? lo : A.roast === "dark" ? hi : Math.min(hi, Math.max(lo, A.take === "black" ? 3 : 3 + (hi > 3 ? 1 : 0)));
+    return BB.ROASTS[t];
+  }
+  function ranked() { return BB.COFFEES.map(function (c, i) { return { c: c, s: score(c), i: i }; }).sort(function (a, b) { return b.s - a.s || a.i - b.i; }); }
+
+  var qbody = $("[data-qbody]"), qbar = $(".quiz .bar"), qback = $("[data-qback]"), qcount = $("[data-qcount]");
+  function showQ() {
+    var Q = QS[qi];
+    qbar.querySelector("i").style.width = (qi / QS.length * 100) + "%"; qbar.setAttribute("aria-valuenow", qi);
+    qcount.textContent = "Question " + (qi + 1) + " of " + QS.length;
+    qback.hidden = qi === 0;
+    qbody.innerHTML = '<div class="qanim"><h3 class="q" tabindex="-1">' + esc(Q.q) + '</h3><div class="answers" role="group" aria-label="' + esc(Q.q) + '">' + Q.a.map(function (a) {
+      return '<button type="button" class="ans" data-ans="' + a[0] + '" aria-pressed="' + (A[Q.k] === a[0]) + '"><span class="ic" aria-hidden="true">' + ICON[a[3]] + "</span><span><b>" + esc(a[1]) + "</b><small>" + esc(a[2]) + "</small></span></button>";
+    }).join("") + "</div></div>";
+  }
+  var focusQ = false;
+  qbody.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-ans]"); if (!b) return;
+    A[QS[qi].k] = b.dataset.ans;
+    $$("[data-ans]", qbody).forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    setTimeout(function () { qi++; if (qi < QS.length) { showQ(); var h = $("h3.q", qbody); if (h) h.focus({ preventScroll: true }); } else showResult(ranked()[0].c.id); }, reduce ? 0 : 220);
+  });
+  qback.addEventListener("click", function () { if (qi > 0) { qi = Math.min(qi, QS.length) - 1; showQ(); } });
+
+  var R = { size: 1, grind: null, roast: null };
+  function showResult(id, runnerId) {
+    var rk = ranked(), c = BY[id], ru = runnerId ? BY[runnerId] : (rk[0].c.id === id ? rk[1].c : rk[0].c);
+    R = { id: id, size: 1, roast: roastFor(c), grind: GRIND_FOR[A.method] };
+    qbar.querySelector("i").style.width = "100%"; qbar.setAttribute("aria-valuenow", QS.length);
+    qcount.textContent = "Your match"; qback.hidden = false;
+    qi = QS.length;
+    var m = METHODS[A.method];
+    qbody.innerHTML = '<div class="result qanim" style="margin:-14px calc(-1 * clamp(20px, 3vw, 36px)) calc(-1 * clamp(24px, 3vw, 36px))">' +
+      '<div class="stage" style="--c:' + c.c + '33"><span class="tag ink">Your bean</span><div class="bagw">' + BB.bag(c.id) + "</div></div>" +
+      '<div class="info"><p class="eyebrow mb0">' + esc(c.detail) + '</p><h3 tabindex="-1">' + esc(c.name) + '</h3><ul class="notes">' + c.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
+      '<ul class="why">' + reasons(c).map(function (r) { return "<li><span>" + esc(r) + "</span></li>"; }).join("") + "</ul>" +
+      '<div class="picks"><div><span class="label">Roast for you</span><div class="seg sm" role="group" aria-label="Roast" data-rroast>' + ["Roaster's Choice", R.roast].filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (r) { return '<button type="button" data-v="' + esc(r) + '" aria-pressed="' + (r === R.roast) + '">' + esc(r) + "</button>"; }).join("") + '</div></div>' +
+      '<div><span class="label">Grind for ' + esc(m.short.toLowerCase()) + '</span><div class="seg sm" role="group" aria-label="Grind" data-rgrind>' + [R.grind, "Whole Bean"].map(function (g) { return '<button type="button" data-v="' + esc(g) + '" aria-pressed="' + (g === R.grind) + '">' + esc(g) + "</button>"; }).join("") + "</div></div></div>" +
+      '<div class="row"><div class="seg sm" role="group" aria-label="Size" data-rsize><button type="button" data-v="1" aria-pressed="true">1 lb · $20</button><button type="button" data-v="5" aria-pressed="false">5 lb · $80</button></div></div>' +
+      '<div class="row mt2"><button type="button" class="btn btn-red" data-radd>Add to bag <span class="arr">→</span></button><a class="btn btn-ghost" data-rsub href="../subscribe/?coffee=' + c.id + '&size=1&every=2">Subscribe</a><button type="button" class="link" style="background:none;border:0;cursor:pointer;font-size:15px" data-retake>Retake quiz</button></div>' +
+      '<div class="runner"><div style="width:54px">' + BB.bag(ru.id) + '</div><div><span class="tiny">Runner-up</span><b>' + esc(ru.name) + '</b><span class="tiny">' + esc(ru.notes.slice(0, 3).join(" · ")) + '</span></div><button type="button" class="btn btn-sm btn-ghost" data-rswap="' + ru.id + '" data-rback="' + c.id + '">Show me</button></div>' +
+      "</div></div>";
+    var h = $(".result h3", qbody); if (h) h.focus({ preventScroll: true });
+    BB.log("quiz", { answers: Object.assign({}, A), result: id });
+  }
+  qbody.addEventListener("click", function (e) {
+    var t = e.target.closest("button"); if (!t) return;
+    var grp = t.parentNode;
+    if (grp.matches("[data-rroast],[data-rgrind],[data-rsize]")) {
+      $$("button", grp).forEach(function (x) { x.setAttribute("aria-pressed", String(x === t)); });
+      if (grp.matches("[data-rroast]")) R.roast = t.dataset.v;
+      if (grp.matches("[data-rgrind]")) R.grind = t.dataset.v;
+      if (grp.matches("[data-rsize]")) { R.size = +t.dataset.v; $("[data-rsub]", qbody).href = "../subscribe/?coffee=" + R.id + "&size=" + R.size + "&every=" + (R.size === 5 ? 4 : 2); }
+      return;
+    }
+    if (t.matches("[data-radd]")) BB.add({ kind: "coffee", id: R.id, size: R.size, roast: R.roast, grind: R.grind });
+    if (t.matches("[data-retake]")) { qi = 0; A = {}; showQ(); $("#quiz").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+    if (t.matches("[data-rswap]")) showResult(t.dataset.rswap, t.dataset.rback);
+  });
+  showQ();
+
+  // ================= CALCULATOR =================
+  var C = { m: "pourover", mode: "cups", amt: 2, str: 0, units: "g" };
+  var units = function (m) { return m.kind === "espresso" ? { one: "double shot", many: "double shots", min: 1, max: 6 } : m.id === "moka" ? { one: "moka cup", many: "moka cups (~50 ml)", min: 1, max: 12 } : m.kind === "cold" ? { one: "cup", many: "cups once diluted", min: 1, max: 32 } : { one: "cup", many: "cups (8 oz)", min: 1, max: 12 }; };
+  ORDER.forEach(function (k) { METHODS[k].id = k; });
+  $("[data-methods]").innerHTML = ORDER.map(function (k) { var m = METHODS[k]; return '<button type="button" data-m="' + k + '" aria-pressed="false">' + esc(m.short) + "<small>" + ratioText(m) + "</small></button>"; }).join("") + '<button type="button" disabled style="visibility:hidden" aria-hidden="true" tabindex="-1"></button>';
+  function compute() {
+    var m = METHODS[C.m], ratio = m.ratio + (m.kind === "espresso" ? C.str * m.step : -C.str * m.step), coffee, water, out;
+    if (m.kind === "espresso") {
+      coffee = C.mode === "cups" ? C.amt * 18 : C.amt / ratio; water = coffee * ratio; out = water;
+    } else {
+      var per = C.m === "moka" ? 50 : m.kind === "cold" ? 120 : 240;
+      water = C.mode === "cups" ? C.amt * per : C.amt; coffee = water / ratio;
+      out = m.kind === "cold" ? water - coffee * 2 : water - coffee * 2;
+    }
+    return { m: m, ratio: ratio, coffee: coffee, water: water, out: Math.max(0, out) };
+  }
+  var fmtG = function (g) { return C.units === "g" ? (g < 100 ? (Math.round(g * 10) / 10).toString().replace(/\.0$/, "") : r0(g)) + "<small>g</small>" : (g / 28.35).toFixed(g / 28.35 < 10 ? 2 : 1) + "<small>oz</small>"; };
+  var fmtW = function (ml) { return C.units === "g" ? r0(ml) + "<small>ml</small>" : (ml / 29.57).toFixed(1) + "<small>fl oz</small>"; };
+  var plainG = function (g) { return C.units === "g" ? r0(g) + " g" : (g / 28.35).toFixed(2) + " oz"; };
+  function renderCalc() {
+    var R2 = compute(), m = R2.m, u = units(m);
+    press("[data-m]", "data-m", C.m); press("[data-mode] button", "data-v", C.mode); press("[data-units] button", "data-v", C.units);
+    var lbl = C.mode === "cups" ? (C.amt === 1 ? u.one : u.many) : m.kind === "espresso" ? "g of espresso out" : (C.units === "g" ? "ml" : "fl oz") + " of water";
+    $("[data-amthint]").textContent = lbl;
+    $("[data-mode] [data-v=cups]").textContent = m.kind === "espresso" ? "Shots" : "Cups";
+    $("[data-mode] [data-v=water]").textContent = m.kind === "espresso" ? "Yield" : "Water";
+    var sl = ["Much lighter", "Lighter", "Balanced", "Stronger", "Much stronger"][C.str + 2];
+    $("[data-strlabel]").innerHTML = "<b>" + sl + "</b> · " + (m.kind === "espresso" ? "1:" + R2.ratio : "1:" + R2.ratio);
+    var gi = BB.GRINDS.indexOf(m.grind);
+    $("[data-out]").innerHTML =
+      '<div class="row between"><span class="tag gold">' + esc(m.name) + '</span><span class="mono small" style="color:#bfb3a5">' + (m.kind === "espresso" ? "1 : " + R2.ratio + " in → out" : "1 : " + R2.ratio + " coffee to water") + "</span></div>" +
+      '<div class="big2"><div><div class="k">Coffee</div><div class="num">' + fmtG(R2.coffee) + '</div><div class="sub">≈ ' + Math.max(1, Math.round(R2.coffee / 5.3 * 2) / 2) + ' tbsp ground</div></div><div class="plus" aria-hidden="true">+</div><div><div class="k">' + (m.kind === "espresso" ? "Shot yield" : "Water") + '</div><div class="num">' + (m.kind === "espresso" ? fmtG(R2.water) : fmtW(R2.water)) + '</div><div class="sub">' + (m.kind === "espresso" ? "liquid espresso, weighed" : "1 ml water = 1 g") + "</div></div></div>" +
+      '<div class="facts"><div><span class="k">Grind</span><b>' + esc(m.grind) + "</b><small>" + esc(m.grindNote) + (gi > -1 ? " · Benny's grind option" : "") + '</small></div><div><span class="k">Water temp</span><b>' + esc(m.temp) + "</b><small>" + esc(m.tempC) + '</small></div><div><span class="k">Brew time</span><b>' + esc(m.time) + "</b><small>" + (m.kind === "cold" ? "Then dilute about 1:1" : "Total contact time") + '</small></div><div><span class="k">In your mug</span><b>' + (m.kind === "espresso" ? plainG(R2.water) : m.kind === "cold" ? "≈ " + plainG(R2.out * 2).replace(" g", " ml") : "≈ " + plainG(R2.out).replace(" g", " ml")) + "</b><small>" + (m.kind === "espresso" ? "of espresso" : "Grounds keep ~2× their weight") + "</small></div></div>" +
+      '<button type="button" class="btn btn-red btn-block" data-totimer>Start the timer for this <span class="arr">→</span></button>';
+    syncTimer();
+  }
+  function press(sel, attr, val) { $$(sel).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute(attr) === String(val))); }); }
+  function setAmt(v) {
+    var m = METHODS[C.m], u = units(m), lim = C.mode === "cups" ? [u.min, u.max] : [m.kind === "espresso" ? 18 : 30, 4000];
+    v = Math.min(lim[1], Math.max(lim[0], isNaN(v) ? lim[0] : v)); C.amt = v; $("#amt").value = v; renderCalc();
+  }
+  function defaultAmt() {
+    var m = METHODS[C.m];
+    if (C.mode === "cups") return m.kind === "espresso" ? 1 : C.m === "moka" ? 3 : m.kind === "cold" ? 8 : 2;
+    return m.kind === "espresso" ? 36 : C.m === "moka" ? 150 : m.kind === "cold" ? 1000 : 500;
+  }
+  $("[data-methods]").addEventListener("click", function (e) { var b = e.target.closest("[data-m]"); if (!b) return; setMethod(b.dataset.m); });
+  function setMethod(k) { C.m = k; C.str = 0; $("#strength").value = 0; setAmt(defaultAmt()); }
+  $("[data-mode]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; C.mode = b.dataset.v; setAmt(defaultAmt()); });
+  $("[data-units]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; C.units = b.dataset.v; renderCalc(); });
+  $$("[data-step]").forEach(function (b) { b.addEventListener("click", function () { var m = METHODS[C.m]; var step = C.mode === "cups" ? 1 : m.kind === "espresso" ? 2 : 50; setAmt(+C.amt + step * +b.dataset.step); }); });
+  $("#amt").addEventListener("change", function () { setAmt(parseFloat(this.value)); });
+  $("#strength").addEventListener("input", function () { C.str = +this.value; renderCalc(); });
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-totimer]")) { $("#timer").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); setTimeout(function () { $("[data-tgo]").focus({ preventScroll: true }); }, reduce ? 0 : 600); }
+    var g = e.target.closest("[data-guide]");
+    if (g) { setMethod(g.dataset.guide); $("#calc").scrollIntoView({ behavior: reduce ? "auto" : "smooth" }); }
+  });
+
+  // ================= TIMER =================
+  var T = { stages: [], total: 0, el: 0, run: false, t0: 0, base: 0, idx: -1, sound: false, raf: 0 };
+  var CIRC = 2 * Math.PI * 96, prog = $("[data-prog]");
+  prog.style.strokeDasharray = CIRC; prog.style.strokeDashoffset = CIRC;
+  $("[data-tmeth]").innerHTML = ORDER.map(function (k) { return '<button type="button" data-tm="' + k + '" aria-pressed="false">' + esc(METHODS[k].short) + "</button>"; }).join("");
+  $("[data-tmeth]").addEventListener("click", function (e) { var b = e.target.closest("[data-tm]"); if (!b) return; setMethod(b.dataset.tm); });
+  function clock(s) { s = Math.max(0, Math.round(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ":" + ("0" + m).slice(-2) : m) + ":" + ("0" + x).slice(-2); }
+  function syncTimer() {
+    var R2 = compute(), m = R2.m;
+    resetTimer(true);
+    T.stages = m.stages(R2.coffee, R2.water); T.total = T.stages.reduce(function (n, s) { return n + s.t; }, 0);
+    press("[data-tm]", "data-tm", C.m);
+    $("[data-trecipe]").innerHTML = "<b>" + esc(m.name) + ":</b> " + plainG(R2.coffee) + " coffee, " + (m.kind === "espresso" ? plainG(R2.water) + " out" : plainG(R2.water).replace(" g", " ml") + " water") + ", " + esc(m.grind.toLowerCase()) + " grind, " + esc(m.temp) + ". Change it in the <a class=\"link\" style=\"color:#fff\" href=\"#calc\">calculator</a>.";
+    var acc = 0;
+    $("[data-tstages]").innerHTML = T.stages.map(function (s, i) { var a = acc; acc += s.t; return '<li data-si="' + i + '"><span class="no">' + (i + 1) + "</span><span><b>" + esc(s.n) + '</b><span class="s">' + esc(s.s) + '</span></span><span class="tm">' + clock(a) + "–" + clock(acc) + "</span></li>"; }).join("");
+    // stage boundary ticks on the ring
+    acc = 0; var tk = "";
+    T.stages.slice(0, -1).forEach(function (s) { acc += s.t; var a = acc / T.total * Math.PI * 2; tk += '<line x1="' + (110 + Math.cos(a) * 84).toFixed(1) + '" y1="' + (110 + Math.sin(a) * 84).toFixed(1) + '" x2="' + (110 + Math.cos(a) * 108).toFixed(1) + '" y2="' + (110 + Math.sin(a) * 108).toFixed(1) + '"/>'; });
+    $("[data-segticks]").innerHTML = tk;
+    paintTimer();
+  }
+  function stageAt(el) { var acc = 0; for (var i = 0; i < T.stages.length; i++) { acc += T.stages[i].t; if (el < acc) return i; } return T.stages.length; }
+  function paintTimer() {
+    var idx = T.el > 0 || T.run ? stageAt(T.el) : -1, done = idx >= T.stages.length;
+    prog.style.strokeDashoffset = CIRC * (1 - Math.min(1, T.el / T.total));
+    $("[data-tclock]").textContent = clock(T.el);
+    $("[data-tof]").textContent = "of " + clock(T.total);
+    var st = idx < 0 ? null : T.stages[Math.min(idx, T.stages.length - 1)];
+    $("[data-tstage]").textContent = done ? "Done" : st ? "Step " + (idx + 1) + " · " + st.n : "Ready";
+    $("[data-tsay]").textContent = done ? "Enjoy it. Fresh beans, good recipe." : st ? st.s : "Press start when the water's ready.";
+    $$("[data-si]").forEach(function (li, i) { li.classList.toggle("now", i === idx); li.classList.toggle("done", i < idx); });
+    if (idx !== T.idx) {
+      if (T.idx !== -1 || idx === 0) { $("[data-tannounce]").textContent = done ? "Done. Enjoy." : st ? "Step " + (idx + 1) + ": " + st.n + ". " + st.s : ""; if (T.run || done) beep(done); }
+      T.idx = idx;
+    }
+  }
+  function loop() { T.el = T.base + (performance.now() - T.t0) / 1000; if (T.el >= T.total) { T.el = T.total; T.run = false; setGo(); paintTimer(); return; } paintTimer(); T.raf = requestAnimationFrame(loop); }
+  function setGo() { $("[data-tgo]").innerHTML = T.run ? "Pause" : T.el > 0 && T.el < T.total ? "Resume <span class=\"arr\">→</span>" : T.el >= T.total ? "Again <span class=\"arr\">→</span>" : "Start <span class=\"arr\">→</span>"; }
+  function resetTimer(silent) { cancelAnimationFrame(T.raf); T.run = false; T.el = 0; T.base = 0; T.idx = -1; setGo(); if (!silent) paintTimer(); }
+  $("[data-tgo]").addEventListener("click", function () {
+    if (T.run) { T.run = false; T.base = T.el; cancelAnimationFrame(T.raf); setGo(); $("[data-tannounce]").textContent = "Paused at " + clock(T.el) + "."; return; }
+    if (T.el >= T.total) resetTimer();
+    T.run = true; T.t0 = performance.now(); ensureAudio(); setGo(); loop();
+  });
+  $("[data-treset]").addEventListener("click", function () { resetTimer(); $("[data-tannounce]").textContent = "Timer reset."; });
+  var actx = null;
+  function ensureAudio() { if (T.sound && !actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }
+  function beep(fin) {
+    if (!T.sound || !actx) return;
+    try { [0, fin ? .18 : null, fin ? .36 : null].forEach(function (d) { if (d === null) return; var o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = fin ? 880 : 660; o.connect(g); g.connect(actx.destination); var t = actx.currentTime + d; g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.25, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + .16); o.start(t); o.stop(t + .18); }); } catch (e) {}
+  }
+  $("[data-tsound]").addEventListener("click", function () { T.sound = !T.sound; this.setAttribute("aria-pressed", String(T.sound)); this.textContent = T.sound ? "Sound on" : "Sound off"; ensureAudio(); if (T.sound) beep(false); });
+
+  // ================= GUIDES =================
+  $("[data-guides]").innerHTML = ORDER.map(function (k) {
+    var m = METHODS[k];
+    var beans = BB.COFFEES.filter(function (c) { return c.best.some(function (b) { return m.best.indexOf(b) > -1; }); });
+    return '<article class="guide reveal"><div class="gh"><div><h3>' + esc(m.name) + '</h3><p class="gear mt1 mb0">' + esc(m.gear) + '</p></div><div class="ratio" aria-label="Ratio ' + ratioText(m) + '">' + (m.kind === "espresso" ? "1:2" : "1:" + m.ratio) + "<small>" + (m.kind === "espresso" ? "IN→OUT" : "RATIO") + "</small></div></div>" +
+      '<dl class="kv"><dt>Grind</dt><dd>' + esc(m.grind) + ' <span class="muted" style="font-weight:400">· ' + esc(m.grindNote.toLowerCase()) + "</span></dd><dt>Water</dt><dd>" + esc(m.temp) + "</dd><dt>Time</dt><dd>" + esc(m.time) + "</dd></dl>" +
+      "<ol>" + m.steps.map(function (s) { return "<li><span>" + esc(s) + "</span></li>"; }).join("") + "</ol>" +
+      '<div class="best"><span class="label">Best beans for this</span><div class="row">' + beans.map(function (c) { return '<a class="bean" href="../coffee/?c=' + c.id + '"><span>' + BB.bag(c.id) + "</span>" + esc(c.short) + "</a>"; }).join("") + "</div></div>" +
+      '<button type="button" class="btn btn-sm btn-ghost" data-guide="' + k + '">Calculate + time it <span class="arr">→</span></button></article>';
+  }).join("");
+  BB.reveal();
+
+  setAmt(defaultAmt());
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roaster's Half-Caff Blend · $20/lb, Roasted to Order | Benny's Beans</title>
+<meta name="description" content="Roaster's Half-Caff Blend from Benny's Beans: a deliberate 50/50 of decaf and regular, roasted to order every Monday and Wednesday in Guerneville, CA. $20/lb or $80 for 5 lb.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/coffee/?c=halfcaff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="product">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Roaster's Half-Caff Blend · Benny's Beans">
+<meta property="og:description" content="Roasted after you order, every Monday and Wednesday. $20/lb, $80 for 5 lb.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<style>
+  .pdp-wrap { padding: clamp(20px, 3vw, 40px) 0 clamp(56px, 7vw, 96px); }
+  .pdp { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); gap: clamp(28px, 4.5vw, 72px); align-items: start; }
+  @media (max-width: 900px) { .pdp { grid-template-columns: 1fr; } }
+
+  /* stage */
+  .pstage-col { position: sticky; top: calc(var(--head-h) + 18px); }
+  @media (max-width: 900px) { .pstage-col { position: static; } }
+  .pstage { position: relative; aspect-ratio: 1 / 1.08; border-radius: 36px; background: var(--tint, var(--kraft-l)); overflow: hidden; perspective: 1000px; display: grid; place-items: center; transition: background .5s; touch-action: pan-y; }
+  .pstage::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 92%, rgba(60,40,20,.18), transparent 55%); pointer-events: none; }
+  .pstage .wm { position: absolute; width: 92%; left: 4%; top: 2%; color: var(--ringc, var(--kraft)); opacity: .55; will-change: transform; transition: transform .5s var(--ease); }
+  .pstage .wm svg { width: 100%; }
+  .pstage .pbag { position: relative; width: 58%; z-index: 2; transform-style: preserve-3d; will-change: transform; transition: transform .5s var(--ease); margin-top: 6%; }
+  .pstage .pbag svg { width: 100%; filter: drop-shadow(0 40px 34px rgba(60,40,20,.38)); }
+  .pstage.big .pbag { width: 66%; }
+  .pstage.live .wm, .pstage.live .pbag { transition: transform .12s linear; }
+  .pstage .badges { position: absolute; top: 20px; left: 20px; display: flex; gap: 6px; flex-wrap: wrap; z-index: 3; }
+  .pstage .stamp { position: absolute; right: 20px; top: 20px; background: var(--ink); color: var(--gold); border-color: rgba(233,185,73,.7); z-index: 3; width: 118px; height: 118px; }
+  .pstage .stamp b { color: #fff; }
+  .pstage .cap { position: absolute; left: 20px; bottom: 18px; z-index: 3; font: 500 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; background: rgba(251,248,242,.86); border-radius: var(--pill); padding: 6px 12px; }
+  .ptrust { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .ptrust div { background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 12px 14px; font-size: 13px; line-height: 1.35; }
+  .ptrust b { display: block; font: 900 15px/1.1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin-bottom: 3px; }
+  @media (max-width: 900px) { .pstage { aspect-ratio: 1 / .92; max-width: 640px; } .ptrust { display: none; } }
+  @media (max-width: 520px) { .pstage { border-radius: 26px; } .pstage .stamp { width: 92px; height: 92px; font-size: 9px; padding: 8px; right: 12px; top: auto; bottom: 12px; } .pstage .stamp b { font-size: 19px; } .pstage .badges { top: 14px; left: 14px; } .pstage .cap { left: 14px; bottom: 12px; font-size: 10px; } }
+
+  /* buy column */
+  .buy h1 { font-weight: 900; font-variation-settings: "wdth" 125; text-transform: uppercase; letter-spacing: -.015em; line-height: .92; font-size: clamp(36px, 3.7vw, 54px); margin: 0 0 18px; }
+  .buy .notes { margin-bottom: 18px; }
+  .buy .blurb { font-size: 17px; color: var(--ink-2); margin-bottom: 14px; }
+  .cert { display: flex; gap: 10px; align-items: flex-start; background: var(--river-l); color: var(--river); border-radius: 16px; padding: 12px 14px; font-size: 13.5px; font-weight: 600; margin-bottom: 8px; }
+  .cert svg { width: 20px; flex: none; margin-top: 1px; }
+  .opt { border-top: 1px solid var(--line); padding: 20px 0 4px; margin-top: 18px; }
+  .opt-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .opt-h .label { font-size: 12px; }
+  .opt-h .val { font-size: 14px; font-weight: 700; }
+  .sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sizes button { position: relative; text-align: left; border: 2px solid var(--line); background: var(--paper); border-radius: 20px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s; display: grid; gap: 2px; }
+  .sizes button:hover { border-color: var(--ink); }
+  .sizes button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+  .sizes b { font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 125; text-transform: uppercase; }
+  .sizes span { font: 500 12px var(--mono); opacity: .75; }
+  .sizes .save { position: absolute; top: -10px; right: 12px; background: var(--cherry); color: #fff; font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 5px 9px; border-radius: var(--pill); opacity: 1; }
+  .seg.roasts button, .seg.grinds button { min-height: 46px; position: relative; }
+  .seg.grinds button { text-align: left; padding: 8px 14px; line-height: 1.15; }
+  .seg.grinds button small { margin-top: 2px; }
+  .rec { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--cherry); vertical-align: 2px; margin-left: 6px; }
+  .seg button[aria-pressed="true"] .rec { background: var(--gold); }
+  .legend { font-size: 13px; color: var(--ink-2); margin: 10px 0 0; }
+  .legend .rec { margin: 0 6px 0 0; vertical-align: 1px; }
+  .suits { margin-top: 10px; font-size: 13.5px; color: var(--ink-2); min-height: 20px; }
+  .suits b { color: var(--ink); }
+  .buyrow { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: stretch; margin-top: 22px; }
+  .stepper { display: inline-flex; align-items: center; border: 2px solid var(--ink); border-radius: var(--pill); height: 60px; }
+  .stepper button { width: 48px; height: 100%; border: 0; background: none; font-size: 22px; cursor: pointer; border-radius: var(--pill); }
+  .stepper button:hover { background: var(--bone); }
+  .stepper output { min-width: 28px; text-align: center; font: 600 17px var(--mono); }
+  .addbtn { min-height: 60px; font-size: 17px; }
+  .pricebox { display: flex; justify-content: space-between; align-items: end; margin-top: 22px; gap: 12px; }
+  .pricebox .big { font: 900 clamp(44px, 4.6vw, 60px)/.9 var(--sans); font-variation-settings: "wdth" 125; letter-spacing: -.02em; }
+  .pricebox .per { font: 500 12.5px/1.5 var(--mono); color: var(--mute); text-align: right; }
+  .pricebox .per b { color: var(--ok); font-weight: 600; }
+  .sublink { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; padding: 14px 18px; border: 1.5px dashed var(--kraft-d); border-radius: 18px; text-decoration: none; font-size: 14.5px; transition: background .15s, border-color .15s; }
+  .sublink:hover { background: var(--paper); border-color: var(--ink); }
+  .sublink b { display: block; font-size: 15.5px; }
+  .sublink .arr { font-size: 20px; color: var(--cherry); }
+
+  .fresh { margin-top: 16px; background: var(--ink); color: var(--paper); border-radius: 24px; padding: 18px 20px 16px; }
+  .fresh .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .fresh .top .label { color: #bfb3a5; }
+  .fresh .cd { font: 500 12px var(--mono); color: var(--gold); }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; position: relative; }
+  .steps li { position: relative; padding-top: 22px; }
+  .steps li::before { content: ""; position: absolute; top: 5px; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 4px #2e2722; z-index: 1; }
+  .steps li:first-child::before { background: var(--cherry); }
+  .steps li::after { content: ""; position: absolute; top: 10px; left: 12px; right: -6px; height: 2px; background: #3a312a; }
+  .steps li:last-child::after { display: none; }
+  .steps .k { font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #bfb3a5; display: block; }
+  .steps .v { font-weight: 800; font-size: 15px; line-height: 1.2; display: block; margin-top: 3px; }
+  .fresh .alt { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #2e2722; font-size: 13.5px; color: #cfc4b6; }
+  .fresh .alt b { color: #fff; }
+  @media (max-width: 520px) { .steps { grid-template-columns: 1fr 1fr; row-gap: 14px; } .steps li:nth-child(2)::after { display: none; } }
+
+  /* roast explorer */
+  .rx { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(28px, 5vw, 80px); align-items: center; }
+  .rx-visual { position: relative; aspect-ratio: 1; max-width: 420px; width: 100%; justify-self: center; }
+  .rx-visual .halo { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle, rgba(233,185,73,.16), transparent 66%); }
+  .rx-bean { position: absolute; inset: 18%; border-radius: 50%; transform: rotate(-24deg) scaleX(.82); background: var(--bean, #a8743c); box-shadow: inset -24px -30px 0 rgba(0,0,0,.2), inset 14px 14px 30px rgba(255,255,255,.12), 0 40px 60px -20px rgba(0,0,0,.6); transition: background .6s var(--ease); }
+  .rx-bean::after { content: ""; position: absolute; left: 50%; top: 8%; bottom: 8%; width: 8px; margin-left: -4px; border-radius: 8px; background: rgba(0,0,0,.38); transform: rotate(10deg); }
+  .rx-visual .lvl { position: absolute; left: 0; right: 0; bottom: -4px; text-align: center; font: 900 clamp(28px, 3vw, 40px)/1 var(--sans); font-variation-settings: "wdth" 125; text-transform: uppercase; }
+  .rx .slider { margin: 26px 0 8px; }
+  .rx input[type=range] { width: 100%; appearance: none; -webkit-appearance: none; height: 14px; border-radius: 10px; background: linear-gradient(90deg, #c9a36b, #a8743c, #7d4b23, #512d14, #2b170b); outline: none; cursor: pointer; }
+  .rx input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 34px; border-radius: 50%; background: var(--paper); border: 4px solid var(--cherry); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .rx input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 50%; background: var(--paper); border: 4px solid var(--cherry); }
+  .rx input[type=range]:focus-visible { outline: 3px solid var(--gold); outline-offset: 6px; }
+  .ticks { position: relative; height: 30px; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #bfb3a5; margin: 10px 17px 0; }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span:first-child { transform: translateX(-17px); } .ticks span:last-child { transform: translateX(calc(-100% + 17px)); }
+  .ticks span::before { content: ""; position: absolute; left: 50%; top: -6px; width: 2px; height: 5px; background: currentColor; opacity: .5; }
+  .ticks span:first-child::before { left: 17px; } .ticks span:last-child::before { left: auto; right: 17px; }
+  .ticks span.r { color: var(--gold); }
+  .ticks button { background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; padding: 4px 0; }
+  .rx-desc { min-height: 120px; }
+  .rx-desc p.say { font-size: clamp(21px, 2.1vw, 28px); line-height: 1.35; font-weight: 700; color: var(--paper); margin: 0 0 16px; }
+  .rx-rangebar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 12px; }
+  .rx-rangebar i { height: 6px; border-radius: 4px; background: #2e2722; }
+  .rx-rangebar i.on { background: var(--gold); }
+  @media (max-width: 860px) { .rx { grid-template-columns: 1fr; } .rx-visual { max-width: 260px; } }
+  @media (max-width: 520px) { .ticks { font-size: 9.5px; letter-spacing: 0; } }
+
+  /* brew it */
+  .brews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .brew { background: var(--paper); border: 1px solid var(--line); border-radius: 26px; padding: 24px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; transition: border-color .2s, transform .3s var(--ease); }
+  .brew:hover { border-color: var(--ink); transform: translateY(-3px); }
+  .brew .ratio { font: 900 clamp(48px, 5vw, 68px)/.9 var(--sans); font-variation-settings: "wdth" 125; color: var(--cherry); letter-spacing: -.02em; }
+  .brew h3 { font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin: 6px 0 0; }
+  .brew dl { margin: 6px 0 0; }
+  .brew .go { margin-top: auto; font-weight: 700; font-size: 14px; padding-top: 6px; }
+  .brew .go span { color: var(--cherry); }
+  @media (max-width: 900px) { .brews { grid-template-columns: 1fr; gap: 12px; } .brew { padding: 20px; } .brew .ratio { font-size: 44px; } }
+
+  /* pairs */
+  .pairs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 900px) { .pairs { grid-template-columns: 1fr; } }
+  .pairs .pcard { display: grid; grid-template-columns: 42% 1fr; }
+  .pairs .pcard .stage { padding: 18px 12px 0; display: grid; align-items: end; }
+  .pairs .pcard .body { padding: 18px 18px 18px 16px; }
+  .pairs .pcard h3 { font-size: 18px; }
+  .pairs .pcard .why { font-size: 13px; color: var(--ink-2); margin: 0; }
+  .pairs .pcard .add { width: 42px; height: 42px; border-radius: 50%; border: 2px solid var(--ink); background: var(--ink); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; flex: none; transition: transform .2s var(--ease), background .2s; }
+  .pairs .pcard .add:hover { background: var(--cherry); border-color: var(--cherry); transform: rotate(90deg); }
+  .pairs .pcard .cover { position: absolute; inset: 0; z-index: 1; border-radius: 28px; }
+  .pairs .pcard .add { position: relative; z-index: 2; }
+
+  /* sticky mobile bar */
+  .mbar { position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 55; background: var(--ink); color: var(--paper); border-radius: 24px; padding: 8px 8px 8px 10px; display: none; grid-template-columns: 48px 1fr auto; gap: 10px; align-items: center; box-shadow: 0 20px 40px -10px rgba(0,0,0,.5); transform: translateY(130%); transition: transform .4s var(--ease); padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px) * .5); }
+  .mbar.on { transform: none; }
+  .mbar .t { width: 48px; height: 52px; border-radius: 12px; background: var(--tint, var(--kraft-l)); display: grid; place-items: end center; overflow: hidden; padding-top: 4px; }
+  .mbar .t svg { width: 36px; }
+  .mbar b { display: block; font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mbar small { font: 500 11px var(--mono); color: #bfb3a5; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mbar .btn { min-height: 48px; padding: 0 18px; }
+  .mbar > div { min-width: 0; }
+  @media (max-width: 760px) { .mbar { display: grid; } body.mbar-on .fab { transform: translateY(-78px); } }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="pdp-wrap">
+    <div class="wrap">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../shop/">Shop</a> › <span aria-current="page" data-crumb>Roaster's Half-Caff Blend</span></nav>
+      <div class="pdp">
+        <div class="pstage-col">
+          <div class="pstage" data-stage>
+            <div class="wm" data-wm aria-hidden="true"></div>
+            <div class="badges" data-badges></div>
+            <div class="stamp" aria-hidden="true">Roasting<b data-st-day>MON</b><span data-st-date></span></div>
+            <div class="pbag" data-pbag></div>
+            <span class="cap" data-cap>1 lb · Roaster's Choice</span>
+          </div>
+          <div class="ptrust">
+            <div><b>Roasted to order</b>Nothing sits on a shelf. Your bag is roasted for you.</div>
+            <div><b>Cooled sweet</b>Benny's cooling process makes a sweeter bean.</div>
+            <div><b>Ground slow</b>Low-RPM grinder, so heat doesn't strip flavor.</div>
+          </div>
+        </div>
+
+        <div class="buy">
+          <p class="eyebrow" data-eyebrow>Blend · 50 / 50</p>
+          <h1 data-name>Roaster's Half-Caff Blend</h1>
+          <ul class="notes" data-notes></ul>
+          <p class="blurb" data-blurb></p>
+          <div data-cert></div>
+
+          <div class="opt" role="group" aria-labelledby="o-size">
+            <div class="opt-h"><span class="label" id="o-size">Size</span><span class="val tiny">Same coffee, bigger bag</span></div>
+            <div class="sizes" data-sizes>
+              <button type="button" aria-pressed="true" data-v="1"><b>1 lb</b><span>$20</span></button>
+              <button type="button" aria-pressed="false" data-v="5"><i class="save">Save $20</i><b>5 lb</b><span>$80 · $16/lb</span></button>
+            </div>
+          </div>
+
+          <div class="opt" role="group" aria-labelledby="o-roast">
+            <div class="opt-h"><span class="label" id="o-roast">Roast</span><span class="val" data-roast-val>Roaster's Choice</span></div>
+            <div class="seg roasts" data-roasts></div>
+            <p class="legend" data-legend></p>
+          </div>
+
+          <div class="opt" role="group" aria-labelledby="o-grind">
+            <div class="opt-h"><span class="label" id="o-grind">Grind</span><span class="val" data-grind-val>Whole Bean</span></div>
+            <div class="seg grinds" data-grinds></div>
+            <p class="suits" aria-live="polite" data-suits></p>
+          </div>
+
+          <div class="pricebox">
+            <div><span class="label">Price</span><div class="big" data-price aria-live="polite">$20</div></div>
+            <div class="per" data-per>1 × 1 lb<br>Free shipping on $60+</div>
+          </div>
+          <div class="buyrow" data-buyrow>
+            <div class="stepper" role="group" aria-label="Quantity"><button type="button" data-step="-1" aria-label="One less">−</button><output data-qty aria-live="polite">1</output><button type="button" data-step="1" aria-label="One more">+</button></div>
+            <button class="btn btn-red btn-block addbtn" type="button" data-addbtn>Add to bag <span class="arr">→</span></button>
+          </div>
+          <a class="sublink" href="../subscribe/?coffee=halfcaff" data-sublink><span><b>Subscribe &amp; never run out</b><span class="tiny">This coffee on your schedule. Skip or swap any time before roast day.</span></span><span class="arr" aria-hidden="true">→</span></a>
+
+          <div class="fresh" aria-live="polite">
+            <div class="top"><span class="label">Your bag's timeline</span><span class="cd">Cutoff in <span data-cutoff></span></span></div>
+            <ol class="steps" style="list-style:none;padding:0;margin:0">
+              <li><span class="k">Order</span><span class="v">Now</span></li>
+              <li><span class="k">Roasts</span><span class="v" data-f-roast></span></li>
+              <li><span class="k">Ships</span><span class="v" data-f-ship></span></li>
+              <li><span class="k">Arrives</span><span class="v" data-f-arrive></span></li>
+            </ol>
+            <p class="alt">Or ready for <b>free will-call</b> at True Value in Guerneville <b data-f-pick></b>. Market pickup in Occidental and Cloverdale too.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec ink" aria-labelledby="rx-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">How the roast changes the cup</p><h2 class="h2" id="rx-h">Slide the roast.<br>Taste the difference.</h2></div>
+        <p class="lede" data-rx-lede>Same green coffee, five roast levels. Benny's recommended range is marked in gold.</p>
+      </div>
+      <div class="rx">
+        <div class="rx-visual" aria-hidden="true"><div class="halo"></div><div class="rx-bean" data-rx-bean></div><div class="lvl" data-rx-lvl>Medium</div></div>
+        <div>
+          <div class="rx-desc" aria-live="polite">
+            <p class="eyebrow" data-rx-eyebrow>Medium · Benny recommends</p>
+            <p class="say" data-rx-say></p>
+          </div>
+          <div class="slider">
+            <label class="sr" for="rx">Roast level, 1 light to 5 French</label>
+            <input type="range" id="rx" min="1" max="5" step="1" value="2" data-rx>
+            <div class="ticks" data-ticks></div>
+          </div>
+          <div class="row mt2"><button class="btn btn-light" type="button" data-rx-use>Order it Medium</button><button class="btn btn-outline-light" type="button" data-rx-choice>Let Benny choose</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" aria-labelledby="brew-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Brew it</p><h2 class="h2" id="brew-h">How Benny<br>would make it.</h2></div>
+        <p class="lede">The methods this coffee shines in, with a starting recipe. Grams beat scoops; adjust to taste.</p>
+      </div>
+      <div class="brews" data-brews></div>
+    </div>
+  </section>
+
+  <section class="sec paper" aria-labelledby="pair-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Pairs with</p><h2 class="h2" id="pair-h">Make it three.<br>Ship it free.</h2></div>
+        <p class="lede">Three 1 lb bags is $60, the free-shipping line. These sit nicely next to this one in the cupboard.</p>
+      </div>
+      <div class="pairs" data-pairs></div>
+    </div>
+  </section>
+
+  <section class="sec-sm" aria-labelledby="faq-h">
+    <div class="narrow faq">
+      <h2 class="h2" id="faq-h">Good to know.</h2>
+      <details><summary>When will it be roasted?</summary><p>On the next Monday or Wednesday after you order (orders close at 11:59 pm the night before). It ships the following day, so it usually arrives two to four days off the roaster.</p></details>
+      <details><summary>Not sure which roast?</summary><p>Choose Roaster's Choice. Benny roasts each batch to the level he thinks shows that bean best, based on how it roasts. The gold dots mark the range he recommends for this coffee.</p></details>
+      <details><summary>Whole bean or ground?</summary><p>Whole bean keeps its flavor longest. If you don't grind at home, pick the grind for your brewer; Benny's grinder runs at a low RPM so the grind doesn't heat and flatten the coffee.</p></details>
+      <details><summary>Shipping and pickup</summary><p>Free shipping on orders of $60 or more. Will-call pickup at True Value Hardware in Guerneville and farmers-market pickup are always free. Questions? Text Benny at <a class="link" href="sms:+17078994183">707-899-4183</a>.</p></details>
+    </div>
+  </section>
+</main>
+
+<div class="mbar" data-mbar aria-hidden="true">
+  <div class="t" data-mbar-thumb></div>
+  <div><b data-mbar-name>Half-Caff</b><small data-mbar-opts>1 lb · Roaster's Choice · Whole Bean</small></div>
+  <button class="btn btn-red" type="button" data-mbar-add tabindex="-1">Add · $20</button>
+</div>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc;
+  var qs = new URLSearchParams(location.search);
+  var id = BB.BY[qs.get("c")] ? qs.get("c") : "halfcaff";
+  var c = BB.BY[id];
+  var ORIGIN = "https://russianriverroastery.com";
+
+  // ---------- per-coffee data ----------
+  var CUP = {
+    ethiopia: [
+      "Lemon and stone fruit up front, creamy honey underneath and a refreshing, tea-like finish. The most Ethiopian this bean gets.",
+      "Maple sugar and panela catch up to the fruit. Sweet, round and still bright. The sweet spot for pour-over.",
+      "Honey turns toward caramel, the lemon softens to a sparkle and the body thickens. Lovely in a drip machine.",
+      "Juicy and syrupy, with cooked stone fruit and brown sugar. This is where it makes exceptional espresso.",
+      "Smoky and bittersweet; most of the fruit roasts away. Benny would steer you to Dark instead."],
+    colombia: [
+      "Tangy and bright: dried pineapple and red berry lead, with a lighter body than this bean usually shows.",
+      "Cooked berry and rice-syrup sweetness with bright hints over a thick body. Great as drip.",
+      "The full picture: molasses, raisin, cooked berry and a long dark-cacao finish. A standout espresso.",
+      "Dark cacao and molasses take over, with an inky, heavy body. Excellent under milk.",
+      "Roasty and bittersweet; the fruit fades. Bold, but past this bean's best."],
+    "plantation-aa": [
+      "Lighter-bodied with gentle spice and a soft finish. Pleasant, but this bean wants a little more heat.",
+      "Smooth and round, cocoa and warm spice, very low acidity. An easy every-morning cup.",
+      "Rich body and deep cocoa with a cardamom-like hint of spice. The depth grows with every sip.",
+      "Heavy and chocolatey with almost no acidity. A great French press and a mellow espresso.",
+      "Smoky and dark; the spice turns roasty. Strong, and still smooth."],
+    "coorg-robusta": [
+      "Not recommended this light: grainy and sharp. Robusta needs heat to turn sweet.",
+      "Malty and nutty with earthy edges and plenty of caffeine. Fine for drip if you want the kick.",
+      "Cocoa and malt come together with earthy depth and big caffeine. A strong, satisfying mug.",
+      "Full-bodied, dark cocoa and thick crema. Built for espresso and the moka pot.",
+      "Intense and smoky with heavy crema and maximum punch. The high-octane option."],
+    mneb: [
+      "Too light for this bean: thin and cereal-like. Benny recommends going much darker.",
+      "Nutty and mild with a medium body. Fine, but the boldness hasn't shown up yet.",
+      "Chocolate and toasted nut with a building body. Getting close to what this bean is for.",
+      "Bold dark chocolate, full body and a long finish. Classic espresso.",
+      "Smoky, bittersweet and huge. The boldest cup on the list."],
+    decaf: [
+      "Light and tea-like, with a hint of matcha and malted grain. Delicate for a decaf.",
+      "Molasses bread and cinnamon, malty-sweet and clean. The crowd-pleaser.",
+      "Chocolate almond and malt come forward with a rounder body. A great evening drip.",
+      "Dark chocolate and toasted grain, heavy body, low acidity. Works as a decaf espresso.",
+      "Smoky and roasty; the spice fades. For very-dark-roast people who still want to sleep."],
+    halfcaff: [
+      "Lighter and brighter, with a soft fruit note from the caffeinated half. A gentle lift.",
+      "Balanced and chocolatey with a clean finish. The everyday half-caff.",
+      "Rounder chocolate and caramel, more body. The top-seller sweet spot.",
+      "Deep chocolate, full body and low acidity. Half the caffeine, all of the cup.",
+      "Smoky and bold. Half-caff for dark-roast people."]
+  };
+  var PAIRS = {
+    ethiopia: [["colombia", "Same brightness, deeper body"], ["plantation-aa", "Smooth, low-acid counterpoint"], ["halfcaff", "For the afternoon cup"]],
+    colombia: [["ethiopia", "Brighter and sweeter"], ["mneb", "Bolder, for espresso days"], ["plantation-aa", "Smooth and spicy"]],
+    "plantation-aa": [["coorg-robusta", "Same Coorg estates, more octane"], ["colombia", "Fruit-accented and inky"], ["decaf", "Smooth after dark"]],
+    "coorg-robusta": [["mneb", "Bold, with regular caffeine"], ["plantation-aa", "Its smooth estate neighbor"], ["colombia", "Thick-bodied espresso"]],
+    mneb: [["coorg-robusta", "Even more punch"], ["colombia", "Fruitier espresso"], ["halfcaff", "Bold flavor, half the buzz"]],
+    decaf: [["halfcaff", "Built on this decaf"], ["plantation-aa", "Smooth and low acid"], ["ethiopia", "Bright mornings"]],
+    halfcaff: [["decaf", "The decaf half, on its own"], ["ethiopia", "Bright and sweet"], ["plantation-aa", "Smooth and low acid"]]
+  };
+  var BREW = {
+    pourover: { name: "Pour-over", ratio: "1:16", dose: "22 g coffee · 350 g water", grind: "Auto-Drip grind", time: "About 3:00 total", a: "pourover" },
+    drip: { name: "Drip machine", ratio: "1:16", dose: "60 g per liter of water", grind: "Auto-Drip grind", time: "Flat-bottom basket", a: "drip" },
+    espresso: { name: "Espresso", ratio: "1:2", dose: "18 g in · 36 g out", grind: "Espresso grind", time: "25–30 seconds", a: "espresso" },
+    frenchpress: { name: "French press", ratio: "1:15", dose: "30 g coffee · 450 g water", grind: "Coarse grind", time: "4 minutes, then plunge", a: "frenchpress" },
+    moka: { name: "Moka pot", ratio: "1:7", dose: "Basket level, not packed", grind: "Fine grind", time: "Off the heat at the sputter", a: "moka" }
+  };
+  var GRIND_FOR = { "Whole Bean": "Grind at home", "Coarse": "French press, cold brew", "Auto-Drip": "Drip, pour-over", "Espresso": "Espresso machine", "Fine": "Moka pot, AeroPress", "Turkish": "Turkish coffee" };
+  var GRIND_LONG = { "Whole Bean": "keeps longest. Grind just before brewing, for any brewer.", "Coarse": "for French press, cold brew and percolators.", "Auto-Drip": "for drip machines and pour-over cones (V60, Chemex, Kalita).", "Espresso": "for espresso machines.", "Fine": "for the moka pot and AeroPress.", "Turkish": "powder-fine, for Turkish coffee in a cezve." };
+  var BEAN = ["#c9a36b", "#a8743c", "#7d4b23", "#512d14", "#2b170b"];
+  var LEVEL = BB.ROASTS; // index 1..5 = Light..French
+  function recd(i) { return i >= c.roast[0] && i <= c.roast[1]; }
+  var recRange = LEVEL[c.roast[0]] + (c.roast[1] !== c.roast[0] ? " to " + LEVEL[c.roast[1]] : "");
+
+  // ---------- head: title, description, canonical, JSON-LD ----------
+  var url = ORIGIN + "/coffee/?c=" + id;
+  var desc = c.name + " from Benny's Beans: " + c.notes.join(", ").toLowerCase() + ". Roasted to order every Monday and Wednesday in Guerneville, CA. $20/lb or $80 for 5 lb.";
+  document.title = c.name + " · $20/lb, Roasted to Order | Benny's Beans";
+  $('meta[name="description"]').setAttribute("content", desc);
+  $('link[rel="canonical"]').setAttribute("href", url);
+  $('meta[property="og:title"]').setAttribute("content", c.name + " · Benny's Beans");
+  var ld = document.createElement("script"); ld.type = "application/ld+json";
+  var avail = "https://schema.org/InStock";
+  ld.textContent = JSON.stringify({
+    "@context": "https://schema.org", "@type": "Product", "name": c.name, "description": c.blurb, "sku": "BB-" + id, "category": "Coffee",
+    "url": url, "image": ORIGIN + "/assets/og.jpg", "brand": { "@type": "Brand", "name": "Benny's Beans" },
+    "countryOfOrigin": c.origin === "Blend" ? undefined : c.origin,
+    "offers": [
+      { "@type": "Offer", "name": "1 lb", "price": "20.00", "priceCurrency": "USD", "availability": avail, "url": url, "itemCondition": "https://schema.org/NewCondition", "seller": { "@type": "Organization", "name": "Benny's Beans · Russian River Roastery" } },
+      { "@type": "Offer", "name": "5 lb", "price": "80.00", "priceCurrency": "USD", "availability": avail, "url": url, "itemCondition": "https://schema.org/NewCondition", "seller": { "@type": "Organization", "name": "Benny's Beans · Russian River Roastery" } }
+    ]
+  });
+  document.head.appendChild(ld);
+
+  // ---------- static content ----------
+  $("[data-crumb]").textContent = c.name;
+  $("[data-eyebrow]").textContent = c.origin + " · " + c.detail;
+  $("[data-name]").textContent = c.name;
+  $("[data-notes]").innerHTML = c.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+  $("[data-blurb]").textContent = c.blurb;
+  if (c.cert) $("[data-cert]").innerHTML = '<p class="cert"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="M5.8 10.4l2.7 2.6 5.7-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(c.cert) + "</p>";
+  $("[data-badges]").innerHTML = (c.badge ? '<span class="tag red">' + esc(c.badge) + "</span>" : "") + (c.caf === "decaf" ? '<span class="tag ink">Decaf</span>' : c.caf === "half" ? '<span class="tag ink">Half-caff</span>' : c.caf === "high" && !c.badge ? '<span class="tag ink">Extra caffeine</span>' : "");
+  var stage = $("[data-stage]");
+  stage.style.setProperty("--tint", c.c + "38");
+  stage.style.setProperty("--ringc", c.id === "mneb" ? "#16120f" : c.c);
+  $("[data-wm]").innerHTML = BB.ring({ words: false });
+  $("[data-sublink]").href = "../subscribe/?coffee=" + id;
+
+  // ---------- selectors ----------
+  var st = { size: 1, roast: "Roaster's Choice", grind: "Whole Bean", qty: 1 };
+  $("[data-roasts]").innerHTML = LEVEL.map(function (r, i) {
+    return '<button type="button" aria-pressed="' + (i === 0) + '" data-v="' + esc(r) + '">' + esc(r) + (i > 0 && recd(i) ? '<i class="rec" aria-hidden="true"></i><span class="sr"> (Benny recommends)</span>' : "") + "</button>";
+  }).join("");
+  $("[data-legend]").innerHTML = '<i class="rec" aria-hidden="true"></i> Benny recommends <b>' + esc(recRange) + "</b> for this coffee. Roaster's Choice lands in that range.";
+  $("[data-grinds]").innerHTML = BB.GRINDS.map(function (g, i) {
+    return '<button type="button" aria-pressed="' + (i === 0) + '" data-v="' + esc(g) + '">' + esc(g) + "<small>" + esc(GRIND_FOR[g]) + "</small></button>";
+  }).join("");
+
+  function bagSvg(size) { return BB.bag(id, { size: size, roastLabel: st.roast }); }
+  function paintBag() {
+    $("[data-pbag]").innerHTML = bagSvg(st.size);
+    stage.classList.toggle("big", st.size === 5);
+    $("[data-cap]").textContent = st.size + " lb · " + st.roast;
+    $("[data-mbar-thumb]").innerHTML = BB.bag(id, { size: st.size });
+  }
+  function paint() {
+    var unit = BB.PRICE[st.size], total = unit * st.qty;
+    $("[data-price]").textContent = BB.money(total);
+    var lbs = st.size * st.qty;
+    $("[data-per]").innerHTML = st.qty + " × " + st.size + " lb" + (st.size === 5 ? "<br><b>$16/lb · you save " + BB.money(20 * st.qty) + "</b>" : "<br>" + (total >= BB.freeShip ? "<b>Ships free</b>" : BB.money(BB.freeShip - total) + " from free shipping"));
+    $("[data-qty]").textContent = st.qty;
+    $("[data-addbtn]").innerHTML = "Add to bag · " + BB.money(total) + ' <span class="arr">→</span>';
+    $("[data-roast-val]").textContent = st.roast;
+    $("[data-grind-val]").textContent = st.grind;
+    $("[data-suits]").innerHTML = "<b>" + esc(st.grind) + "</b> " + esc(GRIND_LONG[st.grind]);
+    $("[data-mbar-name]").textContent = c.short;
+    $("[data-mbar-opts]").textContent = st.qty + " × " + st.size + " lb · " + st.roast + " · " + st.grind;
+    $("[data-mbar-add]").textContent = "Add · " + BB.money(total);
+    $$("[data-sizes] button").forEach(function (b) { b.setAttribute("aria-pressed", +b.dataset.v === st.size); });
+    $$("[data-roasts] button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.v === st.roast); });
+    $$("[data-grinds] button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.v === st.grind); });
+  }
+  $("[data-sizes]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; st.size = +b.dataset.v; paint(); paintBag(); });
+  $("[data-roasts]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; st.roast = b.dataset.v; paint(); paintBag(); });
+  $("[data-grinds]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; st.grind = b.dataset.v; paint(); });
+  $$("[data-step]").forEach(function (b) { b.addEventListener("click", function () { st.qty = Math.max(1, Math.min(20, st.qty + +b.dataset.step)); paint(); }); });
+  function add() { BB.add({ kind: "coffee", id: id, size: st.size, roast: st.roast, grind: st.grind, qty: st.qty }); }
+  $("[data-addbtn]").addEventListener("click", add);
+  $("[data-mbar-add]").addEventListener("click", add);
+  paint(); paintBag();
+
+  // ---------- live freshness ----------
+  function paintFresh() {
+    var r = BB.nextRoast();
+    $("[data-f-roast]").textContent = BB.fmt(r.roast);
+    $("[data-f-ship]").textContent = BB.fmt(r.ship);
+    $("[data-f-arrive]").textContent = "~" + BB.MON[r.arrive[0].getMonth()] + " " + r.arrive[0].getDate() + "–" + (r.arrive[1].getMonth() !== r.arrive[0].getMonth() ? BB.MON[r.arrive[1].getMonth()] + " " : "") + r.arrive[1].getDate();
+    $("[data-f-pick]").textContent = BB.fmt(r.pickup, true);
+    $("[data-st-day]").textContent = BB.DS[r.roast.getDay()].toUpperCase();
+    $("[data-st-date]").textContent = BB.MON[r.roast.getMonth()] + " " + r.roast.getDate();
+  }
+  paintFresh(); setInterval(paintFresh, 60000);
+
+  // ---------- tilt / parallax ----------
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  var bagEl = $("[data-pbag]"), wm = $("[data-wm]"), raf = 0, tx = 0, ty = 0;
+  stage.addEventListener("pointermove", function (e) {
+    if (reduce.matches || e.pointerType === "touch") return;
+    var r = stage.getBoundingClientRect();
+    tx = (e.clientX - r.left) / r.width - .5; ty = (e.clientY - r.top) / r.height - .5;
+    stage.classList.add("live");
+    if (!raf) raf = requestAnimationFrame(function () {
+      raf = 0;
+      bagEl.style.transform = "rotateY(" + (tx * 18).toFixed(2) + "deg) rotateX(" + (-ty * 12).toFixed(2) + "deg) translate3d(" + (tx * 14).toFixed(1) + "px," + (ty * 10).toFixed(1) + "px,0)";
+      wm.style.transform = "translate3d(" + (-tx * 26).toFixed(1) + "px," + (-ty * 20).toFixed(1) + "px,0) rotate(" + (tx * 10).toFixed(1) + "deg)";
+    });
+  });
+  stage.addEventListener("pointerleave", function () { stage.classList.remove("live"); bagEl.style.transform = ""; wm.style.transform = ""; });
+
+  // ---------- roast explorer ----------
+  var rx = $("[data-rx]");
+  rx.value = Math.round((c.roast[0] + c.roast[1]) / 2);
+  $("[data-ticks]").innerHTML = LEVEL.slice(1).map(function (r, i) { return '<span style="left:' + (i * 25) + '%" class="' + (recd(i + 1) ? "r" : "") + '"><button type="button" data-tick="' + (i + 1) + '" tabindex="-1">' + esc(r) + "</button></span>"; }).join("");
+  $("[data-rx-lede]").textContent = "Same green coffee, five roast levels. For the " + c.short + ", Benny recommends " + recRange + " (marked in gold).";
+  function paintRx() {
+    var v = +rx.value, name = LEVEL[v];
+    $("[data-rx-bean]").style.setProperty("--bean", BEAN[v - 1]);
+    $("[data-rx-lvl]").textContent = name;
+    $("[data-rx-eyebrow]").textContent = c.short + " · " + name + (recd(v) ? " · Benny recommends" : "");
+    $("[data-rx-say]").textContent = CUP[id][v - 1];
+    $("[data-rx-use]").textContent = "Order it " + name;
+    rx.setAttribute("aria-valuetext", name);
+  }
+  rx.addEventListener("input", paintRx);
+  $("[data-ticks]").addEventListener("click", function (e) { var b = e.target.closest("[data-tick]"); if (!b) return; rx.value = b.dataset.tick; paintRx(); });
+  function setRoast(r) {
+    st.roast = r; paint(); paintBag();
+    BB.toast("Roast set to <b>" + esc(r) + "</b>. Ready when you are.");
+    var top = $(".pdp").getBoundingClientRect().top + scrollY - 100;
+    scrollTo({ top: top, behavior: reduce.matches ? "auto" : "smooth" });
+    setTimeout(function () { var b = $('[data-roasts] button[aria-pressed="true"]'); if (b) b.focus({ preventScroll: true }); }, reduce.matches ? 0 : 500);
+  }
+  $("[data-rx-use]").addEventListener("click", function () { setRoast(LEVEL[+rx.value]); });
+  $("[data-rx-choice]").addEventListener("click", function () { setRoast(LEVEL[0]); });
+  paintRx();
+
+  // ---------- brew it ----------
+  $("[data-brews]").innerHTML = c.best.slice(0, 3).map(function (k) {
+    var b = BREW[k];
+    return '<a class="brew" href="../brew/#' + b.a + '"><div class="ratio">' + b.ratio + "</div><h3>" + esc(b.name) + '</h3><dl class="kv"><dt>Dose</dt><dd>' + esc(b.dose) + "</dd><dt>Grind</dt><dd>" + esc(b.grind) + "</dd><dt>Time</dt><dd>" + esc(b.time) + '</dd></dl><span class="go">' + esc(b.name) + ' guide <span>→</span></span></a>';
+  }).join("");
+
+  // ---------- pairs ----------
+  $("[data-pairs]").innerHTML = PAIRS[id].map(function (p) {
+    var o = BB.BY[p[0]];
+    return '<article class="pcard"><div class="stage" style="--c:' + o.c + '30"><div class="bag">' + BB.bag(o.id) + '</div></div><div class="body"><span class="origin">' + esc(o.origin) + "</span><h3>" + esc(o.name) + '</h3><p class="why">' + esc(p[1]) + ". " + esc(o.notes[0] + ", " + o.notes[1].toLowerCase()) + '.</p><div class="foot"><span class="price">$20 <small>/ lb</small></span><button class="add" type="button" data-quick="' + o.id + '" aria-label="Add 1 lb of ' + esc(o.name) + ' to your bag">+</button></div></div><a class="cover" href="./?c=' + o.id + '" aria-label="' + esc(o.name) + ', details"></a></article>';
+  }).join("");
+
+  // ---------- sticky mobile bar ----------
+  var mbar = $("[data-mbar]"), buyrow = $("[data-buyrow]"), mq = matchMedia("(max-width: 760px)");
+  function setBar(on) {
+    on = on && mq.matches;
+    mbar.classList.toggle("on", on); document.body.classList.toggle("mbar-on", on);
+    mbar.setAttribute("aria-hidden", !on); $("[data-mbar-add]").tabIndex = on ? 0 : -1;
+  }
+  var foot = $(".site-foot"), ticking = false;
+  function checkBar() {
+    ticking = false;
+    var past = buyrow.getBoundingClientRect().bottom < 0, footIn = foot && foot.getBoundingClientRect().top < innerHeight;
+    setBar(past && !footIn);
+  }
+  addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(checkBar); } }, { passive: true });
+  addEventListener("resize", checkBar); checkBar();
+
+  BB.reveal();
+});
+</script>
+</body>
+</html>
