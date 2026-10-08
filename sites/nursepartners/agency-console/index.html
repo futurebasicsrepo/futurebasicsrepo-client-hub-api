@@ -19,10 +19,11 @@
 <header class="c-top">
   <a class="c-brand" href="../"><span class="c-mark">NP</span><span><b>NursePartners</b><small>Agency console · demo</small></span></a>
   <span class="c-tag">Fill the roster. Convert the daughter.</span>
-  <div class="c-top-r"><span class="c-clock" id="clock"></span><a class="btn btn-lime btn-sm" href="../">View the public site</a></div>
+  <span class="c-where" id="c-where" aria-hidden="true">Today</span>
+  <div class="c-top-r"><span class="c-clock" id="clock"></span><a class="btn btn-lime btn-sm" href="../"><span class="c-site-long">View the public site</span><span class="c-site-short">Site ↗</span></a><button class="menu-btn" type="button" aria-label="Console sections" aria-expanded="false" aria-controls="cnav"><span></span></button></div>
 </header>
 <div class="c-shell">
-  <nav class="c-nav" aria-label="Console">
+  <nav class="c-nav" id="cnav" aria-label="Console">
     <a href="#today" data-v="today"><i>◎</i>Today</a>
     <a href="#shifts" data-v="shifts"><i>⇄</i>Open shifts <em id="n-shift">1</em></a>
     <a href="#recruiting" data-v="recruiting"><i>＋</i>Recruiting <em id="n-app"></em></a>

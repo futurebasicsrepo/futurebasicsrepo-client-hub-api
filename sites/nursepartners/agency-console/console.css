@@ -93,3 +93,83 @@ a.tile:hover{border-color:var(--plum-3);color:var(--ink)}
 .c-nav a[aria-current=page]{background:var(--volt);color:var(--ink)}
 .panel h3{letter-spacing:-.01em}
 .roi b{font-stretch:68%;font-weight:850}
+
+/* ---------- phones & small tablets ---------- */
+.c-where,.c-site-short{display:none}
+.c-top .menu-btn{display:none;--mb-line:#fff;--mb-open-bg:var(--volt);--mb-open-line:var(--ink);border-color:rgba(255,255,255,.28);margin-left:0}
+.c-top .menu-btn:hover{border-color:#fff}
+.c-grid2>*,.c-grid3>*{min-width:0}
+.row-between{flex-wrap:wrap;gap:8px 12px}
+@media (max-width:900px){
+  .c-top{gap:12px;padding:10px 14px;min-height:62px}
+  .c-brand small{display:none}
+  .c-brand b{font-size:15px}
+  .c-mark{width:34px;height:34px;border-radius:10px;font-size:13px}
+  .c-where{display:block;font-family:var(--display);font-stretch:68%;font-weight:850;text-transform:uppercase;font-size:20px;line-height:1;color:var(--volt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;padding-left:12px;border-left:1px solid rgba(255,255,255,.18)}
+  .c-brand span:last-child{display:none}
+  .c-top-r{gap:8px}
+  .c-site-long{display:none}.c-site-short{display:inline}
+  .c-top .btn-sm{min-height:40px;padding:6px 14px;font-size:14px}
+  .c-top .menu-btn{display:flex;width:44px;height:44px}
+  /* section nav becomes a drawer that wipes down under the top bar */
+  .c-shell{grid-template-columns:1fr}
+  .c-nav{position:fixed;top:62px;left:0;right:0;z-index:25;height:auto;max-height:calc(100dvh - 62px);overflow-y:auto;flex-direction:column;padding:10px 14px 18px;border:0;box-shadow:0 30px 60px -20px rgba(20,6,28,.45);
+    clip-path:inset(0 0 100% 0);visibility:hidden;transition:clip-path .45s var(--ease-out),visibility 0s linear .45s}
+  .c-nav.open{clip-path:inset(0 0 -60px 0);visibility:visible;transition:clip-path .6s var(--ease-out),visibility 0s}
+  .c-nav a{white-space:normal;padding:14px 12px;font-size:17px;opacity:0;transform:translateY(14px);transition:opacity .2s,transform .2s}
+  .c-nav.open a{opacity:1;transform:none;transition:opacity .4s var(--ease-out) calc(.1s + var(--i,0) * .045s),transform .55s var(--ease-out) calc(.1s + var(--i,0) * .045s),background .2s}
+  html.menu-open .c-main{filter:blur(2px);opacity:.5;transition:filter .3s,opacity .3s}
+  .c-main{transition:filter .3s,opacity .3s}
+  .c-main{padding:18px 14px 40px}
+  .v-head{margin-bottom:18px;gap:10px}
+  .v-head h1{font-size:clamp(28px,8vw,40px)}
+  .v-head p{font-size:14px}
+  /* shift fill: keep the phone short until texts arrive */
+  #v-shifts .phone{width:100%;max-width:360px;border-radius:36px;scroll-margin-top:76px}
+  #v-shifts .phone-screen{min-height:0;border-radius:28px}
+  #v-shifts .sms-log{min-height:220px;max-height:420px}
+  .shift-meta{grid-template-columns:1fr 1fr}
+  /* recruiting: swipeable columns that snap */
+  .kanban{grid-template-columns:repeat(5,82%);scroll-snap-type:x mandatory;margin:0 -14px 16px;padding:0 14px 8px;scroll-padding:0 14px}
+  .col{scroll-snap-align:start}
+  /* digests: list becomes a swipeable strip above the draft */
+  #dlist{display:flex;overflow-x:auto;gap:6px;scroll-snap-type:x mandatory}
+  #dlist li{flex:none;scroll-snap-align:start}
+  #dlist li button{white-space:nowrap;border:1px solid var(--line)}
+  .bars div{grid-template-columns:120px 1fr 28px}
+}
+@media (max-width:640px){
+  .tiles{grid-template-columns:1fr 1fr;gap:10px}
+  .tile{padding:14px}
+  .tile span{font-size:10.5px;letter-spacing:.06em}
+  .tile b{font-size:24px;margin:8px 0 4px}
+  .tile small{font-size:13px;line-height:1.35;display:block}
+  .tiles.slim .tile b{font-size:22px}
+  .panel{padding:16px}
+  .panel h3{font-size:20px}
+  .shift-meta div{padding:9px 10px}
+  .shift-meta b{font-size:14px}
+  #fill-go,#fill-reset{width:100%}
+  /* tables read as stacked cards: column name on the left, value on the right */
+  .c-main .tbl-wrap{overflow:visible;background:transparent}
+  .c-main .tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .c-main .tbl,.c-main .tbl tbody,.c-main .tbl tr,.c-main .tbl td{display:block;width:100%}
+  .c-main .tbl tr{background:#fff;border-radius:var(--r);padding:12px 14px;margin-bottom:10px;border:1px solid var(--line)}
+  .c-main .tbl td{position:relative;padding:5px 0 5px 104px;border:0;font-size:15px;min-height:28px}
+  .c-main .tbl td::before{content:attr(data-label);position:absolute;left:0;top:8px;width:96px;font-size:10.5px;font-weight:700;letter-spacing:.08em;line-height:1.3;text-transform:uppercase;color:var(--mute)}
+  .c-main .tbl td:first-child{display:block;padding:0 0 8px;font-weight:700;font-size:16px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+  /* open-shift candidates: two lines a scheduler can scan at 6am */
+  #elig-tbl tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 10px;align-items:start}
+  #elig-tbl td{padding:0;min-height:0}
+  #elig-tbl td::before{position:static;display:block;width:auto;margin-bottom:2px}
+  #elig-tbl td:first-child{grid-column:1/3;grid-row:1;border:0;margin:0;padding:2px 0 8px}
+  #elig-tbl td:last-child{grid-column:3;grid-row:1;justify-self:end;text-align:right}
+  #elig-tbl td:last-child::before{display:none}
+  #elig-tbl td:first-child::before{display:none}
+  .c-main .tbl td:first-child::before{display:none}
+  .c-main .tbl td br+.pill,.c-main .tbl td .pill{margin-top:2px}
+  #elig-tbl tr.won{border-color:var(--ok);background:var(--ok-wash)}
+  #elig-tbl tr.won td{background:transparent}
+  .roi b{font-size:26px}
+  .kv{font-size:14px}
+}

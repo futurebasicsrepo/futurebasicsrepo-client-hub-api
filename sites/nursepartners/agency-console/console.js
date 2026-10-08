@@ -17,10 +17,24 @@
     var v = (location.hash || "#today").slice(1);
     if (!$("#v-" + v)) v = "today";
     $$(".view").forEach(function (s) { s.hidden = s.id !== "v-" + v; });
-    $$(".c-nav a").forEach(function (a) { a.setAttribute("aria-current", a.dataset.v === v ? "page" : "false"); });
+    $$(".c-nav a").forEach(function (a) {
+      a.setAttribute("aria-current", a.dataset.v === v ? "page" : "false");
+      if (a.dataset.v === v) $("#c-where").textContent = a.childNodes[1].textContent.trim();
+    });
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", route); route();
+
+  // On phones each table row becomes a card; every cell carries its column name.
+  function label() {
+    $$(".c-main .tbl").forEach(function (t) {
+      var heads = $$("thead th", t).map(function (th) { return th.textContent.trim(); });
+      $$("tbody tr", t).forEach(function (tr) {
+        Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i] && td.dataset.label !== heads[i]) td.dataset.label = heads[i]; });
+      });
+    });
+  }
+  new MutationObserver(label).observe($(".c-main"), { childList: true, subtree: true });
   function tick() { $("#clock").textContent = new Date().toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET"; }
   tick(); setInterval(tick, 30000);
 
@@ -80,6 +94,7 @@
   function sms(cls, txt) { var l = $("#fill-log"), m = document.createElement("div"); m.className = cls; m.textContent = txt; l.appendChild(m); l.scrollTop = l.scrollHeight; }
   $("#fill-go").addEventListener("click", function () {
     var b = this; b.disabled = true;
+    if (matchMedia("(max-width: 900px)").matches) $("#v-shifts .phone").scrollIntoView({ behavior: slow ? "smooth" : "auto", block: "start" });
     $("#fill-log").innerHTML = "<span class='sms-time'>Today 5:53 AM</span>";
     var state = {};
     sms("sms in", "NursePartners: Open shift TODAY 9:00a–1:00p, South Philly (19148), personal care, $20.50/hr. Reply YES to take it. First yes gets it.");
@@ -189,4 +204,5 @@
   $("#src-bars").innerHTML = src.map(function (s) { return "<div><span>" + s[0] + "</span><i" + (/Google|Care Line/.test(s[0]) ? " class='lime'" : "") + " style='width:" + (s[1] / max * 100) + "%'></i><b>" + s[1] + "</b></div>"; }).join("");
   var nm = new Date(); nm.setDate(nm.getDate() + ((8 - nm.getDay()) % 7 || 7));
   $("#next-mon").textContent = nm.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + ", 7:00 am";
+  label();
 })();
