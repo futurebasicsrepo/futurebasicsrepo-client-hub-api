@@ -518,8 +518,10 @@ document.addEventListener("DOMContentLoaded", function () {
     return s;
   }
   function reasons(c) {
-    var out = [], m = METHODS[A.method], notes = c.notes.slice(0, 3).join(", ").toLowerCase();
-    if (A.caf === "none" && c.caf === "decaf") out.push("Water Process decaf: no chemicals, still " + notes + ".");
+    var out = [], m = METHODS[A.method], rx = { bright: /lemon|fruit|berry|honey|pineapple|maple|panela/i, choc: /choc|cacao|cocoa|almond|malt|molasses|nut/i, bold: /bold|dark|cocoa|malt|earthy|body|crema/i, smooth: /body|low|balanced|smooth|malt|cinnamon|spice|chocolate/i }[A.love] || /./;
+    var nl = c.notes.filter(function (n) { return rx.test(n); }).concat(c.notes.filter(function (n) { return !rx.test(n); }));
+    var notes = nl.slice(0, 3).join(", ").toLowerCase();
+    if (A.caf === "none" && c.caf === "decaf") out.push("Water Process decaf: no chemicals, none of the caffeine, all of the flavor.");
     else if (A.caf === "half" && c.caf === "half") out.push("A deliberate 50/50 of decaf and regular, matched for flavor and body.");
     else if (A.caf === "extra" && c.caf === "high") out.push("Robusta: about double the caffeine of arabica, with big crema.");
     var lv = { bright: "fruity and bright", choc: "chocolate and nutty", bold: "bold and smoky", smooth: "smooth and mellow" }[A.love];
@@ -531,7 +533,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   function roastFor(c) {
     if (A.roast === "benny") return "Roaster's Choice";
-    var lo = c.roast[0], hi = c.roast[1], t = A.roast === "light" ? lo : A.roast === "dark" ? hi : Math.min(hi, Math.max(lo, A.take === "black" ? 3 : 3 + (hi > 3 ? 1 : 0)));
+    var lo = c.roast[0], hi = c.roast[1], t = A.roast === "light" ? lo : A.roast === "dark" ? hi : Math.min(hi, Math.max(lo, A.take === "black" ? 2 : 3));
     return BB.ROASTS[t];
   }
   function ranked() { return BB.COFFEES.map(function (c, i) { return { c: c, s: score(c), i: i }; }).sort(function (a, b) { return b.s - a.s || a.i - b.i; }); }
@@ -624,7 +626,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var gi = BB.GRINDS.indexOf(m.grind);
     $("[data-out]").innerHTML =
       '<div class="row between"><span class="tag gold">' + esc(m.name) + '</span><span class="mono small" style="color:#bfb3a5">' + (m.kind === "espresso" ? "1 : " + R2.ratio + " in → out" : "1 : " + R2.ratio + " coffee to water") + "</span></div>" +
-      '<div class="big2"><div><div class="k">Coffee</div><div class="num">' + fmtG(R2.coffee) + '</div><div class="sub">≈ ' + Math.max(1, Math.round(R2.coffee / 5.3 * 2) / 2) + ' tbsp ground</div></div><div class="plus" aria-hidden="true">+</div><div><div class="k">' + (m.kind === "espresso" ? "Shot yield" : "Water") + '</div><div class="num">' + (m.kind === "espresso" ? fmtG(R2.water) : fmtW(R2.water)) + '</div><div class="sub">' + (m.kind === "espresso" ? "liquid espresso, weighed" : "1 ml water = 1 g") + "</div></div></div>" +
+      '<div class="big2"><div><div class="k">Coffee</div><div class="num">' + fmtG(R2.coffee) + '</div><div class="sub">≈ ' + Math.max(1, Math.round(R2.coffee / 5.3 * 2) / 2) + ' tbsp ground</div></div><div class="plus" aria-hidden="true">+</div><div><div class="k">' + (m.kind === "espresso" ? "Shot yield" : "Water") + '</div><div class="num">' + (m.kind === "espresso" ? fmtG(R2.water) : fmtW(R2.water)) + '</div><div class="sub">' + (m.kind === "espresso" ? "liquid espresso, weighed" : C.units === "g" ? "1 ml of water = 1 g" : "by volume") + "</div></div></div>" +
       '<div class="facts"><div><span class="k">Grind</span><b>' + esc(m.grind) + "</b><small>" + esc(m.grindNote) + '</small></div><div><span class="k">Water temp</span><b>' + esc(m.temp) + "</b><small>" + esc(m.tempC) + '</small></div><div><span class="k">Brew time</span><b>' + esc(m.time) + "</b><small>" + (m.kind === "cold" ? "Then dilute about 1:1" : "Total contact time") + '</small></div><div><span class="k">In your mug</span><b>' + (m.kind === "espresso" ? plainG(R2.water) : m.kind === "cold" ? "≈ " + plainW(R2.out * 2) : "≈ " + plainW(R2.out)) + "</b><small>" + (m.kind === "espresso" ? "of espresso" : m.kind === "cold" ? "after diluting 1:1" : "grounds hold ~2× their weight") + "</small></div></div>" +
       '<button type="button" class="btn btn-red btn-block" data-totimer>Start the timer for this <span class="arr">→</span></button>';
     syncTimer();

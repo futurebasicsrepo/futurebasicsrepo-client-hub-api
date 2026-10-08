@@ -175,7 +175,7 @@ document.addEventListener("DOMContentLoaded", function () {
   function ordersFor(R) {
     if (!CACHE[R.ymd]) CACHE[R.ymd] = genRoast(R);
     var demo = DEMO_ORDERS.filter(function (o) { return o.roast === R.ymd; });
-    var smp = R.ymd === NEXT.ymd ? ALL_SAMPLES().filter(function (s) { return s.approved && s.coffees.length && !S.sent["ship:" + s.id]; }).map(function (s) {
+    var smp = R.ymd === NEXT.ymd ? ALL_SAMPLES().filter(function (s) { return s.approved && s.coffees.length; }).map(function (s) {
       return { no: s.id, ch: "samples", mine: s.mine, who: { name: s.business + (s.town ? ", " + s.town : ""), first: (s.contact || "").split(" ")[0] }, items: s.coffees.map(function (c) { return { kind: "coffee", id: c, size: .25, roast: RC, grind: "Whole Bean", qty: 1 }; }), fulfil: "ship", total: 0, roast: R.ymd, placed: NOW };
     }) : [];
     return demo.concat(smp, CACHE[R.ymd]);
@@ -718,12 +718,14 @@ document.addEventListener("DOMContentLoaded", function () {
     var br = bringFor(m), t1 = 0, t5 = 0;
     $("#mk-bring").innerHTML = '<table class="tbl"><thead><tr><th>Coffee</th><th class="n">Avg / wk</th><th class="n">Bring 1 lb</th><th class="n">5 lb</th></tr></thead><tbody>' + B.COFFEES.map(function (c) { var b = br[c.id]; t1 += b.b1; t5 += b.b5; return '<tr><td><span class="sw" style="background:' + c.c + '"></span>' + esc(c.short) + '</td><td class="n">' + b.avg.toFixed(1) + '</td><td class="n"><b>' + b.b1 + '</b></td><td class="n">' + (b.b5 || "–") + "</td></tr>"; }).join("") + '</tbody><tfoot><tr><td>Total</td><td></td><td class="n"><b>' + t1 + '</b></td><td class="n">' + t5 + '</td></tr></tfoot></table><p class="tiny">Plus the pre-orders, bagged and named. Also pack: card reader, change float ($100 in 5s and 1s), coasters, sample cups.</p>';
     // history
-    var h = marketHist(m);
-    $("#mk-hist").innerHTML = '<div class="tscroll"><table class="tbl hist"><thead><tr><th>Coffee</th>' + h.slice().reverse().map(function (x) { return '<th class="n">' + B.MON[x.d.getMonth()] + " " + x.d.getDate() + (x.mine ? " *" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
+    var hm = MK[HISTM] || m, h = marketHist(hm);
+    $("#mk-hist").innerHTML = '<div class="seg seg-sm" role="group" aria-label="Market">' + B.markets.map(function (x) { return '<button type="button" data-hm="' + x.id + '" aria-pressed="' + (x === hm) + '">' + esc(x.town) + "</button>"; }).join("") + '</div><div class="tscroll"><table class="tbl hist"><thead><tr><th>Coffee</th>' + h.slice().reverse().map(function (x) { return '<th class="n">' + B.MON[x.d.getMonth()] + " " + x.d.getDate() + (x.mine ? " *" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
       B.COFFEES.map(function (c) { return '<tr><td><span class="sw" style="background:' + c.c + '"></span>' + esc(c.short) + "</td>" + h.slice().reverse().map(function (x) { var s = x.sold[c.id] || [0, 0]; return '<td class="n">' + s[0] + (s[1] ? '<sup>+' + s[1] + "×5</sup>" : "") + "</td>"; }).join("") + "</tr>"; }).join("") +
-      '<tr class="sum"><td>Revenue</td>' + h.slice().reverse().map(function (x) { return '<td class="n">' + money(x.cash + x.card) + "</td>"; }).join("") + '</tr></tbody></table></div><p class="tiny">' + esc(m.name) + (h.some(function (x) { return x.mine; }) ? " · * logged by you in this browser" : "") + "</p>";
+      '<tr class="sum"><td>Revenue</td>' + h.slice().reverse().map(function (x) { return '<td class="n">' + money(x.cash + x.card) + "</td>"; }).join("") + '</tr></tbody></table></div><p class="tiny">' + esc(hm.name) + (h.some(function (x) { return x.mine; }) ? " · * logged by you in this browser" : "") + "</p>";
     renderLog();
   }
+  var HISTM = null;
+  $("#mk-hist").addEventListener("click", function (e) { var b = e.target.closest("[data-hm]"); if (!b) return; HISTM = b.dataset.hm; renderMarkets(); var nb = $('#mk-hist [data-hm="' + HISTM + '"]'); if (nb) nb.focus(); });
   function renderLog() {
     var opts = []; B.markets.forEach(function (m) { pastMarketDates(m, 2).forEach(function (d) { opts.push({ m: m, d: d }); }); var nm = B.nextMarket(); if (nm && nm.m === m && nm.live) opts.unshift({ m: m, d: day0(nm.start) }); });
     opts.sort(function (a, b) { return b.d - a.d; });
@@ -749,7 +751,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var ymd = B.ymd(o.d); S.marketLog = S.marketLog.filter(function (l) { return !(l.market === o.m.id && l.date === ymd); });
     S.marketLog.push({ market: o.m.id, date: ymd, sold: sold, coasters: +$("#st-coasters").value || 0, cash: +$("#lg-cash").value || 0, card: +$("#lg-card").value || 0 }); save();
     CACHE = {}; WEEKLY = null; rendered.roastday = false; rendered.insights = false; rendered.green = false;
-    renderMarkets(); B.toast("Tally saved for " + esc(o.m.town) + " " + B.fmt(o.d) + ". History and next week's bring list updated.");
+    HISTM = o.m.id; renderMarkets(); B.toast("Tally saved for " + esc(o.m.town) + " " + B.fmt(o.d) + ". History and next week's bring list updated.");
   });
 
   // =====================================================================
