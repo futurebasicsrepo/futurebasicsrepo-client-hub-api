@@ -3,6 +3,7 @@
 // <!--np:header--> … <!--/np:header--> (and the footer pair) is rewritten.
 // Run: node sites/nursepartners/build.mjs
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, relative, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -95,6 +96,12 @@ function pages(dir) {
   });
 }
 
+// Fingerprint CSS/JS links with a hash of their contents (site.css?v=3fa9c1), so a browser
+// holding an old copy fetches the new file the moment it changes. Run this after editing them.
+const FINGERPRINT = ["assets/site.css", "assets/site.js", "agency-console/console.css", "agency-console/console.js"];
+const version = Object.fromEntries(FINGERPRINT.map((f) => [f.split("/").pop(), createHash("sha1").update(readFileSync(join(root, f))).digest("hex").slice(0, 8)]));
+const stamp = (html) => html.replace(/((?:href|src)="[^"]*?\b(site\.css|site\.js|console\.css|console\.js))(\?v=[0-9a-f]+)?"/g, (_, url, name) => `${url}?v=${version[name]}"`);
+
 for (const file of pages(root)) {
   const rel = relative(root, file);
   const depth = rel.split(sep).length - 1;
@@ -104,6 +111,7 @@ for (const file of pages(root)) {
   html = html
     .replace(/<!--np:header-->[\s\S]*?<!--\/np:header-->/, header(p, page))
     .replace(/<!--np:footer-->[\s\S]*?<!--\/np:footer-->/, footer(p));
+  html = stamp(html);
   writeFileSync(file, html);
   console.log("synced", rel);
 }
