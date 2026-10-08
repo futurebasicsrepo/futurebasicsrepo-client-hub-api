@@ -182,8 +182,8 @@
   @media (max-width: 1020px) { .levels { grid-template-columns: repeat(3, 1fr); } .levels li:nth-child(3n) { border-right: 0; } }
   @media (max-width: 560px) { .levels { grid-template-columns: 1fr 1fr; } .levels li { border-right: 0 !important; margin-right: 0; padding-right: 10px; border-bottom: 1px solid #3a312a; } }
   .grinds { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-  .gcard { background: #221c18; border: 1px solid #3a312a; border-radius: 22px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px; }
-  .gcard .grains { height: 46px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--r), var(--s)); grid-auto-columns: var(--s); gap: var(--g); align-content: center; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); }
+  .gcard { min-width: 0; background: #221c18; border: 1px solid #3a312a; border-radius: 22px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .gcard .grains { width: 100%; height: 46px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--r), var(--s)); grid-auto-columns: var(--s); gap: var(--g); align-content: center; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); }
   .gcard .grains i { width: var(--s); height: var(--s); border-radius: 40%; background: var(--kraft); opacity: .9; }
   .gcard h3 { font: 800 16px/1.1 var(--sans); font-variation-settings: "wdth" 115; margin: 0; text-transform: uppercase; }
   .gcard p { font-size: 13.5px; color: #bfb3a5; margin: 0; line-height: 1.4; }
