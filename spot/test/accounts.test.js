@@ -162,7 +162,12 @@ test('texts need the consent box ticked, and /texts shows the opt-in without sig
   assert.equal(page.status, 200);
   const html = String(page.body);
   assert.match(html, /<input type="tel" id="phone"[^>]*required/, 'the phone field shows without clicking anything');
-  assert.match(html, /<label class="agree" id="smsOkBox"><input type="checkbox" id="smsOk">/, 'an unticked box, not hidden');
+  assert.match(html, /<label class="agree" id="smsOkBox"><input type="checkbox" id="smsOk" name="sms_consent" value="yes">/, 'an unticked box, not hidden');
+  // One form holds both: the labeled phone field and the consent box (and no email field).
+  const form = html.match(/<form class="f" id="emailForm" name="sms_optin">([\s\S]*?)<\/form>/)[1];
+  assert.match(form, /<label for="phone"[^>]*>Mobile phone number<\/label><input type="tel" id="phone" name="phone"/);
+  assert.match(form, /name="sms_consent"/);
+  assert.doesNotMatch(form, /type="email"/);
   assert.match(html, /I agree to receive texts from Spot\..*Msg frequency varies\. Msg &amp; data rates may apply\. Reply HELP for help, STOP to opt out\./);
   assert.match(html, /href="\/terms#texts"/);
   assert.match(html, /href="\/privacy"/);
