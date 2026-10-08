@@ -64,13 +64,16 @@ export function normalizeTechPack(input) {
     label: str(s?.label, 120),
     image: image(s?.image),
     garmentWidthIn: inches(s?.garmentWidthIn),
+    // the approved hero image, when the callouts have been placed on it: the pins and detail pictures below are then read from hx/hy/hphoto
+    hero: s?.hero && typeof s.hero === 'object' && image(s.hero.image) ? { id: str(s.hero.id, 60), image: image(s.hero.image) } : null,
     callouts: list(s?.callouts, LIMITS.callouts, c => ({
       n: Math.max(1, Math.min(99, Number(c?.n) || 0)) || 1,
       label: str(c?.label, 80),
       spec: str(c?.spec, 400),
       note: str(c?.note, 600),
       photo: image(c?.photo, MAX_PHOTO_CHARS),
-      x: unit(c?.x), y: unit(c?.y)
+      x: unit(c?.x), y: unit(c?.y),
+      hphoto: image(c?.hphoto, MAX_PHOTO_CHARS), hx: unit(c?.hx), hy: unit(c?.hy)
     })).filter(c => c.label || c.note || c.spec)
   }));
   const sketchIds = new Set(sketches.map(s => s.id));

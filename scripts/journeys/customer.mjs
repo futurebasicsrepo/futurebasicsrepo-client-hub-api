@@ -853,7 +853,12 @@ await journey('J87', 'the PDF of a tech pack is its own document in reading orde
       ok(!/cutout/i.test(await p.$eval('#printDoc', e => e.innerHTML.replace(/data:image[^"]+/g, ''))) && !/Send your quotation|Spec check|Messages/.test(txt), 'working files, the quote form, the spec check and messages are not in it');
       ok(pages >= 4 && pages <= 14, `as a PDF it is ${pages} pages, not a page per tab`, pages); ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close(); }
     // the client
-    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Approvals/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); await pdf(p, 'client'); await ctx.close(); }
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Approvals/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); { await p.evaluate(() => document.querySelector('#tabs button[data-tab="bom"]')?.click()); await p.waitForSelector('.panel[data-panel="bom"].on table[data-tbl="bom"]', { timeout: 8000 });
+      const w = await p.$$eval('.panel[data-panel="bom"].on table[data-tbl="bom"] thead th', ths => Object.fromEntries(ths.map(t => [t.textContent.trim().toLowerCase(), Math.round(t.getBoundingClientRect().width)])));
+      ok(w.color >= 100 && w.qty <= 70 && w.unit <= 70 && w.notes >= 90 && w.component >= 100, 'the materials table shares its width by what each column holds: Color wide enough to read, Qty and Unit narrow', w);
+      const broken = await p.$$eval('.panel[data-panel="bom"].on table[data-tbl="bom"] td .ro', els => els.filter(e => { const r = document.createRange(); r.selectNodeContents(e); const lines = new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; return lines > 6; }).length);
+      ok(broken === 0, 'and no cell wraps onto more than six lines', broken); await p.locator('.panel[data-panel="bom"].on .tablewrap').first().screenshot({ path: `${dir}/j87-bom.png` }).catch(() => {}); }
+    await pdf(p, 'client'); await ctx.close(); }
     // the factory with a quotation link: the client is hidden and there is no sign-off
     { const { ctx, p } = await open(`${BASE}/tp/${ptok}`); const txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'factory');
       ok(!/Secret Brand Pdf/.test(txt) && !/Approvals/.test(txt) && !/Send your quotation/.test(txt), 'a quotation link\'s copy never names the client and has no sign-off or quote form');
@@ -891,6 +896,53 @@ await journey('J88', 'every page a factory or a fair visitor can open fits a sma
       }
       await ctx.close();
     }
+  } finally { await bw.close(); }
+});
+
+await journey('J89', 'once the hero image is approved the callouts are shown on it: each callout is found again on the hero and its detail picture is cut from it, the original photo and the callouts\' text, numbers and acknowledgements are untouched, and the labels are readable', async () => {
+  const m = await room('89');
+  let st = null; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running) break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const pack = async () => (await adm(`/v1/admin/products/${m.id}/tech-pack`)).json.techPack;
+  const tp0 = await pack(), sk0 = tp0.data.sketches.find(s => s.callouts.length);
+  ok(sk0 && sk0.hero && /^data:image\/jpeg/.test(sk0.hero.image), 'the first view carries the approved hero image', sk0 && Object.keys(sk0));
+  ok(sk0.callouts.length >= 3 && sk0.callouts.every(c => typeof c.hx === 'number' && typeof c.hy === 'number' && /^data:image\/jpeg/.test(c.hphoto)), 'every callout has a position and a detail picture read from the hero', sk0.callouts.map(c => [c.n, c.hx, c.hy, !!c.hphoto]));
+  ok(sk0.callouts.every(c => c.x != null && c.y != null && /^data:image/.test(c.photo)) && /^data:image/.test(sk0.image) && sk0.image !== sk0.hero.image, 'while the original photo, positions and detail pictures are as they were');
+  ok(sk0.callouts.some(c => c.hphoto !== c.photo), 'and the detail pictures really come from the hero, not the photo');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Callouts placed on the hero image%'`) >= '1', 'it is on the record');
+  // what the people who read the pack see
+  { const pb = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: hero callouts' } }); ok(pb.status === 200, 'staff publish', [pb.status, pb.json]); }
+  const sup = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Hero Mill ${stamp}` } })).json, as = await adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId: sup.id, mode: 'quote' } }), ptok = as.json.assignment.packUrl.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.find(s => s.callouts.length); ok(fv.hero && fv.callouts.every(c => c.hphoto), 'the factory\'s copy has the hero view with its pins and detail pictures');
+  { const rd = (await call(`/v1/tp/${ptok}`)).json.techPack.readiness; ok(rd.callouts.length === sk0.callouts.length && rd.pendingCalloutKeys.every(k => k.startsWith(sk0.id + ':')), 'acknowledgement keys are what they were: one per callout, not doubled', rd.pendingCalloutKeys.slice(0, 3)); }
+  // a pack whose hero was approved before this existed: staff can place the callouts on it, update the published copy without a new version, and publishing does it by itself
+  { const strip = col => sql(`update tech_packs set ${col} = jsonb_set(${col},'{sketches}',(select jsonb_agg((s - 'hero') || jsonb_build_object('callouts',(select coalesce(jsonb_agg(c - 'hx' - 'hy' - 'hphoto'),'[]'::jsonb) from jsonb_array_elements(s->'callouts') c))) from jsonb_array_elements(${col}->'sketches') s)) where product_id='${m.id}'`);
+    const heroId = sql(`select id from tech_pack_heroes where product_id='${m.id}' and status='approved' order by approved_at desc limit 1`), heroed = async () => (await pack()).data.sketches.some(k => k.hero), ver = () => sql(`select version from tech_packs where product_id='${m.id}'`);
+    strip('data'); strip('published_data'); ok(!(await heroed()) && !(await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero), 'a pack from before has callouts on the photo only');
+    ok((await call(`/v1/admin/tech-pack-heroes/${heroId}/place-callouts`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot ask for it');
+    const pl = await adm(`/v1/admin/tech-pack-heroes/${heroId}/place-callouts`, { method: 'POST', body: {} }); ok(pl.status === 200 && await heroed(), 'staff put the callouts on the approved hero', pl.json);
+    ok(!(await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero), 'the published copy is the old one until staff update it');
+    const v0 = ver(), up = await adm(`/v1/admin/products/${m.id}/tech-pack/refresh-pictures`, { method: 'POST', body: {} }); ok(up.status === 200 && up.json.updated === true && (await call(`/v1/tp/${ptok}`)).json.techPack.data.sketches.some(k => k.hero) && ver() === v0, 'updating the pictures on the published pack brings the hero view too, with no new version', up.json);
+    strip('data'); const pub2 = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: hero callouts again' } }); ok(pub2.status === 200 && (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack.data.sketches.some(k => k.hero), 'publishing a pack whose callouts are not on the approved hero does it first', pub2.status); }
+  const bw = await playwright.chromium.launch();
+  try {
+    const dir = process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP;
+    const ctx = await bw.newContext({ viewport: { width: 1100, height: 900 } }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+    await p.goto(`${BASE}/tp/${ptok}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 15000 }); await p.click('#tabs button[data-tab="calls"]'); await p.waitForSelector('.panel[data-panel="calls"].on [data-stage] img.base', { timeout: 10000 }); await sleep(900);
+    const src = await p.$eval('.panel[data-panel="calls"].on [data-stage] img.base', e => e.src); ok(src === fv.hero.image, 'in the callouts view the picture is the hero');
+    const pinPhotos = await p.$$eval('.panel[data-panel="calls"].on [data-stage] .pin .ph', els => els.map(e => e.src)); ok(pinPhotos.length === fv.callouts.length && fv.callouts.every(c => pinPhotos.includes(c.hphoto)), 'and each pin\'s detail picture is the one cut from it');
+    const lay = await p.$$eval('.panel[data-panel="calls"].on [data-stage] .pin', pins => { const r = pins.map(x => { const l = x.querySelector('.lb'); return { l: l ? l.getBoundingClientRect() : null, clipped: l ? l.scrollHeight > l.clientHeight + 1 || getComputedStyle(l).textOverflow === 'ellipsis' : false, n: x.querySelector('.n').getBoundingClientRect() }; }); let overlaps = 0; for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (r[i].l && r[j].l) { const a = r[i].l, b = r[j].l; if (a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top) overlaps++; } return { overlaps, clipped: r.filter(x => x.clipped).length, labels: r.filter(x => x.l).length }; });
+    ok(lay.labels >= 3 && lay.overlaps === 0 && lay.clipped === 0, 'the labels do not overlap each other and none is cut short', lay);
+    await p.locator('.panel[data-panel="calls"].on [data-stage]').first().screenshot({ path: `${dir}/j89-callouts.png` }).catch(() => {});
+    ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    // staff: moving a pin on the hero moves the hero position only
+    const actx = await bw.newContext({ viewport: { width: 1280, height: 950 } }); await actx.addInitScript(t => localStorage.setItem('fb.admin.token', t), admin);
+    const ap = await actx.newPage(); await ap.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 15000 }); await ap.click('#tabs button[data-tab="calls"]'); await ap.waitForSelector('.panel[data-panel="calls"].on [data-pin][data-hero]', { timeout: 10000 }); await sleep(600);
+    const before = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0];
+    const box = await ap.locator('.panel[data-panel="calls"].on [data-pin] .n').first().boundingBox(); await ap.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await ap.mouse.down(); await ap.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 6 }); await ap.mouse.up(); await sleep(400);
+    await ap.click('[data-act="save"]'); for (let i = 0; i < 30; i++) { const c = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0]; if (c.hx !== before.hx) break; await sleep(300); }
+    const after = (await pack()).data.sketches.find(k => k.callouts.length).callouts[0];
+    ok(after.x === before.x && after.y === before.y && (after.hx !== before.hx || after.hy !== before.hy), 'staff can drag a pin on the hero: the hero position moves and the original one does not', [[before.x, before.y, before.hx, before.hy], [after.x, after.y, after.hx, after.hy]]); await actx.close();
   } finally { await bw.close(); }
 });
 
