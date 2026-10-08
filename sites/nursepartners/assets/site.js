@@ -97,9 +97,31 @@
     var onScroll = function () { head.classList.toggle("scrolled", window.scrollY > 8); };
     window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
   }
-  var mb = $(".menu-btn"), nav = $(".nav");
-  if (mb && nav) mb.addEventListener("click", function () {
-    var o = nav.classList.toggle("open"); mb.setAttribute("aria-expanded", o);
+  // Menus: every .menu-btn opens the element named by its aria-controls.
+  // The button morphs into an X, the panel wipes down and its links stagger in (see site.css).
+  $$(".menu-btn").forEach(function (btn) {
+    var panel = document.getElementById(btn.getAttribute("aria-controls"));
+    if (!panel) return;
+    $$("a", panel).forEach(function (a, i) { a.style.setProperty("--i", i); });
+    var set = function (open) {
+      panel.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
+      btn.setAttribute("aria-label", open ? "Close menu" : (btn.dataset.label || "Menu"));
+      document.documentElement.classList.toggle("menu-open", open);
+    };
+    btn.dataset.label = btn.getAttribute("aria-label") || "Menu";
+    btn.addEventListener("click", function (e) { e.stopPropagation(); set(!panel.classList.contains("open")); });
+    panel.addEventListener("click", function (e) { if (e.target.closest("a")) set(false); });
+    document.addEventListener("click", function (e) {
+      if (panel.classList.contains("open") && !panel.contains(e.target)) set(false);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && panel.classList.contains("open")) { set(false); btn.focus(); }
+    });
+    // Leaving the breakpoint (rotating a tablet, resizing) closes the menu so nothing stays locked.
+    window.addEventListener("resize", function () {
+      if (panel.classList.contains("open") && getComputedStyle(btn).display === "none") set(false);
+    });
   });
   var cx = $(".concept button");
   if (store("np_concept_closed")) document.documentElement.classList.add("concept-hidden");
