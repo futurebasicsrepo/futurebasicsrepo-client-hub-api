@@ -276,7 +276,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     },
 
     // Called by the Stripe webhook (or the sandbox) once money has landed.
-    async paymentSucceeded({ paymentRef, amountCents, payer }) {
+    async paymentSucceeded({ paymentRef, amountCents, payer, approval = null }) {
       const bundle = db.bundles?.byPayment(paymentRef);
       if (bundle) return this._bundlePaid(bundle, amountCents, payer);
       const cart = db.byPayment(paymentRef);
@@ -298,13 +298,41 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       // Spot is the seller: the payer gets a receipt from Spot, with a link
       // to cancel for a full refund until the order is placed.
       // Sign the approval first so the receipt can link it.
-      this.emit('approved', paid.id, { by: paid.for === 'self' ? 'requester' : 'payer', how: 'paid_spot', amount_cents: amountCents });
+      // A saved-card payment says how it was approved (a tap, or the rules).
+      const how = approval || paid.saved_pay || { by: paid.for === 'self' ? 'requester' : 'payer', how: 'paid_spot' };
+      this.emit('approved', paid.id, { by: how.by, how: how.how, amount_cents: amountCents });
       this.emit('receipt', paid.id);
       if (verdict.action === 'hold') {
         return this.patch(cart.id, (c) => ({ ...c, hold: { reason: verdict.reason, at: Date.now() } }), 'held_for_review');
       }
       if (paid.kind !== 'flight' && paid.for !== 'self') this.emit('covered', paid.id);
       return paid.kind === 'flight' ? this.bookFlight(paid) : this.issue(paid);
+    },
+
+    // Pay an ask with its account's own saved card (funding.js). `how` says
+    // who said yes: { by: 'requester', how: 'approved_saved_card' } after a
+    // tap, or { by: 'rules', how: 'paid_by_rules' } when the account opted in
+    // to its AI paying on its own. `present`: the person is on the page, so
+    // their bank can ask them to verify (then `action` goes back to Stripe.js).
+    async paySaved(token, funding, { present = false, how }) {
+      const cart = load(token);
+      if (cart.settle !== 'card' || cart.bundle_id || cart.kind === 'flight' || cart.for !== 'self') throw new CartError('This ask can’t be paid with a saved card', 409);
+      if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This ask has expired' : 'This ask is already paid', 409);
+      if (!cart.requester?.shipping) throw new CartError('Add where it ships first', 409);
+      if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't charge your card for it.`, 409);
+      const ready = this.patch(cart.id, (c) => ({ ...c, saved_pay: how }));
+      const r = await provider.chargeSaved(ready, funding, { present });
+      if (r.ref && r.ref !== ready.payment_ref) {
+        const cur = db.byId(cart.id);
+        if (!db.save({ ...cur, payment_ref: r.ref }, 'open')) throw new CartError('Cart changed, try again', 409);
+      }
+      if (r.status === 'succeeded') {
+        const payer = { name: cart.requester.name?.split(' ')[0] || null, email: cart.requester.shipping.email || null, fingerprint: funding.fingerprint || null };
+        return { cart: await this.paymentSucceeded({ paymentRef: r.ref, amountCents: cart.total_cents, payer, approval: how }) };
+      }
+      if (r.status === 'requires_action') return { cart: db.byId(cart.id), action: r.client };
+      db.event(cart.id, 'saved_card_failed', { reason: r.error || null });
+      throw new CartError(r.error || 'The payment didn’t go through', 402);
     },
 
     // From /admin: a held payment checks out, so carry on as if it was never held.

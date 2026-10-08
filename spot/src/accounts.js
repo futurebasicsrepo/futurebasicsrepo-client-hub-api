@@ -8,7 +8,7 @@
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
-//   POST /v1/me/keys/:name/rules { max_order_cents, monthly_cents, stores, approver }
+//   POST /v1/me/keys/:name/rules { max_order_cents, monthly_cents, stores, approver, pay }
 //   POST /v1/me/approver  { email, name }   → they confirm by email (POST /v1/approver/confirm)
 //   POST /v1/me/approver/remove
 //   POST /v1/me/link/start  { email } | { phone }         → code to that address
@@ -26,6 +26,7 @@ import { validateShipping } from './fulfill/index.js';
 import { ownerCart } from './spot.js';
 import { emailLayout, normalizePhone } from './notify.js';
 import { approverOf, monthStart, normalizeRules } from './rules.js';
+import { fundingOf, fundingView } from './funding.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -176,6 +177,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       carts,
       keys: keysOf(user.id),
       approver: approverView(user.id),
+      funding: fundingView(db, user.id),
       passkeys: db.passkeys.ofUser(user.id),
       linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
@@ -287,6 +289,9 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const user = me(req);
     const rules = normalizeRules(req.body || {});
     if (rules && rules.approver !== 'never' && !approverOf(db, user.id)) throw new CartError('Add an approver first, and have them confirm by email', 409);
+    const card = fundingOf(db, user.id);
+    if (rules && rules.pay !== 'link' && !card) throw new CartError('Add your card first, under “Your AI’s card”', 409);
+    if (rules?.pay === 'auto' && !card.auto_ok_at) throw new CartError('Turn on “Let my AI pay without asking” under “Your AI’s card” first', 409);
     if (!db.keyRules.set(user.id, req.params.name, rules)) throw new CartError('No key with that name', 404);
     db.agentEvents.add(`key:${req.params.name}`, user.id, 'rules_changed', { rules });
     return { keys: keysOf(user.id) };

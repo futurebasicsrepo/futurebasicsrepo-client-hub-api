@@ -4,6 +4,13 @@
 //   max_order_cents  no single ask over this
 //   monthly_cents    this key's asks this month add up to no more than this
 //   stores           only these stores (domains; "nike.com" also allows www.nike.com)
+//   pay              how an ask inside the rules gets paid (see funding.js):
+//                    'link'  a link to pay (the default; anyone can pay it)
+//                    'tap'   the account's own saved card, after the person
+//                            taps Approve on the text or email
+//                    'auto'  the account's own saved card, right away. A
+//                            separate opt-in on the account, and it needs a
+//                            max_order_cents: that caps every task's card.
 //   approver         'never'      break a rule → refused (the AI is told why)
 //                    'over_limit' break a limit → it goes to the approver to pay
 //                    'always'     every ask goes to the approver to pay
@@ -15,6 +22,7 @@
 import { CartError } from './cart.js';
 
 const APPROVER = ['never', 'over_limit', 'always'];
+export const PAY = ['link', 'tap', 'auto'];
 
 export function normalizeRules(b = {}) {
   const cents = (v, name) => {
@@ -28,8 +36,11 @@ export function normalizeRules(b = {}) {
     : [];
   const approver = b.approver == null ? 'never' : String(b.approver);
   if (!APPROVER.includes(approver)) throw new CartError(`approver must be one of ${APPROVER.join(', ')}`);
-  const out = { max_order_cents: cents(b.max_order_cents, 'max_order_cents'), monthly_cents: cents(b.monthly_cents, 'monthly_cents'), stores, approver };
-  const empty = !out.max_order_cents && !out.monthly_cents && !out.stores.length && out.approver === 'never';
+  const pay = b.pay == null ? 'link' : String(b.pay);
+  if (!PAY.includes(pay)) throw new CartError(`pay must be one of ${PAY.join(', ')}`);
+  const out = { max_order_cents: cents(b.max_order_cents, 'max_order_cents'), monthly_cents: cents(b.monthly_cents, 'monthly_cents'), stores, approver, pay };
+  if (pay === 'auto' && !out.max_order_cents) throw new CartError('Set a max per order before letting your AI pay on its own: it caps every card');
+  const empty = !out.max_order_cents && !out.monthly_cents && !out.stores.length && out.approver === 'never' && pay === 'link';
   return empty ? null : out;
 }
 
