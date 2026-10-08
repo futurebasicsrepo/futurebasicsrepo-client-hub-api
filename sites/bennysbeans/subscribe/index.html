@@ -72,6 +72,7 @@
   .opt .pr small { font: 500 11.5px var(--mono); color: var(--mute); font-weight: 400; }
   .opt .tag { align-self: flex-start; margin-top: 8px; }
   .rot .mini { width: 64px; margin-bottom: 6px; }
+  @media (max-width: 640px) { .rot .opt { padding-left: 92px; min-height: 120px; } .rot .mini { position: absolute; left: 16px; top: 18px; width: 60px; } }
   .rot .mini svg { width: 100%; filter: drop-shadow(0 8px 8px rgba(60,40,20,.25)); }
   .or { display: flex; align-items: center; gap: 14px; margin: 22px 0 14px; font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -122,7 +123,7 @@
   .sumcard .money span.r strong { display: block; font: 800 17px var(--sans); color: var(--ink); }
   .sumcard .kv { margin: 14px 0; font-size: 14px; }
   .sumcard .kv dd { text-align: right; }
-  .cal { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 14px; }
+  .cal { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 14px; }
   .cal li { border: 1.5px solid var(--line); border-radius: 14px; text-align: center; padding: 8px 4px 7px; background: var(--bone); }
   .cal li.first { background: var(--cherry); border-color: var(--cherry); color: #fff; }
   .cal li span { display: block; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
@@ -174,7 +175,11 @@
   .next .lock { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px; font: 500 12px var(--mono); color: var(--gold); }
   .next .lock i { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
   .next .acts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 22px; }
-  @media (max-width: 560px) { .next .acts { grid-template-columns: 1fr 1fr; } .next .top { grid-template-columns: 80px 1fr; gap: 14px; } }
+  @media (max-width: 560px) { .next .acts { grid-template-columns: 1fr 1fr; } .next .top { grid-template-columns: 72px 1fr; gap: 14px; } .next .when { font-size: 30px; } .next .what { font-size: 14px; } }
+  .plan { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: 20px 22px; }
+  .plan h3 { font-size: 17px; margin: 0 0 12px; }
+  .plan .kv { font-size: 14px; margin-bottom: 16px; }
+  .plan .kv dd { text-align: right; }
   .act { min-height: 64px; border-radius: 18px; border: 1.5px solid #3d342d; background: #221c18; color: var(--paper); cursor: pointer; font-weight: 700; font-size: 14px; display: grid; place-items: center; gap: 2px; padding: 8px; transition: all .15s; }
   .act:hover { border-color: var(--paper); }
   .act[aria-expanded="true"], .act[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
@@ -360,6 +365,7 @@
           <div class="next" data-next aria-live="polite"></div>
           <div class="panel" id="swapPanel" hidden><span class="k" style="color:#bfb3a5;font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase">Swap to</span><div class="swapgrid" data-swapgrid></div></div>
           <div class="panel" id="freqPanel" hidden><span class="k" style="color:#bfb3a5;font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase">Deliver every</span><div class="seg" role="group" aria-label="Frequency" data-mfreq></div></div>
+          <div class="plan"><h3>Your plan</h3><dl class="kv" data-plan></dl><span class="label">Get it by</span><div class="seg mt1" role="group" aria-label="Change delivery method" data-mfulfil></div></div>
         </div>
         <div class="side">
           <div class="sms">
@@ -383,7 +389,7 @@
     <div class="wrap">
       <div class="gift ink">
         <div class="ringw" data-giftring></div>
-        <div><p class="eyebrow">For someone else</p><h2 class="h2" style="margin:0">Give a subscription.</h2><p class="lede mt1 mb0">Three or six months of fresh roasts with a printable card. They pick the coffee, or let Benny.</p></div>
+        <div><p class="eyebrow">For someone else</p><h2 class="h2" style="margin:0">Give a subscription.</h2><p class="lede mt1 mb0">Fresh roasts on their doorstep, on a schedule, with a card from you. They can skip or swap like any subscriber.</p></div>
         <a class="btn btn-light" href="../gifts/">Gift a subscription <span class="arr">→</span></a>
       </div>
     </div>
@@ -588,7 +594,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // summary card
     $("[data-sumbag]").innerHTML = bag(S.coffee, S.size === 5 ? 5 : 1);
-    $("[data-sumname]").textContent = cname(S.coffee);
+    $("[data-sumname]").textContent = cshort(S.coffee);
     $("[data-sumopts]").textContent = S.roast + " · " + S.grind;
     $("[data-sumprice]").textContent = BB.money(p);
     $("[data-summonth]").textContent = "≈ " + BB.money(perMonth(p, S.every)) + "/mo";
@@ -684,6 +690,7 @@ document.addEventListener("DOMContentLoaded", function () {
   $("[data-swapgrid]").innerHTML = Object.keys(ROT).concat(BB.COFFEES.map(function (c) { return c.id; })).map(function (k) {
     return '<button type="button" data-swap="' + k + '" aria-pressed="false" style="--c:' + (ROT[k] ? ROT[k].c : BY[k].c) + '"><i></i>' + esc(cshort(k)) + "</button>";
   }).join("");
+  $("[data-mfulfil]").innerHTML = [["ship", "Ship"], ["willcall", "Will-call"], ["market", "Market"]].map(function (f) { return '<button type="button" data-mfu="' + f[0] + '" aria-pressed="false">' + f[1] + "</button>"; }).join("");
   $("[data-mfreq]").innerHTML = [1, 2, 4].map(function (e) { return '<button type="button" data-mevery="' + e + '" aria-pressed="false">' + EVERY[e].t + "</button>"; }).join("");
 
   function mDates() { return schedule(8, M.every).map(function (d) { return { d: d, skip: !!M.skipped[BB.ymd(d)] }; }); }
@@ -693,7 +700,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var ready = readyDate(nx.d, M.fulfil, M.market);
     var cut = new Date(nx.d); cut.setHours(0, 0, 0, 0); var ms = cut.getTime() - 60000 - BB.now().getTime();
     nxt.innerHTML = (M.paused ? '<span class="tag gold paused">Paused</span>' : "") +
-      '<div class="top"><div class="bagw">' + bag(M.coffee, M.size === 5 ? 5 : 1) + '</div><div><span class="k">' + (M.mine ? esc(M.mine) + "'s next delivery" : "Next delivery") + '</span><div class="when">' + (M.paused ? "On hold" : BB.DS[nx.d.getDay()] + " " + BB.MON[nx.d.getMonth()] + " " + nx.d.getDate()) + '</div><div class="what">' + M.size + " lb " + esc(cname(M.coffee)) + " · " + esc(M.roast) + " · " + esc(M.grind) + "<br>" + (M.paused ? "Resume any time and it goes on the next roast." : "Roasts " + BB.fmt(nx.d, true) + ", " + (M.fulfil === "ship" ? "ships " : "ready ") + BB.fmt(ready) + " · " + esc(fulfilLabel(M.fulfil, M.market))) + "</div>" +
+      '<div class="top"><div class="bagw">' + bag(M.coffee, M.size === 5 ? 5 : 1) + '</div><div><span class="k">' + (M.mine ? esc(M.mine) + "'s next delivery" : "Next delivery") + '</span><div class="when">' + (M.paused ? "On hold" : BB.DS[nx.d.getDay()] + " " + BB.MON[nx.d.getMonth()] + " " + nx.d.getDate()) + '</div><div class="what">' + M.size + " lb " + esc(cshort(M.coffee)) + " · " + esc(M.roast) + " · " + esc(M.grind) + "<br>" + (M.paused ? "Resume any time and it goes on the next roast." : "Roasts " + BB.fmt(nx.d, true) + ", " + (M.fulfil === "ship" ? "ships " : "ready ") + BB.fmt(ready) + " · " + esc(fulfilLabel(M.fulfil, M.market))) + "</div>" +
       (M.paused ? "" : '<span class="lock"><i></i>Changes lock in ' + BB.left(Math.max(0, ms)) + "</span>") + "</div></div>" +
       '<div class="acts">' +
       '<button type="button" class="act" data-act="skip"' + (M.paused ? " disabled" : "") + ">" + ICON.skip + "Skip next</button>" +
@@ -702,6 +709,8 @@ document.addEventListener("DOMContentLoaded", function () {
       '<button type="button" class="act" data-act="pause" aria-pressed="' + M.paused + '">' + (M.paused ? ICON.play + "Resume" : ICON.pause + "Pause") + "</button></div>";
     press("[data-swap]", "data-swap", M.coffee);
     press("[data-mevery]", "data-mevery", M.every);
+    press("[data-mfu]", "data-mfu", M.fulfil);
+    $("[data-plan]").innerHTML = "<dt>Coffee</dt><dd>" + esc(cname(M.coffee)) + "</dd><dt>Size</dt><dd>" + M.size + " lb</dd><dt>Every</dt><dd>" + EVERY[M.every].t + "</dd><dt>Roast</dt><dd>" + esc(M.roast) + "</dd><dt>Grind</dt><dd>" + esc(M.grind) + "</dd><dt>Get it</dt><dd>" + esc(fulfilLabel(M.fulfil, M.market)) + "</dd><dt>Per delivery</dt><dd>" + BB.money(PRICES[M.size]) + (M.fulfil === "ship" && PRICES[M.size] < BB.freeShip ? " + shipping" : "") + "</dd>";
     $("[data-meverytxt]").textContent = EVERY[M.every].t.toLowerCase();
     // upcoming
     $("[data-upcoming]").innerHTML = all.slice(0, 4).map(function (x) {
@@ -736,6 +745,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (s) { M.coffee = s.dataset.swap; M.roast = defRoast(M.coffee); renderManage(); BB.toast("Swapped to " + esc(cname(M.coffee)) + " from the next roast."); return; }
     var fq = e.target.closest("[data-mevery]");
     if (fq && fq.tagName === "BUTTON") { M.every = +fq.dataset.mevery; M.skipped = {}; renderManage(); BB.toast("Now " + EVERY[M.every].t.toLowerCase() + "."); return; }
+    var mf = e.target.closest("[data-mfu]");
+    if (mf) { M.fulfil = mf.dataset.mfu; renderManage(); BB.toast(M.fulfil === "ship" ? "Shipping it from the next roast." : "Pickup at " + esc(fulfilLabel(M.fulfil, M.market)) + " from the next roast."); return; }
     var u = e.target.closest("[data-unskip]");
     if (u) { delete M.skipped[u.dataset.unskip]; renderManage(); BB.toast("Back on the schedule."); }
   });

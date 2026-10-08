@@ -23,7 +23,7 @@
   .shop-hero { padding-bottom: clamp(24px, 3vw, 40px); overflow: hidden; }
   .shop-hero .hg { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
   .shop-hero h1 { margin: 0 0 22px; font-size: clamp(60px, 7.6vw, 112px); }
-  .shop-hero .lede { margin-bottom: 26px; }
+  .shop-hero .lede { margin-bottom: 26px; max-width: 52ch; }
   .roastline { display: inline-flex; align-items: center; gap: 14px; background: var(--ink); color: var(--paper); border-radius: var(--pill); padding: 8px 22px 8px 8px; max-width: 100%; }
   .roastline .dot { flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--cherry); display: grid; place-items: center; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: #fff; text-transform: uppercase; }
   .roastline b { color: var(--gold); font-weight: 700; }
@@ -435,7 +435,7 @@ document.addEventListener("DOMContentLoaded", function () {
       '<div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><ul class="notes">' + c.notes.slice(0, 3).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
       '<div><div class="rl" aria-hidden="true"><span>Light</span><span>French</span></div>' + BB.roastBar(c.roast) + "</div>" +
       '<span class="best">Best for <b>' + esc(best) + "</b></span>" +
-      '<div class="foot"><span class="price">$20 <small>/ 1 lb</small></span><button class="add" type="button" data-quick="' + c.id + '" aria-label="Add 1 lb of ' + esc(c.name) + ' to your bag">+</button></div></div>' +
+      '<div class="foot"><span class="price" style="white-space:nowrap">$20 <small>/ lb</small></span><button class="add" type="button" data-quick="' + c.id + '" aria-label="Add 1 lb of ' + esc(c.name) + ' to your bag">+</button></div></div>' +
       '<a class="cover" href="../coffee/?c=' + c.id + '" aria-label="' + esc(c.name) + ', $20 per pound. Choose roast and grind"></a></article>';
   }
   var quiz = '<article class="pcard quiz in-grid"><div class="body"><div><span class="origin" style="color:var(--gold)">Can\'t decide?</span><h3>Take the 30-second bean quiz.</h3><p class="small" style="color:#bfb3a5;margin-top:12px">Tell Benny how you brew and what you like in a cup. Get a bag matched to you, roast and grind included.</p></div><div style="width:120px;color:var(--cherry);margin:10px 0">' + BB.ring({ words: false }) + '</div><a class="btn btn-light btn-block" href="../brew/#quiz">Find my bean <span class="arr">→</span></a></div></article>';
