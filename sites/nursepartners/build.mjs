@@ -76,6 +76,7 @@ function footer(p) {
         <p class="small">1200 East High Street, Suite 109<br>Pottstown, PA 19464</p>
       </div>
     </div>
+    <div class="foot-mark" aria-hidden="true">Still home<i>.</i></div>
     <div class="foot-base">
       <span>© <span data-year>2026</span> NursePartners, Inc. · Concept by Future Basics</span>
       <span>Please don't send medical information by text, chat or email. We'll ask privately at your assessment.</span>

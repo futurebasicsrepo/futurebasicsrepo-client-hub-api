@@ -52,6 +52,16 @@ These are **illustrative** and must be confirmed or replaced before launch:
 
 No reviews or testimonials were invented. The site links to their Caring.com reviews, and the console shows how a review engine would grow them.
 
+## Design
+
+Campaign line: **"Still home."** with a rotating second line (*Still Mom. Still Dad. Still Nana. Still herself.*), built from the agency's own "There's no place like home."
+
+- **Type:** one variable grotesk, Archivo (Google Fonts). Condensed heavy caps for display (`font-stretch:68%`), regular width at 18px for reading.
+- **Color:** the logo's plum pushed to near-black ink (`#14061c`), and its pale lime pushed to a single "volt" accent (`#dcf05a`) for highlights, CTAs and the ticker. Everything else is paper and white.
+- **Photography:** square, full-bleed, plum duotone with film grain (`.duo`, `.photo`, `.campaign .bg`). This hides the low resolution of the current photos; color returns on hover. A real shoot should replace them.
+- **Motion:** proof-point ticker, manifesto words that light up on scroll (`.manifesto`), count-up numbers (`data-count`), and the hero rotator (`data-rotate`). All of it is off under `prefers-reduced-motion`.
+- **Components:** numbered index rows for the three audiences, rule-divided steps and stats instead of floating cards, a volt CTA band, and a giant "Still home." footer wordmark.
+
 ## Taking it live
 
 The concept runs fully in the browser and sends nothing anywhere. A production build would add:
