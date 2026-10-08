@@ -84,7 +84,7 @@ const ERRORS = {
 };
 
 // The SMS opt-in: an unticked box with the full disclosure, next to every phone field.
-const smsAgree = (id, hidden) => `<label class="agree" id="${id}Box"${hidden ? ' hidden' : ''}><input type="checkbox" id="${id}"><span>I agree to receive texts from Spot. ${esc(SMS_CONSENT.replace(/^By entering your number you agree to receive texts from Spot: /, 'Texts are '))} <a href="/terms#texts">Terms</a> · <a href="/privacy">Privacy</a></span></label>`;
+const smsAgree = (id, hidden) => `<label class="agree" id="${id}Box"${hidden ? ' hidden' : ''}><input type="checkbox" id="${id}" name="sms_consent" value="yes"><span>I agree to receive texts from Spot. ${esc(SMS_CONSENT.replace(/^By entering your number you agree to receive texts from Spot: /, 'Texts are '))} <a href="/terms#texts">Terms</a> · <a href="/privacy">Privacy</a></span></label>`;
 
 // /signin, and /texts: the same page opened on the text option, readable
 // without clicking anything (the SMS opt-in carriers review).
@@ -97,7 +97,7 @@ export function signinPage({ origin, providers = {}, texts = false }) {
   <h1 style="font-size:38px">${texts ? 'Get Spot by text' : 'Sign in'}</h1>
   <p class="sub" id="lead">${texts ? 'Spot texts you a sign-in code, and updates about your own orders: when someone pays for your cart, when your AI asks you to approve something, and when it’s ordered or booked. No marketing.' : 'We’ll send you a 6-digit code. No password needed.'}</p>
   <div class="seg" role="tablist" aria-label="Send the code by" id="seg"${texts ? ' hidden' : ''}><button type="button" role="tab" aria-selected="${!texts}" data-mode="email">Email</button><button type="button" role="tab" aria-selected="${texts}" data-mode="phone">Text</button></div>
-  <form class="f" id="emailForm"><input type="email" id="email" ${texts ? 'hidden' : 'required'} placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" ${texts ? 'required' : 'hidden'}>${smsAgree('smsOk', !texts)}<button class="btn primary" id="sendBtn">${texts ? 'Text me a code' : 'Email me a code'}</button></form>
+  <form class="f" id="emailForm" ${texts ? 'name="sms_optin"' : 'name="signin"'}>${texts ? '' : '<input type="email" id="email" name="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email">'}${texts ? '<label for="phone" class="sub" style="margin:0;font-weight:600">Mobile phone number</label>' : ''}<input type="tel" id="phone" name="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile phone number" ${texts ? 'required' : 'hidden'}>${smsAgree('smsOk', !texts)}<button class="btn primary" id="sendBtn">${texts ? 'Text me a code' : 'Email me a code'}</button></form>
   <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
   <div class="or" id="or"${texts ? ' hidden' : ''}><span>or</span></div><div class="sso" id="sso"${texts ? ' hidden' : ''}><button type="button" class="btn ghost pk-b" id="pkBtn" hidden>🔑 Use Face ID or a passkey</button>${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>
   <p class="err" id="err"></p>
@@ -110,8 +110,8 @@ const q=new URLSearchParams(location.search);if(ERRORS[q.get('error')])$('#err')
 const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';return n.startsWith('/')&&!n.startsWith('//')?n:'/account'})();
 let mode=${JSON.stringify(texts ? 'phone' : 'email')},who='';
 const setMode=m=>{mode=m;document.querySelectorAll('#seg button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.mode===m)));
-  const ph=m==='phone';$('#email').hidden=ph;$('#email').required=!ph;$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsOkBox').hidden=!ph;$('#smsOk').required=ph;
-  $('#sendBtn').textContent=ph?'Text me a code':'Email me a code';(ph?$('#phone'):$('#email')).focus();try{localStorage.setItem('spot:signin',m)}catch{}};
+  const ph=m==='phone',em=$('#email');if(em){em.hidden=ph;em.required=!ph}$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsOkBox').hidden=!ph;$('#smsOk').required=ph;
+  $('#sendBtn').textContent=ph?'Text me a code':'Email me a code';(ph?$('#phone'):em)?.focus();try{localStorage.setItem('spot:signin',m)}catch{}};
 $('#seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode)});
 ${texts ? "setMode('phone');" : "try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}"}
 $('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';if(pkAbort){pkAbort.abort();pkAbort=null}const b=$('#sendBtn');b.disabled=true;
