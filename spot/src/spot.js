@@ -7,6 +7,8 @@ import { CartError, computeTotals, config, decideAuthorization, goodsCents, tran
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { validateShipping } from './fulfill/index.js';
 
+const ISSUE_RETRY_MS = 60_000;
+
 export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
   // Private links in notifications: an HMAC of the token stands in for the
@@ -589,9 +591,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     },
 
     // Issue the merchant-locked card. Safe to retry: a failed issue leaves
-    // the cart `paid`, and the requester page retries on the next view.
-    async issue(cart) {
+    // the cart `paid`, and the requester page retries on the next view, at
+    // most once a minute (the page checks every few seconds).
+    async issue(cart, { retry = false } = {}) {
       if (cart.status !== 'paid' || cart.kind === 'flight' || cart.hold || cart.dispute) return cart;
+      if (retry) {
+        const last = db.events(cart.id).filter((e) => e.kind === 'issue_failed').at(-1);
+        if (last && Date.now() - last.at < ISSUE_RETRY_MS) return cart;
+      }
       try {
         const card = await provider.issueCard(cart);
         const issued = move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined }, issued_at: Date.now() }, { last4: card.last4 });

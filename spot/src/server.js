@@ -505,7 +505,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   app.get('/v1/carts/:token/manage', async (req) => {
     let cart = spot.loadManaged(req.params.token, keyOf(req));
-    if (cart.status === 'paid') cart = await spot.issue(cart); // retry a failed issue
+    if (cart.status === 'paid') cart = await spot.issue(cart, { retry: true }); // retry a failed issue, once a minute
     if (cart.settle === 'direct' && cart.direct?.checkout_id) cart = await spot.directSync(cart.token);
     return {
       cart: ownerCart(cart),
