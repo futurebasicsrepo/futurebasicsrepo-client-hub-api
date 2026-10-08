@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<link rel="stylesheet" href="../assets/site.css?v=cf6bf463">
 <style>
   [hidden] { display: none !important; }
   /* ---------- hero ---------- */
@@ -113,12 +113,13 @@
   @media (max-width: 860px) { .corp { grid-template-columns: minmax(0, 1fr); } .corp-ring { max-width: 170px; justify-self: start; } }
 
   /* ---------- print: only the gift note ---------- */
+  #print-root { display: none; }
   @media print {
     @page { margin: 14mm; }
     body { background: #fff !important; }
-    body * { visibility: hidden !important; }
-    .gnote, .gnote * { visibility: visible !important; }
-    .gnote { position: absolute; left: 0; top: 0; width: 100%; transform: none; box-shadow: none; }
+    body > *:not(#print-root) { display: none !important; }
+    #print-root { display: block !important; }
+    #print-root .gnote { transform: none; box-shadow: none; }
   }
 </style>
 </head>
@@ -432,7 +433,10 @@ document.addEventListener("DOMContentLoaded", function () {
   });
   $$("[data-gsi]").forEach(function (el) { el.addEventListener("input", paintGs); el.addEventListener("change", paintGs); });
   paintGs();
-  $("[data-print]").addEventListener("click", function () { window.print(); });
+  var pr = document.createElement("div"); pr.id = "print-root"; pr.setAttribute("aria-hidden", "true"); document.body.appendChild(pr);
+  function fillPrint() { pr.innerHTML = $("[data-gnote]").outerHTML; }
+  addEventListener("beforeprint", fillPrint);
+  $("[data-print]").addEventListener("click", function () { fillPrint(); window.print(); });
   $("[data-gs-add]").addEventListener("click", function () {
     var to = $("[data-gsi=to]").value.trim(), err = $("[data-gs-err]"); err.textContent = "";
     if (!to) { err.textContent = "Add who it's for, so the note and the label are right."; $("[data-gsi=to]").focus(); return; }

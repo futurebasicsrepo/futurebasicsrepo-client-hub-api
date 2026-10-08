@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<link rel="stylesheet" href="../assets/site.css?v=cf6bf463">
 <style>
   /* ---------- hero ---------- */
   .brew-hero { overflow: hidden; }
@@ -49,7 +49,7 @@
   .quiz .qtop button[hidden] { display: none; }
   .quiz .qbody { padding: 14px clamp(20px, 3vw, 36px) clamp(24px, 3vw, 36px); }
   .quiz h3.q { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: clamp(30px, 4vw, 54px); line-height: .95; margin: 6px 0 22px; }
-  .answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .answers { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 12px; }
   .ans { position: relative; text-align: left; min-height: 120px; border: 1.5px solid var(--line); border-radius: 24px; background: var(--bone); padding: 18px; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; transition: transform .2s var(--ease), border-color .15s, background .15s; }
   .ans:hover { border-color: var(--ink); transform: translateY(-3px); }
   .ans[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -61,7 +61,7 @@
   .ans[aria-pressed="true"] small { color: #bfb3a5; }
   .qanim { animation: qin .45s var(--ease); }
   @keyframes qin { from { opacity: 0; transform: translateX(24px); } }
-  @media (max-width: 520px) { .answers { grid-template-columns: 1fr 1fr; gap: 10px; } .ans { min-height: 112px; padding: 14px; border-radius: 20px; } .ans b { font-size: 16px; } .ans small { font-size: 12px; } }
+  @media (max-width: 760px) { .answers { grid-template-columns: 1fr 1fr; gap: 10px; } .ans { min-height: 112px; padding: 14px; border-radius: 20px; } .ans b { font-size: 16px; } .ans small { font-size: 12px; } }
 
   .result { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 0; }
   .result .stage { background: var(--c, var(--kraft-l)); display: grid; place-items: center; padding: 28px; position: relative; min-height: 360px; }
@@ -78,6 +78,7 @@
   @media (max-width: 520px) { .picks { grid-template-columns: 1fr; } }
   .runner { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; font-size: 14px; }
   .runner b { display: block; font-size: 15px; }
+  @media (max-width: 420px) { .runner { grid-template-columns: 44px 1fr; } .runner .btn { grid-column: 1 / -1; } }
   @media (max-width: 760px) { .result { grid-template-columns: 1fr; } .result .stage { min-height: 280px; } .result .stage .bagw { width: 52%; } }
 
   /* ---------- calculator ---------- */
@@ -108,12 +109,13 @@
   .out .num small { font-size: .38em; letter-spacing: 0; margin-left: 4px; color: var(--gold); }
   .out .plus { font-weight: 900; font-size: 34px; color: var(--cherry); padding-bottom: 10px; }
   .out .sub { font: 500 12px var(--mono); color: #bfb3a5; margin-top: 6px; }
-  .out .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .out .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .out .facts div { background: #241e1a; border-radius: 18px; padding: 14px 16px; }
   .out .facts .k { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #8d8174; }
   .out .facts b { display: block; font-size: 18px; margin-top: 4px; }
   .out .facts small { display: block; font-size: 12.5px; color: #bfb3a5; margin-top: 2px; }
-  @media (max-width: 420px) { .out .big2 { grid-template-columns: 1fr; } .out .plus { display: none; } }
+  @media (max-width: 420px) { .out .big2 { grid-template-columns: 1fr 1fr; } .out .plus { display: none; } .out .facts b { font-size: 16px; } }
+  .out .num { white-space: nowrap; }
 
   /* ---------- timer ---------- */
   .timer { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: clamp(20px, 4vw, 56px); align-items: center; }
@@ -122,11 +124,12 @@
   .ringbox svg.pr { width: 100%; height: 100%; transform: rotate(-90deg); }
   .ringbox .trk { fill: none; stroke: #2e2722; stroke-width: 16; }
   .ringbox .prog { fill: none; stroke: var(--cherry); stroke-width: 16; stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
-  .ringbox .seg-ticks line { stroke: var(--river); stroke-width: 3; }
+  .ringbox .seg-ticks line { stroke: var(--gold); stroke-width: 3; stroke-linecap: round; }
   .ringbox .mid { position: absolute; inset: 14%; border-radius: 50%; display: grid; place-items: center; text-align: center; padding: 10px; }
   .ringbox .clock { font-weight: 900; font-variation-settings: "wdth" 125; font-size: clamp(54px, 8vw, 92px); line-height: .9; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
   .ringbox .stg { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
-  .ringbox .say { font-size: 15px; color: #e6ddd1; margin-top: 8px; line-height: 1.35; max-width: 240px; }
+  .ringbox .say { font-size: 15px; color: #e6ddd1; margin: 8px auto 0; line-height: 1.35; max-width: 250px; }
+  @media (max-width: 420px) { .ringbox .say { font-size: 13.5px; max-width: 200px; } }
   .ringbox .of { font: 500 12px var(--mono); color: #8d8174; margin-top: 8px; }
   .tctl { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
   .tctl .go { min-width: 150px; }
@@ -141,18 +144,27 @@
   .stages li.now { border-color: var(--cherry); background: #2a1512; }
   .stages li.now .no { background: var(--cherry); border-color: var(--cherry); color: #fff; }
   .stages li.done { opacity: .55; }
+  @media (max-width: 520px) { .stages li { grid-template-columns: 34px 1fr; } .stages li .tm { grid-column: 2; } }
   .stages li.done .no { background: var(--river); border-color: var(--river); color: #fff; }
   .tmeth { display: flex; flex-wrap: wrap; gap: 6px; }
   .tmeth button { background: transparent; color: var(--paper); border-color: #3a312a; }
   .tmeth button[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
 
   /* ---------- guides ---------- */
-  .guides { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 18px; }
+  .guides { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 1100px) { .guides { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 680px) { .guides { grid-template-columns: 1fr; } }
+  .guide { min-width: 0; }
+  .guide dl.kv { grid-template-columns: 58px 1fr; }
+  .guide.cta { background: var(--cherry); color: #fff; border-color: var(--cherry); justify-content: space-between; }
+  .guide.cta .eyebrow { color: #ffd9d3; }
+  .guide.cta .eyebrow::before { background: #fff; }
+  .guide.cta .ringw { width: 120px; color: #fff; }
   .guide { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: clamp(20px, 2.4vw, 28px); display: flex; flex-direction: column; gap: 14px; }
   .guide .gh { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .guide h3 { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: 28px; line-height: .95; margin: 0; }
-  .guide .ratio { flex: none; width: 74px; height: 74px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; text-align: center; font: 900 19px/1 var(--sans); font-variation-settings: "wdth" 125; }
-  .guide .ratio small { display: block; font: 500 9px var(--mono); letter-spacing: .1em; color: var(--gold); margin-top: 3px; }
+  .guide h3 { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: 24px; line-height: .95; margin: 0; }
+  .guide .ratio { flex: none; width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; text-align: center; font: 900 18px/1 var(--sans); font-variation-settings: "wdth" 125; }
+  .guide .ratio small { display: block; font: 500 8.5px var(--mono); letter-spacing: .1em; color: var(--gold); margin-top: 3px; }
   .guide .gear { font: 500 12px var(--mono); color: var(--mute); letter-spacing: .04em; }
   .guide dl.kv { font-size: 14px; }
   .guide ol { margin: 0; padding: 0; list-style: none; counter-reset: g; display: grid; gap: 8px; }
@@ -166,7 +178,7 @@
   .bean span svg { width: 100%; height: 100%; }
 
   /* ---------- freshness ---------- */
-  .tl { position: relative; margin: 34px 0 10px; }
+  .tl { position: relative; margin: 40px 0 10px; }
   .tl .bar { display: grid; grid-template-columns: 3fr 11fr 14fr 14fr; height: 64px; border-radius: 18px; overflow: hidden; }
   .tl .bar div { display: flex; flex-direction: column; justify-content: center; padding: 0 14px; font-size: 13px; font-weight: 700; line-height: 1.15; min-width: 0; }
   .tl .bar div small { font: 500 10.5px var(--mono); font-weight: 400; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -176,11 +188,12 @@
   .tl .z4 { background: var(--line); color: var(--mute); }
   .tl .axis { display: grid; grid-template-columns: repeat(7, 1fr); font: 500 11px var(--mono); color: var(--mute); margin-top: 8px; }
   .tl .axis span { border-left: 1px solid var(--line); padding-left: 6px; }
-  .tl .pin { position: absolute; top: -30px; transform: translateX(-50%); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); padding: 5px 10px; border-radius: var(--pill); white-space: nowrap; }
-  .tl .pin::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: var(--ink); transform: translateX(-50%) rotate(45deg); z-index: -1; }
+  .tl .pin { position: absolute; top: -32px; left: 0; font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; background: var(--ink); color: var(--paper); padding: 5px 10px; border-radius: var(--pill); white-space: nowrap; }
+  .tl .pin::after { content: ""; position: absolute; left: 40px; bottom: -4px; width: 10px; height: 10px; background: var(--ink); transform: rotate(45deg); z-index: -1; }
   @media (max-width: 640px) {
     .tl .bar { grid-template-columns: 1fr; height: auto; }
-    .tl .bar div { padding: 14px 16px; flex-direction: row; justify-content: space-between; align-items: center; gap: 10px; }
+    .tl .bar div { padding: 14px 16px; }
+    .tl .bar div small { white-space: normal; }
     .tl .axis, .tl .pin { display: none; }
   }
   .tips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 28px; }
@@ -201,6 +214,7 @@
   .robo { display: grid; grid-template-columns: 90px 1fr; gap: 18px; align-items: center; background: var(--ink); color: var(--paper); border-radius: 24px; padding: 18px 20px; margin-top: 22px; }
   .robo .bagw svg { width: 100%; filter: drop-shadow(0 10px 10px rgba(0,0,0,.4)); }
   .robo p { margin: 4px 0 12px; font-size: 14.5px; color: #e6ddd1; }
+  @media (max-width: 420px) { .robo { grid-template-columns: 64px 1fr; gap: 14px; } }
 </style>
 </head>
 <body>
@@ -306,7 +320,7 @@
       <div class="timer">
         <div>
           <div class="ringbox">
-            <svg class="pr" viewBox="0 0 220 220" aria-hidden="true"><circle class="trk" cx="110" cy="110" r="96"/><g class="seg-ticks" data-segticks></g><circle class="prog" cx="110" cy="110" r="96" data-prog/></svg>
+            <svg class="pr" viewBox="0 0 220 220" aria-hidden="true"><circle class="trk" cx="110" cy="110" r="96"/><circle class="prog" cx="110" cy="110" r="96" data-prog/><g class="seg-ticks" data-segticks></g></svg>
             <div class="mid"><div><div class="stg" data-tstage>Ready</div><div class="clock" data-tclock>0:00</div><div class="say" data-tsay></div><div class="of" data-tof></div></div></div>
           </div>
           <div class="tctl">
@@ -343,7 +357,7 @@
         <p class="lede">Coffee is a fresh food. Right after roasting it releases CO₂, then it peaks, then it slowly goes flat. Benny roasts after you order so you get the whole good part.</p>
       </div>
       <div class="tl" role="img" aria-label="Freshness timeline: degassing days 0 to 3, peak about days 4 to 14, still great to about day 28, fading after about 4 weeks.">
-        <span class="pin" style="left:6%">Your bag lands ~day 2–4</span>
+        <span class="pin">Your bag lands ~day 2–4</span>
         <div class="bar">
           <div class="z1">Rest<small>Day 0–3 · degassing</small></div>
           <div class="z2">Peak<small>~Day 4–14 · sweetest, most aromatic</small></div>
@@ -459,7 +473,7 @@ document.addEventListener("DOMContentLoaded", function () {
     coldbrew: { name: "Cold brew", short: "Cold brew", ratio: 5, step: .5, kind: "cold", grind: "Coarse", grindNote: "Extra coarse", temp: "Cold or room temp", tempC: "no heat", time: "12–18 h", best: ["frenchpress"], gear: "Big jar or pitcher · filter or fine sieve",
       stages: function (c, w) { return [{ t: 60, n: "Stir", s: "Stir " + r0(c) + " g of grounds into " + r0(w) + " g of cold water until all wet." }, { t: 14 * 3600, n: "Steep", s: "Cover, fridge or counter, about 14 hours." }, { t: 300, n: "Strain", s: "Strain through a paper filter. Dilute 1:1 with water or milk." }]; },
       steps: ["Coarse grind, cold filtered water at 1:5.", "Stir, cover, steep 12–18 hours.", "Strain twice: sieve then paper.", "Dilute about 1:1. Keeps a week in the fridge."] },
-    aeropress: { name: "AeroPress", short: "AeroPress", ratio: 13, step: 1, grind: "Fine", grindNote: "Medium-fine to fine", temp: "185–195°F", tempC: "85–90°C", time: "2:00", best: ["pourover", "espresso"], gear: "AeroPress · paper filter · kettle",
+    aeropress: { name: "AeroPress", short: "AeroPress", ratio: 13, step: 1, grind: "Fine", grindNote: "Medium-fine to fine", temp: "185–195°F", tempC: "85–90°C", time: "2:00", best: ["pourover"], gear: "AeroPress · paper filter · kettle",
       stages: function (c, w) { return [{ t: 30, n: "Bloom", s: "Pour " + r0(c * 2) + " g of water and stir three times." }, { t: 15, n: "Fill", s: "Top up to " + r0(w) + " g." }, { t: 45, n: "Steep", s: "Insert the plunger a little to hold the vacuum. Wait." }, { t: 30, n: "Press", s: "Press slowly for 30 s. Stop at the hiss." }]; },
       steps: ["Rinse the paper in the cap.", "Bloom 30 s, then fill to the full weight.", "Steep a minute, plunger resting on top.", "Press slow, stop at the hiss."] }
   };
@@ -474,14 +488,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ================= QUIZ =================
   var QS = [
-    { k: "method", q: "How do you brew?", a: [["pourover", "Pour-over", "V60, Chemex, Kalita", "pourover"], ["drip", "Drip machine", "Press the button, walk away", "drip"], ["frenchpress", "French press", "Full-bodied, no filter", "frenchpress"], ["espresso", "Espresso", "Shots, lattes, cappuccinos", "espresso"], ["moka", "Moka pot", "Stovetop, strong and short", "moka"], ["coldbrew", "Cold brew", "Steeped overnight", "coldbrew"], ["aeropress", "AeroPress", "Quick, clean, travels well", "aeropress"]] },
+    { k: "method", q: "How do you brew?", a: [["pourover", "Pour-over", "V60, Chemex, Kalita", "pourover"], ["drip", "Drip machine", "Press the button, walk away", "drip"], ["frenchpress", "French press", "Full-bodied, no filter", "frenchpress"], ["espresso", "Espresso", "Shots, lattes, cappuccinos", "espresso"], ["moka", "Moka pot", "Stovetop, strong and short", "moka"], ["coldbrew", "Cold brew", "Steeped overnight", "coldbrew"], ["aeropress", "AeroPress", "Quick, clean, travels well", "aeropress"], ["benny", "A bit of everything", "Depends on the morning", "benny"]] },
     { k: "take", q: "How do you take it?", a: [["black", "Black", "Nothing in the way", "black"], ["milk", "With milk", "Splash to latte", "milk"], ["sweet", "Milk + sweet", "Cozy, dessert-ish", "sweet"]] },
     { k: "love", q: "What do you love in a cup?", a: [["bright", "Fruity + bright", "Berry, citrus, honey", "bright"], ["choc", "Chocolate + nutty", "Cocoa, caramel, almond", "choc"], ["bold", "Bold + smoky", "Dark, heavy, intense", "bold"], ["smooth", "Smooth + mellow", "Low acid, easy-going", "smooth"]] },
     { k: "caf", q: "How much caffeine?", a: [["full", "Full", "Regular coffee", "full"], ["extra", "Extra", "Maximum lift", "extra"], ["half", "Half", "Gentle, all day", "half"], ["none", "None", "Decaf, all flavor", "none"]] },
     { k: "roast", q: "How do you like it roasted?", a: [["light", "Lighter", "Sweet, bright, lively", "light"], ["mid", "In the middle", "Balanced and round", "mid"], ["dark", "Darker", "Toasty, bittersweet", "dark"], ["benny", "Let Benny decide", "Roaster's Choice", "benny"]] }
   ];
-  var GRIND_FOR = { pourover: "Auto-Drip", drip: "Auto-Drip", frenchpress: "Coarse", espresso: "Espresso", moka: "Fine", coldbrew: "Coarse", aeropress: "Fine" };
-  var BEST_FOR = { pourover: ["pourover"], drip: ["drip"], frenchpress: ["frenchpress"], espresso: ["espresso"], moka: ["moka"], coldbrew: ["frenchpress"], aeropress: ["pourover", "espresso"] };
+  var GRIND_FOR = { pourover: "Auto-Drip", drip: "Auto-Drip", frenchpress: "Coarse", espresso: "Espresso", moka: "Fine", coldbrew: "Coarse", aeropress: "Fine", benny: "Auto-Drip" };
+  var BEST_FOR = { pourover: ["pourover"], drip: ["drip"], frenchpress: ["frenchpress"], espresso: ["espresso"], moka: ["moka"], coldbrew: ["frenchpress"], aeropress: ["pourover", "espresso"], benny: [] };
   var LOVE_FLAVOR = { bright: { bright: 6, rich: 2 }, choc: { rich: 5, smooth: 3, bold: 1 }, bold: { bold: 6, rich: 2 }, smooth: { smooth: 6, rich: 1 } };
   var qi = 0, A = {};
 
@@ -508,10 +522,10 @@ document.addEventListener("DOMContentLoaded", function () {
     if (A.caf === "none" && c.caf === "decaf") out.push("Water Process decaf: no chemicals, still " + notes + ".");
     else if (A.caf === "half" && c.caf === "half") out.push("A deliberate 50/50 of decaf and regular, matched for flavor and body.");
     else if (A.caf === "extra" && c.caf === "high") out.push("Robusta: about double the caffeine of arabica, with big crema.");
-    var lv = { bright: "fruity and bright", choc: "chocolate and nutty", bold: "bold", smooth: "smooth and mellow" }[A.love];
+    var lv = { bright: "fruity and bright", choc: "chocolate and nutty", bold: "bold and smoky", smooth: "smooth and mellow" }[A.love];
     out.push("You like it " + lv + ": this one brings " + notes + ".");
     var bests = BEST_FOR[A.method];
-    if (c.best.some(function (b) { return bests.indexOf(b) > -1; })) out.push("Benny rates it for " + m.name.toLowerCase() + (A.take !== "black" && (c.flavor === "rich" || c.flavor === "bold") ? ", with the body to stand up to milk." : "."));
+    if (m && c.best.some(function (b) { return bests.indexOf(b) > -1; })) out.push("Benny rates it for " + m.name.toLowerCase() + (A.take !== "black" && (c.flavor === "rich" || c.flavor === "bold") ? ", with the body to stand up to milk." : "."));
     else if (A.take !== "black" && (c.flavor === "rich" || c.flavor === "bold")) out.push("Enough body to stand up to milk.");
     return out.slice(0, 2);
   }
@@ -528,7 +542,7 @@ document.addEventListener("DOMContentLoaded", function () {
     qbar.querySelector("i").style.width = (qi / QS.length * 100) + "%"; qbar.setAttribute("aria-valuenow", qi);
     qcount.textContent = "Question " + (qi + 1) + " of " + QS.length;
     qback.hidden = qi === 0;
-    qbody.innerHTML = '<div class="qanim"><h3 class="q" tabindex="-1">' + esc(Q.q) + '</h3><div class="answers" role="group" aria-label="' + esc(Q.q) + '">' + Q.a.map(function (a) {
+    qbody.innerHTML = '<div class="qanim"><h3 class="q" tabindex="-1">' + esc(Q.q) + '</h3><div class="answers" style="--cols:' + (Q.a.length === 3 ? 3 : 4) + '" role="group" aria-label="' + esc(Q.q) + '">' + Q.a.map(function (a) {
       return '<button type="button" class="ans" data-ans="' + a[0] + '" aria-pressed="' + (A[Q.k] === a[0]) + '"><span class="ic" aria-hidden="true">' + ICON[a[3]] + "</span><span><b>" + esc(a[1]) + "</b><small>" + esc(a[2]) + "</small></span></button>";
     }).join("") + "</div></div>";
   }
@@ -554,13 +568,13 @@ document.addEventListener("DOMContentLoaded", function () {
       '<div class="info"><p class="eyebrow mb0">' + esc(c.detail) + '</p><h3 tabindex="-1">' + esc(c.name) + '</h3><ul class="notes">' + c.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
       '<ul class="why">' + reasons(c).map(function (r) { return "<li><span>" + esc(r) + "</span></li>"; }).join("") + "</ul>" +
       '<div class="picks"><div><span class="label">Roast for you</span><div class="seg sm" role="group" aria-label="Roast" data-rroast>' + ["Roaster's Choice", R.roast].filter(function (v, i, a) { return a.indexOf(v) === i; }).map(function (r) { return '<button type="button" data-v="' + esc(r) + '" aria-pressed="' + (r === R.roast) + '">' + esc(r) + "</button>"; }).join("") + '</div></div>' +
-      '<div><span class="label">Grind for ' + esc(m.short.toLowerCase()) + '</span><div class="seg sm" role="group" aria-label="Grind" data-rgrind>' + [R.grind, "Whole Bean"].map(function (g) { return '<button type="button" data-v="' + esc(g) + '" aria-pressed="' + (g === R.grind) + '">' + esc(g) + "</button>"; }).join("") + "</div></div></div>" +
+      '<div><span class="label">Grind' + (m ? " for " + esc(m.short.toLowerCase()) : "") + '</span><div class="seg sm" role="group" aria-label="Grind" data-rgrind>' + [R.grind, "Whole Bean"].map(function (g) { return '<button type="button" data-v="' + esc(g) + '" aria-pressed="' + (g === R.grind) + '">' + esc(g) + "</button>"; }).join("") + "</div></div></div>" +
       '<div class="row"><div class="seg sm" role="group" aria-label="Size" data-rsize><button type="button" data-v="1" aria-pressed="true">1 lb · $20</button><button type="button" data-v="5" aria-pressed="false">5 lb · $80</button></div></div>' +
       '<div class="row mt2"><button type="button" class="btn btn-red" data-radd>Add to bag <span class="arr">→</span></button><a class="btn btn-ghost" data-rsub href="../subscribe/?coffee=' + c.id + '&size=1&every=2">Subscribe</a><button type="button" class="link" style="background:none;border:0;cursor:pointer;font-size:15px" data-retake>Retake quiz</button></div>' +
       '<div class="runner"><div style="width:54px">' + BB.bag(ru.id) + '</div><div><span class="tiny">Runner-up</span><b>' + esc(ru.name) + '</b><span class="tiny">' + esc(ru.notes.slice(0, 3).join(" · ")) + '</span></div><button type="button" class="btn btn-sm btn-ghost" data-rswap="' + ru.id + '" data-rback="' + c.id + '">Show me</button></div>' +
       "</div></div>";
     var h = $(".result h3", qbody); if (h) h.focus({ preventScroll: true });
-    BB.log("quiz", { answers: Object.assign({}, A), result: id });
+    if (!runnerId) BB.log("quiz", { answers: Object.assign({}, A), result: id });
   }
   qbody.addEventListener("click", function (e) {
     var t = e.target.closest("button"); if (!t) return;
@@ -589,13 +603,14 @@ document.addEventListener("DOMContentLoaded", function () {
       coffee = C.mode === "cups" ? C.amt * 18 : C.amt / ratio; water = coffee * ratio; out = water;
     } else {
       var per = C.m === "moka" ? 50 : m.kind === "cold" ? 120 : 240;
-      water = C.mode === "cups" ? C.amt * per : C.amt; coffee = water / ratio;
+      water = C.mode === "cups" ? C.amt * per : (C.units === "g" ? C.amt : C.amt * 29.57); coffee = water / ratio;
       out = m.kind === "cold" ? water - coffee * 2 : water - coffee * 2;
     }
     return { m: m, ratio: ratio, coffee: coffee, water: water, out: Math.max(0, out) };
   }
   var fmtG = function (g) { return C.units === "g" ? (g < 100 ? (Math.round(g * 10) / 10).toString().replace(/\.0$/, "") : r0(g)) + "<small>g</small>" : (g / 28.35).toFixed(g / 28.35 < 10 ? 2 : 1) + "<small>oz</small>"; };
   var fmtW = function (ml) { return C.units === "g" ? r0(ml) + "<small>ml</small>" : (ml / 29.57).toFixed(1) + "<small>fl oz</small>"; };
+  var plainW = function (ml) { return C.units === "g" ? Math.round(ml) + " ml" : (ml / 29.57).toFixed(1) + " fl oz"; };
   var plainG = function (g) { return C.units === "g" ? r0(g) + " g" : (g / 28.35).toFixed(2) + " oz"; };
   function renderCalc() {
     var R2 = compute(), m = R2.m, u = units(m);
@@ -610,25 +625,31 @@ document.addEventListener("DOMContentLoaded", function () {
     $("[data-out]").innerHTML =
       '<div class="row between"><span class="tag gold">' + esc(m.name) + '</span><span class="mono small" style="color:#bfb3a5">' + (m.kind === "espresso" ? "1 : " + R2.ratio + " in → out" : "1 : " + R2.ratio + " coffee to water") + "</span></div>" +
       '<div class="big2"><div><div class="k">Coffee</div><div class="num">' + fmtG(R2.coffee) + '</div><div class="sub">≈ ' + Math.max(1, Math.round(R2.coffee / 5.3 * 2) / 2) + ' tbsp ground</div></div><div class="plus" aria-hidden="true">+</div><div><div class="k">' + (m.kind === "espresso" ? "Shot yield" : "Water") + '</div><div class="num">' + (m.kind === "espresso" ? fmtG(R2.water) : fmtW(R2.water)) + '</div><div class="sub">' + (m.kind === "espresso" ? "liquid espresso, weighed" : "1 ml water = 1 g") + "</div></div></div>" +
-      '<div class="facts"><div><span class="k">Grind</span><b>' + esc(m.grind) + "</b><small>" + esc(m.grindNote) + (gi > -1 ? " · Benny's grind option" : "") + '</small></div><div><span class="k">Water temp</span><b>' + esc(m.temp) + "</b><small>" + esc(m.tempC) + '</small></div><div><span class="k">Brew time</span><b>' + esc(m.time) + "</b><small>" + (m.kind === "cold" ? "Then dilute about 1:1" : "Total contact time") + '</small></div><div><span class="k">In your mug</span><b>' + (m.kind === "espresso" ? plainG(R2.water) : m.kind === "cold" ? "≈ " + plainG(R2.out * 2).replace(" g", " ml") : "≈ " + plainG(R2.out).replace(" g", " ml")) + "</b><small>" + (m.kind === "espresso" ? "of espresso" : "Grounds keep ~2× their weight") + "</small></div></div>" +
+      '<div class="facts"><div><span class="k">Grind</span><b>' + esc(m.grind) + "</b><small>" + esc(m.grindNote) + '</small></div><div><span class="k">Water temp</span><b>' + esc(m.temp) + "</b><small>" + esc(m.tempC) + '</small></div><div><span class="k">Brew time</span><b>' + esc(m.time) + "</b><small>" + (m.kind === "cold" ? "Then dilute about 1:1" : "Total contact time") + '</small></div><div><span class="k">In your mug</span><b>' + (m.kind === "espresso" ? plainG(R2.water) : m.kind === "cold" ? "≈ " + plainW(R2.out * 2) : "≈ " + plainW(R2.out)) + "</b><small>" + (m.kind === "espresso" ? "of espresso" : m.kind === "cold" ? "after diluting 1:1" : "grounds hold ~2× their weight") + "</small></div></div>" +
       '<button type="button" class="btn btn-red btn-block" data-totimer>Start the timer for this <span class="arr">→</span></button>';
     syncTimer();
   }
   function press(sel, attr, val) { $$(sel).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute(attr) === String(val))); }); }
   function setAmt(v) {
-    var m = METHODS[C.m], u = units(m), lim = C.mode === "cups" ? [u.min, u.max] : [m.kind === "espresso" ? 18 : 30, 4000];
+    var m = METHODS[C.m], u = units(m), lim = C.mode === "cups" ? [u.min, u.max] : m.kind === "espresso" ? [18, 240] : C.units === "g" ? [30, 4000] : [1, 135];
     v = Math.min(lim[1], Math.max(lim[0], isNaN(v) ? lim[0] : v)); C.amt = v; $("#amt").value = v; renderCalc();
   }
   function defaultAmt() {
     var m = METHODS[C.m];
     if (C.mode === "cups") return m.kind === "espresso" ? 1 : C.m === "moka" ? 3 : m.kind === "cold" ? 8 : 2;
-    return m.kind === "espresso" ? 36 : C.m === "moka" ? 150 : m.kind === "cold" ? 1000 : 500;
+    if (m.kind === "espresso") return 36;
+    var ml = C.m === "moka" ? 150 : m.kind === "cold" ? 1000 : 500;
+    return C.units === "g" ? ml : Math.round(ml / 29.57);
   }
   $("[data-methods]").addEventListener("click", function (e) { var b = e.target.closest("[data-m]"); if (!b) return; setMethod(b.dataset.m); });
   function setMethod(k) { C.m = k; C.str = 0; $("#strength").value = 0; setAmt(defaultAmt()); }
   $("[data-mode]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; C.mode = b.dataset.v; setAmt(defaultAmt()); });
-  $("[data-units]").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; C.units = b.dataset.v; renderCalc(); });
-  $$("[data-step]").forEach(function (b) { b.addEventListener("click", function () { var m = METHODS[C.m]; var step = C.mode === "cups" ? 1 : m.kind === "espresso" ? 2 : 50; setAmt(+C.amt + step * +b.dataset.step); }); });
+  $("[data-units]").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b || b.dataset.v === C.units) return;
+    var wasG = C.units === "g"; C.units = b.dataset.v;
+    if (C.mode === "water" && METHODS[C.m].kind !== "espresso") setAmt(Math.round(wasG ? C.amt / 29.57 : C.amt * 29.57)); else renderCalc();
+  });
+  $$("[data-step]").forEach(function (b) { b.addEventListener("click", function () { var m = METHODS[C.m]; var step = C.mode === "cups" ? 1 : m.kind === "espresso" ? 2 : C.units === "g" ? 50 : 2; setAmt(+C.amt + step * +b.dataset.step); }); });
   $("#amt").addEventListener("change", function () { setAmt(parseFloat(this.value)); });
   $("#strength").addEventListener("input", function () { C.str = +this.value; renderCalc(); });
   document.addEventListener("click", function (e) {
@@ -647,9 +668,9 @@ document.addEventListener("DOMContentLoaded", function () {
   function syncTimer() {
     var R2 = compute(), m = R2.m;
     resetTimer(true);
-    T.stages = m.stages(R2.coffee, R2.water); T.total = T.stages.reduce(function (n, s) { return n + s.t; }, 0);
+    T.stages = m.stages(R2.coffee, R2.water); T.total = T.stages.reduce(function (n, s) { return n + s.t; }, 0); setGo();
     press("[data-tm]", "data-tm", C.m);
-    $("[data-trecipe]").innerHTML = "<b>" + esc(m.name) + ":</b> " + plainG(R2.coffee) + " coffee, " + (m.kind === "espresso" ? plainG(R2.water) + " out" : plainG(R2.water).replace(" g", " ml") + " water") + ", " + esc(m.grind.toLowerCase()) + " grind, " + esc(m.temp) + ". Change it in the <a class=\"link\" style=\"color:#fff\" href=\"#calc\">calculator</a>.";
+    $("[data-trecipe]").innerHTML = "<b>" + esc(m.name) + ":</b> " + plainG(R2.coffee) + " coffee, " + (m.kind === "espresso" ? plainG(R2.water) + " out" : plainW(R2.water) + " water") + ", " + esc(m.grind.toLowerCase()) + " grind, " + esc(m.temp) + ". Change it in the <a class=\"link\" style=\"color:#fff\" href=\"#calc\">calculator</a>.";
     var acc = 0;
     $("[data-tstages]").innerHTML = T.stages.map(function (s, i) { var a = acc; acc += s.t; return '<li data-si="' + i + '"><span class="no">' + (i + 1) + "</span><span><b>" + esc(s.n) + '</b><span class="s">' + esc(s.s) + '</span></span><span class="tm">' + clock(a) + "–" + clock(acc) + "</span></li>"; }).join("");
     // stage boundary ticks on the ring
@@ -699,7 +720,8 @@ document.addEventListener("DOMContentLoaded", function () {
       "<ol>" + m.steps.map(function (s) { return "<li><span>" + esc(s) + "</span></li>"; }).join("") + "</ol>" +
       '<div class="best"><span class="label">Best beans for this</span><div class="row">' + beans.map(function (c) { return '<a class="bean" href="../coffee/?c=' + c.id + '"><span>' + BB.bag(c.id) + "</span>" + esc(c.short) + "</a>"; }).join("") + "</div></div>" +
       '<button type="button" class="btn btn-sm btn-ghost" data-guide="' + k + '">Calculate + time it <span class="arr">→</span></button></article>';
-  }).join("");
+  }).join("") + '<article class="guide cta reveal"><div><p class="eyebrow">Not sure which bean?</p><h3 style="font-size:32px">Take the bean quiz.</h3><p class="small mt1" style="color:#ffe2dd">Five taps, a matched bag, with the roast and grind for your brewer.</p></div><div class="ringw" data-ctaring></div><a class="btn btn-light btn-block" href="#quiz">Find my bean <span class="arr">→</span></a></article>';
+  $("[data-ctaring]").innerHTML = BB.ring({ words: false });
   BB.reveal();
 
   setAmt(defaultAmt());

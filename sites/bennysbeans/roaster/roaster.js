@@ -188,7 +188,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var add = function (o) { o.no = o.no || "#" + (base + seq++); o.roast = R.ymd; o.placed = o.placed || placed(); out.push(o); };
     var lines = function () { var n = wpick(r, [[1, 58], [2, 32], [3, 10]]), its = []; for (var i = 0; i < n; i++) its.push(mkItem(r)); if (r() < .08) its.push({ kind: "merch", id: r() < .5 ? "coaster-round" : "coaster-cork", qty: 1, name: r() < .5 ? "Slate Coaster" : "Cork Coaster", price: 12 }); return its; };
     var sum = function (its) { return its.reduce(function (t, it) { return t + (it.kind === "coffee" ? PRICE(it) : it.price) * it.qty; }, 0); };
-    var nWeb = Math.round(int(r, 7, 10) * frac), nWc = Math.round(int(r, 2, 4) * frac), i;
+    var nWeb = Math.round(int(r, 9, 13) * frac), nWc = Math.round(int(r, 2, 4) * frac), i;
     for (i = 0; i < nWeb; i++) { var its = lines(), st = sum(its); add({ ch: "web", who: PEOPLE[int(r, 0, 59)], items: its, fulfil: "ship", total: st + (st >= B.freeShip ? 0 : 8.5), shipFee: st >= B.freeShip ? 0 : 8.5 }); }
     for (i = 0; i < nWc; i++) { var w = lines().filter(function (x) { return x.kind === "coffee"; }); add({ ch: "willcall", who: PEOPLE[int(r, 0, 59)], items: w, fulfil: "willcall", total: sum(w) }); }
     SUBS.forEach(function (s) {
@@ -350,7 +350,7 @@ document.addEventListener("DOMContentLoaded", function () {
       ["Green", lb(D.green), "at " + S.shrink + "% shrink"],
       ["Batches", D.batches.length, rb ? rb + " roasted so far" : S.cap + " lb green each, max"],
       ["First drop", tm(D.batches.length ? D.batches[0].start : R.d), "preheat 30 min before"],
-      ["Done ~", tm(D.done), "then grind + pack"]
+      ["Roast done", "~" + tm(D.done), "then grind + pack"]
     ];
     $("#rd-kpis").innerHTML = kp.map(function (k) { return '<div class="k"><span>' + k[0] + "</span><b>" + k[1] + "</b><small>" + k[2] + "</small></div>"; }).join("");
     $("#n-roastday").textContent = D.bags.length;
@@ -461,29 +461,32 @@ document.addEventListener("DOMContentLoaded", function () {
   function renderPack(D) {
     var gq = {}; D.bags.forEach(function (b) { gq[b.it.grind] = (gq[b.it.grind] || 0) + 1; });
     $("#grind-q").innerHTML = '<span class="label">Grinder queue</span>' + GW.filter(function (g) { return gq[g[0]]; }).map(function (g) { return '<span class="gq"><b class="mono">' + gq[g[0]] + "</b> " + esc(g[0]) + "</span>"; }).join("");
-    var packed = D.bags.filter(function (b) { return S.packed[b.key]; }).length, last = "";
-    var rows = D.bags.map(function (b, i) {
-      var c = B.BY[b.it.id], gk = b.it.id + "|" + b.lv, head = "";
+    var packed = D.bags.filter(function (b) { return S.packed[b.key]; }).length, last = "", LN = [], LI = {};
+    D.bags.forEach(function (b, i) { var lk = b.key.replace(/\|\d+$/, ""); if (!LI[lk]) { LI[lk] = { lk: lk, bags: [], first: i }; LN.push(LI[lk]); } LI[lk].bags.push(b); });
+    PACKLINES = LN;
+    var rows = LN.map(function (L, i) {
+      var b = L.bags[0], n = L.bags.length, c = B.BY[b.it.id], gk = b.it.id + "|" + b.lv, head = "";
       if (gk !== last) { last = gk; var gr = D.groups.filter(function (g) { return g.k === gk; })[0]; head = '<tr class="grp"><td colspan="7"><span class="sw" style="background:' + c.c + '"></span>' + esc(c.short) + " · " + esc(b.lv) + ' <span class="muted">' + plural(gr.bags, "bag") + " · " + lb(gr.roasted) + "</span></td></tr>"; }
-      var on = !!S.packed[b.key];
-      return head + '<tr class="' + (on ? "done" : "") + (b.o.mine ? " mine" : "") + '"><td class="ck"><input type="checkbox" id="pk' + i + '" data-p="' + esc(b.key) + '"' + (on ? " checked" : "") + ' aria-label="Packed: ' + esc(c.short + " " + sizeTxt(b.it.size) + " for " + b.o.who.name) + '"></td>' +
-        '<td class="lead"><div class="cf">' + thumb(b.it.id, b.it.size) + "<div><b>" + esc(c.short) + '</b><span class="lv">' + sizeTxt(b.it.size) + " · " + esc(b.it.roast === RC ? "RC → " + b.lv : b.lv) + "</span></div></div></td>" +
+      var on = L.bags.every(function (x) { return S.packed[x.key]; });
+      return head + '<tr class="' + (on ? "done" : "") + (b.o.mine ? " mine" : "") + '"><td class="ck"><input type="checkbox" id="pk' + i + '" data-p="' + i + '"' + (on ? " checked" : "") + ' aria-label="Packed: ' + esc((n > 1 ? n + " × " : "") + c.short + " " + sizeTxt(b.it.size) + " for " + b.o.who.name) + '"></td>' +
+        '<td class="lead"><div class="cf">' + thumb(b.it.id, b.it.size) + "<div><b>" + (n > 1 ? '<span class="qty-x">' + n + " ×</span> " : "") + esc(c.short) + '</b><span class="lv">' + sizeTxt(b.it.size) + " · " + esc(b.it.roast === RC ? "RC → " + b.lv : b.lv) + "</span></div></div></td>" +
         '<td data-l="Grind"><b>' + esc(b.it.grind) + "</b></td>" +
         '<td data-l="For" class="who">' + (b.o.ch === "extra" ? "<b>" + esc(b.o.who.name) + "</b>" : whoHTML(b.o)) + "</td>" +
-        '<td data-l="Channel">' + chPill(b.o.ch) + (b.it.welcome ? ' <span class="tiny">welcome bag</span>' : "") + "</td>" +
-        '<td data-l="Label" class="mono">' + b.label + "</td>" +
-        '<td class="act"><button class="lnk" type="button" data-pl="' + i + '">Print label</button></td></tr>';
+        '<td data-l="Channel">' + chPill(b.o.ch) + (b.it.welcome ? ' <span class="tiny">welcome bags</span>' : "") + "</td>" +
+        '<td data-l="Label" class="mono">' + b.label + (n > 1 ? "–" + L.bags[n - 1].label.slice(2) : "") + "</td>" +
+        '<td class="act"><button class="lnk" type="button" data-pl="' + i + '">Print ' + (n > 1 ? n + " labels" : "label") + "</button></td></tr>";
     }).join("");
     $("#pack-list").innerHTML = '<div class="pk-prog"><span class="mono">' + packed + " / " + D.bags.length + ' bags packed</span><div class="meter' + (packed === D.bags.length && packed ? " done" : "") + '"><i style="width:' + (D.bags.length ? packed / D.bags.length * 100 : 0) + '%"></i></div></div>' +
-      '<div class="tscroll"><table class="tbl stack pack"><thead><tr><th><span class="sr">Packed</span></th><th>Bag</th><th>Grind</th><th>For</th><th>Channel</th><th>Label</th><th><span class="sr">Actions</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+      '<div class="tscroll"><table class="tbl stack pack"><thead><tr><th><span class="sr">Packed</span></th><th>Bag</th><th>Grind</th><th>For</th><th>Channel</th><th>Labels</th><th><span class="sr">Actions</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
   }
+  var PACKLINES = [];
   $("#pack-list").addEventListener("change", function (e) {
-    var k = e.target.dataset.p; if (!k) return; if (e.target.checked) S.packed[k] = 1; else delete S.packed[k]; save();
+    var L = PACKLINES[+e.target.dataset.p]; if (!L) return; L.bags.forEach(function (b) { if (e.target.checked) S.packed[b.key] = 1; else delete S.packed[b.key]; }); save();
     e.target.closest("tr").classList.toggle("done", e.target.checked);
     var D = demand(CUR), n = D.bags.filter(function (b) { return S.packed[b.key]; }).length;
     $(".pk-prog .mono").textContent = n + " / " + D.bags.length + " bags packed"; $(".pk-prog .meter i").style.width = n / D.bags.length * 100 + "%"; $(".pk-prog .meter").classList.toggle("done", n === D.bags.length);
   });
-  $("#pack-list").addEventListener("click", function (e) { var b = e.target.closest("[data-pl]"); if (!b) return; var D = demand(CUR); printMode("labels", labelsHTML([D.bags[+b.dataset.pl]], D.R)); });
+  $("#pack-list").addEventListener("click", function (e) { var b = e.target.closest("[data-pl]"); if (!b) return; var L = PACKLINES[+b.dataset.pl]; printMode("labels", labelsHTML(L.bags, CUR)); });
 
   function labelHTML(b, R) {
     var c = B.BY[b.it.id];
@@ -566,7 +569,7 @@ document.addEventListener("DOMContentLoaded", function () {
       '<h3 class="h-s">Bring for walk-ups</h3><table class="tbl mbx"><thead><tr><th>Coffee</th><th class="n">Pre-ord.</th><th class="n">Avg sold</th><th class="n">Bring 1 lb</th><th class="n">5 lb</th></tr></thead><tbody>' +
       B.COFFEES.map(function (c) { var b = D.br[c.id]; tot1 += b.b1; tot5 += b.b5; return "<tr><td>" + '<span class="sw" style="background:' + c.c + '"></span>' + esc(c.short) + '</td><td class="n">' + (preBy[c.id] || "–") + '</td><td class="n">' + b.avg.toFixed(1) + '</td><td class="n"><b>' + b.b1 + '</b></td><td class="n">' + (b.b5 || "–") + "</td></tr>"; }).join("") +
       '</tbody><tfoot><tr><td>Total</td><td class="n">' + pre.length + '</td><td></td><td class="n"><b>' + tot1 + '</b></td><td class="n">' + tot5 + "</td></tr></tfoot></table>" +
-      '<p class="tiny">Walk-up stock = 6-week average + 15%, already in the batch plan as “Market stock”. Weather-agnostic on purpose: rain days come out of the average.</p>';
+      '<p class="tiny">Walk-up stock = 6-week average + 15%, already in the batch plan as “Market stock”. Weather-agnostic on purpose: six weeks of averages already include the rainy ones.</p>';
   }
 
   // =====================================================================
@@ -609,7 +612,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var bw = (W - pl - 8) / data.length, ticks = o.ticks || [0, Math.round(mx / 2), Math.round(mx)];
     var y = function (v) { return pt + (H - pt - pb) * (1 - v / mx); };
     var svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(o.label) + '">' + ticks.map(function (t) { return '<line x1="' + pl + '" x2="' + W + '" y1="' + y(t) + '" y2="' + y(t) + '" class="gl"/><text x="' + (pl - 6) + '" y="' + (y(t) + 4) + '" class="ax" text-anchor="end">' + (o.fmt ? o.fmt(t) : t) + "</text>"; }).join("") +
-      data.map(function (d, i) { var x = pl + i * bw + bw * .18, w = bw * .64, yy = y(d.v), h = Math.max(1, H - pb - yy); return '<g class="bg' + (d.hi ? " hi" : "") + '"><title>' + esc(d.k + ": " + (o.fmt ? o.fmt(d.v) : d.v)) + '</title><rect x="' + (pl + i * bw) + '" y="' + pt + '" width="' + bw + '" height="' + (H - pt - pb) + '" class="hit"/><path d="M' + x + " " + (H - pb) + "V" + (yy + 4) + "q0 -4 4 -4h" + (w - 8) + "q4 0 4 4V" + (H - pb) + 'z" class="b"/>' + (d.show ? '<text x="' + (x + w / 2) + '" y="' + (yy - 6) + '" class="vl" text-anchor="middle">' + (o.fmt ? o.fmt(d.v) : d.v) + "</text>" : "") + '<text x="' + (x + w / 2) + '" y="' + (H - 8) + '" class="ax" text-anchor="middle">' + esc(d.s || d.k) + "</text></g>"; }).join("") + "</svg>";
+      data.map(function (d, i) { var x = pl + i * bw + bw * .18, w = bw * .64, yy = y(d.v), h = Math.max(1, H - pb - yy); return '<g class="bg' + (d.hi ? " hi" : "") + '"><title>' + esc(d.k + ": " + (o.fmt ? o.fmt(d.v) : d.v)) + '</title><rect x="' + (pl + i * bw) + '" y="' + pt + '" width="' + bw + '" height="' + (H - pt - pb) + '" class="hit"/><path d="M' + x + " " + (H - pb) + "V" + (yy + 4) + "q0 -4 4 -4h" + (w - 8) + "q4 0 4 4V" + (H - pb) + 'z" class="b"/>' + (d.show ? '<text x="' + (x + w / 2) + '" y="' + (yy - 6) + '" class="vl" text-anchor="middle">' + (o.fmt ? o.fmt(d.v) : d.v) + "</text>" : "") + '<text x="' + (x + w / 2) + '" y="' + (H - 8) + '" class="ax" text-anchor="middle">' + esc(d.s != null ? d.s : d.k) + "</text></g>"; }).join("") + "</svg>";
     el.innerHTML = svg + '<details class="tbl-alt"><summary>Show as table</summary><table class="tbl"><thead><tr><th>' + esc(o.kh || "") + '</th><th class="n">' + esc(o.vh || "") + "</th></tr></thead><tbody>" + data.map(function (d) { return "<tr><td>" + esc(d.k) + '</td><td class="n">' + (o.fmt ? o.fmt(d.v) : d.v) + "</td></tr>"; }).join("") + "</tbody></table></details>";
   }
   function hbars(data, fmt) {
@@ -669,7 +672,7 @@ document.addEventListener("DOMContentLoaded", function () {
     WEEKLY = null; var w = weekly(), alerts = [];
     var rows = GREEN.map(function (g) {
       var c = B.BY[g.id], h = onHand(g), cover = h / w[g.id], rp = g.lead + 1, st = cover < rp ? "low" : cover < rp + 1.5 ? "watch" : "ok";
-      if (st === "low") alerts.push('<div class="al"><b>Reorder ' + esc(c.short) + ": " + cover.toFixed(1) + " weeks left.</b> " + g.lead + "-week lead time from " + esc(g.sup.toLowerCase()) + ". Suggest " + lb(Math.ceil(w[g.id] * 8 / 10) * 10) + " (8 weeks) ≈ " + money(Math.ceil(w[g.id] * 8 / 10) * 10 * g.cost) + ".</div>");
+      if (st === "low") alerts.push('<div class="al"><b>Reorder ' + esc(c.short) + ": " + cover.toFixed(1) + " weeks left.</b> " + g.lead + "-week lead time from " + esc(g.sup) + ". Suggest " + lb(Math.ceil(w[g.id] * 8 / 10) * 10) + " (8 weeks) ≈ " + money(Math.ceil(w[g.id] * 8 / 10) * 10 * g.cost) + ".</div>");
       return '<tr><td class="lead"><div class="cf">' + thumb(g.id) + "<div><b>" + esc(c.short) + '</b><span class="lv">' + esc(c.origin + " · " + c.detail) + "</span></div></div></td>" +
         '<td class="n" data-l="On hand">' + lb(h) + '</td><td class="n" data-l="Use / wk">' + lb(w[g.id]) + "</td>" +
         '<td data-l="Cover" class="cov"><div class="meter m-' + st + '" role="meter" aria-valuemin="0" aria-valuemax="12" aria-valuenow="' + cover.toFixed(1) + '" aria-label="' + esc(c.short) + ' weeks of cover"><i style="width:' + Math.min(100, cover / 12 * 100) + '%"></i><s style="left:' + (rp / 12 * 100) + '%"></s></div><span class="mono small">' + cover.toFixed(1) + ' wk</span> <span class="st ' + (st === "low" ? "st-roasting" : st === "watch" ? "st-new" : "st-shipped") + '">' + (st === "low" ? "Reorder" : st === "watch" ? "Watch" : "OK") + "</span></td>" +

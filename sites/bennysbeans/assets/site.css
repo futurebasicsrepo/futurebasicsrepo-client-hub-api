@@ -27,6 +27,7 @@
   --head-h: 72px;
 }
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body { margin: 0; background: var(--bone); color: var(--ink); font: 400 17px/1.55 var(--sans); font-variation-settings: "wdth" 100; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 img, svg { max-width: 100%; display: block; }

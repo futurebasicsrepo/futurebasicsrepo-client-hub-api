@@ -16,7 +16,7 @@ body.console { font-size: 15px; }
 .rc-clock { font-size: 12.5px; color: #bfb3a5; letter-spacing: .04em; white-space: nowrap; }
 
 /* ---------- shell ---------- */
-.rc-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); width: min(1480px, 100%); margin-inline: auto; }
+.rc-shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); width: min(1480px, 100%); margin-inline: auto; }
 .rc-rail { position: sticky; top: var(--head-h); align-self: start; max-height: calc(100vh - var(--head-h)); overflow: auto; padding: 22px 12px 22px 16px; display: flex; flex-direction: column; gap: 3px; border-right: 1px solid var(--line); }
 .rc-rail a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--pill); text-decoration: none; font-weight: 650; font-size: 14.5px; color: var(--ink-2); transition: background .15s, color .15s; }
 .rc-rail a:hover { background: var(--paper); color: var(--ink); }
@@ -143,7 +143,8 @@ body.console { font-size: 15px; }
 .tbl tr.done td { opacity: .5; }
 .tbl tr.done td.ck { opacity: 1; }
 .tbl .who b { font-weight: 700; }
-.tbl .tiny, .rows .tiny, .mini-list .tiny { display: block; margin-top: 2px; }
+.qty-x { font-family: var(--mono); font-weight: 500; color: var(--cherry); }
+.tbl .tiny, .rows .tiny, .mini-list .tiny, .shelf .tiny { display: block; margin-top: 2px; }
 .tbl .act { text-align: right; white-space: nowrap; }
 .tbl .ono { font-size: 12.5px; font-weight: 500; display: inline-block; margin-right: 6px; }
 .tbl .lead .tiny { margin-top: 2px; }
@@ -184,8 +185,8 @@ body.console { font-size: 15px; }
 .sched li:hover { border-color: var(--ink); }
 .sched li.done { background: var(--river-l); border-color: #a9c6ba; }
 .sched li.done .nm b { text-decoration: line-through; text-decoration-color: var(--river); }
-.sched label { display: grid; grid-template-columns: 62px 10px 1fr; grid-template-rows: auto auto; gap: 0 10px; align-items: center; flex: 1; cursor: pointer; min-width: 0; }
-.sched .t { font-size: 13px; font-weight: 500; grid-row: 1 / 3; }
+.sched label { display: grid; grid-template-columns: 70px 10px 1fr; grid-template-rows: auto auto; gap: 0 10px; align-items: center; flex: 1; cursor: pointer; min-width: 0; }
+.sched .t { font-size: 13px; font-weight: 500; grid-row: 1 / 3; white-space: nowrap; }
 .sched .sw { grid-row: 1 / 3; margin: 0; }
 .sched .nm { font-size: 14px; min-width: 0; }
 .sched .gw { font-size: 11.5px; color: var(--mute); grid-column: 3; }
@@ -252,7 +253,8 @@ body.console { font-size: 15px; }
 .alerts:empty { display: none; }
 .al { padding: 12px 16px; border-radius: 14px; background: #fbe1dd; border: 1px solid #f2b9b1; color: var(--cherry-d); font-size: 14px; }
 .al b { color: var(--ink); }
-.cov { min-width: 210px; }
+.cov { min-width: 230px; }
+.cov .st { display: flex; width: max-content; margin-top: 6px; }
 .cov .meter { width: 110px; display: inline-block; vertical-align: middle; position: relative; overflow: visible; margin-right: 8px; height: 8px; }
 .cov .meter i { border-radius: 6px; }
 .cov .meter s { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 1px; }
@@ -338,7 +340,7 @@ body.console { font-size: 15px; }
 @media (max-width: 1180px) {
   .rd-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .g2x { grid-template-columns: 1fr; }
-  .calc { grid-template-columns: 1fr; }
+  .calc { grid-template-columns: minmax(0, 1fr); }
   .dem li { grid-template-columns: 140px 64px minmax(60px, 1fr); }
   .dem li > .tiny { grid-column: 1 / -1; margin-top: -4px; }
 }
@@ -390,6 +392,8 @@ body.console { font-size: 15px; }
   .lg-tally { grid-column: 1 / -1; }
   .calc-in { grid-template-columns: 1fr 1fr; }
   .calc-t th, .calc-t td { font-size: 12.5px; padding: 8px 4px; }
+  .calc-t th { white-space: normal; letter-spacing: .04em; font-size: 9.5px; }
+  .cpl b { font-size: 28px; }
   .hb li { grid-template-columns: 1fr auto; gap: 4px 10px; }
   .hb li .bar { grid-column: 1 / -1; grid-row: 2; }
   .labels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
