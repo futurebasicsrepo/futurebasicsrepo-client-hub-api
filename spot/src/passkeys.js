@@ -132,8 +132,11 @@ async function pkRegister(name){
   const cred=await navigator.credentials.create({publicKey:{...o,challenge:pkB2a(o.challenge),user:{...o.user,id:pkB2a(o.user.id)},excludeCredentials:(o.excludeCredentials||[]).map(c=>({...c,id:pkB2a(c.id)}))}});
   return post('/v1/me/passkeys',{challenge_id,response:pkJSON(cred),name});
 }
-async function pkSignIn(mediation,signal){
-  const {challenge_id,options:o}=await post('/v1/auth/passkey/options',{});
+const pkOptions=()=>post('/v1/auth/passkey/options',{});
+// Safari only shows Face ID if credentials.get() starts right in the tap, so
+// a button passes options fetched ahead of time (pre) and nothing is awaited first.
+async function pkSignIn(mediation,signal,pre){
+  const {challenge_id,options:o}=pre||await pkOptions();
   const cred=await navigator.credentials.get({publicKey:{...o,challenge:pkB2a(o.challenge),allowCredentials:(o.allowCredentials||[]).map(c=>({...c,id:pkB2a(c.id)}))},...(mediation?{mediation}:{}),...(signal?{signal}:{})});
   if(!cred)throw new Error('cancelled');
   return post('/v1/auth/passkey/verify',{challenge_id,response:pkJSON(cred)});

@@ -134,8 +134,13 @@ document.querySelectorAll('.sso-b').forEach(a=>{a.href='/auth/'+a.dataset.p+'/st
 // right in the email box (conditional UI).
 const pkDone=()=>{location.href=next};
 if(${!texts}&&pkOK()){$('#pkBtn').hidden=false;
+  // A fresh challenge ready before the tap (they last 5 minutes).
+  let pkPre=null;const pkLoad=()=>pkOptions().then(o=>{pkPre=o}).catch(()=>{pkPre=null});pkLoad();setInterval(pkLoad,4*60_000);
   $('#pkBtn').onclick=async()=>{$('#err').textContent='';if(pkAbort)pkAbort.abort();pkAbort=null;
-    try{await pkSignIn();pkDone()}catch(err){if(err.name!=='NotAllowedError'&&err.name!=='AbortError'&&err.message!=='cancelled')$('#err').textContent=err.message}};
+    const pre=pkPre;pkPre=null;
+    try{await pkSignIn(undefined,undefined,pre);pkDone()}catch(err){
+      $('#err').textContent=err.name==='NotAllowedError'||err.name==='AbortError'||err.message==='cancelled'?'Face ID didn’t finish, or this device has no Spot passkey. Try again, or get a code.':err.message;
+    }finally{if(!pkPre)pkLoad()}};
   (async()=>{try{if(!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return;pkAbort=new AbortController();
     await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){if(err.name!=='AbortError'&&err.name!=='NotAllowedError'&&err.message!=='cancelled')$('#err').textContent=err.message}})()}
 const altOK=()=>!$('#pkBtn').hidden||Boolean(document.querySelector('.sso-b'));
