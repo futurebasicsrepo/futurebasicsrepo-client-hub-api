@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nail Art Lookbook | Modish Nail Spa</title>
+<meta name="description" content="Chrome, cat eye, ombré, French and nail art done at Modish Nail Spa. Book any look with the exact services and price.">
+<meta name="theme-color" content="#1b1310">
+<link rel="canonical" href="https://modishnailspaphiladelphia.com/looks/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%231b1310'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Didot,Georgia,serif' font-size='34' fill='%23e6cb92'%3EM%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Modish Nail Spa">
+<meta property="og:title" content="Nail Art Lookbook | Modish Nail Spa">
+<meta property="og:description" content="Chrome, cat eye, ombré, French and nail art done at Modish Nail Spa. Book any look with the exact services and price.">
+<meta property="og:image" content="https://modishnailspaphiladelphia.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300..600&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=b35c7bd5">
+</head>
+<body>
+<!--md:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Modish Nail Spa · booking and demo data are illustrative · <a href="../owner/">See the salon console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../menu/">Menu</a><a href="../looks/" aria-current="page">Looks</a><a href="../gift-cards/">Gift cards</a><a href="../parties/">Parties</a></nav>
+    <a class="wordmark" href="../" aria-label="Modish Nail Spa home"><b>MODISH</b><span>Nail Spa</span></a>
+    <div class="head-cta">
+      <a class="phone" href="tel:+12673355234">267-335-5234</a>
+      <a class="btn btn-dark btn-sm" href="../book/">Book</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../menu/">Menu</a><a href="../looks/">Looks</a><a href="../gift-cards/">Gift cards</a><a href="../parties/">Parties</a><a href="../book/"><em>Book a visit</em></a><a class="mn-meta" href="tel:+12673355234">Call 267-335-5234 · Mon–Sat 9:30–7</a></nav>
+  </div>
+</header>
+<!--/md:header-->
+
+<main id="main">
+  <section class="page-hero">
+    <div class="wrap">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">Home</a> / Looks</nav>
+      <span class="eyebrow">The lookbook</span>
+      <h1>See it. <em>Book it.</em></h1>
+      <p class="lede">Every set here was done in our chairs. Tap a look and we'll add exactly the services it takes, priced, so there are no surprises at the front desk.</p>
+      <div class="cats" id="tags" style="margin-top:30px"></div>
+    </div>
+  </section>
+  <section style="padding-top:0">
+    <div class="wrap"><div class="looks-grid" id="grid"></div>
+      <p class="muted" style="margin-top:40px">Have your own inspo? Book any gel or dip service and text the photo to <a href="tel:+12673355234">267-335-5234</a>. Your technician will price the design before they start.</p></div>
+  </section>
+</main>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  var M=window.MODISH,grid=document.getElementById('grid'),tags=document.getElementById('tags'),cur='All';
+  var all=['All'];M.LOOKS.forEach(function(l){l.tags.forEach(function(t){if(all.indexOf(t)<0)all.push(t)})});
+  tags.innerHTML=all.map(function(t){return '<button class="cat" type="button" aria-pressed="'+(t==='All')+'">'+t+'</button>'}).join('');
+  function render(){grid.innerHTML=M.LOOKS.filter(function(l){return cur==='All'||l.tags.indexOf(cur)>-1}).map(function(l){var t=M.lookPrice(l);
+    return '<article class="look reveal in"><div class="arch"><img src="../assets/looks/'+l.id+'.webp" alt="'+M.esc(l.name)+' nails done at Modish Nail Spa" width="878" height="852" loading="lazy"></div><div class="meta"><h3>'+M.esc(l.name)+'</h3><b>$'+t.price+(t.up?'+':'')+'</b></div><p class="small muted" style="margin:0">'+l.svc.map(function(id){return M.BY[id].name}).join(' + ')+' · about '+M.fmtMins(t.mins)+'</p><div class="tags">'+l.tags.map(function(x){return '<span class="tag">'+x+'</span>'}).join('')+'</div><button class="btn btn-dark btn-sm" type="button" data-look="'+l.id+'">Book this look</button></article>'}).join('')}
+  tags.addEventListener('click',function(e){var b=e.target.closest('.cat');if(!b)return;cur=b.textContent;tags.querySelectorAll('.cat').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});render()});
+  render();
+});
+</script>
+
+
+<!--md:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-family:var(--serif);font-size:30px;line-height:1.15;color:#fff8ec;margin-bottom:18px">Polished, <em style="color:var(--gold-hi)">with a pour.</em></p>
+        <p>Manicures, gel, SNS dip, acrylics and spa pedicures in Roxborough and Conshohocken, with complimentary wine, beer and soft drinks.</p>
+        <p><a href="tel:+12673355234" style="font-size:20px">267-335-5234</a><br><a href="mailto:modishnailsparox@gmail.com" class="tiny">modishnailsparox@gmail.com</a></p>
+      </div>
+      <div><h4>Visit</h4><ul><li><a href="../book/">Book a visit</a></li><li><a href="../menu/">Menu &amp; prices</a></li><li><a href="../looks/">Lookbook</a></li><li><a href="../#waitlist">Walk-in waitlist</a></li></ul></div>
+      <div><h4>Treat someone</h4><ul><li><a href="../gift-cards/">Gift cards</a></li><li><a href="../parties/">Parties &amp; bridal</a></li><li><a href="https://www.google.com/search?q=Modish+Nail+Spa+7126+Ridge+Ave+Philadelphia+PA+19128">Google reviews</a></li><li><a href="https://www.yelp.com/biz/modish-nail-spa-philadelphia">Yelp</a> · <a href="https://www.facebook.com/ModishNailSpaRox/">Facebook</a></li></ul></div>
+      <div><h4>Spas</h4><p class="small"><a href="../nail-salon-roxborough/">7126 Ridge Ave<br>Roxborough, Philadelphia 19128</a></p><p class="small">34 Ridge Pike<br>Conshohocken, PA 19428</p><p class="small">Mon–Sat 9:30 am – 7 pm<br>Sunday closed</p></div>
+    </div>
+    <div class="foot-mark" aria-hidden="true">MODISH</div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Modish Nail Spa · Concept by Future Basics</span><span>Complimentary wine &amp; beer for guests 21+</span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=89d81a3c" defer></script>
+<!--/md:footer-->
+</body>
+</html>

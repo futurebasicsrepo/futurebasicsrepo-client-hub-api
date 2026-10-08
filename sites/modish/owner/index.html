@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Salon Console (Demo) | Modish Nail Spa × Future Basics</title>
+<meta name="description" content="Behind the Modish concept site: today's book, the walk-in queue, automatic fill reminders, slow-hour promos, review requests, gift cards and parties.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1b1310">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%231b1310'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Didot,Georgia,serif' font-size='34' fill='%23e6cb92'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300..600&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=b35c7bd5">
+<link rel="stylesheet" href="./owner.css?v=617fda65">
+</head>
+<body class="console">
+<a class="skip" href="#main">Skip to content</a>
+<header class="o-top">
+  <a class="o-brand" href="../"><b>MODISH</b><span>Salon console · demo</span></a>
+  <span class="o-where" id="o-where">Today</span>
+  <span class="o-tag">Book the chair. Bring them back.</span>
+  <div class="o-r"><span class="o-clock" id="clock"></span><a class="btn btn-gold btn-sm" href="../"><span class="o-long">View the site</span><span class="o-short">Site ↗</span></a><button class="menu-btn" type="button" aria-label="Console sections" aria-expanded="false" aria-controls="onav"><span></span></button></div>
+</header>
+<div class="o-shell">
+  <nav class="o-nav" id="onav" aria-label="Console">
+    <a href="#today" data-v="today">Today <em id="n-today"></em></a>
+    <a href="#waitlist" data-v="waitlist">Walk-in queue <em id="n-wl"></em></a>
+    <a href="#rebook" data-v="rebook">Fill reminders <em>14</em></a>
+    <a href="#slow" data-v="slow">Slow-hour fill</a>
+    <a href="#reviews" data-v="reviews">Reviews</a>
+    <a href="#gifts" data-v="gifts">Gift cards <em id="n-gift"></em></a>
+    <a href="#parties" data-v="parties">Parties <em id="n-party"></em></a>
+  </nav>
+  <main id="main" class="o-main">
+
+    <section class="view" id="v-today">
+      <div class="v-head"><div><span class="eyebrow">Roxborough · today</span><h1 id="greet">Good morning.</h1></div><p class="muted">Demo data. Anything you do on the public site (book, join the waitlist, buy a gift card, request a party) appears here in this browser.</p></div>
+      <div class="tiles">
+        <div class="tile"><span>Booked today</span><b id="t-booked">0</b><small id="t-booked-s"></small></div>
+        <div class="tile"><span>Walk-ins waiting</span><b id="t-wl">0</b><small>texted when a chair opens</small></div>
+        <div class="tile"><span>Booked revenue</span><b id="t-rev">$0</b><small>before tips &amp; add-ons</small></div>
+        <div class="tile alert"><span>Open chair-hours</span><b>6</b><small>Tue 2–5 pm · <a href="#slow">fill them →</a></small></div>
+      </div>
+      <div class="panel"><div class="row-between"><h3>The book</h3><span class="tiny muted">Online bookings arrive here; no phone tag.</span></div><div id="book"></div></div>
+    </section>
+
+    <section class="view" id="v-waitlist" hidden>
+      <div class="v-head"><div><span class="eyebrow">Walk-in queue</span><h1>Who's next.</h1></div><p class="muted">Guests join from their phone and wait wherever they like. One tap texts them when their chair is ten minutes away.</p></div>
+      <div id="queue"></div>
+      <div class="phone-mini"><span class="tiny muted">What the guest receives</span><div class="bubble">Modish: Hi Jess! Your chair at Roxborough is about 10 min away. Head over whenever you're ready, and the wine's chilled. Reply C to cancel.</div></div>
+    </section>
+
+    <section class="view" id="v-rebook" hidden>
+      <div class="v-head"><div><span class="eyebrow">Fill reminders</span><h1>Bring them back on time.</h1></div><p class="muted">Gel lasts 2–3 weeks, dip 3–4, acrylics need a fill every 2–3. Each client gets one friendly text when they're due, with their usual service ready to book.</p></div>
+      <div class="tiles slim"><div class="tile"><span>Due this week</span><b>14</b></div><div class="tile"><span>Rebooked from last week's texts</span><b>9 of 16</b></div><div class="tile"><span>Revenue kept</span><b>$486</b><small>demo</small></div></div>
+      <div class="panel"><h3>Due now</h3><div id="due"></div><button class="btn btn-dark btn-sm" type="button" id="send-due" style="margin-top:16px">Send today's 5 reminders</button><div id="due-out" class="small" style="margin-top:12px"></div></div>
+      <div class="phone-mini"><span class="tiny muted">Example text</span><div class="bubble">Modish: Hi Dana! Your gel set is 2½ weeks old, so it's time for a refresh. Same as last time (gel manicure + chrome, $50)? Tap to pick a time: modishnailspaphiladelphia.com/b/7Q · Reply STOP to opt out</div></div>
+    </section>
+
+    <section class="view" id="v-slow" hidden>
+      <div class="v-head"><div><span class="eyebrow">Slow-hour fill</span><h1>Empty chairs, filled by text.</h1></div><p class="muted">When the afternoon looks quiet, send one offer to nearby guests who haven't visited in 6+ weeks. Bookings land straight in the book.</p></div>
+      <div class="panel">
+        <div class="slow-grid" id="heat" aria-label="Chairs booked by hour, today"></div>
+        <p class="tiny muted" style="margin:10px 0 0">Chairs booked by hour, today (6 chairs). Lighter = emptier.</p>
+      </div>
+      <div class="panel">
+        <h3>Tuesday happy hour</h3>
+        <div class="field"><label for="offer">Offer</label><select class="input" id="offer"><option>$5 off any pedicure, 2–5 pm today</option><option>Free chrome or cat eye with a gel mani, 2–5 pm</option><option>Bring a friend: second mani-pedi 15% off</option></select></div>
+        <p class="small">Audience: <b>42 guests</b> within 3 miles who haven't visited in 6+ weeks and opted in to texts.</p>
+        <button class="btn btn-gold btn-sm" type="button" id="send-slow">Send offer</button>
+        <div id="slow-out" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <section class="view" id="v-reviews" hidden>
+      <div class="v-head"><div><span class="eyebrow">Reviews</span><h1>Ask at the glow.</h1></div><p class="muted">Two hours after a visit, one text: “How did we do?” Happy guests get a one-tap link to Google. Anything less goes privately to the manager the same day.</p></div>
+      <div class="tiles slim"><div class="tile"><span>Asked this month</span><b>212</b><small>demo</small></div><div class="tile"><span>Left a Google review</span><b>58</b></div><div class="tile"><span>Caught privately</span><b>4</b><small>resolved before going public</small></div></div>
+      <div class="panel"><h3>Today's replies</h3><div id="rev"></div></div>
+    </section>
+
+    <section class="view" id="v-gifts" hidden>
+      <div class="v-head"><div><span class="eyebrow">Gift cards</span><h1>Sold while you slept.</h1></div><p class="muted">E-gift cards sell 24/7, especially the night before birthdays and Mother's Day. Redeemed at the desk by name or code.</p></div>
+      <div class="tiles slim"><div class="tile"><span>This month</span><b id="g-sum">$0</b></div><div class="tile"><span>Cards sold</span><b id="g-n">0</b></div><div class="tile"><span>Average card</span><b id="g-avg">$0</b></div></div>
+      <div class="panel"><div id="gifts"></div></div>
+    </section>
+
+    <section class="view" id="v-parties" hidden>
+      <div class="v-head"><div><span class="eyebrow">Parties</span><h1>Group requests.</h1></div><p class="muted">Bridal parties, birthdays and showers: the most profitable hours in the week, booked in one conversation.</p></div>
+      <div class="panel"><div id="parties"></div></div>
+    </section>
+  </main>
+</div>
+<script>window.MD_NO_CHAT=true;window.MD_NO_TRAY=true;</script>
+<script src="../assets/site.js?v=89d81a3c"></script>
+<script src="./owner.js?v=a8b1da49"></script>
+</body>
+</html>
