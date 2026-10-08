@@ -116,7 +116,7 @@ export function termsPage({ origin, env = process.env }) {
 
 <h2 id="texts">9. Text messages</h2>
 <ul>
-<li><b>Program:</b> Spot sign-in codes, and order and trip messages. When you ask to sign in by text, we text you a one-time code. When you (or an assistant acting at your request) ask Spot to send a link to your phone, we text you that link and updates about that cart or trip. We don’t send marketing texts.</li>
+<li><b>Program:</b> Spot sign-in codes, and order and trip messages. When you ask to sign in by text, we text you a one-time code. When you enter your number on spotmeplease.com and confirm it with that code, you agree to receive texts about your Spot activity: links to finish or approve a purchase, and updates about that cart or trip. We only text numbers confirmed this way; if an assistant gives us a number that hasn’t been confirmed, we email instead. We don’t send marketing texts, and texting is never required to use Spot.</li>
 <li><b>Frequency:</b> varies; usually one to three messages per request.</li>
 <li><b>Cost:</b> message and data rates may apply.</li>
 <li><b>Opt out:</b> reply <b>STOP</b> at any time and we won’t text that number again. Reply <b>START</b> to opt back in, or <b>HELP</b> for help. You can also email <a href="mailto:${email}">${email}</a>.</li>

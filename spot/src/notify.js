@@ -8,7 +8,10 @@
 //
 // Texts follow US carrier rules (A2P 10DLC): they start with the brand,
 // say how to opt out, and are never sent to a number that replied STOP
-// (optouts, fed by the Twilio inbound webhook in server.js).
+// (optouts, fed by the Twilio inbound webhook in server.js). Apart from
+// the sign-in code that proves a number, texts only go to numbers someone
+// confirmed with a code on Spot's website (`verified`): a number an AI
+// passes along gets email until its owner confirms it.
 import { usd } from './cart.js';
 
 export function normalizePhone(raw) {
@@ -38,6 +41,9 @@ export function finishMessage(cart, link) {
 
 export const SMS_FOOTER = ' Reply STOP to opt out.';
 
+// Shown next to every phone field on the website: the opt-in carriers ask for.
+export const SMS_CONSENT = 'By entering your number you agree to receive texts from Spot: sign-in codes and updates about your orders. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.';
+
 // Spot's email look: warm paper, the orange dot, one big button. Tables
 // and inline styles only, because that's what email clients render.
 export function emailLayout({ preheader = '', title, lines = [], cta = null, note = '', base = '' }) {
@@ -61,7 +67,14 @@ ${note ? `<p style="margin:16px 0 0;font:14px/1.5 -apple-system,BlinkMacSystemFo
 </table></td></tr></table></body></html>`;
 }
 
-export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null } = {}) {
+export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null, verified = null } = {}) {
+  // Every text but a sign-in code: only to a confirmed number.
+  const textTo = async (phone, body) => {
+    const e164 = normalizePhone(phone);
+    if (!e164) return 'bad_number';
+    if (verified && !verified(e164)) return 'not_verified';
+    return sms(e164, body).catch(() => 'failed');
+  };
   async function email(to, { subject, text, html }) {
     if (!env.RESEND_API_KEY) return 'not_configured';
     const res = await fetchImpl('https://api.resend.com/emails', {
@@ -120,10 +133,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
     async send({ email: to, phone } = {}, msg) {
       const out = {};
       if (to && msg.html) out.email = await email(to, { subject: msg.subject, text: msg.text, html: msg.html }).catch(() => 'failed');
-      if (phone && msg.sms) {
-        const e164 = normalizePhone(phone);
-        out.text = e164 ? await sms(e164, msg.sms + SMS_FOOTER).catch(() => 'failed') : 'bad_number';
-      }
+      if (phone && msg.sms) out.text = await textTo(phone, msg.sms + SMS_FOOTER);
       return out;
     },
 
@@ -145,10 +155,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
           }),
         }).catch(() => 'failed');
       }
-      if (phone) {
-        const e164 = normalizePhone(phone);
-        out.text = e164 ? await sms(e164, msg.text + SMS_FOOTER).catch(() => 'failed') : 'bad_number';
-      }
+      if (phone) out.text = await textTo(phone, msg.text + SMS_FOOTER);
       return out;
     },
   };

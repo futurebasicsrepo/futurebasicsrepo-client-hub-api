@@ -28,7 +28,11 @@ test('an agent finds a flight, texts the link, and the traveler books it on thei
     sent.push({ url: String(url), body: String(init.body) });
     return new Response('{}', { status: 200 });
   };
-  const a = app(t, { notifyFetch, env: { ...env, TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_FROM: '+15125550000' } });
+  const db = openDb(':memory:');
+  const a = app(t, { db, notifyFetch, env: { ...env, TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_FROM: '+15125550000' } });
+  // Texts only go to numbers confirmed with a code on Spot.
+  db.users.create('u1', null);
+  db.identities.add('phone', '+15125550100', 'u1');
 
   const s = await a.inject({ method: 'POST', url: '/v1/agent/flights/search', headers: auth('s3cret-a'), payload: { origin: 'aus', destination: 'SFO', departure_date: inDays(20), return_date: inDays(24) } });
   assert.equal(s.statusCode, 200);

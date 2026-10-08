@@ -78,7 +78,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // sandbox has no real stores, so everything is orderable there.
   spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
   app.addHook('onClose', async () => fulfiller.close());
-  const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  // Texts only go to numbers confirmed with a code (a phone sign-in identity).
+  const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
   // Nightly database backups (started from the entry point, not in tests).
   const backups = createBackups({ db, env, dir: backupDir || join(dirname(env.SPOT_DB || './data/spot.db'), 'backups'), notifier, log: app.log, ...(backupFetch ? { fetchImpl: backupFetch } : {}) });
   app.decorate('backups', backups);
