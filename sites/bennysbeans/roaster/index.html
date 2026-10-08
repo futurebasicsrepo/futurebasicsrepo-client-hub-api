@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roaster Console (Demo) | Benny's Beans · Russian River Roastery</title>
+<meta name="description" content="Behind the Benny's Beans concept site: roast-day batch plans, grind and pack lists, bag labels, ship lists, subscriptions, green coffee, markets, wholesale and customer texts. Sales demo with sample data.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/roaster/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Roaster console · Benny's Beans">
+<meta property="og:description" content="The operations brain for a one-person micro-roaster. Sales demo with sample data.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<link rel="stylesheet" href="./roaster.css">
+</head>
+<body class="console" data-no-chat>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+<main id="main" class="rc">
+  <div class="rc-top">
+    <div class="rc-top-in">
+      <div class="rc-id">
+        <span class="rc-ring" data-ring></span>
+        <div>
+          <p class="rc-kicker">Roaster console · sales demo · sample data</p>
+          <p class="rc-sub">Anything you do on the public site in this browser (order, subscribe, pre-order, request samples) shows up here as <b>“You, just now”</b>.</p>
+        </div>
+      </div>
+      <div class="rc-meta">
+        <span class="rc-clock mono" id="rc-clock"></span>
+        <a class="btn btn-sm btn-outline-light" href="../">View the site <span class="arr">→</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="rc-shell">
+    <nav class="rc-rail" id="rc-rail" aria-label="Console sections">
+      <a href="#roastday" data-v="roastday"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8c.6 3.2 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2 1-3.4 2.1-4.4.2 1.6.9 2.6 2 3-1-3 .1-6.2.5-8.6z"/><path d="M5 21h14"/></svg><span>Roast day</span><em id="n-roastday"></em></a>
+      <a href="#orders" data-v="orders"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Orders</span><em id="n-orders"></em></a>
+      <a href="#subscriptions" data-v="subscriptions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5"/><path d="M20 3.5v5h-5"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 15.5"/><path d="M4 20.5v-5h5"/></svg><span>Subscriptions</span><em id="n-subs"></em></a>
+      <a href="#green" data-v="green"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="6.5" ry="9" transform="rotate(-25 12 12)"/><path d="M14.5 4.5c-3 3-1 7-3.6 9.6-1.4 1.4-2.2 3.2-1.8 5.4"/></svg><span>Green coffee</span><em id="n-green" class="warn"></em></a>
+      <a href="#markets" data-v="markets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l2-5h14l2 5"/><path d="M3 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M5 12v8h14v-8M10 20v-5h4v5"/></svg><span>Markets</span><em id="n-markets"></em></a>
+      <a href="#wholesale" data-v="wholesale"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6M9 10h.01M15 10h.01"/></svg><span>Wholesale</span><em id="n-wholesale"></em></a>
+      <a href="#customers" data-v="customers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><span>Customers &amp; texts</span><em id="n-customers"></em></a>
+      <a href="#insights" data-v="insights"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/></svg><span>Insights</span></a>
+    </nav>
+
+    <div class="rc-body">
+
+      <!-- ============ ROAST DAY ============ -->
+      <section class="view" id="v-roastday" aria-labelledby="h-roastday">
+        <div class="rd-hero">
+          <div class="rd-hero-top">
+            <div>
+              <p class="eyebrow">Roast day</p>
+              <h1 class="rd-date" id="h-roastday" tabindex="-1"><span id="rd-day">Monday</span> <span id="rd-md">Oct 12</span></h1>
+              <p class="rd-cut" id="rd-cut" aria-live="polite"></p>
+            </div>
+            <div class="rd-pick">
+              <span class="label" id="rd-pick-l">Plan for</span>
+              <div class="seg seg-dark" role="group" aria-labelledby="rd-pick-l" id="rd-pick"></div>
+            </div>
+          </div>
+          <div class="rd-kpis" id="rd-kpis"></div>
+        </div>
+
+        <div class="feed-live" id="rd-live" aria-live="polite"></div>
+
+        <nav class="steps" aria-label="Roast day steps" id="rd-steps">
+          <a href="#roastday/plan"><b>1</b>Batch plan</a>
+          <a href="#roastday/pack"><b>2</b>Grind &amp; pack</a>
+          <a href="#roastday/labels"><b>3</b>Labels</a>
+          <a href="#roastday/ship"><b>4</b>Ship</a>
+          <a href="#roastday/willcall"><b>5</b>Will-call</a>
+          <a href="#roastday/market"><b>6</b>Market box</a>
+        </nav>
+
+        <div class="pn" id="rd-demand"></div>
+
+        <div class="pn" id="rd-plan-pn">
+          <div class="pn-h" id="rd-plan">
+            <div><p class="eyebrow">Step 1</p><h2>Batch plan</h2></div>
+            <p class="small muted pn-note">Every bag due on this roast, grouped by coffee and roast level. Light to dark, so the drum stays consistent.</p>
+          </div>
+          <div class="plan-ctl">
+            <label class="mini"><span>Green batch (lb)</span><input type="number" id="cfg-cap" min="1" max="30" step="0.5" inputmode="decimal"></label>
+            <label class="mini"><span>Shrink %</span><input type="number" id="cfg-shrink" min="5" max="25" step="0.5" inputmode="decimal"></label>
+            <label class="mini"><span>Min / batch</span><input type="number" id="cfg-mins" min="8" max="25" step="1" inputmode="numeric"></label>
+            <label class="mini"><span>First drop</span><input type="time" id="cfg-start"></label>
+            <p class="tiny plan-assume" id="plan-assume"></p>
+          </div>
+          <div id="plan-groups"></div>
+          <div class="sched-h">
+            <h3>Roast schedule</h3>
+            <div class="sched-prog" id="sched-prog" aria-live="polite"></div>
+          </div>
+          <ol class="sched" id="plan-sched"></ol>
+        </div>
+
+        <div class="pn">
+          <div class="pn-h" id="rd-pack">
+            <div><p class="eyebrow">Step 2</p><h2>Grind &amp; pack</h2></div>
+            <p class="small muted pn-note">Sorted so the grinder changes setting as few times as possible. Tick each bag as it's sealed.</p>
+          </div>
+          <div class="grindq" id="grind-q"></div>
+          <div id="pack-list"></div>
+        </div>
+
+        <div class="pn">
+          <div class="pn-h" id="rd-labels">
+            <div><p class="eyebrow">Step 3</p><h2>Bag labels</h2></div>
+            <div class="row"><button class="btn btn-red btn-sm" type="button" id="print-labels">Print all labels</button></div>
+          </div>
+          <p class="small muted">One label per bag, printed in pack order. Prints 9 to a letter sheet (2.5 × 3.3 in).</p>
+          <div class="labels" id="label-preview"></div>
+          <button class="btn btn-ghost btn-sm mt1" type="button" id="labels-more" aria-expanded="false"></button>
+        </div>
+
+        <div class="pn">
+          <div class="pn-h" id="rd-ship">
+            <div><p class="eyebrow">Step 4</p><h2>Ship list</h2></div>
+            <div class="row"><button class="btn btn-ghost btn-sm" type="button" id="print-slips">Print packing slips</button><button class="btn btn-sm" type="button" id="ship-all">Mark all shipped</button></div>
+          </div>
+          <div id="ship-list"></div>
+        </div>
+
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h" id="rd-willcall">
+              <div><p class="eyebrow">Step 5</p><h2>Will-call shelf</h2></div>
+            </div>
+            <p class="small muted" id="wc-where"></p>
+            <div id="wc-list"></div>
+          </div>
+          <div class="pn">
+            <div class="pn-h" id="rd-market">
+              <div><p class="eyebrow">Step 6</p><h2>Market box</h2></div>
+            </div>
+            <div id="mb"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ORDERS ============ -->
+      <section class="view" id="v-orders" aria-labelledby="h-orders" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Orders</p><h1 id="h-orders" tabindex="-1">Every channel, one feed.</h1></div>
+          <p class="muted">Web, subscriptions, market pre-orders, wholesale and will-call land in one list with the roast they belong to.</p>
+        </div>
+        <div class="pn">
+          <div class="filters">
+            <div class="chips-row" role="group" aria-label="Channel" id="of-ch"></div>
+            <div class="f-r">
+              <label class="sr" for="of-st">Status</label>
+              <select id="of-st" class="sel-sm"><option value="">Any status</option><option value="new">New</option><option value="roasting">Roasting</option><option value="packed">Packed</option><option value="shipped">Shipped</option><option value="picked up">Picked up</option></select>
+              <label class="sr" for="of-q">Search orders</label>
+              <input type="search" id="of-q" class="in-sm" placeholder="Search name, coffee, order #">
+            </div>
+          </div>
+          <p class="tiny" id="of-count" aria-live="polite"></p>
+          <div id="of-list"></div>
+        </div>
+      </section>
+
+      <!-- ============ SUBSCRIPTIONS ============ -->
+      <section class="view" id="v-subscriptions" aria-labelledby="h-subs" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Subscriptions</p><h1 id="h-subs" tabindex="-1">Never run out. Never guess.</h1></div>
+          <p class="muted">Renewals drop onto the right roast automatically. Skips and pauses are self-serve, and the ones drifting away surface before they cancel.</p>
+        </div>
+        <div class="kpis" id="sub-kpis"></div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Subscribers, last 12 weeks</h2><span class="tag">Sample</span></div>
+            <figure class="chart" id="sub-chart"></figure>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>Upcoming renewals</h2></div>
+            <div id="sub-renew"></div>
+          </div>
+        </div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Churn risk</h2><span class="tag red">Act this week</span></div>
+            <p class="small muted">Skipped twice in a row, paused a month, or a card about to expire. One personal text keeps most of them.</p>
+            <div id="sub-risk"></div>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>Skips &amp; pauses</h2></div>
+            <div id="sub-skips"></div>
+          </div>
+        </div>
+        <div class="pn">
+          <div class="pn-h"><h2>Plan mix</h2><span class="tiny">Benny's live plans today are 5 lb monthly (Light or Dark, $80). The other options are illustrative.</span></div>
+          <div id="sub-mix"></div>
+        </div>
+      </section>
+
+      <!-- ============ GREEN COFFEE ============ -->
+      <section class="view" id="v-green" aria-labelledby="h-green" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Green coffee</p><h1 id="h-green" tabindex="-1">What's in the sacks.</h1></div>
+          <p class="muted">On-hand green, weekly burn from the actual roast plans, and a heads-up before an origin runs dry. Stock, suppliers and costs are illustrative.</p>
+        </div>
+        <div id="gr-alerts" class="alerts" aria-live="polite"></div>
+        <div class="pn"><div id="gr-table"></div></div>
+        <div class="pn" id="calc">
+          <div class="pn-h"><div><h2>Cost per roasted lb &amp; margin</h2></div><span class="tag">Calculator</span></div>
+          <div class="calc">
+            <div class="calc-in">
+              <label class="field"><span>Coffee</span><select id="c-coffee"></select></label>
+              <label class="field"><span>Green cost $/lb</span><input type="number" id="c-green" step="0.05" min="0" inputmode="decimal"></label>
+              <label class="field"><span>Roast shrink %</span><input type="number" id="c-shrink" step="0.5" min="0" max="30" inputmode="decimal"></label>
+              <label class="field"><span>1 lb bag + valve + label $</span><input type="number" id="c-pk1" step="0.05" min="0" inputmode="decimal"></label>
+              <label class="field"><span>5 lb bag + label $</span><input type="number" id="c-pk5" step="0.05" min="0" inputmode="decimal"></label>
+              <label class="field"><span>Gas + power $/roasted lb</span><input type="number" id="c-energy" step="0.05" min="0" inputmode="decimal"></label>
+              <label class="check full"><input type="checkbox" id="c-fees" checked> Include card fees (2.9% + 30¢)</label>
+            </div>
+            <div class="calc-out" id="c-out" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ MARKETS ============ -->
+      <section class="view" id="v-markets" aria-labelledby="h-markets" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Farmers markets</p><h1 id="h-markets" tabindex="-1">Bring the right bags.</h1></div>
+          <p class="muted">Pre-orders bagged with names, walk-up stock sized from past weeks, and a two-minute tally when you pack up.</p>
+        </div>
+        <div class="mk-hero" id="mk-next"></div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Pre-orders</h2><span class="tiny" id="mk-pre-n"></span></div>
+            <div id="mk-pre"></div>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>What to bring</h2><span class="tag">From last 6 weeks</span></div>
+            <div id="mk-bring"></div>
+          </div>
+        </div>
+        <div class="pn">
+          <div class="pn-h"><h2>Sales history</h2><span class="tiny">1 lb bags sold per market. Sample, plus anything you log below.</span></div>
+          <div id="mk-hist"></div>
+        </div>
+        <div class="pn" id="mk-log-pn">
+          <div class="pn-h"><div><h2>Post-market tally</h2></div><span class="tiny">Saved in this browser</span></div>
+          <form id="mk-log" class="mk-log"></form>
+        </div>
+      </section>
+
+      <!-- ============ WHOLESALE ============ -->
+      <section class="view" id="v-wholesale" aria-labelledby="h-wholesale" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Wholesale</p><h1 id="h-wholesale" tabindex="-1">Standing orders, steady pounds.</h1></div>
+          <p class="muted">Cafés, a restaurant, an office and vacation rentals with welcome bags. Standing orders land on their roast day without a text thread. All accounts are samples.</p>
+        </div>
+        <div class="kpis" id="ws-kpis"></div>
+        <div id="ws-apps"></div>
+        <div class="pn">
+          <div class="pn-h"><h2>Accounts</h2></div>
+          <div id="ws-acc"></div>
+        </div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Standing orders by roast day</h2></div>
+            <div id="ws-standing"></div>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>Invoices</h2></div>
+            <div id="ws-inv"></div>
+          </div>
+        </div>
+        <div class="pn">
+          <div class="pn-h"><h2>Sample requests</h2><span class="tiny">Approved samples go on the next roast as 4 oz bags.</span></div>
+          <div id="ws-samples"></div>
+        </div>
+      </section>
+
+      <!-- ============ CUSTOMERS ============ -->
+      <section class="view" id="v-customers" aria-labelledby="h-customers" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Customers &amp; texts</p><h1 id="h-customers" tabindex="-1">Text before they run out.</h1></div>
+          <p class="muted">The console knows when each bag was roasted and how big it was, so it knows who's about to run dry. Every message is composed for you; nothing sends in this demo.</p>
+        </div>
+        <div class="pn">
+          <div class="pn-h"><div><h2>Running low this week</h2></div><span class="tiny" id="low-n"></span></div>
+          <p class="small muted">Estimated run-out = last order + bag size ÷ (0.06 lb a day × drinkers in the house). Only customers who opted in to texts get one; everyone else gets an email.</p>
+          <div id="low-list"></div>
+        </div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Review requests</h2><span class="tiny">Coffee arrived ~5 days ago</span></div>
+            <div id="rev-list"></div>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>New coffee broadcast</h2></div>
+            <form id="bc" class="bc"></form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ INSIGHTS ============ -->
+      <section class="view" id="v-insights" aria-labelledby="h-insights" hidden>
+        <div class="v-head">
+          <div><p class="eyebrow">Insights</p><h1 id="h-insights" tabindex="-1">How the week is going.</h1></div>
+          <p class="muted">All figures are sample data generated around the real roast calendar, plus anything you did on the site.</p>
+        </div>
+        <div class="kpis" id="in-kpis"></div>
+        <div class="g2x">
+          <div class="pn">
+            <div class="pn-h"><h2>Revenue this week by channel</h2><span class="tag">Sample</span></div>
+            <figure class="chart" id="in-rev"></figure>
+          </div>
+          <div class="pn">
+            <div class="pn-h"><h2>Pounds by coffee, month to date</h2><span class="tag">Sample</span></div>
+            <figure class="chart" id="in-coffee"></figure>
+          </div>
+        </div>
+      </section>
+
+      <div id="print-area" class="print-area" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <dialog class="dlg" id="dlg" aria-labelledby="dlg-h">
+    <form method="dialog" class="dlg-in">
+      <div class="dlg-top"><h2 id="dlg-h">Text</h2><button class="x" value="cancel" aria-label="Close">×</button></div>
+      <p class="small muted" id="dlg-to"></p>
+      <div class="phone">
+        <div class="phone-h"><span class="phone-av" data-face></span><span><b>Benny's Beans</b><small>707-899-4183</small></span></div>
+        <div class="bubble" id="dlg-bubble"></div>
+      </div>
+      <label class="field"><span>Message</span><textarea id="dlg-msg" rows="5"></textarea></label>
+      <p class="tiny" id="dlg-count"></p>
+      <div class="row dlg-actions"><button class="btn btn-red btn-sm" value="send" id="dlg-send">Send (demo)</button><button class="btn btn-ghost btn-sm" value="cancel">Cancel</button></div>
+      <p class="tiny">Demo only: nothing is sent. Texts go only to customers who opted in, between 8 am and 9 pm their time, and always say who's texting and how to opt out.</p>
+    </form>
+  </dialog>
+</main>
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script src="./roaster.js" defer></script>
+</body>
+</html>

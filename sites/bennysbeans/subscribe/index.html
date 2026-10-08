@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coffee Subscription · Never Run Out | Benny's Beans · Russian River Roastery</title>
+<meta name="description" content="Fresh-roasted coffee on your schedule. Pick Benny's rotating pick, a light or dark rotation, or lock in one coffee. 1, 2 or 5 lb, weekly to monthly. The 5 lb monthly is $80. Skip, swap or pause by text.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/subscribe/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Never run out. · Benny's Beans subscriptions">
+<meta property="og:description" content="Roasted the week it ships, on your schedule. 5 lb monthly for $80. Skip, swap or pause by text.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<style>
+  /* ---------- hero ---------- */
+  .sub-hero { overflow: hidden; }
+  .sub-hero .grid2 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+  .sub-hero h1 { margin: 0 0 24px; font-size: clamp(56px, 9vw, 140px); }
+  .fact { display: inline-flex; align-items: center; gap: 14px; background: var(--ink); color: var(--paper); border-radius: var(--pill); padding: 8px 22px 8px 8px; margin: 4px 0 26px; max-width: 100%; }
+  .fact b.num { display: grid; place-items: center; flex: none; width: 64px; height: 64px; border-radius: 50%; background: var(--cherry); color: #fff; font: 900 20px/1 var(--sans); font-variation-settings: "wdth" 125; }
+  .fact span { font-size: 15px; line-height: 1.35; }
+  .fact span small { display: block; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+  .hero-stage { position: relative; aspect-ratio: 1; width: 100%; max-width: 540px; justify-self: center; }
+  .hero-stage .ringbg { position: absolute; inset: 0; color: var(--kraft); }
+  .hero-stage .ringbg svg { width: 100%; height: 100%; }
+  .hero-stage .disc { position: absolute; inset: 14%; border-radius: 50%; background: var(--kraft-l); }
+  .hero-stage .b5 { position: absolute; left: 22%; bottom: 10%; width: 50%; filter: drop-shadow(0 30px 28px rgba(60,40,20,.32)); animation: floaty 6s ease-in-out infinite; }
+  .hero-stage .b1 { position: absolute; width: 26%; filter: drop-shadow(0 18px 16px rgba(60,40,20,.28)); }
+  .hero-stage .b1.l { left: 6%; bottom: 14%; transform: rotate(-10deg); }
+  .hero-stage .b1.r { right: 5%; bottom: 18%; transform: rotate(9deg); }
+  .hero-stage .stamp { position: absolute; right: 2%; top: 4%; background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); }
+  @keyframes floaty { 50% { transform: translateY(-10px) rotate(-1deg); } }
+  @media (max-width: 900px) { .sub-hero .grid2 { grid-template-columns: 1fr; } .hero-stage { max-width: 420px; } }
+
+  .how { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--line); }
+  .how li { padding: 22px 20px 4px 0; }
+  .how li + li { padding-left: 20px; border-left: 1px solid var(--line); }
+  .how .n { font: 500 12px var(--mono); color: var(--cherry); letter-spacing: .12em; }
+  .how b { display: block; font-size: 18px; margin: 6px 0 4px; }
+  .how p { font-size: 14.5px; color: var(--ink-2); margin: 0; }
+  @media (max-width: 860px) { .how { grid-template-columns: 1fr 1fr; } .how li:nth-child(3) { border-left: 0; padding-left: 0; } }
+  @media (max-width: 520px) { .how { grid-template-columns: 1fr; } .how li + li { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); } }
+
+  /* ---------- builder ---------- */
+  .builder { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: clamp(28px, 4vw, 56px); align-items: start; }
+  @media (max-width: 1020px) { .builder { grid-template-columns: 1fr; } }
+  .step { border: 0; margin: 0 0 clamp(28px, 4vw, 44px); padding: 0 0 clamp(28px, 4vw, 44px); border-bottom: 1px solid var(--line); min-width: 0; }
+  .step:last-child { border-bottom: 0; }
+  .step legend { padding: 0; display: flex; align-items: center; gap: 14px; margin-bottom: 18px; width: 100%; }
+  .step legend .no { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font: 500 13px var(--mono); }
+  .step legend .t { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: clamp(24px, 2.6vw, 34px); line-height: 1; }
+  .step .sub { font-size: 15px; color: var(--ink-2); margin: -6px 0 16px; }
+  .opts { display: grid; gap: 12px; }
+  .opts.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 640px) { .opts.c3 { grid-template-columns: 1fr; } }
+  .opt { position: relative; text-align: left; border: 1.5px solid var(--line); border-radius: 22px; background: var(--paper); padding: 18px 18px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color .15s, box-shadow .15s, transform .2s var(--ease); min-width: 0; }
+  .opt:hover { border-color: var(--ink); }
+  .opt[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); background: #fff; }
+  .opt::after { content: ""; position: absolute; top: 14px; right: 14px; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--paper); transition: all .15s; }
+  .opt[aria-pressed="true"]::after { background: var(--cherry) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 14px no-repeat; border-color: var(--cherry); }
+  .opt .k { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .opt .big { font-weight: 900; font-variation-settings: "wdth" 122; text-transform: uppercase; font-size: 24px; line-height: 1; padding-right: 26px; }
+  .opt .p { font-size: 14px; color: var(--ink-2); line-height: 1.4; }
+  .opt .pr { font-weight: 800; font-variation-settings: "wdth" 115; font-size: 20px; margin-top: 6px; }
+  .opt .pr small { font: 500 11.5px var(--mono); color: var(--mute); font-weight: 400; }
+  .opt .tag { align-self: flex-start; margin-top: 8px; }
+  .rot .mini { width: 64px; margin-bottom: 6px; }
+  @media (max-width: 640px) { .rot .opt { padding-left: 92px; min-height: 120px; } .rot .mini { position: absolute; left: 16px; top: 18px; width: 60px; } }
+  .rot .mini svg { width: 100%; filter: drop-shadow(0 8px 8px rgba(60,40,20,.25)); }
+  .or { display: flex; align-items: center; gap: 14px; margin: 22px 0 14px; font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; }
+  @media (max-width: 520px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; } }
+  .tile { position: relative; border: 1.5px solid var(--line); border-radius: 18px; background: var(--c, var(--paper)); padding: 12px 8px 10px; cursor: pointer; text-align: center; display: grid; gap: 6px; transition: border-color .15s, box-shadow .15s; min-width: 0; }
+  .tile:hover { border-color: var(--ink); }
+  .tile[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .tile[aria-pressed="true"]::after { content: ""; position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 50%; background: var(--cherry) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat; }
+  .tile .bagw { width: 62%; margin: 0 auto; transition: transform .35s var(--ease); }
+  .tile:hover .bagw, .tile[aria-pressed="true"] .bagw { transform: translateY(-4px) rotate(-3deg); }
+  .tile .bagw svg { width: 100%; filter: drop-shadow(0 8px 8px rgba(60,40,20,.25)); }
+  .tile b { font-size: 13.5px; line-height: 1.15; }
+  .tile small { font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
+  @media (max-width: 520px) { .tile b { font-size: 12px; } .tile small { font-size: 9.5px; } }
+
+  .helper { margin-top: 16px; background: var(--kraft-l); border-radius: 22px; padding: clamp(18px, 2.4vw, 26px); }
+  .helper .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .helper h3 { font-size: 19px; margin: 0; }
+  .helper output { font-weight: 900; font-variation-settings: "wdth" 125; font-size: 30px; line-height: 1; }
+  .helper output small { font: 500 12px var(--mono); font-weight: 400; color: var(--ink-2); }
+  .helper .cups { display: flex; gap: 3px; margin: 12px 0 8px; flex-wrap: wrap; min-height: 22px; }
+  .helper .cups i { width: 18px; height: 18px; border-radius: 0 0 7px 7px; background: var(--ink); position: relative; }
+  .helper .cups i::after { content: ""; position: absolute; right: -5px; top: 3px; width: 5px; height: 8px; border: 2px solid var(--ink); border-left: 0; border-radius: 0 5px 5px 0; }
+  .helper .cups i.half { clip-path: inset(0 50% 0 0); }
+  input[type=range] { width: 100%; accent-color: var(--cherry); height: 30px; margin: 0; cursor: pointer; }
+  .helper .rec { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 10px; background: var(--paper); border-radius: 16px; padding: 14px 16px; flex-wrap: wrap; }
+  .helper .rec p { margin: 0; font-size: 14.5px; line-height: 1.45; flex: 1 1 260px; }
+  .helper .rec b.r { color: var(--cherry); }
+
+  .seg.wide button { flex: 0 0 auto; }
+  .note { font-size: 13.5px; color: var(--mute); margin: 10px 0 0; }
+  .note b { color: var(--ink); }
+  .minis { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+  /* ---------- summary ---------- */
+  .sum { position: sticky; top: calc(var(--head-h) + 18px); }
+  .sumcard { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; overflow: hidden; box-shadow: var(--shadow); }
+  .sumcard .band { background: var(--ink); color: var(--paper); padding: 20px 22px 18px; display: grid; grid-template-columns: 78px 1fr; gap: 16px; align-items: center; }
+  .sumcard .band .bagw svg { width: 100%; filter: drop-shadow(0 10px 10px rgba(0,0,0,.35)); }
+  .sumcard .band .k { font: 500 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #bfb3a5; }
+  .sumcard .band b.nm { display: block; font-weight: 900; font-variation-settings: "wdth" 118; text-transform: uppercase; font-size: 20px; line-height: 1.05; margin: 4px 0 6px; }
+  .sumcard .band .o { font: 500 12px var(--mono); color: var(--gold); }
+  .sumcard .body { padding: 18px 22px 22px; }
+  .sumcard .money { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+  .sumcard .money b { font-weight: 900; font-variation-settings: "wdth" 125; font-size: 46px; line-height: .9; letter-spacing: -.02em; }
+  .sumcard .money span.r { text-align: right; font: 500 12px/1.5 var(--mono); color: var(--mute); }
+  .sumcard .money span.r strong { display: block; font: 800 17px var(--sans); color: var(--ink); }
+  .sumcard .kv { margin: 14px 0; font-size: 14px; }
+  .sumcard .kv dd { text-align: right; }
+  .cal { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 14px; }
+  .cal li { border: 1.5px solid var(--line); border-radius: 14px; text-align: center; padding: 8px 4px 7px; background: var(--bone); }
+  .cal li.first { background: var(--cherry); border-color: var(--cherry); color: #fff; }
+  .cal li span { display: block; font: 500 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+  .cal li b { display: block; font-weight: 900; font-variation-settings: "wdth" 125; font-size: 24px; line-height: 1.05; }
+  .cal li em { display: block; font: 500 9.5px var(--mono); font-style: normal; opacity: .75; margin-top: 2px; }
+  .perks { display: grid; gap: 7px; margin: 0 0 16px; font-size: 13.5px; line-height: 1.4; }
+  .perks li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; }
+  .perks li::before { content: ""; width: 14px; height: 14px; margin-top: 3px; border-radius: 50%; background: var(--river) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px no-repeat; }
+  .shipnote { font-size: 12.5px; padding: 9px 12px; border-radius: 12px; background: var(--river-l); color: var(--river); margin-bottom: 12px; font-weight: 600; }
+  .shipnote.warn { background: #fbe7d9; color: #7a3b12; }
+
+  /* mobile bottom bar */
+  .mbar { display: none; }
+  @media (max-width: 1020px) {
+    .sum { position: static; }
+    .mbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 58; background: var(--ink); color: var(--paper); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); align-items: center; justify-content: space-between; gap: 12px; transform: translateY(110%); transition: transform .35s var(--ease); box-shadow: 0 -12px 30px -16px rgba(0,0,0,.5); }
+    .mbar.on { transform: none; }
+    .mbar b { font-weight: 900; font-variation-settings: "wdth" 125; font-size: 24px; line-height: 1; }
+    .mbar small { display: block; font: 500 11px var(--mono); color: #bfb3a5; margin-top: 3px; max-width: 52vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mbar .btn { min-height: 46px; padding: 0 20px; }
+    body.has-mbar .fab { bottom: 86px; transition: bottom .3s var(--ease), transform .25s var(--ease); }
+  }
+
+  /* ---------- dialog ---------- */
+  .dlg { border: 0; padding: 0; border-radius: 28px; width: min(580px, calc(100% - 24px)); max-height: calc(100vh - 24px); background: var(--bone); color: var(--ink); box-shadow: 0 40px 90px -20px rgba(0,0,0,.5); }
+  .dlg::backdrop { background: rgba(22, 18, 15, .55); }
+  .dlg[open] { animation: pop .35s var(--ease); }
+  @keyframes pop { from { opacity: 0; transform: translateY(16px) scale(.98); } }
+  .dlg header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line); background: var(--paper); position: sticky; top: 0; z-index: 2; }
+  .dlg header h2 { margin: 0; font-size: 24px; font-variation-settings: "wdth" 125; text-transform: uppercase; }
+  .dlg .in { padding: 20px 22px 24px; }
+  .dlg .recap { display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 18px; padding: 10px 14px; margin-bottom: 18px; font-size: 14px; line-height: 1.35; }
+  .dlg .recap b.p { font-size: 22px; font-weight: 900; font-variation-settings: "wdth" 125; }
+  .done { text-align: center; padding: 10px 4px 6px; }
+  .done .stamp { background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); margin: 6px auto 18px; }
+  .done h3 { font-weight: 900; font-variation-settings: "wdth" 125; text-transform: uppercase; font-size: clamp(34px, 6vw, 48px); line-height: .95; }
+  .done .row { justify-content: center; }
+
+  /* ---------- manage preview ---------- */
+  .preview-tag { display: inline-flex; align-items: center; gap: 8px; background: var(--gold); color: var(--ink); border-radius: var(--pill); padding: 7px 14px; font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .manage { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .manage { grid-template-columns: 1fr; } }
+  .next { background: var(--ink); color: var(--paper); border-radius: 28px; padding: clamp(20px, 3vw, 32px); position: relative; overflow: hidden; }
+  .next .top { display: grid; grid-template-columns: 110px 1fr; gap: 20px; align-items: center; }
+  .next .top .bagw svg { width: 100%; filter: drop-shadow(0 14px 14px rgba(0,0,0,.4)); }
+  .next .k { font: 500 11.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #bfb3a5; }
+  .next .when { font-weight: 900; font-variation-settings: "wdth" 125; text-transform: uppercase; font-size: clamp(32px, 4vw, 52px); line-height: .92; margin: 6px 0 8px; }
+  .next .what { font-size: 15px; color: #e6ddd1; }
+  .next .lock { display: inline-flex; gap: 8px; align-items: center; margin-top: 10px; font: 500 12px var(--mono); color: var(--gold); }
+  .next .lock i { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+  .next .acts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 22px; }
+  @media (max-width: 560px) { .next .acts { grid-template-columns: 1fr 1fr; } .next .top { grid-template-columns: 72px 1fr; gap: 14px; } .next .when { font-size: 30px; } .next .what { font-size: 14px; } }
+  .plan { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: 20px 22px; }
+  .plan h3 { font-size: 17px; margin: 0 0 12px; }
+  .plan .kv { font-size: 14px; margin-bottom: 16px; }
+  .plan .kv dd { text-align: right; }
+  .act { min-height: 64px; border-radius: 18px; border: 1.5px solid #3d342d; background: #221c18; color: var(--paper); cursor: pointer; font-weight: 700; font-size: 14px; display: grid; place-items: center; gap: 2px; padding: 8px; transition: all .15s; }
+  .act:hover { border-color: var(--paper); }
+  .act[aria-expanded="true"], .act[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+  .act svg { width: 20px; height: 20px; }
+  .panel { margin-top: 14px; background: #221c18; border-radius: 20px; padding: 16px; border: 1px solid #3d342d; }
+  .panel[hidden] { display: none; }
+  .panel .k { margin-bottom: 10px; display: block; }
+  .swapgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .swapgrid button { border: 1.5px solid #3d342d; background: transparent; color: var(--paper); border-radius: 14px; padding: 8px 10px; text-align: left; cursor: pointer; font-size: 13px; font-weight: 650; line-height: 1.2; display: flex; gap: 8px; align-items: center; min-height: 52px; }
+  .swapgrid button:hover { border-color: var(--paper); }
+  .swapgrid button[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+  .swapgrid button i { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+  .panel .seg button { background: transparent; color: var(--paper); border-color: #3d342d; }
+  .panel .seg button[aria-pressed="true"] { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+  .paused { position: absolute; top: 18px; right: 18px; }
+  .next.is-paused .top { opacity: .45; }
+  .side { display: grid; gap: 20px; }
+  .sms { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: 18px; }
+  .sms .bub { max-width: 86%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; margin-bottom: 8px; }
+  .sms .bub.them { background: var(--bone); border-bottom-left-radius: 6px; }
+  .sms .bub.me { background: var(--river); color: #fff; margin-left: auto; border-bottom-right-radius: 6px; font-weight: 700; letter-spacing: .04em; width: max-content; }
+  .sms .head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13.5px; }
+  .sms .head .face { width: 34px; height: 34px; border-radius: 50%; background: var(--cherry); display: grid; place-items: center; flex: none; }
+  .sms .head .face svg { width: 22px; }
+  .list { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: 18px 20px; }
+  .list h3 { font-size: 17px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .list li { display: grid; grid-template-columns: 54px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .list li:first-of-type { border-top: 0; }
+  .list .d { text-align: center; border-radius: 12px; background: var(--bone); padding: 5px 0; font: 500 10px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+  .list .d b { display: block; font: 900 19px/1.05 var(--sans); font-variation-settings: "wdth" 125; }
+  .list .st { font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ok); }
+  .list .st.sk { color: var(--mute); }
+  .list li.skipped .nm { text-decoration: line-through; color: var(--mute); }
+  .list .undo { background: none; border: 0; color: var(--cherry); font-weight: 700; font-size: 13px; cursor: pointer; text-decoration: underline; padding: 4px; }
+  .nm small { display: block; font: 500 11px var(--mono); color: var(--mute); }
+
+  .gift { display: grid; grid-template-columns: auto 1fr auto; gap: clamp(18px, 3vw, 40px); align-items: center; border-radius: 34px; padding: clamp(24px, 4vw, 48px); }
+  .gift .ringw { width: clamp(90px, 12vw, 150px); color: var(--gold); }
+  @media (max-width: 760px) { .gift { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/" aria-current="page">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="page-hero sub-hero">
+    <div class="wrap grid2">
+      <div>
+        <p class="breadcrumb"><a href="../">Home</a> / Subscribe</p>
+        <p class="eyebrow">Subscriptions · roasted the week it ships</p>
+        <h1 class="display">Never<br><span class="red">run out.</span></h1>
+        <div class="fact"><b class="num">$80</b><span><small>The original</small>5 lb a month, Light or Dark rotation. <b>$80/month</b>, free shipping.</span></div>
+        <p class="lede">Pick a rotation or lock in one coffee, choose how much and how often, and Benny roasts it on the Monday or Wednesday before it ships. Skip, swap or pause any time before roast day, by text.</p>
+        <div class="row mt2">
+          <a class="btn btn-red" href="#build">Build my subscription <span class="arr">→</span></a>
+          <a class="btn btn-ghost" href="#manage">See how managing works</a>
+        </div>
+      </div>
+      <div class="hero-stage" aria-hidden="true">
+        <div class="ringbg mark-spin" data-hero-ring></div>
+        <div class="disc"></div>
+        <div class="b1 l" data-hero-b1></div>
+        <div class="b1 r" data-hero-b2></div>
+        <div class="b5" data-hero-b5></div>
+        <div class="stamp">5 lb<b>$80</b>every month</div>
+      </div>
+    </div>
+    <div class="wrap mt3">
+      <ol class="how" style="list-style:none;margin:0;padding:0">
+        <li><span class="n">01</span><b>Build it</b><p>Coffee, size, how often, roast, grind, and ship or pickup.</p></li>
+        <li><span class="n">02</span><b>Benny roasts</b><p>On the Monday or Wednesday before each delivery. Never from a shelf.</p></li>
+        <li><span class="n">03</span><b>Heads-up text</b><p>The day before roast day: reply SKIP, SWAP or PAUSE if plans changed.</p></li>
+        <li><span class="n">04</span><b>Ships next day</b><p>Or wait for you at True Value Guerneville or the farmers market.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec-sm" id="build" aria-labelledby="build-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Subscription builder</p><h2 class="h2" id="build-h">Build yours.</h2></div>
+        <p class="lede">Five quick choices. The summary updates as you go, with your next four roast dates.</p>
+      </div>
+      <div class="builder">
+        <form class="steps" id="builder" novalidate onsubmit="return false">
+          <fieldset class="step" id="step-coffee">
+            <legend><span class="no">01</span><span class="t">The coffee</span></legend>
+            <p class="sub">Let Benny rotate it, or lock in a favorite.</p>
+            <div class="opts c3 rot" role="group" aria-label="Rotations" data-rots></div>
+            <p class="or">or lock in one coffee</p>
+            <div class="tiles" role="group" aria-label="Specific coffees" data-tiles></div>
+          </fieldset>
+
+          <fieldset class="step" id="step-size">
+            <legend><span class="no">02</span><span class="t">How much</span></legend>
+            <p class="sub">Every coffee is $20 a pound. The 5 lb bag is the best value at $16/lb, and ships free.</p>
+            <div class="opts c3" role="group" aria-label="Bag size" data-sizes></div>
+          </fieldset>
+
+          <fieldset class="step" id="step-every">
+            <legend><span class="no">03</span><span class="t">How often</span></legend>
+            <div class="opts c3" role="group" aria-label="Delivery frequency" data-everys></div>
+            <div class="helper">
+              <div class="top"><h3><label for="cups">How much do you drink?</label></h3><output for="cups" id="cupsOut">2 <small>cups a day</small></output></div>
+              <div class="cups" aria-hidden="true" data-cupviz></div>
+              <input type="range" id="cups" min="0.5" max="10" step="0.5" value="2" aria-describedby="recTxt">
+              <div class="rec"><p id="recTxt" aria-live="polite"></p><button type="button" class="btn btn-sm" data-userec>Use this</button></div>
+            </div>
+          </fieldset>
+
+          <fieldset class="step" id="step-roast">
+            <legend><span class="no">04</span><span class="t">Roast + grind</span></legend>
+            <span class="label">Roast level</span>
+            <div class="seg wide mt1" role="group" aria-label="Roast level" data-roasts></div>
+            <p class="note" data-roastnote></p>
+            <span class="label" style="display:block;margin-top:22px">Grind</span>
+            <div class="seg wide mt1" role="group" aria-label="Grind" data-grinds></div>
+            <p class="note" data-grindnote></p>
+          </fieldset>
+
+          <fieldset class="step" id="step-deliver">
+            <legend><span class="no">05</span><span class="t">Get it</span></legend>
+            <div class="opts c3" role="group" aria-label="Delivery method" data-fulfils></div>
+            <div data-marketpick hidden>
+              <span class="label" style="display:block;margin-top:18px">Which market?</span>
+              <div class="seg mt1" role="group" aria-label="Market" data-markets></div>
+            </div>
+            <p class="note" data-fulfilnote></p>
+          </fieldset>
+        </form>
+
+        <aside class="sum" aria-label="Your subscription summary">
+          <div class="sumcard" id="summary">
+            <div class="band"><div class="bagw" data-sumbag></div><div><span class="k">Your subscription</span><b class="nm" data-sumname></b><span class="o" data-sumopts></span></div></div>
+            <div class="body">
+              <div class="money" aria-live="polite"><div><span class="label">Per delivery</span><br><b data-sumprice>$80</b></div><span class="r"><strong data-summonth></strong><span data-sumcups></span></span></div>
+              <dl class="kv">
+                <dt>Size</dt><dd data-sumsize></dd>
+                <dt>Every</dt><dd data-sumevery></dd>
+                <dt>Get it</dt><dd data-sumfulfil></dd>
+              </dl>
+              <div class="shipnote" data-shipnote></div>
+              <span class="label">Next 4 roast dates</span>
+              <ol class="cal" data-cal style="padding:0"></ol>
+              <ul class="perks">
+                <li><span>First bag roasts <b data-firstroast></b>, ships or is ready <b data-firstready></b>.</span></li>
+                <li><span>Skip, swap or pause any time before roast day, by text or link.</span></li>
+                <li><span>Text Benny at <a class="link" href="sms:+17078994183">707-899-4183</a> with anything.</span></li>
+              </ul>
+              <button type="button" class="btn btn-red btn-block" data-start>Start subscription <span class="arr">→</span></button>
+              <p class="tiny center mt1 mb0">Concept demo: nothing is charged. Billed per delivery on roast day (illustrative).</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec paper" id="manage" aria-labelledby="manage-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><span class="preview-tag">Preview: what subscribers see</span><h2 class="h2 mt2" id="manage-h" data-manage-h>Change anything.<br>Before roast day.</h2></div>
+        <p class="lede">No login, no hunt for a cancel button. Each subscriber gets a link and a heads-up text before every roast. Try the buttons: this is illustrative and changes nothing real.</p>
+      </div>
+      <div class="manage">
+        <div>
+          <div class="next" data-next aria-live="polite"></div>
+          <div class="panel" id="swapPanel" hidden><span class="k" style="color:#bfb3a5;font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase">Swap to</span><div class="swapgrid" data-swapgrid></div></div>
+          <div class="panel" id="freqPanel" hidden><span class="k" style="color:#bfb3a5;font:500 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase">Deliver every</span><div class="seg" role="group" aria-label="Frequency" data-mfreq></div></div>
+          <div class="plan"><h3>Your plan</h3><dl class="kv" data-plan></dl><span class="label">Get it by</span><div class="seg mt1" role="group" aria-label="Change delivery method" data-mfulfil></div></div>
+        </div>
+        <div class="side">
+          <div class="sms">
+            <div class="head"><span class="face" data-face></span><div><b>Benny's Beans</b><br><span class="tiny">Text SKIP, SWAP or PAUSE to <a class="link" href="sms:+17078994183">707-899-4183</a></span></div></div>
+            <div data-sms></div>
+          </div>
+          <div class="list">
+            <h3>Coming up <span class="tiny" data-meverytxt></span></h3>
+            <ul data-upcoming></ul>
+          </div>
+          <div class="list">
+            <h3>Roast history <span class="tag">Sample</span></h3>
+            <ul data-history></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec-sm">
+    <div class="wrap">
+      <div class="gift ink">
+        <div class="ringw" data-giftring></div>
+        <div><p class="eyebrow">For someone else</p><h2 class="h2" style="margin:0">Give a subscription.</h2><p class="lede mt1 mb0">Fresh roasts on their doorstep, on a schedule, with a card from you. They can skip or swap like any subscriber.</p></div>
+        <a class="btn btn-light" href="../gifts/">Gift a subscription <span class="arr">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec-sm" aria-labelledby="faq-h">
+    <div class="narrow faq">
+      <h2 class="h2" id="faq-h">Subscription questions.</h2>
+      <details><summary>What's in a rotation?</summary><p>Benny's pick is whatever he's most excited about that roast day, roasted at Roaster's Choice. The Light rotation moves through brighter single origins like the Ethiopia Buture, roasted light. The Dark rotation leans on bold, low-acid beans like the Mysore Nuggets and Coorg Robusta, roasted dark. Prefer one coffee every time? Lock it in.</p></details>
+      <details><summary>How do skip, swap and pause work?</summary><p>The day before each roast you get a text. Reply SKIP to skip that delivery, SWAP to change coffee, PAUSE to stop until you say so. Or use the link in the text. Changes count any time before roast day.</p></details>
+      <details><summary>When does my coffee get roasted?</summary><p>On the Monday or Wednesday before each delivery, then it ships the next day. Your first bag goes on the next roast day after you sign up.</p></details>
+      <details><summary>Is shipping free?</summary><p>Free on any delivery of $60 or more, so the 5 lb plan always ships free. Smaller deliveries pay shipping at checkout, or switch to free will-call pickup at True Value Hardware in Guerneville or the Occidental and Cloverdale farmers markets.</p></details>
+      <details><summary>Can I cancel?</summary><p>Any time, by text or link. No minimums, no fees.</p></details>
+      <details><summary>How much coffee do I need?</summary><p>A typical cup uses about 15–16 g of beans, so a pound makes roughly 28–30 cups. Two cups a day is about a pound every two weeks. The helper in step three does the math for you.</p></details>
+    </div>
+  </section>
+</main>
+
+<div class="mbar" aria-hidden="true" data-mbar><div><b data-mbprice>$80</b><small data-mbnote></small></div><a class="btn btn-red" href="#summary" tabindex="-1">Review <span class="arr">→</span></a></div>
+
+<dialog class="dlg" id="startDlg" aria-labelledby="dlgH">
+  <header><h2 id="dlgH">Start it.</h2><button class="x" type="button" aria-label="Close" data-close>×</button></header>
+  <div class="in" data-dlgbody>
+    <form id="subForm" novalidate>
+      <div class="recap" data-recap></div>
+      <div class="form-grid">
+        <label class="field full"><span>Name</span><input type="text" name="name" autocomplete="name" required></label>
+        <label class="field"><span>Email</span><input type="email" name="email" autocomplete="email" required></label>
+        <label class="field"><span>Mobile (for skip texts)</span><input type="tel" name="phone" autocomplete="tel" placeholder="707-555-0123"></label>
+        <div class="full" data-addr>
+          <div class="form-grid">
+            <label class="field full"><span>Street address</span><input type="text" name="street" autocomplete="street-address"></label>
+            <label class="field"><span>City</span><input type="text" name="city" autocomplete="address-level2"></label>
+            <label class="field"><span>ZIP</span><input type="text" name="zip" inputmode="numeric" autocomplete="postal-code"></label>
+          </div>
+        </div>
+        <label class="check full"><input type="checkbox" name="remind" checked> Text me the day before each roast so I can skip or swap.</label>
+        <label class="hp" aria-hidden="true">Leave empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <p class="tiny mt1" data-formerr role="alert" style="color:var(--cherry)"></p>
+      <button class="btn btn-red btn-block mt1" type="submit">Start my subscription <span class="arr">→</span></button>
+      <p class="tiny center mt1 mb0">Concept demo: no payment is taken and nothing leaves this browser.</p>
+    </form>
+  </div>
+</dialog>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc, BY = BB.BY;
+  var PRICES = { 1: 20, 2: 40, 5: 80 };
+  var CUP_G = 15.5, LB_G = 453.6, CUPS_LB = Math.round(LB_G / CUP_G); // ~29 cups a pound
+  var ROT = {
+    choice: { name: "Benny's pick", label: "Benny's Pick", tag: "Rotating", c: "#16120f", ink: "#e9b949", sub: "Roaster's Choice", roasts: ["Roaster's Choice"], def: "Roaster's Choice", p: "Whatever Benny is most excited about that roast day, roasted where it tastes best.", picks: ["ethiopia", "colombia", "plantation-aa", "mneb"] },
+    light: { name: "Light rotation", label: "Light Rotation", tag: "The original", c: "#e9b949", ink: "#16120f", sub: "Bright single origins", roasts: ["Light", "Medium"], def: "Light", p: "Brighter single origins like the Ethiopia Buture, roasted light. Sweet, never burnt.", picks: ["ethiopia", "colombia", "ethiopia", "decaf"] },
+    dark: { name: "Dark rotation", label: "Dark Rotation", tag: "The original", c: "#3a2416", ink: "#fbf8f2", sub: "Bold, low acid", roasts: ["Medium Dark", "Dark", "French"], def: "Dark", p: "Bold, low-acid beans like the Mysore Nuggets and Coorg Robusta, roasted dark.", picks: ["mneb", "coorg-robusta", "plantation-aa", "colombia"] }
+  };
+  var EVERY = { 1: { t: "Weekly", s: "Every week", n: "week" }, 2: { t: "Every 2 weeks", s: "Twice a month", n: "2 weeks" }, 4: { t: "Monthly", s: "About every 4 weeks", n: "month" } };
+  var GRIND_FOR = { "Whole Bean": "Freshest. Grind right before you brew.", "Coarse": "French press and cold brew.", "Auto-Drip": "Drip machines and pour-over.", "Espresso": "Espresso machines.", "Fine": "Moka pots and AeroPress.", "Turkish": "Powder-fine, for Turkish coffee." };
+
+  // ---------- state from URL ----------
+  var q = new URLSearchParams(location.search);
+  var S = { coffee: "light", size: 5, every: 4, roast: "Light", grind: "Whole Bean", fulfil: "ship", market: "occidental" };
+  var qc = q.get("coffee"); if (qc && (ROT[qc] || BY[qc])) S.coffee = qc;
+  var qs = +q.get("size"); if (PRICES[qs]) S.size = qs;
+  var qe = +q.get("every"); if (EVERY[qe]) S.every = qe;
+  S.roast = defRoast(S.coffee);
+
+  function cname(k) { return ROT[k] ? ROT[k].name : BY[k].name; }
+  function cshort(k) { return ROT[k] ? ROT[k].name : BY[k].short; }
+  function roastOpts(k) {
+    if (ROT[k]) return ROT[k].roasts;
+    var c = BY[k], o = ["Roaster's Choice"]; for (var i = c.roast[0]; i <= c.roast[1]; i++) o.push(BB.ROASTS[i]); return o;
+  }
+  function defRoast(k) { return ROT[k] ? ROT[k].def : "Roaster's Choice"; }
+  // rotation bags reuse BB.bag with a recolored label
+  function bag(k, size) {
+    if (BY[k]) return BB.bag(k, { size: size });
+    var r = ROT[k];
+    return BB.bag("_", { size: size, label: r.label, roastLabel: r.sub }).replace('fill="#16120f"', 'fill="' + r.c + '"').replace(/fill="#fff"/g, 'fill="' + r.ink + '"');
+  }
+  function price() { return PRICES[S.size]; }
+  function perMonth(p, every) { return every === 4 ? p : Math.round(p * (every === 1 ? 52 : 26) / 12); }
+
+  // ---------- schedule: next n roast dates for a cadence ----------
+  function schedule(n, every, from) {
+    var first = BB.nextRoast(from).roast, out = [first];
+    for (var k = 1; k < n; k++) {
+      if (every === 4) {
+        var t = new Date(first.getFullYear(), first.getMonth() + k, Math.min(first.getDate(), 28), 7);
+        out.push(BB.nextRoast(BB.addDays(t, -1)).roast);
+      } else out.push(BB.addDays(first, 7 * every * k));
+    }
+    return out;
+  }
+  function readyDate(roast, fulfil, market) {
+    if (fulfil === "market") { var m = BB.markets.filter(function (x) { return x.id === market; })[0]; for (var i = 1; i < 8; i++) { var d = BB.addDays(roast, i); if (d.getDay() === m.day) return d; } }
+    return BB.addDays(roast, 1);
+  }
+  function fulfilLabel(f, m) {
+    if (f === "ship") return "Shipped to you";
+    if (f === "willcall") return "Will-call, True Value";
+    var mk = BB.markets.filter(function (x) { return x.id === m; })[0]; return mk.town + " market, " + mk.dayName.slice(0, 3);
+  }
+
+  // ---------- render builder controls ----------
+  $("[data-rots]").innerHTML = Object.keys(ROT).map(function (k) {
+    var r = ROT[k];
+    return '<button type="button" class="opt" data-coffee="' + k + '" aria-pressed="false"><span class="mini">' + bag(k) + '</span><span class="k">' + esc(r.tag) + '</span><span class="big">' + esc(r.name) + '</span><span class="p">' + esc(r.p) + "</span></button>";
+  }).join("");
+  $("[data-tiles]").innerHTML = BB.COFFEES.map(function (c) {
+    return '<button type="button" class="tile" style="--c:' + c.c + '1f" data-coffee="' + c.id + '" aria-pressed="false" aria-label="' + esc(c.name) + '"><span class="bagw">' + BB.bag(c.id) + "</span><b>" + esc(c.short) + "</b><small>" + esc(c.caf === "decaf" ? "Decaf" : c.caf === "half" ? "Half-caff" : c.caf === "high" ? "High caffeine" : c.origin) + "</small></button>";
+  }).join("");
+  $("[data-sizes]").innerHTML = [1, 2, 5].map(function (s) {
+    var p = PRICES[s];
+    return '<button type="button" class="opt" data-size="' + s + '" aria-pressed="false"><span class="k">~' + s * CUPS_LB + ' cups</span><span class="big">' + s + ' lb</span><span class="pr">' + BB.money(p) + " <small>/ delivery · $" + p / s + "/lb</small></span>" + (s === 5 ? '<span class="tag red">Best value · ships free</span>' : s === 2 ? '<span class="tag">Two 1 lb bags</span>' : '<span class="tag">Freshest turnover</span>') + "</button>";
+  }).join("");
+  $("[data-everys]").innerHTML = [1, 2, 4].map(function (e) {
+    return '<button type="button" class="opt" data-every="' + e + '" aria-pressed="false"><span class="k">' + EVERY[e].s + '</span><span class="big">' + EVERY[e].t + '</span><span class="p" data-everyp="' + e + '"></span></button>';
+  }).join("");
+  $("[data-fulfils]").innerHTML = [
+    ["ship", "Ship it", "Free at $60+ per delivery. Ships the day after roasting."],
+    ["willcall", "Will-call", "Free pickup at " + BB.pickup.name + ", ready the day after roasting."],
+    ["market", "Market pickup", "Free. Occidental on Thursdays or Cloverdale on Sundays."]
+  ].map(function (f) { return '<button type="button" class="opt" data-fulfil="' + f[0] + '" aria-pressed="false"><span class="big">' + f[1] + '</span><span class="p">' + esc(f[2]) + "</span></button>"; }).join("");
+  $("[data-markets]").innerHTML = BB.markets.map(function (m) { return '<button type="button" data-market="' + m.id + '" aria-pressed="false">' + esc(m.town) + "<small>" + m.dayName.slice(0, 3) + " " + m.hours + "</small></button>"; }).join("");
+  $("[data-grinds]").innerHTML = BB.GRINDS.map(function (g) { return '<button type="button" data-grind="' + esc(g) + '" aria-pressed="false">' + esc(g) + "</button>"; }).join("");
+
+  function press(sel, attr, val) { $$(sel).forEach(function (b) { b.setAttribute("aria-pressed", String(b.getAttribute(attr) === String(val))); }); }
+
+  function renderRoasts() {
+    var opts = roastOpts(S.coffee);
+    if (opts.indexOf(S.roast) < 0) S.roast = defRoast(S.coffee);
+    $("[data-roasts]").innerHTML = opts.map(function (r) { return '<button type="button" data-roast="' + esc(r) + '" aria-pressed="' + (r === S.roast) + '">' + esc(r) + "</button>"; }).join("");
+    var note = S.coffee === "choice" ? "Benny's pick comes at <b>Roaster's Choice</b>: he roasts each batch where he thinks it tastes best."
+      : ROT[S.coffee] ? "The " + esc(ROT[S.coffee].name.toLowerCase()) + " comes " + opts.join(", ").replace(/, ([^,]*)$/, " or $1") + "."
+      : "Showing Benny's recommended range for the " + esc(BY[S.coffee].short) + ", plus <b>Roaster's Choice</b>.";
+    $("[data-roastnote]").innerHTML = note;
+  }
+
+  // ---------- cups-per-day helper ----------
+  function recommend(cups) {
+    var need = cups * 7 * CUP_G / LB_G, best = null, all = [];
+    [1, 2, 4].forEach(function (e) { [1, 2, 5].forEach(function (s) { all.push({ size: s, every: e, wk: e === 4 ? s * 12 / 52 : s / e }); }); });
+    all.filter(function (o) { return o.wk >= need * .95; }).sort(function (a, b) { return a.wk - b.wk || a.size - b.size; }).slice(0, 1).forEach(function (o) { best = o; });
+    if (!best) best = { size: 5, every: 1, wk: 5 };
+    best.need = need; return best;
+  }
+  var rec;
+  function renderHelper() {
+    var cups = +$("#cups").value;
+    $("#cupsOut").innerHTML = (cups % 1 ? cups.toFixed(1) : cups) + " <small>cup" + (cups === 1 ? "" : "s") + " a day</small>";
+    var viz = ""; for (var i = 0; i < Math.floor(cups); i++) viz += "<i></i>"; if (cups % 1) viz += '<i class="half"></i>';
+    $("[data-cupviz]").innerHTML = viz;
+    rec = recommend(cups);
+    var wkCups = Math.round(cups * 7 * 10) / 10;
+    $("#recTxt").innerHTML = (cups % 1 ? cups.toFixed(1) : cups) + " a day is about " + wkCups + " cups (" + rec.need.toFixed(2) + " lb) a week. At ~" + CUPS_LB + " cups a pound, <b class=\"r\">" + rec.size + " lb " + EVERY[rec.every].t.toLowerCase() + "</b> covers it.";
+    var same = rec.size === S.size && rec.every === S.every;
+    var ub = $("[data-userec]"); ub.textContent = same ? "Selected" : "Use this"; ub.disabled = same;
+  }
+  $("#cups").addEventListener("input", renderHelper);
+  $("[data-userec]").addEventListener("click", function () { S.size = rec.size; S.every = rec.every; render(); BB.toast(rec.size + " lb " + EVERY[rec.every].t.toLowerCase() + ". Nice and fresh."); });
+
+  // ---------- summary ----------
+  var mbar = $("[data-mbar]");
+  function render() {
+    press("[data-coffee]", "data-coffee", S.coffee);
+    press("[data-size]", "data-size", S.size);
+    press("[data-every]", "data-every", S.every);
+    press("[data-fulfil]", "data-fulfil", S.fulfil);
+    press("[data-market]", "data-market", S.market);
+    press("[data-grind]", "data-grind", S.grind);
+    renderRoasts();
+    $("[data-marketpick]").hidden = S.fulfil !== "market";
+    $("[data-grindnote]").textContent = GRIND_FOR[S.grind];
+    var p = price(), r0 = BB.nextRoast();
+    [1, 2, 4].forEach(function (e) { $('[data-everyp="' + e + '"]').textContent = "≈ " + BB.money(perMonth(p, e)) + "/mo at " + S.size + " lb"; });
+    var fn = S.fulfil === "ship" ? (p >= BB.freeShip ? "Ships free: this delivery is over $60." : "Under $60, so shipping is added at checkout. Go 5 lb, or pick up for free.")
+      : S.fulfil === "willcall" ? BB.pickup.addr + ". Bring your name; it's bagged and labeled."
+      : "Ready at the market the first market day after each roast.";
+    $("[data-fulfilnote]").textContent = fn;
+    renderHelper();
+
+    // summary card
+    $("[data-sumbag]").innerHTML = bag(S.coffee, S.size === 5 ? 5 : 1);
+    $("[data-sumname]").textContent = cshort(S.coffee);
+    $("[data-sumopts]").textContent = S.roast + " · " + S.grind;
+    $("[data-sumprice]").textContent = BB.money(p);
+    $("[data-summonth]").textContent = "≈ " + BB.money(perMonth(p, S.every)) + "/mo";
+    $("[data-sumcups]").textContent = "~" + S.size * CUPS_LB + " cups / delivery";
+    $("[data-sumsize]").textContent = S.size + " lb" + (S.size === 2 ? " (2 × 1 lb)" : "");
+    $("[data-sumevery]").textContent = EVERY[S.every].t;
+    $("[data-sumfulfil]").textContent = fulfilLabel(S.fulfil, S.market);
+    var sn = $("[data-shipnote]");
+    var free = S.fulfil !== "ship" || p >= BB.freeShip;
+    sn.className = "shipnote" + (free ? "" : " warn");
+    sn.textContent = S.fulfil !== "ship" ? "Free pickup. No shipping, ever." : free ? "Free shipping on every delivery." : "Shipping at checkout. Free at $60+ per delivery.";
+    var dates = schedule(4, S.every);
+    $("[data-cal]").innerHTML = dates.map(function (d, i) {
+      return '<li class="' + (i ? "" : "first") + '"><span>' + BB.DS[d.getDay()] + "</span><b>" + d.getDate() + "</b><em>" + (i ? BB.MON[d.getMonth()] : "1st · " + BB.MON[d.getMonth()]) + "</em></li>";
+    }).join("");
+    var ready = readyDate(dates[0], S.fulfil, S.market);
+    $("[data-firstroast]").textContent = BB.fmt(dates[0], true);
+    $("[data-firstready]").textContent = BB.fmt(ready);
+    $("[data-mbprice]").textContent = BB.money(p);
+    $("[data-mbnote]").textContent = cshort(S.coffee) + " · " + S.size + " lb · " + EVERY[S.every].t.toLowerCase();
+    var url = "?coffee=" + S.coffee + "&size=" + S.size + "&every=" + S.every;
+    try { history.replaceState(null, "", url + location.hash); } catch (e) {}
+  }
+
+  $("#builder").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.coffee) { S.coffee = b.dataset.coffee; S.roast = defRoast(S.coffee); }
+    else if (b.dataset.size) S.size = +b.dataset.size;
+    else if (b.dataset.every) S.every = +b.dataset.every;
+    else if (b.dataset.roast) S.roast = b.dataset.roast;
+    else if (b.dataset.grind) S.grind = b.dataset.grind;
+    else if (b.dataset.fulfil) S.fulfil = b.dataset.fulfil;
+    else if (b.dataset.market) S.market = b.dataset.market;
+    else return;
+    render();
+  });
+
+  // mobile bottom bar: shown while building, hidden once the summary is on screen
+  if ("IntersectionObserver" in window) {
+    var vis = { build: false, sum: false };
+    var upd = function () { var on = vis.build && !vis.sum; mbar.classList.toggle("on", on); document.body.classList.toggle("has-mbar", on); };
+    new IntersectionObserver(function (es) { es.forEach(function (x) { vis[x.target.id === "builder" ? "build" : "sum"] = x.isIntersecting; }); upd(); }).observe($("#builder"));
+    new IntersectionObserver(function (es) { es.forEach(function (x) { vis.sum = x.isIntersecting; }); upd(); }, { threshold: .15 }).observe($("#summary"));
+  }
+
+  // ---------- start: dialog ----------
+  var dlg = $("#startDlg"), body = $("[data-dlgbody]"), formHTML = body.innerHTML;
+  function openDlg() {
+    body.innerHTML = formHTML; wireForm();
+    var p = price();
+    $("[data-recap]", dlg).innerHTML = '<div style="width:54px">' + bag(S.coffee, S.size === 5 ? 5 : 1) + "</div><div><b>" + esc(cname(S.coffee)) + '</b><br><span class="tiny">' + S.size + " lb · " + EVERY[S.every].t.toLowerCase() + " · " + esc(S.roast) + " · " + esc(S.grind) + "<br>" + esc(fulfilLabel(S.fulfil, S.market)) + '</span></div><b class="p">' + BB.money(p) + "</b>";
+    $("[data-addr]", dlg).hidden = S.fulfil !== "ship";
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+    setTimeout(function () { var i = $("input[name=name]", dlg); if (i) i.focus(); }, 60);
+  }
+  function closeDlg() { if (dlg.close) dlg.close(); else dlg.removeAttribute("open"); }
+  $("[data-start]").addEventListener("click", openDlg);
+  $("[data-close]", dlg).addEventListener("click", closeDlg);
+  dlg.addEventListener("click", function (e) { if (e.target === dlg) closeDlg(); });
+  function wireForm() {
+    var f = $("#subForm");
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = function (n) { return (f.elements[n].value || "").trim(); };
+      if (v("website")) return;
+      var err = [];
+      if (!v("name")) err.push("your name");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v("email"))) err.push("a valid email");
+      if (S.fulfil === "ship" && (!v("street") || !v("city") || !v("zip"))) err.push("a shipping address");
+      $$("input[required]", f).forEach(function (i) { i.setAttribute("aria-invalid", String(!i.value.trim())); });
+      if (err.length) { $("[data-formerr]", f).textContent = "Please add " + err.join(", ") + "."; return; }
+      var dates = schedule(4, S.every), ready = readyDate(dates[0], S.fulfil, S.market);
+      var data = { id: "SUB-" + Math.random().toString(36).slice(2, 6).toUpperCase(), name: v("name"), email: v("email"), phone: v("phone"), coffee: S.coffee, coffeeName: cname(S.coffee), size: S.size, every: S.every, roast: S.roast, grind: S.grind, fulfil: S.fulfil, price: price(), firstRoast: BB.ymd(dates[0]) };
+      if (S.fulfil === "market") data.market = S.market;
+      if (S.fulfil === "ship") data.address = v("street") + ", " + v("city") + " " + v("zip");
+      BB.log("subscription", data);
+      var first = v("name").split(" ")[0];
+      body.innerHTML = '<div class="done" role="status"><div class="stamp">First roast<b>' + BB.DS[dates[0].getDay()].toUpperCase() + "</b>" + BB.MON[dates[0].getMonth()] + " " + dates[0].getDate() + "</div><h3>You're in,<br>" + esc(first) + '.</h3><p class="lede" style="margin:12px auto 6px;font-size:17px">Benny roasts your first ' + S.size + " lb of " + esc(cname(S.coffee)) + " on <b>" + BB.fmt(dates[0], true) + "</b>. " + (S.fulfil === "ship" ? "It ships " : "It's ready ") + BB.fmt(ready) + '.</p><p class="small muted">Confirmation ' + data.id + (data.phone ? ". Look for a text the day before each roast; reply SKIP, SWAP or PAUSE." : ". Add a mobile any time to skip by text.") + '</p><div class="row mt2"><button type="button" class="btn btn-red" data-go-manage>Manage it <span class="arr">→</span></button><a class="btn btn-ghost" href="../shop/">Shop more coffee</a></div></div>';
+      $("[data-go-manage]", body).addEventListener("click", function () { closeDlg(); M = Object.assign({}, S, { skipped: {}, paused: false, mine: first }); renderManage(); $("#manage").scrollIntoView({ behavior: "smooth" }); });
+    });
+  }
+
+  // ---------- manage preview ----------
+  var M = Object.assign({}, S, { skipped: {}, paused: false });
+  var ICON = {
+    skip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5l9 7-9 7z"/><path d="M18 5v14"/></svg>',
+    swap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h14l-4-4M20 16H6l4 4"/></svg>',
+    freq: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>',
+    play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>'
+  };
+  $("[data-face]").innerHTML = BB.face();
+  $("[data-swapgrid]").innerHTML = Object.keys(ROT).concat(BB.COFFEES.map(function (c) { return c.id; })).map(function (k) {
+    return '<button type="button" data-swap="' + k + '" aria-pressed="false" style="--c:' + (ROT[k] ? ROT[k].c : BY[k].c) + '"><i></i>' + esc(cshort(k)) + "</button>";
+  }).join("");
+  $("[data-mfulfil]").innerHTML = [["ship", "Ship"], ["willcall", "Will-call"], ["market", "Market"]].map(function (f) { return '<button type="button" data-mfu="' + f[0] + '" aria-pressed="false">' + f[1] + "</button>"; }).join("");
+  $("[data-mfreq]").innerHTML = [1, 2, 4].map(function (e) { return '<button type="button" data-mevery="' + e + '" aria-pressed="false">' + EVERY[e].t + "</button>"; }).join("");
+
+  function mDates() { return schedule(8, M.every).map(function (d) { return { d: d, skip: !!M.skipped[BB.ymd(d)] }; }); }
+  function renderManage() {
+    var all = mDates(), up = all.filter(function (x) { return !x.skip; }), nx = up[0];
+    var nxt = $("[data-next]"); nxt.classList.toggle("is-paused", M.paused);
+    var ready = readyDate(nx.d, M.fulfil, M.market);
+    var cut = new Date(nx.d); cut.setHours(0, 0, 0, 0); var ms = cut.getTime() - 60000 - BB.now().getTime();
+    nxt.innerHTML = (M.paused ? '<span class="tag gold paused">Paused</span>' : "") +
+      '<div class="top"><div class="bagw">' + bag(M.coffee, M.size === 5 ? 5 : 1) + '</div><div><span class="k">' + (M.mine ? esc(M.mine) + "'s next delivery" : "Next delivery") + '</span><div class="when">' + (M.paused ? "On hold" : BB.DS[nx.d.getDay()] + " " + BB.MON[nx.d.getMonth()] + " " + nx.d.getDate()) + '</div><div class="what">' + M.size + " lb " + esc(cshort(M.coffee)) + " · " + esc(M.roast) + " · " + esc(M.grind) + "<br>" + (M.paused ? "Resume any time and it goes on the next roast." : "Roasts " + BB.fmt(nx.d, true) + ", " + (M.fulfil === "ship" ? "ships " : "ready ") + BB.fmt(ready) + " · " + esc(fulfilLabel(M.fulfil, M.market))) + "</div>" +
+      (M.paused ? "" : '<span class="lock"><i></i>Changes lock in ' + BB.left(Math.max(0, ms)) + "</span>") + "</div></div>" +
+      '<div class="acts">' +
+      '<button type="button" class="act" data-act="skip"' + (M.paused ? " disabled" : "") + ">" + ICON.skip + "Skip next</button>" +
+      '<button type="button" class="act" data-act="swap" aria-expanded="' + !$("#swapPanel").hidden + '" aria-controls="swapPanel">' + ICON.swap + "Swap coffee</button>" +
+      '<button type="button" class="act" data-act="freq" aria-expanded="' + !$("#freqPanel").hidden + '" aria-controls="freqPanel">' + ICON.freq + "Frequency</button>" +
+      '<button type="button" class="act" data-act="pause" aria-pressed="' + M.paused + '">' + (M.paused ? ICON.play + "Resume" : ICON.pause + "Pause") + "</button></div>";
+    press("[data-swap]", "data-swap", M.coffee);
+    press("[data-mevery]", "data-mevery", M.every);
+    press("[data-mfu]", "data-mfu", M.fulfil);
+    $("[data-plan]").innerHTML = "<dt>Coffee</dt><dd>" + esc(cname(M.coffee)) + "</dd><dt>Size</dt><dd>" + M.size + " lb</dd><dt>Every</dt><dd>" + EVERY[M.every].t + "</dd><dt>Roast</dt><dd>" + esc(M.roast) + "</dd><dt>Grind</dt><dd>" + esc(M.grind) + "</dd><dt>Get it</dt><dd>" + esc(fulfilLabel(M.fulfil, M.market)) + "</dd><dt>Per delivery</dt><dd>" + BB.money(PRICES[M.size]) + (M.fulfil === "ship" && PRICES[M.size] < BB.freeShip ? " + shipping" : "") + "</dd>";
+    $("[data-meverytxt]").textContent = EVERY[M.every].t.toLowerCase();
+    // upcoming
+    $("[data-upcoming]").innerHTML = all.slice(0, 4).map(function (x) {
+      return '<li class="' + (x.skip ? "skipped" : "") + '"><span class="d">' + BB.DS[x.d.getDay()] + "<b>" + x.d.getDate() + "</b>" + BB.MON[x.d.getMonth()] + '</span><span class="nm">' + esc(cshort(M.coffee)) + "<small>" + M.size + " lb · " + esc(M.roast) + "</small></span>" +
+        (x.skip ? '<button type="button" class="undo" data-unskip="' + BB.ymd(x.d) + '">Undo skip</button>' : '<span class="st">' + (M.paused ? "On hold" : "Roasting") + "</span>") + "</li>";
+    }).join("");
+    // sms thread
+    var nd = BB.fmt(nx.d), after = up[1] ? BB.fmt(up[1].d) : "";
+    $("[data-sms]").innerHTML = '<div class="bub them">Hi ' + esc(M.mine || "there") + "! Benny roasts your " + esc(cshort(M.coffee)) + " " + nd + ". Reply SKIP, SWAP or PAUSE by midnight.</div>" +
+      '<div class="bub me">SKIP</div><div class="bub them">Done. Skipped ' + nd + ". Next roast " + after + ". Enjoy the week.</div>";
+    // sample history
+    var picks = ROT[M.coffee] ? ROT[M.coffee].picks : [M.coffee, M.coffee, M.coffee, M.coffee];
+    var gap = M.every === 4 ? 28 : M.every * 7;
+    $("[data-history]").innerHTML = [1, 2, 3, 4].map(function (k) {
+      var d = BB.addDays(all[0].d, -gap * k), cid = picks[(k - 1) % picks.length], sk = k === 3;
+      return '<li class="' + (sk ? "skipped" : "") + '"><span class="d">' + BB.DS[d.getDay()] + "<b>" + d.getDate() + "</b>" + BB.MON[d.getMonth()] + '</span><span class="nm">' + esc(BY[cid].short) + "<small>" + M.size + " lb · " + esc(ROT[M.coffee] ? ROT[M.coffee].def : M.roast) + '</small></span><span class="st' + (sk ? " sk" : "") + '">' + (sk ? "Skipped" : M.fulfil === "ship" ? "Delivered" : "Picked up") + "</span></li>";
+    }).join("");
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-act]");
+    if (a) {
+      var act = a.dataset.act;
+      if (act === "skip") { var nx = mDates().filter(function (x) { return !x.skip; }); M.skipped[BB.ymd(nx[0].d)] = 1; BB.toast("Skipped " + BB.fmt(nx[0].d) + ". Next roast " + BB.fmt(nx[1].d) + "."); }
+      if (act === "swap") { $("#swapPanel").hidden = !$("#swapPanel").hidden; $("#freqPanel").hidden = true; }
+      if (act === "freq") { $("#freqPanel").hidden = !$("#freqPanel").hidden; $("#swapPanel").hidden = true; }
+      if (act === "pause") { M.paused = !M.paused; BB.toast(M.paused ? "Paused. Nothing roasts until you say so." : "Welcome back. You're on the next roast."); }
+      renderManage();
+      var f = $('[data-act="' + act + '"]'); if (f) f.focus();
+      return;
+    }
+    var s = e.target.closest("[data-swap]");
+    if (s) { M.coffee = s.dataset.swap; M.roast = defRoast(M.coffee); renderManage(); BB.toast("Swapped to " + esc(cname(M.coffee)) + " from the next roast."); return; }
+    var fq = e.target.closest("[data-mevery]");
+    if (fq && fq.tagName === "BUTTON") { M.every = +fq.dataset.mevery; M.skipped = {}; renderManage(); BB.toast("Now " + EVERY[M.every].t.toLowerCase() + "."); return; }
+    var mf = e.target.closest("[data-mfu]");
+    if (mf) { M.fulfil = mf.dataset.mfu; renderManage(); BB.toast(M.fulfil === "ship" ? "Shipping it from the next roast." : "Pickup at " + esc(fulfilLabel(M.fulfil, M.market)) + " from the next roast."); return; }
+    var u = e.target.closest("[data-unskip]");
+    if (u) { delete M.skipped[u.dataset.unskip]; renderManage(); BB.toast("Back on the schedule."); }
+  });
+
+  // ---------- hero + misc ----------
+  $("[data-hero-ring]").innerHTML = BB.ring({ words: false });
+  $("[data-hero-b5]").innerHTML = bag(S.coffee === "dark" ? "dark" : "light", 5);
+  $("[data-hero-b1]").innerHTML = BB.bag("ethiopia");
+  $("[data-hero-b2]").innerHTML = BB.bag("mneb");
+  $("[data-giftring]").innerHTML = BB.ring({ words: true });
+
+  render();
+  renderManage();
+});
+</script>
+</body>
+</html>
