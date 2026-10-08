@@ -30,7 +30,7 @@ import { latestProductQuote, productCommercials, projectFinancialRollups, client
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
 import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
-import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements } from './ai.js';
+import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
@@ -3267,10 +3267,32 @@ app.post('/v1/admin/products/:id/tech-pack/hero',{preHandler:[authenticate,admin
   return reply.code(202).send({started:true,id:r.id});
 });
 // Approving a hero: it becomes the picture everything else starts from. followUps: also start what waits on it (the colourway pictures, and the 3D model when the exchange has already passed).
+// Once a hero image is approved it becomes the picture the callouts are shown on: each callout is found again on the hero (the same locate step the first draft
+// uses) and its detail picture is cut from the hero. The original photo, the callouts' text and their numbers are not touched, so acknowledgements and the
+// learning record stay as they were; the hero positions sit beside the original ones (hx, hy, hphoto) and a sketch with a hero shows those.
+async function placeCalloutsOnHero(h){
+  try{
+    const row=(await pool.query('select id,data from tech_packs where id=$1',[h.tech_pack_id])).rows[0];if(!row)return false;
+    const pack=normalizeTechPack(row.data),sk=pack.sketches.find(x=>x.callouts.length&&!/^cutout-/.test(String(x.id||'')));if(!sk)return false;
+    const image=await heroThumb(await heroBuffer(h),1400,82);
+    const points=await locateCallouts(image,sk.callouts.map(c=>c.label||c.spec||'detail'));
+    const at=new Map(points.map(p=>[p.i,p]));if(at.size<Math.ceil(sk.callouts.length/2))return false; // could not find most of them: leave the photo view as it is
+    const placed=new Map();
+    for(const [i,c] of sk.callouts.entries()){const p=at.get(i);if(!p)continue;let hphoto='';try{hphoto=await calloutCrop(image,p.x,p.y)}catch{}placed.set(c.n,{hx:p.x,hy:p.y,hphoto})}
+    // apply to whatever the pack is now (it may have been edited while the picture was being read), without touching updated_at: this is display only
+    const cur=(await pool.query('select data from tech_packs where id=$1',[row.id])).rows[0].data,data=normalizeTechPack(cur),t=data.sketches.find(x=>x.id===sk.id);if(!t)return false;
+    t.hero={id:String(h.id).replace(/-/g,'').slice(0,16),image};
+    for(const c of t.callouts){const v=placed.get(c.n);if(v){c.hx=v.hx;c.hy=v.hy;c.hphoto=v.hphoto}else{c.hx=null;c.hy=null;c.hphoto=''}}
+    await pool.query('update tech_packs set data=$2 where id=$1',[row.id,data]);
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[h.client_id,h.product_id,`Callouts placed on the hero image for ${h.title||'the product'} (${placed.size} of ${sk.callouts.length})`,{techPackId:row.id,heroId:h.id}]).catch(()=>{});
+    return true;
+  }catch(e){app.log.warn({err:e.message,heroId:h.id},'callouts not placed on the hero image');return false}
+}
 async function approveHero(h,{actor=null,auto=false,followUps=true}={}){
   await pool.query(`update tech_pack_heroes set status='superseded' where tech_pack_id=$1 and id<>$2 and status='approved'`,[h.tech_pack_id,h.id]);
   await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now(),auto_approved=$3 where id=$1`,[h.id,actor,auto]);
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,actor,auto?`Hero image approved automatically for ${h.title}`:`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id,auto}]).catch(()=>{});
+  await placeCalloutsOnHero(h);
   if(!followUps)return;
   // with a hero a person has signed off, the colourway pictures are drawn from it, part by part (CW_AUTO=off leaves that to the button)
   if(process.env.CW_AUTO!=='off'&&cwOn()){
@@ -3959,7 +3981,7 @@ app.post('/v1/products/:id/tech-pack/draft/colorways',{preHandler:authenticate},
 app.get('/v1/products/:id/tech-pack/draft/colourways',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
   const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
-  return {run:await latestColourways(row.id),renderings:normalizeTechPack(row.data).renderings,parts:normalizeTechPack(row.data).parts};
+  return {run:await latestColourways(row.id),renderings:normalizeTechPack(row.data).renderings,parts:normalizeTechPack(row.data).parts,heroViews:normalizeTechPack(row.data).sketches.filter(k=>k.hero).map(k=>({id:k.id,hero:k.hero,callouts:k.callouts.map(c=>({n:c.n,hx:c.hx,hy:c.hy,hphoto:c.hphoto}))}))};
 });
 app.post('/v1/products/:id/tech-pack/submit',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are submitted from the client hub'});
