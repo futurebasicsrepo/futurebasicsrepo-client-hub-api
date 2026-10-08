@@ -962,6 +962,16 @@ await journey('J90', 'the 3D model can be made from the approved hero image, sho
   let mdl = null; for (let i = 0; i < 60; i++) { mdl = (await chk()).model; if (mdl && mdl.status === 'done' && mdl.source === 'hero') break; await sleep(400); }
   ok(mdl && mdl.source === 'hero' && mdl.status === 'done' && mdl.sourceScore === c0.hero.score, 'it is recorded as made from the hero with the hero\'s score, not a pack render\'s', mdl && [mdl.source, mdl.sourceScore, c0.hero.score]);
   const rc = c0.renderChoices || []; ok(rc.length === 0 || rc.every(r => typeof r.score === 'number'), 'the pack renders still have their own scores, which are a different measure');
+  // the truest picture should be the hero: when a pack render scores higher than the hero it can be made the hero (it needs approving), and the 3D model then follows it
+  { const c1 = await chk(), best = (c1.renderChoices || []).slice().sort((a, b) => b.score - a.score)[0];
+    if (best && best.score > c1.hero.score) {
+      const ad = await adm(`/v1/admin/tech-pack-heroes/${c1.hero.id}/adopt`, { method: 'POST', body: { checkId: best.id } }); ok(ad.status === 200, 'a pack render that scored higher than the hero can be made the hero', ad.json);
+      const c2 = await chk(); ok(c2.hero.status === 'ready' && c2.hero.score === best.score, 'it is the hero\'s chosen try with its score, and waits for approval like any hero', [c2.hero.status, c2.hero.score]);
+      ok((await adm(`/v1/admin/tech-pack-heroes/${c2.hero.id}/approve`, { method: 'POST', body: {} })).status === 200, 'staff approve it');
+      for (let i = 0; i < 40 && sql(`select count(*) from tech_pack_models where product_id='${m.id}' and status='running'`) !== '0'; i++) await sleep(300);
+      const g2 = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(g2.status === 202, 'and the 3D model is made from it', g2.json);
+      let m2 = null; for (let i = 0; i < 60; i++) { m2 = (await chk()).model; if (m2 && m2.status === 'done' && m2.sourceScore === best.score) break; await sleep(400); } ok(m2 && m2.source === 'hero' && m2.sourceScore === best.score, 'recorded as made from the hero, with the higher score', m2 && [m2.source, m2.sourceScore]);
+    } else ok(true, 'no pack render outscored the hero here, so nothing to adopt (skipped)'); }
   if (playwright) {
     const bw = await playwright.chromium.launch();
     try {
