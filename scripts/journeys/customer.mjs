@@ -946,4 +946,32 @@ await journey('J89', 'once the hero image is approved the callouts are shown on 
   } finally { await bw.close(); }
 });
 
+await journey('J90', 'the 3D model can be made from the approved hero image, shown with the hero\'s own score and offered first: the hero\'s 87 and the pack renders\' lower scores are labelled as the different things they are, and a hero that is not approved cannot be used', async () => {
+  const m = await room('90');
+  let st = null; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && st.hero && st.colourways && !st.colourways.running && st.model && st.model.status === 'done') break; await sleep(400); }
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const chk = async () => (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json;
+  const c0 = await chk(); ok(c0.hero && c0.hero.status === 'approved' && typeof c0.hero.score === 'number', 'the hero is approved and has its own score', c0.hero && [c0.hero.status, c0.hero.score]);
+  // a hero that is not approved cannot be used
+  const hid = sql(`select id from tech_pack_heroes where product_id='${m.id}' and status='approved' limit 1`); sql(`update tech_pack_heroes set status='ready' where id='${hid}'`);
+  const no = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(no.status === 409 && /Approve the hero image/.test(no.json.error), 'a hero that is not approved is refused, and it says what to do', no.json); sql(`update tech_pack_heroes set status='approved' where id='${hid}'`);
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', token: m.token, body: { source: 'hero' } })).status === 403, 'a customer cannot start it');
+  // make it from the hero
+  for (let i = 0; i < 40 && sql(`select count(*) from tech_pack_models where product_id='${m.id}' and status='running'`) !== '0'; i++) await sleep(300);
+  const go = await adm(`/v1/admin/products/${m.id}/tech-pack/model`, { method: 'POST', body: { source: 'hero' } }); ok(go.status === 202, 'staff make the 3D model from the approved hero', go.json);
+  let mdl = null; for (let i = 0; i < 60; i++) { mdl = (await chk()).model; if (mdl && mdl.status === 'done' && mdl.source === 'hero') break; await sleep(400); }
+  ok(mdl && mdl.source === 'hero' && mdl.status === 'done' && mdl.sourceScore === c0.hero.score, 'it is recorded as made from the hero with the hero\'s score, not a pack render\'s', mdl && [mdl.source, mdl.sourceScore, c0.hero.score]);
+  const rc = c0.renderChoices || []; ok(rc.length === 0 || rc.every(r => typeof r.score === 'number'), 'the pack renders still have their own scores, which are a different measure');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 950 } }); await ctx.addInitScript(t => localStorage.setItem('fb.admin.token', t), admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('#tabs button[data-tab="check"]', { timeout: 15000 }); await p.click('#tabs button[data-tab="check"]'); await p.waitForSelector('[data-model]', { timeout: 15000 });
+      const first = await p.$eval('[data-model] .tools [data-act="makemodel"]', e => e.textContent.trim()); ok(new RegExp(`approved hero · ${c0.hero.score}/100`).test(first), 'in the 3D section the first button is "Make STL from the approved hero" with its score', first);
+      const txt = await p.innerText('[data-model]'); ok(/made from the approved hero image/i.test(txt) && /two different scores/i.test(txt) && /made from the approved hero image \(it scored \d+\/100/i.test(txt), 'and the section says the two scores are different things, and what this model was made from', txt.slice(0, 260));
+      ok(p.errs.length === 0, 'no script errors', p.errs); await p.locator('[data-model]').first().screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j90-model.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
