@@ -200,7 +200,10 @@
   .ticket .bars { display: flex; gap: 2px; height: 46px; padding: 0 24px 22px; }
   .ticket .bars i { flex: 1; background: var(--ink); }
   .ticket .bars i.w { flex: 2.4; } .ticket .bars i.g { background: transparent; }
+  #po-done { scroll-margin-top: 100px; }
   #po-done:focus { outline: none; }
+  @media (max-width: 600px) { .ticket { transform: rotate(-1deg); } #po-done { padding: 28px 16px !important; } }
+  .legend .k-pick { background: transparent; outline: 2px solid var(--cherry); outline-offset: 0; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -250,7 +253,7 @@
         <div><p class="eyebrow">The next 14 days</p><h2 class="h2" id="cal-h">How the week<br>actually runs.</h2></div>
         <p class="lede">Benny roasts Mondays and Wednesdays. Bags ship and hit the will-call shelf the next day. Thursday and Sunday, he's at market. Tap a day for the details.</p>
       </div>
-      <div class="legend" aria-hidden="true"><span><i class="k-roast"></i>Roast day</span><span><i class="k-ship"></i>Ships</span><span><i class="k-will"></i>Will-call ready</span><span><i class="k-mkt"></i>Market</span></div>
+      <div class="legend" aria-hidden="true"><span><i class="k-roast"></i>Roast day</span><span><i class="k-ship"></i>Ships</span><span><i class="k-will"></i>Will-call ready</span><span><i class="k-mkt"></i>Market</span><span><i class="k-pick"></i>Your pre-order</span></div>
       <div class="cal" data-cal role="group" aria-label="Two-week schedule"></div>
       <div class="daydetail" data-daydetail aria-live="polite"></div>
     </div>
@@ -524,7 +527,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var url = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
     var bars = ""; for (var i = 0; i < 38; i++) { var r = (c.charCodeAt(i % 5) * (i + 3)) % 7; bars += '<i class="' + (r < 2 ? "g" : r > 4 ? "w" : "") + '"></i>'; }
     var done = $("#po-done");
-    done.innerHTML = '<div class="done-wrap"><div><p class="eyebrow">Reserved · nothing charged</p><h2 class="h2">See you in<br>' + esc(m.town) + ".</h2><p class=\"lede\">Show this at the booth, or just say your name. Benny roasts your bags " + BB.fmt(lastRoastBefore(d), true) + (form.sms.checked ? " and texts " + esc(phone) + " when they're packed, plus a reminder that morning." : ".") + '</p><div class="row mt2"><a class="btn btn-light" href="' + url + '" download="bennys-beans-pickup-' + c + '.ics">Add to calendar (.ics)</a><a class="btn btn-outline-light" href="' + m.map + '" target="_blank" rel="noopener">Directions<span class="sr"> (opens Google Maps)</span></a></div><p class="small mt2" style="color:#c6d6cf">Need to change something? <a class="link" style="color:#fff" href="' + BB.sms + "?body=" + encodeURIComponent("Hi Benny, about pre-order " + c + ": ") + '">Text Benny</a> with code ' + c + '. <button type="button" class="link" data-again style="background:none;border:0;color:#fff;cursor:pointer;padding:0">Make another pre-order</button></p></div>' +
+    done.innerHTML = '<div class="done-wrap"><div><p class="eyebrow">Reserved · nothing charged</p><h2 class="h2">See you in<br>' + esc(m.town) + ".</h2><p class=\"lede\">Show this at the booth, or just say your name. Benny roasts your bags " + BB.fmt(lastRoastBefore(d), true) + (form.sms.checked ? " and texts <span style=\"white-space:nowrap\">" + esc(phone) + "</span> when they're packed, plus a reminder that morning." : ".") + '</p><div class="row mt2"><a class="btn btn-light" href="' + url + '" download="bennys-beans-pickup-' + c + '.ics">Add to calendar (.ics)</a><a class="btn btn-outline-light" href="' + m.map + '" target="_blank" rel="noopener">Directions<span class="sr"> (opens Google Maps)</span></a></div><p class="small mt2" style="color:#c6d6cf">Need to change something? <a class="link" style="color:#fff" href="' + BB.sms + "?body=" + encodeURIComponent("Hi Benny, about pre-order " + c + ": ") + '">Text Benny</a> with code ' + c + '. <button type="button" class="link" data-again style="background:none;border:0;color:#fff;cursor:pointer;padding:0">Make another pre-order</button></p></div>' +
       '<div class="ticket" role="img" aria-label="Pickup ticket, code ' + c + '"><div class="top"><div><p>Market pre-order</p><b>' + esc(m.town) + '</b></div>' + BB.ring({ words: true }) + '</div><div class="mid"><p class="lbl">Pickup code</p><p class="code">' + c + '</p><p class="lbl">Show this at the booth</p><dl><dt>Name</dt><dd>' + esc(name) + "</dd><dt>When</dt><dd>" + BB.fmt(d, true) + ", " + m.hours + "</dd><dt>Bags</dt><dd>" + lines.map(function (it) { return it.qty + " × " + esc(BB.BY[it.id].short) + " " + it.size + " lb"; }).join("<br>") + "</dd><dt>Pay</dt><dd>" + BB.money(total) + ' at the booth</dd></dl></div><div class="perf"></div><div class="mid" style="padding-bottom:12px"><p class="tiny mb0" style="text-align:center">Roasted ' + BB.fmt(lastRoastBefore(d)) + " · Guerneville, CA</p></div><div class=\"bars\" aria-hidden=\"true\">" + bars + "</div></div></div>";
     form.hidden = true; done.hidden = false; done.focus();
     done.scrollIntoView({ block: "start" });

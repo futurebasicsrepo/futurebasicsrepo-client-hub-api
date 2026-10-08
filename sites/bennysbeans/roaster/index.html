@@ -18,11 +18,26 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="../assets/site.css">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
 <link rel="stylesheet" href="./roaster.css">
 </head>
 <body class="console" data-no-chat>
 <!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
 <!--/bb:header-->
 <main id="main" class="rc">
   <div class="rc-top">
@@ -346,6 +361,24 @@
   </dialog>
 </main>
 <!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
 <!--/bb:footer-->
 <script src="./roaster.js" defer></script>
 </body>
