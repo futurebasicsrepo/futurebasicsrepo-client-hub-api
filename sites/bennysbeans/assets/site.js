@@ -118,24 +118,83 @@
       '<path d="M12.5 21.5c3.8 5 11.2 5.2 15.3-.4" fill="none" stroke="#16120f" stroke-width="2.4" stroke-linecap="round"/>' +
       '<circle cx="15.2" cy="15" r="1.9" fill="#16120f"/><circle cx="23.6" cy="13.6" r="1.9" fill="#16120f"/></svg>';
   };
+  // A kraft stand-up pouch: heat-sealed crimp top, tin tie, degassing valve, side gussets and a folded
+  // base, paper grain, a stuck-on sticker label and the coffee-ring logo stamped in ink.
+  // Options: size (1|5), label, roastLabel, color + ink (override the coffee's label colors).
   BB.bag = function (id, o) {
     o = o || {}; var c = BY[id] || { short: "Benny's Beans", origin: "Fresh roast", c: "#16120f", ink: "#fff" };
-    var big = o.size === 5, uid = "b" + Math.random().toString(36).slice(2, 7);
+    var big = o.size === 5, u = "b" + Math.random().toString(36).slice(2, 8);
+    var col = o.color || c.c, ink = o.ink || c.ink;
     var name = (o.label || c.short).toUpperCase(), parts = name.split(" ");
     var l1 = parts.length > 1 ? parts.slice(0, Math.ceil(parts.length / 2)).join(" ") : name, l2 = parts.length > 1 ? parts.slice(Math.ceil(parts.length / 2)).join(" ") : "";
-    return '<svg viewBox="0 0 200 270" role="img" aria-label="' + esc(c.name || name) + ' bag">' +
-      '<defs><linearGradient id="k' + uid + '" x1="0" x2="1"><stop offset="0" stop-color="#b48d5d"/><stop offset=".18" stop-color="#cfab7e"/><stop offset=".55" stop-color="#d7b68b"/><stop offset=".85" stop-color="#c39d6d"/><stop offset="1" stop-color="#a98251"/></linearGradient></defs>' +
-      '<path d="M24 44h152l7 210c.2 6-3.6 10-9.6 10H26.6c-6 0-9.8-4-9.6-10z" fill="url(#k' + uid + ')"/>' +
-      '<path d="M26 12h148l2 34H24z" fill="#b8915f"/>' +
-      '<path d="M26 12l6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6 6-6 6 6" fill="none" stroke="#a37c4b" stroke-width="1.5"/>' +
-      '<rect x="16" y="34" width="168" height="7" rx="3.5" fill="#8d9296"/><rect x="16" y="34" width="168" height="2.4" rx="1.2" fill="#b9bec1"/>' +
-      '<circle cx="100" cy="64" r="6" fill="#a37c4b" opacity=".55"/><circle cx="100" cy="64" r="2.6" fill="#8a6639" opacity=".7"/>' +
-      '<rect x="34" y="82" width="132" height="70" rx="7" fill="' + c.c + '"/>' +
-      '<text x="100" y="' + (l2 ? 112 : 121) + '" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="900" font-size="' + (name.length > 16 ? 13.5 : 16) + '" letter-spacing=".3" fill="' + c.ink + '" style="font-variation-settings:\'wdth\' 115">' + esc(l1) + "</text>" +
-      (l2 ? '<text x="100" y="130" text-anchor="middle" font-family="Archivo, Arial, sans-serif" font-weight="900" font-size="' + (name.length > 16 ? 13.5 : 16) + '" letter-spacing=".3" fill="' + c.ink + '" style="font-variation-settings:\'wdth\' 115">' + esc(l2) + "</text>" : "") +
-      '<text x="100" y="146" text-anchor="middle" font-family="DM Mono, monospace" font-size="6.6" letter-spacing="1.6" fill="' + c.ink + '" opacity=".8">' + esc((o.roastLabel || c.origin || "").toUpperCase()) + "</text>" +
-      '<g transform="translate(55 158) scale(.75)" style="color:#2a1d12" opacity=".82">' + BB.ring({ words: true }).replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "") + "</g>" +
-      '<text x="100" y="252" text-anchor="middle" font-family="DM Mono, monospace" font-size="5.4" letter-spacing="1.1" fill="#5b4126" opacity=".85">' + (big ? "5 LB · " : "1 LB · ") + "EST. 2023 · GUERNEVILLE CA</text>" +
+    var longest = Math.max(l1.length, l2.length);
+    var fs = Math.min(15.5, 100 / (longest * 0.72)).toFixed(1); // fit the longest line inside the sticker
+    var sub = (o.roastLabel || c.origin || "").toUpperCase();
+    var body = "M27 50 C25.5 110 22.5 190 20 247 Q19.6 257 29 258.5 L171 258.5 Q180.4 257 180 247 C177.5 190 174.5 110 173 50 Z";
+    var t = function (y, txt, size, fam, extra) { return '<text x="100" y="' + y + '" text-anchor="middle" font-family="' + fam + '" font-size="' + size + '" fill="' + ink + '"' + (extra || "") + ">" + esc(txt) + "</text>"; };
+    var ribs = ""; for (var x = 29.5; x < 172; x += 1.6) ribs += "M" + x.toFixed(1) + " 19.5v10";
+    var zig = "M28 19"; for (var z = 28; z < 172; z += 3) zig += "l1.5-2.4 1.5 2.4"; zig += "V30H28z";
+    return '<svg viewBox="0 0 200 270" role="img" aria-label="' + esc((c.name || name) + (big ? ", 5 lb" : ", 1 lb")) + ' bag">' +
+      "<defs>" +
+        '<linearGradient id="k' + u + '" x1="0" x2="1"><stop offset="0" stop-color="#9f7a49"/><stop offset=".07" stop-color="#bf9a69"/><stop offset=".22" stop-color="#d4b183"/><stop offset=".48" stop-color="#dcbb8f"/><stop offset=".74" stop-color="#cfaa7b"/><stop offset=".93" stop-color="#b48e5d"/><stop offset="1" stop-color="#97713f"/></linearGradient>' +
+        '<linearGradient id="v' + u + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a3b18" stop-opacity=".28"/><stop offset=".12" stop-color="#5a3b18" stop-opacity="0"/><stop offset=".8" stop-color="#5a3b18" stop-opacity="0"/><stop offset="1" stop-color="#4a2f12" stop-opacity=".32"/></linearGradient>' +
+        '<linearGradient id="s' + u + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c7a272"/><stop offset=".55" stop-color="#b48e5c"/><stop offset="1" stop-color="#9c774a"/></linearGradient>' +
+        '<linearGradient id="t' + u + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f5f6"/><stop offset=".45" stop-color="#b9bec2"/><stop offset=".55" stop-color="#9aa0a5"/><stop offset="1" stop-color="#6f757a"/></linearGradient>' +
+        '<linearGradient id="g' + u + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".08"/></linearGradient>' +
+        '<radialGradient id="h' + u + '" cx=".38" cy=".42" r=".55"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>' +
+        '<clipPath id="c' + u + '"><path d="' + body + '"/></clipPath>' +
+        '<filter id="n' + u + '" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" seed="7"/><feColorMatrix values="0 0 0 0 .32  0 0 0 0 .21  0 0 0 0 .1  0 0 0 -1.6 1.05"/></filter>' +
+        '<filter id="f' + u + '" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="3" result="r"/><feDisplacementMap in="SourceGraphic" in2="r" scale="1.3" result="d"/><feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="1" seed="11" result="m"/><feColorMatrix in="m" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.1 1.45" result="mm"/><feComposite in="d" in2="mm" operator="in"/></filter>' +
+        '<filter id="d' + u + '" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy=".9" stdDeviation=".8" flood-color="#3b2510" flood-opacity=".35"/></filter>' +
+        '<filter id="b' + u + '" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>' +
+        '<filter id="w' + u + '"><feGaussianBlur stdDeviation="1.4"/></filter>' +
+      "</defs>" +
+      // contact shadow
+      '<ellipse cx="100" cy="261" rx="78" ry="4.5" fill="#2a1a0a" opacity=".35" filter="url(#b' + u + ')"/>' +
+      // body + shading + grain
+      '<path d="' + body + '" fill="url(#k' + u + ')"/>' +
+      '<g clip-path="url(#c' + u + ')">' +
+        '<rect x="0" y="0" width="200" height="270" fill="url(#v' + u + ')"/>' +
+        '<rect x="0" y="0" width="200" height="270" fill="url(#h' + u + ')"/>' +
+        '<rect x="0" y="0" width="200" height="270" filter="url(#n' + u + ')" opacity=".55"/>' +
+        // gusset creases and soft wrinkles
+        '<path d="M37 52 C35.5 120 33 190 31 240" stroke="#7a5630" stroke-width="1.1" fill="none" opacity=".35" filter="url(#w' + u + ')"/>' +
+        '<path d="M163 52 C164.5 120 167 190 169 240" stroke="#7a5630" stroke-width="1.1" fill="none" opacity=".35" filter="url(#w' + u + ')"/>' +
+        '<path d="M39 54 C36.5 120 34.5 190 32.5 238" stroke="#fff" stroke-width=".8" fill="none" opacity=".18"/>' +
+        '<path d="M48 56 q22 10 46 3 M112 60 q20 6 42 -2 M58 74 q14 4 26 1" stroke="#6b4a26" stroke-width="2.2" fill="none" opacity=".16" filter="url(#w' + u + ')"/>' +
+        '<path d="M48 54 q22 10 46 3 M112 58 q20 6 42 -2" stroke="#fff" stroke-width="1.2" fill="none" opacity=".2" filter="url(#w' + u + ')"/>' +
+        '<path d="M120 170 q14 30 8 70 M60 196 q-6 22 -2 44" stroke="#6b4a26" stroke-width="2" fill="none" opacity=".1" filter="url(#w' + u + ')"/>' +
+        // folded base gusset
+        '<path d="M18 238 Q100 252 182 238 L182 262 L18 262 Z" fill="#7d5a30" opacity=".22"/>' +
+        '<path d="M20 239 Q100 252.5 180 239" stroke="#fff" stroke-width=".9" fill="none" opacity=".22"/>' +
+      "</g>" +
+      // heat-sealed crimp top
+      '<path d="' + zig + '" fill="url(#s' + u + ')"/>' +
+      '<path d="' + ribs + '" stroke="#7d5a30" stroke-width=".7" opacity=".32"/>' +
+      '<path d="M27 30h146v20H27z" fill="url(#s' + u + ')"/><rect x="27" y="30" width="146" height="20" filter="url(#n' + u + ')" opacity=".4"/>' +
+      '<path d="M27 30.5h146" stroke="#fff" stroke-width=".7" opacity=".35"/>' +
+      '<path d="M27 37 l4 2.4 -4 2.4z" fill="#f4efe6"/>' + // tear notch
+      // tin tie, folded ends
+      '<path d="M17 39.5 h166 a2 2 0 0 1 2 2 v3.4 a2 2 0 0 1 -2 2 h-166 a2 2 0 0 1 -2 -2 v-3.4 a2 2 0 0 1 2 -2z" fill="url(#t' + u + ')" filter="url(#d' + u + ')"/>' +
+      '<path d="M15.4 42 l-2.6 7 a1.2 1.2 0 0 0 1.1 1.6 h2.2 l1.5-6z M184.6 42 l2.6 7 a1.2 1.2 0 0 1 -1.1 1.6 h-2.2 l-1.5-6z" fill="#8c9297"/>' +
+      '<path d="M17 40.6 h166" stroke="#fff" stroke-width=".6" opacity=".7"/><path d="M27 47 h146" stroke="#5a3b18" stroke-width="1.6" opacity=".18" filter="url(#w' + u + ')"/>' +
+      // one-way degassing valve
+      '<circle cx="100" cy="68" r="7.2" fill="#b38b5a" filter="url(#d' + u + ')"/><circle cx="100" cy="68" r="5.2" fill="none" stroke="#8c6638" stroke-width=".9"/><circle cx="100" cy="68" r="2.2" fill="#7b5730"/>' +
+      '<circle cx="98.4" cy="66.6" r=".55" fill="#d9bf98"/><circle cx="101.6" cy="66.6" r=".55" fill="#d9bf98"/><circle cx="100" cy="69.6" r=".55" fill="#d9bf98"/>' +
+      '<path d="M94.5 64.5 a7 7 0 0 1 6 -3.6" stroke="#fff" stroke-width=".8" fill="none" opacity=".45"/>' +
+      // the sticker label, a hair off-square like a hand-applied label
+      '<g transform="rotate(-1.4 100 121)">' +
+        '<rect x="38" y="86" width="124" height="70" rx="3.5" fill="' + col + '" filter="url(#d' + u + ')"/>' +
+        '<rect x="38" y="86" width="124" height="70" rx="3.5" fill="url(#g' + u + ')"/>' +
+        '<rect x="41" y="89" width="118" height="64" rx="2" fill="none" stroke="' + ink + '" stroke-opacity=".28" stroke-width=".6"/>' +
+        t(l2 ? 113 : 122, l1, fs, "Archivo, Arial, sans-serif", ' font-weight="900" letter-spacing=".2" style="font-variation-settings:\'wdth\' 112"') +
+        (l2 ? t(113 + +fs * 1.04, l2, fs, "Archivo, Arial, sans-serif", ' font-weight="900" letter-spacing=".2" style="font-variation-settings:\'wdth\' 112"') : "") +
+        t(147, sub, 6.2, "DM Mono, monospace", ' letter-spacing="1.5" opacity=".82"') +
+        '<path d="M150 86 h8.5 a3.5 3.5 0 0 1 3.5 3.5 v3" stroke="#fff" stroke-width="1.2" fill="none" opacity=".35"/>' +
+      "</g>" +
+      // the coffee-ring logo, stamped in ink
+      '<g transform="translate(57 160) scale(.72)" style="color:#2b1b0d;mix-blend-mode:multiply" opacity=".8" filter="url(#f' + u + ')">' + BB.ring({ words: true }).replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "") + "</g>" +
+      '<text x="100" y="246" text-anchor="middle" font-family="DM Mono, monospace" font-size="4.7" letter-spacing=".9" fill="#4e361d" opacity=".78">' + (big ? "5 LB · " : "1 LB · ") + "EST. 2023 · GUERNEVILLE CA</text>" +
       "</svg>";
   };
   BB.roastBar = function (r) { var s = ""; for (var i = 1; i <= 5; i++) s += '<i class="' + (i >= r[0] && i <= r[1] ? "on" : "") + '"></i>'; return '<div class="roastbar" aria-label="Recommended roast">' + s + "</div>"; };
