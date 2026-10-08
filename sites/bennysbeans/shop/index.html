@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shop Coffee | Benny's Beans · Fresh Roasted Single Origins, $20/lb</title>
+<meta name="description" content="Shop seven single-origin coffees and blends from Benny's Beans, roasted to order every Monday and Wednesday in Guerneville, CA. $20 per pound, $80 for 5 lb, free shipping on $60+.">
+<meta name="theme-color" content="#16120f">
+<link rel="canonical" href="https://russianriverroastery.com/shop/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2316120f'/%3E%3Cpath d='M35 9c13 2 21 13 20 25-1 13-12 22-24 21C19 54 9 44 9 31 9 21 15 13 23 10' fill='none' stroke='%23c8261c' stroke-width='5' stroke-linecap='round'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23fbf8f2'%3EB%3C/text%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Benny's Beans">
+<meta property="og:title" content="Shop coffee · Benny's Beans">
+<meta property="og:description" content="Seven coffees, roasted after you order. $20/lb, $80 for 5 lb, free shipping on $60+.">
+<meta property="og:image" content="https://russianriverroastery.com/assets/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../assets/site.css?v=efd88e54">
+<style>
+  /* hero */
+  .shop-hero { padding-bottom: clamp(24px, 3vw, 40px); overflow: hidden; }
+  .shop-hero .hg { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+  .shop-hero h1 { margin: 0 0 22px; font-size: clamp(60px, 7.6vw, 112px); }
+  .shop-hero .lede { margin-bottom: 26px; }
+  .roastline { display: inline-flex; align-items: center; gap: 14px; background: var(--ink); color: var(--paper); border-radius: var(--pill); padding: 8px 22px 8px 8px; max-width: 100%; }
+  .roastline .dot { flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--cherry); display: grid; place-items: center; font: 500 10px/1 var(--mono); letter-spacing: .08em; color: #fff; text-transform: uppercase; }
+  .roastline b { color: var(--gold); font-weight: 700; }
+  .roastline span { font-size: 15px; line-height: 1.35; }
+  .roastline small { display: block; font: 500 12px var(--mono); color: #bfb3a5; letter-spacing: .04em; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .fan { position: relative; aspect-ratio: 1; width: 100%; max-width: 500px; justify-self: center; }
+  .fan .ring-bg { position: absolute; inset: 0; color: var(--kraft); }
+  .fan .ring-bg svg { width: 100%; height: 100%; }
+  .fan .b { position: absolute; width: 44%; bottom: 10%; filter: drop-shadow(0 26px 24px rgba(60,40,20,.3)); transition: transform .6s var(--ease); }
+  .fan .b svg { width: 100%; }
+  .fan .b1 { left: 4%; transform: rotate(-12deg); }
+  .fan .b2 { left: 28%; bottom: 16%; z-index: 2; transform: rotate(1deg); }
+  .fan .b3 { right: 4%; transform: rotate(13deg); }
+  .fan:hover .b1 { transform: rotate(-16deg) translate(-6px, -6px); }
+  .fan:hover .b3 { transform: rotate(17deg) translate(6px, -6px); }
+  .fan .stamp { position: absolute; right: 0; top: 2%; background: var(--cherry); color: #fff; border-color: rgba(255,255,255,.7); width: 124px; height: 124px; z-index: 3; }
+  @media (max-width: 900px) { .shop-hero .hg { grid-template-columns: 1fr; } .fan { max-width: 360px; } }
+  @media (max-width: 640px) { .fan { display: none; } }
+  @media (max-width: 520px) { .fan .stamp { width: 104px; height: 104px; font-size: 10px; } .fan .stamp b { font-size: 21px; } .roastline { border-radius: 24px; } }
+
+  /* filter + sort */
+  .fbar { background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: 10px; }
+  .fbar-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 6px 12px; }
+  .fbar-top h2 { font: 900 18px/1 var(--sans); font-variation-settings: "wdth" 125; text-transform: uppercase; margin: 0; letter-spacing: 0; }
+  .ftoggle { display: none; }
+  .fsort { display: flex; align-items: center; gap: 10px; }
+  .fsort select { min-height: 42px; padding: 0 40px 0 16px; border-radius: var(--pill); width: auto; font-weight: 650; font-size: 14.5px; appearance: none; -webkit-appearance: none; background: var(--bone) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2316120f' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 16px center / 11px; cursor: pointer; }
+  .fgroups { display: grid; gap: 4px; }
+  .fgroup { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .fgroup .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fgroup .chip { min-height: 38px; }
+  .fgroup .chip .ct { font: 500 11px var(--mono); opacity: .55; }
+  .fgroup .chip[aria-pressed="true"] .ct { opacity: .8; }
+  .fgroup .chip.zero { opacity: .45; }
+  @media (max-width: 760px) {
+    .fbar { border-radius: 22px; }
+    .ftoggle { display: inline-flex; }
+    .fbar-top { padding: 4px; flex-wrap: wrap; }
+    .fbar-top h2 { display: none; }
+    .fsort { margin-left: auto; }
+    .fsort .label { display: none; }
+    .fgroups[hidden] { display: none; }
+    .fgroup { grid-template-columns: 1fr; gap: 8px; padding: 12px 6px; }
+  }
+  .ftoggle .badge { background: var(--cherry); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; padding: 0 6px; font: 600 11px/20px var(--mono); }
+  .ftoggle .badge:empty { display: none; }
+  .results { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 22px 2px 18px; flex-wrap: wrap; }
+  .results p { margin: 0; font: 500 13px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+  .results p b { color: var(--cherry); }
+  .linkbtn { background: none; border: 0; padding: 4px 0; cursor: pointer; font-weight: 700; text-decoration: underline; text-decoration-color: var(--cherry); text-decoration-thickness: 2px; text-underline-offset: 3px; font-size: 14px; }
+
+  /* grid + cards */
+  .lineup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  @media (max-width: 1100px) { .lineup { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 780px) { .lineup { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+    .pcard .add { width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--ink); background: var(--ink); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; transition: transform .2s var(--ease), background .2s; flex: none; }
+  .pcard .add:hover { background: var(--cherry); border-color: var(--cherry); transform: rotate(90deg); }
+  .pcard .notes li { font-size: 12.5px; padding: 4px 10px; }
+  .pcard .cover { position: absolute; inset: 0; z-index: 1; border-radius: 28px; }
+  .pcard .add, .pcard .badges { position: relative; z-index: 2; }
+  .pcard .best { font: 500 11.5px/1.4 var(--mono); color: var(--mute); letter-spacing: .03em; }
+  .pcard .best b { color: var(--ink-2); font-weight: 500; }
+  .pcard .rl { display: flex; justify-content: space-between; font: 500 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin-bottom: 5px; }
+  .pcard.in-grid { animation: pop .45s var(--ease) both; animation-delay: var(--d, 0s); }
+  @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+  .pcard.quiz { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .pcard.quiz .body { justify-content: space-between; padding: 28px 24px; }
+  .pcard.quiz h3 { font-size: 32px; text-transform: uppercase; font-variation-settings: "wdth" 125; font-weight: 900; line-height: .95; margin-top: 12px; }
+  .noresult { grid-column: 1 / -1; text-align: center; padding: 48px 20px; border: 2px dashed var(--line); border-radius: 28px; }
+  .noresult .ring { width: 90px; margin: 0 auto 12px; color: var(--kraft-d); }
+  @media (max-width: 780px) {
+    .lineup .pcard .stage { padding: 18px 12px 0; }
+    .lineup .pcard .body { padding: 14px 14px 16px; gap: 8px; }
+    .lineup .pcard h3 { font-size: 17px; }
+    .lineup .pcard .notes li:nth-child(n+3) { display: none; }
+    .lineup .pcard .best { display: none; }
+    .lineup .pcard .add { width: 40px; height: 40px; font-size: 21px; }
+    .lineup .pcard .price { font-size: 19px; }
+    .lineup .pcard .stage .badges .tag { font-size: 10px; padding: 3px 8px; }
+  }
+  @media (max-width: 780px) { .lineup .pcard.quiz { grid-column: 1 / -1; } .lineup .pcard.quiz h3 { font-size: 26px; } .lineup .pcard .rl { font-size: 9px; } .lineup .pcard .stage .badges { top: 10px; left: 10px; } }
+  @media (max-width: 400px) { .lineup .pcard .notes li:nth-child(n+2) { display: none; } .lineup .pcard .origin { font-size: 10.5px; } }
+
+  /* bundle strip */
+  .bundle { display: grid; grid-template-columns: 1fr minmax(0, 520px); gap: clamp(28px, 5vw, 72px); align-items: center; }
+  .bundle h2 { font-size: clamp(44px, 6.6vw, 100px); margin-bottom: 18px; }
+  .math { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font: 900 clamp(26px, 3vw, 40px)/1 var(--sans); font-variation-settings: "wdth" 125; margin: 4px 0 22px; }
+  .math span { background: rgba(255,255,255,.14); border-radius: var(--pill); padding: 10px 18px; }
+  .math em { font-style: normal; opacity: .7; font-size: .7em; }
+  .math .eq { background: var(--paper); color: var(--cherry); }
+  .bmeter { background: rgba(0,0,0,.16); border-radius: 20px; padding: 14px 16px; max-width: 520px; }
+  .bmeter p { margin: 0 0 8px; font-size: 14.5px; font-weight: 600; }
+  .bmeter .meter { background: rgba(255,255,255,.25); }
+  .bmeter .meter i { background: #fff; }
+  .bmeter .meter.done i { background: var(--gold); }
+  .sampler { background: var(--paper); color: var(--ink); border-radius: 32px; padding: clamp(20px, 3vw, 32px); box-shadow: 0 40px 60px -40px rgba(0,0,0,.6); }
+  .sampler .trio { position: relative; height: clamp(200px, 22vw, 260px); background: var(--kraft-l); border-radius: 22px; overflow: hidden; margin-bottom: 20px; }
+  .sampler .trio .b { position: absolute; bottom: -8%; width: 36%; filter: drop-shadow(0 18px 16px rgba(60,40,20,.3)); transition: transform .5s var(--ease); }
+  .sampler .trio .b svg { width: 100%; }
+  .sampler .trio div.b:nth-of-type(1) { left: 6%; transform: rotate(-9deg); }
+  .sampler .trio div.b:nth-of-type(2) { left: 32%; bottom: -3%; z-index: 2; }
+  .sampler .trio div.b:nth-of-type(3) { right: 6%; transform: rotate(9deg); }
+  .sampler:hover .trio div.b:nth-of-type(2) { transform: translateY(-8px); }
+  .sampler .trio .tag { position: absolute; top: 14px; left: 14px; z-index: 3; }
+  .sampler h3 { font: 900 clamp(24px, 2.4vw, 30px)/1 var(--sans); font-variation-settings: "wdth" 125; text-transform: uppercase; margin: 0 0 8px; }
+  .sampler ul { margin: 12px 0 18px; display: grid; gap: 6px; }
+  .sampler li { display: flex; justify-content: space-between; gap: 10px; font-size: 14.5px; border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+  .sampler li span:last-child { font: 500 12px var(--mono); color: var(--mute); text-align: right; }
+  .sampler .tot { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+  .sampler .tot b { font: 900 34px/1 var(--sans); font-variation-settings: "wdth" 125; }
+  @media (max-width: 900px) { .bundle { grid-template-columns: 1fr; } }
+
+  /* 5 lb value */
+  .five { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 5vw, 80px); align-items: center; }
+  .five-stage { position: relative; border-radius: 34px; background: var(--c, var(--kraft-l)); aspect-ratio: 1; display: grid; place-items: end center; overflow: hidden; transition: background .4s; }
+  .five-stage .bag5 { width: 56%; margin-bottom: -2%; filter: drop-shadow(0 30px 30px rgba(60,40,20,.35)); }
+  .five-stage .bag5 svg { width: 100%; }
+  .five-stage .stamp { position: absolute; left: 6%; top: 6%; background: var(--ink); color: var(--gold); border-color: var(--gold); }
+  .five h2 { font-size: clamp(56px, 8vw, 120px); margin-bottom: 14px; }
+  .cmp { display: grid; gap: 12px; margin: 22px 0; }
+  .cmp .r { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: center; font-size: 14px; font-weight: 600; }
+  .cmp .bar { height: 42px; border-radius: var(--pill); background: var(--line); display: flex; align-items: center; justify-content: flex-end; padding: 0 16px; font: 900 18px var(--sans); font-variation-settings: "wdth" 120; transition: width .8s var(--ease); }
+  .cmp .bar.big { background: var(--cherry); color: #fff; }
+  .five .pick { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; margin-top: 18px; }
+  .five blockquote { margin: 24px 0 0; padding: 18px 20px; border-left: 4px solid var(--cherry); background: var(--paper); border-radius: 0 18px 18px 0; }
+  .five blockquote p { font-weight: 600; font-size: 15.5px; margin: 0 0 6px; }
+  .five blockquote footer { font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+  @media (max-width: 900px) { .five { grid-template-columns: 1fr; } .five-stage { max-width: 440px; width: 100%; } }
+  @media (max-width: 520px) { .five-stage .stamp { width: 100px; height: 100px; font-size: 10px; padding: 10px; } .five-stage .stamp b { font-size: 21px; } .five .pick { grid-template-columns: 1fr; } .cmp .r { grid-template-columns: 1fr; gap: 4px; } }
+
+  /* merch */
+  .merch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .mcard { background: var(--bone); border-radius: 28px; overflow: hidden; border: 1px solid var(--line); display: flex; flex-direction: column; }
+  .mcard .ph { aspect-ratio: 4 / 3.4; overflow: hidden; position: relative; background: var(--kraft-l); }
+  .mcard .ph img { width: 100%; height: 100%; object-fit: cover; transition: transform .8s var(--ease); }
+  .mcard:hover .ph img { transform: scale(1.04); }
+  .mcard .ph .tag { position: absolute; top: 14px; left: 14px; }
+  .mcard .body { padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .mcard h3 { font-size: 21px; font-variation-settings: "wdth" 110; margin: 0; }
+  .mcard .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; padding-top: 8px; }
+  @media (max-width: 860px) { .merch { grid-template-columns: 1fr; } .mcard { display: grid; grid-template-columns: 140px 1fr; } .mcard .ph { aspect-ratio: auto; min-height: 100%; } .mcard .body { padding: 16px 18px; } }
+  @media (max-width: 420px) { .mcard { grid-template-columns: 110px 1fr; } .mcard .body p { display: none; } }
+
+  /* roast levels + grind guide */
+  .levels { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; border-top: 1px solid #3a312a; }
+  .levels li { padding: 22px 18px 6px 0; border-right: 1px solid #3a312a; margin-right: 18px; }
+  .levels li:last-child { border-right: 0; margin-right: 0; }
+  .levels .bean { width: 44px; height: 54px; border-radius: 50%; transform: rotate(-20deg); position: relative; margin-bottom: 14px; box-shadow: inset -6px -8px 0 rgba(0,0,0,.18); }
+  .levels .bean::after { content: ""; position: absolute; left: 50%; top: 10%; bottom: 10%; width: 3px; margin-left: -1.5px; border-radius: 3px; background: rgba(0,0,0,.35); transform: rotate(8deg); }
+  .levels .choice .bean { background: conic-gradient(#c9a36b 0 20%, #a8743c 0 40%, #7d4b23 0 60%, #512d14 0 80%, #2b170b 0); }
+  .levels h3 { font: 900 17px/1.05 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin: 0 0 8px; }
+  .levels p { color: #bfb3a5; font-size: 14px; line-height: 1.45; margin: 0 0 8px; }
+  .levels .choice h3 { color: var(--gold); }
+  .levels .n { font: 500 11px var(--mono); color: var(--gold); letter-spacing: .12em; display: block; margin-bottom: 4px; }
+  @media (max-width: 1020px) { .levels { grid-template-columns: repeat(3, 1fr); } .levels li:nth-child(3n) { border-right: 0; } }
+  @media (max-width: 560px) { .levels { grid-template-columns: 1fr 1fr; } .levels li { border-right: 0 !important; margin-right: 0; padding-right: 10px; border-bottom: 1px solid #3a312a; } }
+  .grinds { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .gcard { background: #221c18; border: 1px solid #3a312a; border-radius: 22px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .gcard .grains { height: 46px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--r), var(--s)); grid-auto-columns: var(--s); gap: var(--g); align-content: center; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent); mask-image: linear-gradient(90deg, #000 70%, transparent); }
+  .gcard .grains i { width: var(--s); height: var(--s); border-radius: 40%; background: var(--kraft); opacity: .9; }
+  .gcard h3 { font: 800 16px/1.1 var(--sans); font-variation-settings: "wdth" 115; margin: 0; text-transform: uppercase; }
+  .gcard p { font-size: 13.5px; color: #bfb3a5; margin: 0; line-height: 1.4; }
+  @media (max-width: 1020px) { .grinds { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 560px) { .grinds { grid-template-columns: 1fr 1fr; } }
+
+  .helpers .card { display: flex; flex-direction: column; gap: 10px; }
+  .helpers .card h3 { font: 900 22px/1 var(--sans); font-variation-settings: "wdth" 120; text-transform: uppercase; margin: 0; }
+  .helpers .card .btn { margin-top: auto; align-self: flex-start; }
+</style>
+</head>
+<body>
+<!--bb:header-->
+<a class="skip" href="#main">Skip to content</a>
+<div class="concept"><div class="wrap"><span>Concept site by <b>Future Basics</b> for Benny's Beans · checkout and demo data are illustrative · <a href="../roaster/">See the roaster console →</a></span><button type="button" aria-label="Hide this note">×</button></div></div>
+<div class="ticker" aria-hidden="true"><div class="track"><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span><span>Roasting days: Monday + Wednesday</span><span>Ships the next day</span><span>Free shipping on $60+</span><span>Will-call pickup at True Value, Guerneville</span><span>Occidental Farmers Market · Thu 4–8</span><span>Cloverdale Farmers Market · Sun 9:30–1</span><span>Text Benny 707-899-4183</span></div></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <nav class="nav" aria-label="Main"><a href="../shop/" aria-current="page">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a></nav>
+    <a class="brand" href="../" aria-label="Benny's Beans home"><span data-ring></span><span><b>Benny's Beans</b><small>Russian River Roastery</small></span></a>
+    <div class="head-cta">
+      <a class="roast-pill" href="../shop/"><i></i>Next roast <span data-next-roast></span></a>
+      <button class="cart-btn" type="button" aria-label="Your bag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count">0</span></button>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span></button>
+    </div>
+    <nav class="mobile-nav" id="mnav" aria-label="Mobile"><a href="../shop/">Shop</a><a href="../subscribe/">Subscribe</a><a href="../brew/">Brew</a><a href="../wholesale/">Wholesale</a><a href="../find-us/">Find us</a><a href="../gifts/">Gifts</a><a href="../story/">Our story</a><a class="mn-meta" href="sms:+17078994183">Text Benny 707-899-4183 · Roasts Mon + Wed</a></nav>
+  </div>
+</header>
+<!--/bb:header-->
+
+<main id="main">
+  <section class="page-hero shop-hero" aria-labelledby="shop-h">
+    <div class="wrap hg">
+      <div>
+        <nav class="breadcrumb" aria-label="Breadcrumb"><a href="../">Home</a> › <span aria-current="page">Shop</span></nav>
+        <p class="eyebrow">Seven coffees · roasted to order · Guerneville, CA</p>
+        <h1 class="display" id="shop-h">Shop<br><span class="red">coffee.</span></h1>
+        <p class="lede">Every bag starts green and gets roasted for your order on the next Monday or Wednesday, then ships the next day. Pick the bean, the roast and how you brew.</p>
+        <div class="roastline" aria-live="polite">
+          <span class="dot" data-rl-day>Mon</span>
+          <span><span data-rl-text>Order by Sunday 11:59 pm to make Monday's roast</span><small>Cutoff in <span data-cutoff></span> · ships <span data-next-ship></span></small></span>
+        </div>
+        <div class="facts">
+          <span class="tag ink">$20 / 1 lb</span><span class="tag ink">$80 / 5 lb</span><span class="tag red">Free shipping $60+</span><span class="tag">Free pickup in Guerneville</span>
+        </div>
+      </div>
+      <div class="fan" aria-hidden="true">
+        <div class="ring-bg mark-spin" data-fan-ring></div>
+        <div class="b b1" data-bag="ethiopia"></div>
+        <div class="b b2" data-bag="coorg-robusta"></div>
+        <div class="b b3" data-bag="halfcaff"></div>
+        <div class="stamp">Roasting<b data-fan-day>MON</b><span data-fan-date></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec-sm" style="padding-top:clamp(16px,2vw,28px)" aria-labelledby="lineup-h">
+    <div class="wrap">
+      <h2 class="sr" id="lineup-h">All coffees</h2>
+      <div class="fbar" role="search" aria-label="Filter and sort coffees">
+        <div class="fbar-top">
+          <h2 aria-hidden="true">Find your bag</h2>
+          <button class="chip ftoggle" type="button" aria-expanded="false" aria-controls="fgroups">Filter <span class="badge" data-fbadge></span></button>
+          <label class="fsort"><span class="label">Sort</span>
+            <select data-sort aria-label="Sort coffees">
+              <option value="featured">Featured</option>
+              <option value="bold">Boldest first</option>
+              <option value="bright">Brightest first</option>
+            </select>
+          </label>
+        </div>
+        <div class="fgroups" id="fgroups">
+          <div class="fgroup" role="group" aria-labelledby="g-flavor"><span class="label" id="g-flavor">Flavor</span><div class="chips-row" data-group="flavor"></div></div>
+          <div class="fgroup" role="group" aria-labelledby="g-caf"><span class="label" id="g-caf">Caffeine</span><div class="chips-row" data-group="caf"></div></div>
+          <div class="fgroup" role="group" aria-labelledby="g-brew"><span class="label" id="g-brew">Brew method</span><div class="chips-row" data-group="brew"></div></div>
+        </div>
+      </div>
+      <div class="results">
+        <p aria-live="polite" data-count>Showing all 7 coffees</p>
+        <button class="linkbtn" type="button" data-clear hidden>Clear filters</button>
+      </div>
+      <div class="lineup" data-lineup></div>
+      <p class="tiny mt2">The + adds 1 lb, Roaster's Choice, whole bean. Open any coffee to choose size, roast and grind.</p>
+    </div>
+  </section>
+
+  <section class="sec redbg" aria-labelledby="bundle-h">
+    <div class="wrap bundle">
+      <div>
+        <p class="eyebrow">Bundle &amp; save shipping</p>
+        <h2 class="display" id="bundle-h">Any 3 bags<br>ship free.</h2>
+        <div class="math" aria-label="3 times 20 dollars equals 60 dollars, free shipping">
+          <span>3 <em>×</em> $20</span><em>=</em><span class="eq">$60</span>
+        </div>
+        <p class="lede" style="color:#ffe2dd">That's exactly the free-shipping line. Mix any three coffees, any roasts, any grinds. No codes, no catch.</p>
+        <div class="bmeter" aria-live="polite"><p data-bm-msg>Free shipping on orders $60+</p><div class="meter"><i data-bm-bar></i></div></div>
+      </div>
+      <div class="sampler">
+        <div class="trio" aria-hidden="true"><span class="tag ink">Roaster's Choice</span><div class="b" data-bag="ethiopia"></div><div class="b" data-bag="colombia"></div><div class="b" data-bag="mneb"></div></div>
+        <h3>Benny's Sampler</h3>
+        <p class="small mb0">3 × 1 lb, each roasted where Benny thinks it tastes best. Bright, rich and bold, start to finish.</p>
+        <ul>
+          <li><span>Ethiopia Buture</span><span>Honey · lemon</span></li>
+          <li><span>Colombia Aponte</span><span>Berry · cacao</span></li>
+          <li><span>Mysore Nuggets Extra Bold</span><span>Dark chocolate</span></li>
+        </ul>
+        <div class="tot"><span class="label">3 lb · whole bean</span><b>$60</b></div>
+        <button class="btn btn-red btn-block" type="button" data-sampler>Add the sampler · ships free <span class="arr">→</span></button>
+        <p class="tiny mt1 mb0" style="text-align:center">Want it ground? Change the grind per bag at checkout or on each coffee's page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" aria-labelledby="five-h">
+    <div class="wrap five">
+      <div class="five-stage" data-five-stage>
+        <div class="stamp">Save<b>$20</b>vs 5 × 1 lb</div>
+        <div class="bag5" data-five-bag></div>
+      </div>
+      <div>
+        <p class="eyebrow">The 5 lb bag</p>
+        <h2 class="display" id="five-h">5 lb.<br><span class="red">$80.</span></h2>
+        <p class="lede">The household size. $16 a pound, roasted the same week it ships. Whole bean keeps; freeze what you won't drink in two weeks.</p>
+        <div class="cmp" aria-label="Price comparison">
+          <div class="r"><span>5 × 1 lb bags</span><div class="bar" style="width:100%">$100</div></div>
+          <div class="r"><span>One 5 lb bag</span><div class="bar big" style="width:80%">$80</div></div>
+        </div>
+        <div class="pick">
+          <label class="field"><span>Coffee</span><select data-five-pick></select></label>
+          <button class="btn" type="button" data-five-add>Add 5 lb · $80</button>
+        </div>
+        <p class="tiny mt1">Roaster's Choice, whole bean. <a class="link" href="../coffee/?c=halfcaff" data-five-link>Choose roast and grind</a>.</p>
+        <blockquote>
+          <p>"We are on our 4th round of coffee beans from Benny (recently upgraded to 5lb bags)… we were previously ordering beans from brands like Blue Bottle, Equator, and Red Bay and are very satisfied with how Benny's product compares."</p>
+          <footer>Sarah M. · customer review</footer>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec paper" aria-labelledby="merch-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">For the table</p><h2 class="h2" id="merch-h">Coasters.</h2></div>
+        <p class="lede">Engraved with the coffee-ring mark and a QR code that reorders your bag. Small enough to round a cart up to free shipping.</p>
+      </div>
+      <div class="merch" data-merch-grid></div>
+    </div>
+  </section>
+
+  <section class="sec ink" aria-labelledby="roast-h">
+    <div class="wrap">
+      <div class="sec-head">
+        <div><p class="eyebrow">Roast levels explained</p><h2 class="h2" id="roast-h">Light to French.<br>Or let Benny pick.</h2></div>
+        <p class="lede">Every coffee comes in five roast levels. Each one has a range Benny recommends, shown as the bar on every card.</p>
+      </div>
+      <ol class="levels" style="list-style:none;padding:0;margin:0" data-levels></ol>
+
+      <div class="sec-head" style="margin-top:clamp(56px,7vw,96px)">
+        <div><p class="eyebrow">Grind guide</p><h2 class="h2" id="grind-h">Which grind<br>for your brewer.</h2></div>
+        <p class="lede">Whole bean keeps longest. If you'd rather not grind, Benny's grinder runs at a low RPM so the heat doesn't flatten the flavor.</p>
+      </div>
+      <div class="grinds" data-grinds></div>
+    </div>
+  </section>
+
+  <section class="sec-sm helpers" aria-label="More ways to choose">
+    <div class="wrap grid g3">
+      <div class="card"><p class="eyebrow mb0">Can't decide?</p><h3>Take the bean quiz</h3><p class="small mb0">Thirty seconds, a few questions about how you brew. Get a bag matched to you.</p><a class="btn btn-sm" href="../brew/#quiz">Find my bean <span class="arr">→</span></a></div>
+      <div class="card"><p class="eyebrow mb0">Never run out</p><h3>Subscribe</h3><p class="small mb0">Any coffee, on your schedule. Skip or swap before roast day. 5 lb monthly is $80.</p><a class="btn btn-sm" href="../subscribe/">Build a subscription <span class="arr">→</span></a></div>
+      <div class="card"><p class="eyebrow mb0">Real person</p><h3>Text Benny</h3><p class="small mb0">Questions about a bean, a roast or a bulk order? He answers.</p><a class="btn btn-sm btn-ghost" href="sms:+17078994183">707-899-4183</a></div>
+    </div>
+  </section>
+</main>
+
+<!--bb:footer-->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p style="font-weight:900;font-variation-settings:'wdth' 125;text-transform:uppercase;font-size:30px;line-height:1;color:#fbf8f2;margin-bottom:16px">Roasted after<br>you order. <span style="color:var(--cherry)">Always.</span></p>
+        <p>Small-batch single origins roasted in Guerneville on the Russian River. Est. 2023.</p>
+        <form class="news" data-news><label class="sr" for="news-email">Email</label><input id="news-email" type="email" placeholder="Roast-day emails" required><button class="btn btn-red" type="submit">Join</button></form>
+        <p class="tiny" style="color:#8d8174;margin-top:8px">One email per new coffee. No spam, ever.</p>
+      </div>
+      <div><h4>Coffee</h4><ul><li><a href="../shop/">Shop all coffee</a></li><li><a href="../subscribe/">Subscriptions</a></li><li><a href="../brew/">Brew guides &amp; bean quiz</a></li><li><a href="../gifts/">Gifts &amp; coasters</a></li></ul></div>
+      <div><h4>Benny's</h4><ul><li><a href="../story/">Our story</a></li><li><a href="../wholesale/">Wholesale &amp; rentals</a></li><li><a href="../find-us/">Markets &amp; pickup</a></li><li><a href="../coffee-roaster-guerneville/">Coffee roaster in Guerneville</a></li></ul></div>
+      <div><h4>Talk coffee</h4><p><a href="sms:+17078994183" style="font-size:22px;font-weight:800;color:#fbf8f2">707-899-4183</a><br><span class="tiny" style="color:#8d8174">Text any time</span></p><p class="small">Will-call: True Value Hardware<br>15600 River Rd, Guerneville</p><p class="small">Roasting Mon + Wed<br>Ships Tue + Thu</p></div>
+    </div>
+    <div class="foot-big" aria-hidden="true">Benny's<br><em>Beans</em></div>
+    <div class="foot-base"><span>© <span data-year>2026</span> Benny's Beans · Russian River Roastery · Concept by Future Basics</span><span><a href="../roaster/">Roaster console (demo)</a></span></div>
+  </div>
+</footer>
+<script src="../assets/site.js?v=06a043db" defer></script>
+<!--/bb:footer-->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var BB = window.BB, $ = BB.$, $$ = BB.$$, esc = BB.esc;
+  var BREW = { espresso: "Espresso", drip: "Drip", pourover: "Pour-over", frenchpress: "French press", moka: "Moka" };
+  var CAF = { regular: "Regular", high: "High octane", half: "Half-caff", decaf: "Decaf" };
+  var FLAV = { bright: "Bright", rich: "Rich", smooth: "Smooth", bold: "Bold" };
+  var GROUPS = { flavor: FLAV, caf: CAF, brew: BREW };
+  var ANY = { flavor: "All", caf: "Any", brew: "Any" };
+
+  // ---------- hero: live roast line ----------
+  function paintHero() {
+    var r = BB.nextRoast(), day = BB.DAY[r.roast.getDay()];
+    $("[data-rl-day]").textContent = BB.DS[r.roast.getDay()];
+    $("[data-rl-text]").innerHTML = "Order by <b>" + BB.fmt(r.cutoff) + ", 11:59 pm</b> to make " + day + "'s roast";
+    $("[data-fan-day]").textContent = BB.DS[r.roast.getDay()].toUpperCase();
+    $("[data-fan-date]").textContent = BB.MON[r.roast.getMonth()] + " " + r.roast.getDate();
+  }
+  paintHero(); setInterval(paintHero, 60000);
+  $("[data-fan-ring]").innerHTML = BB.ring({ words: false });
+
+  // ---------- filters ----------
+  var qs = new URLSearchParams(location.search);
+  var state = { flavor: qs.get("flavor") || "", caf: qs.get("caf") || "", brew: qs.get("brew") || "", sort: qs.get("sort") || "featured" };
+  Object.keys(GROUPS).forEach(function (g) { if (state[g] && !GROUPS[g][state[g]]) state[g] = ""; });
+  if (["featured", "bold", "bright"].indexOf(state.sort) < 0) state.sort = "featured";
+  $("[data-sort]").value = state.sort;
+
+  function matches(c, skip) {
+    return (skip === "flavor" || !state.flavor || c.flavor === state.flavor) &&
+      (skip === "caf" || !state.caf || c.caf === state.caf) &&
+      (skip === "brew" || !state.brew || c.best.indexOf(state.brew) > -1);
+  }
+  function has(c, g, v) { return g === "brew" ? c.best.indexOf(v) > -1 : c[g] === v; }
+  function paintChips() {
+    Object.keys(GROUPS).forEach(function (g) {
+      var row = $('[data-group="' + g + '"]');
+      var opts = [["", ANY[g]]].concat(Object.keys(GROUPS[g]).map(function (k) { return [k, GROUPS[g][k]]; }));
+      row.innerHTML = opts.map(function (o) {
+        var n = BB.COFFEES.filter(function (c) { return matches(c, g) && (!o[0] || has(c, g, o[0])); }).length;
+        var on = state[g] === o[0];
+        return '<button class="chip' + (n === 0 && !on ? " zero" : "") + '" type="button" aria-pressed="' + on + '" data-v="' + o[0] + '">' + esc(o[1]) + ' <span class="ct" aria-hidden="true">' + n + '</span><span class="sr">, ' + n + " coffee" + (n === 1 ? "" : "s") + "</span></button>";
+      }).join("");
+    });
+  }
+  function score(c, mode) {
+    var mid = (c.roast[0] + c.roast[1]) / 2;
+    if (mode === "bold") return mid + (c.caf === "high" ? 1.2 : 0) + (c.flavor === "bold" ? .6 : 0) - (c.caf === "decaf" ? .4 : 0);
+    return -(mid - (c.flavor === "bright" ? 2 : 0) - (c.flavor === "smooth" ? .3 : 0));
+  }
+  function card(c, i) {
+    var best = c.best.map(function (b) { return BREW[b]; }).join(" · ");
+    return '<article class="pcard in-grid" style="--d:' + (i * .04) + 's">' +
+      '<div class="stage" style="--c:' + c.c + '26"><div class="badges">' + (c.badge ? '<span class="tag red">' + esc(c.badge) + "</span>" : "") + (c.caf === "decaf" ? '<span class="tag ink">Decaf</span>' : c.caf === "half" ? '<span class="tag ink">Half-caff</span>' : "") + '</div><div class="bag">' + BB.bag(c.id) + "</div></div>" +
+      '<div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><ul class="notes">' + c.notes.slice(0, 3).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>" +
+      '<div><div class="rl" aria-hidden="true"><span>Light</span><span>French</span></div>' + BB.roastBar(c.roast) + "</div>" +
+      '<span class="best">Best for <b>' + esc(best) + "</b></span>" +
+      '<div class="foot"><span class="price">$20 <small>/ 1 lb</small></span><button class="add" type="button" data-quick="' + c.id + '" aria-label="Add 1 lb of ' + esc(c.name) + ' to your bag">+</button></div></div>' +
+      '<a class="cover" href="../coffee/?c=' + c.id + '" aria-label="' + esc(c.name) + ', $20 per pound. Choose roast and grind"></a></article>';
+  }
+  var quiz = '<article class="pcard quiz in-grid"><div class="body"><div><span class="origin" style="color:var(--gold)">Can\'t decide?</span><h3>Take the 30-second bean quiz.</h3><p class="small" style="color:#bfb3a5;margin-top:12px">Tell Benny how you brew and what you like in a cup. Get a bag matched to you, roast and grind included.</p></div><div style="width:120px;color:var(--cherry);margin:10px 0">' + BB.ring({ words: false }) + '</div><a class="btn btn-light btn-block" href="../brew/#quiz">Find my bean <span class="arr">→</span></a></div></article>';
+
+  function render() {
+    var list = BB.COFFEES.filter(function (c) { return matches(c); });
+    if (state.sort !== "featured") list = list.slice().sort(function (a, b) { return score(b, state.sort) - score(a, state.sort); });
+    var grid = $("[data-lineup]");
+    grid.innerHTML = list.length ? list.map(card).join("") + quiz :
+      '<div class="noresult">' + BB.ring({ words: false }) + '<p><b>No coffee checks all of those boxes.</b></p><p class="small">Try loosening one filter, or text Benny and he\'ll point you to the closest bag.</p><button class="btn btn-sm" type="button" data-clear2>Clear filters</button></div>' + quiz;
+    var active = ["flavor", "caf", "brew"].filter(function (g) { return state[g]; }).length;
+    var desc = ["flavor", "caf", "brew"].filter(function (g) { return state[g]; }).map(function (g) { return GROUPS[g][state[g]].toLowerCase(); }).join(", ");
+    $("[data-count]").innerHTML = active ? "<b>" + list.length + "</b> of 7 coffees · " + esc(desc) : "Showing all <b>7</b> coffees" + (state.sort !== "featured" ? " · " + (state.sort === "bold" ? "boldest" : "brightest") + " first" : "");
+    $("[data-clear]").hidden = !active;
+    $("[data-fbadge]").textContent = active || "";
+    paintChips();
+    var p = new URLSearchParams();
+    ["flavor", "caf", "brew"].forEach(function (g) { if (state[g]) p.set(g, state[g]); });
+    if (state.sort !== "featured") p.set("sort", state.sort);
+    try { history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "")); } catch (e) {}
+  }
+  $(".fgroups").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-v]"); if (!b) return;
+    var g = b.parentNode.dataset.group;
+    state[g] = state[g] === b.dataset.v ? "" : b.dataset.v;
+    render();
+    var again = $('[data-group="' + g + '"] [data-v="' + (state[g]) + '"]'); if (again) again.focus();
+  });
+  $("[data-sort]").addEventListener("change", function (e) { state.sort = e.target.value; render(); });
+  function clearAll() { state.flavor = state.caf = state.brew = ""; render(); }
+  $("[data-clear]").addEventListener("click", clearAll);
+  $("[data-lineup]").addEventListener("click", function (e) { if (e.target.closest("[data-clear2]")) { clearAll(); $("[data-count]").focus && $(".fgroup .chip").focus(); } });
+  var tog = $(".ftoggle"), groups = $("#fgroups");
+  var mq = matchMedia("(max-width: 760px)");
+  function syncToggle() { groups.hidden = mq.matches && tog.getAttribute("aria-expanded") !== "true"; }
+  tog.addEventListener("click", function () { tog.setAttribute("aria-expanded", tog.getAttribute("aria-expanded") !== "true"); syncToggle(); });
+  if (mq.addEventListener) mq.addEventListener("change", syncToggle); else mq.addListener(syncToggle);
+  if (state.flavor || state.caf || state.brew) tog.setAttribute("aria-expanded", "true");
+  syncToggle();
+  render();
+
+  // ---------- bundle: sampler + free-shipping meter ----------
+  $("[data-sampler]").addEventListener("click", function () {
+    ["ethiopia", "colombia", "mneb"].forEach(function (id) { BB.add({ kind: "coffee", id: id, size: 1, roast: "Roaster's Choice", grind: "Whole Bean" }, true); });
+    BB.openCart();
+  });
+  function paintMeter() {
+    var s = BB.shippable(), need = Math.max(0, BB.freeShip - s), bags = Math.ceil(need / 20);
+    $("[data-bm-msg]").innerHTML = s === 0 ? "Your bag is empty. Three bags and shipping's on Benny." : need > 0 ? "Your bag: " + BB.money(s) + ". " + bags + " more bag" + (bags === 1 ? "" : "s") + " (" + BB.money(need) + ") and it ships free." : "Your bag: " + BB.money(s) + ". <b>Free shipping unlocked.</b>";
+    $("[data-bm-bar]").style.width = Math.min(100, s / BB.freeShip * 100) + "%";
+    $(".bmeter .meter").classList.toggle("done", need === 0 && s > 0);
+  }
+  paintMeter(); document.addEventListener("cart:change", paintMeter);
+
+  // ---------- 5 lb ----------
+  var pick = $("[data-five-pick]");
+  pick.innerHTML = BB.COFFEES.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + "</option>"; }).join("");
+  pick.value = "halfcaff";
+  function paintFive() {
+    var c = BB.BY[pick.value];
+    $("[data-five-bag]").innerHTML = BB.bag(c.id, { size: 5 });
+    $("[data-five-stage]").style.setProperty("--c", c.c + "40");
+    $("[data-five-link]").href = "../coffee/?c=" + c.id;
+  }
+  pick.addEventListener("change", paintFive); paintFive();
+  $("[data-five-add]").addEventListener("click", function () { BB.add({ kind: "coffee", id: pick.value, size: 5, roast: "Roaster's Choice", grind: "Whole Bean" }); });
+
+  // ---------- merch ----------
+  $("[data-merch-grid]").innerHTML = BB.MERCH.map(function (m) {
+    return '<article class="mcard"><div class="ph"><img src="../assets/img/' + m.img + '" alt="' + esc(m.name) + ', engraved with the Benny\'s Beans coffee-ring logo" loading="lazy" width="600" height="800">' + (m.badge ? '<span class="tag ' + (m.badge === "Limited" ? "red" : "ink") + '">' + esc(m.badge) + "</span>" : "") + '</div><div class="body"><h3>' + esc(m.name) + '</h3><p class="small mb0">' + esc(m.blurb) + '</p><div class="foot"><span class="price">' + BB.money(m.price) + '</span><button class="btn btn-sm" type="button" data-merch="' + m.id + '" aria-label="Add ' + esc(m.name) + ' to your bag">Add to bag</button></div></div></article>';
+  }).join("");
+
+  // ---------- roast levels + grinds ----------
+  var LV = [
+    ["choice", "Roaster's Choice", "Benny roasts each batch where he thinks that bean tastes best, from per-batch experience. The easiest yes.", "", "New"],
+    ["1", "Light", "Brightest and most origin-forward: fruit, florals, sweet acidity. Not burnt, not sour.", "#c9a36b", "01"],
+    ["2", "Medium", "Balanced. Sugars and body catch up to the fruit. Great all-rounder.", "#a8743c", "02"],
+    ["3", "Medium Dark", "Caramel and chocolate move in, acidity softens, body gets rounder.", "#7d4b23", "03"],
+    ["4", "Dark", "Heavy body, bittersweet cocoa, low acidity. Classic espresso territory.", "#512d14", "04"],
+    ["5", "French", "The darkest Benny goes. Smoky, roasty and intense. Best for bold beans.", "#2b170b", "05"]
+  ];
+  $("[data-levels]").innerHTML = LV.map(function (l) {
+    return '<li class="' + (l[0] === "choice" ? "choice" : "") + '"><div class="bean" style="background:' + (l[3] || "") + '" aria-hidden="true"></div><span class="n">' + l[4] + "</span><h3>" + l[1] + "</h3><p>" + l[2] + "</p></li>";
+  }).join("");
+  var GR = [
+    ["Whole Bean", "Any brewer, ground fresh at home. Keeps flavor longest.", 0],
+    ["Coarse", "French press, cold brew, percolator.", 12, 2, 4],
+    ["Auto-Drip", "Drip machines and pour-over cones.", 8, 3, 3],
+    ["Espresso", "Espresso machines.", 5, 4, 2],
+    ["Fine", "Moka pot and AeroPress.", 4, 5, 1.5],
+    ["Turkish", "Turkish coffee (cezve / ibrik). Powder-fine.", 2.4, 7, 1]
+  ];
+  $("[data-grinds]").innerHTML = GR.map(function (g) {
+    var grains = "";
+    if (!g[2]) grains = '<span style="width:46px;color:var(--kraft)">' + '<svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="20" rx="12" ry="16" fill="currentColor" transform="rotate(-20 20 20)"/><path d="M17 6c6 8 0 18 6 28" fill="none" stroke="#221c18" stroke-width="2.4" stroke-linecap="round"/></svg></span>';
+    else { var n = g[3] * Math.ceil(180 / (g[2] + g[4])); for (var i = 0; i < n; i++) grains += "<i></i>"; }
+    return '<div class="gcard"><div class="grains" style="--s:' + g[2] + "px;--g:" + (g[4] || 2) + "px;--r:" + (g[3] || 1) + '" aria-hidden="true">' + grains + "</div><h3>" + g[0] + "</h3><p>" + g[1] + "</p></div>";
+  }).join("");
+
+  BB.reveal();
+});
+</script>
+</body>
+</html>
