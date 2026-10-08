@@ -449,7 +449,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var c = BB.BY[p[0]];
     return '<article class="pcard reveal" style="--d:' + i * .06 + 's"><div class="stage" style="--c:' + c.c + '30"><div class="badges">' + (c.badge ? '<span class="tag red">' + esc(c.badge) + "</span>" : "") + '</div><div class="bag">' + BB.bag(c.id) + '</div></div><div class="body"><span class="origin">' + esc(c.detail) + "</span><h3>" + esc(c.name) + '</h3><p class="why">' + esc(p[1]) + '</p><div class="add-row"><span class="price">$20 <small>/ 1 lb</small></span><button class="btn btn-sm btn-red" type="button" data-quick="' + c.id + '">Add 1 lb</button></div><a class="link small" href="../coffee/?c=' + c.id + '">Tasting notes →</a></div></article>';
   }).join("");
-  $("[data-corp-ring]").innerHTML = BB.ring({ words: true, sub: "GIFTS · GUERNEVILLE CA" });
+  $("[data-corp-ring]").innerHTML = BB.ring({ words: true });
   BB.reveal();
 });
 </script>
