@@ -27,6 +27,7 @@ import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
 import { agentCardPage } from './agentcard.js';
 import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
+import { registerMcpAuth } from './mcpauth.js';
 import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
@@ -555,7 +556,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, capture: { url: captureUrl, text: captureText } });
+  const mcpAuth = registerMcpAuth(app, { db, urlFor });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText } });
 
   // Sandbox only: what the store does with Spot's card after checkout: charge
   // it (capture), refund a return, or release / reverse the authorization.

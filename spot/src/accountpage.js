@@ -33,6 +33,8 @@ const CSS = `
 .keyc{padding:10px 0;border-bottom:1px solid var(--line)}.keyc:last-child{border-bottom:0}.acts{margin:6px 0 0;padding-left:18px;font-size:14px}.acts li{margin:4px 0}details.more summary{cursor:pointer;font-weight:600;color:var(--muted);font-size:14px}
 .trav{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .linkbtn{background:none;border:0;color:var(--spot);font:600 14px Bricolage,system-ui,sans-serif;cursor:pointer;padding:4px}
+.connect .mcpurl{display:flex;gap:8px;align-items:center;background:var(--bg);border:1.5px solid var(--line);border-radius:12px;padding:8px 8px 8px 14px}.connect .mcpurl code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:15px}
+.connect .steps{margin:12px 0 0;padding-left:20px}.connect .steps li{margin:6px 0}
 pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overflow-x:auto;font-size:13px}
 .signin{max-width:460px;margin:30px auto 0}
 .code{letter-spacing:.4em;font:800 28px ui-monospace,monospace!important;text-align:center}
@@ -183,7 +185,15 @@ export function accountPage({ origin, provider = 'sandbox' }) {
   </div>
 </section>
 <section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
-  <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="newKey">Connect a new AI</button></div><div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div></div>
+  <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="connectAi">Connect a new AI</button></div>
+    <div id="connectOut" class="connect" hidden>
+      <p style="margin:14px 0 6px"><b>Add Spot to your AI app, then tap Allow.</b> No key to copy.</p>
+      <div class="mcpurl"><code id="mcpUrl"></code><button class="btn ghost" id="copyUrl">Copy</button></div>
+      <ol class="steps"><li><b>Claude</b>: Settings → Connectors → Add custom connector. Paste the link and tap Add, then Connect.</li><li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Create (turn on Developer mode under Advanced if you don’t see it). Paste the link and choose OAuth.</li></ol>
+      <p class="sub" style="margin:8px 0 0">Spot asks you to sign in and Allow. The app then shows up here, where you can set its rules.</p>
+      <p class="sub" style="margin:10px 0 0">Another app, or one without sign-in? <button type="button" class="linkbtn" id="newKey">Get a key to paste instead</button></p>
+      <div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div>
+    </div></div>
 </section>
 <section><h2>Your approver</h2><p class="sub">Someone who pays for, or turns down, what your AI asks for when your rules say so: a parent, a partner, your finance inbox. They agree by email first.</p>
   <div class="box"><div id="apv"></div>
@@ -220,7 +230,7 @@ async function load(){
   const rm=$('#apvRm');if(rm)rm.onclick=async()=>{if(!confirm('Remove your approver? AI keys that sent asks to them will refuse instead.'))return;try{await post('/v1/me/approver/remove');load()}catch(err){$('#err').textContent=err.message}};
 }
 // One AI key: its rules, this month, what it did, and the off switch.
-const ACT={ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
+const ACT={connected:'Connected',ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
 const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
 const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
 function keyRow(k){
@@ -248,6 +258,9 @@ $('#travForm').addEventListener('submit',async e=>{e.preventDefault();const t=Ob
 document.addEventListener('click',async e=>{const rm=e.target.closest('[data-rm]'),rv=e.target.closest('[data-revoke]');
   try{if(rm){await post('/v1/me',{travelers:me.user.travelers.filter((_,i)=>i!==+rm.dataset.rm)});load()}
     if(rv){if(!confirm('Disconnect this AI? It stops working right away.'))return;await post('/v1/me/keys/'+encodeURIComponent(rv.dataset.revoke)+'/revoke');load()}}catch(err){$('#err').textContent=err.message}});
+$('#mcpUrl').textContent=location.origin+'/mcp';
+$('#connectAi').onclick=()=>{$('#connectOut').hidden=!$('#connectOut').hidden};
+$('#copyUrl').onclick=async()=>{try{await navigator.clipboard.writeText($('#mcpUrl').textContent);$('#copyUrl').textContent='Copied'}catch{}};
 $('#newKey').onclick=async()=>{try{const k=await post('/v1/me/keys',{agent_name:'my-ai'});$('#cfg').textContent=JSON.stringify({mcpServers:{spot:{url:k.mcp_url,headers:{Authorization:'Bearer '+k.api_key}}}},null,2);$('#newKeyOut').hidden=false;load()}catch(err){$('#err').textContent=err.message}};
 $('#copyCfg').onclick=async()=>{try{await navigator.clipboard.writeText($('#cfg').textContent);$('#copyCfg').textContent='Copied'}catch{}};
 // Adding an email or phone: send a code to it, then type the code.

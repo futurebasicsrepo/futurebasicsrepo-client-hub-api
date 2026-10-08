@@ -106,6 +106,8 @@ spot-merchant=mer_…   (from your registration)`;
   <div class="icard reveal" id="mcp">
     <div class="top"><div class="ic">🤖</div><h3>AI assistants (MCP)</h3><span class="badge live">Available</span></div>
     <p>Give Claude, or any app that speaks MCP, Spot’s tools. Your assistant can ask someone else to pay (<code>create_spot_ask</code>), text you a cart or a flight to finish on your phone (<code>for_me</code>, <code>search_flights</code>, <code>create_flight_ask</code>), and order once it’s paid (<code>order_spot_ask</code>).</p>
+    <p><b>In Claude or ChatGPT, no key needed:</b> add a custom connector with <code>${origin}/mcp</code>. You sign in to Spot and tap Allow. In Claude: Settings → Connectors → Add custom connector. In ChatGPT: Settings → Apps &amp; Connectors → Create, with OAuth. Spot supports MCP OAuth with dynamic client registration and PKCE.</p>
+    <p style="margin-bottom:6px"><b>Other apps:</b> get a key and paste the config below.</p>
     <form class="keyform" id="keyForm"><input type="email" name="email" required placeholder="you@email.com" aria-label="Email" autocomplete="email"><input name="agent_name" placeholder="Agent name (optional)" aria-label="Agent name" maxlength="24"><button class="btn primary">Get a free key</button></form>
     <p class="keyout" id="keyOut" aria-live="polite"></p>
     ${code('mcpcfg', mcp)}
