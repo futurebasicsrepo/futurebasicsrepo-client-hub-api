@@ -530,6 +530,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
+  app.post('/v1/carts/:token/manage/riders', async (req) => ({ cart: ownerCart(spot.setRiders(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/travelers', async (req) => {
     const { cart, price_changed } = await spot.setTravelers(req.params.token, keyOf(req), req.body || {});
     return { cart: ownerCart(cart), price_changed };

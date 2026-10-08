@@ -396,27 +396,28 @@ const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order
 let tick=null,PROFILE=null,SAVED=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
-  const fl=c.kind==='flight';
+  const fl=c.kind==='flight',tr=c.kind==='train';
   const s=Object.assign({name:c.requester.name,email:c.requester.email||''},PROFILE?{email:PROFILE.email,name:PROFILE.name||c.requester.name,phone:PROFILE.shipping?.phone||''}:{},saved(),PROFILE?.shipping||{},c.requester.shipping||{},c.contact||{});
   const left=c.expires_at-Date.now(),held=left<24*3600e3;
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
-  let h='<h1 style="font-size:32px;margin-top:22px">'+(fl?'Your flight is ready ✈️':'Your cart is ready 🛒')+'</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · '+(fl?'found for you':'put together for you')+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
+  let h='<h1 style="font-size:32px;margin-top:22px">'+(fl?'Your flight is ready ✈️':tr?'Your train is ready 🚆':'Your cart is ready 🛒')+'</h1><p class="muted" style="margin:6px 0 0">'+esc(c.merchant.name)+' · '+(fl||tr?'found for you':'put together for you')+(c.note?' · “'+esc(c.note)+'”':'')+'</p>';
   if(held)h+='<div class="pill warn" style="margin-top:12px" id="hold">⏳ '+(fl?'fare':'price')+' held for <span id="left"></span></div>';
   if(notice)h+='<p class="small" style="color:var(--warn);margin:12px 0 0">'+esc(notice)+'</p>';
   if(c.pay_at_store&&c.pay_at_store.started)h+='<p class="small" style="margin:12px 0 0">Paying at '+esc(c.merchant.name)+'? This page updates as soon as the store confirms your order.</p>';
   if(fl)h+='<section class="card">'+itinerary(c.flight)+totals(c)+'</section>';
+  else if(tr)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
   else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
-    +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
+    +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
   const payLabel=(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents));
   if(fl)h+='<section class="card"><h2>Who’s flying</h2><form id="finish">'+travelersForm(c,s)
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+payLabel+'</button><div class="err" id="finErr"></div></form>'
     +'<p class="small muted">Spot re-checks the fare with '+esc(c.merchant.name)+' before you pay, then books it the moment you do. You’ll get the confirmation code right here.</p></section>'
     +'<button class="btn ghost" id="cancel">Not now</button>';
-  else h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
+  else h+='<section class="card">'+(tr?'<h2>Who’s riding</h2><form id="finish">'+ridersForm(c,s):'<h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
-    +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
+    +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>')
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(SAVED?'Approve '+usd(c.total_cents)+' · '+esc(SAVED.label):c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button>'+(SAVED?'<button type="button" id="otherPay" style="display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer">Pay another way</button>':'')+'<div class="err" id="finErr"></div></form>'
-    +(SAVED?'<p class="small muted">Your '+esc(SAVED.label)+' pays Spot. Spot gets a card just for this order, capped at this total and locked to '+esc(c.merchant.name)+', buys it and ships it to you. You see the store’s total before anything is ordered.</p></section>':c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>')
+    +(SAVED?'<p class="small muted">Your '+esc(SAVED.label)+' pays Spot. Spot gets a card just for this order, capped at this total and locked to '+esc(c.merchant.name)+', buys it and ships it to you. You see the store’s total before anything is ordered.</p></section>':c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':(tr?'<p class="small muted">After you pay, Spot buys this exact train on '+esc(c.merchant.name)+' with a card just for this ticket. You see '+esc(c.merchant.name)+'’s total first; nothing is bought until you tap Place order. '+esc(c.merchant.name)+' emails your e-ticket.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>'))
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
@@ -426,10 +427,11 @@ function finishPanel(c,notice){
   on('otherPay',()=>{SAVED=false;finishPanel(c)});
   let stripeReady=null;
   $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
-    const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
+    const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl||tr?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
     try{
       if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i]})),contact:{email:v.email,phone:v.phone}});
         if(r.price_changed)return finishPanel(r.cart,'Heads up: '+c.merchant.name+' changed the fare. The new total is '+usd(r.price_changed.to_cents)+'. Tap pay again if it still works for you.');v.name=v.g0||''}
+      else if(!stripeReady&&tr){await api('/v1/carts/'+TOKEN+'/manage/riders',{k:K,riders:Array.from({length:c.train.passengers},(_,i)=>({given_name:v['g'+i],family_name:v['f'+i]})),contact:{email:v.email,phone:v.phone}});v.name=v.g0||''}
       else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
       if(SAVED){b.textContent='approving…';const r=await api('/v1/carts/'+TOKEN+'/manage/pay-saved',{});
         if(r.action){const stripe=Stripe(r.action.publishable_key);const {error}=await stripe.handleNextAction({clientSecret:r.action.client_secret});if(error)throw error;
@@ -458,7 +460,7 @@ function itinerary(f){
     +'<div class="small muted">'+esc([f.airline.name,sl.segments.map(g=>g.flight).join(' · '),f.cabin&&f.cabin!=='economy'?f.cabin.replace('_',' '):''].filter(Boolean).join(' · '))+'</div></div>').join('')
     +'<div class="small muted" style="margin-top:8px">'+(f.conditions.refundable?'✓ refundable':'Non-refundable')+(f.conditions.changeable?' · changes allowed':'')+(f.passengers>1?' · '+f.passengers+' travelers':'')+'</div>';
 }
-const totals=(c)=>'<div style="margin-top:8px"><div class="sum"><span>Fare</span><span>'+usd(c.cart_cents)+'</span></div>'+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div>';
+const totals=(c)=>'<div style="margin-top:8px"><div class="sum"><span>Fare</span><span>'+usd(c.cart_cents)+'</span></div>'+(c.cushion_cents?'<div class="sum"><span>Fare changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div>';
 function travelersForm(c,s){
   const t=c.travelers||[];const n=c.flight.passengers;c.flight.passengers_list=Array.from({length:n});
   const inp=(nm,ph,val,extra)=>'<input name="'+nm+'" placeholder="'+ph+'" value="'+esc(val||'')+'" '+(extra||'')+'>';
@@ -471,15 +473,33 @@ function travelersForm(c,s){
     +'<p class="small muted" style="margin:8px 0 12px">Names exactly as on the ID you’ll travel with.</p>'
     +inp('email','Email for the e-ticket',s.email,'type="email" required autocomplete="email"')+'<div style="height:6px"></div>'+inp('phone','Mobile, for gate changes',s.phone,'type="tel" required autocomplete="tel"');
 }
+// Trains: times are local to each station, so show them as written.
+function trainCard(t){
+  return '<div class="leg"><div class="small muted">'+dday(t.depart_at)+'</div>'
+    +'<div class="route rail"><div><b>'+dtime(t.depart_at)+'</b><span>'+esc(t.from)+'</span></div><div class="line"><i></i></div><div style="text-align:right"><b>'+(t.arrive_at?dtime(t.arrive_at):'')+'</b><span>'+esc(t.to)+'</span></div></div>'
+    +'<div class="small muted">'+esc([[t.service,t.number].filter(Boolean).join(' '),t.fare_class,t.passengers>1?t.passengers+' passengers':'1 passenger','one-way'].filter(Boolean).join(' · '))+'</div></div>';
+}
+function ridersForm(c,s){
+  const t=c.riders||[],pt=PROFILE?.travelers||[],first=(s.name||'').split(' ');
+  const inp=(nm,ph,val,extra)=>'<input name="'+nm+'" placeholder="'+ph+'" value="'+esc(val||'')+'" '+(extra||'')+'>';
+  return Array.from({length:c.train.passengers},(_,i)=>{const p=t[i]||pt[i]||(i===0?{given_name:first[0],family_name:first.slice(1).join(' ')}:{});
+    return (c.train.passengers>1?'<div class="small muted" style="margin:'+(i?'14px':'0')+' 0 6px">Rider '+(i+1)+'</div>':'')
+      +'<div class="row">'+inp('g'+i,'First name',p.given_name,'required autocomplete="'+(i?'off':'given-name')+'"')+inp('f'+i,'Last name',p.family_name,'required autocomplete="'+(i?'off':'family-name')+'"')+'</div>'}).join('')
+    +'<p class="small muted" style="margin:8px 0 12px">Names as on the ID you’ll travel with.</p>'
+    +inp('email','Email for the e-ticket',s.email,'type="email" required autocomplete="email"')+'<div style="height:6px"></div>'+inp('phone','Mobile (optional), for delays',s.phone,'type="tel" autocomplete="tel"');
+}
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
-  if(st==='placed')return '<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>'+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+  const tr=c.kind==='train';
+  if(st==='placed')return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
     +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
-  if(st==='starting'||st==='working')return '<h2><span class="spin"></span> Ordering at '+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
+  if(st==='starting'||st==='working')return '<h2><span class="spin"></span> '+(tr?'Buying your ticket on ':'Ordering at ')+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';
   const s=Object.assign({name:c.requester.name,email:c.requester.email||''},PROFILE?.shipping||{},c.requester.shipping||saved());
   const note=st==='needs_you'?'<p class="small" style="color:var(--warn);margin-top:0">'+esc(f.reason||'Spot couldn’t place this one automatically.')+'</p><p class="small muted">Try again below. If Spot can’t order it within 3 days, '+(c.for==='self'?'you’re':esc(c.payer_name||'the payer')+' is')+' refunded in full automatically.</p>':(st==='cancelled'?'<p class="small muted" style="margin-top:0">Nothing was ordered. Start again whenever you’re ready.</p>':'');
   const field=(n,ph,ac,extra)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(extra||'')+'>';
+  if(tr)return '<h2>'+(st?'Buy the ticket':'Getting your ticket')+'</h2>'+note+'<form id="shipForm"><button class="btn">'+(st==='needs_you'||st==='cancelled'?'Try again':'Buy it')+'</button><div class="err" id="shipErr"></div></form>'
+    +'<p class="small muted">Spot buys this train on '+esc(c.merchant.name)+' with its own card for '+esc((c.riders||[]).map(r=>r.given_name+' '+r.family_name).join(', ')||'you')+'. You see the total first; nothing is bought until you tap Place order.</p>';
   return '<h2>Where should it ship?</h2>'+note
     +'<form id="shipForm">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
@@ -494,13 +514,14 @@ async function draw(){
   if(self&&c.status==='open'){finishPanel(c);if(c.pay_at_store&&c.pay_at_store.started)setTimeout(()=>{if(document.activeElement?.tagName!=='INPUT')draw()},5000);return}
   const fl=c.kind==='flight'?c.flight:null;
   const [label,tone]=(fl?FLIGHT_STATUS:self?SELF_STATUS:STATUS)[c.status]||[c.status,''];
-  let h='<h1 style="font-size:28px">'+(fl?'Your trip':self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
+  let h='<h1 style="font-size:28px">'+(fl?'Your trip':c.kind==='train'?'Your '+esc(c.merchant.name)+' ticket':self?'Your '+esc(c.merchant.name)+' order':esc(c.merchant.name)+' cart')+'</h1><span class="pill '+tone+'">'+label+'</span>';
   if(self&&c.status==='expired')h+='<section class="card"><h2>This one timed out ⏳</h2><p class="muted" style="margin:0">'+(fl?'Airlines only hold a fare for a little while.':'The price was only held for a little while.')+' Ask your assistant to find it again.</p></section>';
   if(c.held&&c.status==='paid')h+='<section class="card"><h2>Quick check 🔍</h2><p class="muted" style="margin:0">We’re double-checking this payment. It usually takes a few minutes, and there’s nothing you need to do. '+(fl?'Your trip':'Your card')+' will appear here.</p></section>';
   else if(fl&&c.status==='paid')h+='<section class="card"><h2><span class="spin"></span> Booking with '+esc(c.merchant.name)+'…</h2><p class="muted" style="margin:0">Paid. This usually takes a few seconds.</p></section>';
   if(fl&&c.status==='completed')h+='<section class="card booked"><div class="small muted">Confirmation code</div><div class="pnr">'+esc(fl.booking_reference)+'</div><h2 style="margin-top:6px">✈️ You’re booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' will email your e-ticket to '+esc(c.contact?.email||'you')+'. Use the code to check in.</p></section>';
   if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
+  if(c.kind==='train'&&c.train)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
   if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(c.settle==='direct'&&c.status==='open'&&!self){
     const sh=c.requester.shipping;
@@ -535,7 +556,7 @@ async function draw(){
   const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
   on('cap',()=>sim('capture'));on('ret',()=>sim('refund'));on('rel',()=>sim('closed'));
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});
-  const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
+  const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));if(Object.keys(v).length)try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
   on('placeIt',async()=>{$('#placeIt').disabled=true;$('#placeIt').textContent='placing…';await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:true});draw()});
@@ -552,6 +573,7 @@ draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'
 .leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
 .route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}
 .route .line{position:relative;text-align:center;min-width:0}.route .line i{display:block;height:2px;background:var(--line);margin:0 4px;position:relative}.route .line i::after{content:'✈';position:absolute;right:-4px;top:-10px;font-style:normal;font-size:14px;color:var(--accent,#ff5a36)}
+.route.rail .line i::after{content:'🚆';top:-11px}
 .route .line em{font-style:normal;font-size:12px;color:var(--muted);display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dob{flex:1;display:flex;flex-direction:column;font-size:12px;color:var(--muted);min-width:0}.dob input{margin-top:2px}
 .trav input,.trav select{height:48px}

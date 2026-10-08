@@ -219,7 +219,7 @@ async function load(){
   me=await r.json();const u=me.user;
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
-  $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
+  $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':c.kind==='train'?'🚆 ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
   renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');

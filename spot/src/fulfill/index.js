@@ -43,6 +43,13 @@ export function validateShipping(s) {
   return out;
 }
 
+// Where a train ticket goes, in the shape the checkout expects: the first
+// rider's name, the e-ticket email, and every rider for the booking form.
+function ticketTo(cart) {
+  const { riders, contact } = cart.train;
+  return { name: `${riders[0].given_name} ${riders[0].family_name}`, email: contact.email, phone: contact.phone || '', riders };
+}
+
 export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {}, ucp = {} }) {
   const pending = new Map(); // cartId → { resolve, timer }
   const shots = new Map(); // cartId → png Buffer
@@ -145,16 +152,19 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       const f = cart.fulfillment;
       if (f && ['starting', 'working', 'awaiting_confirm'].includes(f.state)) throw Object.assign(new Error('Already ordering'), { status: 409 });
       if (f?.state === 'placed') throw Object.assign(new Error('Already ordered'), { status: 409 });
-      const ship = validateShipping(shippingInput);
-      spot.patch(cart.id, (c) => ({ ...c, requester: { ...c.requester, shipping: ship } }));
-      const store = await ucpStore(cart);
+      // Train tickets don't ship: the e-ticket goes to the riders' email.
+      const train = cart.kind === 'train';
+      if (train && !cart.train?.riders) throw Object.assign(new Error('Add who’s riding first'), { status: 409 });
+      const ship = train ? ticketTo(cart) : validateShipping(shippingInput);
+      if (!train) spot.patch(cart.id, (c) => ({ ...c, requester: { ...c.requester, shipping: ship } }));
+      const store = train ? null : await ucpStore(cart);
       if (store) {
         const started = update(cart.id, { state: 'working', method: 'ucp', manual_url: null, reason: null, steps: [{ text: `${cart.merchant.name} supports agent checkout (UCP)`, at: Date.now() }], started_at: Date.now() }, 'order_started');
         running++;
         this._runUcp(cart.id, store, ship).finally(() => running--);
         return started;
       }
-      const p = await plan(cart, ship);
+      const p = train ? { method: 'agent', start_url: cart.items[0]?.url || cart.merchant.url || null, manual_url: cart.items[0]?.url || cart.merchant.url || null } : await plan(cart, ship);
 
       if (!p.start_url) return update(cart.id, { state: 'needs_you', method: p.method, reason: 'No store link to start from', manual_url: null, steps: [] }, 'order_needs_you');
       if (!agentOn()) {
@@ -164,7 +174,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
         return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Spot is busy. Try again in a minute', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
       }
 
-      const started = update(cart.id, { state: 'working', method: p.method, manual_url: p.manual_url, reason: p.note, steps: [{ text: p.method === 'shopify' ? 'Built your cart at the store' : 'Opening the store', at: Date.now() }], started_at: Date.now() }, 'order_started');
+      const started = update(cart.id, { state: 'working', method: p.method, manual_url: p.manual_url, reason: p.note, steps: [{ text: p.method === 'shopify' ? 'Built your cart at the store' : train ? `Opening ${cart.merchant.name}` : 'Opening the store', at: Date.now() }], started_at: Date.now() }, 'order_started');
       running++;
       this._run(cart.id, p, ship).finally(() => running--);
       return started;
@@ -248,7 +258,9 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     // "For me" carts: the requester already gave their shipping address, so
     // ordering starts the moment the card is issued.
     async autoStart(cart) {
-      if (cart.for !== 'self' || !cart.requester?.shipping || cart.status !== 'card_issued' || cart.fulfillment) return null;
+      if (cart.for !== 'self' || cart.status !== 'card_issued' || cart.fulfillment) return null;
+      if (cart.kind === 'train') return cart.train?.riders ? this.start(cart) : null;
+      if (!cart.requester?.shipping) return null;
       return this.start(cart, cart.requester.shipping);
     },
 
