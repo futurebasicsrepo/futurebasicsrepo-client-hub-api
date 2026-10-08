@@ -41,6 +41,9 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .seg button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 4px rgba(27,23,18,.12)}
 .seg button:focus-visible{outline:3px solid var(--spot);outline-offset:1px}
 .f input[hidden]{display:none}
+.f .fl{display:grid;gap:4px;font-size:13px;font-weight:600;color:var(--muted);min-width:0}
+.f input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:50px;text-align:left}
+.f input[type=date]::-webkit-date-and-time-value{text-align:left}
 .or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:14px;margin:18px 0 12px}.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 .sso{display:grid;gap:10px}.sso[hidden],.or[hidden]{display:none}
 .sso-b{display:flex;align-items:center;justify-content:center;gap:10px;min-height:50px;border-radius:999px;font-weight:600;font-size:16px;text-decoration:none;border:1.5px solid var(--line)}
@@ -160,7 +163,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     <div class="btnrow"><button class="btn primary">Save address</button><span class="ok-msg" id="shipOk"></span></div>
   </form>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
-    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><input name="born_on" type="date" aria-label="Date of birth"><select name="gender" aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f">Female</option><option value="m">Male</option></select></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
+    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
   </div>
 </section>
 <section id="signinSec"><h2>Sign-in methods</h2><p class="sub">Every way you can get into this account. Add your phone and email so either one works.</p>
