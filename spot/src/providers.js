@@ -9,6 +9,13 @@
 //   cancelCard(cart)             → void
 //   refund(cart, amountCents?, key?) → void   (whole payment when no amount)
 //
+// An account's own saved card, for paying its AI's asks (funding.js):
+//   setupFunding(user, saved?)   → { mode, customer?, client_secret? }
+//   saveFunding(user, saved, input) → { customer?, pm, brand, last4, exp_month, exp_year, fingerprint }
+//   chargeSaved(cart, funding, { present }) → { ref, status, client?, error? }
+//                                  status: succeeded | requires_action | failed
+//   removeFunding(funding)       → void
+//
 // Spot is the seller of a card cart: the payer buys it from Spot, and Spot
 // orders it from the store with its own single-use virtual card (Stripe
 // Issuing, one company cardholder), shipping to the requester.
@@ -47,6 +54,26 @@ export function sandboxProvider() {
     async revealCard(cart) {
       return { ...cart.card.sandbox_secret, exp_month: cart.card.exp_month, exp_year: cart.card.exp_year };
     },
+    // Saved cards are pretend too. Test card ending 0002 is declined and
+    // 3155 asks for bank verification, like Stripe's test cards.
+    async setupFunding() {
+      return { mode: 'sandbox' };
+    },
+    async saveFunding(user, saved, input = {}) {
+      const last4 = /^\d{4}$/.test(String(input.test_card || '')) ? String(input.test_card) : '4242';
+      const now = new Date();
+      return { pm: `sbx_pm_${last4}_${randomInt(1e5, 1e6)}`, brand: 'Visa', last4, exp_month: now.getMonth() + 1, exp_year: now.getFullYear() + 3, fingerprint: `sbx_fp_${last4}` };
+    },
+    charges: [],
+    async chargeSaved(cart, funding, { present = false } = {}) {
+      const ref = `sbx_pi_saved_${cart.id}`;
+      if (funding.last4 === '0002') return { ref, status: 'failed', error: 'Your card was declined.' };
+      if (funding.last4 === '3155' && !present) return { ref, status: 'failed', error: 'Your bank wants to check this payment. Approve it on your phone instead.' };
+      this.charges.push({ cart: cart.id, amount_cents: cart.total_cents, present });
+      this.charges.splice(0, this.charges.length - 200);
+      return { ref, status: 'succeeded' };
+    },
+    async removeFunding() {},
     // What would have moved, for tests and the sandbox demo.
     refunds: [],
     canceled: [],
@@ -181,6 +208,51 @@ export function stripeProvider(env = process.env) {
     verifyWebhook(rawBody, signature) {
       if (!webhookSecret) throw new Error('STRIPE_WEBHOOK_SECRET is not set');
       return stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    },
+
+    // ─── The account's own saved card ───────────────────────────────────
+    // A Stripe customer per account, and a SetupIntent the account page
+    // confirms with Stripe.js: the card number goes to Stripe, never here.
+    async setupFunding(user, saved) {
+      const customer = saved?.customer || (await stripe.customers.create({ email: user.email || undefined, name: user.name || undefined, metadata: { spot_user_id: user.id } }, { idempotencyKey: `spot-cus-${user.id}` })).id;
+      const si = await stripe.setupIntents.create({ customer, usage: 'off_session', automatic_payment_methods: { enabled: true, allow_redirects: 'never' }, metadata: { spot_user_id: user.id } });
+      return { mode: 'stripe', customer, publishable_key: env.STRIPE_PUBLISHABLE_KEY, client_secret: si.client_secret };
+    },
+    async saveFunding(user, saved, input = {}) {
+      const si = await stripe.setupIntents.retrieve(String(input.setup_intent || ''), { expand: ['payment_method'] });
+      if (si.status !== 'succeeded' || si.metadata?.spot_user_id !== user.id) throw new Error('That card setup didn’t finish');
+      const pm = si.payment_method;
+      const card = pm?.card || {};
+      return { customer: typeof si.customer === 'string' ? si.customer : si.customer?.id, pm: pm.id, brand: card.brand ? card.brand[0].toUpperCase() + card.brand.slice(1) : 'Card', last4: card.last4 || '', exp_month: card.exp_month || null, exp_year: card.exp_year || null, fingerprint: card.fingerprint || null };
+    },
+    // present: the person is on the page right now (they tapped Approve), so
+    // their bank can ask them to verify. Otherwise it's an off-session charge.
+    async chargeSaved(cart, funding, { present = false } = {}) {
+      try {
+        const pi = await stripe.paymentIntents.create(
+          {
+            amount: cart.total_cents,
+            currency: 'usd',
+            customer: funding.customer,
+            payment_method: funding.pm,
+            confirm: true,
+            ...(present ? { automatic_payment_methods: { enabled: true, allow_redirects: 'never' } } : { off_session: true }),
+            description: `Spot: ${cart.requester.name}'s AI at ${cart.merchant.name}`,
+            metadata: { spot_cart_id: cart.id, spot_saved_card: '1' },
+          },
+          { idempotencyKey: `spot-saved-${cart.id}-${present ? 'p' : 'o'}` },
+        );
+        if (pi.status === 'succeeded') return { ref: pi.id, status: 'succeeded' };
+        if (pi.status === 'requires_action') return { ref: pi.id, status: 'requires_action', client: clientFor(pi, env) };
+        return { ref: pi.id, status: 'failed', error: 'The payment didn’t go through.' };
+      } catch (err) {
+        const pi = err.raw?.payment_intent;
+        if (present && pi?.status === 'requires_action') return { ref: pi.id, status: 'requires_action', client: clientFor(pi, env) };
+        return { ref: pi?.id || null, status: 'failed', error: err.type === 'StripeCardError' ? err.message : 'The payment didn’t go through.' };
+      }
+    },
+    async removeFunding(funding) {
+      if (funding?.pm) await stripe.paymentMethods.detach(funding.pm).catch(() => {});
     },
 
     async answerAuthorization(authId, approved, amountCents) {

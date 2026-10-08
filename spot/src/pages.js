@@ -393,7 +393,7 @@ const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Covered! Ready to order','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
-let tick=null,PROFILE=null;
+let tick=null,PROFILE=null,SAVED=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
   const fl=c.kind==='flight';
@@ -415,14 +415,15 @@ function finishPanel(c,notice){
   else h+='<section class="card"><h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>'
-    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button><div class="err" id="finErr"></div></form>'
-    +(c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>')
+    +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(SAVED?'Approve '+usd(c.total_cents)+' · '+esc(SAVED.label):c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button>'+(SAVED?'<button type="button" id="otherPay" style="display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer">Pay another way</button>':'')+'<div class="err" id="finErr"></div></form>'
+    +(SAVED?'<p class="small muted">Your '+esc(SAVED.label)+' pays Spot. Spot gets a card just for this order, capped at this total and locked to '+esc(c.merchant.name)+', buys it and ships it to you. You see the store’s total before anything is ordered.</p></section>':c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>')
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
   if(held){const upd=()=>{const el=$('#left');if(!el)return clearInterval(tick);const ms=c.expires_at-Date.now();if(ms<=0){clearInterval(tick);return draw()}const m=Math.floor(ms/60000),sec=Math.floor(ms/1000)%60;el.textContent=(m>=60?Math.floor(m/60)+'h '+(m%60)+'m':m+':'+String(sec).padStart(2,'0'))};upd();tick=setInterval(upd,1000)}
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   on('cancel',async()=>{if(confirm('Drop this cart?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
+  on('otherPay',()=>{SAVED=false;finishPanel(c)});
   let stripeReady=null;
   $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
     const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
@@ -430,6 +431,10 @@ function finishPanel(c,notice){
       if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i]})),contact:{email:v.email,phone:v.phone}});
         if(r.price_changed)return finishPanel(r.cart,'Heads up: '+c.merchant.name+' changed the fare. The new total is '+usd(r.price_changed.to_cents)+'. Tap pay again if it still works for you.');v.name=v.g0||''}
       else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
+      if(SAVED){b.textContent='approving…';const r=await api('/v1/carts/'+TOKEN+'/manage/pay-saved',{});
+        if(r.action){const stripe=Stripe(r.action.publishable_key);const {error}=await stripe.handleNextAction({clientSecret:r.action.client_secret});if(error)throw error;
+          for(let i=0;i<20;i++){const x=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(x.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}}
+        return draw()}
       if(c.settle==='direct'){b.textContent='opening '+c.merchant.name+'…';const r=await api('/v1/carts/'+TOKEN+'/direct/start',{email:v.email,name:v.name});location.href=r.continue_url;return}
       if(MODE==='sandbox'){b.textContent='paying…';await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:v.name.split(' ')[0]});return draw()}
       if(!stripeReady){const p=await api('/v1/carts/'+TOKEN+'/pay',{});const stripe=Stripe(p.publishable_key);
@@ -483,7 +488,7 @@ function orderBox(c,f,agentOn){
     +'<p class="small muted">Spot buys it from '+esc(c.merchant.name)+' with its own card and ships it to you. You see the store’s total first; nothing is placed until you tap Place order.</p>';
 }
 async function draw(){
-  const r=await api('/v1/carts/'+TOKEN+'/manage'+(K?'?k='+encodeURIComponent(K):''));const c=r.cart;PROFILE=r.profile||null;
+  const r=await api('/v1/carts/'+TOKEN+'/manage'+(K?'?k='+encodeURIComponent(K):''));const c=r.cart;PROFILE=r.profile||null;if(SAVED!==false)SAVED=r.saved_card||null;
   clearInterval(tick);
   const self=c.for==='self';
   if(self&&c.status==='open'){finishPanel(c);if(c.pay_at_store&&c.pay_at_store.started)setTimeout(()=>{if(document.activeElement?.tagName!=='INPUT')draw()},5000);return}

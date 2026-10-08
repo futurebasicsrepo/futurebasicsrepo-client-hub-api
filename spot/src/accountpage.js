@@ -49,11 +49,16 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .meth:last-child{border-bottom:0}.meth .ic{font-size:20px;width:28px;text-align:center}.meth small{display:block;color:var(--muted);font-size:13px}
 .addf{display:grid;gap:8px;padding:10px 0 4px}.addf[hidden]{display:none}.addf .row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .addf input{font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
+.aicard{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center}
+.aicard .chip{width:46px;height:32px;border-radius:7px;background:linear-gradient(135deg,#d8c27a,#b39a4e)}
+.stop{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin-top:12px}
+.btn.danger{background:#c8321b;color:#fff;border-color:#c8321b}
+.agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0}.agree input{width:18px;height:18px;margin-top:2px;flex:none}
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
 
-function page({ origin, path, title, body, script }) {
-  return `${siteHead({ title, desc: 'Your Spot account', origin, path, extraCss: CSS }).replace('<head>', '<head><meta name="robots" content="noindex">')}
+function page({ origin, path, title, body, script, head = '' }) {
+  return `${siteHead({ title, desc: 'Your Spot account', origin, path, extraCss: CSS }).replace('<head>', `<head><meta name="robots" content="noindex">${head}`)}
 ${siteNav()}
 <main class="acct"><div class="wrap">${body}</div></main>
 ${siteFooter()}
@@ -126,9 +131,10 @@ $('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#e
   });
 }
 
-export function accountPage({ origin }) {
+export function accountPage({ origin, provider = 'sandbox' }) {
   return page({
     origin,
+    head: provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : '',
     path: '/account',
     title: 'Your account · Spot',
     body: `<div class="btnrow" style="justify-content:space-between"><h1 id="hi">Your Spot</h1><button class="btn ghost" id="out">Sign out</button></div>
@@ -157,6 +163,13 @@ export function accountPage({ origin }) {
   </div>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
     <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
+</section>
+<section id="ai-card"><h2>Your AI’s card</h2><p class="sub">Save your card once and your AI never needs it. Each purchase gets its own Spot card, capped at that order and locked to that store, then closed. You approve each one with a tap, unless you choose otherwise.</p>
+  <div class="box"><div id="fundCard"></div>
+    <form class="f" id="fundForm" hidden style="margin-top:10px"><div id="fundEl"></div><select id="fundTest" hidden aria-label="Test card"><option value="4242">Test card •4242 (works)</option><option value="0002">Test card •0002 (declined)</option><option value="3155">Test card •3155 (bank checks it)</option></select><div class="btnrow"><button class="btn primary" id="fundSave">Save card</button><button type="button" class="linkbtn" id="fundCancel">Cancel</button></div></form>
+    <div id="autoBox" hidden style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"></div>
+    <div class="stop" id="stopBox"></div>
+  </div>
 </section>
 <section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="newKey">Connect a new AI</button></div><div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div></div>
@@ -188,6 +201,7 @@ async function load(){
     +me.linked.map(p=>row(p==='google'?'🟢':'🔵',esc(NAMES[p]||p),'Connected','')).join('');
   $('#pks').innerHTML=me.passkeys.map(k=>'<div class="trav"><span>🔑 '+esc(k.name||'Passkey')+' <small class="sub">· added '+new Date(k.created_at).toLocaleDateString()+(k.used_at?', last used '+new Date(k.used_at).toLocaleDateString():'')+'</small></span><button class="linkbtn" data-pk="'+esc(k.id)+'">Remove</button></div>').join('');
   $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
+  drawFunding();
   $('#keys').innerHTML=me.keys.length?me.keys.map(keyRow).join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
   const a=me.approver;
   $('#apv').innerHTML=a?'<div class="trav"><span>'+esc(a.name||a.email)+' <small class="sub">· '+esc(a.email)+' · '+(a.confirmed?'confirmed':'waiting for them to agree')+'</small></span><button class="linkbtn" id="apvRm">Remove</button></div>':'<p class="sub" style="margin:0">No approver yet.</p>';
@@ -195,21 +209,22 @@ async function load(){
   const rm=$('#apvRm');if(rm)rm.onclick=async()=>{if(!confirm('Remove your approver? AI keys that sent asks to them will refuse instead.'))return;try{await post('/v1/me/approver/remove');load()}catch(err){$('#err').textContent=err.message}};
 }
 // One AI key: its rules, this month, what it did, and the off switch.
-const ACT={ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected'};
+const ACT={ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
+const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
 const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
 function keyRow(k){
   const r=k.rules||{};
-  const rules=[r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':'',r.monthly_cents?usd(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'only '+r.stores.join(', '):'',r.approver&&r.approver!=='never'?(r.approver==='always'?'every ask goes to your approver':'over the limit goes to your approver'):''].filter(Boolean).join(' · ')||'No rules yet';
+  const rules=[r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':'',r.monthly_cents?usd(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'only '+r.stores.join(', '):'',r.approver&&r.approver!=='never'?(r.approver==='always'?'every ask goes to your approver':'over the limit goes to your approver'):'',r.pay==='tap'?'you approve each with a tap':r.pay==='auto'?'pays automatically inside these rules':''].filter(Boolean).join(' · ')||'No rules yet';
   const acts=(k.activity||[]).map(e=>{const d=e.detail||{};return '<li><b>'+esc(ACT[e.kind]||e.kind)+'</b> '+esc([d.item,d.merchant,d.cents!=null?usd(d.cents):'',d.reason].filter(Boolean).join(' · '))+' <small class="sub">'+new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</small></li>'}).join('');
   if(k.revoked)return '<div class="trav"><span>'+esc(k.name)+' <small class="sub">· disconnected</small></span></div>';
   return '<div class="keyc"><div class="trav" style="border:0"><span><b>🤖 '+esc(k.name)+'</b> <small class="sub">· connected '+new Date(k.created_at).toLocaleDateString()+' · '+usd(k.month_cents||0)+' asked this month</small></span><button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button></div>'
     +'<p class="sub" style="margin:0 0 6px">'+esc(rules)+'</p>'
-    +'<details class="more"><summary>Rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
+    +'<details class="more"><summary>Rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><select name="pay" aria-label="How it pays">'+Object.entries(PAY).map(([v,l])=>'<option value="'+v+'"'+((r.pay||'link')===v?' selected':'')+((v!=='link'&&!(me.funding&&me.funding.card))||(v==='auto'&&!(me.funding&&me.funding.auto_ok))?' disabled':'')+'>Inside the rules: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
     +(acts?'<details class="more"><summary>Activity</summary><ul class="acts">'+acts+'</ul></details>':'<p class="sub" style="margin:0">No activity yet.</p>')+'</div>';
 }
 document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rules]');if(!f)return;e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(f));
   const c=x=>x.trim()?Math.round(parseFloat(x.replace(/[$,]/g,''))*100):null;
-  try{await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:c(v.max),monthly_cents:c(v.month),stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver});load()}catch(err){$('#err').textContent=err.message}});
+  try{await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:c(v.max),monthly_cents:c(v.month),stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver,pay:v.pay});load()}catch(err){$('#err').textContent=err.message}});
 $('#apvForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
   try{const r=await post('/v1/me/approver',v);$('#apvOk').textContent=r.confirm_link?'Test mode: they would get this link by email.':'Sent. They need to tap Yes in the email.';if(r.confirm_link)console.log(r.confirm_link);e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 // Spots made on this device before signing in join the account.
@@ -244,6 +259,38 @@ $('#addPk').onclick=async()=>{$('#err').textContent='';try{await pkRegister(pkDe
   catch(err){if(err.name==='InvalidStateError')$('#err').textContent='This device already has a Spot passkey.';else if(err.name!=='NotAllowedError'&&err.name!=='AbortError')$('#err').textContent=err.message}};
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-pk]');if(!b)return;if(!confirm('Remove this passkey? You can still sign in with a code.'))return;
   try{await post('/v1/me/passkeys/'+encodeURIComponent(b.dataset.pk)+'/remove');load()}catch(err){$('#err').textContent=err.message}});
+
+// Your AI's card: save it, the separate automatic opt-in, and the kill switch.
+const MODE=${JSON.stringify(provider)};
+let fundStripe=null;
+function drawFunding(){
+  const f=me.funding||{};const c=f.card;
+  $('#fundCard').innerHTML=c?'<div class="aicard"><span class="chip" aria-hidden="true"></span><span><b>'+esc(c.label)+'</b><small class="sub" style="display:block;margin:0">Pays for what your AI asks for, only when your rules say so</small></span><button class="linkbtn" id="fundRm">Remove</button></div>'
+    :'<div class="trav" style="border:0"><span class="sub" style="margin:0">No card saved. Your AI’s asks come to you as a link to pay.</span><button class="btn primary" id="fundAdd">Add a card</button></div>';
+  $('#autoBox').hidden=!c;
+  $('#autoBox').innerHTML=!c?'':f.auto_ok
+    ?'<b>Your AI can pay without asking</b><p class="sub" style="margin:4px 0 8px">For AIs you set to “Pay automatically”: inside their rules, Spot charges your card and places the order without a tap, as long as the store’s total is inside the card’s cap. Anything over goes to you.</p><button class="btn ghost" id="autoOff">Turn off</button>'
+    :'<b>Let your AI pay without asking? <small class="sub">(optional)</small></b><p class="sub" style="margin:4px 0 8px">Off by default. When it’s on, AIs you set to “Pay automatically” buy inside their rules without a tap: a max per order is required, and every card is still capped and locked to one store.</p><label class="agree"><input type="checkbox" id="autoAgree"><span>I agree my AI can charge my '+esc(c.label)+' without asking me each time, inside the rules I set. I can turn this off, or stop all AI spending, any time.</span></label><button class="btn ghost" id="autoOn">Turn on</button>';
+  $('#stopBox').innerHTML=f.ai_stopped
+    ?'<span><b>🛑 AI spending is stopped</b><small class="sub" style="display:block;margin:0">Every AI on your account is refused until you turn it back on.</small></span><button class="btn primary" id="aiResume">Turn back on</button>'
+    :'<span><b>Kill switch</b><small class="sub" style="display:block;margin:0">Stops every AI on your account at once, and refunds cards not used yet.</small></span><button class="btn danger" id="aiStop">Stop all AI spending</button>';
+}
+document.addEventListener('click',async e=>{const id=e.target.id;if(!['fundAdd','fundRm','fundCancel','autoOn','autoOff','aiStop','aiResume'].includes(id))return;$('#err').textContent='';
+  try{
+    if(id==='fundAdd'){$('#fundForm').hidden=false;$('#fundTest').hidden=MODE!=='sandbox';
+      if(MODE==='stripe'){const s=await post('/v1/me/funding/setup');const stripe=Stripe(s.publishable_key);const elements=stripe.elements({clientSecret:s.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});elements.create('payment',{layout:'tabs',wallets:{applePay:'never',googlePay:'never'}}).mount('#fundEl');fundStripe={stripe,elements}}}
+    if(id==='fundCancel'){$('#fundForm').hidden=true;$('#fundEl').innerHTML='';fundStripe=null}
+    if(id==='fundRm'){if(!confirm('Remove this card? Your AI’s asks go back to coming as a link to pay.'))return;me.funding=await post('/v1/me/funding/remove');load()}
+    if(id==='autoOn'){me.funding=await post('/v1/me/funding/auto',{on:true,agree:$('#autoAgree').checked});load()}
+    if(id==='autoOff'){me.funding=await post('/v1/me/funding/auto',{on:false});load()}
+    if(id==='aiStop'){if(!confirm('Stop every AI on your account? New asks are refused, and cards not used yet are canceled and refunded.'))return;const r=await post('/v1/me/ai/stop');$('#addOk').textContent='';alert('Stopped. '+(r.refunded?r.refunded+' unused card'+(r.refunded>1?'s':'')+' canceled and refunded.':'Nothing was waiting to be bought.')+(r.still_ordering?' '+r.still_ordering+' order'+(r.still_ordering>1?'s are':' is')+' already being placed.':''));load()}
+    if(id==='aiResume'){await post('/v1/me/ai/resume');load()}
+  }catch(err){$('#err').textContent=err.message}});
+$('#fundForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#fundSave');b.disabled=true;
+  try{let body;
+    if(MODE==='stripe'){const {error,setupIntent}=await fundStripe.stripe.confirmSetup({elements:fundStripe.elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;body={setup_intent:setupIntent.id}}
+    else body={test_card:$('#fundTest').value};
+    me.funding=await post('/v1/me/funding',body);$('#fundForm').hidden=true;$('#fundEl').innerHTML='';load()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#out').onclick=async()=>{await post('/v1/auth/logout');location.href='/'};
 claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
   });

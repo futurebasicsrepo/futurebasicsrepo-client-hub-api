@@ -77,8 +77,19 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
     });
   }
 
-  // Waits (up to 10 minutes) for the requester to tap Place order.
+  // Waits (up to 10 minutes) for the requester to tap Place order. The one
+  // exception: an account that opted in to its AI paying on its own (rules
+  // `pay: 'auto'`) already said yes in advance, so the order goes ahead
+  // without asking when the store's real total is inside the card's cap.
+  // Anything over the cap still waits for a person.
   function askConfirm(cartId, { total_cents, summary, screenshot }) {
+    const cart = spot.byId(cartId);
+    if (cart?.saved_pay?.how === 'paid_by_rules' && Number.isFinite(total_cents) && total_cents <= authLimitCents(cart.cart_cents)) {
+      update(cartId, { state: 'working', total_cents, summary }, 'order_confirmed_by_rules');
+      step(cartId, 'Inside your rules, so Spot placed it without asking');
+      spot.emit?.('approved', cartId, { by: 'rules', how: 'placed_order', amount_cents: total_cents });
+      return Promise.resolve(true);
+    }
     return new Promise((resolve) => {
       if (screenshot) shots.set(cartId, screenshot);
       const timer = setTimeout(() => {

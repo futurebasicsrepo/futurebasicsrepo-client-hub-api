@@ -23,6 +23,8 @@ import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { registerMerchants } from './merchants.js';
 import { registerAccounts } from './accounts.js';
+import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
+import { agentCardPage } from './agentcard.js';
 import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { createEvents } from './events.js';
@@ -189,11 +191,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/account', async (req, reply) => {
     if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/account');
     reply.header('cache-control', 'no-store');
-    return html(reply, accountPage({ origin: urlFor(req, '') }));
+    return html(reply, accountPage({ origin: urlFor(req, ''), provider: provider.name }));
   });
   app.get('/terms', async (req, reply) => html(reply, termsPage({ origin: urlFor(req, ''), env })));
   app.get('/privacy', async (req, reply) => html(reply, privacyPage({ origin: urlFor(req, ''), env })));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
+  app.get('/agent-card', async (req, reply) => html(reply, agentCardPage({ origin: urlFor(req, '') })));
 
   // The browser extension, built for this server's address.
   const zips = new Map();
@@ -512,6 +515,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
         const u = uid && (!cart.user_id || cart.user_id === uid) ? db.users.byId(uid) : null;
         return u ? { email: u.email, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [] } : null;
       })(),
+      // The owner's own saved card, for the one-tap Approve (funding.js).
+      saved_card: (() => {
+        const uid = accounts.userIdOf(req);
+        if (!uid || cart.user_id !== uid || cart.for !== 'self' || cart.settle !== 'card' || cart.kind === 'flight' || cart.bundle_id) return null;
+        const f = fundingOf(db, uid);
+        return f && !(cart.agent && aiStopped(db, uid)) ? { label: cardLabel(f) } : null;
+      })(),
     };
   });
 
@@ -574,6 +584,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
   registerAdmin(app, { db, spot, env, urlFor, backups });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
+  registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });
   const oauth = registerOAuth(app, { db, env, urlFor, log: app.log, ...(oauthFetch ? { fetchImpl: oauthFetch } : {}) });
 

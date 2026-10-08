@@ -249,13 +249,13 @@ export function siteNav(active = '') {
   const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
+  <div class="links">${a('/#how', 'How it works', 'how')}${a('/agent-card', 'Your AI’s card', 'card')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}${a('/account', 'My Spots', 'account')}</div>
   <a class="btn primary" href="/new" id="navCta">Make a Spot</a>
 </div></nav>`;
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/agent-card">Your AI’s card</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
@@ -360,6 +360,7 @@ ${storySection()}
       <li><b>Only these stores.</b> An allowlist, so a kid’s AI shops at Target, not everywhere.</li>
       <li><b>An approver.</b> They agree by email first, and every ask shows exactly what the AI picked and why it came to them.</li>
       <li><b>See everything.</b> Each AI’s activity (asked, blocked, ordered) sits on your account, with an off switch that works instantly.</li>
+      <li><b>Its own card, not yours.</b> Save your card once; each purchase gets a Spot card capped at the order and locked to the store. Approve with a tap, or opt in to let it pay inside the rules. <a href="/agent-card">How it works</a></li>
     </ul>
     <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/account">Set rules →</a><a class="btn ghost" href="#trust">How approvals are signed</a></div>
   </div>

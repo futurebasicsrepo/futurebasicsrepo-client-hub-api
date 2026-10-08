@@ -163,6 +163,31 @@ Every yes (paying on Spot, paying the store, or tapping Place order) is recorded
 
 Each key's activity (asked, sent to approver, blocked, ordered, messages sent) is on the account page, with Disconnect.
 
+### Your AI's card (fund your own AI)
+
+An account saves its own card once (`/account#ai-card`, a Stripe SetupIntent;
+the number goes to Stripe). Each AI key's rules then say how its asks for the
+account holder get paid (`pay`):
+
+- `link`: a link to pay, as before (the default).
+- `tap`: Spot texts/emails "Approve $84 at Nike with your Visa •4242?". The
+  signed-in owner taps Approve on the manage page
+  (`POST /v1/carts/:token/manage/pay-saved`) and the saved card pays. Signed
+  approval: `approved_by: requester, how: approved_saved_card`.
+- `auto`: a separate opt-in on the account (`POST /v1/me/funding/auto
+  { on: true, agree: true }`), and the key needs a `max_order_cents`. Inside
+  the rules Spot charges the card off-session right away, and places the order
+  without the final tap when the store's total is inside the card's cap.
+  Signed approvals: `approved_by: rules`, `how: paid_by_rules`, then
+  `placed_order`. A decline or a bank check falls back to `tap`.
+
+Either way Spot buys with a single-use card capped at the order and locked to
+the store, as for every Spot purchase. The kill switch (`POST /v1/me/ai/stop`)
+refuses every ask from the account's AIs and cancels and refunds AI-paid
+cards that haven't started ordering; `/v1/me/ai/resume` turns it back on. A
+new card needs its own automatic opt-in; removing the card puts keys back on
+links. The public explainer is `/agent-card`.
+
 ### Pay the store directly
 
 `settle: "direct"` (MCP `pay_at_store`, on by default when the store's `/.well-known/ucp` offers checkout). The requester adds where it ships; then the payer taps Pay, Spot creates the store's checkout session (items, buyer email, ship-to, cheapest shipping) and redirects to its `continue_url`. Spot polls the session until it's `completed` and the cart completes with the store's order number. `GET /v1/stores/check?url=` tells the composer whether a store supports it.

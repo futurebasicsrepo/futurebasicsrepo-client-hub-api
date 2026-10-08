@@ -166,12 +166,17 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         }];
       case 'ready': {
         const msg = finishMessage(cart, link);
+        const tap = cart.saved_card;
         return [{
           key: 'ready',
-          to: { email: extra?.email || requesterContact(cart).email },
-          subject: `🤖 ${msg.subject}`,
-          text: msg.text,
-          html: mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
+          // An Approve button goes by text too: it's the moment the AI waits on.
+          to: tap ? requesterContact(cart) : { email: extra?.email || requesterContact(cart).email },
+          subject: tap ? `🤖 Approve ${usd(cart.total_cents)} at ${store}?` : `🤖 ${msg.subject}`,
+          text: tap ? `Your AI wants ${item} from ${store}, ${usd(cart.total_cents)}. Tap Approve and your ${tap.label} pays: ${link}` : msg.text,
+          ...(tap ? { sms: `Spot: Your AI wants ${item} from ${store}, ${usd(cart.total_cents)}. Approve with your ${tap.label}: ${link}` } : {}),
+          html: cart.saved_card
+            ? mail({ preheader: `One tap pays with your ${cart.saved_card.label}`, title: 'Approve what your AI picked? 🤖', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, `Tap Approve and your ${esc(cart.saved_card.label)} pays. Spot gets a card just for this order, capped at this amount and locked to ${esc(store)}, and orders it for you.`, 'Nothing is charged unless you tap.'], cta: { label: `Approve ${usd(cart.total_cents)} →`, url: link } })
+            : mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
         }];
       }
       case 'receipt': {

@@ -25,6 +25,7 @@ import { CartError, usd } from './cart.js';
 import { ownerCart, publicBundle, publicCart, storesLabel } from './spot.js';
 import { emailLayout } from './notify.js';
 import { approverOf, checkRules, monthStart } from './rules.js';
+import { aiStopped, cardLabel, fundingOf } from './funding.js';
 
 function apiKeys(env) {
   const out = [];
@@ -76,10 +77,25 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     }
   };
 
+  // How this key's asks get paid from the account's card, if at all.
+  function savedMode(agent, userId) {
+    if (!agent.startsWith('key:')) return null;
+    const pay = db?.keyRules?.get(agent.slice(4))?.rules?.pay;
+    if (pay !== 'tap' && pay !== 'auto') return null;
+    const f = fundingOf(db, userId);
+    if (!f) return null;
+    return pay === 'auto' && f.auto_ok_at ? 'auto' : 'tap';
+  }
+
   // The account's spending rules for this key (rules.js): refuse, or send
   // the ask to the account's approver instead of the user.
   function gate(req, agent, { cents, storeUrl, merchant, flight = false }) {
     if (!agent.startsWith('key:') || !db?.keyRules) return { route: false };
+    // The account's kill switch: every AI on it stops.
+    if (req.spotUserId && aiStopped(db, req.spotUserId)) {
+      note(req, agent, 'blocked_by_rule', { reason: 'AI spending is stopped', merchant: merchant || null, cents });
+      throw new CartError('Your user stopped AI spending on their Spot account. They can turn it back on there.', 403);
+    }
     const row = db.keyRules.get(agent.slice(4));
     const rules = row?.rules;
     if (!rules) return { route: false };
@@ -151,7 +167,9 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       canceled: 'Your user passed on this one.',
       refunded: `Not booked, and your user was refunded. ${fl.error || ''}`.trim(),
     }[cart.status] : {
-      open: cart.approver
+      open: cart.saved_card
+        ? `Waiting for your user to tap Approve. Their ${cart.saved_card.label} pays, and Spot orders it.`
+        : cart.approver
         ? `Sent to ${cart.approver.name || 'your user’s approver'} to approve (${cart.approver.reason}). They pay for it or turn it down; nothing is bought until they do.`
         : cart.settle === 'direct'
         ? (cart.for === 'self'
@@ -224,13 +242,19 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const goods = items.reduce((n, i) => n + Math.round(Number(i.price_cents) || 0) * (Math.round(Number(i.quantity)) || 1), 0) + (Math.round(Number(extras)) || 0);
     const gateUrl = merchant?.url || items.find((i) => i.url)?.url || null;
     const g = gate(req, agent, { cents: goods, storeUrl: gateUrl, merchant: merchant?.name });
-    const user = g.route && req.spotUserId ? db.users.byId(req.spotUserId) : null;
-    const forSelf = b.for === 'self' && !g.route;
+    // Paid from the account's own card (funding.js): 'tap' asks for one tap,
+    // 'auto' (a separate opt-in) pays right away. Only for the user's own
+    // asks inside the rules; anything else gets a link as before.
+    const payMode = !g.route && b.for !== 'other' && req.spotUserId ? savedMode(agent, req.spotUserId) : null;
+    const user = (g.route || payMode) && req.spotUserId ? db.users.byId(req.spotUserId) : null;
+    const forSelf = (b.for === 'self' || Boolean(payMode)) && !g.route;
     if (g.route) b.requester = { ...(b.requester || {}), name: user?.name || b.requester?.name || 'Your family member' };
+    // Paid from the account: it's for the account holder.
+    if (payMode && !b.requester?.name) b.requester = { ...(b.requester || {}), name: user?.name || user?.email?.split('@')[0] || 'You' };
     // Prefer the store as the seller: if it takes agent checkout (UCP), the
     // payer pays it directly and Spot never holds the money.
     const storeUrl = merchant?.url || items.find((i) => i.url)?.url;
-    const direct = b.settle === 'direct' || (b.settle == null && storeUrl && (await spot.direct?.supports(storeUrl)));
+    const direct = !payMode && (b.settle === 'direct' || (b.settle == null && storeUrl && (await spot.direct?.supports(storeUrl))));
     if (direct && !merchant?.url && storeUrl) merchant = { ...merchant, url: new URL(storeUrl).origin };
     const settle = direct ? 'direct' : forSelf ? 'card' : b.settle;
     const { cart, manageKey } = spot.create(
@@ -238,7 +262,16 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       { ip: req.ip, userId: req.spotUserId },
     );
     spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
-    if (forSelf && b.ship_to) spot.prepare(cart.token, manageKey, b.ship_to);
+    if (payMode) {
+      const ship = b.ship_to || user?.shipping;
+      if (ship) {
+        try {
+          spot.prepare(cart.token, manageKey, { ...ship, email: ship.email || user?.email });
+        } catch {
+          // They can fix it on their page.
+        }
+      }
+    } else if (forSelf && b.ship_to) spot.prepare(cart.token, manageKey, b.ship_to);
     note(req, agent, g.route ? 'ask_routed' : 'ask_created', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents, for: forSelf ? 'self' : 'other', ...(g.route ? { reason: g.reason } : {}) });
     if (g.route) {
       // Ship to the user (their saved address, or what the AI gave), then
@@ -258,6 +291,27 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const extra = forSelf
       ? { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone to confirm shipping, pay and place the order.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` }
       : { requester_page: privateLink, requester_page_note: settle === 'direct' ? 'Private: give this only to the requester. They add where it ships there, which unlocks the link for whoever pays.' : 'Private: give this only to the requester. It is where they add the shipping address and confirm the order.' };
+    if (payMode) {
+      const f = fundingOf(db, req.spotUserId);
+      let paid = null;
+      if (payMode === 'auto' && spot.byId(cart.id).requester?.shipping) {
+        try {
+          paid = (await spot.paySaved(cart.token, f, { present: false, how: { by: 'rules', how: 'paid_by_rules' } })).cart;
+          note(req, agent, 'paid_from_card', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.total_cents, card: cardLabel(f) });
+        } catch (err) {
+          // Declined, the bank wants to check, or Spot can't order there:
+          // fall back to asking for the tap.
+          note(req, agent, 'autopay_failed', { ask_id: cart.token, reason: err.message, merchant: cart.merchant.name, cents: cart.total_cents });
+        }
+      }
+      if (!paid) {
+        spot.patch(cart.id, (c) => ({ ...c, saved_card: { label: cardLabel(f) } }), 'awaiting_tap');
+        spot.emit('ready', cart.id);
+      }
+      return view(req, spot.byId(cart.id), paid
+        ? { paid_from: cardLabel(f) }
+        : { approve_link: privateLink, approve_link_note: `Spot sent your user an Approve button (their ${cardLabel(f)} pays). Nothing is charged until they tap it.` });
+    }
     // Remember how to reach the user for later updates (booked, ordered…).
     if (forSelf && (b.notify?.email || b.notify?.phone)) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
     // An account's own AI with no delivery asked for: email the account.
@@ -506,7 +560,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver).",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver). If your user saved their own card on Spot and set this AI to use it, their own asks are paid from it: they tap Approve on a text/email (see approve_link), or, if they opted in, Spot pays right away inside their rules (see paid_from). Either way Spot buys with a card capped at the order and locked to that store; you never see a card number. Set for_me: false when someone else should pay.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -523,7 +577,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
           text: z.string().optional().describe('A description like "black Salomon XT-6 size 10.5", if you have nothing else'),
           extras_cents: z.number().int().min(0).optional().describe('Estimated shipping + tax in cents'),
           note: z.string().max(280).optional().describe('A short note shown to the payer'),
-          for_me: z.boolean().optional().describe('Your user pays for this themselves and finishes on their phone'),
+          for_me: z.boolean().optional().describe('true: your user pays for this themselves and finishes on their phone. false: someone else pays. Leave it out to use your user\'s saved card when their rules allow it'),
           pay_at_store: z.boolean().optional().describe('Default: true when the store supports agent checkout (UCP). The payer pays the store directly; set false to have Spot buy it instead'),
           send_to_email: z.string().optional().describe('for_me: email the finish link here'),
           send_to_phone: z.string().optional().describe("for_me: text the finish link to this phone number. Only your user's own number, with their OK; they can reply STOP"),
@@ -543,7 +597,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
               text: a.text,
               extras_cents: a.extras_cents,
               note: a.note,
-              for: a.for_me ? 'self' : 'other',
+              // Unset lets the account's saved card (if this AI may use it) pay for the user's own asks.
+              for: a.for_me ? 'self' : a.for_me === false ? 'other' : undefined,
               settle: a.pay_at_store === false ? 'card' : a.pay_at_store === true ? 'direct' : undefined,
               notify: { email: a.send_to_email, phone: a.send_to_phone },
               ship_to: a.ship_to,
