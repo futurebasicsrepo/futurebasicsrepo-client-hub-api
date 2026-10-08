@@ -78,7 +78,7 @@ test('✈️ booked: text + email to the traveler, once', async (t) => {
   await until(() => texts.some((x) => /booked/.test(x.Body)) && emails.some((m) => /booked/.test(m.subject)), 'booked messages');
   const sms = texts.find((x) => /booked/.test(x.Body));
   assert.equal(sms.To, '+15125550100');
-  assert.match(sms.Body, /^Spot: ✈️ You're booked! Confirmation [A-Z0-9]{6}\..*Reply STOP to opt out\.$/);
+  assert.match(sms.Body, /^Spot: Your flight is booked\. Confirmation [A-Z0-9]{6}, .*Reply STOP to opt out\.$/);
   const mail = emails.find((m) => /booked/.test(m.subject));
   assert.deepEqual(mail.to, ['kyle@example.com']);
   assert.match(mail.html, /Confirmation code/);
@@ -158,7 +158,7 @@ test('👆 confirm_needed: email + text, but never to a number that replied STOP
   };
   await events.emit('confirm_needed', make('5125550100'));
   assert.equal(box.emails.at(-1).subject, '👆 One tap to order your Super Puff');
-  assert.match(box.texts.at(-1).Body, /^Spot: Your Aritzia checkout is ready, \$271\.12\. Tap Place order within 10 min: https:\/\/spotmeplease\.com\/c\//);
+  assert.match(box.texts.at(-1).Body, /^Spot: Your Aritzia order total is \$271\.12\. Confirm within 10 minutes to place it: https:\/\/spotmeplease\.com\/c\//);
   db.optouts.add('+15125550199');
   const sent = box.texts.length;
   await events.emit('confirm_needed', make('5125550199'));
