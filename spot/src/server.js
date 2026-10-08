@@ -189,6 +189,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
   app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available })));
+  // The SMS opt-in page carriers review: the text sign-in, open and readable.
+  app.get('/texts', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available, texts: true })));
   app.get('/account', async (req, reply) => {
     if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/account');
     reply.header('cache-control', 'no-store');
