@@ -56,7 +56,7 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .aicard .chip{width:46px;height:32px;border-radius:7px;background:linear-gradient(135deg,#d8c27a,#b39a4e)}
 .stop{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin-top:12px}
 .btn.danger{background:#c8321b;color:#fff;border-color:#c8321b}
-.agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0}.agree input{width:18px;height:18px;margin-top:2px;flex:none}
+.agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0}.agree[hidden]{display:none}.agree input{width:18px;height:18px;margin-top:2px;flex:none}
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
 
@@ -83,18 +83,23 @@ const ERRORS = {
   unavailable: 'That sign-in option isn’t set up yet. Use your email.',
 };
 
-export function signinPage({ origin, providers = {} }) {
+// The SMS opt-in: an unticked box with the full disclosure, next to every phone field.
+const smsAgree = (id, hidden) => `<label class="agree" id="${id}Box"${hidden ? ' hidden' : ''}><input type="checkbox" id="${id}"><span>I agree to receive texts from Spot. ${esc(SMS_CONSENT.replace(/^By entering your number you agree to receive texts from Spot: /, 'Texts are '))} <a href="/terms#texts">Terms</a> · <a href="/privacy">Privacy</a></span></label>`;
+
+// /signin, and /texts: the same page opened on the text option, readable
+// without clicking anything (the SMS opt-in carriers review).
+export function signinPage({ origin, providers = {}, texts = false }) {
   return page({
     origin,
-    path: '/signin',
-    title: 'Sign in · Spot',
+    path: texts ? '/texts' : '/signin',
+    title: texts ? 'Get Spot by text · Spot' : 'Sign in · Spot',
     body: `<div class="signin box">
-  <h1 style="font-size:38px">Sign in</h1>
-  <p class="sub" id="lead">We’ll send you a 6-digit code. No password needed.</p>
-  <div class="seg" role="tablist" aria-label="Send the code by" id="seg"><button type="button" role="tab" aria-selected="true" data-mode="email">Email</button><button type="button" role="tab" aria-selected="false" data-mode="phone">Text</button></div>
-  <form class="f" id="emailForm"><input type="email" id="email" required placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" hidden><button class="btn primary" id="sendBtn">Email me a code</button><p class="sub" id="smsNote" style="font-size:13px;margin:0" hidden>${esc(SMS_CONSENT)} <a href="/terms#texts">Terms</a> · <a href="/privacy">Privacy</a></p></form>
+  <h1 style="font-size:38px">${texts ? 'Get Spot by text' : 'Sign in'}</h1>
+  <p class="sub" id="lead">${texts ? 'Spot texts you a sign-in code, and updates about your own orders: when someone pays for your cart, when your AI asks you to approve something, and when it’s ordered or booked. No marketing.' : 'We’ll send you a 6-digit code. No password needed.'}</p>
+  <div class="seg" role="tablist" aria-label="Send the code by" id="seg"${texts ? ' hidden' : ''}><button type="button" role="tab" aria-selected="${!texts}" data-mode="email">Email</button><button type="button" role="tab" aria-selected="${texts}" data-mode="phone">Text</button></div>
+  <form class="f" id="emailForm"><input type="email" id="email" ${texts ? 'hidden' : 'required'} placeholder="you@email.com" autocomplete="email webauthn" aria-label="Email"><input type="tel" id="phone" placeholder="Mobile number" autocomplete="tel" inputmode="tel" aria-label="Mobile number" ${texts ? 'required' : 'hidden'}>${smsAgree('smsOk', !texts)}<button class="btn primary" id="sendBtn">${texts ? 'Text me a code' : 'Email me a code'}</button></form>
   <form class="f" id="codeForm" hidden><p class="hint" id="devCode" hidden></p><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••" aria-label="6-digit code"><button class="btn primary">Sign in</button><button type="button" class="linkbtn" id="again">Start over</button></form>
-  <div class="or" id="or"><span>or</span></div><div class="sso" id="sso"><button type="button" class="btn ghost pk-b" id="pkBtn" hidden>🔑 Use Face ID or a passkey</button>${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>
+  <div class="or" id="or"${texts ? ' hidden' : ''}><span>or</span></div><div class="sso" id="sso"${texts ? ' hidden' : ''}><button type="button" class="btn ghost pk-b" id="pkBtn" hidden>🔑 Use Face ID or a passkey</button>${providers.google ? `<a class="sso-b google" data-p="google" href="/auth/google/start">${GOOGLE_G}Continue with Google</a>` : ''}${providers.facebook ? `<a class="sso-b facebook" data-p="facebook" href="/auth/facebook/start">${FB_F}Continue with Facebook</a>` : ''}</div>
   <p class="err" id="err"></p>
   <p class="sub" style="font-size:13px;margin:14px 0 0">By continuing you agree to Spot’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
 </div>`,
@@ -103,14 +108,14 @@ const ERRORS=${JSON.stringify(ERRORS)};
 let pkAbort=null;
 const q=new URLSearchParams(location.search);if(ERRORS[q.get('error')])$('#err').textContent=ERRORS[q.get('error')];
 const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';return n.startsWith('/')&&!n.startsWith('//')?n:'/account'})();
-let mode='email',who='';
+let mode=${JSON.stringify(texts ? 'phone' : 'email')},who='';
 const setMode=m=>{mode=m;document.querySelectorAll('#seg button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.mode===m)));
-  const ph=m==='phone';$('#email').hidden=ph;$('#email').required=!ph;$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsNote').hidden=!ph;
+  const ph=m==='phone';$('#email').hidden=ph;$('#email').required=!ph;$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsOkBox').hidden=!ph;$('#smsOk').required=ph;
   $('#sendBtn').textContent=ph?'Text me a code':'Email me a code';(ph?$('#phone'):$('#email')).focus();try{localStorage.setItem('spot:signin',m)}catch{}};
 $('#seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode)});
-try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}
+${texts ? "setMode('phone');" : "try{if(localStorage.getItem('spot:signin')==='phone')setMode('phone')}catch{}"}
 $('#emailForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';if(pkAbort){pkAbort.abort();pkAbort=null}const b=$('#sendBtn');b.disabled=true;
-  try{who=(mode==='phone'?$('#phone'):$('#email')).value.trim();const r=await post('/v1/auth/start',mode==='phone'?{phone:who}:{email:who});
+  try{who=(mode==='phone'?$('#phone'):$('#email')).value.trim();const r=await post('/v1/auth/start',mode==='phone'?{phone:who,sms_consent:$('#smsOk').checked}:{email:who});
     $('#seg').hidden=true;$('#emailForm').hidden=true;$('#codeForm').hidden=false;$('#or').hidden=true;$('#sso').hidden=true;$('#lead').textContent='Enter the code we '+(mode==='phone'?'texted to ':'sent to ')+who+'.';
     if(r.code){$('#devCode').hidden=false;$('#devCode').textContent='Test mode (no '+(mode==='phone'?'texting':'email')+' service yet): your code is '+r.code;$('#code').value=r.code}
     $('#code').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
@@ -123,14 +128,14 @@ document.querySelectorAll('.sso-b').forEach(a=>{a.href='/auth/'+a.dataset.p+'/st
 // Passkeys: a button, plus the browser's autofill offering saved passkeys
 // right in the email box (conditional UI).
 const pkDone=()=>{location.href=next};
-if(pkOK()){$('#pkBtn').hidden=false;
+if(${!texts}&&pkOK()){$('#pkBtn').hidden=false;
   $('#pkBtn').onclick=async()=>{$('#err').textContent='';if(pkAbort)pkAbort.abort();pkAbort=null;
     try{await pkSignIn();pkDone()}catch(err){if(err.name!=='NotAllowedError'&&err.name!=='AbortError'&&err.message!=='cancelled')$('#err').textContent=err.message}};
   (async()=>{try{if(!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return;pkAbort=new AbortController();
     await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){if(err.name!=='AbortError'&&err.name!=='NotAllowedError'&&err.message!=='cancelled')$('#err').textContent=err.message}})()}
 const altOK=()=>!$('#pkBtn').hidden||Boolean(document.querySelector('.sso-b'));
-$('#or').hidden=!altOK();
-$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=!altOK();$('#sso').hidden=false;$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
+$('#or').hidden=${texts}||!altOK();
+$('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=${texts}||!altOK();$('#sso').hidden=${texts};$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
   });
 }
 
@@ -160,7 +165,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
 </section>
 <section id="signinSec"><h2>Sign-in methods</h2><p class="sub">Every way you can get into this account. Add your phone and email so either one works.</p>
   <div class="box"><div id="methods"></div>
-    <form class="addf" id="addForm" hidden><label class="sub" id="addLabel" for="addVal" style="margin:0"></label><div class="row"><input id="addVal" aria-describedby="addLabel"><button class="btn primary" id="addSend">Send code</button></div></form>
+    <form class="addf" id="addForm" hidden><label class="sub" id="addLabel" for="addVal" style="margin:0"></label><div class="row"><input id="addVal" aria-describedby="addLabel"><button class="btn primary" id="addSend">Send code</button></div>${smsAgree('addSmsOk', true)}</form>
     <form class="addf" id="addCode" hidden><p class="hint" id="addDev" hidden></p><label class="sub" id="addCodeLabel" for="addCodeVal" style="margin:0"></label><div class="row"><input id="addCodeVal" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••"><button class="btn primary">Verify</button></div><button type="button" class="linkbtn" id="addCancel" style="justify-self:start">Cancel</button></form>
     <p class="ok-msg" id="addOk"></p>
   </div>
@@ -247,10 +252,10 @@ let adding=null,addWhat='';
 const addReset=()=>{adding=null;$('#addForm').hidden=true;$('#addCode').hidden=true;$('#addDev').hidden=true};
 document.addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;adding=b.dataset.add;$('#addOk').textContent='';$('#addCode').hidden=true;
   const ph=adding==='phone',v=$('#addVal');v.type=ph?'tel':'email';v.autocomplete=ph?'tel':'email';v.inputMode=ph?'tel':'email';v.placeholder=ph?'Mobile number':'you@email.com';v.value='';
-  $('#addLabel').textContent=ph?'We’ll text a code to confirm it’s yours. '+${JSON.stringify(SMS_CONSENT)}:'We’ll email a code to confirm it’s yours.';
+  $('#addLabel').textContent=ph?'We’ll text a code to confirm it’s yours.':'We’ll email a code to confirm it’s yours.';$('#addSmsOkBox').hidden=!ph;$('#addSmsOk').required=ph;$('#addSmsOk').checked=false;
   $('#addForm').hidden=false;v.focus()});
 $('#addForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#addSend');b.disabled=true;
-  try{addWhat=$('#addVal').value.trim();const r=await post('/v1/me/link/start',{[adding]:addWhat});$('#addForm').hidden=true;$('#addCode').hidden=false;
+  try{addWhat=$('#addVal').value.trim();const r=await post('/v1/me/link/start',adding==='phone'?{phone:addWhat,sms_consent:$('#addSmsOk').checked}:{email:addWhat});$('#addForm').hidden=true;$('#addCode').hidden=false;
     $('#addCodeLabel').textContent='Enter the code we '+(adding==='phone'?'texted to ':'sent to ')+addWhat+'.';
     if(r.code){$('#addDev').hidden=false;$('#addDev').textContent='Test mode: your code is '+r.code;$('#addCodeVal').value=r.code}else $('#addCodeVal').value='';
     $('#addCodeVal').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});

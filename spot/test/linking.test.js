@@ -15,13 +15,13 @@ function app(t) {
     return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body, headers: r.headers };
   };
   const signIn = async (to) => {
-    const start = await call('POST', '/v1/auth/start', to);
+    const start = await call('POST', '/v1/auth/start', to.phone ? { ...to, sms_consent: true } : to);
     const v = await call('POST', '/v1/auth/verify', { ...to, code: start.body.code });
     assert.equal(v.status, 200, JSON.stringify(v.body));
     return { cookie: v.headers['set-cookie'].split(';')[0] };
   };
   const link = async (cookie, to) => {
-    const start = await call('POST', '/v1/me/link/start', to, cookie);
+    const start = await call('POST', '/v1/me/link/start', to.phone ? { ...to, sms_consent: true } : to, cookie);
     assert.equal(start.status, 200, JSON.stringify(start.body));
     return call('POST', '/v1/me/link/verify', { ...to, code: start.body.code }, cookie);
   };
@@ -77,12 +77,12 @@ test('🔒 link codes are bound to the account and can’t sign anyone in', asyn
   const { call, signIn } = app(t);
   const me = await signIn({ email: 'kyle@example.com' });
   const other = await signIn({ email: 'eve@example.com' });
-  assert.equal((await call('POST', '/v1/me/link/start', { phone: '5125550100' })).status, 401, 'signed-in only');
-  const start = await call('POST', '/v1/me/link/start', { phone: '5125550100' }, me);
+  assert.equal((await call('POST', '/v1/me/link/start', { phone: '5125550100', sms_consent: true })).status, 401, 'signed-in only');
+  const start = await call('POST', '/v1/me/link/start', { phone: '5125550100', sms_consent: true }, me);
   assert.equal((await call('POST', '/v1/auth/verify', { phone: '5125550100', code: start.body.code })).status, 401, 'not a sign-in code');
   assert.equal((await call('POST', '/v1/me/link/verify', { phone: '5125550100', code: start.body.code }, other)).status, 401, 'not usable from another account');
   assert.equal((await call('POST', '/v1/me/link/verify', { phone: '5125550100', code: start.body.code }, me)).status, 200);
-  assert.equal((await call('POST', '/v1/me/link/start', { phone: '5125550100' }, me)).status, 409, 'already on the account');
+  assert.equal((await call('POST', '/v1/me/link/start', { phone: '5125550100', sms_consent: true }, me)).status, 409, 'already on the account');
   assert.equal((await call('POST', '/v1/me/link/start', { email: 'nope' }, me)).status, 400);
 });
 

@@ -107,8 +107,8 @@ test('sign in with a texted code: its own account, autofill line, STOP respected
   const twilio = { TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+15125550000', PUBLIC_URL: 'https://spotmeplease.com' };
   const { call } = app(t, { notifyFetch, env: twilio });
 
-  assert.equal((await call('POST', '/v1/auth/start', { phone: '12' })).status, 400);
-  const start = await call('POST', '/v1/auth/start', { phone: '(512) 555-0100' });
+  assert.equal((await call('POST', '/v1/auth/start', { phone: '12', sms_consent: true })).status, 400);
+  const start = await call('POST', '/v1/auth/start', { phone: '(512) 555-0100', sms_consent: true });
   assert.deepEqual(start.body, { sent: 'text' }, 'the code is never in the response when texting works');
   const code = texts[0].match(/^Spot: (\d{6}) is your sign-in code/)[1];
   assert.match(texts[0], /Reply STOP to opt out\./);
@@ -130,7 +130,7 @@ test('sign in with a texted code: its own account, autofill line, STOP respected
   assert.equal((await call('POST', '/v1/me/keys', {}, H)).status, 201);
 
   // The same number later: the same account.
-  await call('POST', '/v1/auth/start', { phone: '5125550100' });
+  await call('POST', '/v1/auth/start', { phone: '5125550100', sms_consent: true });
   const again = await call('POST', '/v1/auth/verify', { phone: '5125550100', code: texts.at(-1).match(/(\d{6})/)[1] });
   const H2 = { cookie: again.headers['set-cookie'].split(';')[0] };
   assert.equal((await call('GET', '/v1/me', undefined, H2)).body.user.shipping.postal_code, '78701');
@@ -140,12 +140,31 @@ test('sign in with a texted code: its own account, autofill line, STOP respected
 test('texted code in test mode shows on screen; opted-out numbers are refused', async (t) => {
   const db = openDb(':memory:');
   const { call } = app(t, { db });
-  const r = await call('POST', '/v1/auth/start', { phone: '5125550100' });
+  const r = await call('POST', '/v1/auth/start', { phone: '5125550100', sms_consent: true });
   assert.equal(r.body.sent, 'screen');
   assert.match(r.body.code, /^\d{6}$/);
   // STOP normally arrives through the Twilio webhook.
   db.optouts.add('+15125550177');
-  const stopped = await call('POST', '/v1/auth/start', { phone: '512-555-0177' });
+  const stopped = await call('POST', '/v1/auth/start', { phone: '512-555-0177', sms_consent: true });
   assert.equal(stopped.status, 409);
   assert.match(stopped.body.error, /replied STOP/);
+});
+
+test('texts need the consent box ticked, and /texts shows the opt-in without signing in', async (t) => {
+  const { call } = app(t);
+  const no = await call('POST', '/v1/auth/start', { phone: '5125550123' });
+  assert.equal(no.status, 400);
+  assert.match(no.body.error, /Tick the box/);
+  assert.equal((await call('POST', '/v1/auth/start', { phone: '5125550123', sms_consent: 'yes' })).status, 400, 'only a real yes counts');
+  assert.equal((await call('POST', '/v1/auth/start', { phone: '5125550123', sms_consent: true })).status, 200);
+
+  const page = await call('GET', '/texts');
+  assert.equal(page.status, 200);
+  const html = String(page.body);
+  assert.match(html, /<input type="tel" id="phone"[^>]*required/, 'the phone field shows without clicking anything');
+  assert.match(html, /<label class="agree" id="smsOkBox"><input type="checkbox" id="smsOk">/, 'an unticked box, not hidden');
+  assert.match(html, /I agree to receive texts from Spot\..*Msg frequency varies\. Msg &amp; data rates may apply\. Reply HELP for help, STOP to opt out\./);
+  assert.match(html, /href="\/terms#texts"/);
+  assert.match(html, /href="\/privacy"/);
+  assert.match(String((await call('GET', '/signin')).body), /id="smsOkBox" hidden/, 'on /signin it shows with the Text option');
 });

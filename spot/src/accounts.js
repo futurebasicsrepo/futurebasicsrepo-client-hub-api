@@ -1,6 +1,7 @@
 // Accounts: sign in with a code sent to your email (no passwords).
 //
 //   POST /v1/auth/start   { email }         → emails a 6-digit code (10 min, 5 tries)
+//                         { phone, sms_consent: true } → texts it (the box ticked)
 //   POST /v1/auth/verify  { email, code }   → session cookie (30 days)
 //   POST /v1/auth/logout
 //   GET  /v1/me                             → profile, Spots, "ready for you", keys
@@ -121,6 +122,14 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     return { email };
   };
 
+  // Texts need the person's yes: the unticked "I agree to receive texts"
+  // box next to every phone field. Kept with the number, as the carriers'
+  // record of consent.
+  const smsConsent = (req, phone, source) => {
+    if (req.body?.sms_consent !== true) throw new CartError('Tick the box to agree to texts from Spot, or use email instead.');
+    db.state.set(`sms_consent:${phone}`, { at: Date.now(), ip: req.ip, source });
+  };
+
   const smsReady = () => Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM);
 
   app.post('/v1/auth/start', async (req) => {
@@ -128,6 +137,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (req.body?.phone !== undefined) {
       const phone = normalizePhone(req.body.phone);
       if (!phone) throw new CartError('That number looks wrong. Include the area code.');
+      smsConsent(req, phone, 'signin');
       limit(`ip:${req.ip}`, 20, 3600_000);
       limit(`phone:${phone}`, 5, 3600_000);
       if (db.optouts.has(phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number, or sign in with email.', 409);
@@ -208,6 +218,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     limit(`link:${user.id}`, 10, 3600_000);
     limit(`${to.phone ? 'phone' : 'email'}:${value}`, 5, 3600_000);
     if (to.phone && db.optouts.has(to.phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number first.', 409);
+    if (to.phone) smsConsent(req, to.phone, 'account');
     const code = newCode(`link:${user.id}:${value}`);
     if (to.phone) {
       if (provider.name === 'sandbox' && !smsReady()) return { sent: 'screen', code };
