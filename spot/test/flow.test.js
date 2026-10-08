@@ -143,10 +143,19 @@ test('a failed card issue leaves the cart paid and is retried', async (t) => {
   t.after(() => app.close());
   const a = (await call('POST', '/v1/carts', cartBody())).body;
   assert.equal((await call('POST', `/v1/carts/${a.cart.token}/sandbox-pay`, {})).body.cart.status, 'paid');
+  const view = () => call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  // The page checks every few seconds; the issuer is only retried once a minute.
+  for (let i = 0; i < 3; i++) await view();
+  let m = await view();
+  assert.equal(m.body.cart.status, 'paid');
+  assert.equal(m.body.events.filter((e) => e.kind === 'issue_failed').length, 1, 'not retried on every view');
   fail = false;
-  const m = await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`);
+  assert.equal((await view()).body.cart.status, 'paid', 'still waiting out the minute');
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now + 61_000);
+  m = await view();
   assert.equal(m.body.cart.status, 'card_issued');
-  assert.ok(m.body.events.some((e) => e.kind === 'issue_failed'));
+  assert.equal(m.body.events.filter((e) => e.kind === 'issue_failed').length, 1);
 });
 
 // A Stripe-shaped provider around the sandbox, recording what would move.
