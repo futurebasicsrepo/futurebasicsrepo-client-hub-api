@@ -145,10 +145,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!B.BY[it.id]) return null;
     return { kind: "coffee", id: it.id, size: +it.size === 5 ? 5 : +it.size < 1 ? .25 : 1, roast: it.roast || RC, grind: it.grind || "Whole Bean", qty: Math.max(1, +it.qty || 1) };
   }
+  function pt(t) { try { return new Date(new Date(t).toLocaleString("en-US", { timeZone: "America/Los_Angeles" })); } catch (x) { return new Date(t); } }
   function ago(t) { var m = Math.round((Date.now() - t) / 6e4); return m < 2 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; }
   var DEMO_ORDERS = [], DEMO_APPS = [], DEMO_SAMPLES = [], DEMO_SIGNUPS = 0, DEMO_GIFTS = [];
   DEMO.forEach(function (e, k) {
-    var d = e.data, base = { mine: true, at: e.at, placed: new Date(e.at), no: "YOU-" + (DEMO.length - k) };
+    var d = e.data, base = { mine: true, at: e.at, placed: pt(e.at), no: "YOU-" + (DEMO.length - k) };
     var who = { name: d.name || d.contact || d.business || "You", first: (d.name || "there").split(" ")[0], ship: d.address ? String(d.address).split(",").slice(-2).join(",").trim() || "Your address" : "Your address", local: "Guerneville", sms: true };
     if (e.type === "order") {
       var items = (d.items || []).map(normItem).filter(Boolean);
@@ -786,7 +787,9 @@ document.addEventListener("DOMContentLoaded", function () {
     ACCTS.forEach(function (a, k) {
       [1, 2].forEach(function (w) {
         var issued = B.addDays(NOW, -7 * w - int(r, 0, 2)), due = B.addDays(issued, a.terms), amt = Math.round(acctWeekly(a) * a.ppl * (a.every === 2 ? 2 : 1));
-        var no = "INV-" + (n + k * 2 + w), st = S.paid[no] ? "paid" : due < day0(NOW) ? (k === 2 || k === 5 ? "overdue" : "paid") : (r() < .3 ? "paid" : "due");
+        var no = "INV-" + (n + k * 2 + w), late = w === 2 && (k === 2 || k === 4);
+        if (late) due = B.addDays(day0(NOW), -int(r, 4, 9));
+        var st = S.paid[no] ? "paid" : late ? "overdue" : due < day0(NOW) ? "paid" : "due";
         if (amt > 0 && (st !== "paid" || w === 1)) out.push({ no: no, a: a, amt: amt, due: due, st: st });
       });
     });
@@ -803,6 +806,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // =====================================================================
   // CUSTOMERS & TEXTS
   // =====================================================================
+  var LOWYOU = null;
   function lowList() {
     var r = rng(hash("low" + TODAY)), out = [];
     PEOPLE.slice(0, 60).forEach(function (p) {
@@ -812,7 +816,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     DEMO_ORDERS.filter(function (o) { return o.ch === "web" || o.ch === "willcall"; }).slice(0, 1).forEach(function (o) {
       var it = o.items.filter(function (i) { return i.kind === "coffee"; })[0]; if (!it) return; var R = roastOf(o.roast), o2 = B.addDays(R.d, Math.round(it.size * it.qty / .06) + 3);
-      out.unshift({ p: { name: o.who.name, first: o.who.first, drinkers: 1, sms: true }, id: it.id, size: it.size * it.qty, last: R.d, out: o2, until: dd(NOW, o2), mine: o });
+      var mx = { p: { name: o.who.name, first: o.who.first, drinkers: 1, sms: true }, id: it.id, size: it.size * it.qty, last: R.d, out: o2, until: dd(NOW, o2), mine: o }; if (mx.until <= 6) out.unshift(mx); else LOWYOU = mx;
     });
     return out.sort(function (a, b) { return !!b.mine - !!a.mine || a.until - b.until; }).slice(0, 12);
   }
@@ -824,7 +828,7 @@ document.addEventListener("DOMContentLoaded", function () {
     $("#low-list").innerHTML = '<table class="tbl stack"><thead><tr><th>Customer</th><th>Last bag</th><th>Ordered</th><th>Runs out</th><th><span class="sr">Action</span></th></tr></thead><tbody>' + L.map(function (x, i) {
       var sent = S.sent["low:" + x.p.name];
       return '<tr class="' + (x.mine ? "mine" : "") + '"><td class="lead who"><b>' + esc(x.p.name) + "</b> " + (x.mine ? '<span class="you">You</span>' : '<span class="smp">sample</span>') + '<span class="tiny">' + plural(x.p.drinkers, "drinker") + (x.p.sms ? " · texts OK" : " · email only") + '</span></td><td data-l="Last bag">' + thumb(x.id, x.size) + " " + sizeTxt(x.size) + " " + esc(B.BY[x.id].short) + '</td><td data-l="Ordered" class="mono small">' + B.fmt(x.last) + '</td><td data-l="Runs out"><b class="' + (x.until <= 0 ? "red" : "") + '">' + (x.until < 0 ? "~" + plural(-x.until, "day") + " ago" : x.until === 0 ? "today" : "in " + plural(x.until, "day")) + '</b><span class="tiny">' + B.fmt(x.out) + '</span></td><td class="act"><button class="btn btn-sm ' + (sent ? "btn-ghost" : "btn-red") + '" type="button" data-low="' + i + '">' + (sent ? "Sent ✓" : x.p.sms ? "Send reorder text" : "Send reorder email") + "</button></td></tr>";
-    }).join("") + "</tbody></table>";
+    }).join("") + "</tbody></table>" + (LOWYOU ? '<p class="tiny you-note"><span class="you">You</span> ' + esc(LOWYOU.p.name) + ": your " + sizeTxt(LOWYOU.size) + " " + esc(B.BY[LOWYOU.id].short) + " roasts " + B.fmt(LOWYOU.last) + ". At one drinker that lasts until about " + B.fmt(LOWYOU.out, true) + ", so the nudge goes out that week.</p>" : "");
     // reviews: orders shipped from the roast ~1 week ago (arrived ~5 days ago)
     var R = PREV.filter(function (r) { var a = dd(B.addDays(r.ship, 2), NOW); return a >= 4 && a <= 7; })[0] || PREV[2];
     var rv = ordersFor(R).filter(function (o) { return o.ch === "web" || o.ch === "sub"; }).slice(0, 6);
@@ -886,7 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
       ["Free-ship hit", Math.round(hit * 100) + "%", "of shipped web orders ≥ $60"]
     ].map(kpi).join("");
     var lab = { web: "Web (shipped)", willcall: "Will-call", sub: "Subscriptions", market: "Markets", wholesale: "Wholesale" };
-    $("#in-rev").innerHTML = hbars(Object.keys(rev).sort(function (a, b) { return rev[b] - rev[a]; }).map(function (k) { return { k: lab[k], v: rev[k] }; }), money) + '<figcaption class="tiny">Roasts on ' + wkRoasts.map(function (r) { return r.label; }).join(" + ") + " and this week's markets. Sample.</figcaption>";
+    $("#in-rev").innerHTML = hbars(Object.keys(rev).sort(function (a, b) { return rev[b] - rev[a]; }).map(function (k) { return { k: lab[k], v: rev[k] }; }), money) + '<figcaption class="tiny">Roasts on ' + wkRoasts.slice().sort(function (a, b) { return a.d - b.d; }).map(function (r) { return r.label; }).join(" + ") + " and this week's markets. Sample.</figcaption>";
     $("#in-coffee").innerHTML = hbars(B.COFFEES.filter(function (c) { return byC[c.id]; }).sort(function (a, b) { return byC[b.id] - byC[a.id]; }).map(function (c) { return { k: '<span class="sw" style="background:' + c.c + '"></span>' + esc(c.short), v: byC[c.id] }; }), lb) + '<figcaption class="tiny">Roasted pounds, ' + B.MON[NOW.getMonth()] + " 1 to today, every channel.</figcaption>";
   }
 
