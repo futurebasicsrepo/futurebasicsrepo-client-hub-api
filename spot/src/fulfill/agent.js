@@ -95,6 +95,7 @@ const TOOLS = [
 ];
 
 export function systemPrompt(cart, shipping, billing = null) {
+  if (cart.kind === 'train') return trainPrompt(cart, shipping, billing);
   const items = cart.items.map((i) => `- ${i.quantity} × ${i.title}${i.variant ? ` (${i.variant})` : ''} — ${usd(i.price_cents)} each${i.url ? `\n  ${i.url}` : ''}`).join('\n');
   return `You complete an online checkout on behalf of ${cart.requester.name}, whose friend has already paid for this cart. Work like a careful person doing guest checkout.
 
@@ -115,6 +116,34 @@ Rules:
 - Payment: always use fill_payment for card fields; never type card details. ${billing ? `If the store asks for a billing address, use the card's: ${billing.line1}, ${billing.city}, ${billing.state} ${billing.postal_code}, United States (uncheck "same as shipping").` : 'If the store asks for a billing address, use the same as shipping.'}
 - When only the final place-order / pay button is left, call ready_to_place_order with the exact total shown. Never click that button yourself.
 - If the total is above the card limit, an item is unavailable or different, a CAPTCHA or login blocks you, or anything is unclear, call need_human with a short reason.
+- Dismiss cookie banners and popups when they get in the way. Each tool result shows the current page; refs change after every action, so always use refs from the latest ELEMENTS list.`;
+}
+
+// Buying one specific train: no cart or shipping, just the right train,
+// fare and riders, with the e-ticket emailed to the riders.
+function trainPrompt(cart, ticket, billing) {
+  const t = cart.train;
+  const riders = ticket.riders.map((r, i) => `${i + 1}. ${r.given_name} ${r.family_name}`).join('\n');
+  return `You buy a train ticket on behalf of ${cart.requester.name}, who has already paid Spot for it. Work like a careful person booking as a guest.
+
+Operator: ${cart.merchant.name}${cart.merchant.url ? ` (${cart.merchant.url})` : ''}
+Train: ${t.service || ''}${t.number ? ` ${t.number}` : ''}, one-way, from ${t.from} to ${t.to}
+Date and departure: ${t.depart_at.slice(0, 10)} at ${t.depart_at.slice(11)} (local station time)${t.arrive_at ? `, arriving ${t.arrive_at.slice(11)}` : ''}
+Fare class: ${t.fare_class} (or the cheapest fare in that class)
+Passengers (${t.passengers} adult${t.passengers > 1 ? 's' : ''}), names exactly as given:
+${riders}
+Email for the e-ticket: ${ticket.email}${ticket.phone ? `\nPhone: ${ticket.phone}` : ''}
+Expected fare: ${usd(cart.cart_cents)} in total.
+
+The payment card is Spot's one-time card, limited to ${usd(authLimitCents(cart.cart_cents))} in total.
+
+Rules:
+- Search for exactly this one-way trip, pick the train that departs at that time (and number, if given), and choose that fare class. Never pick a different train, date or station.
+- Book as a guest. Never create an account, log in, join a rewards program, or tick marketing / newsletter / SMS opt-ins.
+- No seat upgrades, trip insurance, flexible-fare add-ons, parking, meals or donations. Skip optional seat selection.
+- Payment: always use fill_payment for card fields; never type card details. ${billing ? `If asked for a billing address, use the card's: ${billing.line1}, ${billing.city}, ${billing.state} ${billing.postal_code}, United States.` : ''}
+- When only the final purchase / pay button is left, call ready_to_place_order with the exact total shown. Never click that button yourself.
+- If that train is sold out, the fare is above the card limit, a CAPTCHA or login blocks you, or anything is unclear, call need_human with a short reason.
 - Dismiss cookie banners and popups when they get in the way. Each tool result shows the current page; refs change after every action, so always use refs from the latest ELEMENTS list.`;
 }
 

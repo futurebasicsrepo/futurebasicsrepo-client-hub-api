@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { agentLabel } from './approvals.js';
 import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
+import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
 
 const ISSUE_RETRY_MS = 60_000;
@@ -124,6 +125,57 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return { cart: next, manageKey };
     },
 
+    // A specific train, found by the AI on the operator's site. Always for
+    // the asker themselves; they add who's riding, pay, and Spot buys it.
+    createTrain(input = {}, { ip, userId } = {}) {
+      const train = validateTrain(input.train);
+      const fare = Math.round(Number(input.fare_cents));
+      if (!(fare > 0)) throw new CartError('fare_cents is required: the total fare for all passengers, as shown on the operator’s site');
+      const left = minutesUntilCutoff(train);
+      if (left < 5) throw new CartError('That train leaves too soon for Spot to buy it. Pick a later one.', 410);
+      const asked = input.expires_minutes ? Number(input.expires_minutes) : null;
+      const minutes = Math.min(...[left, asked, 72 * 60].filter((x) => Number.isFinite(x) && x > 0));
+      const op = String(input.merchant?.name || 'Amtrak').slice(0, 60);
+      const url = input.merchant?.url || (op.toLowerCase() === 'amtrak' ? 'https://www.amtrak.com' : null);
+      const { cart, manageKey } = this.create(
+        {
+          requester: input.requester,
+          merchant: { name: op, url },
+          items: [{ title: trainTitle(op, train), variant: trainVariant(train), quantity: 1, price_cents: fare, ...(train.booking_url ? { url: train.booking_url } : {}) }],
+          note: input.note,
+          settle: 'card',
+          for: 'self',
+          expires_minutes: Math.max(5, minutes),
+        },
+        { ip, userId },
+      );
+      let next = { ...cart, kind: 'train', train };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      if (input.riders?.length && input.contact) {
+        try {
+          next = this.setRidersNow(next, input.riders, input.contact);
+        } catch {
+          // Partial details from the agent: the rider fills the rest in.
+        }
+      }
+      return { cart: next, manageKey };
+    },
+
+    // Who's riding, and the email the e-ticket goes to. Instead of shipping.
+    setRiders(token, key, body = {}) {
+      return this.setRidersNow(loadManaged(token, key), body.riders, body.contact);
+    },
+    setRidersNow(cart, ridersIn, contactIn) {
+      if (cart.kind !== 'train') throw new CartError('Not a train ticket', 400);
+      if (cart.status !== 'open') throw new CartError('This ticket is already paid', 409);
+      const { riders, contact } = validateRiders(ridersIn, contactIn, cart.train.passengers);
+      const name = `${riders[0].given_name} ${riders[0].family_name}`;
+      const next = { ...cart, train: { ...cart.train, riders, contact }, requester: { ...cart.requester, email: cart.requester.email || contact.email, ticket: { name, email: contact.email, phone: contact.phone } } };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'riders_set');
+      return next;
+    },
+
     // Save who's flying and re-check the fare with the airline before the
     // traveler pays. If the price moved, the cart moves with it and the
     // page shows the new total before anyone is charged.
@@ -209,6 +261,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = loadManaged(token, key);
       if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
       if (cart.kind === 'flight') throw new CartError('Flights don\'t ship. Add who\'s flying instead.', 400);
+      if (cart.kind === 'train') throw new CartError('Train tickets don\'t ship. Add who\'s riding instead.', 400);
       const shipping = validateShipping(shippingInput);
       const next = { ...cart, requester: { ...cart.requester, shipping, email: cart.requester.email || shipping.email } };
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
@@ -266,6 +319,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already covered', 409);
       if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
+      if (cart.kind === 'train' && !cart.train.riders) throw new CartError('Add who\'s riding first', 409);
       if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
         throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take a card payment for this cart.${cart.requester.venmo || cart.requester.cashtag ? ' Send it straight to them on Venmo or Cash App instead.' : ''}`, 409);
       }
@@ -320,7 +374,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = load(token);
       if (cart.settle !== 'card' || cart.bundle_id || cart.kind === 'flight' || cart.for !== 'self') throw new CartError('This ask can’t be paid with a saved card', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This ask has expired' : 'This ask is already paid', 409);
-      if (!cart.requester?.shipping) throw new CartError('Add where it ships first', 409);
+      if (cart.kind === 'train' ? !cart.train.riders : !cart.requester?.shipping) throw new CartError(cart.kind === 'train' ? 'Add who’s riding first' : 'Add where it ships first', 409);
       if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't charge your card for it.`, 409);
       const ready = this.patch(cart.id, (c) => ({ ...c, saved_pay: how }));
       const r = await provider.chargeSaved(ready, funding, { present });
@@ -329,7 +383,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (!db.save({ ...cur, payment_ref: r.ref }, 'open')) throw new CartError('Cart changed, try again', 409);
       }
       if (r.status === 'succeeded') {
-        const payer = { name: cart.requester.name?.split(' ')[0] || null, email: cart.requester.shipping.email || null, fingerprint: funding.fingerprint || null };
+        const payer = { name: cart.requester.name?.split(' ')[0] || null, email: (cart.requester.shipping || cart.train?.contact)?.email || null, fingerprint: funding.fingerprint || null };
         return { cart: await this.paymentSucceeded({ paymentRef: r.ref, amountCents: cart.total_cents, payer, approval: how }) };
       }
       if (r.status === 'requires_action') return { cart: db.byId(cart.id), action: r.client };
@@ -857,6 +911,8 @@ export function publicCart(cart) {
     for: cart.for || 'other',
     kind: cart.kind || 'goods',
     flight: publicFlight(cart.flight),
+    // Trains: the journey only; who's riding is for the owner (ownerCart).
+    train: cart.train ? { from: cart.train.from, to: cart.train.to, depart_at: cart.train.depart_at, arrive_at: cart.train.arrive_at, service: cart.train.service, number: cart.train.number, fare_class: cart.train.fare_class, passengers: cart.train.passengers } : null,
     settle: cart.settle,
     requester: { name: cart.requester.name, venmo: cart.requester.venmo, cashtag: cart.requester.cashtag },
     merchant: cart.merchant,
@@ -897,6 +953,7 @@ export function ownerCart(cart) {
     refunded_cents: cart.refunded_cents || 0,
     refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
     travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender }) => ({ given_name, family_name, born_on, gender })) || null,
-    contact: cart.flight?.contact || null,
+    contact: cart.flight?.contact || cart.train?.contact || null,
+    riders: cart.train?.riders || null,
   };
 }

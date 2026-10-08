@@ -31,6 +31,13 @@ export function finishMessage(cart, link) {
       text: `Spot: Your flight is ready to book. ${trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. The fare only holds for a short time. Finish here: ${link}`,
     };
   }
+  if (cart.kind === 'train') {
+    const trip = cart.train ? `${cart.train.from} to ${cart.train.to}` : cart.items[0]?.title || 'your train';
+    return {
+      subject: `Your train is ready: ${trip}`,
+      text: `Spot: Your train is ready to book. ${cart.items[0]?.variant || trip}, ${cart.merchant.name}, ${usd(cart.total_cents)}. Add who's riding and finish here: ${link}`,
+    };
+  }
   const first = cart.items[0]?.title || 'your cart';
   const more = cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : '';
   return {
@@ -147,10 +154,10 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
           text: msg.text,
           html: emailLayout({
             preheader: msg.subject,
-            title: cart.kind === 'flight' ? 'Your flight is ready ✈️' : 'Your cart is ready 🛒',
+            title: cart.kind === 'flight' ? 'Your flight is ready ✈️' : cart.kind === 'train' ? 'Your train is ready 🚆' : 'Your cart is ready 🛒',
             lines: [`<b>${esc(cart.items[0]?.title)}</b><br>${esc(cart.merchant.name)} · ${usd(cart.total_cents)}`],
             cta: { label: 'Finish on your phone →', url: link },
-            note: cart.kind === 'flight' ? 'The fare only holds for a little while.' : '',
+            note: cart.kind === 'flight' ? 'The fare only holds for a little while.' : cart.kind === 'train' ? 'Add who’s riding, pay, and Spot buys the ticket. The operator emails your e-ticket.' : '',
             base: env.PUBLIC_URL,
           }),
         }).catch(() => 'failed');

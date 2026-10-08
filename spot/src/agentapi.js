@@ -375,6 +375,29 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     return view(req, spot.byId(cart.id), extra);
   }
 
+  // One specific train the AI found on the operator's site (trains.js).
+  async function createTrainAsk(req, agent, b = {}) {
+    quota(agent, 'asks', QUOTA.asks);
+    if (b.notify?.email || b.notify?.phone) quota(agent, 'messages', QUOTA.messages);
+    // Like flights: reselling travel with real money waits on a seller-of-
+    // travel decision, so live Stripe keys keep trains off unless SPOT_TRAINS_LIVE=on.
+    if (String(env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') && env.SPOT_TRAINS_LIVE !== 'on') throw new CartError('Train tickets aren’t available on Spot yet.', 403);
+    const merchant = { name: b.operator || 'Amtrak', url: b.operator_url || null };
+    gate(req, agent, { cents: Math.round(Number(b.fare_cents) || 0), storeUrl: merchant.url || (merchant.name.toLowerCase() === 'amtrak' ? 'https://www.amtrak.com' : null), merchant: merchant.name });
+    const { cart, manageKey } = spot.createTrain(
+      { requester: b.requester, merchant, train: b.train, fare_cents: b.fare_cents, note: b.note, expires_minutes: b.expires_minutes, riders: b.riders, contact: b.contact },
+      { ip: req.ip, userId: req.spotUserId },
+    );
+    spot.patch(cart.id, (c) => ({ ...c, agent }), 'agent_created');
+    note(req, agent, 'train_ask', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents });
+    const privateLink = urlFor(req, `/c/${cart.token}/manage?k=${manageKey}`);
+    const extra = { finish_link: privateLink, finish_link_note: `Private: send this only to your user. They open it on their phone, add who's riding, pay, and Spot buys the ticket; ${cart.merchant.name} emails the e-ticket.${req.spotUserId ? ' It is also waiting in their Spot account under "Ready for you".' : ''}` };
+    if (b.notify?.email || b.notify?.phone) spot.patch(cart.id, (c) => ({ ...c, notify: { email: b.notify.email || null, phone: b.notify.phone || null } }));
+    else if (req.spotUserId) spot.emit('ready', cart.id);
+    if (b.notify?.email || b.notify?.phone) extra.delivered = await notifier.sendFinishLink(spot.byId(cart.id), privateLink, { email: b.notify.email, phone: b.notify.phone });
+    return view(req, spot.byId(cart.id), extra);
+  }
+
   // One ask across several stores: one link, one payment, Spot orders
   // from each store. Always paid on Spot (never at a store directly).
   async function createBundleAsk(req, agent, b) {
@@ -532,6 +555,11 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   });
   app.post('/v1/agent/flights/asks', async (req, reply) => {
     const out = await createFlightAsk(req, agentFor(req), req.body);
+    reply.code(201);
+    return out;
+  });
+  app.post('/v1/agent/trains/asks', async (req, reply) => {
+    const out = await createTrainAsk(req, agentFor(req), req.body);
     reply.code(201);
     return out;
   });
@@ -704,6 +732,54 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
               requester: { name: a.requester_name, email: a.contact_email },
               note: a.note,
               travelers: a.travelers,
+              contact: a.contact_email || a.contact_phone ? { email: a.contact_email, phone: a.contact_phone } : undefined,
+              notify: { email: a.send_to_email, phone: a.send_to_phone },
+            }),
+          );
+        } catch (e) {
+          return fail(e);
+        }
+      },
+    );
+    server.registerTool(
+      'create_train_ask',
+      {
+        title: 'Send your user a train ticket to finish on their phone',
+        description:
+          "Buy one specific train (Amtrak, or another operator that sells tickets online) for your user. Spot doesn't search trains: find the train and its current fare on the operator's site first (e.g. amtrak.com), then pass the exact train, times, fare class and total fare. Your user gets a private link: they check the train, add who's riding (names as on ID), pay with Apple Pay or card, and Spot buys that train on the operator's site with a one-time card capped at the order. Before anything is bought they see the operator's real total and tap Place order; the operator emails the e-ticket. Times are local to the station. Check progress with get_spot_ask.",
+        inputSchema: {
+          from: z.string().describe('Departure station, e.g. "Philadelphia, PA (30th Street) - PHL"'),
+          to: z.string().describe('Arrival station, e.g. "New York, NY (Moynihan Train Hall at Penn Station) - NYP"'),
+          depart_at: z.string().describe('Local departure date and time, YYYY-MM-DDTHH:MM, e.g. 2026-10-09T05:58'),
+          arrive_at: z.string().optional().describe('Local arrival, YYYY-MM-DDTHH:MM'),
+          service: z.string().optional().describe('e.g. Northeast Regional, Acela, Keystone'),
+          train_number: z.string().optional().describe('e.g. 110'),
+          fare_class: z.string().optional().describe('e.g. Coach, Business. Default Coach'),
+          passengers: z.number().int().min(1).max(6).optional().describe('Adults. Default 1'),
+          fare_cents: z.number().int().positive().describe('Total fare for all passengers, in US cents, as shown on the operator’s site'),
+          operator: z.string().optional().describe('Default Amtrak'),
+          operator_url: z.string().url().optional().describe('Default https://www.amtrak.com'),
+          booking_url: z.string().url().optional().describe('A link that opens this search on the operator’s site, if you have one'),
+          requester_name: z.string().describe("Your user's first name"),
+          riders: z.array(z.object({ given_name: z.string(), family_name: z.string() })).max(6).optional().describe("Prefill who's riding, if you know it (one per passenger)"),
+          contact_email: z.string().optional().describe('Where the e-ticket goes'),
+          contact_phone: z.string().optional(),
+          send_to_phone: z.string().optional().describe("Text the finish link to this number. Only your user's own number, with their OK. Spot only texts numbers your user has confirmed on spotmeplease.com; otherwise also pass an email"),
+          send_to_email: z.string().optional().describe('Email the finish link here'),
+          note: z.string().max(280).optional().describe('Shown on the finish page, e.g. why you picked this train'),
+        },
+      },
+      async (a) => {
+        try {
+          return reply(
+            await createTrainAsk(req, agent, {
+              operator: a.operator,
+              operator_url: a.operator_url,
+              train: { from: a.from, to: a.to, depart_at: a.depart_at, arrive_at: a.arrive_at, service: a.service, number: a.train_number, fare_class: a.fare_class, passengers: a.passengers || 1, booking_url: a.booking_url },
+              fare_cents: a.fare_cents,
+              requester: { name: a.requester_name, email: a.contact_email },
+              note: a.note,
+              riders: a.riders,
               contact: a.contact_email || a.contact_phone ? { email: a.contact_email, phone: a.contact_phone } : undefined,
               notify: { email: a.send_to_email, phone: a.send_to_phone },
             }),

@@ -129,9 +129,9 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         const out = [{
           key: 'ordered',
           to: { email: requesterContact(cart).email },
-          subject: `📦 Ordered: ${item}`,
-          text: `${store} confirmed your order${f.order_number ? ` #${f.order_number}` : ''}. Watch your email for tracking. ${link}`,
-          html: mail({ preheader: `${store} confirmed your order`, title: '📦 Ordered!', lines: [`${esc(store)} confirmed your order${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
+          subject: cart.kind === 'train' ? `🚆 Booked: ${item}` : `📦 Ordered: ${item}`,
+          text: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` #${f.order_number}` : ''}. ${cart.kind === 'train' ? `${store} emails your e-ticket.` : 'Watch your email for tracking.'} ${link}`,
+          html: mail({ preheader: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}`, title: cart.kind === 'train' ? '🚆 Booked!' : '📦 Ordered!', lines: [`${esc(store)} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, cart.kind === 'train' ? `${esc(store)} emails your e-ticket. Show it on your phone when you board.` : 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
         }];
         if (cart.for !== 'self' && cart.payer_contact?.email) {
           out.push({
@@ -176,7 +176,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           ...(tap ? { sms: `Spot: Your AI assistant requested ${item} from ${store}, ${usd(cart.total_cents)}. Review and approve it here: ${link}` } : {}),
           html: cart.saved_card
             ? mail({ preheader: `One tap pays with your ${cart.saved_card.label}`, title: 'Approve what your AI picked? 🤖', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, `Tap Approve and your ${esc(cart.saved_card.label)} pays. Spot gets a card just for this order, capped at this amount and locked to ${esc(store)}, and orders it for you.`, 'Nothing is charged unless you tap.'], cta: { label: `Approve ${usd(cart.total_cents)} →`, url: link } })
-            : mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
+            : mail({ preheader: 'Your AI put this together for you', title: cart.kind === 'flight' ? 'Your AI found a flight ✈️' : cart.kind === 'train' ? 'Your AI found a train 🚆' : 'Your AI has a cart ready 🛒', lines: [`<b>${esc(item)}</b><br>${esc(store)} · ${usd(cart.total_cents)}`, cart.kind === 'flight' ? 'The fare only holds for a little while.' : 'Check it, tap pay, and Spot handles the rest.'], cta: { label: 'Finish →', url: link } }),
         }];
       }
       case 'receipt': {
