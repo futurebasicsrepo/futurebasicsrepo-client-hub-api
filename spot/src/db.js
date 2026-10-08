@@ -251,6 +251,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     revokeKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ?'),
     addKey: db.prepare('INSERT INTO api_keys (hash, name, email, created_at) VALUES (?, ?, ?, ?)'),
     keyByHash: db.prepare('SELECT name, email, revoked, user_id FROM api_keys WHERE hash = ?'),
+    keyByName: db.prepare('SELECT name, email, revoked, user_id FROM api_keys WHERE name = ?'),
     keysByUser: db.prepare('SELECT name, created_at, revoked, rules FROM api_keys WHERE user_id = ? ORDER BY created_at DESC'),
     revokeUserKey: db.prepare('UPDATE api_keys SET revoked = 1 WHERE name = ? AND user_id = ?'),
     userByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
@@ -451,6 +452,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    keyByName: (name) => q.keyByName.get(name) || null,
     issuing: {
       // True if this transaction is new (a webhook can arrive twice).
       add: (t) => db.prepare('INSERT OR IGNORE INTO issuing_txns (id, cart_id, "authorization", type, amount_cents, merchant, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(t.id, t.cart_id, t.authorization ?? null, t.type, t.amount_cents, t.merchant ?? null, Date.now()).changes === 1,

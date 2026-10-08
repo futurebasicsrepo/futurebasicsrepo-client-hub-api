@@ -1,0 +1,355 @@
+// "Add Spot" in Claude or ChatGPT: OAuth sign-in for the MCP server, so
+// nobody copies a key. Spot is the authorization server for its own /mcp.
+//
+//   GET  /.well-known/oauth-protected-resource[/mcp]   → where to sign in (RFC 9728)
+//   GET  /.well-known/oauth-authorization-server       → the endpoints below (RFC 8414)
+//   POST /oauth/register   → the AI app registers itself (RFC 7591, dynamic)
+//   GET  /oauth/authorize  → sign in, then "Claude wants to shop with Spot"
+//   POST /oauth/authorize  → Allow / Cancel from that page (JSON, signed in)
+//   POST /oauth/token      → code + PKCE → tokens; refresh_token → new tokens
+//   POST /oauth/revoke
+//
+// Each Allow makes one of the account's AI keys (named after the app), so its
+// rules, activity, kill switch and Disconnect work like any pasted key. The
+// app gets a 1-hour access token and a refresh token that rotates on every
+// use; disconnecting the key ends both. Only SHA-256 hashes are stored.
+// Authorization codes last 10 minutes, work once, and need PKCE (S256).
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { sessionUserId } from './accounts.js';
+import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
+
+const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
+const b64sha = (s) => createHash('sha256').update(String(s)).digest('base64url');
+const token = (prefix) => `${prefix}${randomBytes(32).toString('base64url')}`;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+const CODE_TTL = 10 * 60_000;
+const ACCESS_TTL = 3600;
+const REFRESH_TTL = 90 * 86400_000;
+const SCOPE = 'spot';
+
+// Apps people will recognize by where they send you back.
+const KNOWN = [
+  { name: 'Claude', hosts: ['claude.ai', 'claude.com'] },
+  { name: 'ChatGPT', hosts: ['chatgpt.com', 'chat.openai.com', 'openai.com'] },
+];
+const hostOf = (u) => {
+  try {
+    return new URL(u).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+export function appFor(client, redirectUri) {
+  const host = hostOf(redirectUri);
+  const known = KNOWN.find((k) => k.hosts.some((h) => host === h || host.endsWith(`.${h}`)));
+  if (known) return { name: known.name, verified: true, host };
+  const name = String(client?.client_name || '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'An AI app';
+  return { name, verified: false, host };
+}
+
+// https anywhere, or http only back to this computer (desktop apps).
+function okRedirect(u) {
+  let url;
+  try {
+    url = new URL(u);
+  } catch {
+    return false;
+  }
+  if (url.hash) return false;
+  if (url.protocol === 'https:') return true;
+  return url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+}
+
+// An access token from this flow → the AI key it stands for, or null.
+export function oauthKey(db, bearer) {
+  if (!String(bearer).startsWith('spot_at_')) return null;
+  const t = db.state.get(`oauth_at:${sha(bearer)}`);
+  if (!t || t.exp < Date.now()) return null;
+  const row = db.keyByName(t.key);
+  return row && !row.revoked ? row : null;
+}
+
+export function registerMcpAuth(app, { db, urlFor }) {
+  const origin = (req) => urlFor(req, '');
+  const resource = (req) => urlFor(req, '/mcp');
+  const fail = (reply, status, error, error_description) => reply.code(status).header('cache-control', 'no-store').send({ error, error_description });
+  const cors = (reply) => reply.header('access-control-allow-origin', '*').header('access-control-allow-headers', 'authorization, content-type, mcp-protocol-version').header('access-control-allow-methods', 'GET, POST, OPTIONS');
+
+  const hits = new Map();
+  const limited = (key, max, windowMs) => {
+    const now = Date.now();
+    const h = hits.get(key);
+    if (!h || h.until < now) {
+      hits.set(key, { n: 1, until: now + windowMs });
+      if (hits.size > 5000) for (const [k, v] of hits) if (v.until < now) hits.delete(k);
+      return false;
+    }
+    return ++h.n > max;
+  };
+
+  // Discovery. The path-suffixed forms are what newer clients ask for first.
+  const prm = (req) => ({ resource: resource(req), authorization_servers: [origin(req)], scopes_supported: [SCOPE], bearer_methods_supported: ['header'], resource_name: 'Spot', resource_documentation: urlFor(req, '/integrations#mcp') });
+  const asm = (req) => ({
+    issuer: origin(req),
+    authorization_endpoint: urlFor(req, '/oauth/authorize'),
+    token_endpoint: urlFor(req, '/oauth/token'),
+    registration_endpoint: urlFor(req, '/oauth/register'),
+    revocation_endpoint: urlFor(req, '/oauth/revoke'),
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+    revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
+    scopes_supported: [SCOPE],
+    service_documentation: urlFor(req, '/integrations#mcp'),
+  });
+  for (const p of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp']) {
+    app.get(p, async (req, reply) => cors(reply).header('cache-control', 'public, max-age=300').send(prm(req)));
+  }
+  for (const p of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp', '/.well-known/openid-configuration']) {
+    app.get(p, async (req, reply) => cors(reply).header('cache-control', 'public, max-age=300').send(asm(req)));
+  }
+  for (const p of ['/oauth/register', '/oauth/token', '/oauth/revoke']) app.options(p, async (req, reply) => cors(reply).code(204).send());
+
+  // The header that starts sign-in when /mcp has no usable token.
+  const challenge = (req) => `Bearer resource_metadata="${urlFor(req, '/.well-known/oauth-protected-resource')}", scope="${SCOPE}"`;
+
+  // ── Registration ──────────────────────────────────────────────────────────
+  app.post('/oauth/register', async (req, reply) => {
+    cors(reply);
+    if (limited(`reg:${req.ip}`, 20, 3600_000)) return fail(reply, 429, 'invalid_client_metadata', 'Too many registrations, try again later');
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const uris = Array.isArray(b.redirect_uris) ? b.redirect_uris.map(String) : [];
+    if (!uris.length || uris.length > 10 || !uris.every(okRedirect)) return fail(reply, 400, 'invalid_redirect_uri', 'redirect_uris must be https (or http://localhost)');
+    const method = b.token_endpoint_auth_method || 'none';
+    if (!['none', 'client_secret_post', 'client_secret_basic'].includes(method)) return fail(reply, 400, 'invalid_client_metadata', 'Unsupported token_endpoint_auth_method');
+    const grants = b.grant_types || ['authorization_code', 'refresh_token'];
+    if (!Array.isArray(grants) || grants.some((g) => !['authorization_code', 'refresh_token'].includes(g))) return fail(reply, 400, 'invalid_client_metadata', 'Only authorization_code and refresh_token are supported');
+    const id = `spc_${randomBytes(16).toString('base64url')}`;
+    const secret = method === 'none' ? null : token('spcs_');
+    const client = {
+      client_name: String(b.client_name || '').slice(0, 100) || null,
+      client_uri: typeof b.client_uri === 'string' ? b.client_uri.slice(0, 300) : null,
+      redirect_uris: uris,
+      token_endpoint_auth_method: method,
+      grant_types: grants,
+      secret_hash: secret ? sha(secret) : null,
+      created_at: Date.now(),
+    };
+    db.state.set(`oauth_client:${id}`, client);
+    // Leave out empty fields: strict clients reject nulls.
+    const { secret_hash, created_at, ...rest } = client;
+    const pub = Object.fromEntries(Object.entries(rest).filter(([, v]) => v != null));
+    reply.code(201).header('cache-control', 'no-store');
+    return { client_id: id, client_id_issued_at: Math.floor(created_at / 1000), ...(secret ? { client_secret: secret, client_secret_expires_at: 0 } : {}), ...pub, response_types: ['code'], scope: SCOPE };
+  });
+
+  const clientOf = (id) => (typeof id === 'string' && id.startsWith('spc_') ? db.state.get(`oauth_client:${id}`) : null);
+
+  // Everything about an authorize request that must hold before we show the
+  // page or redirect anywhere. A bad client or redirect is shown, never followed.
+  function checkAuthorize(q, req) {
+    const client = clientOf(q.client_id);
+    if (!client) return { page: 'This app isn’t registered with Spot. Remove Spot from the app and add it again.' };
+    const redirectUri = String(q.redirect_uri || (client.redirect_uris.length === 1 ? client.redirect_uris[0] : ''));
+    if (!client.redirect_uris.includes(redirectUri)) return { page: 'This sign-in link doesn’t match the app that registered. Remove Spot from the app and add it again.' };
+    const back = (error, error_description) => {
+      const u = new URL(redirectUri);
+      u.searchParams.set('error', error);
+      if (error_description) u.searchParams.set('error_description', error_description);
+      if (q.state) u.searchParams.set('state', String(q.state));
+      u.searchParams.set('iss', origin(req));
+      return { redirect: u.toString() };
+    };
+    if (q.response_type !== 'code') return back('unsupported_response_type', 'Only response_type=code');
+    if (q.code_challenge_method !== 'S256' || !/^[A-Za-z0-9._~-]{43,128}$/.test(String(q.code_challenge || ''))) return back('invalid_request', 'PKCE with S256 is required');
+    if (q.scope && !String(q.scope).split(/\s+/).every((s) => s === SCOPE || s === '')) return back('invalid_scope', `Only "${SCOPE}"`);
+    if (q.resource && ![resource(req), origin(req), `${origin(req)}/`].includes(String(q.resource))) return back('invalid_target', 'Unknown resource');
+    return { client, redirectUri, back };
+  }
+
+  app.get('/oauth/authorize', async (req, reply) => {
+    const q = req.query || {};
+    const c = checkAuthorize(q, req);
+    if (c.page) return page(reply, errorPage(origin(req), c.page), 400);
+    if (c.redirect) return reply.redirect(c.redirect);
+    const userId = sessionUserId(db, req);
+    const user = userId && db.users.byId(userId);
+    if (!user) return reply.redirect(`/signin?next=${encodeURIComponent(req.url)}`);
+    const appInfo = appFor(c.client, c.redirectUri);
+    return page(reply, consentPage({ origin: origin(req), app: appInfo, who: user.email || user.phone || 'your account', params: pick(q) }));
+  });
+
+  // Allow or Cancel, from the page above. JSON only, so another site can't
+  // submit it for a signed-in visitor.
+  app.post('/oauth/authorize', async (req, reply) => {
+    if (!String(req.headers['content-type'] || '').startsWith('application/json')) return reply.code(415).send({ error: 'JSON only' });
+    const b = req.body || {};
+    const c = checkAuthorize(b.params || {}, req);
+    if (c.page) return reply.code(400).send({ error: c.page });
+    if (c.redirect) return { redirect: c.redirect };
+    const userId = sessionUserId(db, req);
+    const user = userId && db.users.byId(userId);
+    if (!user) return reply.code(401).send({ error: 'Sign in first' });
+    if (b.allow !== true) return { redirect: c.back('access_denied', 'You canceled').redirect };
+    if (limited(`grant:${user.id}`, 20, 3600_000)) return reply.code(429).send({ error: 'Too many connections in an hour. Try again later.' });
+    const code = token('spot_code_');
+    db.state.set(`oauth_code:${sha(code)}`, { client_id: b.params.client_id, redirect_uri: c.redirectUri, challenge: String(b.params.code_challenge), user_id: user.id, app: appFor(c.client, c.redirectUri).name, exp: Date.now() + CODE_TTL });
+    const u = new URL(c.redirectUri);
+    u.searchParams.set('code', code);
+    if (b.params.state) u.searchParams.set('state', String(b.params.state));
+    u.searchParams.set('iss', origin(req));
+    return { redirect: u.toString() };
+  });
+
+  // ── Tokens ────────────────────────────────────────────────────────────────
+  // Basic or post client auth for apps that registered a secret.
+  function clientAuth(req, b) {
+    let id = b.client_id;
+    let secret = b.client_secret;
+    const m = /^Basic\s+(.+)$/i.exec(req.headers.authorization || '');
+    if (m) {
+      const raw = Buffer.from(m[1], 'base64').toString('utf8');
+      const i = raw.indexOf(':');
+      if (i > 0) {
+        try {
+          id = decodeURIComponent(raw.slice(0, i));
+          secret = decodeURIComponent(raw.slice(i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+    const client = clientOf(id);
+    if (!client) return null;
+    if (client.secret_hash) {
+      if (typeof secret !== 'string') return null;
+      const a = Buffer.from(sha(secret), 'hex');
+      const e = Buffer.from(client.secret_hash, 'hex');
+      if (!timingSafeEqual(a, e)) return null;
+    }
+    return { id, client };
+  }
+
+  function issue(key, userId, clientId) {
+    const access = token('spot_at_');
+    const refresh = token('spot_rt_');
+    db.state.set(`oauth_at:${sha(access)}`, { key, user_id: userId, client_id: clientId, exp: Date.now() + ACCESS_TTL * 1000 });
+    db.state.set(`oauth_rt:${sha(refresh)}`, { key, user_id: userId, client_id: clientId, exp: Date.now() + REFRESH_TTL });
+    return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL, refresh_token: refresh, scope: SCOPE };
+  }
+
+  app.post('/oauth/token', async (req, reply) => {
+    cors(reply).header('cache-control', 'no-store').header('pragma', 'no-cache');
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    if (limited(`tok:${req.ip}`, 60, 60_000)) return fail(reply, 429, 'invalid_request', 'Too many requests');
+    const auth = clientAuth(req, b);
+    if (!auth) return fail(reply, 401, 'invalid_client', 'Unknown client or wrong secret');
+
+    if (b.grant_type === 'authorization_code') {
+      const k = `oauth_code:${sha(b.code || '')}`;
+      const grant = db.state.get(k);
+      if (grant) db.state.set(k, null); // once, even if what follows fails
+      if (!grant || grant.exp < Date.now() || grant.client_id !== auth.id) return fail(reply, 400, 'invalid_grant', 'That code is expired or already used');
+      if (b.redirect_uri && b.redirect_uri !== grant.redirect_uri) return fail(reply, 400, 'invalid_grant', 'redirect_uri doesn’t match');
+      if (typeof b.code_verifier !== 'string' || b64sha(b.code_verifier) !== grant.challenge) return fail(reply, 400, 'invalid_grant', 'PKCE check failed');
+      const user = db.users.byId(grant.user_id);
+      if (!user) return fail(reply, 400, 'invalid_grant', 'That account is gone');
+      // One of the account's AI keys, the same as one made on the account page.
+      const slug = grant.app.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'my-ai';
+      const name = `${slug}-${randomBytes(3).toString('hex')}`;
+      db.addKey(sha(token('spot_')), name, user.email || user.phone || 'unknown', user.id);
+      db.agentEvents.add(`key:${name}`, user.id, 'connected', { via: grant.app });
+      return issue(name, user.id, auth.id);
+    }
+
+    if (b.grant_type === 'refresh_token') {
+      const k = `oauth_rt:${sha(b.refresh_token || '')}`;
+      const rt = db.state.get(k);
+      if (!rt || rt.exp < Date.now() || rt.client_id !== auth.id) return fail(reply, 400, 'invalid_grant', 'Sign in to Spot again');
+      const row = db.keyByName(rt.key);
+      db.state.set(k, null);
+      if (!row || row.revoked) return fail(reply, 400, 'invalid_grant', 'This app was disconnected from Spot. Sign in again to reconnect.');
+      return issue(rt.key, rt.user_id, auth.id);
+    }
+
+    return fail(reply, 400, 'unsupported_grant_type', 'Use authorization_code or refresh_token');
+  });
+
+  app.post('/oauth/revoke', async (req, reply) => {
+    cors(reply).header('cache-control', 'no-store');
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const auth = clientAuth(req, b);
+    if (!auth) return fail(reply, 401, 'invalid_client', 'Unknown client or wrong secret');
+    const t = String(b.token || '');
+    for (const kind of ['oauth_rt', 'oauth_at']) {
+      const k = `${kind}:${sha(t)}`;
+      const v = db.state.get(k);
+      if (v && v.client_id === auth.id) db.state.set(k, null);
+    }
+    return reply.code(200).send({});
+  });
+
+  return { challenge };
+}
+
+const PARAMS = ['response_type', 'client_id', 'redirect_uri', 'code_challenge', 'code_challenge_method', 'state', 'scope', 'resource'];
+const pick = (q) => Object.fromEntries(PARAMS.filter((p) => q[p] != null).map((p) => [p, String(q[p])]));
+
+function page(reply, body, code = 200) {
+  return reply.code(code).type('text/html; charset=utf-8').header('cache-control', 'no-store').header('x-frame-options', 'DENY').header('content-security-policy', "frame-ancestors 'none'").header('referrer-policy', 'no-referrer').header('x-robots-tag', 'noindex').send(body);
+}
+
+const CSS = `
+.oa{max-width:480px;margin:40px auto 64px;padding:0 16px}
+.oa .card{background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:26px 24px}
+.oa h1{font-size:clamp(26px,6vw,34px);letter-spacing:-.025em;line-height:1.1;margin:0 0 8px}
+.oa .who{color:var(--muted);margin:0 0 18px}.oa .who b{color:var(--ink)}
+.oa ul{margin:0 0 18px;padding:0;list-style:none}.oa li{padding:10px 0 10px 30px;border-top:1px solid var(--line);position:relative}
+.oa li::before{content:"✓";position:absolute;left:4px;top:10px;color:var(--ok);font-weight:800}
+.oa li.no::before{content:"✕";color:var(--muted)}
+.oa .warn{background:color-mix(in srgb,var(--spot2) 30%,transparent);border-radius:12px;padding:10px 12px;font-size:14px;margin:0 0 16px}
+.oa .btns{display:flex;gap:10px;flex-wrap:wrap}.oa .btns .btn{flex:1;min-width:140px;justify-content:center}
+.oa .fine{font-size:13px;color:var(--muted);margin:14px 0 0}
+.oa .err{color:#c0362c;min-height:1.2em;margin:10px 0 0}
+.oa .linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
+`;
+
+export function consentPage({ origin, app, who, params }) {
+  const n = esc(app.name);
+  return `${siteHead({ title: `Connect ${app.name} · Spot`, desc: `Let ${app.name} shop with your Spot account.`, origin, path: '/oauth/authorize', extraCss: CSS })}
+${siteNav('')}
+<main class="oa"><div class="card">
+  <h1>${n} wants to shop with Spot</h1>
+  <p class="who">Signed in as <b>${esc(who)}</b> · <button type="button" class="linkbtn" id="switch">Not you?</button></p>
+  ${app.verified ? '' : `<p class="warn">Spot can’t confirm who made this app. Only allow it if you just added Spot to it yourself. You’ll go back to <b>${esc(app.host)}</b>.</p>`}
+  <ul>
+    <li>Find things and put carts together for you</li>
+    <li>Ask you, or someone you choose, to pay for them</li>
+    <li>Follow the rules you set: limits, stores, who approves</li>
+    <li class="no">See your card or charge it without your rules</li>
+  </ul>
+  <div class="btns"><button class="btn primary" id="allow">Allow</button><button class="btn ghost" id="deny">Cancel</button></div>
+  <p class="err" id="err" role="alert"></p>
+  <p class="fine">It shows up under “Your AI” in your account, where you can set rules or disconnect it any time.</p>
+</div></main>
+${siteFooter()}
+<script>(()=>{${SITE_JS}})();</script>
+<script>(()=>{const P=${JSON.stringify(params).replace(/</g, '\\u003c')};
+const go=async(allow)=>{document.querySelectorAll('.btns .btn').forEach(b=>b.disabled=true);
+try{const r=await fetch('/oauth/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({params:P,allow})});const j=await r.json();
+if(j.redirect){location.href=j.redirect;return}throw new Error(j.error||'Something went wrong')}catch(e){document.getElementById('err').textContent=e.message;document.querySelectorAll('.btns .btn').forEach(b=>b.disabled=false)}};
+document.getElementById('allow').onclick=()=>go(true);document.getElementById('deny').onclick=()=>go(false);
+document.getElementById('switch').onclick=async()=>{await fetch('/v1/auth/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/signin?next='+encodeURIComponent(location.pathname+location.search)};
+})();</script>
+</body></html>`;
+}
+
+function errorPage(origin, msg) {
+  return `${siteHead({ title: 'Can’t connect · Spot', desc: 'Connecting an AI app to Spot', origin, path: '/oauth/authorize', extraCss: CSS })}
+${siteNav('')}
+<main class="oa"><div class="card"><h1>Can’t connect this app</h1><p class="who">${esc(msg)}</p><p class="fine"><a href="/integrations#mcp">How to add Spot to Claude or ChatGPT</a></p></div></main>
+${siteFooter()}
+</body></html>`;
+}

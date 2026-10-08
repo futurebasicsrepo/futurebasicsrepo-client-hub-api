@@ -26,6 +26,7 @@ import { ownerCart, publicBundle, publicCart, storesLabel } from './spot.js';
 import { emailLayout } from './notify.js';
 import { approverOf, checkRules, monthStart } from './rules.js';
 import { aiStopped, cardLabel, fundingOf } from './funding.js';
+import { oauthKey } from './mcpauth.js';
 
 function apiKeys(env) {
   const out = [];
@@ -36,7 +37,7 @@ function apiKeys(env) {
   return out;
 }
 
-export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals }) {
+export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env, urlFor, capture, db, approvals, mcpChallenge }) {
   const approvals_ = approvals;
   const keys = apiKeys(env);
   const selfServe = env.SPOT_OPEN_KEYS !== 'off';
@@ -45,6 +46,12 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     if (!keys.length && !selfServe) throw new CartError('The agent API is not enabled on this server', 401);
     if (!m) throw new CartError('Missing API key (Authorization: Bearer …). Get one free at /integrations#mcp', 401);
+    // A token from "Add Spot" in Claude or ChatGPT (mcpauth.js) stands for one of the account's keys.
+    const viaOauth = db && oauthKey(db, m[1].trim());
+    if (viaOauth) {
+      req.spotUserId = viaOauth.user_id || null;
+      return `key:${viaOauth.name}`;
+    }
     const h = createHash('sha256').update(m[1].trim()).digest();
     const hit = keys.find((k) => timingSafeEqual(k.hash, h));
     if (hit) return hit.name;
@@ -714,6 +721,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     try {
       agent = agentFor(req);
     } catch (e) {
+      // Tells Claude/ChatGPT where to sign in (mcpauth.js).
+      if (mcpChallenge) reply.header('www-authenticate', mcpChallenge(req));
       return reply.code(401).send({ jsonrpc: '2.0', error: { code: -32001, message: e.message }, id: null });
     }
     const server = mcpServer(req, agent);
