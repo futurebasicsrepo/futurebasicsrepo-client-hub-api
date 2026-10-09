@@ -16,7 +16,7 @@ import { COMING_SOON, integrationsPage } from './integrations.js';
 import { extensionZip, EXTENSION_VERSION } from './extension.js';
 import { createSpot, ownerCart, publicBundle, publicCart } from './spot.js';
 import { createFulfiller } from './fulfill/index.js';
-import { registerAgentApi } from './agentapi.js';
+import { registerAgentApi, shareMessage } from './agentapi.js';
 import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
@@ -530,6 +530,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
+  app.post('/v1/carts/:token/manage/reassign', async (req) => {
+    const cart = spot.reassign(req.params.token, keyOf(req));
+    const link = urlFor(req, `/c/${cart.token}`);
+    return { cart: ownerCart(cart), link, share_message: shareMessage(cart, link) };
+  });
   app.post('/v1/carts/:token/manage/riders', async (req) => ({ cart: ownerCart(spot.setRiders(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/travelers', async (req) => {
     const { cart, price_changed } = await spot.setTravelers(req.params.token, keyOf(req), req.body || {});
