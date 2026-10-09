@@ -639,19 +639,8 @@ function pElec(n){
 // The checks come from the product's category; the right-hand column reads the numbers out of this pack, so nobody has to hunt for them.
 function pChecks(n){
   const p=S.pack,st=p.style,C=window.FBCat;if(!C)return '';
-  const group=C.groupOf(st.category,st.styleName||(S.product&&S.product.title)||''),sample=st.sampleSize||'';
-  const set=C.SAMPLE_CHECKS[group]||C.SAMPLE_CHECKS.other,tolOf=r=>r.tolerance?`${r.code?r.code+' ':''}${r.tolerance}`:'';
-  const calls=p.sketches.reduce((a,sk)=>a+sk.callouts.length,0),placed=(p.artwork||[]).reduce((a,x)=>a+x.placements.filter(q=>q.widthIn).length,0);
-  const from={
-    measure:()=>p.pom.length?`${p.pom.length} points of measure at size ${sample||'—'}. Tolerances: ${[...new Set(p.pom.map(r=>r.tolerance).filter(Boolean))].join(', ')||'not set'}`:'',
-    colour:()=>(p.colorways||[]).length?p.colorways.map(c=>`${c.name}${c.code?' · '+c.code:''}`).join(' / '):'',
-    materials:()=>p.bom.length?`${p.bom.length} items: ${p.bom.slice(0,4).map(r=>r.component).filter(Boolean).join(', ')}${p.bom.length>4?'…':''}`:'',
-    callouts:()=>calls?`${calls} callouts across ${p.sketches.filter(x=>x.callouts.length).length} view${p.sketches.filter(x=>x.callouts.length).length===1?'':'s'}`:'',
-    sizes:()=>p.sizes.length>1?`Size run ${p.sizes.join(' · ')}`:'',
-    labels:()=>(p.labels||[]).length?(p.labels||[]).map(l=>l.item).slice(0,5).join(', '):'',
-    artwork:()=>placed?`${placed} placement${placed===1?'':'s'} with a stated width`:''
-  };
-  const rowsFor=k=>[...C.GENERIC[k].map(g=>({check:g.check,pack:(from[g.from]||(()=>''))()})),...set[k].map(c=>({check:c,pack:''}))];
+  const sample=st.sampleSize||'';
+  const rowsFor=k=>C.checkRows(p,k);
   const stages=[['first','First sample'],['fit','Fit and pre-production sample'],['final','Before it ships']];
   const block=(k,name,i)=>`<div class="ckb"><h3 class="mini">${i+1}. ${esc(name)}</h3><table class="ptb chk"><thead><tr><th class="bx"></th><th class="w3">Check</th><th class="w2">From this pack</th><th class="pf">Pass</th><th class="pf">Fail</th><th class="w2">Measured or noted</th></tr></thead><tbody>${rowsFor(k).map(r=>`<tr><td class="bx"><i class="tick"></i></td><td><b>${esc(r.check)}</b></td><td class="psub2">${esc(r.pack)}</td><td class="pf"><i class="tick"></i></td><td class="pf"><i class="tick"></i></td><td></td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="pg sec">${pHead(n,'Sample room checks',`${esc(C.labelOf(st.category,st.styleName))}${sample?' · sample size <b>'+esc(sample)+'</b>':''} · tick as you go`)}${stages.map(([k,name],i)=>block(k,name,i)).join('')}<div class="ckfoot"><span>Sample reference</span><span>Checked by</span><span>Date</span><span>Result</span></div></div>`;

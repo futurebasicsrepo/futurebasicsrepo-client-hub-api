@@ -592,6 +592,21 @@ await journey('J57', 'the handoff from submission to delivery: every step names 
   const fd = new FormData(); fd.append('file', new Blob([Buffer.from(jpeg().split(',')[1], 'base64')], { type: 'image/jpeg' }), 'sample.jpg');
   const asset = await call(`/v1/admin/products/${id}/assets?name=Sample%20photos&kind=sample`, { method: 'POST', token: admin, raw: fd });
   ok(asset.status === 201, 'staff upload the sample photos', [asset.status, asset.json.error]);
+  { // the product's folder: every version of the tech pack as a PDF, what staff upload, and one zip of it all
+    let list = {}; for (let i = 0; i < 60; i++) { list = (await call(`/v1/products/${id}/files`, { token: tok })).json; if ((list.groups || []).find(g => g.key === 'techpack')?.items.length >= 3 && !list.pending) break; await sleep(500); }
+    const g = k => (list.groups || []).find(x => x.key === k)?.items || [];
+    ok(g('techpack').length === 3 && g('techpack').filter(i => i.latest).length === 1 && /v3/.test(g('techpack').find(i => i.latest).label), 'the folder holds a PDF of every published version of the tech pack, with the latest marked', g('techpack').map(i => [i.label, i.latest]));
+    ok(g('design').some(i => /Sample photos/.test(i.label)), 'the sample photos staff uploaded are in it, without anyone filing them', g('design').map(i => i.label));
+    ok(sql(`select count(*) from notifications where client_id='${cid}' and type='file' and entity_id='${id}'`) !== '0', 'the client is told when something new lands in the folder');
+    const one = await call(g('techpack')[0].url, { token: tok }); ok(one.status === 200 && /pdf/.test(one.ct) && one.text.startsWith('%PDF'), 'a file downloads on its own', [one.status, one.ct]);
+    const zp = await call(`/v1/products/${id}/files.zip`, { token: tok }); ok(zp.status === 200 && /zip/.test(zp.ct) && zp.text.startsWith('PK') && zp.text.includes('README.txt') && zp.text.includes('1 Tech pack') && zp.text.includes('3 Design files') && zp.text.length > 20000, 'the whole folder downloads as one zip, laid out by folder', [zp.status, zp.ct, zp.text.length]);
+    ok((await call(`/v1/products/${id}/files`)).status === 401 && (await call(`/v1/products/${id}/files.zip`)).status === 401, 'and it needs a sign-in');
+    const fd2 = new FormData(); fd2.append('file', new Blob([Buffer.from(jpeg().split(',')[1], 'base64')], { type: 'image/jpeg' }), 'sample2.jpg');
+    ok((await call(`/v1/admin/assets/${asset.json.asset.id}/versions`, { method: 'POST', token: admin, raw: fd2 })).status === 201, 'staff upload a revision of the sample photos');
+    list = (await call(`/v1/products/${id}/files`, { token: tok })).json; const sp = g('design').filter(i => /Sample photos/.test(i.label));
+    ok(sp.length === 2 && sp.filter(i => i.latest).length === 1, 'the revision is in the folder by itself and the first one is marked as an earlier version', sp.map(i => [i.label, i.latest]));
+    const zp2 = await call(`/v1/products/${id}/files.zip`, { token: tok }); ok(zp2.text.includes('Sample-photos-v2') && zp2.text.length > zp.text.length, 'and in the next zip');
+  }
   const ap = await adm(`/v1/admin/products/${id}/approvals`, { method: 'POST', body: { title: 'Approve the sample', kind: 'sample', assetVersionId: asset.json.version.id } });
   w = at(); const wa = (await waiting()).find(x => x.kind === 'approval'); ok(ap.status === 201 && w.stage === 'approval' && w.owner === 'client' && wa && wa.title === 'Approve the sample', 'a sample approval waits on the client in their list', [ap.status, w, wa]);
   ok((await call(`/v1/approvals/${ap.json.id}/decision`, { method: 'POST', token: tok, body: { decision: 'approved' } })).status === 200, 'the client approves the sample');

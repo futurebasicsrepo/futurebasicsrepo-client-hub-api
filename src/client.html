@@ -65,6 +65,8 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
 .thread{gap:4px}.thread .bubble{border:0;border-radius:19px;padding:9px 14px;font-size:14.5px;line-height:1.38;background:#ebebef;color:var(--ink)}.thread .bubble.client{background:var(--ink);color:#fff}.thread .bubble.admin{margin-right:auto}
 .thread .bubble .meta{font-size:10px;margin-bottom:3px;opacity:.65}.thread .bubble-actions button{border-color:transparent;text-decoration:underline;padding:2px 0;font-size:11px}
 @media(max-width:700px){#thread.project-conversation{padding:18px 12px}#thread .fbchat-panel{border-radius:20px}}
+.pfold{margin:14px 0;padding:16px 18px;border:1px solid var(--line,#d8d8d4);border-radius:22px;background:#fff}.pfold-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.pfold-head b{display:block;font-weight:500;font-size:16px}.pfold-head small{display:block;color:#6d6a63;margin-top:2px;max-width:46ch}.pfold-head .btn{padding:9px 16px;border-radius:999px;background:var(--ink);color:#fff;border:0;font-size:13px;cursor:pointer;white-space:nowrap}
+.pfold details{margin-top:10px;border-top:1px solid var(--line,#e4e2dc);padding-top:8px}.pfold summary{cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#555;padding:4px 0}.pfold-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #eeede8}.pfold-row:last-child{border-bottom:0}.pfold-row .ext{display:grid;place-items:center;height:30px;border-radius:8px;background:#f1f0eb;font:500 10px 'IBM Plex Mono',monospace;color:#444;letter-spacing:.04em}.pfold-row .nm b{display:block;font-weight:500;font-size:14px;overflow-wrap:anywhere}.pfold-row .nm small{display:block;color:#7a776f;font-size:12px}.pfold-row button{border:1px solid var(--line,#d8d8d4);background:#fff;border-radius:999px;padding:6px 14px;font-size:12.5px;cursor:pointer}.pfold-row .old{display:inline-block;margin-left:6px;padding:0 7px;border-radius:99px;background:#f1f0eb;color:#6d6a63;font-size:11px}.pfold-wait{margin:10px 0 0;color:#6d6a63;font-size:13px}
 .done-chip{display:inline-block;padding:1px 9px;border-radius:999px;background:#e3f3e8;color:#17653a;font-weight:600;font-size:.92em}
 </style>
 <link rel="stylesheet" href="/chat.css">
@@ -182,6 +184,17 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
     function renderWaiting(){const items=(dashboard.waiting||[]),preview=state.textContent==='read-only preview';waiting.classList.toggle('hidden',!items.length);
       waiting.innerHTML=items.length?`<div class="wait-head"><span class="meta">${items.length} decision${items.length===1?'':'s'} waiting</span><h2>Waiting on you</h2></div><div class="wait-list${preview?' preview':''}">${items.map(waitingCard).join('')}</div>`:''}
     // The product's own file: its tech pack, the reference picture, the colourways (each with its Pantone C codes) and the 3D shape, with the card's blank fields filled from the pack.
+    const fmtBytes=n=>!n?'':n<1024?n+' B':n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB';
+    function folderHtml(pid,f){
+      if(!f||(!f.count&&!f.pending))return '';
+      const when=d=>new Date(d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}),row=i=>`<div class="pfold-row"><span class="ext">${esc((i.name.split('.').pop()||'').toUpperCase().slice(0,4))}</span><span class="nm"><b>${esc(i.label)}${i.latest?'':'<i class="old">earlier version</i>'}</b><small>${[i.version?'v'+i.version:'',when(i.at),fmtBytes(i.bytes)].filter(Boolean).join(' · ')}${i.note?' · '+esc(i.note):''}</small></span><button type="button" onclick="downloadFolderFile('${esc(i.url)}','${esc(i.name)}')">Download</button></div>`;
+      return `<section class="pfold"><div class="pfold-head"><span><span class="meta">Your files</span><b>${f.count} file${f.count===1?'':'s'}${f.bytes?' · '+fmtBytes(f.bytes):''}</b><small>Everything we make for this product, in one place. New versions and uploads appear here on their own.</small></span>${f.count?`<button class="btn" type="button" onclick="downloadFolderZip('${esc(pid)}')">Download all (.zip)</button>`:''}</div>${f.pending?'<p class="pfold-wait">Making the tech pack PDF… it appears here in a moment.</p>':''}${f.groups.map((g,i)=>`<details ${i<2?'open':''}><summary>${esc(g.title)} · ${g.items.length}</summary>${g.items.map(row).join('')}</details>`).join('')}</section>`;
+    }
+    window.downloadFolderFile=(url,name)=>authenticatedDownload(url,name).catch(e=>alert(e.message));
+    window.downloadFolderZip=pid=>authenticatedDownload('/v1/products/'+pid+'/files.zip').catch(e=>alert(e.message));
+    async function hydrateFolder(el,pid){
+      try{const f=await api(`/v1/products/${pid}/files`);const box=el.querySelector('.pfold-slot')||el.appendChild(Object.assign(document.createElement('div'),{className:'pfold-slot'}));box.innerHTML=folderHtml(pid,f);if(f.pending)setTimeout(()=>{if(document.body.contains(el))hydrateFolder(el,pid)},5000)}catch{}
+    }
     const pfileCache=new Map();
     function productFileHtml(pid,v,{strip=false}={}){
       if(!v||v.visible===false)return '';
@@ -203,6 +216,7 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
         fill('material',v.details?.material);fill('colourways',(v.details?.colourways||[]).map(c=>c.name+(c.code?' ('+c.code+')':'')).join(', '));fill('sizes',v.details?.sizes?.length?v.details.sizes:null);
         if(v.working)setTimeout(()=>{el.dataset.ready='';pfileCache.delete(pid);if(document.body.contains(el))hydrateProductFile(el)},6000)
       }catch{el.innerHTML=''}
+      hydrateFolder(el,pid);
     }
     new MutationObserver(()=>document.querySelectorAll('.pfile:not([data-ready])').forEach(hydrateProductFile)).observe(document.body,{childList:true,subtree:true});
     function renderTechPacks(){const items=(dashboard.products||[]).filter(p=>techPackState(p));techpacks.classList.toggle('hidden',!items.length);

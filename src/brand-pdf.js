@@ -22,8 +22,8 @@ export const fmtDate = d => { if (!d) return ''; const v = d instanceof Date ? d
 
 // A document with the brand fonts registered and a letterhead and footer on every page.
 // kind: the document's name in the header ("Invoice", "Project collection"); ref: its number or project; footerNote: one line of context.
-export function brandDoc({ title, kind, ref, footerNote, subject, size = PAGE.size, margin = PAGE.margin }) {
-  const doc = new PDFDocument({ size, margin, bufferPages: true, info: { Title: safe(title), Author: 'Future Basics', Subject: subject || kind, Creator: 'Future Basics hub' } });
+export function brandDoc({ title, kind, ref, footerNote, subject, size = PAGE.size, margin = PAGE.margin, layout = 'portrait' }) {
+  const doc = new PDFDocument({ size, layout, margin, bufferPages: true, info: { Title: safe(title), Author: 'Future Basics', Subject: subject || kind, Creator: 'Future Basics hub' } });
   doc.registerFont('SG', fp('SpaceGrotesk-Regular.ttf')); doc.registerFont('SG-M', fp('SpaceGrotesk-Medium.ttf')); doc.registerFont('SG-B', fp('SpaceGrotesk-Bold.ttf'));
   doc.registerFont('MONO', fp('IBMPlexMono-Regular.ttf')); doc.registerFont('MONO-M', fp('IBMPlexMono-Medium.ttf'));
   const chunks = []; doc.on('data', c => chunks.push(c));
@@ -82,26 +82,42 @@ export function pill(b, text, x, y, color) {
 }
 
 // A table with a heading row that repeats on every page, zebra rows and rows that are never split across pages.
-// cols: [{ h, w (fraction), align, mono, bold }]; rows: arrays of strings.
+// cols: [{ h, w (fraction), align, mono, bold, fill (cell colour), headFill, small (header second line) }]
+// rows: arrays of cells; a cell is a string or { t, sub, bold } (a value with a smaller line beneath it, e.g. inches over centimetres).
 export function table(b, cols, rows, { y, fontSize = 10, pad = 7, head = true } = {}) {
   const { doc, L, CW } = b; const total = cols.reduce((s, c) => s + c.w, 0), widths = cols.map(c => CW * c.w / total);
   let cy = y ?? doc.y;
+  const parts = c => (c && typeof c === 'object') ? c : { t: c };
   const drawHead = () => {
     if (!head) return;
-    doc.rect(L, cy, CW, 22).fill(INK);
     let x = L;
-    cols.forEach((c, i) => { doc.fillColor('#fff').font('MONO-M').fontSize(7.5).text(safe(c.h).toUpperCase(), x + 8, cy + 7, { width: widths[i] - 16, align: c.align || 'left', characterSpacing: .8, lineBreak: false }); x += widths[i]; });
-    cy += 22;
+    cols.forEach((c, i) => { doc.rect(x, cy, widths[i], 24).fill(c.headFill || INK); x += widths[i]; });
+    x = L;
+    cols.forEach((c, i) => {
+      doc.fillColor('#fff').font('MONO-M').fontSize(7.5).text(safe(c.h).toUpperCase(), x + 6, cy + (c.small ? 5 : 8), { width: widths[i] - 12, align: c.align || 'left', characterSpacing: .8, lineBreak: false });
+      if (c.small) doc.fillColor('#d7efe0').font('MONO').fontSize(6.5).text(safe(c.small).toUpperCase(), x + 6, cy + 14, { width: widths[i] - 12, align: c.align || 'left', characterSpacing: .8, lineBreak: false });
+      x += widths[i];
+    });
+    cy += 24;
   };
   drawHead();
   rows.forEach((r, ri) => {
-    doc.fontSize(fontSize);
-    const hs = r.map((cell, i) => { b.font(cols[i].bold ? 'SG-B' : cols[i].mono ? 'MONO' : 'SG', cell); return doc.heightOfString(safe(cell), { width: widths[i] - 16 }); });
+    const hs = r.map((cell, i) => { const c = parts(cell), col = cols[i]; b.font(c.bold || col.bold ? 'SG-B' : col.mono ? 'MONO' : 'SG', c.t); doc.fontSize(fontSize);
+      let h = (c.box || c.line) ? (c.line ? 22 : 10) : doc.heightOfString(safe(c.t), { width: widths[i] - 12 - (c.swatch ? 16 : 0) }); if (c.sub) { doc.font('SG').fontSize(fontSize - 2.5); h += doc.heightOfString(safe(c.sub), { width: widths[i] - 12 }) + 1.5; } return h; });
     const h = Math.max(...hs) + pad * 2;
     if (cy + h > b.bodyBottom) { doc.addPage(); cy = b.bodyTop; drawHead(); }
-    if (ri % 2) doc.rect(L, cy, CW, h).fill(FOG);
     let x = L;
-    r.forEach((cell, i) => { const c = cols[i]; doc.fillColor(INK); b.font(c.bold ? 'SG-B' : c.mono ? 'MONO' : 'SG', cell).fontSize(fontSize).text(safe(cell), x + 8, cy + pad, { width: widths[i] - 16, align: c.align || 'left' }); x += widths[i]; });
+    cols.forEach((c, i) => { if (c.fill) doc.rect(x, cy, widths[i], h).fill(c.fill); else if (ri % 2) doc.rect(x, cy, widths[i], h).fill(FOG); x += widths[i]; });
+    x = L;
+    r.forEach((cell, i) => {
+      const c = parts(cell), col = cols[i];
+      if (c.box) { const bs = 10; doc.roundedRect(x + widths[i] / 2 - bs / 2, cy + pad, bs, bs, 2).lineWidth(1).strokeColor(INK).stroke(); x += widths[i]; return; }
+      if (c.line) { doc.moveTo(x + 6, cy + h - pad - 2).lineTo(x + widths[i] - 6, cy + h - pad - 2).lineWidth(.8).strokeColor(INK).stroke(); x += widths[i]; return; }
+      const off = c.swatch ? 16 : 0; if (c.swatch) doc.circle(x + 12, cy + pad + fontSize / 2, 5).lineWidth(.6).fillAndStroke(c.swatch, '#666');
+      doc.fillColor(INK); b.font(c.bold || col.bold ? 'SG-B' : col.mono ? 'MONO' : 'SG', c.t).fontSize(fontSize).text(safe(c.t), x + 6 + off, cy + pad, { width: widths[i] - 12 - off, align: col.align || 'left' });
+      if (c.sub) doc.fillColor(DIM).font('SG').fontSize(fontSize - 2.5).text(safe(c.sub), x + 6, doc.y + 1.5, { width: widths[i] - 12, align: col.align || 'left' });
+      x += widths[i];
+    });
     doc.moveTo(L, cy + h).lineTo(L + CW, cy + h).lineWidth(.5).strokeColor(LINE).stroke();
     cy += h;
   });

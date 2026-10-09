@@ -194,7 +194,25 @@
     return out;
   };
 
-  const api = { GENERIC, allChecks, FAMILIES, matchFamily, familyOf, groupOf, GROUP_OF, LABEL, PLUSH_POM, JEWELRY_POM, SEED, STAGES, SAMPLE_CHECKS, labelOf: (category, title) => LABEL[groupOf(category, title)] };
+  // The rows of one stage's checklist: the generic checks with the numbers read out of this pack, then the category's own.
+  function checkRows(pack, stage) {
+    const p = pack, st = p.style || {}, sample = st.sampleSize || '', sketches = p.sketches || [];
+    const group = groupOf(st.category, st.styleName), set = SAMPLE_CHECKS[group] || SAMPLE_CHECKS.other;
+    const calls = sketches.reduce((a, sk) => a + sk.callouts.length, 0), views = sketches.filter(x => x.callouts.length).length;
+    const placed = (p.artwork || []).reduce((a, x) => a + x.placements.filter(q => q.widthIn).length, 0);
+    const from = {
+      measure: () => (p.pom || []).length ? `${p.pom.length} points of measure at size ${sample || '—'}. Tolerances: ${[...new Set(p.pom.map(r => r.tolerance).filter(Boolean))].join(', ') || 'not set'}` : '',
+      colour: () => (p.colorways || []).length ? p.colorways.map(c => `${c.name}${c.code ? ' · ' + c.code : ''}`).join(' / ') : '',
+      materials: () => (p.bom || []).length ? `${p.bom.length} items: ${p.bom.slice(0, 4).map(r => r.component).filter(Boolean).join(', ')}${p.bom.length > 4 ? '…' : ''}` : '',
+      callouts: () => calls ? `${calls} callouts across ${views} view${views === 1 ? '' : 's'}` : '',
+      sizes: () => (p.sizes || []).length > 1 ? `Size run ${p.sizes.join(' · ')}` : '',
+      labels: () => (p.labels || []).length ? p.labels.map(l => l.item).slice(0, 5).join(', ') : '',
+      artwork: () => placed ? `${placed} placement${placed === 1 ? '' : 's'} with a stated width` : ''
+    };
+    return [...GENERIC[stage].map(g => ({ check: g.check, pack: (from[g.from] || (() => ''))() })), ...set[stage].map(c => ({ check: c, pack: '' }))];
+  }
+
+  const api = { checkRows, GENERIC, allChecks, FAMILIES, matchFamily, familyOf, groupOf, GROUP_OF, LABEL, PLUSH_POM, JEWELRY_POM, SEED, STAGES, SAMPLE_CHECKS, labelOf: (category, title) => LABEL[groupOf(category, title)] };
   root.FBCat = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
