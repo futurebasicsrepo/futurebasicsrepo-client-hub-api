@@ -381,6 +381,8 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       unique(asset_id,version)
     );
+    alter table asset_versions add column if not exists uploader_role text;
+    update asset_versions av set uploader_role=u.role from users u where u.id=av.uploader_id and av.uploader_role is null;
     alter table assets add column if not exists approved_version_id uuid references asset_versions(id);
     alter table approvals add column if not exists asset_version_id uuid references asset_versions(id);
     create table if not exists comments (

@@ -23,6 +23,9 @@ const clip = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const kindOf = (category = '', title = '') => {
   const t = `${category} ${title}`.toLowerCase();
   if (/(shoe|sneaker|runner|boot|sandal|loafer|clog|slipper|footwear|trainer|cleat)/.test(t)) return 'footwear';
+  if (/(plush|stuffed|teddy|stuffie|doll\b)/.test(t)) return 'plush';
+  if (/(ring|necklace|bracelet|earring|pendant|anklet|brooch|jewel)/.test(t)) return 'jewelry';
+  if (/(power ?bank|charger|speaker|earbud|headphone|bluetooth|wireless|battery|usb|led )/.test(t)) return 'electronics';
   if (/(bag|tote|backpack|duffel|pouch|wallet|purse)/.test(t)) return 'bag';
   if (/(cap|hat|beanie|headwear|visor|bucket)/.test(t)) return 'headwear';
   if (/(jacket|coat|parka|vest|outerwear|anorak|windbreaker)/.test(t)) return 'outerwear';

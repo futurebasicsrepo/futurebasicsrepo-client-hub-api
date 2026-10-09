@@ -252,6 +252,8 @@ html,body{background:#fff!important;padding:0!important}.top,.tabs,.toast,.nopri
 #printDoc .eg-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 18px}#printDoc .eg{break-inside:avoid}
 #printDoc table.ec td{font-size:11.5px}
 #printDoc .refs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}#printDoc .refs figure{margin:0;border:.75pt solid #999;border-radius:4px;overflow:hidden;break-inside:avoid}#printDoc .refs img{display:block;width:100%;height:62mm;object-fit:contain;background:#f3f2ee}
+#printDoc .ckb{break-inside:avoid;margin-bottom:6px}#printDoc table.chk td{padding:8px 8px}#printDoc table.chk td.bx,#printDoc table.chk th.bx{width:9mm;text-align:center}#printDoc table.chk td.pf,#printDoc table.chk th.pf{width:12mm;text-align:center}#printDoc .tick{display:inline-block;width:4.2mm;height:4.2mm;border:1.1pt solid #000;border-radius:1mm;vertical-align:middle}#printDoc table.chk td b{font-size:12px;font-weight:600}#printDoc .psub2{font-size:10.5px;color:#333}
+#printDoc .ckfoot{display:grid;grid-template-columns:repeat(4,1fr);gap:10mm;margin-top:10mm}#printDoc .ckfoot span{border-top:1pt solid #000;padding-top:2mm;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:#555}
 /* sign-off */
 #printDoc table.sigs td{padding:12px 8px;font-size:12px}#printDoc .sline{height:26px;border-bottom:1pt solid #000}#printDoc .ak{color:#0b6b3e;font-weight:700}
 }
@@ -279,7 +281,7 @@ table.tp[data-tbl="bom"] td{border-bottom-color:rgba(20,20,22,.12)}
 <script src="/tp-i18n.js"></script>
 <script src="/tp-units.js"></script>
 <script src="/pantone-c.js"></script>
-<script src="/elec.js"></script>
+<script src="/elec.js"></script><script src="/categories.js"></script>
 <script src="/chat.js"></script>
 <script>
 (()=>{
@@ -632,6 +634,18 @@ function pElec(n){
     ${e.stages.length?`<h3 class="mini">Build stages</h3>`+pTable('ec',[{h:'Stage',f:r=>`<b>${PX(r.stage)}</b>`},{h:'Units',f:r=>PX(r.qty)},{h:'Status',f:r=>PX(r.status)},{h:'Proves',cls:'w3',f:r=>PX(r.goal)},{h:'Moves on when',cls:'w3',f:r=>PX(r.exit)}],e.stages):''}</div>`;
 }
 
+
+// The sample room's checklist: what to look at, in the order the work arrives (first sample, fit and pre-production sample, before it ships).
+// The checks come from the product's category; the right-hand column reads the numbers out of this pack, so nobody has to hunt for them.
+function pChecks(n){
+  const p=S.pack,st=p.style,C=window.FBCat;if(!C)return '';
+  const sample=st.sampleSize||'';
+  const rowsFor=k=>C.checkRows(p,k);
+  const stages=[['first','First sample'],['fit','Fit and pre-production sample'],['final','Before it ships']];
+  const block=(k,name,i)=>`<div class="ckb"><h3 class="mini">${i+1}. ${esc(name)}</h3><table class="ptb chk"><thead><tr><th class="bx"></th><th class="w3">Check</th><th class="w2">From this pack</th><th class="pf">Pass</th><th class="pf">Fail</th><th class="w2">Measured or noted</th></tr></thead><tbody>${rowsFor(k).map(r=>`<tr><td class="bx"><i class="tick"></i></td><td><b>${esc(r.check)}</b></td><td class="psub2">${esc(r.pack)}</td><td class="pf"><i class="tick"></i></td><td class="pf"><i class="tick"></i></td><td></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="pg sec">${pHead(n,'Sample room checks',`${esc(C.labelOf(st.category,st.styleName))}${sample?' · sample size <b>'+esc(sample)+'</b>':''} · tick as you go`)}${stages.map(([k,name],i)=>block(k,name,i)).join('')}<div class="ckfoot"><span>Sample reference</span><span>Checked by</span><span>Date</span><span>Result</span></div></div>`;
+}
+
 function pRefs(n){
   const p=S.pack,refs=p.sketches.filter(x=>x.image&&!x.callouts.length&&!/^cutout-/.test(String(x.id||'')));if(!refs.length)return '';
   return `<div class="pg sec">${pHead(n,'Reference pictures')}<div class="refs">${refs.map(x=>`<figure><img src="${x.image}" alt=""><figcaption>${PX(x.view)}${x.label?' · '+PX(x.label):''}</figcaption></figure>`).join('')}</div></div>`;
@@ -651,7 +665,7 @@ function buildPrint(){
   const p=S.pack,pr=S.product||{},st=p.style||{},r=readiness(),quote=MODE==='factory'&&S.view?.quoteMode;
   const title=st.styleName||pr.title||'Tech pack';
   // the order a sample room works in: what it is, the details that matter, the colours, what it is made of, how big, how it is sewn, then the print, labels and the rest
-  const defs=[['Design details',pDesign],['Colourways',pColour],['Materials & trims',pBom],['Measurements',pPoms],['Construction',pConstruction],['Labels, packaging & care',n=>pFinish(n,(S.pack.construction||[]).length>0)],['Artwork',pArtwork],['Electronics',pElec],['Reference pictures',pRefs],['Sign-off',pSign]];
+  const defs=[['Design details',pDesign],['Colourways',pColour],['Materials & trims',pBom],['Measurements',pPoms],['Construction',pConstruction],['Labels, packaging & care',n=>pFinish(n,(S.pack.construction||[]).length>0)],['Artwork',pArtwork],['Electronics',pElec],['Sample room checks',pChecks],['Reference pictures',pRefs],['Sign-off',pSign]];
   // number only the sections that exist, so the contents list and the page headings always agree
   const sections=[];let n=0;
   for(const [name,fn] of defs){const html=fn('00');if(!html)continue;n++;const num=String(n).padStart(2,'0');sections.push({title:name,n:num,html:html.split('class="sn">00<').join(`class="sn">${num}<`)})}

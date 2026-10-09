@@ -33,6 +33,7 @@ import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraft
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
 import { invoicePdf, collectionPdf } from './docs-pdf.js';
+import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -314,7 +315,7 @@ async function clientForEmail(email,q=pool){
     order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
 }
 
-async function storeAssetVersion(asset,userId,part,notes){
+async function storeAssetVersion(asset,userId,part,notes,role=null){
   const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   const client=await pool.connect();
@@ -323,8 +324,8 @@ async function storeAssetVersion(asset,userId,part,notes){
     await client.query('begin');
     const version=(await client.query(`update assets set current_version=current_version+1,
       status=case when status='approved' then 'working' else status end,updated_at=now() where id=$1 returning current_version`,[asset.id])).rows[0].current_version;
-    const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
-      values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
+    const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes,uploader_role)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null,role])).rows[0];
     await client.query('commit');return row;
   }catch(error){await client.query('rollback').catch(()=>{});await unlink(path).catch(()=>{});throw error}finally{client.release()}
 }
@@ -591,6 +592,7 @@ app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
+app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
@@ -1315,14 +1317,16 @@ app.post('/v1/admin/products/:id/assets',{preHandler:[authenticate,adminOnly]},a
   if(!name)return reply.code(400).send({error:'Asset name required'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
   const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,$4)
     on conflict(product_id,name) do update set kind=excluded.kind,visibility=excluded.visibility,updated_at=now() returning *`,[product.id,name,kind,visibility])).rows[0];
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'admin');
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  if(asset.visibility==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'file',$2,'product',$3)`,[product.client_id,`New in your folder: ${asset.name} v${version.version}`,product.id]).catch(()=>{});
   return reply.code(201).send({asset:{...asset,current_version:version.version},version});
 });
 app.post('/v1/admin/assets/:id/versions',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const asset=(await pool.query('select a.*,p.client_id from assets a join products p on p.id=a.product_id where a.id=$1',[req.params.id])).rows[0];
   if(!asset)return reply.code(404).send({error:'Asset not found'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[asset.client_id,asset.product_id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'admin');await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[asset.client_id,asset.product_id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  if(asset.visibility==='client'&&asset.kind!=='tech-pack')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'file',$2,'product',$3)`,[asset.client_id,`New in your folder: ${asset.name} v${version.version}`,asset.product_id]).catch(()=>{});
   return reply.code(201).send(version);
 });
 app.patch('/v1/admin/assets/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1335,7 +1339,7 @@ app.post('/v1/products/:id/assets',{preHandler:authenticate},async(req,reply)=>{
   const name=String(req.query?.name||'Client upload').trim(),kind=String(req.query?.kind||'artwork');const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
   const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,'client')
     on conflict(product_id,name) do update set kind=excluded.kind,visibility='client',updated_at=now() returning *`,[product.id,name,kind])).rows[0];
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'client');await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
     [product.client_id,'client-upload',`Client uploaded ${asset.name} v${version.version}`,'asset',asset.id]);
   return reply.code(201).send({asset:{...asset,current_version:version.version},version});
 });
@@ -1343,6 +1347,38 @@ app.get('/v1/asset-versions/:id/download',{preHandler:authenticate},async(req,re
   const row=(await pool.query(`select av.*,a.visibility,p.client_id from asset_versions av join assets a on a.id=av.asset_id join products p on p.id=a.product_id where av.id=$1`,[req.params.id])).rows[0];
   if(!row||((req.auth.role!=='admin')&&(row.client_id!==req.auth.clientId||row.visibility!=='client')))return reply.code(404).send({error:'File not found'});
   return reply.type(row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`).send(createReadStream(join(uploadDir,row.storage_name)));
+});
+
+// ---- The product's folder: every file the client is owed for one product, as a list and as one zip ----
+async function folderProduct(req,reply){
+  const p=(await pool.query('select p.id,p.client_id,p.title from products p where p.id=$1',[req.params.id])).rows[0];
+  if(!p||(req.auth.role!=='admin'&&p.client_id!==req.auth.clientId)){reply.code(404).send({error:'Product not found'});return null}
+  return p;
+}
+const folderDirs=()=>({pool,uploadDir,meshDir:meshDir()});
+app.get('/v1/products/:id/files',{preHandler:authenticate},async(req,reply)=>{
+  const product=await folderProduct(req,reply);if(!product)return;
+  const admin=req.auth.role==='admin',tp=(await pool.query('select version,published_at from tech_packs where product_id=$1',[product.id])).rows[0];
+  // a published pack with no PDF yet (published before the folder existed, or a moment ago) is being made: the list says so and fills in
+  const missing=tp?.published_at?Number((await pool.query(`select count(*)::int n from tech_pack_versions v join tech_packs t on t.id=v.tech_pack_id where t.product_id=$1 and not exists(select 1 from asset_versions av join assets a on a.id=av.asset_id where a.product_id=$1 and a.kind='tech-pack' and av.notes='pack v'||v.version)`,[product.id])).rows[0].n):0;
+  if(missing>0)ensureAllPdfs({pool,uploadDir,productId:product.id}).catch(err=>app.log.warn({err:err.message},'folder PDFs not made'));
+  const list=await listFiles({...folderDirs(),product,admin});
+  return {product:{id:product.id,title:product.title},...list,pending:missing>0,zipUrl:`/v1/products/${product.id}/files.zip`,
+    groups:list.groups.map(g=>({...g,items:g.items.map(i=>({...i,url:`/v1/products/${product.id}/files/${encodeURIComponent(i.id)}`}))}))};
+});
+app.get('/v1/products/:id/files.zip',{preHandler:authenticate},async(req,reply)=>{
+  const product=await folderProduct(req,reply);if(!product)return;
+  try{
+    await ensureAllPdfs({pool,uploadDir,productId:product.id}).catch(err=>app.log.warn({err:err.message},'folder PDFs not made'));
+    const z=await buildZip({...folderDirs(),product,admin:req.auth.role==='admin'});
+    return reply.type('application/zip').header('content-disposition',`attachment; filename="${z.name}"`).send(z.buf);
+  }catch(e){return reply.code(e.statusCode||500).send({error:e.message})}
+});
+app.get('/v1/products/:id/files/:fid',{preHandler:authenticate},async(req,reply)=>{
+  const product=await folderProduct(req,reply);if(!product)return;
+  const f=await readItem({...folderDirs(),product,id:decodeURIComponent(req.params.fid),admin:req.auth.role==='admin'});
+  if(!f)return reply.code(404).send({error:'File not found'});
+  return reply.type(f.mime).header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(f.name)}`).send(f.buf);
 });
 app.post('/v1/admin/comments',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {productId,assetId,approvalId,body,visibility='client'}=req.body||{};if(!body?.trim())return reply.code(400).send({error:'Comment required'});
@@ -1994,6 +2030,22 @@ function techPackPayload(row){
     revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row)};
 }
 // Applies a change to the verification chain of the CURRENT published version only; a concurrent publish makes the write a no-op.
+// The tech pack PDF is filed in the product's folder when a version is published and re-made when its signatures or pictures change.
+// Made a moment later and one at a time per product, so a burst of acknowledgements makes one PDF, and it never holds up the request that caused it.
+const pdfTimers=new Map();
+function queueTechPackPdf(productId,actorId=null){
+  clearTimeout(pdfTimers.get(productId));
+  pdfTimers.set(productId,setTimeout(async()=>{
+    pdfTimers.delete(productId);
+    try{
+      const r=await refreshTechPackPdf({pool,uploadDir,productId,actorId});
+      if(r&&r.isNew){
+        await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'file',$2,'product',$3)`,[r.clientId,`New in your folder: ${r.title} tech pack v${r.version} (PDF)`,productId]).catch(()=>{});
+        await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,'asset',$4)`,[r.clientId,productId,actorId,`Tech pack v${r.version} PDF added to the product folder`]).catch(()=>{});
+      }
+    }catch(err){app.log.warn({err:err.message,productId},'tech pack PDF not made')}
+  },1500));
+}
 async function updateVerification(packId,version,mutate){
   const row=(await pool.query('select * from tech_packs where id=$1',[packId])).rows[0];
   if(!row||row.version!==version)return null;
@@ -2002,7 +2054,7 @@ async function updateVerification(packId,version,mutate){
   const locked=Boolean(verification.clientSign&&verification.brandSign&&verification.factorySign);
   const updated=(await pool.query(`update tech_packs set verification=$3,locked_at=case when $4 then coalesce(locked_at,now()) else null end where id=$1 and version=$2 returning *`,
     [packId,version,verification,locked])).rows[0]||null;
-  if(updated)await pool.query(`update tech_pack_versions set verification=$3,locked_at=$4 where tech_pack_id=$1 and version=$2`,[packId,version,verification,updated.locked_at]);
+  if(updated){await pool.query(`update tech_pack_versions set verification=$3,locked_at=$4 where tech_pack_id=$1 and version=$2`,[packId,version,verification,updated.locked_at]);queueTechPackPdf(updated.product_id)}
   return updated;
 }
 // Moves a product along its milestones (src/flow.js). It never fails the request it rides on: a flow that cannot be written is logged.
@@ -2138,6 +2190,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
     await client.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
       [ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${row.version} published for ${ctx.product.title}${gate.ok?'':' — with open checks: '+gate.problems.join('; ')}`,{techPackId:row.id,version:row.version,note,overridden:!gate.ok,problems:gate.problems}]);
     await client.query('commit');
+    queueTechPackPdf(ctx.product.id,req.auth.sub);
     recordDraftEdits(row.id,'published').catch(()=>{});
     await flow(ctx.product.id,'pack-published',{actorId:req.auth.sub,note:`v${row.version}`});
     await flagRequote(ctx.product,ctx.techPack.published_data,row);
@@ -2172,6 +2225,7 @@ app.post('/v1/admin/products/:id/tech-pack/refresh-pictures',{preHandler:[authen
   await pool.query(`update tech_pack_versions set data=$3::jsonb where tech_pack_id=$1 and version=$2`,[tp.id,tp.version,JSON.stringify(next)]).catch(()=>{});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Pictures updated on tech pack v${tp.version} for ${ctx.product.title} (nothing specified changed)`,{techPackId:tp.id,version:tp.version,pictures:next.renderings.length}]).catch(()=>{});
   await syncCardQuietly(ctx.product.id,next);
+  queueTechPackPdf(ctx.product.id,req.auth.sub);
   return {updated:true,pictures:next.renderings.length};
 });
 // A new version that changes what was priced (material, decoration, colourways, sizes) behind a live quote tells staff to re-quote.

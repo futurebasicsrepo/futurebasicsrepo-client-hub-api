@@ -5,7 +5,8 @@
 // pack from a document into a live sign-off instrument.
 
 import './elec.js'; // electronic products: attaches FBElec (also served to the page at /elec.js)
-const ELEC = globalThis.FBElec;
+import './categories.js'; // product categories: attaches FBCat (also served to the page at /categories.js)
+const ELEC = globalThis.FBElec, CAT = globalThis.FBCat;
 
 export const DEFAULT_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
 export const SKETCH_VIEWS = ['front', 'back', 'side', 'lateral', 'medial', 'top', 'outsole', 'heel', 'detail', 'flat', 'other'];
@@ -180,6 +181,8 @@ export const isFootwear = text => /(shoe|sneaker|trainer|boot|mule|footwear|slid
 export function pomTemplateFor(text) {
   const t = String(text || '').toLowerCase();
   if (isFootwear(t)) return FOOTWEAR_POM;
+  if (CAT.familyOf(t) === 'plush') return CAT.PLUSH_POM;
+  if (CAT.familyOf(t) === 'jewelry') return CAT.JEWELRY_POM;
   if (/(cap|hat|beanie|bucket|visor|headwear)/.test(t)) return HEADWEAR_POM;
   if (/(\bbag\b|tote|backpack|pouch|duffle|duffel|crossbody|satchel|clutch|wallet|cardholder|card holder|belt bag|fanny|sling)/.test(t)) return BAG_POM;
   if (ELEC.isElectronics(t)) return ELECTRONICS_POM;
@@ -193,8 +196,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   const pack = emptyTechPack();
   const c = configuration || {};
   const descriptor = `${product.title || ''} ${product.product_type || ''} ${c.blank_name || ''}`;
-  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM, bag = apparel === BAG_POM, electronic = apparel === ELECTRONICS_POM;
-  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length && !bag && !electronic ? [...DEFAULT_SIZES] : ['One size']);
+  const apparel = pomTemplateFor(descriptor), footwear = apparel === FOOTWEAR_POM, bag = apparel === BAG_POM, electronic = apparel === ELECTRONICS_POM, plush = apparel === CAT.PLUSH_POM, jewelry = apparel === CAT.JEWELRY_POM, kit = plush ? CAT.SEED.plush : jewelry ? CAT.SEED.jewelry : null;
+  const sizes = Array.isArray(c.sizes) && c.sizes.length ? c.sizes.map(s => str(s, 12)).filter(Boolean).slice(0, LIMITS.sizes) : footwear ? [...FOOTWEAR_SIZES] : (apparel.length && !bag && !electronic && !plush && !jewelry ? [...DEFAULT_SIZES] : ['One size']);
   const month = now.getMonth(), year = String(now.getFullYear()).slice(-2);
   pack.style = {
     styleNumber: String(product.shopify_handle || '').toUpperCase().slice(0, 40),
@@ -222,6 +225,7 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
     { component: 'Footbed', material: 'Die-cut EVA / PU', spec: 'Removable, top cloth printed', supplier: '', ref: '', color: '', placement: 'Inside', qty: '1', unit: 'pair', notes: '' },
     { component: 'Heel counter + toe puff', material: 'Thermoplastic', spec: 'Internal, heat-activated', supplier: '', ref: '', color: '', placement: 'Heel, toe', qty: '1', unit: 'set', notes: '' });
   else if (electronic) pack.bom.push(...ELEC.BOM.map(r => ({ ...r })));
+  else if (kit) pack.bom.push(...kit.bom.map((r, i) => ({ supplier: i === 0 ? str(c.supplier_name, 120) : '', ref: '', color: '', ...r })));
   else if (c.material || c.blank_name) pack.bom.push({ component: 'Main body', material: str(c.material, 200), spec: str(c.blank_name, 300), supplier: str(c.supplier_name, 120), ref: '', color: '', placement: 'Body', qty: '1', unit: 'pc', notes: '' });
   if (c.decoration_method) {
     const size = c.artwork_width_in && c.artwork_height_in ? `${c.artwork_width_in}" × ${c.artwork_height_in}"` : '';
@@ -229,9 +233,12 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
     pack.bom.push({ component: `Decoration — ${str(c.decoration_method, 120)}`, material: '', spec: [size, brief?.decoration].filter(Boolean).join(' · '), supplier: '', ref: '', color: '', placement: locations, qty: String((c.decoration_locations || []).length || 1), unit: 'placement', notes: '' });
   }
   if (c.construction) pack.construction.push({ area: 'Overall', detail: str(c.construction, 600) });
+  if (kit) pack.construction.push(...kit.construction); else if (apparel === HEADWEAR_POM) pack.construction.push(...CAT.SEED.headwear.construction);
   pack.colorways = (Array.isArray(c.colorways) ? c.colorways : []).slice(0, LIMITS.colorways).map(name => ({ name: str(name, 80), code: '', swatch: '', notes: '' }));
   if (footwear) {
     pack.labels = [{ item: 'Tongue label', spec: 'Woven, client artwork', placement: 'Tongue, centred below top edge' }, { item: 'Size / country of origin label', spec: 'Printed, size + width + CO + article no.', placement: 'Inside tongue' }, { item: 'Footbed print', spec: 'Pad print on top cloth, client artwork', placement: 'Footbed, heel area' }, { item: 'Heel tab', spec: 'Woven or embossed', placement: 'Heel collar' }];
+  } else if (kit) {
+    pack.labels = kit.labels.map(r => ({ ...r }));
   } else if (electronic) {
     pack.labels = [{ item: 'Rating label', spec: 'Printed or laser-etched: model, ratings, serial number, country of origin, certification marks (CE, UKCA, FCC ID if it has a radio, WEEE bin)', placement: 'Underside or inside the battery door' }, { item: 'Retail box label', spec: 'Barcode, model, battery warning and watt-hours if it has a lithium battery', placement: 'Box end' }];
   } else if (apparel.length) {
@@ -241,8 +248,8 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
       : [{ item: 'Main label', spec: 'Woven, client artwork', placement: 'Center back neck, inside' }, { item: 'Size label', spec: 'Woven or printed', placement: 'Below main label' }, { item: 'Care / content label', spec: 'Printed satin, fiber content + care + country of origin', placement: 'Inside left side seam' }];
   }
   if (electronic) pack.electronics = ELEC.defaults(descriptor);
-  pack.packaging = { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: str(c.packaging || brief?.packaging, 1500) };
-  pack.care = { fiber: str(c.material, 300), instructions: '', countryOfOrigin: '', compliance: '' };
+  pack.packaging = kit ? { ...kit.packaging, notes: [str(c.packaging || brief?.packaging, 1500), kit.packaging.notes].filter(Boolean).join(' ') } : { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: str(c.packaging || brief?.packaging, 1500) };
+  pack.care = kit ? { fiber: str(c.material, 300), instructions: kit.care.instructions, countryOfOrigin: '', compliance: kit.care.compliance } : { fiber: str(c.material, 300), instructions: '', countryOfOrigin: '', compliance: '' };
   pack.notes = str(c.notes, 6000);
   return normalizeTechPack(pack);
 }
@@ -373,6 +380,7 @@ export function packStrings(data) {
   }
   d.artwork.forEach(a => { add(a.name); a.pantones.forEach(p => add(p.name)); a.placements.forEach(p => add(p.label)); });
   add(d.notes);
+  CAT.allChecks(CAT.groupOf(d.style.category, d.style.styleName)).forEach(add); // the sample room's checklist is printed in the factory's language too
   return [...out];
 }
 

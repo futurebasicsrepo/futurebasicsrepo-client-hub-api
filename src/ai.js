@@ -14,7 +14,7 @@ import { codeColourways, colourWithCode } from './pantone-codes.js';
 export const AI_MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.AI_FIXTURE);
 
-const PRODUCT_TYPES = ['footwear', 'top', 'bottom', 'outerwear', 'headwear', 'bag', 'accessory', 'other'];
+const PRODUCT_TYPES = ['footwear', 'top', 'bottom', 'outerwear', 'dress', 'headwear', 'plush', 'jewelry', 'electronics', 'bag', 'accessory', 'other'];
 
 // Structured-output schema. Every property is required and objects are closed, as structured outputs expect.
 const DRAFT_SCHEMA = {
@@ -65,6 +65,8 @@ How to work:
   - Every logo, graphic, label, stripe or print: where it is, how large relative to the product, what colour, how applied. Describe generically.
   - Measurements keep the proportions you can see: if the photo shows a long, low shape, the numbers must too.
 - Notes: be explicit about assumptions, what the photo does not show (medial side, interior, sole), and the questions the customer must answer. End with a short "Spec basis" list naming the references you leaned on.
+
+- Know the category. Garments: fabric weight (gsm), fibre content, stitch type and stitches per inch, shrinkage allowance, label set, wash care. Footwear: last and width, upper, lining, outsole and midsole compounds with hardness, bonding method, size run. Headwear: crown height and circumference, visor or brim stiffener, sweatband, closure and adjuster, embroidery count and density. Plush: pile and fabric weight, filled weight in grams, safety eyes and nose with a pull-test requirement, seam allowance and stitches per inch, needle detection, age grading and toy-safety standards (ASTM F963, EN 71, CPSIA). Jewelry: base metal and alloy, plating and its thickness in microns, stone type, size and setting, findings, nickel-free and lead-free requirement, hallmark, weight, and measurements in small fractions of an inch. Electronics: battery chemistry and capacity, power in and out, radios, enclosure materials, ingress rating, and the certifications the markets need. Say "to confirm" wherever you are quoting a category default rather than something seen.
 
 Write for a factory: terse, specific, measurable. British/American spelling does not matter; units are inches unless a trim is conventionally metric (mm, gsm, SPI).`;
 }
@@ -278,7 +280,7 @@ export async function applyDraftToPack(seed, draft, { photos, sizes, sampleSize,
 }
 
 export function productTypeLabel(draft) {
-  return String(draft.category || '').slice(0, 120) || ({ footwear: 'Footwear', top: 'Apparel — top', bottom: 'Apparel — bottom', outerwear: 'Apparel — outerwear', headwear: 'Headwear', bag: 'Bag', accessory: 'Accessory' }[draft.productType] || 'Product');
+  return String(draft.category || '').slice(0, 120) || ({ footwear: 'Footwear', top: 'Apparel — top', bottom: 'Apparel — bottom', outerwear: 'Apparel — outerwear', dress: 'Apparel — dress', headwear: 'Headwear', plush: 'Plush', jewelry: 'Jewelry', electronics: 'Electronics', bag: 'Bag', accessory: 'Accessory' }[draft.productType] || 'Product');
 }
 
 // ---- Points of measure: research pass ----

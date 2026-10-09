@@ -7,33 +7,10 @@ const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const NOT_A_LENGTH = /weight|capacity|volume|angle|degree|count|qty|quantity|gsm|denier|spi\b|stitch|\boz\b|\bml\b|\bgrams?\b|pressure|temperature|%|ratio|shrink|stretch|tolerance|price|cost|moq|\bcolou?r\b/;
 
 // ---- Which family is this product? ----
-// Order matters: the first family whose words match wins ("dress shoe" is footwear, "plush keychain" is plush).
-const FAMILIES = [
-  ['footwear', /\b(shoes?|sneakers?|boots?|booties|bootie|sandals?|slippers?|loafers?|oxfords?|derbys?|heels?|pumps?|clogs?|cleats?|footwear|trainers?|mules?|flip[- ]?flops?|moccasins?|espadrilles?|slides?)\b/],
-  ['headwear', /\b(caps?|hats?|beanies?|visors?|headbands?|balaclavas?|berets?|snapbacks?|bucket|trapper|fedoras?|durags?|bonnets?)\b/],
-  ['plush', /\b(plush(ie|ies)?|stuffed|teddy bear|dolls?|squish(y|mallow)?|stuffies|stuffy)\b/],
-  ['tech', /\b(power ?bank|chargers?|cables?|phone|airpods?|earbuds?|headphones?|laptop|tablet|ipad|mouse ?pad|desk ?mat|speaker|case for|usb|magsafe|stand)\b/],
-  ['drink', /\b(bottles?|mugs?|cups?|tumblers?|flasks?|thermos|koozie|can cooler|glass(es)? ware|drinkware|jars?)\b/],
-  ['jewelry', /\b(rings?|necklaces?|bracelets?|earrings?|pendants?|chains?|anklets?|brooch|jewell?ery|watch(es)?)\b/],
-  ['eyewear', /\b(sunglasses|eyeglasses|glasses|goggles|eyewear)\b/],
-  ['bag', /\b(bags?|totes?|backpacks?|duffe?ls?|pouch(es)?|purses?|clutch(es)?|satchels?|fanny ?packs?|crossbody|wallets?|luggage|messenger|rucksack|cases?)\b/],
-  ['small', /\b(key ?chains?|key ?rings?|charms?|pins?|patch(es)?|stickers?|magnets?|badges?|lanyards?|ornaments?|coasters?|bookmarks?|decals?)\b/],
-  ['box', /\b(box(es)?|cartons?|mailers?|packaging|tins?|sleeve box|hang ?tags?)\b/],
-  ['hosiery', /\b(socks?|gloves?|mittens?|tights|stockings|leg ?warmers?|arm ?warmers?)\b/],
-  ['belt', /\b(belts?|leash|pet collar|dog collar|harness|suspenders)\b/],
-  ['flat', /\b(scarf|scarves|blankets?|towels?|throws?|bandanas?|shawls?|scrunchies?|rugs?|pillows?|cushions?|curtains?|banners?|flags?|tapestry|napkins?|aprons?)\b/],
-  ['outerwear', /\b(jackets?|coats?|parkas?|puffers?|vests?|windbreakers?|blazers?|anoraks?|ponchos?|truckers?|bombers?|raincoats?|shackets?|overshirts?)\b/],
-  ['dress', /\b(dress(es)?|gowns?|jumpsuits?|rompers?|overalls?|onesies?|bodysuits?|kaftans?|robes?)\b/],
-  ['bottom', /\b(jeans?|pants?|trousers?|shorts|skirts?|leggings?|joggers?|chinos?|sweatpants?|culottes?|skorts?|cargos?|denim)\b/],
-  ['top', /\b(shirts?|tees?|t-?shirts?|tops?|hoodies?|sweatshirts?|sweaters?|cardigans?|polos?|tanks?|blouses?|pullovers?|knits?|crewnecks?|jerseys?|henleys?|tunics?|camis?|bralettes?)\b/]
-];
-const matchFamily = raw => {
-  const text = norm(raw).replace(/\bcap sleeves?\b/g, ' ').replace(/\bshort sleeves?\b/g, ' ').replace(/\boxford (shirts?)\b/g, '$1').replace(/\boxford (cloth|weave|button[- ]?down)\b/g, ' ').replace(/\bbutton[- ]?down\b/g, ' ');
-  for (const [name, re] of FAMILIES) if (re.test(text)) return name;
-  return null;
-};
-// The category the assistant wrote ("Footwear — chunky-sole oxford") is richer than the title, so it is tried first.
-export function familyOf(category = '', title = '') { return matchFamily(category) || matchFamily(title) || 'generic'; }
+// The families and their words live in categories.js (shared with the page); the first family whose words match wins.
+import './categories.js';
+const { matchFamily, familyOf } = globalThis.FBCat;
+export { familyOf };
 
 // ---- Ranges: [name pattern, low, high], most specific first within a family ----
 const APPAREL = [
