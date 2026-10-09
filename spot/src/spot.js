@@ -955,6 +955,10 @@ export function publicCart(cart) {
     source: cart.source ? { kind: cart.source.kind, name: cart.source.name || null, verified: Boolean(cart.source.verified) } : null,
     // Sent to an approver by the requester's own spending rules.
     via_approver: Boolean(cart.approver),
+    // The asker signed in with a code to their email or phone.
+    requester_verified: Boolean(cart.user_id),
+    // Spot's one-time card for this order can spend at most this, once.
+    card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) : null,
   };
 }
 
