@@ -198,6 +198,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           sign: ucp.sign,
           progress: (t) => step(cartId, t),
           confirm: (c) => askConfirm(cartId, c),
+          fallback: agentOn(),
         });
         if (outcome) return finish(cartId, outcome);
         const p = await plan(cart, ship);

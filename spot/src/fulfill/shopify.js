@@ -18,7 +18,8 @@ export async function fetchJson(url, { fetchImpl = fetch, allowPrivate = process
   try {
     const res = await fetchImpl(u, { signal: ctrl.signal, redirect: 'follow', headers: { accept: 'application/json' } });
     if (!res.ok) return null;
-    if (!(res.headers.get('content-type') || '').includes('json')) return null;
+    // Shopify serves /products/<handle>.js as JSON with a text/javascript type.
+    if (!/json|javascript/.test(res.headers.get('content-type') || '')) return null;
     return await res.json();
   } catch {
     return null;
