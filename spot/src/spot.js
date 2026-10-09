@@ -714,6 +714,27 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return decision;
     },
 
+    // The requester's thank-you to whoever paid: one per ask, once it's
+    // paid. Stored on the cart; the payer sees it on their receipt and gets
+    // it by email (events.js).
+    thank(token, key, input = {}) {
+      const cart = loadManaged(token, key);
+      if (!canThank(cart)) {
+        if (cart.thanks) throw new CartError('You already sent a thank-you for this one', 409);
+        throw new CartError('You can say thanks once someone has paid', 409);
+      }
+      const message = cleanThanks(input.message);
+      if (!message) throw new CartError('Write a few words first');
+      if ([...message].length > THANKS_MAX) throw new CartError(`Keep it under ${THANKS_MAX} characters`);
+      if (/https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|app|xyz)\b/i.test(message)) throw new CartError('Links can’t go in a thank-you. Just the words.');
+      const emoji = input.emoji == null || input.emoji === '' ? null : String(input.emoji);
+      if (emoji && !THANKS_EMOJI.includes(emoji)) throw new CartError('Pick one of the emoji');
+      const thanked = this.patch(cart.id, (c) => (c.thanks ? c : { ...c, thanks: { message, emoji, at: Date.now() } }), 'thanked');
+      if (thanked.thanks?.message !== message) throw new CartError('You already sent a thank-you for this one', 409);
+      this.emit('thanks', thanked.id);
+      return thanked;
+    },
+
     markReceived(token, key) {
       return move(loadManaged(token, key), 'mark_received', { received_at: Date.now() });
     },
@@ -962,9 +983,29 @@ export function publicCart(cart) {
   };
 }
 
+// The thank-you moment: once someone else paid, the requester can send
+// them one short note. Not for your own orders, payment handoffs (Spot
+// never saw the payer) or multi-store asks (their receipt is the bundle's).
+export const THANKS_MAX = 280;
+export const THANKS_EMOJI = ['🙏', '❤️', '🎉', '😭', '🥹'];
+export function canThank(cart) {
+  return !cart.thanks && cart.for !== 'self' && cart.settle !== 'handoff' && !cart.bundle_id && Boolean(cart.paid_at) && ['paid', 'card_issued', 'completed'].includes(cart.status);
+}
+// One line of plain text: no control or invisible formatting characters.
+export function cleanThanks(raw) {
+  return String(raw ?? '')
+    .normalize('NFC')
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function ownerCart(cart) {
   return {
     ...publicCart(cart),
+    // The requester's thank-you to the payer (never the payer's contact).
+    thanks: cart.thanks ? { message: cart.thanks.message, emoji: cart.thanks.emoji || null, at: cart.thanks.at } : null,
+    can_thank: canThank(cart),
     requester: { ...cart.requester, billing: undefined },
     // Spot's card is Spot's: the requester only learns that ordering can start.
     card_ready: Boolean(cart.card_ref),
