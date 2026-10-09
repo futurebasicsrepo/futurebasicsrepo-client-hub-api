@@ -3,7 +3,7 @@
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
 import { buddySvg } from './pages.js';
 import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, noteSection, storySection } from './sitefx.js';
-import { SPOTFX_CSS, SPOTFX_JS, beatsSection, guideSpot, spotBuddy, yesStage } from './spotfx.js';
+import { HANDOFF_CSS, HANDOFF_JS, SPOTFX_CSS, SPOTFX_JS, beatsSection, guideSpot, handoffSection, spotBuddy, yesStage } from './spotfx.js';
 
 const buddyNoId = (happy) => buddySvg(happy).replace(' id="buddy"', '');
 
@@ -276,7 +276,7 @@ export const SITE_JS = `
 export function sitePage({ origin, provider }) {
   const title = 'Spot: the yes button for AI shopping';
   const desc = 'Your AI shops, you say yes. Add Spot to Claude or ChatGPT: your AI finds it, and Spot buys it with a card made for that one order, after you or whoever’s paying taps yes.';
-  return `${siteHead({ title, desc, origin, path: '/', extraCss: SPOTFX_CSS })}
+  return `${siteHead({ title, desc, origin, path: '/', extraCss: SPOTFX_CSS + HANDOFF_CSS })}
 
 ${siteNav()}
 
@@ -296,6 +296,8 @@ ${siteNav()}
   <div class="mrow"><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div></div>
   <div class="mrow rev" aria-hidden="true"><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div></div>
 </section>
+
+${handoffSection()}
 
 ${beatsSection()}
 
@@ -519,6 +521,7 @@ ${FX_JS}
         setTimeout(play2,11000)};
       new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){play2();o.disconnect()}},{threshold:.3}).observe(t2)}}
 ${SPOTFX_JS}
+${HANDOFF_JS}
   // Agent demo: plays when scrolled into view, types the assistant's lines, loops.
   const log=document.getElementById('agentlog');
   if(log){

@@ -247,3 +247,138 @@ export const SPOTFX_JS = `
     gspot.addEventListener('click',()=>{cheer(gspot,gsvg,1000);say(quips[q++%quips.length],2600);spotConfetti(guide,'80%','30%',18)});
   }
 `;
+
+// "See it in a chat": the AI chat you already use on one side, your phone on
+// the other. You ask, the AI picks, Spot texts you; then either you finish it
+// or someone else pays. Scenarios loop, alternating who pays.
+export function handoffSection() {
+  return `<section class="sec seeit blobby" id="see-it" data-say="Just ask. I’ll text you 📲"><div class="wrap">
+  <p class="kicker reveal">See it in a chat</p>
+  <h2 class="reveal">Ask in the chat you already use.<br>Finish from a text.</h2>
+  <p class="lead reveal">No new app to learn. Tell Claude or ChatGPT what you want and to send you a Spot. It picks the stuff, and Spot texts or emails you a link to check out, or sends it to whoever’s paying.</p>
+  <div class="seeit-grid reveal">
+    <div class="aichat tilt" aria-hidden="true">
+      <div class="ac-bar"><i></i><i></i><i></i><span>Your AI chat · Claude, ChatGPT, any app with Spot</span></div>
+      <div class="ac-body" id="acBody"></div>
+      <div class="ac-input"><span id="acType"></span><i class="caret"></i><b>↑</b></div>
+    </div>
+    <div class="ac-arrow" aria-hidden="true"><span class="ac-dot"></span></div>
+    <div class="sphone" aria-hidden="true">
+      <div class="sp-screen" id="spScreen">
+        <div class="sp-lock"><div class="sp-time">9:41</div><div class="sp-date">Friday, October 9</div></div>
+        <div class="sp-note" id="spNote"><div class="sp-app"><span class="dot"></span>Messages · Spot</div><div class="sp-msg" id="spMsg"></div></div>
+        <div class="sp-page" id="spPage"></div>
+      </div>
+    </div>
+  </div>
+  <div class="seeit-paths reveal"><span class="sp-path" data-path="self">🙋 You check out</span><span class="sp-path" data-path="other">💸 Someone else pays</span></div>
+  <p class="sr-only">Example: you ask your AI for a blue hoodie and to send you a Spot. It picks one, Spot texts you a link, and you pay with Apple Pay. Or you ask it to have Mom spot you: Spot makes a link for Mom, she pays, and it ships to you.</p>
+</div></section>`;
+}
+
+export const HANDOFF_CSS = `
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.seeit-grid{display:grid;grid-template-columns:1.15fr 70px .85fr;align-items:center;gap:10px;margin-top:40px}
+@media (max-width:900px){.seeit-grid{grid-template-columns:1fr;gap:18px}.ac-arrow{width:60px;justify-self:center;transform:rotate(90deg);margin:22px 0}}
+.aichat{background:var(--card);border:1px solid var(--line);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;height:460px;box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 30px 60px -30px rgba(27,23,18,.4)}
+@media (max-width:900px){.aichat{height:420px}}
+.ac-bar{display:flex;align-items:center;gap:6px;padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.ac-bar i{width:10px;height:10px;border-radius:50%;background:var(--line)}.ac-bar span{margin-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-body{flex:1;padding:16px;display:flex;flex-direction:column;gap:10px;overflow:hidden;justify-content:flex-end}
+.ac-body>*{animation:acin .35s cubic-bezier(.2,1.2,.4,1) both}
+@keyframes acin{from{opacity:0;transform:translateY(10px)}}
+.ac-u{align-self:flex-end;max-width:82%;background:var(--bg2);border-radius:18px 18px 4px 18px;padding:9px 13px;font-size:14.5px}
+.ac-a{max-width:92%;font-size:14.5px;line-height:1.45}.ac-a b{font-weight:800}
+.ac-think{display:flex;gap:4px;padding:6px 0}.ac-think i{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5;animation:think 1s infinite}.ac-think i:nth-child(2){animation-delay:.15s}.ac-think i:nth-child(3){animation-delay:.3s}
+@keyframes think{50%{opacity:1;transform:translateY(-3px)}}
+.ac-items{display:flex;gap:8px;flex-wrap:wrap}
+.ac-item{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:7px 10px 7px 7px;font-size:12.5px;background:var(--bg);animation:acin .35s both}
+.ac-item .em{width:34px;height:34px;border-radius:10px;background:var(--bg2);display:grid;place-items:center;font-size:18px}.ac-item b{display:block;font-size:13px}.ac-item small{color:var(--muted)}
+.ac-tool{align-self:flex-start;font:600 12px/1 ui-monospace,Menlo,monospace;color:var(--spot);background:color-mix(in srgb,var(--spot) 10%,transparent);border-radius:99px;padding:7px 11px}
+.ac-tool.ok::after{content:' ✓';color:var(--ok)}
+.ac-input{display:flex;align-items:center;gap:2px;margin:10px;border:1.5px solid var(--line);border-radius:16px;padding:11px 12px;font-size:14.5px;min-height:46px}
+.ac-input span{flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ac-input .caret{width:2px;height:18px;background:var(--spot);animation:blinkc 1s steps(1) infinite}
+.ac-input b{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:14px;flex:none}
+@keyframes blinkc{50%{opacity:0}}
+.ac-arrow{position:relative;height:4px;border-top:3px dotted color-mix(in srgb,var(--spot) 55%,transparent)}
+.ac-dot{position:absolute;left:0;top:-9px;width:16px;height:16px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent);opacity:0}
+.seeit.fly .ac-dot{animation:fly .9s ease-in-out}
+@keyframes fly{0%{opacity:1;left:0}100%{opacity:1;left:calc(100% - 16px)}}
+.sphone{justify-self:center;width:250px;height:500px;border-radius:44px;padding:11px;background:#16130f;box-shadow:0 2px 0 #3a332b inset,0 40px 70px -30px rgba(27,23,18,.6);transform:rotate(3deg)}
+.sphone.buzz{animation:buzz .5s}
+@keyframes buzz{20%,60%{transform:rotate(3deg) translateX(-4px)}40%,80%{transform:rotate(3deg) translateX(4px)}}
+.sp-screen{position:relative;height:100%;border-radius:34px;overflow:hidden;background:linear-gradient(160deg,#ffb38a,#ff6a47 55%,#c93a1c)}
+.sp-lock{text-align:center;color:#fff;padding-top:48px}.sp-time{font-size:56px;font-weight:600;letter-spacing:-.02em;line-height:1}.sp-date{font-size:13px;opacity:.9;margin-top:4px}
+.sp-note{position:absolute;left:10px;right:10px;top:150px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-radius:18px;padding:10px 12px;font-size:12.5px;line-height:1.35;color:#1b1712;opacity:0;transform:translateY(-20px) scale(.96);transition:all .4s cubic-bezier(.2,1.3,.4,1)}
+.sp-note.show{opacity:1;transform:none}
+.sp-app{font-size:11px;color:#6f675c;margin-bottom:3px;display:flex;align-items:center;gap:6px}.sp-app .dot{width:14px;height:14px;border-radius:4px;background:#ff5a36}
+.sp-page{position:absolute;inset:0;background:#fbf7f1;color:#1b1712;padding:18px 14px;transform:translateY(100%);transition:transform .45s cubic-bezier(.2,.9,.3,1);display:flex;flex-direction:column;gap:8px;font-size:13px}
+.sp-page.show{transform:none}
+.sp-page h4{margin:8px 0 2px;font-size:19px;letter-spacing:-.02em}.sp-page .sub{color:#6f675c;font-size:12px}
+.sp-line{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #e8e0d4;padding:6px 0}.sp-line.total{font-weight:800;border:0}
+.sp-btn{margin-top:auto;border-radius:99px;padding:12px;text-align:center;font-weight:800;background:#111;color:#fff;transition:transform .12s}
+.sp-btn.spot{background:#ff5a36}.sp-btn.press{transform:scale(.95)}
+.sp-done{position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:rgba(251,247,241,.94);font-weight:800;font-size:20px;opacity:0;transition:opacity .3s}
+.sp-done.show{opacity:1}.sp-done small{display:block;font-weight:600;font-size:12.5px;color:#6f675c;margin-top:4px}
+.sp-thread{display:flex;flex-direction:column;gap:6px;margin-top:6px}.sp-thread .tb{max-width:85%;padding:7px 10px;border-radius:15px;font-size:12.5px}
+.sp-thread .tme{align-self:flex-end;background:#0a84ff;color:#fff}.sp-thread .tthem{background:#e9e4dc}
+.sp-link{align-self:flex-end;width:80%;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #e8e0d4;font-size:12px}
+.sp-link .img{height:62px;background:linear-gradient(135deg,#ffb347,#ff5a36);display:grid;place-items:center;color:#fff;font-weight:800}.sp-link .cap{padding:6px 9px}
+.seeit-paths{display:flex;gap:10px;justify-content:center;margin-top:26px;flex-wrap:wrap}
+.sp-path{padding:9px 16px;border-radius:99px;border:1.5px solid var(--line);font-weight:700;font-size:14.5px;background:var(--card);transition:all .2s}
+.sp-path.on{background:var(--ink);color:var(--bg);border-color:var(--ink);transform:translateY(-2px)}
+@media (prefers-reduced-motion:reduce){.ac-body>*,.ac-item{animation:none}.sphone{transform:none}}
+`;
+
+export const HANDOFF_JS = `
+  const seeit=document.getElementById('see-it');
+  if(seeit){
+    const body=document.getElementById('acBody'),typed=document.getElementById('acType'),note=document.getElementById('spNote'),msg=document.getElementById('spMsg'),page=document.getElementById('spPage'),phone=seeit.querySelector('.sphone');
+    const paths=[...seeit.querySelectorAll('.sp-path')];
+    const S=[
+      {path:'self',ask:'find me a blue hoodie, medium, something cozy under $70, and send me a Spot',
+       say:'Found a good one: heavyweight, navy, true to size.',items:[['🧥','Heavyweight hoodie','Navy · M · Northwind Co.','$64']],
+       sms:'Spot: Your cart is ready. Heavyweight hoodie from Northwind Co., $69.76. Review and finish here: spotmeplease.com/c/x7Qh Reply STOP to opt out.',
+       lines:[['Heavyweight hoodie · M','$64.00'],['Price changes (unused back)','$3.20'],['Spot fee','$2.56'],['Total','$69.76']],done:['Ordered 📦','Northwind Co. · arrives Tue']},
+      {path:'other',ask:'put together a beach weekend fit under $150 (linen shirt, shorts, sandals) and ask my mom to spot me',
+       say:'Here’s the fit, all from Coastline Supply. I made Mom a Spot 👇',items:[['👕','Linen shirt','Sand · M','$58'],['🩳','Drawstring shorts','Navy · 32','$42'],['🩴','Slide sandals','Size 10','$38']],
+       mom:true,done:['Mom spotted you 💸','Coastline Supply · ships to you']},
+      {path:'self',ask:'earliest train to NYC saturday morning, send me a Spot',
+       say:'Northeast Regional 170 leaves Philly 7:05am, in at 8:31. $53.',items:[['🚆','NE Regional 170','Sat · PHL 7:05 → NYP 8:31','$53']],
+       sms:'Spot: Your train is ready to book. Sat, Oct 10, 7:05 AM–8:31 AM · Coach · 1 passenger, Amtrak, $57.77. Add who\\'s riding and finish here: spotmeplease.com/c/m2Lp Reply STOP to opt out.',
+       lines:[['NE Regional 170 · Coach','$53.00'],['Fare changes (unused back)','$2.65'],['Spot fee','$2.12'],['Total','$57.77']],done:['Booked 🚆','Amtrak emails your e-ticket']}
+    ];
+    const wait=ms=>new Promise(r=>setTimeout(r,ms));
+    const el=(cls,html)=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;return d};
+    const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    const item=i=>'<div class="ac-item"><span class="em">'+i[0]+'</span><span><b>'+esc(i[1])+'</b><small>'+esc(i[2])+'</small></span><b style="margin-left:6px">'+i[3]+'</b></div>';
+    const reset=()=>{body.innerHTML='';typed.textContent='';note.classList.remove('show');page.classList.remove('show');page.innerHTML=''};
+    const show=(s)=>{ // the end state, for reduced motion
+      body.append(el('ac-u',esc(s.ask)),el('ac-a',esc(s.say)),el('ac-items',s.items.map(item).join('')),el('ac-tool ok','→ Spot · '+(s.mom?'create_spot_ask':s.items[0][0]==='🚆'?'create_train_ask':'create_spot_ask')));
+      paths.forEach(p=>p.classList.toggle('on',p.dataset.path===s.path))};
+    const play=async(s)=>{
+      reset();paths.forEach(p=>p.classList.toggle('on',p.dataset.path===s.path));
+      for(let i=1;i<=s.ask.length;i++){typed.textContent=s.ask.slice(0,i);await wait(26)}
+      await wait(350);typed.textContent='';body.append(el('ac-u',esc(s.ask)));
+      const th=el('ac-think','<i></i><i></i><i></i>');await wait(300);body.append(th);await wait(1100);th.remove();
+      body.append(el('ac-a',esc(s.say)));await wait(500);
+      const box=el('ac-items','');body.append(box);for(const i of s.items){box.insertAdjacentHTML('beforeend',item(i));await wait(320)}
+      await wait(400);const tool=el('ac-tool','→ Spot · '+(s.mom?'create_spot_ask':s.items[0][0]==='🚆'?'create_train_ask':'create_spot_ask'));body.append(tool);await wait(700);tool.classList.add('ok');
+      body.append(el('ac-a',s.mom?'Sent Mom the link with a note from you 🧡':'Sent you a Spot. Check your texts 📲'));
+      seeit.classList.remove('fly');void seeit.offsetWidth;seeit.classList.add('fly');await wait(900);
+      if(s.mom){
+        page.innerHTML='<div class="sub">Messages · Mom</div><div class="sp-thread"><div class="tb tme">ok don’t laugh, beach weekend fit 🙈</div><div class="sp-link"><div class="img">psst… spot me?</div><div class="cap"><b>Coastline Supply · 3 items</b><br>$150.42 · tap to spot</div></div></div><div class="sp-done" id="spDone"></div>';
+        page.classList.add('show');await wait(1300);
+        page.querySelector('.sp-thread').insertAdjacentHTML('beforeend','<div class="tb tthem">omg fine 😂</div>');await wait(900);
+      }else{
+        msg.textContent=s.sms;note.classList.add('show');phone.classList.remove('buzz');void phone.offsetWidth;phone.classList.add('buzz');await wait(1900);
+        page.innerHTML='<div class="sub">spotmeplease.com</div><h4>'+(s.items[0][0]==='🚆'?'Your train is ready 🚆':'Your cart is ready 🛒')+'</h4>'+s.lines.map((l,i)=>'<div class="sp-line'+(i===s.lines.length-1?' total':'')+'"><span>'+esc(l[0])+'</span><span>'+l[1]+'</span></div>').join('')+'<div class="sp-btn" id="spBtn">Pay '+s.lines[s.lines.length-1][1]+'</div><div class="sp-done" id="spDone"></div>';
+        page.classList.add('show');await wait(1400);const b=document.getElementById('spBtn');b.classList.add('press');await wait(160);b.classList.remove('press');await wait(300);
+      }
+      const d=document.getElementById('spDone');d.innerHTML=esc(s.done[0])+'<small>'+esc(s.done[1])+'</small>';d.classList.add('show');spotConfetti(phone,'50%','45%',30);
+      await wait(3200);
+    };
+    if(reduce)show(S[0]);
+    else{let started=false;new IntersectionObserver(async es=>{if(!es[0].isIntersecting||started)return;started=true;for(let k=0;;k++)await play(S[k%S.length])},{threshold:.3}).observe(seeit)}
+  }
+`;
