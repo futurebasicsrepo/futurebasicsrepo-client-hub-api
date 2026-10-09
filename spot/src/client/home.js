@@ -234,7 +234,12 @@
   // payer adds the fee (once per ask, however many stores) and a refundable
   // allowance per store for tax and price changes, so "They pay" matches the
   // pay page.
-  const feeOf = (goods) => Math.round((goods * CFG.feeBps) / 10000) + CFG.feeFixed;
+  // Same as cart.js spotFee: $2 plus card processing on everything charged.
+  const feeOf = (goods, room, first) => {
+    const p = CFG.cardPct / 10000;
+    const fixed = first ? (goods * CFG.feeBps) / 10000 + CFG.feeFixed + CFG.cardFixed : 0;
+    return Math.ceil(((goods + room) * p + fixed) / (1 - p));
+  };
   const cushionOf = (goods) => Math.min(Math.round((goods * CFG.cushionBps) / 10000), CFG.cushionMax);
   function totals() {
     const sub = draft.items.reduce((s, it) => s + (it.price_cents || 0) * it.quantity, 0);
@@ -242,7 +247,7 @@
     const card = $('#settle').value === 'card';
     const all = [...basket.map(goodsOf), cart];
     const goods = all.reduce((n, g) => n + g, 0);
-    const fee = card ? feeOf(all[0]) : 0;
+    const fee = card ? all.reduce((n, g, i) => n + feeOf(g, cushionOf(g), i === 0), 0) : 0;
     const room = card ? all.reduce((n, g) => n + cushionOf(g), 0) : 0;
     const prev = basket.length;
     $('#totals').innerHTML =

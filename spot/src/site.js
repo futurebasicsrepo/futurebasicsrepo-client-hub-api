@@ -395,11 +395,11 @@ ${storySection()}
       <tr><td>Spending rules and an approver for your AI</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Signed proof of who approved what</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Ordered for you</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${cross}</td></tr>
-      <tr class="cost"><td>What it costs</td><td class="us">$2</td><td>Free</td><td>Free</td><td>Free</td></tr>
+      <tr class="cost"><td>What it costs</td><td class="us">$2 + card fee</td><td>Free</td><td>Free</td><td>Free</td></tr>
     </tbody>
   </table></div>
   <p class="swipe">Swipe to compare →</p>
-  <p class="price reveal"><b>$2 per Spot</b>, paid by whoever pays, however many stores are in it. Free when the store takes the payment directly, or when it goes straight to your Venmo or Cash App. A little extra is held for tax and price changes, and whatever the store doesn’t charge comes back.</p>
+  <p class="price reveal"><b>$2 per Spot plus card processing</b> (2.9% + 30¢), paid by whoever pays, however many stores are in it. Free when the store takes the payment directly, or when it goes straight to your Venmo or Cash App. A little extra is held for tax and price changes, and whatever the store doesn’t charge comes back.</p>
 </div></section>
 
 ${chatWallSection()}
@@ -487,7 +487,7 @@ ${noteSection(spotBuddy('note').replace('class="spotb"', 'class="spotb happy"'))
   <p class="kicker reveal" style="text-align:center">FAQ</p>
   <h2 class="reveal" style="text-align:center">Questions</h2>
   <div class="faq">
-    <details><summary>What does it cost?</summary><p>When the store supports agent checkout, the person paying pays the store directly and Spot is free. Otherwise, when Spot buys it for you, the payer adds a flat $2 Spot fee plus a small allowance for tax and price changes (up to 5%, at most $15) that comes back if the store doesn’t charge it. Everything is shown before they pay. “Send it straight to my Venmo or Cash App” is free too, because the money never goes through Spot.</p></details>
+    <details><summary>What does it cost?</summary><p>When the store supports agent checkout, the person paying pays the store directly and Spot is free. Otherwise, when Spot buys it for you, the payer adds a Spot fee of $2 plus card processing (2.9% + 30¢ of what they pay) and a small allowance for tax and price changes (up to 5%, at most $15) that comes back if the store doesn’t charge it. Everything is shown before they pay. “Send it straight to my Venmo or Cash App” is free too, because the money never goes through Spot.</p></details>
     <details><summary>Can I ask for things from different stores in one Spot?</summary><p>Yes. Add a cart from another store before you send it (up to 5 stores, and your AI can do the same). Whoever’s paying covers all of it in one tap, and Spot orders from each store separately. If one store can’t be ordered, they get that store’s share back automatically and the rest still ships.</p></details>
     <details><summary>What’s “pay the store directly”?</summary><p>Some stores support agent checkout (the Universal Commerce Protocol). For those, Spot sets up the store’s own checkout with exactly your cart, shipped to you, and the person paying pays the store there. The store is the seller: its receipt, its returns. Spot never holds the money or sees a card.</p></details>
     <details><summary>Can I limit what my AI spends?</summary><p>Yes. On your account, each AI you connect can have a cap per order and per month, and a list of stores it can shop at. Anything outside those is refused, or sent to your approver to pay for or turn down. You can see everything each AI did, and disconnect it any time.</p></details>
