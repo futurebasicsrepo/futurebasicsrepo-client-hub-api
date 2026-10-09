@@ -5,7 +5,7 @@
 //   POST /v1/auth/verify  { email, code }   → session cookie (30 days)
 //   POST /v1/auth/logout
 //   GET  /v1/me                             → profile, Spots, "ready for you", keys
-//   POST /v1/me           { name, shipping, travelers }
+//   POST /v1/me           { name, shipping, travelers, venmo, cashtag }
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
@@ -22,7 +22,7 @@
 // HttpOnly + SameSite=Lax, and every write needs a JSON body, so other sites
 // can't act for a signed-in visitor.
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
-import { CartError } from './cart.js';
+import { CartError, handleOk } from './cart.js';
 import { validateShipping } from './fulfill/index.js';
 import { ownerCart } from './spot.js';
 import { emailLayout, normalizePhone } from './notify.js';
@@ -198,10 +198,17 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     json(req);
     const user = me(req);
     const b = req.body || {};
-    const next = { phone: user.phone || null, name: user.name || null, shipping: user.shipping || null, travelers: user.travelers || [] };
+    const next = { phone: user.phone || null, name: user.name || null, shipping: user.shipping || null, travelers: user.travelers || [], venmo: user.venmo || null, cashtag: user.cashtag || null };
     if (b.name !== undefined) next.name = String(b.name || '').trim().slice(0, 60) || null;
     if (b.shipping !== undefined) next.shipping = b.shipping ? validateShipping({ ...b.shipping, email: b.shipping.email || user.email || '' }) : null;
     if (b.travelers !== undefined) next.travelers = cleanTravelers(b.travelers);
+    // Where Spot sends money for stores it can't buy from (Amazon).
+    for (const [k, prefix, what] of [['venmo', '@', 'Venmo handle'], ['cashtag', '$', 'Cash App $cashtag']]) {
+      if (b[k] === undefined) continue;
+      const h = String(b[k] || '').trim().replace(prefix, '');
+      if (h && !handleOk(h)) throw new CartError(`That ${what} looks wrong`);
+      next[k] = h || null;
+    }
     db.users.save(user.id, next);
     return { user: profile(db.users.byId(user.id)) };
   });
@@ -253,7 +260,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       // One phone per account: the old number stops signing you in.
       for (const i of db.identities.ofUser(user.id)) if (i.provider === 'phone' && i.subject !== to.phone) db.identities.remove('phone', i.subject);
       if (!db.identities.userId('phone', to.phone)) db.identities.add('phone', to.phone, user.id);
-      db.users.save(user.id, { phone: to.phone, name: now.name || null, shipping: now.shipping || null, travelers: now.travelers || [] });
+      db.users.save(user.id, { phone: to.phone, name: now.name || null, shipping: now.shipping || null, travelers: now.travelers || [], venmo: now.venmo || null, cashtag: now.cashtag || null });
     }
     return { user: profile(db.users.byId(user.id)), merged };
   });
@@ -372,7 +379,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
 }
 
 function profile(u) {
-  return { email: u.email || null, phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [] };
+  return { email: u.email || null, phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [], venmo: u.venmo || null, cashtag: u.cashtag || null };
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;

@@ -75,6 +75,23 @@ function int(v, d) {
 
 const HANDLE = /^[A-Za-z0-9_-]{2,30}$/;
 
+// Stores that don't allow AI agents to check out (and have no guest
+// checkout), so Spot can't buy there. Asks for them go to the requester's
+// Venmo / Cash App instead, and the requester buys it themselves.
+const NO_AGENT_HOSTS = /(^|\.)(amazon|amzn)\.[a-z.]+$/i;
+const NO_AGENT_NAMES = /^amazon\b/i;
+export function blocksAgents(merchant, items = []) {
+  if (NO_AGENT_NAMES.test(String(merchant?.name || '').trim())) return true;
+  return [merchant?.url, ...items.map((i) => i?.url)].some((u) => {
+    try {
+      return NO_AGENT_HOSTS.test(new URL(u).hostname);
+    } catch {
+      return false;
+    }
+  });
+}
+export const handleOk = (h) => HANDLE.test(h);
+
 // Normalise and validate a create-cart payload. Throws CartError on bad input.
 export function validateCart(input, cfg = config()) {
   const b = input && typeof input === 'object' ? input : {};
@@ -127,6 +144,9 @@ export function validateCart(input, cfg = config()) {
   if (venmo && !HANDLE.test(venmo)) throw new CartError('Venmo handle looks wrong');
   if (cashtag && !HANDLE.test(cashtag)) throw new CartError('Cash App $cashtag looks wrong');
   if (settle === 'handoff' && !venmo && !cashtag) throw new CartError('Add a Venmo handle or $cashtag to get paid directly');
+  if (settle !== 'handoff' && blocksAgents(b.merchant, Array.isArray(b.items) ? b.items : [])) {
+    throw new CartError(`Spot can’t buy from ${str(b.merchant?.name, 80) || 'this store'}: it doesn’t allow AI checkout. Choose “Straight to my Venmo / Cash App” instead.`);
+  }
 
   if (settle === 'card') {
     const bad = items.find((it) => cashlikeItem(`${it.title} ${it.variant || ''}`));

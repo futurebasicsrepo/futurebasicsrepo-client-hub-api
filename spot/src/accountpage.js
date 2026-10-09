@@ -172,6 +172,10 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     <input name="email" type="email" placeholder="Email for receipts" autocomplete="email" aria-label="Email for receipts">
     <div class="btnrow"><button class="btn primary">Save address</button><span class="ok-msg" id="shipOk"></span></div>
   </form>
+  <form class="box f" id="payForm" style="margin-top:12px"><h3 style="font-size:18px;margin:0">Get paid on Venmo or Cash App</h3><p class="sub" style="margin:0">For stores Spot can’t buy from, like Amazon: whoever pays sends the money here and you buy it yourself.</p>
+    <div class="two"><input name="venmo" placeholder="Venmo @handle" autocapitalize="off" aria-label="Venmo handle"><input name="cashtag" placeholder="Cash App $cashtag" autocapitalize="off" aria-label="Cash App cashtag"></div>
+    <div class="btnrow"><button class="btn primary">Save</button><span class="ok-msg" id="payOk"></span></div>
+  </form>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
     <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
   </div>
@@ -221,7 +225,7 @@ async function load(){
   $('#readySec').hidden=!me.ready.length;
   $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':c.kind==='train'?'🚆 ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
   renderCarts();
-  const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';
+  const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
   const NAMES={google:'Google',facebook:'Facebook'};
@@ -273,6 +277,8 @@ async function claimLocal(){let mine=[];try{mine=JSON.parse(localStorage.getItem
   if(links.length){try{await post('/v1/me/claim',{links})}catch{}}}
 $('#shipForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));const name=v.name;
   try{await post('/v1/me',{name,shipping:v.line1?{...v}:null});$('#shipOk').textContent='Saved';setTimeout(()=>$('#shipOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
+$('#payForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
+  try{await post('/v1/me',{venmo:v.venmo,cashtag:v.cashtag});$('#payOk').textContent='Saved';setTimeout(()=>$('#payOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
 $('#travForm').addEventListener('submit',async e=>{e.preventDefault();const t=Object.fromEntries(new FormData(e.target));try{await post('/v1/me',{travelers:[...me.user.travelers,t]});e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 document.addEventListener('click',async e=>{const rm=e.target.closest('[data-rm]'),rv=e.target.closest('[data-revoke]');
   try{if(rm){await post('/v1/me',{travelers:me.user.travelers.filter((_,i)=>i!==+rm.dataset.rm)});load()}
