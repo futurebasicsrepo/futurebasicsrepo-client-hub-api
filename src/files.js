@@ -25,7 +25,7 @@ const inPackImage = (id, label, uri, group, at) => { const d = parseData(uri); i
 export async function listFiles({ pool, uploadDir, meshDir, product, admin = false }) {
   const items = [];
   // files uploaded and filed as assets (client uploads, staff uploads, the generated PDFs), every version
-  const av = (await pool.query(`select av.id,av.version,av.original_name,av.mime_type,av.size_bytes,av.created_at,av.notes,a.id asset_id,a.name asset_name,a.kind,a.visibility,a.current_version,u.role uploader_role
+  const av = (await pool.query(`select av.id,av.version,av.original_name,av.mime_type,av.size_bytes,av.created_at,av.notes,a.id asset_id,a.name asset_name,a.kind,a.visibility,a.current_version,coalesce(av.uploader_role,u.role) uploader_role
     from asset_versions av join assets a on a.id=av.asset_id left join users u on u.id=av.uploader_id where a.product_id=$1 order by a.name,av.version desc`, [product.id])).rows;
   for (const r of av) {
     if (r.visibility !== 'client' && !admin) continue;

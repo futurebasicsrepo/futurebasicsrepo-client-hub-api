@@ -315,7 +315,7 @@ async function clientForEmail(email,q=pool){
     order by ($2=any(allowed_emails)) desc limit 1`,[domain,email])).rows[0]||null;
 }
 
-async function storeAssetVersion(asset,userId,part,notes){
+async function storeAssetVersion(asset,userId,part,notes,role=null){
   const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   const client=await pool.connect();
@@ -324,8 +324,8 @@ async function storeAssetVersion(asset,userId,part,notes){
     await client.query('begin');
     const version=(await client.query(`update assets set current_version=current_version+1,
       status=case when status='approved' then 'working' else status end,updated_at=now() where id=$1 returning current_version`,[asset.id])).rows[0].current_version;
-    const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes)
-      values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null])).rows[0];
+    const row=(await client.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes,uploader_role)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,[asset.id,userId,version,originalName,storageName,part.mimetype,part.file.bytesRead,notes||null,role])).rows[0];
     await client.query('commit');return row;
   }catch(error){await client.query('rollback').catch(()=>{});await unlink(path).catch(()=>{});throw error}finally{client.release()}
 }
@@ -1317,7 +1317,7 @@ app.post('/v1/admin/products/:id/assets',{preHandler:[authenticate,adminOnly]},a
   if(!name)return reply.code(400).send({error:'Asset name required'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
   const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,$4)
     on conflict(product_id,name) do update set kind=excluded.kind,visibility=excluded.visibility,updated_at=now() returning *`,[product.id,name,kind,visibility])).rows[0];
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'admin');
   await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[product.client_id,product.id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
   if(asset.visibility==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'file',$2,'product',$3)`,[product.client_id,`New in your folder: ${asset.name} v${version.version}`,product.id]).catch(()=>{});
   return reply.code(201).send({asset:{...asset,current_version:version.version},version});
@@ -1325,7 +1325,7 @@ app.post('/v1/admin/products/:id/assets',{preHandler:[authenticate,adminOnly]},a
 app.post('/v1/admin/assets/:id/versions',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const asset=(await pool.query('select a.*,p.client_id from assets a join products p on p.id=a.product_id where a.id=$1',[req.params.id])).rows[0];
   if(!asset)return reply.code(404).send({error:'Asset not found'});const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[asset.client_id,asset.product_id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'admin');await pool.query('insert into activities(client_id,product_id,actor_id,type,summary) values($1,$2,$3,$4,$5)',[asset.client_id,asset.product_id,req.auth.sub,'asset',`Uploaded ${asset.name} v${version.version}`]);
   if(asset.visibility==='client'&&asset.kind!=='tech-pack')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'file',$2,'product',$3)`,[asset.client_id,`New in your folder: ${asset.name} v${version.version}`,asset.product_id]).catch(()=>{});
   return reply.code(201).send(version);
 });
@@ -1339,7 +1339,7 @@ app.post('/v1/products/:id/assets',{preHandler:authenticate},async(req,reply)=>{
   const name=String(req.query?.name||'Client upload').trim(),kind=String(req.query?.kind||'artwork');const part=await req.file();if(!part)return reply.code(400).send({error:'One file is required'});
   const asset=(await pool.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,'client')
     on conflict(product_id,name) do update set kind=excluded.kind,visibility='client',updated_at=now() returning *`,[product.id,name,kind])).rows[0];
-  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes);await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
+  const version=await storeAssetVersion(asset,req.auth.sub,part,req.query?.notes,'client');await pool.query('insert into notifications(client_id,type,title,entity_type,entity_id) values($1,$2,$3,$4,$5)',
     [product.client_id,'client-upload',`Client uploaded ${asset.name} v${version.version}`,'asset',asset.id]);
   return reply.code(201).send({asset:{...asset,current_version:version.version},version});
 });
