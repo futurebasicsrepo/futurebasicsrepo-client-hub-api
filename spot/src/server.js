@@ -28,6 +28,7 @@ import { agentCardPage } from './agentcard.js';
 import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { registerMcpAuth } from './mcpauth.js';
+import { poppyJson } from './pap.js';
 import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
@@ -36,7 +37,7 @@ import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
@@ -188,6 +189,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (!payload) return html(reply, notFoundPage(), 404);
     return html(reply, approvalPage({ id: a.id, payload, jws: a.jws }));
   });
+  // Personal Agent Protocol discovery (pap.js).
+  app.get('/.well-known/poppy.json', async (req, reply) => reply.header('cache-control', 'public, max-age=300').header('access-control-allow-origin', '*').send(poppyJson(urlFor(req, ''))));
   app.get('/.well-known/ucp', async (req, reply) => reply.header('cache-control', 'public, max-age=300').send(platformProfile(urlFor(req, ''))));
   app.get('/signin', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available })));
   // The SMS opt-in page carriers review: the text sign-in, open and readable.
@@ -562,7 +565,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'no-store').send(png);
   });
 
-  const mcpAuth = registerMcpAuth(app, { db, urlFor });
+  const mcpAuth = registerMcpAuth(app, { db, urlFor, papFetch });
   registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText } });
 
   // Sandbox only: what the store does with Spot's card after checkout: charge

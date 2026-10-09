@@ -125,6 +125,7 @@ spot-merchant=mer_…   (from your registration)`;
       <li><b>Several stores, one ask.</b> Pass <code>stores</code> (2–5, each with its own items) instead of <code>items</code>: one link and one payment, and Spot orders from each store. <code>get_spot_ask</code> shows each store’s status and order.</li>
       <li><b>Pay at the store.</b> For stores that support agent checkout (UCP), asks default to <code>pay_at_store</code>: the payer pays the store on its own checkout, and there’s no Spot fee.</li>
       <li><b>Signed approvals.</b> Once a person pays or places the order, <code>get_spot_ask</code> returns <code>approvals</code> and <code>approval_url</code>: an EdDSA-signed JWS of exactly what was approved. Verify it against <a href="/.well-known/spot-keys.json"><code>/.well-known/spot-keys.json</code></a>.</li>
+      <li><b>Personal Agent Protocol.</b> PAP agents find Spot at <a href="/.well-known/poppy.json"><code>/.well-known/poppy.json</code></a> (draft 0.1): sign in with an https <code>client_id</code> and <code>private_key_jwt</code>, start a session with the JWT bearer grant, and call the MCP server. Guest sessions can send asks; signing in applies the person’s rules. Signed approvals are the <code>spotmeplease.com/approvals</code> extension.</li>
       <li><b>Signed requests.</b> Spot signs its requests to stores with HTTP Message Signatures (RFC 9421, Web Bot Auth). Keys: <a href="/.well-known/http-message-signatures-directory"><code>/.well-known/http-message-signatures-directory</code></a>.</li>
     </ol>
   </div>
