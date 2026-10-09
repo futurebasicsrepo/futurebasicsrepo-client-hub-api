@@ -21,7 +21,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CartError, usd } from './cart.js';
+import { CartError, blocksAgents, usd } from './cart.js';
 import { ownerCart, publicBundle, publicCart, storesLabel } from './spot.js';
 import { emailLayout } from './notify.js';
 import { approverOf, checkRules, monthStart } from './rules.js';
@@ -178,6 +178,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         ? `Waiting for your user to tap Approve. Their ${cart.saved_card.label} pays, and Spot orders it.`
         : cart.approver
         ? `Sent to ${cart.approver.name || 'your user’s approver'} to approve (${cart.approver.reason}). They pay for it or turn it down; nothing is bought until they do.`
+        : cart.settle === 'handoff'
+        ? `${cart.merchant.name} doesn’t allow AI checkout, so this one is paid to your user’s ${[cart.requester.venmo && 'Venmo', cart.requester.cashtag && 'Cash App'].filter(Boolean).join(' or ')} and they buy it themselves. Send the link to whoever will pay. Suggested message: "${shareMessage(cart, link)}"`
         : cart.settle === 'direct'
         ? (cart.for === 'self'
           ? `Waiting for your user to confirm shipping and pay ${cart.merchant.name} directly on its own checkout.`
@@ -263,7 +265,22 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const storeUrl = merchant?.url || items.find((i) => i.url)?.url;
     const direct = !payMode && (b.settle === 'direct' || (b.settle == null && storeUrl && (await spot.direct?.supports(storeUrl))));
     if (direct && !merchant?.url && storeUrl) merchant = { ...merchant, url: new URL(storeUrl).origin };
-    const settle = direct ? 'direct' : forSelf ? 'card' : b.settle;
+    let settle = direct ? 'direct' : forSelf ? 'card' : b.settle;
+    // Stores that don't allow AI checkout (Amazon): Spot can't buy there, so
+    // whoever pays sends the money to the requester's Venmo / Cash App and
+    // the requester buys it themselves.
+    if (!direct && blocksAgents(merchant, items)) {
+      const store = merchant?.name || 'This store';
+      if (forSelf) throw new CartError(`${store} doesn’t allow AI checkout, so Spot can’t buy it. Send your user the product link to buy it there.`, 409);
+      const owner = req.spotUserId ? db.users.byId(req.spotUserId) : null;
+      const venmo = b.requester?.venmo || owner?.venmo || null;
+      const cashtag = b.requester?.cashtag || owner?.cashtag || null;
+      if (!venmo && !cashtag) {
+        throw new CartError(`${store} doesn’t allow AI checkout, so Spot can’t buy it. Spot can send the money to your user’s Venmo or Cash App instead and they buy it themselves: ask for their Venmo @handle or Cash App $cashtag and call again with requester_venmo or requester_cashtag (they can also save it once in their Spot account).`, 409);
+      }
+      b.requester = { ...(b.requester || {}), venmo, cashtag };
+      settle = 'handoff';
+    }
     const { cart, manageKey } = spot.create(
       { requester: b.requester, merchant, items, extras_cents: extras, note: b.note, settle, for: forSelf ? 'self' : 'other', expires_minutes: b.expires_minutes },
       { ip: req.ip, userId: req.spotUserId },
@@ -595,10 +612,12 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver). If your user saved their own card on Spot and set this AI to use it, their own asks are paid from it: they tap Approve on a text/email (see approve_link), or, if they opted in, Spot pays right away inside their rules (see paid_from). Either way Spot buys with a card capped at the order and locked to that store; you never see a card number. Set for_me: false when someone else should pay.",
+          "Turn a shopping cart into a Spot link. By default it's for someone else (a parent, partner, friend) to pay in one tap; they buy it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. Spot can't buy from Amazon (it doesn't allow AI checkout): for those, the payer sends the money to your user's Venmo or Cash App and your user buys it themselves. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver). If your user saved their own card on Spot and set this AI to use it, their own asks are paid from it: they tap Approve on a text/email (see approve_link), or, if they opted in, Spot pays right away inside their rules (see paid_from). Either way Spot buys with a card capped at the order and locked to that store; you never see a card number. Set for_me: false when someone else should pay.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
+          requester_venmo: z.string().optional().describe("Your user's Venmo @handle. Only needed for stores Spot can't buy from (Amazon): the payer sends the money there instead"),
+          requester_cashtag: z.string().optional().describe("Your user's Cash App $cashtag, as with requester_venmo"),
           merchant_name: z.string().optional(),
           merchant_url: z.string().url().optional(),
           items: z.array(itemShape).max(25).optional(),
@@ -624,7 +643,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         try {
           return reply(
             await createAsk(req, agent, {
-              requester: { name: a.requester_name, email: a.requester_email },
+              requester: { name: a.requester_name, email: a.requester_email, venmo: a.requester_venmo, cashtag: a.requester_cashtag },
               merchant: a.merchant_name ? { name: a.merchant_name, url: a.merchant_url } : undefined,
               items: a.items,
               stores: a.stores?.map((st) => ({ merchant: { name: st.merchant_name, url: st.merchant_url }, items: st.items, extras_cents: st.extras_cents })),

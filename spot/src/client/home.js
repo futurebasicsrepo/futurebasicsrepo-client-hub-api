@@ -170,7 +170,14 @@
     // Stores with agent checkout (UCP): the payer can pay the store directly.
     $('#optDirect').hidden = true;
     const storeUrl = draft.merchant && (draft.merchant.url || (draft.items.find((i) => i.url) || {}).url);
-    if (storeUrl && !basket.length) {
+    // Stores that don't allow AI checkout (Amazon): Spot can't buy there, so
+    // the money goes to your Venmo / Cash App instead (same rule as cart.js).
+    const noAgent = /^amazon\b/i.test(draft.merchant.name || '') || [storeUrl].concat(draft.items.map((i) => i.url)).some((u) => { try { return /(^|\.)(amazon|amzn)\.[a-z.]+$/i.test(new URL(u).hostname); } catch (e) { return false; } });
+    if (noAgent && !basket.length) {
+      $('#settle').value = 'handoff';
+      $('#checkMsg').textContent = (draft.merchant.name || 'This store') + ' doesn’t allow AI checkout, so this one goes straight to your Venmo or Cash App and you buy it yourself.';
+    }
+    if (storeUrl && !basket.length && !noAgent) {
       fetch('/v1/stores/check?url=' + encodeURIComponent(storeUrl)).then((r) => r.json()).then((r) => {
         if (!r.pay_at_store) return;
         $('#optDirect').hidden = false;
