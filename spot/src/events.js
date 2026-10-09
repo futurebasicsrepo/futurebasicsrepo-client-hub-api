@@ -13,6 +13,8 @@
 //   refunded         payer      email          a full refund (canceled, couldn't be ordered…)
 //                    requester  email
 //   refunded_part    payer      email          unused money or a store return, sent back
+//   thanks           payer      email          the requester's thank-you, with a link to
+//                                              the payer's receipt (where it shows too)
 //
 // Each (cart, event, person) is told once: sends are recorded in the
 // notices table. Texts go only to numbers that haven't replied STOP (notify.js).
@@ -240,6 +242,33 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           subject: `${usd(extra.amount_cents)} back from Spot`,
           text: `${what}, so we sent ${usd(extra.amount_cents)} back to your card.`,
           html: mail({ preheader: `${usd(extra.amount_cents)} back to your card`, title: `${usd(extra.amount_cents)} back to your card`, lines: [`${esc(what)} for <b>${esc(item)}</b>, so we sent the difference back to your card. It usually shows in 5–10 business days.`] }),
+        }];
+      }
+      case 'thanks': {
+        const t = cart.thanks;
+        const c = cart.payer_contact || {};
+        if (!t || cart.for === 'self' || (!c.email && !c.phone)) return [];
+        const from = String(cart.requester?.name || 'Your friend').trim().split(/\s+/)[0];
+        const says = `${from} says thanks${t.emoji ? ` ${t.emoji}` : ''}`;
+        const receipt = `${base}${spot.payerPath(cart)}`;
+        return [{
+          key: 'thanks',
+          // Only the channel the payer gave Spot. Texts still follow STOP and
+          // the confirmed-number rule in notify.js.
+          to: { email: c.email || null, phone: c.phone || null },
+          subject: `${says}: ${[...t.message].length > 60 ? `${[...t.message].slice(0, 57).join('').trimEnd()}…` : t.message}`,
+          text: `${says}: “${t.message}” See it on your receipt: ${receipt}`,
+          html: mail({
+            preheader: t.message,
+            title: `${says}`,
+            lines: [
+              `<span style="display:block;padding:14px 16px;border-radius:16px;background:#fff1ec;font-size:18px;line-height:1.45">“${esc(t.message)}”</span>`,
+              `For <b>${esc(item)}</b> from ${esc(store)}. You made it happen.`,
+            ],
+            cta: { label: 'See your receipt →', url: receipt },
+            note: `Want someone to spot you next? <a href="${esc(base)}/new" style="color:#6f675c">Make your own Spot</a>.`,
+          }),
+          sms: `Spot: ${says}: “${t.message}” Your receipt: ${receipt}`,
         }];
       }
       default:
