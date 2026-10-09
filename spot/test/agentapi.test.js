@@ -269,3 +269,15 @@ test('terms and privacy pages', async (t) => {
   const privacy = await a.inject({ method: 'GET', url: '/privacy' });
   assert.match(privacy.body, /No mobile information will be shared with third parties or affiliates for marketing or promotional purposes/);
 });
+
+test('the pay page shows who is behind the ask and where the money can go', async (t) => {
+  const a = app(t);
+  const r = (await a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: { requester: { name: 'Kyle' }, merchant: { name: 'Nike', url: 'https://www.nike.com' }, items, note: 'for the trip' } })).json();
+  const page = (await a.inject({ method: 'GET', url: `/c/${r.ask_id}` })).body;
+  assert.match(page, /🤖 Found by /, 'which AI found it');
+  assert.match(page, /Sent by Kyle/);
+  assert.doesNotMatch(page, /Sent by Kyle · verified/, 'not verified: no signed-in account');
+  assert.match(page, /only at Nike/);
+  assert.match(page, /max \$120\.75/, 'the card cap: cart + allowance');
+  assert.match(page, /Whatever Nike doesn’t charge comes back to you/);
+});

@@ -205,6 +205,25 @@ details summary{cursor:pointer;font-weight:600}
 details .sum{font-size:14px}
 .or{text-align:center;color:var(--muted);font-size:14px;margin:10px 0}
 #cardBox summary::-webkit-details-marker{display:none}
+.bub.who{background:transparent;border:0;padding:2px 0;max-width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:13.5px;font-weight:700;padding:6px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
+.chip.ai{background:color-mix(in srgb,#4b7bff 12%,var(--card));border-color:transparent}
+.chip.ok{background:color-mix(in srgb,var(--ok,#1d8a52) 14%,var(--card));border-color:transparent;color:var(--ok,#1d8a52)}
+.whynote{font-size:13px;color:var(--muted);margin:6px 2px 0}
+.lock{margin:14px 0 4px;padding:14px;border-radius:20px;background:var(--card);border:1px solid var(--line)}
+.lock.direct{padding:12px 14px}
+.lk-row{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.lk-i{font-size:18px}
+.lk-card{position:relative;overflow:hidden;border-radius:16px;padding:14px 16px;color:#fff;background:linear-gradient(135deg,#221d18 0%,#3a2a20 60%,var(--spot) 160%);box-shadow:0 12px 26px -14px rgba(0,0,0,.6);aspect-ratio:1.9/1;max-height:180px;display:flex;flex-direction:column;justify-content:space-between}
+.lk-card:after{content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:var(--spot);opacity:.35}
+.lk-top{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.02em;opacity:.9}
+.lk-top .dot{width:14px;height:14px;border-radius:50%;background:var(--spot);display:inline-block}
+.lk-store{font-weight:800;font-size:22px;letter-spacing:-.01em;position:relative}
+.lk-bot{display:flex;justify-content:space-between;font-size:13px;opacity:.85;font-variant-numeric:tabular-nums;position:relative}
+.lk-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:7px;font-size:14px}
+.lk-list li{position:relative;padding-left:24px;line-height:1.35}
+.lk-list li:before{content:'✓';position:absolute;left:0;top:0;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;background:var(--ok,#1d8a52)}
 .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:fall 1.6s ease-in forwards}
 @keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.8}}
@@ -263,7 +282,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
     lines = [
       `<div class="bub">${esc(name)} found something at <b>${esc(cart.merchant.name)}</b> and is hoping you'll spot them</div>`,
       cart.note ? `<div class="bub quote">“${esc(cart.note)}” — ${esc(name)}</div>` : '',
-      cart.built_by || cart.source ? `<div class="bub">${cart.built_by ? `🤖 put together by ${esc(name)}’s AI (${esc(cart.built_by)})` : `🛍️ sent from ${esc(cart.source.name || cart.merchant.name)}’s checkout${cart.source.verified ? ' ✓' : ''}`}${cart.via_approver ? `. ${esc(name)}’s spending rules sent it to you to approve` : ''}</div>` : '',
+      whoBox(cart),
       products,
       `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
     ];
@@ -276,6 +295,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
+${open ? lockCard(cart) : ''}
 ${open ? `<div class="act" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
@@ -298,6 +318,44 @@ function celebrate(payer){
 ${open && cart.settle === 'card' ? payScript(cart, provider) : ''}
 ${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });
+}
+
+// Who's behind this ask: the AI that found it, the person who sent it (and
+// whether their account is verified), or the store button it came from.
+function whoBox(cart) {
+  const name = esc(cart.requester.name);
+  const chips = [];
+  if (cart.built_by) chips.push(`<span class="chip ai">🤖 Found by ${esc(cart.built_by.charAt(0).toUpperCase() + cart.built_by.slice(1))}</span>`);
+  if (cart.source) chips.push(`<span class="chip">🛍️ From ${esc(cart.source.name || cart.merchant.name)}’s checkout${cart.source.verified ? ' ✓' : ''}</span>`);
+  chips.push(`<span class="chip${cart.requester_verified ? ' ok' : ''}">${cart.requester_verified ? '✓' : '🙋'} Sent by ${name}${cart.requester_verified ? ' · verified' : ''}</span>`);
+  const note = cart.via_approver
+    ? `${name}’s spending rules sent this to you to OK. Nothing is bought unless you pay.`
+    : cart.requester_verified
+      ? `${name} signed in to Spot with a code to their phone or email.`
+      : '';
+  return `<div class="bub who"><div class="chips">${chips.join('')}</div>${note ? `<div class="whynote">${note}</div>` : ''}</div>`;
+}
+
+// What the payer's money can do, shown as the card itself: Spot's one-time
+// card is locked to this store, capped at this order and closed after one
+// use, and whatever the store doesn't charge comes back. Paying the store
+// directly: Spot never touches the money at all.
+function lockCard(cart) {
+  const store = esc(cart.merchant.name);
+  if (cart.settle === 'direct') {
+    return `<div class="lock direct"><div class="lk-row"><span class="lk-i">🔒</span><span>You pay <b>${store}</b> on its own checkout. Spot never touches your money.</span></div></div>`;
+  }
+  if (cart.settle !== 'card' || !cart.card_limit_cents) return '';
+  return `<div class="lock" aria-label="Where your money goes">
+<div class="lk-card"><div class="lk-top"><span class="dot"></span>Spot · one-time card</div>
+<div class="lk-store">only at ${store}</div>
+<div class="lk-bot"><span>max ${usd(cart.card_limit_cents)}</span><span>for ${esc(cart.requester.name)}</span></div></div>
+<ul class="lk-list">
+<li>Spot buys exactly these items. Your money can’t become cash or anything else.</li>
+<li>Works once, only at ${store}, for up to ${usd(cart.card_limit_cents)}: the items plus room for tax. Then it’s closed.</li>
+<li>Whatever ${store} doesn’t charge comes back to you, automatically.</li>
+<li>Not ordered within 3 days? You get it all back.</li>
+</ul></div>`;
 }
 
 function actionBox(cart, links, provider, total) {

@@ -63,7 +63,7 @@ test('store button: register, ask from the store page, open in Spot, send', asyn
   assert.equal(made.body.cart.merchant.name, 'Trailhead');
   assert.deepEqual(made.body.cart.source, { kind: 'store_button', name: 'Trailhead', verified: true });
   const page = await call('GET', `/c/${made.body.cart.token}`);
-  assert.match(page.body, /sent from Trailhead’s checkout ✓/);
+  assert.match(page.body, /From Trailhead’s checkout ✓/);
 
   // Editing the items drops the ✓.
   const k = made.body.manage_key;
