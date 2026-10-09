@@ -1223,6 +1223,31 @@ app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async
     [before.client_id,row.product_id,req.auth.sub,`${row.name} set by hand: ${changed}${notes?` · ${String(notes).slice(0,200)}`:''}`,{milestoneId:row.id,override:true,from:before.status,to:row.status,owner:row.responsible_party}]);
   return row;
 });
+// One press on a milestone. 'done' checks the current step off and hands the product to the next one (the last step completes the product);
+// 'goto' makes any other step the current one, closing everything before it and reopening everything after it (this is also the undo).
+// The next owner is the step's own responsible party, so the ball, the queues and the hub follow without anyone filling in a form.
+app.post('/v1/admin/milestones/:id/step',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const action=req.body?.action==='goto'?'goto':'done';
+  const m=(await pool.query('select m.*,p.client_id,p.title,p.completed_at product_done from milestones m join products p on p.id=m.product_id where m.id=$1',[req.params.id])).rows[0];
+  if(!m)return reply.code(404).send({error:'Milestone not found'});
+  const rows=(await pool.query('select id,name,status,sort_order,responsible_party from milestones where product_id=$1 order by sort_order',[m.product_id])).rows;
+  let target;
+  if(action==='goto')target=m;
+  else{
+    if(['complete','skipped'].includes(m.status))return reply.code(409).send({error:`${m.name} is already ${m.status}`});
+    target=rows.find(r=>r.sort_order>m.sort_order&&r.status!=='skipped')||null;
+  }
+  const owner=target?.responsible_party||null;
+  await applyFlow(pool,m.product_id,{stage:target?target.name:null,owner,label:action==='goto'?`${m.name} made the current step`:target?`${m.name} done`:`${m.name} done`,back:true},{actorId:req.auth.sub});
+  if(!target)await pool.query('update products set completed_by=$2 where id=$1',[m.product_id,req.auth.sub]);
+  if(action==='done'){
+    if(!target)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'product-complete',$2,'product',$3)`,[m.client_id,`${m.title} is complete`,m.product_id]);
+    else if(owner==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'handoff',$2,'product',$3)`,[m.client_id,`Your turn: ${target.name} for ${m.title}`,m.product_id]);
+  }
+  const product=(await pool.query('select id,current_stage,waiting_on,completed_at from products where id=$1',[m.product_id])).rows[0];
+  return {product,done:m.name,next:target?{id:target.id,name:target.name,owner}:null};
+});
+
 app.post('/v1/admin/suppliers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,contactEmail,contactPhone,country,leadTimeDays,notes}=req.body||{};if(!name)return reply.code(400).send({error:'Supplier name required'});
   return reply.code(201).send((await pool.query(`insert into suppliers(name,contact_email,contact_phone,country,lead_time_days,notes)
