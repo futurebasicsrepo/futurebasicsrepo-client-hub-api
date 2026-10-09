@@ -17,6 +17,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { sessionUserId } from './accounts.js';
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
+import { CLIENT_ASSERTION, JWT_BEARER, PAP_SCOPES, PapError, createPap, domainOf, isUrlClient } from './pap.js';
 
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const b64sha = (s) => createHash('sha256').update(String(s)).digest('base64url');
@@ -27,6 +28,7 @@ const CODE_TTL = 10 * 60_000;
 const ACCESS_TTL = 3600;
 const REFRESH_TTL = 90 * 86400_000;
 const SCOPE = 'spot';
+const SCOPES = [SCOPE, ...PAP_SCOPES];
 
 // Apps people will recognize by where they send you back.
 const KNOWN = [
@@ -70,7 +72,8 @@ export function oauthKey(db, bearer) {
   return row && !row.revoked ? row : null;
 }
 
-export function registerMcpAuth(app, { db, urlFor }) {
+export function registerMcpAuth(app, { db, urlFor, papFetch }) {
+  const pap = createPap({ db, ...(papFetch ? { fetchJson: papFetch } : {}) });
   const origin = (req) => urlFor(req, '');
   const resource = (req) => urlFor(req, '/mcp');
   const fail = (reply, status, error, error_description) => reply.code(status).header('cache-control', 'no-store').send({ error, error_description });
@@ -89,7 +92,7 @@ export function registerMcpAuth(app, { db, urlFor }) {
   };
 
   // Discovery. The path-suffixed forms are what newer clients ask for first.
-  const prm = (req) => ({ resource: resource(req), authorization_servers: [origin(req)], scopes_supported: [SCOPE], bearer_methods_supported: ['header'], resource_name: 'Spot', resource_documentation: urlFor(req, '/integrations#mcp') });
+  const prm = (req) => ({ resource: resource(req), authorization_servers: [origin(req)], scopes_supported: SCOPES, bearer_methods_supported: ['header'], resource_name: 'Spot', resource_documentation: urlFor(req, '/integrations#mcp') });
   const asm = (req) => ({
     issuer: origin(req),
     authorization_endpoint: urlFor(req, '/oauth/authorize'),
@@ -97,11 +100,16 @@ export function registerMcpAuth(app, { db, urlFor }) {
     registration_endpoint: urlFor(req, '/oauth/register'),
     revocation_endpoint: urlFor(req, '/oauth/revoke'),
     response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'refresh_token'],
+    grant_types_supported: ['authorization_code', 'refresh_token', JWT_BEARER],
     code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
-    revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic'],
-    scopes_supported: [SCOPE],
+    token_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic', 'private_key_jwt'],
+    token_endpoint_auth_signing_alg_values_supported: ['ES256', 'EdDSA', 'RS256'],
+    revocation_endpoint_auth_methods_supported: ['none', 'client_secret_post', 'client_secret_basic', 'private_key_jwt'],
+    scopes_supported: SCOPES,
+    authorization_response_iss_parameter_supported: true,
+    client_id_metadata_document_supported: true,
+    // PAP: the domains this issuer signs people in for.
+    poppy_domains: [domainOf(origin(req))],
     service_documentation: urlFor(req, '/integrations#mcp'),
   });
   for (const p of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp']) {
@@ -146,12 +154,13 @@ export function registerMcpAuth(app, { db, urlFor }) {
   });
 
   const clientOf = (id) => (typeof id === 'string' && id.startsWith('spc_') ? db.state.get(`oauth_client:${id}`) : null);
+  // A registered app, or a PAP agent known by its metadata URL.
+  const resolveClient = async (id) => (isUrlClient(id) ? pap.client(id).catch(() => null) : clientOf(id));
 
   // Everything about an authorize request that must hold before we show the
   // page or redirect anywhere. A bad client or redirect is shown, never followed.
-  function checkAuthorize(q, req) {
-    const client = clientOf(q.client_id);
-    if (!client) return { page: 'This app isn’t registered with Spot. Remove Spot from the app and add it again.' };
+  function checkAuthorize(q, req, client) {
+    if (!client) return { page: isUrlClient(q.client_id) ? 'Spot couldn’t check this agent’s details. Try again in a minute.' : 'This app isn’t registered with Spot. Remove Spot from the app and add it again.' };
     const redirectUri = String(q.redirect_uri || (client.redirect_uris.length === 1 ? client.redirect_uris[0] : ''));
     if (!client.redirect_uris.includes(redirectUri)) return { page: 'This sign-in link doesn’t match the app that registered. Remove Spot from the app and add it again.' };
     const back = (error, error_description) => {
@@ -164,14 +173,14 @@ export function registerMcpAuth(app, { db, urlFor }) {
     };
     if (q.response_type !== 'code') return back('unsupported_response_type', 'Only response_type=code');
     if (q.code_challenge_method !== 'S256' || !/^[A-Za-z0-9._~-]{43,128}$/.test(String(q.code_challenge || ''))) return back('invalid_request', 'PKCE with S256 is required');
-    if (q.scope && !String(q.scope).split(/\s+/).every((s) => s === SCOPE || s === '')) return back('invalid_scope', `Only "${SCOPE}"`);
+    if (q.scope && !String(q.scope).split(/\s+/).every((s) => SCOPES.includes(s) || s === '')) return back('invalid_scope', `Only ${SCOPES.join(', ')}`);
     if (q.resource && ![resource(req), origin(req), `${origin(req)}/`].includes(String(q.resource))) return back('invalid_target', 'Unknown resource');
     return { client, redirectUri, back };
   }
 
   app.get('/oauth/authorize', async (req, reply) => {
     const q = req.query || {};
-    const c = checkAuthorize(q, req);
+    const c = checkAuthorize(q, req, await resolveClient(q.client_id));
     if (c.page) return page(reply, errorPage(origin(req), c.page), 400);
     if (c.redirect) return reply.redirect(c.redirect);
     const userId = sessionUserId(db, req);
@@ -186,7 +195,7 @@ export function registerMcpAuth(app, { db, urlFor }) {
   app.post('/oauth/authorize', async (req, reply) => {
     if (!String(req.headers['content-type'] || '').startsWith('application/json')) return reply.code(415).send({ error: 'JSON only' });
     const b = req.body || {};
-    const c = checkAuthorize(b.params || {}, req);
+    const c = checkAuthorize(b.params || {}, req, await resolveClient(b.params?.client_id));
     if (c.page) return reply.code(400).send({ error: c.page });
     if (c.redirect) return { redirect: c.redirect };
     const userId = sessionUserId(db, req);
@@ -195,7 +204,7 @@ export function registerMcpAuth(app, { db, urlFor }) {
     if (b.allow !== true) return { redirect: c.back('access_denied', 'You canceled').redirect };
     if (limited(`grant:${user.id}`, 20, 3600_000)) return reply.code(429).send({ error: 'Too many connections in an hour. Try again later.' });
     const code = token('spot_code_');
-    db.state.set(`oauth_code:${sha(code)}`, { client_id: b.params.client_id, redirect_uri: c.redirectUri, challenge: String(b.params.code_challenge), user_id: user.id, app: appFor(c.client, c.redirectUri).name, exp: Date.now() + CODE_TTL });
+    db.state.set(`oauth_code:${sha(code)}`, { client_id: b.params.client_id, redirect_uri: c.redirectUri, challenge: String(b.params.code_challenge), scope: b.params.scope || null, user_id: user.id, app: appFor(c.client, c.redirectUri).name, exp: Date.now() + CODE_TTL });
     const u = new URL(c.redirectUri);
     u.searchParams.set('code', code);
     if (b.params.state) u.searchParams.set('state', String(b.params.state));
@@ -232,36 +241,144 @@ export function registerMcpAuth(app, { db, urlFor }) {
     return { id, client };
   }
 
-  function issue(key, userId, clientId) {
+  function issue(key, userId, clientId, { refresh = true, scope = SCOPE, sessionId } = {}) {
     const access = token('spot_at_');
-    const refresh = token('spot_rt_');
-    db.state.set(`oauth_at:${sha(access)}`, { key, user_id: userId, client_id: clientId, exp: Date.now() + ACCESS_TTL * 1000 });
-    db.state.set(`oauth_rt:${sha(refresh)}`, { key, user_id: userId, client_id: clientId, exp: Date.now() + REFRESH_TTL });
-    return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL, refresh_token: refresh, scope: SCOPE };
+    const extra = sessionId ? { session_id: sessionId } : {};
+    db.state.set(`oauth_at:${sha(access)}`, { key, user_id: userId, client_id: clientId, ...extra, exp: Date.now() + ACCESS_TTL * 1000 });
+    const out = { access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL, scope };
+    if (!refresh) return out;
+    const rt = token('spot_rt_');
+    db.state.set(`oauth_rt:${sha(rt)}`, { key, user_id: userId, client_id: clientId, scope, ...extra, exp: Date.now() + REFRESH_TTL });
+    return { ...out, refresh_token: rt };
+  }
+
+  // A one-time code from the consent page → the user it signs in, or a reason.
+  function redeemCode(b, clientId) {
+    const k = `oauth_code:${sha(b.code || '')}`;
+    const grant = db.state.get(k);
+    if (grant) db.state.set(k, null); // once, even if what follows fails
+    if (!grant || grant.exp < Date.now() || grant.client_id !== clientId) return { error: 'That code is expired or already used' };
+    if (b.redirect_uri && b.redirect_uri !== grant.redirect_uri) return { error: 'redirect_uri doesn’t match' };
+    if (typeof b.code_verifier !== 'string' || b64sha(b.code_verifier) !== grant.challenge) return { error: 'PKCE check failed' };
+    const user = db.users.byId(grant.user_id);
+    if (!user) return { error: 'That account is gone' };
+    return { grant, user };
+  }
+
+  // One of the account's AI keys, the same as one made on the account page.
+  function accountKey(user, appName) {
+    const slug = appName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'my-ai';
+    const name = `${slug}-${randomBytes(3).toString('hex')}`;
+    db.addKey(sha(token('spot_')), name, user.email || user.phone || 'unknown', user.id);
+    db.agentEvents.add(`key:${name}`, user.id, 'connected', { via: appName });
+    return name;
+  }
+
+  // ── PAP sessions ──────────────────────────────────────────────────────────
+  // A guest session uses one shared key per agent (no account, a payer link
+  // for every ask); signing in moves the session onto an account key.
+  function guestKey(clientId, ip) {
+    const host = new URL(clientId).hostname;
+    const name = `pap-${host.replace(/[^a-z0-9]+/gi, '-').slice(0, 30)}-${sha(clientId).slice(0, 6)}`.toLowerCase();
+    if (db.keyByName(name)) return name;
+    // New agents from one place, a few an hour, like self-serve keys.
+    if (limited(`papkey:${ip}`, 10, 3600_000)) return null;
+    db.addKey(sha(token('spot_')), name, host);
+    return name;
+  }
+  const sessionOf = (id) => (typeof id === 'string' && id.startsWith('pss_') ? db.state.get(`pap_session:${id}`) : null);
+  const saveSession = (id, s) => db.state.set(`pap_session:${id}`, s);
+  function papScope(b) {
+    const want = b.scope ? String(b.scope).split(/\s+/).filter(Boolean) : PAP_SCOPES;
+    return want.every((x) => SCOPES.includes(x)) ? want.join(' ') : null;
+  }
+
+  async function papToken(req, reply, b) {
+    let client;
+    try {
+      if (b.client_assertion_type !== CLIENT_ASSERTION) throw new PapError('Use private_key_jwt');
+      client = await pap.client(b.client_id);
+      pap.verifyJwt(b.client_assertion, client.keys, { iss: b.client_id, sub: b.client_id, aud: [urlFor(req, '/oauth/token'), origin(req)] });
+    } catch (e) {
+      return fail(reply, 401, 'invalid_client', e instanceof PapError ? e.message : 'Couldn’t check this agent');
+    }
+    if (limited(`pap:${b.client_id}`, 600, 3600_000)) return fail(reply, 429, 'rate_limited', 'Too many sessions, try again later');
+    const scope = papScope(b);
+    if (!scope) return fail(reply, 400, 'invalid_scope', `Only ${SCOPES.join(', ')}`);
+    if (b.resource && ![resource(req), origin(req), `${origin(req)}/`].includes(String(b.resource))) return fail(reply, 400, 'invalid_target', 'Spot’s only API is its MCP server');
+
+    if (b.grant_type === JWT_BEARER) {
+      let a;
+      try {
+        a = pap.verifyJwt(b.assertion, client.keys, { iss: b.client_id, aud: [urlFor(req, '/oauth/token')] });
+      } catch (e) {
+        return fail(reply, 400, 'invalid_grant', e.message);
+      }
+      if (typeof a.sub !== 'string' || !a.sub || a.sub.length > 200) return fail(reply, 400, 'invalid_grant', 'Assertion needs a sub (the user ID)');
+      let id = b.session_id;
+      let s;
+      if (id) {
+        s = sessionOf(id);
+        if (!s || s.client_id !== b.client_id) return fail(reply, 400, 'invalid_session', 'Unknown session; start a new one');
+        if (s.sub && s.sub !== a.sub) return fail(reply, 400, 'account_mismatch', 'This session belongs to another user');
+        s.sub = a.sub;
+      } else {
+        id = `pss_${randomBytes(18).toString('base64url')}`;
+        s = { client_id: b.client_id, sub: a.sub, key: null, user_id: null, created_at: Date.now() };
+      }
+      // Signed out if the person disconnected the agent on their account page.
+      const row = s.key && db.keyByName(s.key);
+      if (s.key && (!row || row.revoked)) Object.assign(s, { key: null, user_id: null });
+      const key = s.key || guestKey(b.client_id, req.ip);
+      if (!key) return fail(reply, 429, 'rate_limited', 'Too many new agents from here, try again later');
+      saveSession(id, s);
+      const out = issue(key, s.user_id, b.client_id, { refresh: false, scope, sessionId: id });
+      return { ...out, session_id: id, signed_in: Boolean(s.key) };
+    }
+
+    if (b.grant_type === 'authorization_code') {
+      const r = redeemCode(b, b.client_id);
+      if (r.error) return fail(reply, 400, 'invalid_grant', r.error);
+      let id = b.session_id;
+      let s = id ? sessionOf(id) : null;
+      if (id && (!s || s.client_id !== b.client_id)) return fail(reply, 400, 'invalid_session', 'Unknown session; start a new one');
+      if (s?.user_id && s.user_id !== r.user.id) return fail(reply, 400, 'account_mismatch', 'This session is signed in to another account');
+      if (!s) {
+        id = `pss_${randomBytes(18).toString('base64url')}`;
+        s = { client_id: b.client_id, sub: null, created_at: Date.now() };
+      }
+      const key = s.user_id ? s.key : accountKey(r.user, r.grant.app);
+      saveSession(id, { ...s, key, user_id: r.user.id });
+      const out = issue(key, r.user.id, b.client_id, { scope: r.grant.scope || scope, sessionId: id });
+      return { ...out, refresh_token_expires_in: REFRESH_TTL / 1000, session_id: id, signed_in: true };
+    }
+
+    if (b.grant_type === 'refresh_token') {
+      const k = `oauth_rt:${sha(b.refresh_token || '')}`;
+      const rt = db.state.get(k);
+      if (!rt || rt.exp < Date.now() || rt.client_id !== b.client_id) return fail(reply, 400, 'invalid_grant', 'Sign in to Spot again');
+      const row = db.keyByName(rt.key);
+      db.state.set(k, null);
+      if (!row || row.revoked) return fail(reply, 400, 'invalid_grant', 'This agent was disconnected from Spot. Sign in again to reconnect.');
+      const out = issue(rt.key, rt.user_id, b.client_id, { scope: rt.scope || scope, sessionId: rt.session_id });
+      return { ...out, refresh_token_expires_in: REFRESH_TTL / 1000, ...(rt.session_id ? { session_id: rt.session_id } : {}), signed_in: true };
+    }
+
+    return fail(reply, 400, 'unsupported_grant_type', `Use ${JWT_BEARER}, authorization_code or refresh_token`);
   }
 
   app.post('/oauth/token', async (req, reply) => {
     cors(reply).header('cache-control', 'no-store').header('pragma', 'no-cache');
     const b = req.body && typeof req.body === 'object' ? req.body : {};
     if (limited(`tok:${req.ip}`, 60, 60_000)) return fail(reply, 429, 'invalid_request', 'Too many requests');
+    if (isUrlClient(b.client_id)) return papToken(req, reply, b);
     const auth = clientAuth(req, b);
     if (!auth) return fail(reply, 401, 'invalid_client', 'Unknown client or wrong secret');
 
     if (b.grant_type === 'authorization_code') {
-      const k = `oauth_code:${sha(b.code || '')}`;
-      const grant = db.state.get(k);
-      if (grant) db.state.set(k, null); // once, even if what follows fails
-      if (!grant || grant.exp < Date.now() || grant.client_id !== auth.id) return fail(reply, 400, 'invalid_grant', 'That code is expired or already used');
-      if (b.redirect_uri && b.redirect_uri !== grant.redirect_uri) return fail(reply, 400, 'invalid_grant', 'redirect_uri doesn’t match');
-      if (typeof b.code_verifier !== 'string' || b64sha(b.code_verifier) !== grant.challenge) return fail(reply, 400, 'invalid_grant', 'PKCE check failed');
-      const user = db.users.byId(grant.user_id);
-      if (!user) return fail(reply, 400, 'invalid_grant', 'That account is gone');
-      // One of the account's AI keys, the same as one made on the account page.
-      const slug = grant.app.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'my-ai';
-      const name = `${slug}-${randomBytes(3).toString('hex')}`;
-      db.addKey(sha(token('spot_')), name, user.email || user.phone || 'unknown', user.id);
-      db.agentEvents.add(`key:${name}`, user.id, 'connected', { via: grant.app });
-      return issue(name, user.id, auth.id);
+      const r = redeemCode(b, auth.id);
+      if (r.error) return fail(reply, 400, 'invalid_grant', r.error);
+      return issue(accountKey(r.user, r.grant.app), r.user.id, auth.id);
     }
 
     if (b.grant_type === 'refresh_token') {
@@ -280,13 +397,27 @@ export function registerMcpAuth(app, { db, urlFor }) {
   app.post('/oauth/revoke', async (req, reply) => {
     cors(reply).header('cache-control', 'no-store');
     const b = req.body && typeof req.body === 'object' ? req.body : {};
-    const auth = clientAuth(req, b);
+    let auth;
+    if (isUrlClient(b.client_id)) {
+      try {
+        if (b.client_assertion_type !== CLIENT_ASSERTION) throw new PapError('Use private_key_jwt');
+        const client = await pap.client(b.client_id);
+        pap.verifyJwt(b.client_assertion, client.keys, { iss: b.client_id, sub: b.client_id, aud: [urlFor(req, '/oauth/revoke'), urlFor(req, '/oauth/token'), origin(req)] });
+        auth = { id: b.client_id };
+      } catch {
+        auth = null;
+      }
+    } else auth = clientAuth(req, b);
     if (!auth) return fail(reply, 401, 'invalid_client', 'Unknown client or wrong secret');
     const t = String(b.token || '');
     for (const kind of ['oauth_rt', 'oauth_at']) {
       const k = `${kind}:${sha(t)}`;
       const v = db.state.get(k);
-      if (v && v.client_id === auth.id) db.state.set(k, null);
+      if (!v || v.client_id !== auth.id) continue;
+      db.state.set(k, null);
+      // Revoking a PAP account token signs that session out.
+      const s = kind === 'oauth_rt' && sessionOf(v.session_id);
+      if (s) saveSession(v.session_id, { ...s, key: null, user_id: null });
     }
     return reply.code(200).send({});
   });
