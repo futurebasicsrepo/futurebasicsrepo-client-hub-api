@@ -104,6 +104,17 @@ tr:last-child td{border-bottom:0}
 thead th{font-size:15px;color:var(--muted);font-weight:600}
 thead th.us{color:var(--spot);font-weight:800;font-size:17px}
 td.us{background:color-mix(in srgb,var(--spot) 7%,transparent);font-weight:800}
+tr.cost td{font-weight:800}
+.price{margin:18px auto 0;max-width:640px;text-align:center;color:var(--muted);font-size:15px}
+.price b{color:var(--ink)}
+.swipe{display:none}
+@media (max-width:640px){
+  table{min-width:560px;font-size:14px}
+  th,td{padding:12px 10px}
+  th:first-child,td:first-child{position:sticky;left:0;z-index:1;background:var(--card);width:150px;min-width:150px;box-shadow:1px 0 0 var(--line)}
+  thead th{font-size:13px}
+  .swipe{display:block;margin:8px 0 0;text-align:right;color:var(--muted);font-size:13px}
+}
 .y{color:var(--ok);font-weight:800}.n{color:var(--muted)}
 
 /* uses */
@@ -374,18 +385,21 @@ ${storySection()}
     <div class="feat tilt reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
   </div>
   <div class="tablewrap reveal"><table>
-    <thead><tr><th></th><th class="us">Spot</th><th>Payment requests</th><th>Shared-cart links</th><th>Wishlists</th></tr></thead>
+    <thead><tr><th></th><th class="us">Spot</th><th>AI shopping apps</th><th>Payment requests</th><th>Shared-cart links</th></tr></thead>
     <tbody>
-      <tr><td>Works with any store</td><td class="us">${check}</td><td>${cross}</td><td>Some</td><td>${check}</td></tr>
-      <tr><td>Payer just taps, no checkout</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${cross}</td></tr>
-      <tr><td>Money can only buy the item</td><td class="us">${check}</td><td>${cross}</td><td>${check}</td><td>${check}</td></tr>
-      <tr><td>Ask in the moment</td><td class="us">${check}</td><td>${check}</td><td>${check}</td><td>${cross}</td></tr>
-      <tr><td>Your AI can hand it to you to finish</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
-      <tr><td>Spending rules and an approver for your AI</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>Works with any store</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>Some</td></tr>
+      <tr><td>Works inside ChatGPT and Claude</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>Someone else can pay</td><td class="us">${check}</td><td>${cross}</td><td>${check}</td><td>${check}</td></tr>
+      <tr><td>Payer just taps, no checkout</td><td class="us">${check}</td><td>${cross}</td><td>${check}</td><td>${cross}</td></tr>
+      <tr><td>Money can only buy the item</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${check}</td></tr>
+      <tr><td>Spending rules and an approver for your AI</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Signed proof of who approved what</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
-      <tr><td>Ordered for you</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>Some</td></tr>
+      <tr><td>Ordered for you</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr class="cost"><td>What it costs</td><td class="us">$2</td><td>Free</td><td>Free</td><td>Free</td></tr>
     </tbody>
   </table></div>
+  <p class="swipe">Swipe to compare →</p>
+  <p class="price reveal"><b>$2 per Spot</b>, paid by whoever pays, however many stores are in it. Free when the store takes the payment directly, or when it goes straight to your Venmo or Cash App. A little extra is held for tax and price changes, and whatever the store doesn’t charge comes back.</p>
 </div></section>
 
 ${chatWallSection()}
