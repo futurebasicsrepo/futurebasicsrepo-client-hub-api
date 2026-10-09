@@ -393,7 +393,7 @@ const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Covered! Ready to order','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
-let tick=null,PROFILE=null,SAVED=null;
+let tick=null,PROFILE=null,SAVED=null,SHARE=null;
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
   const fl=c.kind==='flight',tr=c.kind==='train';
@@ -418,6 +418,7 @@ function finishPanel(c,notice){
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>')
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(SAVED?'Approve '+usd(c.total_cents)+' · '+esc(SAVED.label):c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button>'+(SAVED?'<button type="button" id="otherPay" style="display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer">Pay another way</button>':'')+'<div class="err" id="finErr"></div></form>'
     +(SAVED?'<p class="small muted">Your '+esc(SAVED.label)+' pays Spot. Spot gets a card just for this order, capped at this total and locked to '+esc(c.merchant.name)+', buys it and ships it to you. You see the store’s total before anything is ordered.</p></section>':c.settle==='direct'?'<p class="small muted">You pay '+esc(c.merchant.name)+' on its own checkout, with this cart and address filled in. Spot never touches your money or card and adds no fee.</p></section>':(tr?'<p class="small muted">After you pay, Spot buys this exact train on '+esc(c.merchant.name)+' with a card just for this ticket. You see '+esc(c.merchant.name)+'’s total first; nothing is bought until you tap Place order. '+esc(c.merchant.name)+' emails your e-ticket.</p></section>':'<p class="small muted">After you pay, Spot buys it from '+esc(c.merchant.name)+' and ships it to you. You see the store’s total first; nothing is ordered until you tap Place order.</p></section>'))
+    +(!tr&&!c.bundle_id&&['card','direct'].includes(c.settle)?'<button class="btn ghost" id="reassign">Ask someone else to pay 💸</button>':'')
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
@@ -425,6 +426,7 @@ function finishPanel(c,notice){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   on('cancel',async()=>{if(confirm('Drop this cart?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
   on('otherPay',()=>{SAVED=false;finishPanel(c)});
+  on('reassign',async()=>{const b=$('#reassign');b.disabled=true;try{SHARE=await api('/v1/carts/'+TOKEN+'/manage/reassign',{k:K});draw()}catch(e){b.disabled=false;$('#finErr').textContent=e.message}});
   let stripeReady=null;
   $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
     const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl||tr?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
@@ -522,7 +524,7 @@ async function draw(){
   if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
   if(c.kind==='train'&&c.train)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
-  if(!self)h+='<section class="card"><div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div><div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  if(!self)h+='<section class="card">'+(SHARE&&c.status==='open'?'<h2>Send it to whoever’s paying 💸</h2><p class="small muted" style="margin-top:0">They pay on this link, then you tell Spot where it ships.</p>':'')+'<div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div>'+(c.status==='open'?'<button class="btn" id="share">'+(navigator.share?'Share link':'Copy link')+'</button>':'')+'<div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(c.settle==='direct'&&c.status==='open'&&!self){
     const sh=c.requester.shipping;
     h+='<section class="card" id="shipDirect"><h2>'+(sh?'Ships to':'Where should it ship?')+'</h2>'
@@ -553,6 +555,7 @@ async function draw(){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   const ds=$('#dShip');if(ds)ds.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(ds))});draw()}catch(err){$('#dShipErr').textContent=err.message}};
   on('editShip',()=>{$('#dShip').hidden=false;$('#editShip').remove()});
+  on('share',async()=>{const text=(SHARE&&SHARE.share_message)||('psst… can you spot me? 👀 '+(c.items[0]?.title||'')+' from '+c.merchant.name+'\\n'+r.link);try{if(navigator.share)await navigator.share({text});else{await navigator.clipboard.writeText(text);$('#share').textContent='Copied ✓'}}catch{}});
   const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
   on('cap',()=>sim('capture'));on('ret',()=>sim('refund'));on('rel',()=>sim('closed'));
   on('sim',async()=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{const d=await api('/v1/sandbox/authorize',{token:TOKEN,k:K,merchant_name:$('#sm').value,amount_cents:cents});$('#simOut').textContent=d.approved?'':'Declined: '+d.reason.replace(/_/g,' ');if(d.approved)draw()}catch(e){$('#simOut').textContent=e.message}});

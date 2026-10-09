@@ -269,6 +269,24 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return next;
     },
 
+    // "Ask someone else to pay": a for-me cart becomes a shareable ask. Only
+    // store orders (fares are booked for the traveler's own card session),
+    // and only while nothing is paid. A payment the requester started and
+    // left is reused by the payer, so it doesn't block the switch.
+    reassign(token, key) {
+      const cart = loadManaged(token, key);
+      if (cart.for !== 'self') return cart;
+      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.kind === 'flight' || cart.kind === 'train') throw new CartError('Tickets are paid by the traveler for now', 400);
+      if (cart.bundle_id) throw new CartError('Multi-store asks can’t be sent on yet', 400);
+      if (!['card', 'direct'].includes(cart.settle)) throw new CartError('This cart can’t be sent on', 400);
+      const { saved_card: _c, saved_pay: _p, ...rest } = cart;
+      const next = { ...rest, for: 'other' };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'reassigned');
+      return next;
+    },
+
     load,
     loadManaged,
     // The requester's private page, for messages sent to the requester.
