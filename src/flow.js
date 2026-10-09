@@ -31,6 +31,7 @@ export const FLOW_EVENTS = {
   'qc-passed':              { stage: 'Delivery',    owner: 'factory',       label: 'Passed quality check, ready to ship' },
   'shipped':                { stage: 'Delivery',    owner: 'client',        label: 'Shipped' },
   'delivered':              { stage: null,          owner: null,            label: 'Delivered' },
+  'reopened':               { stage: 'Delivery',    owner: 'future-basics', label: 'Reopened', back: true },
 };
 
 const idx = name => STAGES.findIndex(s => s.toLowerCase() === String(name || '').toLowerCase());
@@ -81,7 +82,8 @@ export async function applyFlow(q, productId, event, { owner, actorId = null, no
       completed_at=case when $2='complete' then coalesce(completed_at,now()) when $2='skipped' then completed_at else null end where id=$1`,
       [u.id, u.status, u.responsibleParty || null]);
   }
-  const product = (await q.query(`update products set current_stage=$2,waiting_on=$3,updated_at=now() where id=$1 returning client_id,project_id,title`,
+  const product = (await q.query(`update products set current_stage=$2,waiting_on=$3,completed_at=case when $2='delivered' then coalesce(completed_at,now()) else null end,
+    completed_by=case when $2='delivered' then completed_by else null end,updated_at=now() where id=$1 returning client_id,project_id,title`,
     [productId, stageKey(plan.stage), plan.owner])).rows[0];
   if (!product) return { changed: false };
   const summary = `${plan.label}${plan.stage ? ` · ${plan.stage}, waiting on ${OWNER_LABELS[plan.owner]}` : ' · every milestone complete'}${note ? ` · ${note}` : ''}`;

@@ -986,4 +986,38 @@ await journey('J90', 'the 3D model can be made from the approved hero image, sho
   }
 });
 
+await journey('J91', 'staff can mark a product complete and reopen it: every milestone closes, the client is told, it leaves the queues and the client\'s "waiting on you", the project completes with it, and reopening puts it back', async () => {
+  const t0 = Date.now() - 1000, mail = async (match, to) => ((await call(`/v1/dev/outbox?since=${t0}${to ? '&to=' + encodeURIComponent(to) : ''}`)).json.emails || []).filter(e => match.test(e.subject));
+  const m = await room('91');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const mine = async () => (await call('/v1/dashboard', { token: m.token })).json, waiting = async () => ((await mine()).waiting || []).filter(w => w.productId === m.id).map(w => w.kind);
+  const queue = async () => ((await adm('/v1/admin/dashboard')).json.queues.approvals || []).filter(i => i.productId === m.id).map(i => i.kind);
+  const prod = async () => ((await adm(`/v1/admin/clients/${m.cid}`)).json.products || []).find(x => x.id === m.id);
+  for (let i = 0; i < 80 && !(await queue()).length; i++) await sleep(300);
+  ok((await waiting()).length > 0 && (await queue()).length > 0, 'before: the product is in the client\'s waiting list and in the staff queue', [await waiting(), await queue()]);
+  ok((await call(`/v1/admin/products/${m.id}/complete`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot mark it complete');
+  const done = await adm(`/v1/admin/products/${m.id}/complete`, { method: 'POST', body: { note: 'All 500 units delivered and signed off' } }); ok(done.status === 200 && done.json.completed_at && done.json.current_stage === 'delivered', 'staff mark it complete', done.json);
+  ok(sql(`select count(*) from milestones where product_id='${m.id}' and status not in ('complete','skipped')`) === '0', 'every milestone is closed');
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and type='flow' and summary like '%All 500 units delivered%'`) === '1', 'the activity log records it with the note');
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='product-complete' and entity_id='${m.id}'`) === '1', 'the client gets a hub notification');
+  ok((await mail(/is complete/)).length >= 1, 'and an email');
+  ok((await adm(`/v1/admin/products/${m.id}/complete`, { method: 'POST', body: {} })).status === 409, 'completing twice is refused');
+  ok((await waiting()).length === 0 && (await queue()).length === 0, 'it left the client\'s waiting list and the staff queue', [await waiting(), await queue()]);
+  const proj = sql(`select status from projects where id=(select project_id from products where id='${m.id}')`); ok(proj === 'complete', 'its project completes with it', proj);
+  await import('../../src/ball.js'); const ball = globalThis.FBBall; ok(!ball.ballFor(await prod()).who, 'no one holds the ball on a finished product');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const cctx = await bw.newContext({ viewport: { width: 1100, height: 900 } }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); await cp.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await cp.waitForSelector('.done-chip', { timeout: 10000 }).catch(() => {});
+      ok(await cp.locator('.done-chip').count() >= 1, 'the hub shows a Complete chip on the product'); ok(cp.errs.length === 0, 'no script errors in the hub', cp.errs); await cctx.close();
+    } finally { await bw.close(); }
+  }
+  // reopen
+  ok((await adm(`/v1/admin/products/${m.id}/reopen`, { method: 'POST', body: {} })).status === 200, 'staff reopen it');
+  const back = await prod(); ok(!back.completed_at && back.current_stage === 'delivery' && back.waiting_on === 'future-basics', 'it is back at Delivery with Future Basics', [back.completed_at, back.current_stage, back.waiting_on]);
+  ok(sql(`select status from projects where id=(select project_id from products where id='${m.id}')`) === 'active', 'and its project is active again');
+  ok((await adm(`/v1/admin/products/${m.id}/reopen`, { method: 'POST', body: {} })).status === 409, 'reopening a product that is not complete is refused');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

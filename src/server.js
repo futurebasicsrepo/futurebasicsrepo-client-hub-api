@@ -879,11 +879,36 @@ app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(r
   let p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
     owner=coalesce($3,owner),target_date=coalesce($4,target_date),shopify_product_id=coalesce($5,shopify_product_id),
     shopify_handle=coalesce($6,shopify_handle),description_html=coalesce($7,description_html),vendor=coalesce($8,vendor),
-    product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),updated_at=now() where id=$11 returning *`,
+    product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),
+    completed_at=case when $1::text is not null and $1::text<>'delivered' then null else completed_at end,updated_at=now() where id=$11 returning *`,
     [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null,req.params.id])).rows[0];
   if(!p)return reply.code(404).send({error:'Product not found'});
   if(shopifyProductId||shopifyHandle)p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||p.shopify_product_id,shopifyHandle||p.shopify_handle));
   return p;
+});
+
+// Mark a product complete: the whole job is done. Every milestone closes, the client is told, and it leaves every working queue (and the client's "waiting on you")
+// until someone reopens it. A project whose live products are all complete completes with them.
+app.post('/v1/admin/products/:id/complete',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {note,notifyClient=true}=req.body||{};
+  const p=(await pool.query('select id,client_id,project_id,title,completed_at from products where id=$1',[req.params.id])).rows[0];
+  if(!p)return reply.code(404).send({error:'Product not found'});
+  if(p.completed_at)return reply.code(409).send({error:'This product is already complete'});
+  const cleanNote=String(note||'').trim().slice(0,500)||null;
+  await applyFlow(pool,p.id,'delivered',{actorId:req.auth.sub,note:cleanNote});
+  await pool.query('update products set completed_at=coalesce(completed_at,now()),completed_by=$2 where id=$1',[p.id,req.auth.sub]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'product-complete',$2,'product',$3)`,[p.client_id,`${p.title} is complete`,p.id]);
+  if(notifyClient!==false)await notifyClientContact(p.client_id,{subject:`${p.title} is complete`,title:'Your product is complete',
+    body:`<p><strong>${emailEscape(p.title)}</strong> is complete. Everything for this product is finished and it is filed in your hub for reference.</p>${cleanNote?`<p>${emailEscape(cleanNote)}</p>`:''}${hubButton(`${clientHubUrl}/`,'Open your hub')}`});
+  return (await pool.query('select * from products where id=$1',[p.id])).rows[0];
+});
+// Reopen a completed product: it goes back to Delivery with Future Basics, and returns to the queues and the client's list.
+app.post('/v1/admin/products/:id/reopen',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const p=(await pool.query('select id,completed_at from products where id=$1',[req.params.id])).rows[0];
+  if(!p)return reply.code(404).send({error:'Product not found'});
+  if(!p.completed_at)return reply.code(409).send({error:'This product is not complete'});
+  await applyFlow(pool,p.id,'reopened',{actorId:req.auth.sub,note:String(req.body?.note||'').trim().slice(0,500)||null});
+  return (await pool.query('select * from products where id=$1',[p.id])).rows[0];
 });
 
 const moneyMetafield = cents => JSON.stringify({amount:(Number(cents)/100).toFixed(2),currency_code:'USD'});
@@ -1697,7 +1722,7 @@ app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=
 // Everything waiting on the client right now, newest first: a published tech pack version to approve (or send back), the latest
 // quote to accept or decline, a sample or artwork to approve, an invoice to pay. The hub shows these as one "Waiting on you" list.
 async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
-  const live=new Map(products.map(p=>[p.id,p])),out=[];
+  const all=new Map(products.map(p=>[p.id,p])),live=new Map(products.filter(p=>!p.completed_at).map(p=>[p.id,p])),out=[];
   const packs=(await pool.query(`select product_id,version,verification,published_at from tech_packs where client_id=$1 and published_at is not null`,[clientId])).rows;
   for(const tp of packs){const p=live.get(tp.product_id);if(!p)continue;const v=normalizeVerification(tp.verification,tp.version);if(v.clientSign||v.changes)continue;
     out.push({kind:'tech-pack',id:`tp-${tp.product_id}`,productId:p.id,projectId:p.project_id,title:`Approve tech pack v${tp.version}`,product:p.title,at:tp.published_at,href:`/tech-packs/${p.id}#sign`})}
@@ -1712,7 +1737,7 @@ async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
   for(const a of approvals){const p=live.get(a.product_id);if(!p)continue;
     out.push({kind:'approval',id:a.id,productId:p.id,projectId:p.project_id,title:a.kind==='sample'?`Approve the sample`:`Approve ${a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title}`,product:p.title,at:a.requested_at,notes:a.notes||null,assetVersionId:a.asset_version_id||null,approvalKind:a.kind})}
   for(const i of invoices){if(i.status!=='due')continue;
-    out.push({kind:'invoice',id:i.id,productId:i.product_id||null,projectId:i.project_id||null,title:`Pay ${i.kind==='deposit'?'the sample deposit':'invoice'} ${i.number}`,product:live.get(i.product_id)?.title||null,at:i.created_at,amountCents:i.amount_cents,payUrl:i.external_url||null})}
+    out.push({kind:'invoice',id:i.id,productId:i.product_id||null,projectId:i.project_id||null,title:`Pay ${i.kind==='deposit'?'the sample deposit':'invoice'} ${i.number}`,product:all.get(i.product_id)?.title||null,at:i.created_at,amountCents:i.amount_cents,payUrl:i.external_url||null})}
   return out.sort((a,b)=>new Date(b.at)-new Date(a.at));
 }
 app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
