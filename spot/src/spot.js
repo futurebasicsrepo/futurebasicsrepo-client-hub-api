@@ -23,6 +23,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   const orderDeadlineMs = Number(process.env.SPOT_ORDER_DEADLINE_HOURS || 72) * HOUR;
   // Once Spot is placing the order (or has), a cancel could race the store charge.
   const ordering = (cart) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(cart.fulfillment?.state);
+  // The Spot fee is per ask: a multi-store ask carries it on its first store's cart.
+  const feeCfg = (bundleIndex) => (bundleIndex ? { ...cfg, feeBps: 0, feeFixedCents: 0 } : cfg);
 
   function load(token) {
     const cart = db.byToken(String(token || ''));
@@ -241,7 +243,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     edit(token, key, input) {
       const cart = loadManaged(token, key);
       if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
-      const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, cfg);
+      const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, feeCfg(cart.bundle_index || 0));
       const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
       // Changed items aren't the store's cart any more.
       if (cart.source && JSON.stringify(v.items) !== JSON.stringify(cart.items)) next.source = { ...cart.source, verified: false, edited: true };
@@ -729,7 +731,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const manageKey = randomBytes(24).toString('base64url');
       const id = randomUUID();
       const token = randomBytes(9).toString('base64url');
-      const carts = stores.map((st, i) => this.create(each(st), { ip, userId }, cfg, { manageKey, skipRisk: true, extra: { bundle_id: id, bundle_index: i } }).cart);
+      const carts = stores.map((st, i) => this.create(each(st), { ip, userId }, feeCfg(i), { manageKey, skipRisk: true, extra: { bundle_id: id, bundle_index: i } }).cart);
       db.bundles.insert({ id, token, manage_hash: hash(manageKey), created_at: Date.now(), doc: { for: forWhom, requester: { name: carts[0].requester.name }, note: carts[0].note || null, count: carts.length } });
       for (const c of carts) db.event(c.id, 'bundled', { bundle: token });
       return { bundle: this.loadBundle(token), manageKey };
