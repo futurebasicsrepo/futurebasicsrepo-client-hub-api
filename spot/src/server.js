@@ -135,6 +135,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     capture: limit('capture', Number(process.env.SPOT_CAPTURE_PER_10M || 30), 600_000),
     create: limit('create', Number(process.env.SPOT_CREATE_PER_10M || 20), 600_000),
     pay: limit('pay', 60, 600_000),
+    thanks: limit('thanks', 20, 600_000),
   };
   let sweeps = 0;
   const sweeper = setInterval(() => {
@@ -298,6 +299,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
       can_cancel: ['paid', 'card_issued'].includes(cart.status) && cart.kind !== 'flight' && !ordering,
       approvals: approvals.summary(cart.id),
+      // The requester's thank-you, for the payer's eyes (this link is theirs).
+      thanks: cart.thanks ? { message: cart.thanks.message, emoji: cart.thanks.emoji || null, at: cart.thanks.at, from: cart.requester.name } : null,
     };
   });
   app.post('/v1/carts/:token/receipt/cancel', async (req) => ({ cart: publicCart(await spot.payerCancel(req.params.token, req.body?.p)) }));
@@ -495,7 +498,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const name = String(req.body?.payer_name || '').trim().slice(0, 60) || null;
     // test_card lets tests (and demos) play a repeat or blocked card.
     const fingerprint = req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null;
-    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name, fingerprint } });
+    const done = await spot.paymentSucceeded({ paymentRef: cart.payment_ref, amountCents: cart.total_cents, payer: { name, fingerprint, email: req.body?.payer_email || null } });
     return { cart: publicCart(done) };
   });
 
@@ -541,6 +544,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return { cart: ownerCart(cart), price_changed };
   });
   app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
+  // The requester says thanks to whoever paid. JSON only, so another site
+  // can't post one for a signed-in requester.
+  app.post('/v1/carts/:token/manage/thanks', async (req) => {
+    limits.thanks(req);
+    if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new CartError('JSON only', 415);
+    return { cart: ownerCart(spot.thank(req.params.token, keyOf(req), { message: req.body?.message, emoji: req.body?.emoji })) };
+  });
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/cancel', async (req) => ({ cart: ownerCart(await spot.cancel(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));

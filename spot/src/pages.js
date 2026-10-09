@@ -440,6 +440,23 @@ function payScript(cart, provider, base = '/v1/carts/') {
 }catch(e){$('#payErr').textContent=e.message}})();`;
 }
 
+// ─── The thank-you moment ───────────────────────────────────────────────────
+// The requester writes it on their page; the payer sees it on their receipt.
+const THX_CSS = `
+.thx{background:color-mix(in srgb,var(--spot) 7%,var(--card));border-color:color-mix(in srgb,var(--spot) 22%,var(--line))}
+.thx h2{font-size:20px;margin-bottom:4px}
+.thx-row{display:flex;gap:8px;margin:12px 0 10px}
+.thx-pick{flex:1;min-width:0;height:48px;font-size:24px;line-height:1;border-radius:14px;border:1px solid var(--line);background:var(--card);cursor:pointer;transition:transform .15s}
+.thx-pick.on{border-color:var(--spot);background:color-mix(in srgb,var(--spot) 14%,var(--card));box-shadow:0 0 0 2px color-mix(in srgb,var(--spot) 35%,transparent)}
+.thx-pick:active{transform:scale(.94)}
+.thx textarea{resize:none;background:var(--card);font-size:17px;line-height:1.4}
+.thx-meta{display:flex;justify-content:flex-end;font-size:12px;color:var(--muted);min-height:16px;margin-top:4px}
+.thx-quote{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:14px 16px;font-size:18px;line-height:1.4;overflow-wrap:anywhere}
+.thx-e{font-size:30px;line-height:1;flex:none}
+.thx-from{font-size:13px;color:var(--muted);margin:10px 2px 0}
+@media (prefers-reduced-motion:reduce){.thx-pick{transition:none}}
+`;
+
 // ─── Requester page ─────────────────────────────────────────────────────────
 export function managePage({ token, provider }) {
   const body = `
@@ -452,6 +469,28 @@ const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! getting r
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 let tick=null,PROFILE=null,SAVED=null,SHARE=null;
+// The thank-you draft survives the page's refreshes.
+const THX_EMOJI=['🙏','❤️','🎉','😭','🥹'],THX={msg:null,emoji:'🙏'};
+const firstName=n=>String(n||'').trim().split(/\\s+/)[0];
+function thanksBox(c){
+  const fn=c.payer_name?esc(firstName(c.payer_name)):'';
+  if(c.thanks)return '<section class="card thx" id="thx"><h2>💌 Thank-you sent</h2><p class="small muted" style="margin:0 0 12px">'+(fn?fn+' can':'They can')+' see it on their receipt.</p><div class="thx-quote">'+(c.thanks.emoji?'<span class="thx-e">'+esc(c.thanks.emoji)+'</span>':'')+'<span>'+esc(c.thanks.message)+'</span></div></section>';
+  if(!c.can_thank)return '';
+  if(THX.msg===null)THX.msg='Thank you so much. You made my day.';
+  return '<section class="card thx" id="thx"><h2>'+(fn||'Someone')+' spotted you 🧡</h2><p class="small muted" style="margin:0">Send a quick thank-you. It shows on their receipt.</p>'
+    +'<div class="thx-row" role="group" aria-label="Add an emoji (optional)">'+THX_EMOJI.map(e=>'<button type="button" class="thx-pick'+(THX.emoji===e?' on':'')+'" data-e="'+e+'" aria-pressed="'+(THX.emoji===e)+'">'+e+'</button>').join('')+'</div>'
+    +'<textarea id="thxMsg" maxlength="280" rows="3" aria-label="Your thank-you">'+esc(THX.msg)+'</textarea><div class="thx-meta"><span id="thxLeft"></span></div>'
+    +'<button class="btn" id="thxSend">Send '+(fn||'them')+' a thank-you</button><div class="err" id="thxErr"></div></section>';
+}
+function wireThanks(){
+  const box=$('#thx'),ta=$('#thxMsg');if(!box||!ta)return;
+  const left=()=>{const n=280-[...ta.value].length;$('#thxLeft').textContent=n<=40?n+' left':''};left();
+  ta.oninput=()=>{THX.msg=ta.value;left()};
+  box.querySelectorAll('.thx-pick').forEach(b=>b.onclick=()=>{THX.emoji=THX.emoji===b.dataset.e?null:b.dataset.e;box.querySelectorAll('.thx-pick').forEach(x=>{const on=x.dataset.e===THX.emoji;x.classList.toggle('on',on);x.setAttribute('aria-pressed',on)})});
+  $('#thxSend').onclick=async()=>{const b=$('#thxSend');const msg=ta.value.trim();if(!msg){$('#thxErr').textContent='Write a few words first.';return}
+    b.disabled=true;b.textContent='sending…';$('#thxErr').textContent='';
+    try{await api('/v1/carts/'+TOKEN+'/manage/thanks',{k:K,message:msg,emoji:THX.emoji});THX.msg=null;draw()}catch(e){$('#thxErr').textContent=e.message;b.disabled=false;b.textContent='Try again'}};
+}
 // "For me" carts: an agent (or you) put this together; finish it here.
 function finishPanel(c,notice){
   const fl=c.kind==='flight',tr=c.kind==='train';
@@ -595,6 +634,7 @@ async function draw(){
   if(c.status==='card_issued'||(f&&f.state==='placed')){
     h+='<section class="card" id="orderBox">'+orderBox(c,f,r.agent_enabled)+'</section>';
   }
+  if(!self)h+=thanksBox(c);
   if(MODE==='sandbox'&&!fl&&['card_issued','completed'].includes(c.status)){
     h+='<section class="card"><h2>Test the store’s side</h2><p class="small muted" style="margin-top:0">Sandbox only: play what the store does with Spot’s card.</p>'
       +(c.status==='card_issued'?'<label>Merchant name as the card network sees it</label><input id="sm" value="'+esc(c.merchant.name.toUpperCase())+'"><label>Amount</label><input id="sa" inputmode="decimal" value="'+(c.cart_cents/100).toFixed(2)+'"><button class="btn" id="sim">Run test charge</button>'
@@ -610,6 +650,7 @@ async function draw(){
   if(['paid','card_issued'].includes(c.status)&&!busy&&!fl)h+='<button class="btn ghost" id="refund">Cancel and refund '+(c.for==='self'?'me':esc(c.payer_name||'the payer'))+'</button>';
   h+='<section class="card"><h2>Activity</h2>'+r.events.map(e=>'<div class="sum"><span>'+esc(e.kind.replace(/_/g,' '))+'</span><span>'+new Date(e.at).toLocaleString()+'</span></div>').join('')+'</section>';
   $('#app').innerHTML=h;
+  wireThanks();
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   const ds=$('#dShip');if(ds)ds.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(ds))});draw()}catch(err){$('#dShipErr').textContent=err.message}};
   on('editShip',()=>{$('#dShip').hidden=false;$('#editShip').remove()});
@@ -627,10 +668,10 @@ async function draw(){
   on('refund',async()=>{if(confirm('Cancel this order and refund the payment in full?')){try{await api('/v1/carts/'+TOKEN+'/manage/refund',{k:K})}catch(e){alert(e.message)}draw()}});
   // keep watching for payment, but never redraw under someone typing
   const live=f&&['starting','working','awaiting_confirm'].includes(f.state);
-  if(['open','paid','refunding'].includes(c.status)||live)setTimeout(function again(){const typing=document.activeElement?.tagName==='INPUT';typing?setTimeout(again,4000):draw()},live?2000:4000);
+  if(['open','paid','refunding'].includes(c.status)||live)setTimeout(function again(){const typing=['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'<section class="card"><h2>Sign in to see this Spot</h2><p class="muted">It’s in your Spot account.</p><a class="btn" href="/signin?next='+encodeURIComponent(location.pathname)+'">Sign in</a></section>'});`;
-  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>${THX_CSS}.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
 .route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}
 .route .line{position:relative;text-align:center;min-width:0}.route .line i{display:block;height:2px;background:var(--line);margin:0 4px;position:relative}.route .line i::after{content:'✈';position:absolute;right:-4px;top:-10px;font-style:normal;font-size:14px;color:var(--accent,#ff5a36)}
@@ -662,6 +703,7 @@ async function draw(){
     +'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div><div class="sum total"><span>Paid</span><span>'+usd(c.total_cents)+'</span></div>'
     +(r.ordered?'<p class="small muted">Ordered'+(r.ordered.order_number?' · order #'+esc(r.ordered.order_number):'')+'. Returns go through Spot: reply to your receipt email.</p>':'')
     +'</section>'
+    +(r.thanks?'<section class="card thx" id="thx"><h2>💌 '+esc(String(r.thanks.from||'').trim().split(/\\s+/)[0]||'They')+' says thanks</h2><div class="thx-quote">'+(r.thanks.emoji?'<span class="thx-e">'+esc(r.thanks.emoji)+'</span>':'')+'<span>'+esc(r.thanks.message)+'</span></div><p class="thx-from">'+new Date(r.thanks.at).toLocaleDateString('en-US',{month:'short',day:'numeric'})+' · for '+esc(c.items[0]?.title||'your gift')+'</p></section>':'')
     +(c.built_by||r.approvals.length?'<section class="card"><h2>Who did what</h2>'+(c.built_by?'<p class="small" style="margin-top:0">🤖 Put together by <b>'+esc(c.built_by)+'</b> for '+esc(c.requester.name)+'</p>':'')+r.approvals.map(a=>'<p class="small">✅ Approved by '+(a.approved_by==='requester'?esc(c.requester.name):'you')+' · '+new Date(a.at).toLocaleString()+' · <a href="'+esc(a.url)+'">signed approval</a></p>').join('')+'</section>':'');
   if(c.status==='refunded')h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+(WHY[c.refund_reason]||'')+' '+usd(c.total_cents)+' went back to your card. It usually shows in 5–10 business days.</p></section>';
   if(r.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+r.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
@@ -670,7 +712,7 @@ async function draw(){
   const b=$('#cancel');if(b)b.onclick=async()=>{if(!confirm('Cancel this and refund '+usd(c.total_cents)+' to your card?'))return;b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
 }
 draw().catch(e=>{$('#app').innerHTML='<p class="err">'+esc(e.message)+'</p>'});`;
-  return shell({ title: 'Your Spot receipt', body, script, head: '<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">' });
+  return shell({ title: 'Your Spot receipt', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><style>${THX_CSS}</style>` });
 }
 
 // ─── Multi-store asks (bundles) ─────────────────────────────────────────────
