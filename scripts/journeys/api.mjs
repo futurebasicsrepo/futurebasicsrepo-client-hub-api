@@ -574,6 +574,10 @@ await journey('J57', 'the handoff from submission to delivery: every step names 
   ok(sign.status === 409 && sign.json.depositDue, 'Future Basics cannot sign before the deposit lands', [sign.status, sign.json.error]);
   ok((await adm(`/v1/admin/products/${id}/shopify-draft-order`, { method: 'POST', body: { quoteId: quote.json.id } })).status === 409, 'and the balance cannot be invoiced yet');
   const depId = sql(`select id from invoices where product_id='${id}' and kind='deposit'`);
+  { const pdfOk = (r, pages) => r.status === 200 && /application\/pdf/.test(r.ct) && r.text.startsWith('%PDF') && /SpaceGrotesk/.test(r.text) && /IBMPlexMono/.test(r.text) && (r.text.match(/\/Type \/Page\b/g) || []).length >= pages && r.text.length > 15000;
+    const invPdf = await call(`/v1/invoices/${depId}/download`, { token: tok }); ok(pdfOk(invPdf, 1), 'the deposit invoice downloads as a PDF on the Future Basics letterhead, in the brand typefaces', [invPdf.status, invPdf.ct, invPdf.text.length]);
+    ok((await call(`/v1/invoices/${depId}/download`)).status === 401, 'and it needs a sign-in');
+    const projId = sql(`select project_id from products where id='${id}'`), colPdf = await call(`/v1/projects/${projId}/share.pdf`, { token: tok }); ok(pdfOk(colPdf, 1), 'the project collection is a branded PDF too', [colPdf.status, colPdf.ct, colPdf.text.length]); }
   ok((await adm(`/v1/admin/invoices/${depId}`, { method: 'PATCH', body: { status: 'paid' } })).status === 200, 'staff mark the deposit paid (a bank transfer)');
   w = at(); ok(w.stage === 'development' && w.owner === 'future-basics', 'a paid deposit puts it back with Future Basics to sign', w);
   sign = await adm(`/v1/admin/products/${id}/tech-pack/sign`, { method: 'POST', body: { name: 'Studio' } }); ok(sign.status === 200, 'Future Basics signs v3');

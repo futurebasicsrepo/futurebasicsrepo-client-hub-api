@@ -188,7 +188,7 @@ body.xchg-on{overflow:hidden}
 @media print{
 html,body{background:#fff!important;padding:0!important}.top,.tabs,.toast,.noprint,.print-header,.sheet,#noteSlot{display:none!important}.wrap{padding:0!important;max-width:none!important}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-#printDoc{display:block!important;font:12px/1.45 'Helvetica Neue',Helvetica,Arial,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;color:#000}
+#printDoc{display:block!important;font:12px/1.45 'Space Grotesk','Helvetica Neue',Helvetica,Arial,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;color:#000}#printDoc .eyebrow,#printDoc table.ptb th,#printDoc dl.facts dt,#printDoc h3.mini,#printDoc .sn,#printDoc td.mono,#printDoc .u,#printDoc small.mt,#printDoc .toc .eyebrow,#printDoc .pcwp li small,#printDoc figcaption,#printDoc .cwl li span,#printDoc .stt span,#printDoc .cl-list .ak,#printDoc .where .eyebrow{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,'Noto Sans SC','PingFang SC','Microsoft YaHei',monospace}
 #printDoc *{box-sizing:border-box}
 #printDoc b,#printDoc strong{font-weight:700}
 #printDoc .sec.flow{margin-top:22px;break-inside:avoid}#printDoc .pg{break-before:page}#printDoc .pg.first{break-before:auto;padding-top:4mm}
@@ -229,7 +229,7 @@ html,body{background:#fff!important;padding:0!important}.top,.tabs,.toast,.nopri
 #printDoc table.pom td.val b{font-size:14px;display:block}#printDoc table.pom td.tol b{font-size:12px;display:block}
 #printDoc small.mt{display:block;font-size:9.5px;color:#555;font-weight:400;margin-top:1px;white-space:nowrap}
 #printDoc table.pom th.val small{display:block;font-size:7.5px;letter-spacing:.1em;color:#fff;opacity:.85}
-#printDoc table.pom th.sample{background:#23784b}#printDoc table.pom td.sample{background:#e2f1e7!important;border-left:1.2pt solid #23784b;border-right:1.2pt solid #23784b}
+#printDoc table.pom th.sample{background:#17603a}#printDoc table.pom td.sample{background:#e2f1e7!important;border-left:1.2pt solid #17603a;border-right:1.2pt solid #17603a}
 #printDoc table.pom .dash{color:#aaa}
 #printDoc table.pom.dense td{padding:5px 4px}#printDoc table.pom.dense td.val b{font-size:12.5px}#printDoc table.pom.dense small.mt{font-size:8.5px}
 /* materials */
@@ -661,9 +661,9 @@ function buildPrint(){
   const tr=t=>S.lang==='en'?t:(trLookup(t)||t);
   const PGW={en:['Page ',' of ',''],zh:['第 ',' 页，共 ',' 页'],'zh-hant':['第 ',' 頁，共 ',' 頁'],es:['Página ',' de ',''],pt:['Página ',' de ',''],it:['Pagina ',' di ','']}[S.lang]||['Page ',' of ',''];
   const PRN={en:'printed',zh:'打印于','zh-hant':'列印於',es:'impreso',pt:'impresso em',it:'stampato il'}[S.lang]||'printed';
-  const box='font:700 9px/1.2 Helvetica,Arial,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#444;vertical-align:bottom;padding-bottom:2.2mm;border-bottom:1.2pt solid #000';
+  const box="font:500 8.5px/1.2 'IBM Plex Mono',ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;color:#444;vertical-align:bottom;padding-bottom:2.2mm;border-bottom:1.2pt solid #000";
   let ps=document.getElementById('pageRun');if(!ps){ps=document.createElement('style');ps.id='pageRun';document.head.appendChild(ps)}
-  ps.textContent=`@page{@top-left{content:${q('Future Basics · '+tr('Tech pack'))};${box}}@top-center{content:${q(title+(st.styleNumber?' · '+st.styleNumber:''))};${box};color:#000;font-size:11px}@top-right{content:${q(tr(ver)+(st.season?' · '+st.season:''))};${box}}@bottom-left{content:${q(title+' · '+PRN+' '+fmtDate(new Date()))};font:500 9px Helvetica,Arial,sans-serif;color:#555;vertical-align:top;padding-top:3mm}@bottom-right{content:${q(PGW[0])} counter(page) ${q(PGW[1])} counter(pages) ${q(PGW[2])};font:700 9px Helvetica,Arial,sans-serif;color:#333;vertical-align:top;padding-top:3mm}}`;
+  ps.textContent=`@page{@top-left{content:${q('Future Basics · '+tr('Tech pack'))};${box}}@top-center{content:${q(title+(st.styleNumber?' · '+st.styleNumber:''))};${box};color:#000;font:600 11px/1.2 'Space Grotesk',Helvetica,Arial,sans-serif;letter-spacing:.02em}@top-right{content:${q(tr(ver)+(st.season?' · '+st.season:''))};${box}}@bottom-left{content:${q(title+' · '+PRN+' '+fmtDate(new Date()))};font:400 8.5px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#555;vertical-align:top;padding-top:3mm}@bottom-right{content:${q(PGW[0])} counter(page) ${q(PGW[1])} counter(pages) ${q(PGW[2])};font:500 8.5px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#333;vertical-align:top;padding-top:3mm}}`;
   el.innerHTML=pCover(sections)+sections.map(s=>s.html).join('');
   if(S.lang!=='en')localize(el);
   // the labels on the callout pictures are cleared of each other at the width the page prints at

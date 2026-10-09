@@ -7,7 +7,6 @@ import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'no
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
-import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, timed, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
@@ -33,6 +32,7 @@ import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPac
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
+import { invoicePdf, collectionPdf } from './docs-pdf.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -170,25 +170,6 @@ function quoteReadiness(product,configuration,quote){
 // draftOrderLinesForProducts) lives in ./commercials.js so it can be unit-tested and
 // stays the single source of truth for the hub rollup, the PDF, and the draft invoice.
 
-const pdfEscape=value=>String(value??'').replace(/[\\()]/g,'\\$&').replace(/[^\x20-\x7E]/g,' ');
-function invoicePdf(invoice,client,project){
-  const amount=new Intl.NumberFormat('en-US',{style:'currency',currency:invoice.currency||'USD'}).format(Number(invoice.amount_cents||0)/100);
-  const lines=['FUTURE BASICS','PROJECT INVOICE','',`Invoice: ${invoice.number}`,`Client: ${client.name}`,`Project: ${project?.name||'Unassigned'}`,
-    `Amount: ${amount}`,`Status: ${String(invoice.status||'').toUpperCase()}`,`Issued: ${new Date(invoice.created_at).toLocaleDateString('en-US')}`,
-    `Due: ${invoice.due_date?new Date(invoice.due_date+'T00:00:00').toLocaleDateString('en-US'):'On receipt'}`,'','Payment is processed securely through Shopify.'];
-  const content=['BT','/F1 22 Tf','72 730 Td',`(${pdfEscape(lines[0])}) Tj`,'0 -38 Td','/F1 15 Tf',`(${pdfEscape(lines[1])}) Tj`,'/F1 11 Tf']
-    .concat(lines.slice(2).flatMap(line=>['0 -24 Td',`(${pdfEscape(line)}) Tj`])).concat(['ET']).join('\n');
-  const objects=[null,'<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`];
-  let output='%PDF-1.4\n',offsets=[0];
-  for(let i=1;i<objects.length;i++){offsets[i]=Buffer.byteLength(output);output+=`${i} 0 obj\n${objects[i]}\nendobj\n`;}
-  const xref=Buffer.byteLength(output);output+=`xref\n0 ${objects.length}\n0000000000 65535 f \n`;
-  for(let i=1;i<objects.length;i++)output+=`${String(offsets[i]).padStart(10,'0')} 00000 n \n`;
-  output+=`trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return Buffer.from(output);
-}
-
 const formatMoney=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value||0)/100);
 async function productImageBuffer(source){
   try{
@@ -199,30 +180,8 @@ async function productImageBuffer(source){
   }catch{return null}
 }
 async function projectCollectionPdf(client,project,products,quotes){
-  const buffers=[],doc=new PDFDocument({size:'LETTER',margin:42,info:{Title:`${project.name} — product collection`,Author:'Future Basics'}});
-  doc.on('data',chunk=>buffers.push(chunk));const ended=new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject)});
-  const ink='#141416',dim='#727279',line='#d8d8d4',cue='#2edc83',pageWidth=doc.page.width-84,gap=14,columnWidth=(pageWidth-gap)/2,cardHeight=260;
-  const drawHeader=()=>{doc.fillColor(ink).font('Helvetica-Bold').fontSize(20).text('FUTURE BASICS',42,36);doc.font('Helvetica').fontSize(8).fillColor(dim).text('CLIENT PROJECT COLLECTION',42,62,{characterSpacing:1.2});doc.moveTo(42,79).lineTo(doc.page.width-42,79).lineWidth(1).strokeColor(line).stroke()};
-  drawHeader();doc.fillColor(ink).font('Helvetica-Bold').fontSize(28).text(project.name,42,101,{width:pageWidth});doc.font('Helvetica').fontSize(11).fillColor(dim).text(`${client.name} · ${products.length} product${products.length===1?'':'s'} · generated ${new Date().toLocaleDateString('en-US')}`,42,139,{width:pageWidth});
-  let y=175,column=0,projectTotal=0,setupTotal=0,shippingTotal=0;
-  for(const product of products){
-    if(column===0&&y+cardHeight>doc.page.height-52){doc.addPage();drawHeader();y=100}
-    const x=42+column*(columnWidth+gap),terms=clientProductTerms(product,quotes);if(terms.priced){projectTotal+=terms.total;setupTotal+=terms.setup;shippingTotal+=terms.shipping;}
-    doc.roundedRect(x,y,columnWidth,cardHeight,16).lineWidth(1).strokeColor(line).stroke();
-    const image=product.shopify_image_url?await productImageBuffer(product.shopify_image_url):null;
-    if(image){try{doc.image(image,x+1,y+1,{fit:[columnWidth-2,104],align:'center',valign:'center'})}catch{doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb')}}else doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb');
-    doc.fillColor(ink).font('Helvetica-Bold').fontSize(12).text(product.title,x+14,y+119,{width:columnWidth-28,height:34,ellipsis:true});
-    doc.font('Helvetica').fontSize(8).fillColor(dim).text(`UNITS  ${terms.units||'TBD'}     MOQ  ${terms.moq||'TBD'}`,x+14,y+158,{width:columnWidth-28});
-    doc.text(`UNIT PRICE  ${terms.unitPrice?formatMoney(terms.unitPrice):'TBD'}`,x+14,y+177,{width:columnWidth-28});
-    doc.text(`SETUP  ${formatMoney(terms.setup)}     SHIPPING  ${formatMoney(terms.shipping)}`,x+14,y+196,{width:columnWidth-28});
-    doc.moveTo(x+14,y+220).lineTo(x+columnWidth-14,y+220).strokeColor(line).stroke();
-    doc.fillColor(ink).font('Helvetica-Bold').fontSize(11).text(`PRODUCT TOTAL  ${terms.units&&terms.unitPrice?formatMoney(terms.total):'TBD'}`,x+14,y+231,{width:columnWidth-28});
-    column=(column+1)%2;if(column===0)y+=cardHeight+gap;
-  }
-  if(column===1)y+=cardHeight+gap;if(y+104>doc.page.height-42){doc.addPage();drawHeader();y=104}
-  doc.roundedRect(42,y,pageWidth,96,16).fill(ink);doc.fillColor('#ffffff').font('Helvetica').fontSize(9).text('PROJECT TOTAL',60,y+18,{characterSpacing:1.1});doc.font('Helvetica-Bold').fontSize(26).text(formatMoney(projectTotal),60,y+38);
-  doc.font('Helvetica').fontSize(9).fillColor('#b7b7ba').text(`Product + units, including ${formatMoney(setupTotal)} setup and ${formatMoney(shippingTotal)} shipping`,260,y+43,{width:pageWidth-278,align:'right'});
-  doc.fillColor(cue).circle(doc.page.width-61,y+20,4).fill();doc.end();return ended;
+  const images=new Map();await Promise.all(products.map(async p=>{const img=p.shopify_image_url?await productImageBuffer(p.shopify_image_url):null;if(img)images.set(p.id,img)}));
+  return collectionPdf({client,project,products,terms:p=>clientProductTerms(p,quotes),images});
 }
 
 async function sendCode(email, code) {
@@ -1716,12 +1675,11 @@ app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},
     values($1,$2,$3,$4,$5,$6,$7) returning *`,[req.params.id,projectId||null,number,amountCents,status,dueDate||null,externalUrl||null])).rows[0]);
 });
 app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>{
-  const row=(await pool.query(`select i.*,c.name client_name,pr.name project_name from invoices i join clients c on c.id=i.client_id
-    left join projects pr on pr.id=i.project_id where i.id=$1`,[req.params.id])).rows[0];
+  const row=(await pool.query(`select i.*,c.name client_name,pr.name project_name,p.title product_title,q.version quote_version from invoices i join clients c on c.id=i.client_id
+    left join projects pr on pr.id=i.project_id left join products p on p.id=i.product_id left join quotes q on q.id=i.quote_id where i.id=$1`,[req.params.id])).rows[0];
   if(!row||(req.auth.role!=='admin'&&row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
   const safeNumber=String(row.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'-');
-  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`)
-    .send(invoicePdf(row,{name:row.client_name},row.project_name?{name:row.project_name}:null));
+  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(await invoicePdf(row));
 });
 
 app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=>{
