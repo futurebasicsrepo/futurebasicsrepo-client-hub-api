@@ -1,5 +1,6 @@
-// The Spot fee: a flat $2 per ask, once however many stores, and none when
-// the payer pays the store directly.
+// The Spot fee: $2 per ask (once, however many stores) plus the card
+// processing on what the payer is charged, so Spot keeps $2 after Stripe.
+// None when the payer pays the store directly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/server.js';
@@ -17,18 +18,31 @@ function app(t) {
   return async (url, payload) => (await a.inject({ method: 'POST', url, payload })).json();
 }
 
-test('the default fee is a flat $2', () => {
-  assert.equal(config({}).feeBps, 0);
-  assert.equal(config({}).feeFixedCents, 200);
+// What Spot keeps from a charge after Stripe's 2.9% + 30¢.
+const kept = (fee, total) => fee - (total * 0.029 + 30);
+
+test('the default fee is $2 plus card processing', () => {
+  const c = config({});
+  assert.equal(c.feeBps, 0);
+  assert.equal(c.feeFixedCents, 200);
+  assert.equal(c.cardPctBps, 290);
+  assert.equal(c.cardFixedCents, 30);
+  assert.equal(config({ SPOT_CARD_FEE_BPS: '0', SPOT_CARD_FEE_FIXED_CENTS: '0' }).cardPctBps, 0, 'can be absorbed instead');
 });
 
-test('one ask, one $2 fee: on a single store and across several', async (t) => {
+test('Spot keeps $2 per ask after card processing: one store or several', async (t) => {
   const post = app(t);
-  const one = await post('/v1/carts', { requester: { name: 'Riley' }, ...nike });
-  assert.equal(one.cart.fee_cents, 200);
-  assert.equal(one.cart.total_cents, 11500 + 575 + 200);
+  const one = (await post('/v1/carts', { requester: { name: 'Riley' }, ...nike })).cart;
+  assert.equal(one.fee_cents, 598, '$2 + 2.9% + 30¢ on the $126.73 charged');
+  assert.equal(one.total_cents, 11500 + 575 + 598);
+  const k = kept(one.fee_cents, one.total_cents);
+  assert.ok(k >= 200 && k < 202, `keeps ${k}`);
 
   const { bundle } = await post('/v1/bundles', { requester: { name: 'Riley' }, stores: [nike, rei] });
-  assert.deepEqual(bundle.stores.map((s) => s.fee_cents), [200, 0]);
-  assert.equal(bundle.fee_cents, 200);
+  assert.deepEqual(bundle.stores.map((s) => s.fee_cents), [598, 311], 'the $2 once; each store covers its own card %');
+  const kb = kept(bundle.fee_cents, bundle.total_cents);
+  assert.ok(kb >= 200 && kb < 203, `keeps ${kb} on one payment`);
+
+  const direct = (await post('/v1/carts', { ...nike, settle: 'handoff', requester: { name: 'Riley', venmo: 'riley-p' } })).cart;
+  assert.equal(direct.fee_cents, 0, 'nothing when the money never goes through Spot');
 });

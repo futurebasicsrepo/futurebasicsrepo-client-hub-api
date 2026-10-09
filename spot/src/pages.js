@@ -173,7 +173,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
 </section>
 <footer>Spot · cart links for anyone, anywhere<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
-<script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, max: cfg.maxCartCents, cushionBps: AUTH_TOLERANCE_BPS, cushionMax: AUTH_TOLERANCE_MAX_CENTS, provider })}</script>
+<script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, cardPct: cfg.cardPctBps || 0, cardFixed: cfg.cardFixedCents || 0, max: cfg.maxCartCents, cushionBps: AUTH_TOLERANCE_BPS, cushionMax: AUTH_TOLERANCE_MAX_CENTS, provider })}</script>
 <script src="/client/home.js" defer></script>`;
   return shell({ title: 'Spot: cover my cart', body, head: `<meta name="description" content="Turn any cart into a link someone else can pay."><style>${HOME_CSS}</style>` });
 }

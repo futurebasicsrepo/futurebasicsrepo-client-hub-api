@@ -23,8 +23,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   const orderDeadlineMs = Number(process.env.SPOT_ORDER_DEADLINE_HOURS || 72) * HOUR;
   // Once Spot is placing the order (or has), a cancel could race the store charge.
   const ordering = (cart) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(cart.fulfillment?.state);
-  // The Spot fee is per ask: a multi-store ask carries it on its first store's cart.
-  const feeCfg = (bundleIndex) => (bundleIndex ? { ...cfg, feeBps: 0, feeFixedCents: 0 } : cfg);
+  // The Spot fee is per ask: a multi-store ask carries the $2 (and the card's
+  // fixed fee: it's one payment) on its first store's cart; every store's
+  // share still covers the card's percentage on its own amount.
+  const feeCfg = (bundleIndex) => (bundleIndex ? { ...cfg, feeBps: 0, feeFixedCents: 0, cardFixedCents: 0 } : cfg);
 
   function load(token) {
     const cart = db.byToken(String(token || ''));

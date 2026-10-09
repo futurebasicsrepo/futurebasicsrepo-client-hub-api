@@ -61,7 +61,11 @@ export class CartError extends Error {
 export function config(env = process.env) {
   return {
     feeBps: int(env.SPOT_FEE_BPS, 0),
-    feeFixedCents: int(env.SPOT_FEE_FIXED_CENTS, 200), // flat $2 per ask, paid by the payer
+    feeFixedCents: int(env.SPOT_FEE_FIXED_CENTS, 200), // $2 per ask, paid by the payer…
+    // …plus the card processing on what they pay (Stripe's US card rate), so
+    // Spot keeps the $2 after Stripe's cut. Set both to 0 to absorb it.
+    cardPctBps: int(env.SPOT_CARD_FEE_BPS, 290),
+    cardFixedCents: int(env.SPOT_CARD_FEE_FIXED_CENTS, 30),
     maxCartCents: int(env.SPOT_MAX_CART_CENTS, 50000), // $500 cap per link while fraud controls are young
     maxFlightCents: int(env.SPOT_MAX_FLIGHT_CENTS, 200000), // flights are paid by the traveler themselves
     expiresHours: int(env.SPOT_EXPIRES_HOURS, 72),
@@ -181,9 +185,20 @@ export function computeTotals(items, extrasCents, settle, cfg = config(), { cush
   const subtotal = items.reduce((s, it) => s + it.price_cents * it.quantity, 0);
   const cart = subtotal + extrasCents;
   // No fee when the money never goes through Spot (handoff, direct).
-  const fee = settle === 'card' ? Math.round((cart * cfg.feeBps) / 10000) + cfg.feeFixedCents : 0;
   const room = settle === 'card' && cushion ? cushionCents(cart) : 0;
+  const fee = settle === 'card' ? spotFee(cart, room, cfg) : 0;
   return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, cushion_cents: room, fee_cents: fee, total_cents: cart + room + fee };
+}
+
+// Spot's fee, grossed up for card processing: Stripe takes p% + c of the
+// whole charge (goods + allowance + fee), so the fee is solved so that what
+// Spot keeps after Stripe is its own fee (feeFixed + feeBps of the goods).
+//   total = (goods + allowance + keep + c) / (1 - p),  fee = total - goods - allowance
+export function spotFee(cart, room, cfg) {
+  const p = (cfg.cardPctBps || 0) / 10000;
+  const keep = (cart * (cfg.feeBps || 0)) / 10000 + (cfg.feeFixedCents || 0);
+  const fixed = keep + (cfg.cardFixedCents || 0);
+  return Math.ceil(((cart + room) * p + fixed) / (1 - p));
 }
 
 // What the payer paid toward the goods (everything but the fee). Carts made
