@@ -848,12 +848,16 @@ await journey('J87', 'the PDF of a tech pack is its own document in reading orde
     { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.admin.token', admin]); const o = await outline(p), txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'admin');
       ok(/^Tech pack/i.test(o[0]) && await p.$eval('#printDoc > :first-child', e => e.classList.contains('first')), 'the document opens with the cover, and the page break comes after it (no blank first page)', o);
       ok(/Layer Runner/.test(await p.innerText('#printDoc h1')) && /Footwear/.test(txt) && /Size run/i.test(txt) && /PANTONE/i.test(txt) && /Secret Brand Pdf/.test(txt), 'the cover has the key facts, the colourways with their Pantone codes, and the client for staff');
-      const order = ['Colour renderings', 'Points of Measure', 'Materials & Trims', 'Approvals'].map(t => txt.indexOf(t)); ok(order.every(x => x > 0) && order.every((x, i) => i === 0 || x > order[i - 1]) && txt.indexOf('Callouts') > 0 && txt.indexOf('Callouts') < txt.indexOf('Points of Measure'), 'the sections follow in reading order: colourways, callouts, measurements, materials, sign-off', order);
-      ok(await p.locator('#printDoc .stage').count() === calloutViews && await p.locator('#printDoc .cotab').count() === calloutViews, `every view that has callouts is in the document with its callout list (${calloutViews})`);
+      const heads = await p.$$eval('#printDoc .sh h2', hs => hs.map(h => h.textContent.trim())), want = ['Design details', 'Colourways', 'Materials & trims', 'Measurements', 'Sign-off'], at = want.map(t => heads.indexOf(t));
+      ok(at.every(x => x >= 0) && at.every((x, i) => i === 0 || x > at[i - 1]), 'the sections follow in the order a sample room works in: design details, colours, materials, measurements, sign-off', heads);
+      ok(await p.locator('#printDoc .stage').count() === calloutViews && await p.locator('#printDoc .cl-list').count() === calloutViews, `every view that has callouts is in the document with its numbered list (${calloutViews})`);
+      { const toc = await p.$$eval('#printDoc .toc span:not(.eyebrow)', e => e.map(x => x.textContent.replace(/^\d+\s*/, '').trim())); ok(toc.length === heads.filter((h, i) => heads.indexOf(h) === i).length && toc[0] === 'Design details', 'the contents list on the cover matches the sections that follow', [toc, heads]); }
+      { const fonts = await p.$$eval('#printDoc table.ptb td, #printDoc .cl-list li', els => els.map(e => parseFloat(getComputedStyle(e).fontSize))), small = fonts.filter(f => f < 11).length; ok(fonts.length > 0 && small === 0, 'nothing anyone has to act on is set smaller than 11 px (about 8 pt)', small); }
+      { const pom = await p.$$eval('#printDoc table.pom th', ths => ths.map(t => t.textContent.trim())); ok(pom.some(t => /Sample/.test(t)) && pom.includes('Tolerance') && /Point of measure/i.test(pom.join(' ')), 'the measurement table marks the sample size and gives a tolerance for every row', pom); ok(await p.locator('#printDoc table.pom small.mt').count() > 0, 'and shows centimetres beneath the inches'); }
       ok(!/cutout/i.test(await p.$eval('#printDoc', e => e.innerHTML.replace(/data:image[^"]+/g, ''))) && !/Send your quotation|Spec check|Messages/.test(txt), 'working files, the quote form, the spec check and messages are not in it');
       ok(pages >= 4 && pages <= 14, `as a PDF it is ${pages} pages, not a page per tab`, pages); ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close(); }
     // the client
-    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Approvals/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); { await p.evaluate(() => document.querySelector('#tabs button[data-tab="bom"]')?.click()); await p.waitForSelector('.panel[data-panel="bom"].on table[data-tbl="bom"]', { timeout: 8000 });
+    { const { ctx, p } = await open(`${BASE}/tech-packs/${m.id}`, ['fb.client.token', m.token]); const txt = await p.$eval('#printDoc', e => e.innerText); ok(/Sign-off/.test(txt) && /Client/.test(txt) && /Future Basics/.test(txt) && /Factory/.test(txt), 'the client\'s copy ends with the approvals: who signs, in what order, with room to sign'); { await p.evaluate(() => document.querySelector('#tabs button[data-tab="bom"]')?.click()); await p.waitForSelector('.panel[data-panel="bom"].on table[data-tbl="bom"]', { timeout: 8000 });
       const w = await p.$$eval('.panel[data-panel="bom"].on table[data-tbl="bom"] thead th', ths => Object.fromEntries(ths.map(t => [t.textContent.trim().toLowerCase(), Math.round(t.getBoundingClientRect().width)])));
       ok(w.color >= 100 && w.qty <= 70 && w.unit <= 70 && w.notes >= 90 && w.component >= 100, 'the materials table shares its width by what each column holds: Color wide enough to read, Qty and Unit narrow', w);
       const broken = await p.$$eval('.panel[data-panel="bom"].on table[data-tbl="bom"] td .ro', els => els.filter(e => { const r = document.createRange(); r.selectNodeContents(e); const lines = new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; return lines > 6; }).length);
@@ -861,8 +865,8 @@ await journey('J87', 'the PDF of a tech pack is its own document in reading orde
     await pdf(p, 'client'); await ctx.close(); }
     // the factory with a quotation link: the client is hidden and there is no sign-off
     { const { ctx, p } = await open(`${BASE}/tp/${ptok}`); const txt = await p.$eval('#printDoc', e => e.innerText), pages = await pdf(p, 'factory');
-      ok(!/Secret Brand Pdf/.test(txt) && !/Approvals/.test(txt) && !/Send your quotation/.test(txt), 'a quotation link\'s copy never names the client and has no sign-off or quote form');
-      ok(/Colour renderings|颜色/.test(txt) && pages >= 4, 'it still has the pictures, callouts and specs', pages);
+      ok(!/Secret Brand Pdf/.test(txt) && !/Sign-off/.test(txt) && !/Send your quotation/.test(txt), 'a quotation link\'s copy never names the client and has no sign-off or quote form');
+      ok(/Colourways|Design details|颜色|配色|工艺点/.test(txt) && pages >= 3, 'it still has the pictures, callouts and specs', pages);
       ok(/分层跑鞋/.test(txt) || /[一-鿿]/.test(txt), 'and follows the page\'s language when the pack has a Chinese version', txt.slice(0, 80)); await ctx.close(); }
   } finally { await bw.close(); }
 });
@@ -1009,7 +1013,8 @@ await journey('J91', 'staff can mark a product complete and reopen it: every mil
     const bw = await playwright.chromium.launch();
     try {
       const cctx = await bw.newContext({ viewport: { width: 1100, height: 900 } }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
-      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); await cp.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await cp.waitForSelector('.done-chip', { timeout: 10000 }).catch(() => {});
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message)); const projId = sql(`select project_id from products where id='${m.id}'`);
+      await cp.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await cp.waitForFunction(() => typeof openProject === 'function', null, { timeout: 10000 }); await cp.evaluate(id => openProject(id, false), projId); await cp.waitForSelector('.done-chip', { timeout: 10000 }).catch(() => {});
       ok(await cp.locator('.done-chip').count() >= 1, 'the hub shows a Complete chip on the product'); ok(cp.errs.length === 0, 'no script errors in the hub', cp.errs); await cctx.close();
     } finally { await bw.close(); }
   }
@@ -1018,6 +1023,54 @@ await journey('J91', 'staff can mark a product complete and reopen it: every mil
   const back = await prod(); ok(!back.completed_at && back.current_stage === 'delivery' && back.waiting_on === 'future-basics', 'it is back at Delivery with Future Basics', [back.completed_at, back.current_stage, back.waiting_on]);
   ok(sql(`select status from projects where id=(select project_id from products where id='${m.id}')`) === 'active', 'and its project is active again');
   ok((await adm(`/v1/admin/products/${m.id}/reopen`, { method: 'POST', body: {} })).status === 409, 'reopening a product that is not complete is refused');
+});
+
+await journey('J92', 'a milestone is checked off with one press and no form: the next step becomes current with its own owner, it is logged, the client is told when it is their turn, pressing a finished step reopens it, and the last step completes the product', async () => {
+  const m = await room('92');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const ms = async () => sql(`select string_agg(name||':'||status||':'||coalesce(responsible_party,''), ',' order by sort_order) from milestones where product_id='${m.id}'`).split(',');
+  const row = async name => sql(`select id from milestones where product_id='${m.id}' and name='${name}'`);
+  const cur = async () => sql(`select current_stage||'|'||coalesce(waiting_on,'') from products where id='${m.id}'`);
+  const brief = await row('Brief'); ok((await ms())[0].startsWith('Brief:current'), 'it starts at Brief', await ms());
+  ok((await call(`/v1/admin/milestones/${brief}/step`, { method: 'POST', token: m.token, body: {} })).status === 403, 'a customer cannot press a milestone');
+  const r1 = await adm(`/v1/admin/milestones/${brief}/step`, { method: 'POST', body: {} }); ok(r1.status === 200 && r1.json.done === 'Brief' && r1.json.next && r1.json.next.name === 'Concept', 'one press checks Brief off and moves to Concept', r1.json);
+  const after = await ms(); ok(after[0].startsWith('Brief:complete') && after[1].startsWith('Concept:current'), 'Brief is complete and Concept is current', after);
+  ok((await cur()).startsWith('concept|'), 'the product follows (stage and who it waits on)', await cur());
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and type='flow' and summary like 'Brief done%'`) === '1', 'the record says who did it and what is next');
+  ok((await adm(`/v1/admin/milestones/${brief}/step`, { method: 'POST', body: {} })).status === 409, 'pressing "done" on a finished step is refused');
+  // press a finished step: reopened, later steps go back to upcoming
+  const r2 = await adm(`/v1/admin/milestones/${brief}/step`, { method: 'POST', body: { action: 'goto' } }); ok(r2.status === 200, 'pressing a finished step reopens it (this is also the undo)');
+  const re = await ms(); ok(re[0].startsWith('Brief:current') && re[1].startsWith('Concept:upcoming'), 'Brief is current again and Concept is upcoming', re);
+  // a handoff to the client is told to the client
+  sql(`update milestones set responsible_party='client' where product_id='${m.id}' and name='Concept'`);
+  await adm(`/v1/admin/milestones/${brief}/step`, { method: 'POST', body: {} });
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='handoff' and entity_id='${m.id}' and title like 'Your turn: Concept%'`) === '1', 'when the next step is the client\'s, the hub is told it is their turn');
+  // jump ahead: everything before closes
+  const dev = await row('Development'); ok((await adm(`/v1/admin/milestones/${dev}/step`, { method: 'POST', body: { action: 'goto' } })).status === 200, 'pressing a later step makes it current');
+  const jump = await ms(); ok(jump.slice(0, 2).every(x => x.includes(':complete')) && jump[2].includes(':current') && jump.slice(3).every(x => x.includes(':upcoming')), 'and closes everything before it', jump);
+  // walk to the end: the last press completes the product
+  for (const n of ['Development', 'Sample', 'Approval', 'Production', 'Quality']) await adm(`/v1/admin/milestones/${await row(n)}/step`, { method: 'POST', body: {} });
+  const del = await row('Delivery'); ok((await ms()).slice(-1)[0].startsWith('Delivery:current'), 'Delivery is the last step', await ms());
+  const fin = await adm(`/v1/admin/milestones/${del}/step`, { method: 'POST', body: {} }); ok(fin.status === 200 && fin.json.next === null && fin.json.product.completed_at, 'pressing the last step completes the product', fin.json);
+  ok(sql(`select status from projects where id=(select project_id from products where id='${m.id}')`) === 'complete', 'and its project');
+  ok((await adm(`/v1/admin/milestones/${del}/step`, { method: 'POST', body: { action: 'goto' } })).status === 200 && !(await adm(`/v1/admin/clients/${m.cid}`)).json.products.find(x => x.id === m.id).completed_at, 'pressing Delivery again undoes it: the product is no longer complete');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 950 } }); await ctx.addInitScript(t => localStorage.setItem('fb.admin.token', t), admin);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.dismiss());
+      await p.goto(`${BASE}/clients/${m.cid}#product=${m.id}`, { waitUntil: 'networkidle' }); await p.waitForSelector('.gate.current', { timeout: 15000 });
+      const name = await p.$eval('.gate.current', e => e.textContent.replace(/\s+/g, ' ').trim()), gid = await p.$eval('.gate.current', e => e.dataset.gate);
+      await p.click('.gate.current'); await p.waitForSelector('#toast.show', { timeout: 10000 });
+      ok(await p.locator('dialog[open]').count() === 0, 'pressing the milestone opens no pop-up');
+      ok(/done/.test(await p.innerText('#toast')) && await p.locator('#toast button', { hasText: 'Undo' }).count() === 1, 'a toast says what happened and offers Undo', await p.innerText('#toast'));
+      ok(sql(`select status from milestones where id='${gid}'`) === 'complete', 'the milestone is complete in the database', name);
+      await p.locator('#toast button', { hasText: 'Undo' }).click(); for (let i = 0; i < 30 && sql(`select status from milestones where id='${gid}'`) !== 'current'; i++) await sleep(200);
+      ok(sql(`select status from milestones where id='${gid}'`) === 'current', 'Undo puts it back');
+      await p.hover('.gate.current'); ok(await p.locator('.gate.current .gate-edit').count() === 1, 'the full editor stays one small ⋯ away');
+      ok(p.errs.length === 0, 'no script errors', p.errs); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j92-gates.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
