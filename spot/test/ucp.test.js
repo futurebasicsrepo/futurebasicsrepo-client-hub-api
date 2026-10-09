@@ -10,8 +10,10 @@ const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
 
 // A store that speaks UCP: discovery, catalog lookup, checkout with
-// shipping options, a tokenizer, and completion.
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true } = {}) {
+// shipping options, a tokenizer, and completion. `mcp: true` serves it the
+// way Shopify does: over MCP only, with a catalog that looks items up by
+// Shopify id rather than by link (and /products/<handle>.js for the ids).
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -28,20 +30,36 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     continue_url: continueUrl ?? `${origin}/checkout/${co.id}`,
     ...co,
   });
+  const tools = { lookup_catalog: ['POST', () => '/ucp/catalog/lookup', (a) => a.catalog], create_checkout: ['POST', () => '/ucp/checkout-sessions', (a) => a.checkout], get_checkout: ['GET', (a) => `/ucp/checkout-sessions/${a.id}`], update_checkout: ['PUT', (a) => `/ucp/checkout-sessions/${a.id}`, (a) => a.checkout], complete_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/complete`, (a) => a.checkout], cancel_checkout: ['POST', (a) => `/ucp/checkout-sessions/${a.id}/cancel`, () => ({})] };
   const server = createServer(async (req, res) => {
     let raw = '';
     for await (const c of req) raw += c;
-    const body = raw ? JSON.parse(raw) : undefined;
-    log.push({ method: req.method, url: req.url, headers: req.headers, body });
+    let body = raw ? JSON.parse(raw) : undefined;
+    let rpc = null;
+    // MCP: one endpoint; each call is logged as the REST route it stands for.
+    if (mcp && req.url === '/api/ucp/mcp') {
+      rpc = body;
+      const [method, path, args = () => undefined] = tools[rpc.params.name];
+      req.method = method;
+      req.url = path(rpc.params.arguments);
+      body = args(rpc.params.arguments);
+      req.headers['idempotency-key'] = rpc.params.arguments.meta['idempotency-key'];
+      req.headers['request-id'] = rpc.id;
+      req.headers.meta = rpc.params.arguments.meta;
+    }
+    log.push({ method: req.method, url: req.url, headers: req.headers, body, mcp: Boolean(rpc) });
     const send = (code, obj) => {
-      res.writeHead(code, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(obj));
+      res.writeHead(rpc ? 200 : code, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(rpc ? { jsonrpc: '2.0', id: rpc.id, result: { structuredContent: obj, content: [{ type: 'text', text: JSON.stringify(obj) }] } } : obj));
     };
+    if (mcp && req.url === '/products/puffer.js') {
+      return send(200, { id: 9001, title: 'Super Puff', variants: [{ id: 111, title: 'Black / S', option1: 'Black', option2: 'S', available: true, price: 25000 }, { id: 222, title: 'Black / M', option1: 'Black', option2: 'M', available: true, price: 25000 }] });
+    }
     if (req.url === '/.well-known/ucp') {
       return send(200, {
         ucp: {
           version: '2026-08-25',
-          services: { 'dev.ucp.shopping': [{ version: '2026-08-25', transport: 'rest', endpoint: `${origin}/ucp/` }] },
+          services: { 'dev.ucp.shopping': mcp ? [{ version: '2026-08-25', transport: 'mcp', endpoint: `${origin}/api/ucp/mcp` }, { version: '2026-08-25', transport: 'embedded' }] : [{ version: '2026-08-25', transport: 'rest', endpoint: `${origin}/ucp/` }] },
           capabilities: {
             'dev.ucp.shopping.checkout': [{ version: '2026-08-25' }],
             'dev.ucp.shopping.fulfillment': [{ version: '2026-08-25' }],
@@ -54,7 +72,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     if (req.url === '/ucp/catalog/lookup') {
       return send(200, {
         ucp: { version: '2026-08-25' },
-        products: body.ids.filter((id) => id.includes('/products/puffer')).map((id) => ({
+        products: body.ids.filter((id) => !mcp && id.includes('/products/puffer')).map((id) => ({
           id: 'prod_puffer',
           title: 'Super Puff',
           variants: [
@@ -313,4 +331,62 @@ test('pay the store directly: only for stores that take UCP checkout', async (t)
   assert.equal(r.status, 409);
   assert.match(r.body.error, /doesn’t take direct checkout/);
   assert.equal((await call('POST', '/v1/carts', directCart(store.origin, { merchant: { name: 'Puff Co' } }))).status, 409, 'needs the store’s website');
+});
+
+// Shopify stores serve UCP over MCP only, and their catalog looks items up
+// by Shopify id, so Spot resolves product links through /products/<handle>.js.
+test('Shopify-style store (UCP over MCP): ordered through its checkout tools', async (t) => {
+  const store = await startUcpStore({ mcp: true });
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const waiting = await until(['awaiting_confirm', 'needs_you']);
+  assert.equal(waiting.state, 'awaiting_confirm', JSON.stringify(waiting));
+  assert.equal(waiting.method, 'ucp');
+  assert.equal(waiting.total_cents, 25000 + 800 + 1100);
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const done = await until(['placed', 'needs_you']);
+  assert.equal(done.state, 'placed', JSON.stringify(done));
+  assert.equal(done.order_number, 'ord_777');
+
+  const calls = store.log.filter((r) => r.mcp);
+  assert.ok(calls.length >= 5, 'every checkout step went over MCP');
+  for (const r of calls) {
+    assert.deepEqual(r.headers.meta['ucp-agent'], { profile: 'https://spot.example/.well-known/ucp' });
+    if (r.method !== 'GET') assert.ok(r.headers['idempotency-key']);
+  }
+  assert.ok(store.log.some((r) => r.url === '/products/puffer.js'), 'looked the link up on the storefront');
+  const create = calls.find((r) => r.url === '/ucp/checkout-sessions');
+  assert.deepEqual(create.body.line_items, [{ item: { id: 'gid://shopify/ProductVariant/222' }, quantity: 1 }], 'Black / M by Shopify id');
+  const [setAddr] = calls.filter((r) => r.method === 'PUT');
+  assert.deepEqual(setAddr.body.fulfillment.methods[0].line_item_ids, ['li_0'], 'Shopify needs the lines the address covers');
+  assert.ok(calls.some((r) => r.url.endsWith('/complete')));
+});
+
+test('Shopify-style store: the payer pays the store directly on its own checkout', async (t) => {
+  const store = await startUcpStore({ mcp: true });
+  const { app, call } = await directSetup(t, store);
+  assert.deepEqual((await call('GET', `/v1/stores/check?url=${encodeURIComponent(store.origin)}`)).body, { pay_at_store: true });
+  const made = (await call('POST', '/v1/carts', directCart(store.origin))).body;
+  const { token } = made.cart;
+  await call('POST', `/v1/carts/${token}/manage/prepare`, { k: made.manage_key, shipping });
+  const started = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Mom', email: 'mom@example.com' });
+  assert.equal(started.status, 200, JSON.stringify(started.body));
+  assert.equal(started.body.continue_url, `${store.origin}/checkout/chk_1`);
+  assert.ok(store.log.filter((r) => r.url.startsWith('/ucp/')).every((r) => r.mcp));
+
+  await fetch(`${store.origin}/checkout/chk_1/pay`, { method: 'POST' });
+  await app.spot.sweepDirect();
+  const mine = (await call('GET', `/v1/carts/${token}/manage?k=${made.manage_key}`)).body;
+  assert.equal(mine.cart.status, 'completed', 'status checks go over MCP too');
+  assert.equal(mine.cart.fulfillment.order_number, 'ord_888');
+});
+
+test('Shopify-style store with no card tokenizer: falls back to ordering through the store page', async (t) => {
+  const store = await startUcpStore({ mcp: true, tokenizer: false });
+  const { call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  // Agent off here, so it stops at "needs you" with the store's own checkout.
+  const f = await until(['needs_you']);
+  assert.equal(f.method, 'ucp');
+  assert.equal(f.manual_url, `${store.origin}/checkout/chk_1`);
 });

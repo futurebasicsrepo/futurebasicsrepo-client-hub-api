@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { assertPublicHost } from '../capture.js';
 import { usd } from '../cart.js';
+import { resolveShopifyCart } from './shopify.js';
 
 export const UCP_VERSION = '2026-08-25';
 const SPEC = `https://ucp.dev/${UCP_VERSION}/specification`;
@@ -94,13 +95,17 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
     if (!res.ok) return null;
     const profile = await res.json();
     const ucp = profile?.ucp;
-    const rest = (ucp?.services?.['dev.ucp.shopping'] || []).find((s) => s?.transport === 'rest' && s.endpoint);
+    // REST where the store offers it; MCP otherwise (Shopify stores serve
+    // UCP over MCP only, at <shop>.myshopify.com/api/ucp/mcp).
+    const services = (ucp?.services?.['dev.ucp.shopping'] || []).filter((s) => s?.endpoint);
+    const rest = services.find((s) => s.transport === 'rest') || services.find((s) => s.transport === 'mcp');
     if (!rest) return null;
     const caps = ucp.capabilities || {};
     if (Object.keys(caps).length && !caps['dev.ucp.shopping.checkout']) return null;
     return {
       origin,
       endpoint: String(rest.endpoint).replace(/\/+$/, ''),
+      transport: rest.transport,
       version: rest.version || ucp.version,
       lookup: Boolean(caps['dev.ucp.shopping.catalog.lookup']),
       fulfillment: !Object.keys(caps).length || Boolean(caps['dev.ucp.shopping.fulfillment']),
@@ -113,7 +118,8 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
 // ─── Client ─────────────────────────────────────────────────────────────────
 // `sign(url)` → extra headers that prove the request is Spot's (HTTP Message
 // Signatures, see signing.js), so stores can tell Spot from other bots.
-export function ucpClient({ endpoint, profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
+export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
+  if (transport === 'mcp') return mcpClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign });
   return async function call(method, path, body) {
     const u = await guard(`${endpoint}${path}`, allowPrivate);
     const headers = { accept: 'application/json', 'ucp-agent': `profile="${profileUrl}"`, 'request-id': randomUUID(), ...(sign ? sign(u) : {}) };
@@ -130,6 +136,64 @@ export function ucpClient({ endpoint, profileUrl, fetchImpl = fetch, allowPrivat
       throw new UcpError(m?.content || 'The store refused', { code: m?.code, continueUrl: json.continue_url });
     }
     return json;
+  };
+}
+
+// The same calls over UCP's MCP binding: each REST route is a tool, the
+// UCP-Agent and Idempotency-Key headers ride in `meta`, and the answer is
+// the tool's structuredContent. Callers keep using REST-style paths.
+function mcpTool(method, path, body) {
+  if (path === '/catalog/lookup') return ['lookup_catalog', { catalog: body }];
+  if (method === 'POST' && path === '/checkout-sessions') return ['create_checkout', { checkout: body }];
+  const m = path.match(/^\/checkout-sessions\/([^/]+)(\/complete|\/cancel)?$/);
+  if (!m) throw new UcpError(`No UCP tool for ${method} ${path}`);
+  const id = decodeURIComponent(m[1]);
+  if (m[2] === '/complete') return ['complete_checkout', { id, checkout: body }];
+  if (m[2] === '/cancel') return ['cancel_checkout', { id }];
+  if (method === 'PUT') return ['update_checkout', { id, checkout: body }];
+  return ['get_checkout', { id }];
+}
+
+// MCP over HTTP may answer as JSON or as a one-message event stream.
+async function rpcBody(res) {
+  const text = await res.text().catch(() => '');
+  if ((res.headers.get('content-type') || '').includes('text/event-stream')) {
+    const data = text.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).filter(Boolean).pop();
+    return data ? JSON.parse(data) : {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+function mcpClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign }) {
+  return async function call(method, path, body) {
+    const [name, args] = mcpTool(method, path, body);
+    const u = await guard(endpoint, allowPrivate);
+    const meta = { 'ucp-agent': { profile: profileUrl }, ...(method !== 'GET' ? { 'idempotency-key': randomUUID() } : {}) };
+    const rpc = { jsonrpc: '2.0', id: randomUUID(), method: 'tools/call', params: { name, arguments: { meta, ...args } } };
+    const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'ucp-agent': `profile="${profileUrl}"`, ...(sign ? sign(u) : {}) };
+    const res = await send(fetchImpl, u, { method: 'POST', headers, body: JSON.stringify(rpc) });
+    const json = await rpcBody(res);
+    if (json.error) throw new UcpError(json.error.data?.content || json.error.message || 'The store refused', { code: json.error.data?.code, continueUrl: json.error.data?.continue_url, status: res.status });
+    if (!res.ok) throw new UcpError(`The store answered ${res.status}`, { status: res.status });
+    const r = json.result || {};
+    const text = r.content?.find((c) => c.type === 'text')?.text || '';
+    let out = r.structuredContent;
+    if (!out) {
+      try {
+        out = JSON.parse(text || '{}');
+      } catch {
+        out = {};
+      }
+    }
+    if (r.isError || out?.ucp?.status === 'error') {
+      const m = out.messages?.find((x) => x.type === 'error') || out.messages?.[0];
+      throw new UcpError(m?.content || text.slice(0, 200) || 'The store refused', { code: m?.code, continueUrl: out.continue_url });
+    }
+    return out;
   };
 }
 
@@ -153,7 +217,7 @@ export function pickVariant(product, item, inputId) {
   return variants.find((v) => v.inputs?.some((i) => i.id === inputId)) || (variants.length === 1 ? variants[0] : null);
 }
 
-export async function resolveItems(call, cart) {
+export async function resolveItems(call, cart, opts = {}) {
   const ids = cart.items.map((i) => i.url).filter(Boolean);
   if (ids.length !== cart.items.length) return null;
   const res = await call('POST', '/catalog/lookup', { ids, context: { address_country: 'US' } });
@@ -161,10 +225,19 @@ export async function resolveItems(call, cart) {
   for (const item of cart.items) {
     const product = (res.products || []).find((p) => p.variants?.some((v) => v.inputs?.some((i) => i.id === item.url)));
     const v = product && pickVariant(product, item, item.url);
-    if (!v) return { unresolved: item.title };
+    if (!v) return (await shopifyLines(cart, opts)) || { unresolved: item.title };
     lines.push({ item: { id: v.id }, quantity: item.quantity });
   }
   return { lines };
+}
+
+// Shopify's UCP catalog looks items up by Shopify id, not by product link.
+// Every Shopify store serves its products at /products/<handle>.js, so the
+// links resolve to variant ids there, the same way the cart permalink does.
+async function shopifyLines(cart, opts) {
+  const r = await resolveShopifyCart(cart, opts).catch(() => null);
+  if (!r?.lines) return r?.unresolved ? { unresolved: r.unresolved } : null;
+  return { lines: r.lines.map((l) => ({ item: { id: `gid://shopify/ProductVariant/${l.variant_id}` }, quantity: l.quantity })) };
 }
 
 // ─── Checkout ───────────────────────────────────────────────────────────────
@@ -197,6 +270,12 @@ export function state(co, ship, fulfillment) {
     line_items: co.line_items.map((li) => ({ id: li.id, item: { id: li.item.id }, quantity: li.quantity })),
     ...(fulfillment ? { fulfillment } : {}),
   };
+}
+
+// The first shipping step: where it goes, for every line (Shopify requires
+// line_item_ids).
+export function shipTo(co, ship) {
+  return { methods: [{ type: 'shipping', line_item_ids: co.line_items.map((li) => li.id), destinations: [address(ship)] }] };
 }
 
 // Cheapest option in every package, keeping the store's destination id.
@@ -243,10 +322,10 @@ export async function runUcpCheckout(opts) {
   return out;
 }
 
-async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false, sign = null }) {
-  const call = ucpClient({ endpoint: discovery.endpoint, profileUrl, fetchImpl, allowPrivate, sign });
+async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false, sign = null, fallback = false }) {
+  const call = ucpClient({ endpoint: discovery.endpoint, transport: discovery.transport, profileUrl, fetchImpl, allowPrivate, sign });
   if (!discovery.lookup) return null;
-  const resolved = await resolveItems(call, cart).catch(() => null);
+  const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate }).catch(() => null);
   if (!resolved?.lines) return null;
   progress(`Found your items in ${cart.merchant.name}'s catalog`);
 
@@ -255,7 +334,7 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
     co = await call('POST', '/checkout-sessions', { line_items: resolved.lines, buyer: buyer(shipping) });
     progress('Started checkout with the store');
     if (discovery.fulfillment) {
-      co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, shipping, { methods: [{ type: 'shipping', destinations: [address(shipping)] }] }));
+      co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, shipping, shipTo(co, shipping)));
       const pick = selectShipping(co);
       if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, shipping, pick));
       progress('Added your address and the cheapest shipping');
@@ -274,6 +353,13 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
   if (total > limit) return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `The store's total is ${usd(total)}, above the card limit of ${usd(limit)}`, manual_url: manual };
 
   const handler = payableHandler(co);
+  // No way to hand the store Spot's card here (Shopify's card handler has no
+  // tokenizer). With the browser agent on, order through the store's page
+  // instead (null = fall back); otherwise the requester gets the checkout.
+  if (!handler && fallback) {
+    await call('POST', `/checkout-sessions/${encodeURIComponent(co.id)}/cancel`, {}).catch(() => {});
+    return null;
+  }
   if (!handler) {
     return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `${cart.merchant.name}'s checkout can't take Spot's card automatically`, manual_url: manual };
   }

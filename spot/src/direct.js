@@ -10,7 +10,7 @@
 //   supports(url)          → does this store take UCP checkout?
 //   start(cart, { email }) → { checkout_id, continue_url, total_cents }
 //   status(checkoutId)     → { status, order_number, order_url, total_cents }
-import { address, buyer, discover, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
+import { buyer, discover, shipTo, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
 import { CartError } from './cart.js';
 
 export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null } = {}) {
@@ -29,7 +29,7 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
     if (found.size > 1000) found.delete(found.keys().next().value);
     return d;
   }
-  const client = (d) => ucpClient({ endpoint: d.endpoint, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, fetchImpl, allowPrivate, sign });
+  const client = (d) => ucpClient({ endpoint: d.endpoint, transport: d.transport, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, fetchImpl, allowPrivate, sign });
 
   return {
     async supports(url) {
@@ -45,22 +45,22 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       const ship = cart.requester.shipping;
       if (!ship) throw new CartError(`${cart.requester.name} hasn’t said where to ship it yet`, 409);
       const call = client(d);
-      const resolved = await resolveItems(call, cart).catch(() => null);
+      const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate }).catch(() => null);
       if (!resolved?.lines) throw new CartError(resolved?.unresolved ? `${cart.merchant.name} doesn’t have "${resolved.unresolved}" in that size or color right now` : `${cart.merchant.name} couldn’t find these items`, 409);
       const who = { ...ship, email: email || ship.email };
       let co = await call('POST', '/checkout-sessions', { line_items: resolved.lines, buyer: buyer(who) });
       if (d.fulfillment) {
-        co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, who, { methods: [{ type: 'shipping', destinations: [address(ship)] }] }));
+        co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, who, shipTo(co, ship)));
         const pick = selectShipping(co);
         if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, who, pick));
       }
       const continueUrl = link(co.continue_url, allowPrivate);
       if (!continueUrl) throw new CartError(`${cart.merchant.name} didn’t give a checkout page to pay on`, 502);
-      return { checkout_id: co.id, endpoint: d.endpoint, continue_url: continueUrl, total_cents: totalOf(co), currency: co.currency || 'USD' };
+      return { checkout_id: co.id, endpoint: d.endpoint, transport: d.transport, continue_url: continueUrl, total_cents: totalOf(co), currency: co.currency || 'USD' };
     },
 
     async status(direct) {
-      const d = { endpoint: direct.endpoint };
+      const d = { endpoint: direct.endpoint, transport: direct.transport || 'rest' };
       const co = await client(d)('GET', `/checkout-sessions/${encodeURIComponent(direct.checkout_id)}`);
       return {
         status: co.status,
