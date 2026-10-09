@@ -223,9 +223,10 @@
   $('#extras').oninput = totals;
   $('#settle').onchange = totals;
 
-  // Same math as the server (cart.js computeTotals), per store: when Spot
-  // buys it, the payer adds the fee and a refundable allowance for tax and
-  // price changes, so "They pay" matches the pay page.
+  // Same math as the server (cart.js computeTotals): when Spot buys it, the
+  // payer adds the fee (once per ask, however many stores) and a refundable
+  // allowance per store for tax and price changes, so "They pay" matches the
+  // pay page.
   const feeOf = (goods) => Math.round((goods * CFG.feeBps) / 10000) + CFG.feeFixed;
   const cushionOf = (goods) => Math.min(Math.round((goods * CFG.cushionBps) / 10000), CFG.cushionMax);
   function totals() {
@@ -234,7 +235,7 @@
     const card = $('#settle').value === 'card';
     const all = [...basket.map(goodsOf), cart];
     const goods = all.reduce((n, g) => n + g, 0);
-    const fee = card ? all.reduce((n, g) => n + feeOf(g), 0) : 0;
+    const fee = card ? feeOf(all[0]) : 0;
     const room = card ? all.reduce((n, g) => n + cushionOf(g), 0) : 0;
     const prev = basket.length;
     $('#totals').innerHTML =

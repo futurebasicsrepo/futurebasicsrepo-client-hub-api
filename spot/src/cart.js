@@ -60,8 +60,8 @@ export class CartError extends Error {
 
 export function config(env = process.env) {
   return {
-    feeBps: int(env.SPOT_FEE_BPS, 400), // 4% payer fee
-    feeFixedCents: int(env.SPOT_FEE_FIXED_CENTS, 0),
+    feeBps: int(env.SPOT_FEE_BPS, 0),
+    feeFixedCents: int(env.SPOT_FEE_FIXED_CENTS, 200), // flat $2 per ask, paid by the payer
     maxCartCents: int(env.SPOT_MAX_CART_CENTS, 50000), // $500 cap per link while fraud controls are young
     maxFlightCents: int(env.SPOT_MAX_FLIGHT_CENTS, 200000), // flights are paid by the traveler themselves
     expiresHours: int(env.SPOT_EXPIRES_HOURS, 72),
