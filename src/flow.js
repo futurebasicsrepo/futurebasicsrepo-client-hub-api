@@ -31,6 +31,7 @@ export const FLOW_EVENTS = {
   'qc-passed':              { stage: 'Delivery',    owner: 'factory',       label: 'Passed quality check, ready to ship' },
   'shipped':                { stage: 'Delivery',    owner: 'client',        label: 'Shipped' },
   'delivered':              { stage: null,          owner: null,            label: 'Delivered' },
+  'reopened':               { stage: 'Delivery',    owner: 'future-basics', label: 'Reopened', back: true },
 };
 
 const idx = name => STAGES.findIndex(s => s.toLowerCase() === String(name || '').toLowerCase());
@@ -47,7 +48,7 @@ export function currentIndex(milestones) {
 // arrives after the product has already moved past it). Skipped milestones (a rushed product skips Sample) stay skipped,
 // and an event landing on one moves on to the next milestone that is not skipped.
 export function planFlow(milestones, event, { owner } = {}) {
-  const ev = FLOW_EVENTS[event]; if (!ev) throw new Error(`Unknown flow event: ${event}`);
+  const ev = typeof event === 'object' && event ? event : FLOW_EVENTS[event]; if (!ev) throw new Error(`Unknown flow event: ${event}`);
   const rows = [...milestones].sort((a, b) => a.sort_order - b.sort_order);
   const byStage = new Map(rows.map(m => [idx(m.name), m]));
   let target = ev.stage === null ? STAGES.length : idx(ev.stage);
@@ -81,12 +82,13 @@ export async function applyFlow(q, productId, event, { owner, actorId = null, no
       completed_at=case when $2='complete' then coalesce(completed_at,now()) when $2='skipped' then completed_at else null end where id=$1`,
       [u.id, u.status, u.responsibleParty || null]);
   }
-  const product = (await q.query(`update products set current_stage=$2,waiting_on=$3,updated_at=now() where id=$1 returning client_id,project_id,title`,
+  const product = (await q.query(`update products set current_stage=$2,waiting_on=$3,completed_at=case when $2='delivered' then coalesce(completed_at,now()) else null end,
+    completed_by=case when $2='delivered' then completed_by else null end,updated_at=now() where id=$1 returning client_id,project_id,title`,
     [productId, stageKey(plan.stage), plan.owner])).rows[0];
   if (!product) return { changed: false };
   const summary = `${plan.label}${plan.stage ? ` · ${plan.stage}, waiting on ${OWNER_LABELS[plan.owner]}` : ' · every milestone complete'}${note ? ` · ${note}` : ''}`;
   await q.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'flow',$4,$5)`,
-    [product.client_id, productId, actorId, summary, { event, stage: plan.stage, owner: plan.owner, note }]);
+    [product.client_id, productId, actorId, summary, { event: typeof event === 'object' ? 'step' : event, stage: plan.stage, owner: plan.owner, note }]);
   if (product.project_id) await syncProjectMilestone(q, product.project_id);
   return { changed: true, stage: plan.stage, owner: plan.owner, label: plan.label };
 }

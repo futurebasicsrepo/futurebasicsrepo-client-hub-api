@@ -166,6 +166,9 @@ export async function migrate() {
     alter table products add column if not exists rush_mode boolean not null default false;
     alter table products add column if not exists rush_reason text;
     alter table products add column if not exists rush_activated_at timestamptz;
+    alter table products add column if not exists completed_at timestamptz;
+    alter table products add column if not exists completed_by uuid;
+    update products set completed_at=updated_at where current_stage='delivered' and completed_at is null;
     alter table products add column if not exists rush_activated_by uuid references users(id);
     alter table products add column if not exists description_html text;
     alter table products add column if not exists vendor text;

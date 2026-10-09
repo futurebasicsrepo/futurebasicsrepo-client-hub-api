@@ -7,6 +7,7 @@
   const WHO = { client: 'Client', 'future-basics': 'Future Basics', factory: 'Factory' };
   function ballFor(p) {
     if (!p) return { who: null, why: '' };
+    if (p.completed_at || p.current_stage === 'delivered') return { who: null, why: 'Complete' };
     const t = p.tech_pack;
     if (t) {
       if (!t.published_at) {

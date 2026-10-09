@@ -7,7 +7,6 @@ import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'no
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { basename, extname, join } from 'node:path';
-import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, timed, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
@@ -33,6 +32,7 @@ import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPac
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
+import { invoicePdf, collectionPdf } from './docs-pdf.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -170,25 +170,6 @@ function quoteReadiness(product,configuration,quote){
 // draftOrderLinesForProducts) lives in ./commercials.js so it can be unit-tested and
 // stays the single source of truth for the hub rollup, the PDF, and the draft invoice.
 
-const pdfEscape=value=>String(value??'').replace(/[\\()]/g,'\\$&').replace(/[^\x20-\x7E]/g,' ');
-function invoicePdf(invoice,client,project){
-  const amount=new Intl.NumberFormat('en-US',{style:'currency',currency:invoice.currency||'USD'}).format(Number(invoice.amount_cents||0)/100);
-  const lines=['FUTURE BASICS','PROJECT INVOICE','',`Invoice: ${invoice.number}`,`Client: ${client.name}`,`Project: ${project?.name||'Unassigned'}`,
-    `Amount: ${amount}`,`Status: ${String(invoice.status||'').toUpperCase()}`,`Issued: ${new Date(invoice.created_at).toLocaleDateString('en-US')}`,
-    `Due: ${invoice.due_date?new Date(invoice.due_date+'T00:00:00').toLocaleDateString('en-US'):'On receipt'}`,'','Payment is processed securely through Shopify.'];
-  const content=['BT','/F1 22 Tf','72 730 Td',`(${pdfEscape(lines[0])}) Tj`,'0 -38 Td','/F1 15 Tf',`(${pdfEscape(lines[1])}) Tj`,'/F1 11 Tf']
-    .concat(lines.slice(2).flatMap(line=>['0 -24 Td',`(${pdfEscape(line)}) Tj`])).concat(['ET']).join('\n');
-  const objects=[null,'<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`];
-  let output='%PDF-1.4\n',offsets=[0];
-  for(let i=1;i<objects.length;i++){offsets[i]=Buffer.byteLength(output);output+=`${i} 0 obj\n${objects[i]}\nendobj\n`;}
-  const xref=Buffer.byteLength(output);output+=`xref\n0 ${objects.length}\n0000000000 65535 f \n`;
-  for(let i=1;i<objects.length;i++)output+=`${String(offsets[i]).padStart(10,'0')} 00000 n \n`;
-  output+=`trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return Buffer.from(output);
-}
-
 const formatMoney=value=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value||0)/100);
 async function productImageBuffer(source){
   try{
@@ -199,30 +180,8 @@ async function productImageBuffer(source){
   }catch{return null}
 }
 async function projectCollectionPdf(client,project,products,quotes){
-  const buffers=[],doc=new PDFDocument({size:'LETTER',margin:42,info:{Title:`${project.name} — product collection`,Author:'Future Basics'}});
-  doc.on('data',chunk=>buffers.push(chunk));const ended=new Promise((resolve,reject)=>{doc.on('end',()=>resolve(Buffer.concat(buffers)));doc.on('error',reject)});
-  const ink='#141416',dim='#727279',line='#d8d8d4',cue='#2edc83',pageWidth=doc.page.width-84,gap=14,columnWidth=(pageWidth-gap)/2,cardHeight=260;
-  const drawHeader=()=>{doc.fillColor(ink).font('Helvetica-Bold').fontSize(20).text('FUTURE BASICS',42,36);doc.font('Helvetica').fontSize(8).fillColor(dim).text('CLIENT PROJECT COLLECTION',42,62,{characterSpacing:1.2});doc.moveTo(42,79).lineTo(doc.page.width-42,79).lineWidth(1).strokeColor(line).stroke()};
-  drawHeader();doc.fillColor(ink).font('Helvetica-Bold').fontSize(28).text(project.name,42,101,{width:pageWidth});doc.font('Helvetica').fontSize(11).fillColor(dim).text(`${client.name} · ${products.length} product${products.length===1?'':'s'} · generated ${new Date().toLocaleDateString('en-US')}`,42,139,{width:pageWidth});
-  let y=175,column=0,projectTotal=0,setupTotal=0,shippingTotal=0;
-  for(const product of products){
-    if(column===0&&y+cardHeight>doc.page.height-52){doc.addPage();drawHeader();y=100}
-    const x=42+column*(columnWidth+gap),terms=clientProductTerms(product,quotes);if(terms.priced){projectTotal+=terms.total;setupTotal+=terms.setup;shippingTotal+=terms.shipping;}
-    doc.roundedRect(x,y,columnWidth,cardHeight,16).lineWidth(1).strokeColor(line).stroke();
-    const image=product.shopify_image_url?await productImageBuffer(product.shopify_image_url):null;
-    if(image){try{doc.image(image,x+1,y+1,{fit:[columnWidth-2,104],align:'center',valign:'center'})}catch{doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb')}}else doc.rect(x+1,y+1,columnWidth-2,104).fill('#eeeeeb');
-    doc.fillColor(ink).font('Helvetica-Bold').fontSize(12).text(product.title,x+14,y+119,{width:columnWidth-28,height:34,ellipsis:true});
-    doc.font('Helvetica').fontSize(8).fillColor(dim).text(`UNITS  ${terms.units||'TBD'}     MOQ  ${terms.moq||'TBD'}`,x+14,y+158,{width:columnWidth-28});
-    doc.text(`UNIT PRICE  ${terms.unitPrice?formatMoney(terms.unitPrice):'TBD'}`,x+14,y+177,{width:columnWidth-28});
-    doc.text(`SETUP  ${formatMoney(terms.setup)}     SHIPPING  ${formatMoney(terms.shipping)}`,x+14,y+196,{width:columnWidth-28});
-    doc.moveTo(x+14,y+220).lineTo(x+columnWidth-14,y+220).strokeColor(line).stroke();
-    doc.fillColor(ink).font('Helvetica-Bold').fontSize(11).text(`PRODUCT TOTAL  ${terms.units&&terms.unitPrice?formatMoney(terms.total):'TBD'}`,x+14,y+231,{width:columnWidth-28});
-    column=(column+1)%2;if(column===0)y+=cardHeight+gap;
-  }
-  if(column===1)y+=cardHeight+gap;if(y+104>doc.page.height-42){doc.addPage();drawHeader();y=104}
-  doc.roundedRect(42,y,pageWidth,96,16).fill(ink);doc.fillColor('#ffffff').font('Helvetica').fontSize(9).text('PROJECT TOTAL',60,y+18,{characterSpacing:1.1});doc.font('Helvetica-Bold').fontSize(26).text(formatMoney(projectTotal),60,y+38);
-  doc.font('Helvetica').fontSize(9).fillColor('#b7b7ba').text(`Product + units, including ${formatMoney(setupTotal)} setup and ${formatMoney(shippingTotal)} shipping`,260,y+43,{width:pageWidth-278,align:'right'});
-  doc.fillColor(cue).circle(doc.page.width-61,y+20,4).fill();doc.end();return ended;
+  const images=new Map();await Promise.all(products.map(async p=>{const img=p.shopify_image_url?await productImageBuffer(p.shopify_image_url):null;if(img)images.set(p.id,img)}));
+  return collectionPdf({client,project,products,terms:p=>clientProductTerms(p,quotes),images});
 }
 
 async function sendCode(email, code) {
@@ -879,11 +838,36 @@ app.patch('/v1/admin/products/:id',{preHandler:[authenticate,adminOnly]},async(r
   let p=(await pool.query(`update products set current_stage=coalesce($1,current_stage),risk_level=coalesce($2,risk_level),
     owner=coalesce($3,owner),target_date=coalesce($4,target_date),shopify_product_id=coalesce($5,shopify_product_id),
     shopify_handle=coalesce($6,shopify_handle),description_html=coalesce($7,description_html),vendor=coalesce($8,vendor),
-    product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),updated_at=now() where id=$11 returning *`,
+    product_type=coalesce($9,product_type),template_suffix=coalesce($10,template_suffix),
+    completed_at=case when $1::text is not null and $1::text<>'delivered' then null else completed_at end,updated_at=now() where id=$11 returning *`,
     [stage||null,riskLevel||null,owner||null,targetDate||null,shopifyProductId||null,shopifyHandle||null,descriptionHtml||null,vendor||null,productType||null,templateSuffix||null,req.params.id])).rows[0];
   if(!p)return reply.code(404).send({error:'Product not found'});
   if(shopifyProductId||shopifyHandle)p=await hydrateLinkedShopifyProduct(p.id,await resolveShopifyProduct(shopifyProductId||p.shopify_product_id,shopifyHandle||p.shopify_handle));
   return p;
+});
+
+// Mark a product complete: the whole job is done. Every milestone closes, the client is told, and it leaves every working queue (and the client's "waiting on you")
+// until someone reopens it. A project whose live products are all complete completes with them.
+app.post('/v1/admin/products/:id/complete',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const {note,notifyClient=true}=req.body||{};
+  const p=(await pool.query('select id,client_id,project_id,title,completed_at from products where id=$1',[req.params.id])).rows[0];
+  if(!p)return reply.code(404).send({error:'Product not found'});
+  if(p.completed_at)return reply.code(409).send({error:'This product is already complete'});
+  const cleanNote=String(note||'').trim().slice(0,500)||null;
+  await applyFlow(pool,p.id,'delivered',{actorId:req.auth.sub,note:cleanNote});
+  await pool.query('update products set completed_at=coalesce(completed_at,now()),completed_by=$2 where id=$1',[p.id,req.auth.sub]);
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'product-complete',$2,'product',$3)`,[p.client_id,`${p.title} is complete`,p.id]);
+  if(notifyClient!==false)await notifyClientContact(p.client_id,{subject:`${p.title} is complete`,title:'Your product is complete',
+    body:`<p><strong>${emailEscape(p.title)}</strong> is complete. Everything for this product is finished and it is filed in your hub for reference.</p>${cleanNote?`<p>${emailEscape(cleanNote)}</p>`:''}${hubButton(`${clientHubUrl}/`,'Open your hub')}`});
+  return (await pool.query('select * from products where id=$1',[p.id])).rows[0];
+});
+// Reopen a completed product: it goes back to Delivery with Future Basics, and returns to the queues and the client's list.
+app.post('/v1/admin/products/:id/reopen',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const p=(await pool.query('select id,completed_at from products where id=$1',[req.params.id])).rows[0];
+  if(!p)return reply.code(404).send({error:'Product not found'});
+  if(!p.completed_at)return reply.code(409).send({error:'This product is not complete'});
+  await applyFlow(pool,p.id,'reopened',{actorId:req.auth.sub,note:String(req.body?.note||'').trim().slice(0,500)||null});
+  return (await pool.query('select * from products where id=$1',[p.id])).rows[0];
 });
 
 const moneyMetafield = cents => JSON.stringify({amount:(Number(cents)/100).toFixed(2),currency_code:'USD'});
@@ -1198,6 +1182,31 @@ app.patch('/v1/admin/milestones/:id',{preHandler:[authenticate,adminOnly]},async
     [before.client_id,row.product_id,req.auth.sub,`${row.name} set by hand: ${changed}${notes?` · ${String(notes).slice(0,200)}`:''}`,{milestoneId:row.id,override:true,from:before.status,to:row.status,owner:row.responsible_party}]);
   return row;
 });
+// One press on a milestone. 'done' checks the current step off and hands the product to the next one (the last step completes the product);
+// 'goto' makes any other step the current one, closing everything before it and reopening everything after it (this is also the undo).
+// The next owner is the step's own responsible party, so the ball, the queues and the hub follow without anyone filling in a form.
+app.post('/v1/admin/milestones/:id/step',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const action=req.body?.action==='goto'?'goto':'done';
+  const m=(await pool.query('select m.*,p.client_id,p.title,p.completed_at product_done from milestones m join products p on p.id=m.product_id where m.id=$1',[req.params.id])).rows[0];
+  if(!m)return reply.code(404).send({error:'Milestone not found'});
+  const rows=(await pool.query('select id,name,status,sort_order,responsible_party from milestones where product_id=$1 order by sort_order',[m.product_id])).rows;
+  let target;
+  if(action==='goto')target=m;
+  else{
+    if(['complete','skipped'].includes(m.status))return reply.code(409).send({error:`${m.name} is already ${m.status}`});
+    target=rows.find(r=>r.sort_order>m.sort_order&&r.status!=='skipped')||null;
+  }
+  const owner=target?.responsible_party||null;
+  await applyFlow(pool,m.product_id,{stage:target?target.name:null,owner,label:action==='goto'?`${m.name} made the current step`:target?`${m.name} done`:`${m.name} done`,back:true},{actorId:req.auth.sub});
+  if(!target)await pool.query('update products set completed_by=$2 where id=$1',[m.product_id,req.auth.sub]);
+  if(action==='done'){
+    if(!target)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'product-complete',$2,'product',$3)`,[m.client_id,`${m.title} is complete`,m.product_id]);
+    else if(owner==='client')await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'handoff',$2,'product',$3)`,[m.client_id,`Your turn: ${target.name} for ${m.title}`,m.product_id]);
+  }
+  const product=(await pool.query('select id,current_stage,waiting_on,completed_at from products where id=$1',[m.product_id])).rows[0];
+  return {product,done:m.name,next:target?{id:target.id,name:target.name,owner}:null};
+});
+
 app.post('/v1/admin/suppliers',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {name,contactEmail,contactPhone,country,leadTimeDays,notes}=req.body||{};if(!name)return reply.code(400).send({error:'Supplier name required'});
   return reply.code(201).send((await pool.query(`insert into suppliers(name,contact_email,contact_phone,country,lead_time_days,notes)
@@ -1666,12 +1675,11 @@ app.post('/v1/admin/clients/:id/invoices',{preHandler:[authenticate,adminOnly]},
     values($1,$2,$3,$4,$5,$6,$7) returning *`,[req.params.id,projectId||null,number,amountCents,status,dueDate||null,externalUrl||null])).rows[0]);
 });
 app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>{
-  const row=(await pool.query(`select i.*,c.name client_name,pr.name project_name from invoices i join clients c on c.id=i.client_id
-    left join projects pr on pr.id=i.project_id where i.id=$1`,[req.params.id])).rows[0];
+  const row=(await pool.query(`select i.*,c.name client_name,pr.name project_name,p.title product_title,q.version quote_version from invoices i join clients c on c.id=i.client_id
+    left join projects pr on pr.id=i.project_id left join products p on p.id=i.product_id left join quotes q on q.id=i.quote_id where i.id=$1`,[req.params.id])).rows[0];
   if(!row||(req.auth.role!=='admin'&&row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
   const safeNumber=String(row.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'-');
-  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`)
-    .send(invoicePdf(row,{name:row.client_name},row.project_name?{name:row.project_name}:null));
+  return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(await invoicePdf(row));
 });
 
 app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=>{
@@ -1697,7 +1705,7 @@ app.get('/v1/projects/:id/share.pdf',{preHandler:authenticate},async(req,reply)=
 // Everything waiting on the client right now, newest first: a published tech pack version to approve (or send back), the latest
 // quote to accept or decline, a sample or artwork to approve, an invoice to pay. The hub shows these as one "Waiting on you" list.
 async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
-  const live=new Map(products.map(p=>[p.id,p])),out=[];
+  const all=new Map(products.map(p=>[p.id,p])),live=new Map(products.filter(p=>!p.completed_at).map(p=>[p.id,p])),out=[];
   const packs=(await pool.query(`select product_id,version,verification,published_at from tech_packs where client_id=$1 and published_at is not null`,[clientId])).rows;
   for(const tp of packs){const p=live.get(tp.product_id);if(!p)continue;const v=normalizeVerification(tp.verification,tp.version);if(v.clientSign||v.changes)continue;
     out.push({kind:'tech-pack',id:`tp-${tp.product_id}`,productId:p.id,projectId:p.project_id,title:`Approve tech pack v${tp.version}`,product:p.title,at:tp.published_at,href:`/tech-packs/${p.id}#sign`})}
@@ -1712,7 +1720,7 @@ async function clientWaiting(clientId,{products,quotes,approvals,invoices}){
   for(const a of approvals){const p=live.get(a.product_id);if(!p)continue;
     out.push({kind:'approval',id:a.id,productId:p.id,projectId:p.project_id,title:a.kind==='sample'?`Approve the sample`:`Approve ${a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title}`,product:p.title,at:a.requested_at,notes:a.notes||null,assetVersionId:a.asset_version_id||null,approvalKind:a.kind})}
   for(const i of invoices){if(i.status!=='due')continue;
-    out.push({kind:'invoice',id:i.id,productId:i.product_id||null,projectId:i.project_id||null,title:`Pay ${i.kind==='deposit'?'the sample deposit':'invoice'} ${i.number}`,product:live.get(i.product_id)?.title||null,at:i.created_at,amountCents:i.amount_cents,payUrl:i.external_url||null})}
+    out.push({kind:'invoice',id:i.id,productId:i.product_id||null,projectId:i.project_id||null,title:`Pay ${i.kind==='deposit'?'the sample deposit':'invoice'} ${i.number}`,product:all.get(i.product_id)?.title||null,at:i.created_at,amountCents:i.amount_cents,payUrl:i.external_url||null})}
   return out.sort((a,b)=>new Date(b.at)-new Date(a.at));
 }
 app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {

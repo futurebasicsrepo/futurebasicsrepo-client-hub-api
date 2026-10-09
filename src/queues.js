@@ -9,7 +9,7 @@
 // productTitle, title, detail, since }. `since` is when it started waiting; the page turns it into "waiting 3 days".
 
 const LIVE_CLIENT = `c.archived_at is null and c.status not in ('archive','archived') and c.slug<>'future-basics'`;
-const LIVE_PROJECT = a => `not exists(select 1 from projects ap where ap.id=${a}.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`;
+const LIVE_PROJECT = a => `not exists(select 1 from projects ap where ap.id=${a}.project_id and (ap.archived_at is not null or ap.status in ('archive','archived'))) and ${a}.completed_at is null`;
 const DAY = 86400000;
 const iso = v => { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null; }; // a date that does not parse is left out, never allowed to take the whole console down
 const clip = (s, n = 160) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);

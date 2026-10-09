@@ -79,7 +79,6 @@ table.tp[data-tbl="bom"] tr:not(.more) td.extra{display:none}table.tp td.morecel
 table.tp[data-tbl="bom"] td:nth-child(1),table.tp[data-tbl="bom"] td:nth-child(2),table.tp[data-tbl="bom"] td:nth-child(4),table.tp[data-tbl="bom"] td:nth-child(5),table.tp[data-tbl="bom"] td:nth-child(6),table.tp[data-tbl="bom"] td:nth-child(7){grid-column:span 2}
 .checks{gap:6px}.check{padding:10px 12px}}
 /* print: every panel becomes a page of the document */
-@page{size:letter landscape;margin:11mm}
 @media print{html,body{background:#fff;padding:0}.top,.tabs,.toast,.rowacts,.addrow,.upload,.stage input,.stage .empty,.co .thumb input,.noprint,.viewtabs .sbtn[data-act],form,.ackbtn,.note{display:none!important}.wrap{padding:0;max-width:none}.sheet{border:0;border-radius:0}.panel{display:block!important;break-before:page}.panel:first-child{break-before:auto}.cover{border-radius:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}section.block{padding:12px 0}table.tp{min-width:0;font-size:10.5px}.tablewrap{border-radius:0;overflow:visible}input.t,select.t,textarea.t{border:0;padding:3px 5px;border-radius:0;background:transparent;min-height:0;resize:none;box-shadow:none!important}textarea.t{height:auto}.ro{border:0;padding:3px 5px;min-height:0}.stage{border-radius:0;max-height:150mm}.stage img.base{max-height:150mm;width:auto;max-width:100%;margin:auto}.pin .n,.check .box,.tabs button.on,.sig .sh,table.tp th{-webkit-print-color-adjust:exact;print-color-adjust:exact}.co,.check,.sig,.art,.rend{break-inside:avoid}.cover{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}.cover .hero img{max-height:150mm}.rends{grid-template-columns:1fr 1fr}.co .body{grid-template-columns:minmax(0,1fr) 150px}.co .thumb{width:150px;height:150px}.print-header{display:block!important}.stage-print-all{display:block!important}}
 .print-header{display:none;padding:0 0 8px;border-bottom:1px solid #000;margin-bottom:10px;font:500 9px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase}
 
@@ -183,32 +182,78 @@ body.xchg-on{overflow:hidden}
 .dot{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:#d9342b;color:#fff;font-size:11px;line-height:18px;text-align:center;margin-left:4px}.thr{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
 .about{margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:0 14px}.about summary{cursor:pointer;padding:12px 0;font-weight:600;list-style:none}.about summary::-webkit-details-marker{display:none}.about summary::after{content:'+';float:right;color:var(--dim)}.about[open] summary::after{content:'–'}.aboutbody{padding:0 0 14px}.aboutbody p{margin:0 0 10px;max-width:62ch}.aboutbody .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 
-/* The PDF is its own document: built from the pack in reading order (cover, colourways, every view with its callouts, measurements, artwork, materials, electronics, sign-off), not a print of whatever tab is open. */
+/* The PDF is its own document, laid out for paper (see buildPrint). Landscape: a measurement table has to fit its whole size run on one sheet. */
 #printDoc{display:none}
+@page{size:landscape;margin:20mm 12mm 16mm}
 @media print{
-.sheet,#noteSlot{display:none!important}
-#printDoc{display:block!important;font-size:10.5px;line-height:1.4;color:#000}
+html,body{background:#fff!important;padding:0!important}.top,.tabs,.toast,.noprint,.print-header,.sheet,#noteSlot{display:none!important}.wrap{padding:0!important;max-width:none!important}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#printDoc{display:block!important;font:12px/1.45 'Space Grotesk','Helvetica Neue',Helvetica,Arial,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;color:#000}#printDoc .eyebrow,#printDoc table.ptb th,#printDoc dl.facts dt,#printDoc h3.mini,#printDoc .sn,#printDoc td.mono,#printDoc .u,#printDoc small.mt,#printDoc .toc .eyebrow,#printDoc .pcwp li small,#printDoc figcaption,#printDoc .cwl li span,#printDoc .stt span,#printDoc .cl-list .ak,#printDoc .where .eyebrow{font-family:'IBM Plex Mono',ui-monospace,Menlo,Consolas,'Noto Sans SC','PingFang SC','Microsoft YaHei',monospace}
 #printDoc *{box-sizing:border-box}
-#printDoc .pg{break-before:page}#printDoc .pg.first{break-before:auto}
-#printDoc h1{font:600 26px/1.1 'Space Grotesk',sans-serif;margin:6px 0 4px}#printDoc h2.ph{font:600 17px/1.2 'Space Grotesk',sans-serif;margin:0 0 3px}#printDoc h3.ph{font:600 12.5px 'Space Grotesk',sans-serif;margin:12px 0 4px;break-after:avoid}
-#printDoc .eyebrow{font:500 8.5px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#555}
-#printDoc .rule{border:0;border-top:1.5px solid #000;margin:6px 0 10px}
-#printDoc .cv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:16px;align-items:start}
-#printDoc .cv figure{margin:0;border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#f3f2ee}#printDoc .cv figure img{display:block;width:100%;max-height:120mm;object-fit:contain}#printDoc figcaption{font:500 8.5px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;color:#555;padding:5px 8px;background:#fff}
-#printDoc dl.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin:10px 0}#printDoc dl.facts div{border-top:1px solid #bbb;padding-top:3px}#printDoc dl.facts dt{font:500 8px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#555}#printDoc dl.facts dd{margin:0;font-weight:600;font-size:11.5px}
-#printDoc .desc{margin:8px 0 0;max-width:90ch}
-#printDoc table.pt2{width:100%;border-collapse:collapse;margin:6px 0}#printDoc table.pt2 th{font:500 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:4px 6px;border-bottom:1.5px solid #000;color:#333}#printDoc table.pt2 td{padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top}
-#printDoc .sw{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:50%;vertical-align:-2px;margin-right:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-#printDoc .toc{display:flex;flex-wrap:wrap;gap:4px 16px;margin:10px 0 0;font:500 8.5px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em;color:#555}
-#printDoc .rg{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}#printDoc .rg figure{width:calc(50% - 5px);margin:0;border:1px solid #ccc;border-radius:6px;overflow:hidden;break-inside:avoid}#printDoc .rg figure img{display:block;width:100%;max-height:78mm;object-fit:contain;background:#f3f2ee}
-#printDoc .rg .cwparts{list-style:none;margin:0;padding:4px 8px 6px;font-size:9px;columns:2}#printDoc .rg .cwparts li{break-inside:avoid;display:flex;gap:5px;align-items:center}#printDoc .rg .cwparts i{display:inline-block;width:9px;height:9px;border:1px solid #888;border-radius:50%;-webkit-print-color-adjust:exact;print-color-adjust:exact}#printDoc .rg .cwparts small{color:#777}
-#printDoc .stage{max-height:none!important;border:1px solid #ccc;border-radius:6px;position:relative;margin:6px 0 8px}#printDoc .stage img.base{max-height:125mm;width:auto;max-width:100%;margin:auto;display:block}
-#printDoc .cotab td.n{width:26px;font-weight:700}#printDoc .cotab td.ph{width:62px}#printDoc .cotab td.ph img{width:56px;height:56px;object-fit:cover;border-radius:4px;display:block}#printDoc .cotab tr{break-inside:avoid}#printDoc .cotab .ak{white-space:nowrap;font-size:9px;color:#0b6b3e}
-#printDoc .pp{margin:0}#printDoc .pp section.block{padding:6px 0 10px;border:0;break-inside:auto}
-#printDoc .pp .block-head>div>.meta:first-child{display:none}#printDoc .pp .block-head{break-after:avoid}#printDoc .pp h3,#printDoc .pp .chk-h{break-after:avoid}#printDoc .pp .fields{break-inside:avoid}#printDoc .pp section.block>*{orphans:3;widows:3}#printDoc .refs{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}#printDoc .refs figure{width:calc(33.3% - 6px);margin:0;border:1px solid #ccc;border-radius:6px;overflow:hidden;break-inside:avoid}#printDoc .refs img{display:block;width:100%;height:46mm;object-fit:contain;background:#f3f2ee}
-#printDoc .sigs td,#printDoc .sigs th{font-size:10px}
-#printDoc .sigline{height:22px;border-bottom:1px solid #000}
-#printDoc .foot{margin-top:14px;font:500 8px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:#777}
+#printDoc b,#printDoc strong{font-weight:700}
+#printDoc .sec.flow{margin-top:22px;break-inside:avoid}#printDoc .pg{break-before:page}#printDoc .pg.first{break-before:auto;padding-top:4mm}
+#printDoc .eyebrow{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#555}
+#printDoc h1{font-size:34px;line-height:1.05;font-weight:700;letter-spacing:-.02em;margin:6px 0 4px}
+#printDoc h3.mini{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:14px 0 5px;color:#000;break-after:avoid}
+/* section heading */
+#printDoc .sh{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding-bottom:7px;border-bottom:2.2pt solid #000;break-after:avoid}
+#printDoc .sn{background:#000;color:#fff;font-weight:700;font-size:13px;line-height:1;padding:6px 8px;border-radius:3px;letter-spacing:.04em}
+#printDoc .sh h2{font-size:22px;line-height:1;font-weight:700;letter-spacing:-.01em;margin:0}
+#printDoc .ss{margin-left:auto;font-size:10px;color:#555;text-align:right}
+/* cover */
+#printDoc .cv{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:22px;align-items:start;margin-top:10px;padding-top:12px;border-top:2.2pt solid #000}
+#printDoc dl.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 18px;margin:0 0 10px}#printDoc dl.facts.one{grid-template-columns:minmax(0,1fr);gap:6px}
+#printDoc dl.facts>div{border-top:.75pt solid #999;padding-top:3px;break-inside:avoid}#printDoc dl.facts dt{font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#555}#printDoc dl.facts dd{margin:1px 0 0;font-size:13px;font-weight:700}
+#printDoc .desc{margin:6px 0 4px;font-size:12px;max-width:95ch}
+#printDoc .cv figure{margin:0;border:.75pt solid #999;border-radius:4px;overflow:hidden;background:#f3f2ee}#printDoc .cv figure img{display:block;width:100%;max-height:118mm;object-fit:contain}#printDoc figcaption{font-size:9px;padding:5px 8px;background:#fff;color:#444}
+#printDoc .cwl{list-style:none;margin:2px 0 0;padding:0}#printDoc .cwl li{display:flex;align-items:center;gap:7px;padding:3px 0;border-bottom:.5pt solid #ddd;break-inside:avoid}#printDoc .cwl li span{margin-left:auto;font-variant-numeric:tabular-nums;color:#333;font-size:11px}
+#printDoc .psw{display:inline-block;width:13px;height:13px;flex:none;border:.75pt solid #666;border-radius:50%;margin-right:7px;vertical-align:-3px}#printDoc .cwl .psw{margin:0}
+#printDoc .stt{display:flex;gap:6px;margin-top:12px}#printDoc .stt span{flex:1;border:.75pt solid #999;border-radius:3px;padding:5px 7px;font-size:10px;font-weight:700;display:flex;align-items:center;gap:6px;color:#555}#printDoc .stt i{width:13px;height:13px;border:1pt solid #777;border-radius:50%;font-style:normal;font-size:9px;line-height:11px;text-align:center}#printDoc .stt span.on{background:#e7f3ea;border-color:#23784b;color:#0b5b30}#printDoc .stt span.on i{background:#23784b;border-color:#23784b;color:#fff}
+#printDoc .toc{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline;margin:16px 0 0;padding-top:8px;border-top:.75pt solid #999;font-size:11px}#printDoc .toc .eyebrow{margin-right:6px}#printDoc .toc b{font-variant-numeric:tabular-nums;margin-right:3px}
+/* tables: heads repeat, rows never split, hairlines and zebra for the eye to follow */
+#printDoc table.ptb{width:100%;border-collapse:collapse;margin:4px 0 8px;font-size:12px}
+#printDoc table.ptb thead{display:table-header-group}
+#printDoc table.ptb th{background:#000;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;text-align:left;padding:6px 8px;vertical-align:bottom}
+#printDoc table.ptb td{padding:7px 8px;border-bottom:.5pt solid #bbb;vertical-align:top}
+#printDoc table.ptb tbody tr{break-inside:avoid}#printDoc table.ptb tbody tr:nth-child(even) td{background:#f4f4f1}
+#printDoc table.ptb .psub{font-size:10.5px;color:#444;margin-top:2px;font-weight:400}
+#printDoc table.ptb th.w2,#printDoc table.ptb td.w2{width:18%}#printDoc table.ptb th.w3,#printDoc table.ptb td.w3{width:26%}
+#printDoc table.ptb td.mono{font-variant-numeric:tabular-nums;white-space:nowrap}#printDoc table.ptb td.num{white-space:nowrap;text-align:right}#printDoc table.ptb th.num{text-align:right}#printDoc .u{color:#555;font-size:10.5px}
+/* measurements */
+#printDoc table.pom{table-layout:auto}#printDoc table.pom td{padding:6px 8px}
+#printDoc table.pom th.code,#printDoc table.pom td.code{width:11mm;font-weight:700;text-align:center}
+#printDoc table.pom th.pm,#printDoc table.pom td.pm{width:34%}
+#printDoc table.pom td.pm b{font-size:13px}
+#printDoc table.pom th.tol,#printDoc table.pom td.tol{width:20mm;text-align:center}
+#printDoc table.pom th.val,#printDoc table.pom td.val{text-align:center;font-variant-numeric:tabular-nums;border-left:.5pt solid #ccc}
+#printDoc table.pom td.val b{font-size:14px;display:block}#printDoc table.pom td.tol b{font-size:12px;display:block}
+#printDoc small.mt{display:block;font-size:9.5px;color:#555;font-weight:400;margin-top:1px;white-space:nowrap}
+#printDoc table.pom th.val small{display:block;font-size:7.5px;letter-spacing:.1em;color:#fff;opacity:.85}
+#printDoc table.pom th.sample{background:#17603a}#printDoc table.pom td.sample{background:#e2f1e7!important;border-left:1.2pt solid #17603a;border-right:1.2pt solid #17603a}
+#printDoc table.pom .dash{color:#aaa}
+#printDoc table.pom.dense td{padding:5px 4px}#printDoc table.pom.dense td.val b{font-size:12.5px}#printDoc table.pom.dense small.mt{font-size:8.5px}
+/* materials */
+#printDoc table.bom td{font-size:11.5px}#printDoc table.bom td b{font-size:12px}
+/* design details: the picture with its numbered list beside it */
+#printDoc .cl-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
+#printDoc .cl-grid.wide{grid-template-columns:minmax(0,1fr)}#printDoc .cl-grid.wide .cl-list{columns:2;column-gap:18px}
+#printDoc .stage{max-height:none!important;border:.75pt solid #999;border-radius:4px;position:relative;margin:0}#printDoc .stage img.base{max-height:150mm;width:auto;max-width:100%;margin:auto;display:block}
+#printDoc .cl-list{list-style:none;margin:0;padding:0}
+#printDoc .cl-list li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:9px;padding:8px 0;border-bottom:.5pt solid #bbb;break-inside:avoid;align-items:start}
+#printDoc .cl-list .no{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#000;color:#fff;font-size:11px}
+#printDoc .cl-list strong{font-size:13px}#printDoc .cl-list .sp{font-weight:700;font-size:12px;margin-top:2px}#printDoc .cl-list .nt{font-size:11.5px;color:#222;margin-top:2px}#printDoc .cl-list .ak{font-size:9.5px;color:#0b6b3e;margin-top:3px;font-weight:700}
+#printDoc .cl-list img.dp{width:24mm;height:24mm;object-fit:cover;border-radius:3px;border:.75pt solid #999}
+/* colourways */
+#printDoc .rg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}#printDoc .rg figure{margin:0;border:.75pt solid #999;border-radius:4px;overflow:hidden;break-inside:avoid}#printDoc .rg figure img{display:block;width:100%;max-height:68mm;object-fit:contain;background:#f3f2ee}
+#printDoc .rg .pcwp{list-style:none;margin:0;padding:4px 8px 6px;font-size:10px;columns:2}#printDoc .rg .pcwp li{break-inside:avoid;display:flex;gap:5px;align-items:center}#printDoc .rg .pcwp i{display:inline-block;width:9px;height:9px;border:.75pt solid #666;border-radius:50%}#printDoc .rg .pcwp small{color:#555}
+/* artwork, labels, electronics, references */
+#printDoc .art-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#printDoc .aw{margin:0;border:.75pt solid #999;border-radius:4px;overflow:hidden;break-inside:avoid}#printDoc .aw .im{background:#f3f2ee;height:70mm;display:grid;place-items:center}#printDoc .aw img{max-width:100%;max-height:70mm;object-fit:contain}#printDoc .aw figcaption{padding:8px 10px;font-size:12px;color:#000}#printDoc .aw .where{margin-top:6px;font-size:11px}#printDoc .aw .where .eyebrow{display:block}
+#printDoc .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:10px}#printDoc .bx{break-inside:avoid}#printDoc .bx .txt{margin:4px 0;font-size:12px}#printDoc .bx.nts{margin-top:10px;padding:8px 10px;border:1.2pt solid #000;border-radius:4px}
+#printDoc .eg-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 18px}#printDoc .eg{break-inside:avoid}
+#printDoc table.ec td{font-size:11.5px}
+#printDoc .refs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}#printDoc .refs figure{margin:0;border:.75pt solid #999;border-radius:4px;overflow:hidden;break-inside:avoid}#printDoc .refs img{display:block;width:100%;height:62mm;object-fit:contain;background:#f3f2ee}
+/* sign-off */
+#printDoc table.sigs td{padding:12px 8px;font-size:12px}#printDoc .sline{height:26px;border-bottom:1pt solid #000}#printDoc .ak{color:#0b6b3e;font-weight:700}
 }
 
 /* Materials & trims: ten columns that share the width by what each one holds, not by what the longest word in it needs. Fixed widths (Color wide enough for "PANTONE Neutral Black C", Qty and Unit narrow), headers aligned with the text under them, and room to breathe. Narrow screens keep the stacked card layout. */
@@ -471,35 +516,158 @@ window.addEventListener('resize',()=>{clearTimeout(declutter.t);declutter.t=setT
 document.addEventListener('load',e=>{if(e.target&&e.target.classList&&e.target.classList.contains('base'))declutter()},true);
 // ---- The PDF ----
 const PRINT_KEYS=['poms','art','bom','elec'];
-function printSections(){
-  const el=$('#sheet');if(!el)return '';
-  return PRINT_KEYS.filter(k=>k!=='art'||(S.pack.artwork||[]).length).map(k=>{const src=el.querySelector(`.panel[data-panel="${k}"]`);if(!src)return '';const c=src.cloneNode(true);c.classList.remove('panel','on');c.classList.add('pp');c.removeAttribute('data-panel');
-    c.querySelectorAll('.noprint,.rowacts,.addrow,.upload,form,[data-act],button,input[type=file],input[type=color]').forEach(n=>{if(n.tagName==='INPUT'&&n.type==='color')n.remove();else if(n.closest('[data-keep]'))return;else n.remove()});
-    c.querySelectorAll('input,textarea,select').forEach(n=>{const v=n.tagName==='SELECT'?(n.options[n.selectedIndex]?.text||''):n.value;const sp=document.createElement('span');sp.textContent=v;n.replaceWith(sp)});
-    const txt=(c.textContent||'').replace(/\s+/g,'');return txt.length<8?'':`<div class="${k==='poms'||k==='bom'?'pg':''} ${c.className}">${c.innerHTML}</div>`}).join('');
+/* ---- The PDF ----
+   It is read at a cutting table, a sewing line or a bench with no screen in sight, so it is its own document, laid out for paper:
+   one section per page (or run of pages), a running header and footer on every sheet, tables whose heads repeat when they run over,
+   no row split across a page, and type no smaller than 9 pt for anything someone has to act on. Built from the pack's data, not from the screen. */
+const PX=v=>v==null?'':esc(String(v));
+const pMetric=(x,kind)=>{const m=metricOf(x,kind);return m?`<small class="mt">${esc(m)}</small>`:''};
+function pHead(n,title,sub){return `<div class="sh"><span class="sn">${n}</span><h2>${esc(title)}</h2>${sub?`<span class="ss">${sub}</span>`:''}</div>`}
+function pCells(rows,cols){return rows.map((r,i)=>`<tr>${cols.map(c=>`<td class="${c.cls||''}">${c.f(r,i)}</td>`).join('')}</tr>`).join('')}
+function pTable(cls,cols,rows){return `<table class="ptb ${cls}"><thead><tr>${cols.map(c=>`<th class="${c.cls||''}">${c.h}</th>`).join('')}</tr></thead><tbody>${pCells(rows,cols)}</tbody></table>`}
+const pDef=(k,v)=>v?`<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`:'';
+
+function pCover(sections){
+  const p=S.pack,pr=S.product||{},st=p.style||{},v=verification(),quote=MODE==='factory'&&S.view?.quoteMode;
+  const title=st.styleName||pr.title||'Tech pack',client=quote?'':(pr.clientName||pr.client_name||'');
+  const hs=p.sketches.find(x=>x.hero&&x.hero.image),rd=(p.renderings||[]).find(x=>x.image&&!/^cutout-/.test(String(x.id||''))),fb=p.sketches.find(x=>x.image);
+  const pic=hs?{src:hs.hero.image,cap:'Approved hero image'}:rd?{src:rd.image,cap:rd.name||'Colour rendering'}:fb?{src:fb.image,cap:fb.label||'Reference photo'}:null;
+  const cw=p.colorways||[];
+  const sign=!quote&&v?`<div class="stt">${[['Client',v.clientSign],['Future Basics',v.brandSign],['Factory',v.factorySign]].map(([w,sg])=>`<span class="${sg?'on':''}"><i>${sg?'✓':''}</i>${esc(w)}</span>`).join('')}</div>`:'';
+  return `<div class="pg first tpc">
+    <div class="eyebrow">Tech pack · ${esc(packStamp())}</div>
+    <h1>${esc(title)}</h1>
+    ${client?`<div class="eyebrow">${esc(client)}${(pr.projectName||pr.project_name)?' · '+esc(pr.projectName||pr.project_name):''}</div>`:''}
+    <div class="cv">
+      <div class="cv-l">
+        <dl class="facts">${pDef('Style no.',st.styleNumber)}${pDef('Season',st.season)}${pDef('Category',st.category)}${pDef('Designer',st.designer||'Future Basics')}${pDef('Sample size',st.sampleSize)}${pDef('Fit block',st.fitBlock)}${pDef('Size run',(p.sizes||[]).join(' · '))}${pDef('Fabric',st.fabricSummary)}</dl>
+        ${st.description?`<p class="desc">${esc(st.description)}</p>`:''}
+        ${cw.length?`<h3 class="mini">Colourways</h3><ul class="cwl">${cw.map(c=>`<li><i class="psw" style="background:${esc(c.swatch||'#e6e6e2')}"></i><b>${esc(c.name||'—')}</b><span>${esc(c.code||'')}</span></li>`).join('')}</ul>`:''}
+        ${sign}
+      </div>
+      ${pic?`<figure class="cv-r"><img src="${pic.src}" alt=""><figcaption>${esc(pic.cap)}</figcaption></figure>`:''}
+    </div>
+    <div class="toc"><span class="eyebrow">In this pack</span>${sections.map(s=>`<span><b>${s.n}</b> ${esc(s.title)}</span>`).join('')}</div>
+  </div>`;
 }
+
+function pDesign(n){
+  const p=S.pack,views=p.sketches.filter(x=>x.callouts.length);
+  return views.map((sk,vi)=>{const si=p.sketches.indexOf(sk),many=sk.callouts.length>7;
+    const list=sk.callouts.map(c=>{const ack=ackFor(sk,c),ph=cpos(sk,c).photo;
+      return `<li><b class="no">${PX(c.n)}</b><div class="cb"><strong>${PX(c.label||'Untitled callout')}</strong>${c.spec?`<div class="sp">${PX(c.spec)}</div>`:''}${c.note?`<div class="nt">${PX(c.note)}</div>`:''}${ack?`<div class="ak">✓ Acknowledged · ${PX(ack.by||'')} ${PX(fmtDate(ack.at))}</div>`:''}</div>${ph?`<img class="dp" src="${ph}" alt="">`:''}</li>`}).join('');
+    return `<div class="pg sec">${pHead(n,'Design details',`${esc(sk.view)}${sk.hero?' · hero image':sk.label?' · '+esc(sk.label):''}${views.length>1?` · view ${vi+1} of ${views.length}`:''}`)}
+      <div class="cl-grid ${many?'wide':''}"><div class="cl-img">${sk.image?stage(sk,si):''}</div><ol class="cl-list">${list}</ol></div></div>`}).join('');
+}
+
+function pColour(n){
+  const p=S.pack,tiles=(p.renderings||[]).filter(x=>x.image&&!/^cutout-/.test(String(x.id||''))),parts=(p.parts||[]);
+  if(!tiles.length&&!parts.length)return '';
+  return `<div class="pg sec">${pHead(n,'Colourways','colours per the Pantone selects in this pack · concept visuals, not a factory spec')}
+    ${(p.colorways||[]).length?pTable('cwt',[{h:'Colourway',f:c=>`<i class="psw" style="background:${esc(c.swatch||'#e6e6e2')}"></i><b>${PX(c.name)}</b>`},{h:'Pantone C',cls:'mono',f:c=>PX(c.code)},{h:'Notes',f:c=>PX(c.notes)}],p.colorways):''}
+    ${parts.length?`<h3 class="mini">Parts and their colours</h3>`+pTable('cwt',[{h:'Part',f:x=>`<i class="psw" style="background:${esc(x.hex||'#ccc')}"></i><b>${PX(x.label)}</b>`},{h:'Material',f:x=>PX(x.material)},{h:'Colour',f:x=>PX(x.name)},{h:'Pantone C',cls:'mono',f:x=>PX(x.code)},{h:'Where',f:x=>PX(x.where)}],parts):''}
+    ${tiles.length?`<div class="rg">${tiles.map(t=>`<figure><img src="${t.image}" alt=""><figcaption><b>${PX(t.name||'Colour rendering')}</b>${t.note?' · '+PX(t.note):''}</figcaption>${t.parts&&t.parts.length?`<ul class="pcwp">${t.parts.map(x=>`<li><i style="background:${esc(x.hex||'#ccc')}"></i><span>${PX(x.label)}</span><small>${PX(x.code||x.name||'')}</small></li>`).join('')}</ul>`:''}</figure>`).join('')}</div>`:''}</div>`;
+}
+
+function pBom(n){
+  const p=S.pack;if(!p.bom.length)return '';
+  const cols=[
+    {h:'Ref',cls:'mono',f:r=>PX(r.ref)},
+    {h:'Component',cls:'w2',f:r=>`<b>${PX(r.component)}</b>`},
+    {h:'Material and spec',cls:'w3',f:r=>`${PX(r.material)}${r.spec?`<div class="psub">${PX(r.spec)}</div>`:''}`},
+    {h:'Colour',f:r=>PX(r.color)},
+    {h:'Placement',f:r=>PX(r.placement)},
+    {h:'Qty',cls:'num',f:r=>`<b>${PX(r.qty)}</b>${r.unit?` <span class="u">${PX(r.unit)}</span>`:''}`},
+    {h:'Supplier',f:r=>PX(r.supplier)},
+    {h:'Notes',cls:'w2',f:r=>PX(r.notes)}];
+  const used=cols.filter((c,i)=>{const k=['ref','component','material','color','placement','qty','supplier','notes'][i];return k==='component'||k==='material'||p.bom.some(r=>r[k])});
+  return `<div class="pg sec">${pHead(n,'Materials & trims',`${p.bom.length} item${p.bom.length===1?'':'s'}`)}${pTable('bom',used,p.bom)}</div>`;
+}
+
+function pPoms(n){
+  const p=S.pack;if(!p.pom.length)return '';
+  const sample=p.style.sampleSize,sz=p.sizes;
+  const cols=[{h:'Code',cls:'code',f:r=>PX(r.code)},
+    {h:'Point of measure',cls:'pm',f:r=>`<b>${PX(r.name)}</b>${r.how?`<div class="psub">${PX(r.how)}</div>`:''}`},
+    {h:'Tolerance',cls:'tol',f:r=>r.tolerance?`<b>${PX(r.tolerance)}</b>${pMetric(r.tolerance,'tol')}`:''},
+    ...sz.map(s=>({h:`${esc(s)}${s===sample?'<small>Sample</small>':''}`,cls:'val'+(s===sample?' sample':''),f:r=>{const x=r.values&&r.values[s];return x?`<b>${PX(x)}</b>${pMetric(x,'len')}`:'<span class="dash">–</span>'}}))];
+  return `<div class="pg sec">${pHead(n,'Measurements',`${sample?`sample size <b>${esc(sample)}</b> · `:''}inches, centimetres beneath · garment laid flat`)}${pTable('pom'+(sz.length>8?' dense':''),cols,p.pom)}</div>`;
+}
+
+function pConstruction(n){
+  const p=S.pack;if(!p.construction.length)return '';
+  return `<div class="pg sec">${pHead(n,'Construction','stitch, seam, thread, SPI and finish')}${pTable('cons',[{h:'Area',cls:'area',f:r=>`<b>${PX(r.area)}</b>`},{h:'Detail',f:r=>PX(r.detail)}],p.construction)}</div>`;
+}
+
+function pArtwork(n){
+  const p=S.pack,art=p.artwork||[];if(!art.length)return '';
+  const where=(a)=>a.placements.map(pl=>{const sk=p.sketches.find(x=>x.id===pl.sketchId);return `${PX(sk?sk.view:'')}${pl.label?' · '+PX(pl.label):''}${pl.widthIn?` · ${PX(pl.widthIn)}" wide`:''}`}).join('<br>');
+  return `<div class="pg sec">${pHead(n,'Artwork',`${art.length} file${art.length===1?'':'s'} · colours as Pantone C`)}<div class="art-grid">${art.map(a=>`<figure class="aw"><div class="im">${a.image?`<img src="${a.image}" alt="">`:''}</div><figcaption><b>${PX(a.name||'Artwork')}</b>${a.pantones.length?`<ul class="cwl">${a.pantones.map(x=>`<li><i class="psw" style="background:${esc(x.hex)}"></i><b>${PX(x.name||x.hex)}</b><span>${PX(x.code||'')}</span></li>`).join('')}</ul>`:''}${a.placements.length?`<div class="where"><span class="eyebrow">Placement</span>${where(a)}</div>`:''}</figcaption></figure>`).join('')}</div></div>`;
+}
+
+function pFinish(n,flow){
+  const p=S.pack,pk=p.packaging||{},c=p.care||{},labels=p.labels||[];
+  const pack=[['Fold',pk.fold],['Polybag',pk.polybag],['Carton',pk.carton],['Units per carton',pk.unitsPerCarton]].filter(x=>x[1]);
+  const care=[['Fibre content',c.fiber],['Country of origin',c.countryOfOrigin]].filter(x=>x[1]);
+  if(!labels.length&&!pack.length&&!pk.notes&&!care.length&&!c.instructions&&!c.compliance&&!p.notes)return '';
+  const box=(t,body)=>body?`<div class="bx"><h3 class="mini">${esc(t)}</h3>${body}</div>`:'';
+  return `<div class="${flow?'sec flow':'pg sec'}">${pHead(n,'Labels, packaging & care')}
+    ${labels.length?pTable('lab',[{h:'Label or item',cls:'w2',f:r=>`<b>${PX(r.item)}</b>`},{h:'Spec',cls:'w3',f:r=>PX(r.spec)},{h:'Placement',cls:'w2',f:r=>PX(r.placement)}],labels):''}
+    <div class="two">
+      ${box('Packaging',(pack.length?`<dl class="facts one">${pack.map(([k,v])=>pDef(k,v)).join('')}</dl>`:'')+(pk.notes?`<p class="txt">${PX(pk.notes)}</p>`:''))}
+      ${box('Care and compliance',(care.length?`<dl class="facts one">${care.map(([k,v])=>pDef(k,v)).join('')}</dl>`:'')+(c.instructions?`<p class="txt"><b>Care.</b> ${PX(c.instructions)}</p>`:'')+(c.compliance?`<p class="txt"><b>Compliance and testing.</b> ${PX(c.compliance)}</p>`:''))}
+    </div>
+    ${p.notes?`<div class="bx nts"><h3 class="mini">Notes to the factory</h3><p class="txt">${PX(p.notes)}</p></div>`:''}</div>`;
+}
+
+function pElec(n){
+  if(!elecOn())return '';
+  const e=S.pack.electronics,E=window.FBElec;
+  const groups=E.SPEC_GROUPS.map(g=>{const fs=g.fields.filter(([k])=>e.specs[k]);return fs.length?`<div class="eg"><h3 class="mini">${esc(g.title)}</h3><dl class="facts one">${fs.map(([k,label])=>pDef(label,e.specs[k])).join('')}</dl></div>`:''}).join('');
+  return `<div class="pg sec">${pHead(n,'Electronics','what is inside, what it has to pass, how it is built and tested')}
+    ${groups?`<div class="eg-grid">${groups}</div>`:''}
+    ${e.components.length?`<h3 class="mini">Components</h3>`+pTable('ec',[{h:'Ref',cls:'mono',f:r=>PX(r.ref)},{h:'Part',cls:'w2',f:r=>`<b>${PX(r.part)}</b>`},{h:'Manufacturer part no.',cls:'mono',f:r=>PX(r.mpn)},{h:'Maker',f:r=>PX(r.maker)},{h:'Qty',cls:'num',f:r=>PX(r.qty)},{h:'Notes',cls:'w2',f:r=>PX(r.notes)}],e.components):''}
+    ${e.certifications.length?`<h3 class="mini">Certifications</h3>`+pTable('ec',[{h:'Certification',cls:'w2',f:r=>`<b>${PX(r.name)}</b>`},{h:'Market',f:r=>PX(r.market)},{h:'Status',f:r=>PX(r.status)},{h:'Lab',f:r=>PX(r.lab)},{h:'Report no.',cls:'mono',f:r=>PX(r.report)},{h:'Notes',cls:'w2',f:r=>PX(r.notes)}],e.certifications):''}
+    ${e.tests.length?`<h3 class="mini">Tests</h3>`+pTable('ec',[{h:'Test',cls:'w2',f:r=>`<b>${PX(r.name)}</b>`},{h:'How',cls:'w3',f:r=>PX(r.method)},{h:'Pass if',cls:'w2',f:r=>PX(r.accept)},{h:'When',f:r=>PX(r.stage)}],e.tests):''}
+    ${e.stages.length?`<h3 class="mini">Build stages</h3>`+pTable('ec',[{h:'Stage',f:r=>`<b>${PX(r.stage)}</b>`},{h:'Units',f:r=>PX(r.qty)},{h:'Status',f:r=>PX(r.status)},{h:'Proves',cls:'w3',f:r=>PX(r.goal)},{h:'Moves on when',cls:'w3',f:r=>PX(r.exit)}],e.stages):''}</div>`;
+}
+
+function pRefs(n){
+  const p=S.pack,refs=p.sketches.filter(x=>x.image&&!x.callouts.length&&!/^cutout-/.test(String(x.id||'')));if(!refs.length)return '';
+  return `<div class="pg sec">${pHead(n,'Reference pictures')}<div class="refs">${refs.map(x=>`<figure><img src="${x.image}" alt=""><figcaption>${PX(x.view)}${x.label?' · '+PX(x.label):''}</figcaption></figure>`).join('')}</div></div>`;
+}
+
+function pSign(n){
+  const v=verification(),r=readiness(),pr=S.product||{},quote=MODE==='factory'&&S.view?.quoteMode;if(quote||!v)return '';
+  const revs=((MODE==='admin'?S.techPack?.revisions:S.view?.techPack?.revisions)||[]).slice().reverse();
+  return `<div class="pg sec">${pHead(n,'Sign-off',`${r?`version ${esc(r.version)} · `:''}${S.draft?'':(pr.client_slug==='future-basics'?'Future Basics → factory':'client → Future Basics → factory')}`)}
+    ${pTable('sigs',[{h:'Party',f:x=>`<b>${x[0]}</b>`},{h:'Name',f:x=>x[1]?PX(x[1].name):''},{h:'Date',f:x=>x[1]?PX(fmtDate(x[1].at)):''},{h:'Signature',cls:'sg',f:x=>x[1]?'<span class="ak">✓ signed in the hub</span>':'<div class="sline"></div>'}],[['Client',v.clientSign],['Future Basics',v.brandSign],['Factory',v.factorySign]])}
+    ${r&&r.callouts?`<p class="eyebrow">${r.callouts.length-(r.pendingCalloutKeys||[]).length} of ${r.callouts.length} callouts acknowledged by the factory</p>`:''}
+    ${revs.length?`<h3 class="mini">Revisions</h3>`+pTable('rev',[{h:'Version',cls:'mono',f:x=>'v'+PX(x.version)},{h:'Date',f:x=>PX(fmtDate(x.publishedAt))},{h:'By',f:x=>PX(x.by||'')},{h:'Note',cls:'w3',f:x=>PX(x.note||'')}],revs):''}</div>`;
+}
+
 function buildPrint(){
   const el=$('#printDoc');if(!el||!S.pack)return;
-  const p=S.pack,pr=S.product||{},st=p.style||{},v=verification(),r=readiness();
-  const kv=(k,val)=>`<div><dt>${esc(k)}</dt><dd>${esc(val||'—')}</dd></div>`;
-  const title=st.styleName||pr.title||'Tech pack',client=MODE==='factory'&&S.view?.quoteMode?'':(pr.clientName||pr.client_name||'');
-  const heroImg=p.renderings?.[0]?.image?p.renderings[0]:null,fallback=p.sketches.find(x=>x.image),picture=heroImg?`<figure><img src="${heroImg.image}" alt=""><figcaption>${esc(heroImg.name||'Colour rendering')}</figcaption></figure>`:fallback?`<figure><img src="${fallback.image}" alt=""><figcaption>${esc(fallback.label||'Reference photo')}</figcaption></figure>`:'';
-  const cw=p.colorways||[];
-  const cwTable=cw.length?`<h3 class="ph">Colourways</h3><table class="pt2"><thead><tr><th>Colour</th><th>Pantone C</th></tr></thead><tbody>${cw.map(c=>`<tr><td><span class="sw" style="background:${esc(c.swatch||'#e6e6e2')}"></span>${esc(c.name||'—')}</td><td>${esc(c.code||'')}</td></tr>`).join('')}</tbody></table>`:'';
-  const views=p.sketches.filter(x=>x.callouts.length),refs=p.sketches.filter(x=>x.image&&!x.callouts.length&&!/^cutout-/.test(String(x.id||'')));
-  const toc=['Colourways',views.length?'Callouts':'', 'Measurements',(p.artwork||[]).length?'Artwork':'','Materials','Construction & care',p.electronics?.enabled?'Electronics':'',(MODE!=='factory'||!S.view?.quoteMode)&&v?'Sign-off':''].filter(Boolean);
-  const cover=`<div class="pg first"><div class="eyebrow">Tech pack · ${esc(packStamp())}</div><h1>${esc(title)}</h1>${client?`<div class="eyebrow">${esc(client)}${(pr.projectName||pr.project_name)?' · '+esc(pr.projectName||pr.project_name):''}</div>`:''}<hr class="rule"><div class="cv"><div><dl class="facts">${kv('Style no.',st.styleNumber)}${kv('Season',st.season)}${kv('Category',st.category)}${kv('Designer',st.designer||'Future Basics')}${kv('Sample size',st.sampleSize)}${kv('Fit block',st.fitBlock)}${kv('Size run',(p.sizes||[]).join(' · '))}${kv('Fabric',st.fabricSummary)}</dl>${st.description?`<p class="desc">${esc(st.description)}</p>`:''}${cwTable}</div>${picture}</div><div class="toc">${toc.map((t,i)=>`<span>${i+1}. ${esc(t)}</span>`).join('')}</div></div>`;
-  const tiles=(p.renderings||[]).filter(x=>x.image&&!/^cutout-/.test(String(x.id||''))).slice(heroImg?1:0);
-  const colourways=tiles.length?`<div class="pg"><div class="eyebrow">Colourways</div><h2 class="ph">Colour renderings</h2><div class="eyebrow">Design intent without callouts · colours per the Pantone selects in this pack · concept visuals, not a factory spec</div><div class="rg">${tiles.map(t=>`<figure><img src="${t.image}" alt=""><figcaption>${esc(t.name||'Colour rendering')}${t.note?' · '+esc(t.note):''}</figcaption>${t.parts&&t.parts.length?`<ul class="cwparts">${t.parts.map(x=>`<li><i style="background:${esc(x.hex||'#ccc')}"></i><span>${esc(x.label)}</span><small>${esc(x.code||x.name||'')}</small></li>`).join('')}</ul>`:''}</figure>`).join('')}</div></div>`:'';
-  const calls=views.map((sk,vi)=>{const si=p.sketches.indexOf(sk);return `<div class="pg"><div class="eyebrow">Callouts${views.length>1?` · view ${vi+1} of ${views.length}`:''}</div><h2 class="ph">${esc(sk.view)}${sk.hero?' · Hero image':sk.label?' · '+esc(sk.label):''}</h2>${sk.image?stage(sk,si):''}${sk.callouts.length?`<table class="pt2 cotab"><thead><tr><th>#</th><th>Callout</th><th>Spec</th><th>Note to factory</th><th>Detail</th></tr></thead><tbody>${sk.callouts.map(c=>{const ack=ackFor(sk,c);return `<tr><td class="n">${esc(c.n)}</td><td><b>${esc(c.label||'Untitled callout')}</b>${ack?`<div class="ak">✓ Acknowledged · ${esc(ack.by||'')} ${esc(fmtDate(ack.at))}</div>`:''}</td><td>${esc(c.spec||'')}</td><td>${esc(c.note||'')}</td><td class="ph">${cpos(sk,c).photo?`<img src="${cpos(sk,c).photo}" alt="">`:''}</td></tr>`}).join('')}</tbody></table>`:''}</div>`}).join('');
-  const revs=((MODE==='admin'?S.techPack?.revisions:S.view?.techPack?.revisions)||[]).slice().reverse();
-  const quote=MODE==='factory'&&S.view?.quoteMode;
-  const sign=!quote&&v?`<div class="pg"><div class="eyebrow">Sign-off</div><h2 class="ph">Approvals</h2><div class="eyebrow">${r?`Version ${esc(r.version)} · `:''}${S.draft?'':(pr.client_slug==='future-basics'?'Future Basics → factory':'client → Future Basics → factory')}</div><table class="pt2 sigs"><thead><tr><th>Party</th><th>Name</th><th>Date</th><th>Signature</th></tr></thead><tbody>${[['Client',v.clientSign],['Future Basics',v.brandSign],['Factory',v.factorySign]].map(([who,sg])=>`<tr><td><b>${who}</b></td><td>${sg?esc(sg.name):''}</td><td>${sg?esc(fmtDate(sg.at)):''}</td><td>${sg?'<span class="ak" style="color:#0b6b3e">✓ signed in the hub</span>':'<div class="sigline"></div>'}</td></tr>`).join('')}</tbody></table>${r&&r.callouts?`<p class="eyebrow">${r.callouts.length-(r.pendingCalloutKeys||[]).length} of ${r.callouts.length} callouts acknowledged by the factory</p>`:''}${revs.length?`<h3 class="ph">Revisions</h3><table class="pt2"><thead><tr><th>Version</th><th>Date</th><th>By</th><th>Note</th></tr></thead><tbody>${revs.map(x=>`<tr><td>v${esc(x.version)}</td><td>${esc(fmtDate(x.publishedAt))}</td><td>${esc(x.by||'')}</td><td>${esc(x.note||'')}</td></tr>`).join('')}</tbody></table>`:''}</div>`:'';
-  const refSheet=refs.length?`<div class="pp"><section class="block"><div class="block-head"><div><span class="meta">Reference</span><h2>Reference pictures</h2></div></div><div class="refs">${refs.map(x=>`<figure><img src="${x.image}" alt=""><figcaption>${esc(x.view)}${x.label?' · '+esc(x.label):''}</figcaption></figure>`).join('')}</div></section></div>`:'';
-  el.innerHTML=cover+colourways+calls+printSections()+refSheet+sign+`<div class="foot">Future Basics · ${esc(title)} · printed ${esc(fmtDate(new Date()))}</div>`;
+  const p=S.pack,pr=S.product||{},st=p.style||{},r=readiness(),quote=MODE==='factory'&&S.view?.quoteMode;
+  const title=st.styleName||pr.title||'Tech pack';
+  // the order a sample room works in: what it is, the details that matter, the colours, what it is made of, how big, how it is sewn, then the print, labels and the rest
+  const defs=[['Design details',pDesign],['Colourways',pColour],['Materials & trims',pBom],['Measurements',pPoms],['Construction',pConstruction],['Labels, packaging & care',n=>pFinish(n,(S.pack.construction||[]).length>0)],['Artwork',pArtwork],['Electronics',pElec],['Reference pictures',pRefs],['Sign-off',pSign]];
+  // number only the sections that exist, so the contents list and the page headings always agree
+  const sections=[];let n=0;
+  for(const [name,fn] of defs){const html=fn('00');if(!html)continue;n++;const num=String(n).padStart(2,'0');sections.push({title:name,n:num,html:html.split('class="sn">00<').join(`class="sn">${num}<`)})}
+  const ver=(MODE==='admin'?(S.preview?'v'+S.techPack?.version:'Draft'):(S.draft?'Draft':'v'+S.view?.techPack?.version));
+  // running head and foot: page margin boxes, so they sit in the margin of every sheet whatever the paper
+  const q=t=>'"'+String(t||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\r\n]+/g,' ')+'"';
+  const tr=t=>S.lang==='en'?t:(trLookup(t)||t);
+  const PGW={en:['Page ',' of ',''],zh:['第 ',' 页，共 ',' 页'],'zh-hant':['第 ',' 頁，共 ',' 頁'],es:['Página ',' de ',''],pt:['Página ',' de ',''],it:['Pagina ',' di ','']}[S.lang]||['Page ',' of ',''];
+  const PRN={en:'printed',zh:'打印于','zh-hant':'列印於',es:'impreso',pt:'impresso em',it:'stampato il'}[S.lang]||'printed';
+  const box="font:500 8.5px/1.2 'IBM Plex Mono',ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;color:#444;vertical-align:bottom;padding-bottom:2.2mm;border-bottom:1.2pt solid #000";
+  let ps=document.getElementById('pageRun');if(!ps){ps=document.createElement('style');ps.id='pageRun';document.head.appendChild(ps)}
+  ps.textContent=`@page{@top-left{content:${q('Future Basics · '+tr('Tech pack'))};${box}}@top-center{content:${q(title+(st.styleNumber?' · '+st.styleNumber:''))};${box};color:#000;font:600 11px/1.2 'Space Grotesk',Helvetica,Arial,sans-serif;letter-spacing:.02em}@top-right{content:${q(tr(ver)+(st.season?' · '+st.season:''))};${box}}@bottom-left{content:${q(title+' · '+PRN+' '+fmtDate(new Date()))};font:400 8.5px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#555;vertical-align:top;padding-top:3mm}@bottom-right{content:${q(PGW[0])} counter(page) ${q(PGW[1])} counter(pages) ${q(PGW[2])};font:500 8.5px 'IBM Plex Mono',ui-monospace,Menlo,monospace;color:#333;vertical-align:top;padding-top:3mm}}`;
+  el.innerHTML=pCover(sections)+sections.map(s=>s.html).join('');
   if(S.lang!=='en')localize(el);
   // the labels on the callout pictures are cleared of each other at the width the page prints at
-  el.style.cssText='display:block;position:absolute;left:-30000px;top:0;width:733px';try{declutter(el)}finally{el.style.cssText=''}
+  el.style.cssText='display:block;position:absolute;left:-30000px;top:0;width:960px';try{declutter(el)}finally{el.style.cssText=''}
 }
 function schedulePrint(){clearTimeout(schedulePrint.t);schedulePrint.t=setTimeout(()=>{try{buildPrint()}catch(e){console.warn('print view',e)}},250)}
 window.addEventListener('beforeprint',()=>{try{buildPrint()}catch(e){console.warn('print view',e)}});
