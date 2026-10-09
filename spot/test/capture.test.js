@@ -111,3 +111,22 @@ test('text lookup asks Claude with web search and resumes paused turns', async (
   assert.equal(calls[1].messages.at(-1).role, 'assistant', 'paused turn is continued');
   assert.equal(d.items[0].price_cents, 20000);
 });
+
+test('when the AI is unavailable, typing what you want still works and screenshots say why', async () => {
+  const { Anthropic, anthropicClient } = await import('../src/anthropic.js');
+  const { captureFromText, captureFromScreenshot } = await import('../src/capture.js');
+  const down = { beta: { messages: { create: async () => { throw new Anthropic.BadRequestError(400, undefined, 'This API key is not scoped to a workspace', new Headers()); } } } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const d = await captureFromText('black salomon xt-6 size 10.5 $200', { client: down });
+    assert.equal(d.needs_review, true);
+    assert.equal(d.items[0].price_cents, 20000);
+    assert.match(d.warning, /couldn’t look that up/);
+    await assert.rejects(captureFromScreenshot({ data: 'aGk=', media_type: 'image/png' }, { client: down }), /Couldn’t read screenshots right now/);
+  } finally {
+    console.error = quiet;
+  }
+  // A key without a workspace names one on every request.
+  assert.equal(anthropicClient({ ANTHROPIC_WORKSPACE_ID: 'wrkspc_1' })._options.defaultHeaders['anthropic-workspace-id'], 'wrkspc_1');
+});

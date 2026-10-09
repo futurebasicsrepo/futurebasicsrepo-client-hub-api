@@ -11,7 +11,7 @@
 // and total before a link is made, so a misread never charges anyone.
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import Anthropic from '@anthropic-ai/sdk';
+import { Anthropic, anthropicClient } from './anthropic.js';
 import { dollarsToCents } from './cart.js';
 
 const MAX_HTML_BYTES = 2_000_000;
@@ -265,26 +265,37 @@ export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'
 export async function captureFromScreenshot({ data, media_type }, { client } = {}) {
   if (!IMAGE_TYPES.includes(media_type)) throw new CaptureError('Screenshot must be PNG, JPEG, WebP or GIF');
   if (!data || typeof data !== 'string') throw new CaptureError('Screenshot is empty');
-  const anthropic = client ?? new Anthropic();
+  const anthropic = client ?? anthropicClient();
 
   // Server-side refusal fallbacks are on so a false-positive safety decline
   // on an unusual screenshot re-runs on a fallback model instead of failing.
-  const response = await anthropic.beta.messages.create({
-    model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
-    max_tokens: 4000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: CART_SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type, data } },
-          { type: 'text', text: SCREENSHOT_PROMPT },
-        ],
-      },
-    ],
-  });
+  let response;
+  try {
+    response = await anthropic.beta.messages.create({
+      model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+      max_tokens: 4000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: CART_SCHEMA } },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type, data } },
+            { type: 'text', text: SCREENSHOT_PROMPT },
+          ],
+        },
+      ],
+    });
+  } catch (err) {
+    // The model being unreachable or misconfigured isn't the shopper's
+    // problem to read about: say what they can do instead.
+    if (err instanceof Anthropic.APIError) {
+      console.error('screenshot capture failed', err.status, err.message);
+      throw new CaptureError('Couldn’t read screenshots right now. Paste a link or type what you want instead');
+    }
+    throw err;
+  }
 
   if (response.stop_reason === 'refusal') throw new CaptureError('Could not read that screenshot — try a link or enter the items');
   if (response.stop_reason === 'max_tokens') throw new CaptureError('That cart is too long to read — try a link or enter the items');
@@ -360,7 +371,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl } 
   if (url) return fromUrl(url);
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
 
-  const anthropic = client ?? new Anthropic();
+  const anthropic = client ?? anthropicClient();
   const messages = [
     {
       role: 'user',
@@ -373,18 +384,27 @@ Set "found" to false if you can't find a specific product with a current price.`
   ];
   // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
   let response;
-  for (let i = 0; i < 3; i++) {
-    response = await anthropic.beta.messages.create({
-      model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
-      max_tokens: 4000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'low' },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
-      messages,
-    });
-    if (response.stop_reason !== 'pause_turn') break;
-    messages.push({ role: 'assistant', content: response.content });
+  try {
+    for (let i = 0; i < 3; i++) {
+      response = await anthropic.beta.messages.create({
+        model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+        max_tokens: 4000,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: 'low' },
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
+        messages,
+      });
+      if (response.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: response.content });
+    }
+  } catch (err) {
+    // Can't look it up right now: let them fill in the store and price.
+    if (err instanceof Anthropic.APIError) {
+      console.error('text lookup failed', err.status, err.message);
+      return { ...draftFromDescription(text), warning: 'I couldn’t look that up right now. Add the store and price below' };
+    }
+    throw err;
   }
   if (response.stop_reason === 'refusal') return draftFromDescription(text);
   const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');

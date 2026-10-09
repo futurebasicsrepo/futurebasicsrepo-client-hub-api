@@ -9,7 +9,7 @@
 //   • the order total must fit the card limit before we even ask
 //   • nothing is placed without the requester's confirmation
 //   • hard caps on steps and wall-clock time
-import Anthropic from '@anthropic-ai/sdk';
+import { anthropicClient } from '../anthropic.js';
 import { authLimitCents, dollarsToCents, usd } from '../cart.js';
 import { isPaymentField, locate, snapshot } from './snapshot.js';
 
@@ -150,7 +150,7 @@ Rules:
 // Runs one checkout. `confirm(summary)` resolves true/false when the
 // requester answers; `progress(step)` streams short status lines.
 export async function runCheckoutAgent({ page, cart, shipping, getCard, billing = null, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model }) {
-  const anthropic = client ?? new Anthropic();
+  const anthropic = client ?? anthropicClient();
   const hosts = allowedHosts(cart, [startUrl && new URL(startUrl).hostname].filter(Boolean));
   const limit = authLimitCents(cart.cart_cents);
   const started = Date.now();
