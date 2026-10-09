@@ -2,7 +2,8 @@
 // Visuals are the real product: the share card is rendered by sharecard.js
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
 import { buddySvg } from './pages.js';
-import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, heroNotes, noteSection, storySection } from './sitefx.js';
+import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, noteSection, storySection } from './sitefx.js';
+import { HANDOFF_CSS, HANDOFF_JS, SPOTFX_CSS, SPOTFX_JS, beatsSection, guideSpot, handoffSection, spotBuddy, yesStage } from './spotfx.js';
 
 const buddyNoId = (happy) => buddySvg(happy).replace(' id="buddy"', '');
 
@@ -274,60 +275,41 @@ export const SITE_JS = `
 
 export function sitePage({ origin, provider }) {
   const title = 'Spot: the yes button for AI shopping';
-  const desc = 'AI can find it and fill the cart. Spot gets the yes, from you or from whoever’s paying, with rules you set and signed proof of every approval. One tap, and the store gets the order.';
-  return `${siteHead({ title, desc, origin, path: '/' })}
+  const desc = 'Your AI shops, you say yes. Add Spot to Claude or ChatGPT: your AI finds it, and Spot buys it with a card made for that one order, after you or whoever’s paying taps yes.';
+  return `${siteHead({ title, desc, origin, path: '/', extraCss: SPOTFX_CSS + HANDOFF_CSS })}
 
 ${siteNav()}
 
-<header class="hero"><div class="wrap">
-  <div class="buddy" title="hi!">${buddySvg(false)}</div><div class="hi" aria-hidden="true">hi! <span>👋</span></div>
-  <div class="grid">
-    <div>
-      <span class="pill"><i></i>Early access${provider === 'sandbox' ? ' · test mode' : ''}</span>
-      <h1 style="margin-top:22px">The <em class="circled">yes button${circleMark}</em> for AI shopping.</h1>
-      <p class="lead">AI can find it and fill the cart. Spot gets the yes, from you or from whoever’s paying. One tap, and the store gets the order.</p>
-      <div class="modes">
-        <a class="mode" href="#how"><span class="mi">💸</span><span><b>Spot me</b><small>Someone else pays, even for carts from several stores. Their money can only buy that cart.</small></span></a>
-        <a class="mode" href="#for-you"><span class="mi">🤖</span><span><b>Finish for me</b><small>Your AI finds it, you tap Apple Pay. Even flights.</small></span></a>
-        <a class="mode" href="#rules"><span class="mi">🧾</span><span><b>Rules for your AI</b><small>Limits, allowed stores, and an approver for the rest.</small></span></a>
-        <a class="mode" href="#stores"><span class="mi">🛍️</span><span><b>Pay the store directly</b><small>Where stores support it: no Spot fee, the store’s own checkout.</small></span></a>
-      </div>
-      <div class="cta"><a class="btn primary" href="/new">Make a Spot →</a><a class="btn ghost" href="/integrations#mcp">Add Spot to your AI</a></div>
-      <p class="fine">Nothing to download. The person paying doesn’t need an account. Your AI never gets a card number.</p>
-    </div>
-    <div class="stage" id="stage">${heroNotes()}
-    <div class="float f2" aria-hidden="true">🎉 Mom spotted you</div>
-    <div class="float f3" aria-hidden="true">📦 Ordered · arrives Thu</div>
-    <div class="phone" aria-label="A Spot link being sent in a text message and getting paid">
-      <div class="screen">
-        <div class="top"><div class="avatar">M</div><div class="who">Mom</div></div>
-        <div class="thread" id="thread">
-          <div class="b me">ok don’t laugh 🙈</div>
-          <div class="b me linkcard" id="lc"><div class="imgs"><img src="/site/card-open.png" alt="Share card: psst… can you spot Kyle? Super Puff jacket, $271, tap to spot" width="1200" height="630"><img class="covered" src="/site/card-covered.png" alt="Share card after paying: Mom spotted Kyle!" width="1200" height="630"></div><div class="cap">psst… can you spot Kyle?<small>spot</small></div></div>
-          <div class="b them">omg fine 😂</div>
-          <div class="b them">done ✅</div>
-          <div class="b me">ILY 🧡 it’s ordered</div>
-        </div>
-      </div>
-    </div>
-    </div>
+<header class="hero hero2"><div class="wrap"><div class="grid">
+  <div>
+    <span class="pill"><i></i>The yes button for AI shopping${provider === 'sandbox' ? ' · test mode' : ''}</span>
+    <h1 style="margin-top:22px">Your AI shops.<br>You say <em class="circled">yes${circleMark}</em>.</h1>
+    <p class="lead">Add Spot to <b>Claude</b> or <b>ChatGPT</b> and ask for anything: sneakers, a flight, the 7am train to New York. When you, or whoever’s paying, taps yes, Spot buys it with <b>a card made for that one order</b>.</p>
+    <div class="cta"><a class="btn primary" href="/integrations#mcp">Add Spot to your AI →</a><a class="btn ghost" href="/new">Make a Spot</a></div>
+    <div class="proof"><span>🔒 Your AI never sees a card</span><span>🎯 Capped at the order</span><span>✍️ Every yes is signed</span></div>
+    <p class="works">Works in <b>Claude</b>, <b>ChatGPT</b> and any MCP app. The person paying doesn’t need an account.</p>
   </div>
-</div></header>
+  ${yesStage()}
+</div></div></header>
 
 <section class="marquee" aria-label="Examples of things people ask for with Spot">
   <div class="mrow"><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div></div>
   <div class="mrow rev" aria-hidden="true"><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div></div>
 </section>
 
+${handoffSection()}
+
+${beatsSection()}
+
 ${storySection()}
 
-<section class="sec handoff" id="for-you"><div class="wrap"><div class="grid">
+<section class="sec handoff" id="for-you" data-say="I hold the fare. You tap. ✈️🚆"><div class="wrap"><div class="grid">
   <div>
     <p class="kicker reveal">Your AI shops. You tap.</p>
     <h2 class="reveal">Ask your AI.<br>Finish on your phone.</h2>
-    <p class="lead reveal">“Find me a flight to SFO on the 17th.” Your assistant finds it, holds the price and texts you a Spot. You open it, check it and tap Apple Pay. Done.</p>
+    <p class="lead reveal">“Find me a flight to SFO on the 17th.” Your assistant finds it, holds the price and texts you a Spot. You open it, check it and tap Apple Pay, or approve with the card you saved. Done.</p>
     <ul class="ticks reveal">
-      <li><b>Real flights.</b> Live fares from the airlines, booked the second you pay, with your confirmation code right there.</li>
+      <li><b>Real flights and trains.</b> Live airline fares booked the second you pay, or the exact Amtrak train your AI picked, with the e-ticket in your inbox.</li>
       <li><b>Any store’s cart.</b> Your AI puts the cart together, and Spot buys it from the store and ships it to you.</li>
       <li><b>Price held, clock showing.</b> The link counts down while the fare or price is held, so nothing changes under you.</li>
       <li><b>You always have the last tap.</b> Your AI can’t spend a cent without a person saying yes.</li>
@@ -353,7 +335,7 @@ ${storySection()}
   </div>
 </div></div></section>
 
-<section class="sec alt" id="rules"><div class="wrap"><div class="grid">
+<section class="sec alt blobby" id="rules" data-say="Rules are rules. Even for robots 🤖"><div class="wrap"><div class="grid">
   <div>
     <p class="kicker reveal">Rules and approvers</p>
     <h2 class="reveal">Let your AI shop.<br>Keep the say.</h2>
@@ -367,7 +349,7 @@ ${storySection()}
     </ul>
     <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/account">Set rules →</a><a class="btn ghost" href="#trust">How approvals are signed</a></div>
   </div>
-  <div class="rulecard reveal" aria-label="Example: spending rules for an AI assistant">
+  <div class="rulecard tilt reveal" aria-label="Example: spending rules for an AI assistant">
     <div class="rc-head"><span>🤖 claude</span><small>$84 of $200 this month</small></div>
     <div class="rc-row"><span>Max per order</span><b>$75</b></div>
     <div class="rc-row"><span>Max per month</span><b>$200</b></div>
@@ -382,14 +364,14 @@ ${storySection()}
   </div>
 </div></div></section>
 
-<section class="sec" id="why"><div class="wrap">
+<section class="sec" id="why" data-say="I can only buy that thing. Promise."><div class="wrap">
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
   <div class="feats">
-    <div class="feat reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>Their money buys exactly that cart, from the store directly or through Spot, and it ships to you. No cash changes hands, so saying yes is easy.</p></div>
-    <div class="feat reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
-    <div class="feat reveal"><div class="ic">🛍️</div><h3>Any store, even several at once.</h3><p>Links, screenshots, or a few words. Put up to 5 stores in one link and one payment. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
-    <div class="feat reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
+    <div class="feat tilt reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>Their money buys exactly that cart, from the store directly or through Spot, and it ships to you. No cash changes hands, so saying yes is easy.</p></div>
+    <div class="feat tilt reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
+    <div class="feat tilt reveal"><div class="ic">🛍️</div><h3>Any store, even several at once.</h3><p>Links, screenshots, or a few words. Put up to 5 stores in one link and one payment. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
+    <div class="feat tilt reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
   </div>
   <div class="tablewrap reveal"><table>
     <thead><tr><th></th><th class="us">Spot</th><th>Payment requests</th><th>Shared-cart links</th><th>Wishlists</th></tr></thead>
@@ -408,17 +390,17 @@ ${storySection()}
 
 ${chatWallSection()}
 
-<section class="sec alt"><div class="wrap">
+<section class="sec alt" data-say="Mom, can you spot me? 👀"><div class="wrap">
   <p class="kicker reveal">Made for</p>
   <h2 class="reveal">Every “can you get me this?”</h2>
   <div class="uses">
-    <div class="use reveal"><h3>Family</h3><p>Birthday lists, back-to-school, “the good headphones.” Parents see exactly what they’re buying.</p><div class="q">“Mom, can you spot me? 👀”</div></div>
-    <div class="use reveal"><h3>Partners & friends</h3><p>Send a treat-me without the screenshot-and-Venmo dance. It shows up at the door.</p><div class="q">“it’s on me 🧡”</div></div>
-    <div class="use reveal"><h3>Creators</h3><p>Put a Spot in your bio. Fans cover the gear you actually need, from any store.</p><div class="q">“new mic fund 🎙️”</div></div>
+    <div class="use tilt reveal"><h3>Family</h3><p>Birthday lists, back-to-school, “the good headphones.” Parents see exactly what they’re buying.</p><div class="q">“Mom, can you spot me? 👀”</div></div>
+    <div class="use tilt reveal"><h3>Partners & friends</h3><p>Send a treat-me without the screenshot-and-Venmo dance. It shows up at the door.</p><div class="q">“it’s on me 🧡”</div></div>
+    <div class="use tilt reveal"><h3>Creators</h3><p>Put a Spot in your bio. Fans cover the gear you actually need, from any store.</p><div class="q">“new mic fund 🎙️”</div></div>
   </div>
 </div></section>
 
-<section class="sec agents" id="agents"><div class="wrap"><div class="grid">
+<section class="sec agents" id="agents" data-say="Builders! A few tools and you’re in."><div class="wrap"><div class="grid">
   <div>
     <p class="kicker reveal">For AI agents</p>
     <h2 class="reveal">Your agent builds the cart.<br>Spot gets the yes.</h2>
@@ -427,13 +409,14 @@ ${chatWallSection()}
       <div class="tool"><code>create_spot_ask</code><span>cart, link or description → a pay link for someone else, or <b>for_me</b>: a finish link texted to your user. <b>stores</b>: carts from up to 5 stores in one link</span></div>
       <div class="tool"><code>search_flights</code><span>live fares, cheapest first plus the best nonstop</span></div>
       <div class="tool"><code>create_flight_ask</code><span>hold a fare and text your user a link to book it</span></div>
+      <div class="tool"><code>create_train_ask</code><span>one exact train (Amtrak and others): your user adds who’s riding, Spot buys the ticket</span></div>
       <div class="tool"><code>get_spot_ask</code><span>waiting, paid, ordering, ordered, booked</span></div>
       <div class="tool"><code>order_spot_ask</code><span>once paid, place the order at the store</span></div>
       <div class="tool"><code>pay_at_store</code><span>stores with agent checkout (UCP): the payer pays the store directly, no fee</span></div>
     </div>
     <p class="more reveal">Your user’s rules are enforced for you: over a limit, the ask is refused with the reason, or sent to their approver. Every yes comes back as a signed approval you can verify.</p>
     <div class="cta" style="margin-top:30px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="#join" data-kind="agent">Get an API key</a><a class="btn ghost" href="/integrations#mcp">Set up MCP →</a></div>
-    <p class="more reveal">Works with Claude and any app that speaks MCP. <a href="/integrations">See all integrations</a></p>
+    <p class="more reveal">Works with Claude, ChatGPT and any app that speaks MCP. People sign in with Spot and tap Allow, so there’s no key to paste. <a href="/integrations">See all integrations</a></p>
   </div>
   <div class="agentwin reveal" aria-label="Demo: an AI assistant uses Spot to ask someone to pay and then orders">
     <div class="bar"><i></i><i></i><i></i><span>Your AI assistant · with Spot</span></div>
@@ -451,7 +434,7 @@ ${chatWallSection()}
   </div>
 </div></div></section>
 
-<section class="sec stores" id="stores"><div class="wrap"><div class="grid">
+<section class="sec stores blobby" id="stores" data-say="Stores: keep the sale 🛍️"><div class="wrap"><div class="grid">
   <div>
     <p class="kicker reveal">For stores</p>
     <h2 class="reveal">Don’t lose the sale to “I’ll ask my mom.”</h2>
@@ -463,7 +446,7 @@ ${chatWallSection()}
     </ul>
     <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/integrations#stores">Add the button →</a></div>
   </div>
-  <div class="storedemo reveal" aria-label="A store checkout with an Ask someone to pay button">
+  <div class="storedemo tilt reveal" aria-label="A store checkout with an Ask someone to pay button">
     <div class="sd-line"><span>Trail Jacket · M</span><b>$189.00</b></div>
     <div class="sd-line"><span>Shipping</span><b>$8.00</b></div>
     <div class="sd-line total"><span>Total</span><b>$197.00</b></div>
@@ -473,7 +456,7 @@ ${chatWallSection()}
   </div>
 </div></div></section>
 
-<section class="sec" id="trust"><div class="wrap">
+<section class="sec" id="trust" data-say="Every yes gets signed ✍️"><div class="wrap">
   <p class="kicker reveal">Trust</p>
   <h2 class="reveal">Every yes is a person’s, and you can prove it.</h2>
   <div class="safe">
@@ -484,9 +467,9 @@ ${chatWallSection()}
   </div>
 </div></section>
 
-${noteSection(buddyNoId(true))}
+${noteSection(spotBuddy('note').replace('class="spotb"', 'class="spotb happy"'))}
 
-<section class="sec alt" id="faq"><div class="wrap">
+<section class="sec alt" id="faq" data-say="Ask me anything. Well, these."><div class="wrap">
   <p class="kicker reveal" style="text-align:center">FAQ</p>
   <h2 class="reveal" style="text-align:center">Questions</h2>
   <div class="faq">
@@ -498,7 +481,9 @@ ${noteSection(buddyNoId(true))}
     <details><summary>How does a store add the button?</summary><p>Register your domain on the <a href="/integrations#stores">integrations page</a> and paste two lines by your checkout. The key only works on your own domain. Put a small file on your site to verify it, and your carts show a ✓ to whoever pays.</p></details>
     <details><summary>Which stores work?</summary><p>Any online store. Spot reads links, screenshots and plain descriptions. Shopify stores are the smoothest, and stores that support agent checkout (the Universal Commerce Protocol) are ordered straight through their own checkout. Before anyone pays, Spot checks it can order from that store. If a store blocks it later and Spot can’t order within 3 days, whoever paid gets a full refund automatically.</p></details>
     <details><summary>Can my AI book flights with Spot?</summary><p>Yes. Add Spot to your assistant and ask for a flight. It searches live fares, holds the one you like and texts you a link. You add who’s flying, tap Apple Pay, and Spot books it with the airline and shows your confirmation code. If the airline can’t book it, you’re refunded right away.</p></details>
-    <details><summary>Can my AI spend my money without me?</summary><p>No. Your assistant can find things and build the cart, but every Spot waits for a person to pay, and orders wait for your last tap. Your AI never gets a card number.</p></details>
+    <details><summary>Can my AI spend my money without me?</summary><p>Not unless you turn that on. By default every purchase waits for a person: you tap Approve, or whoever’s paying does. You can opt in to let one AI pay on its own, but only inside a cap per order you set, and “Stop all AI spending” on your account turns it off at once. Either way your AI never gets a card number: Spot makes a new card for each order, capped at it and locked to that store.</p></details>
+    <details><summary>How do I add Spot to Claude or ChatGPT?</summary><p>In Claude, go to Settings → Connectors → Add custom connector. In ChatGPT, go to Settings → Apps &amp; Connectors → Create. Paste <code>${origin}/mcp</code>, sign in to Spot and tap Allow. That’s it: no key to copy. Your AI then shows up on your account, where you can set its rules or disconnect it.</p></details>
+    <details><summary>Can my AI buy train tickets?</summary><p>Yes. Ask for a train and your AI picks the exact one (Amtrak and other operators that sell online). You add who’s riding, pay, and Spot buys that train for you. You see the operator’s real total before anything is bought, and the e-ticket comes straight to your email.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
     <details><summary>Why does Spot buy it instead of sending money?</summary><p>For stores that can’t take the payment directly, it’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
     <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid. Paid the store directly? Then the store’s own cancellation and return policy applies.</p></details>
@@ -506,7 +491,7 @@ ${noteSection(buddyNoId(true))}
   </div>
 </div></section>
 
-<section class="sec join" id="join"><div class="wrap">
+<section class="sec join blobby" id="join" data-say="Psst… get in early 🧡"><div class="wrap">
   <h2 class="reveal">Want in early?</h2>
   <p class="lead reveal" style="margin-left:auto;margin-right:auto">Leave your email and we’ll let you know when real payments go live, or send you an API key for your agent.</p>
   <form id="joinForm" class="reveal">
@@ -519,23 +504,13 @@ ${noteSection(buddyNoId(true))}
   <p style="margin-top:26px"><a class="btn ghost" href="/new">Or try it now →</a></p>
 </div></section>
 
+${guideSpot()}
 ${siteFooter()}
 
 <script>
 (()=>{
 ${SITE_JS}
 ${FX_JS}
-  // Hero conversation: plays, flips the card to "covered", loops.
-  const bubbles=[...document.querySelectorAll('#thread .b')],lc=document.getElementById('lc');
-  if(reduce){bubbles.forEach(b=>b.classList.add('shown'));lc.classList.add('flip')}
-  else{
-    const play=()=>{bubbles.forEach(b=>b.classList.remove('shown'));lc.classList.remove('flip');
-      const t=[400,1300,3000,4300,4700,5600];
-      bubbles.forEach((b,i)=>setTimeout(()=>b.classList.add('shown'),t[i]));
-      setTimeout(()=>{lc.classList.add('flip');spotConfetti(stage,'62%','34%')},t[3]);
-      setTimeout(play,10500)};
-    play();
-  }
   // AI handoff phone: plays when scrolled into view, the trip card flips to "booked", loops.
   const t2=document.getElementById('thread2'),trip=document.getElementById('trip');
   if(t2){const bs=[...t2.children];
@@ -545,13 +520,8 @@ ${FX_JS}
         setTimeout(()=>{trip.classList.add('done');spotConfetti(document.getElementById('stage2'),'55%','52%')},4800);
         setTimeout(play2,11000)};
       new IntersectionObserver((es,o)=>{if(es[0].isIntersecting){play2();o.disconnect()}},{threshold:.3}).observe(t2)}}
-  // Phone tilts toward the pointer.
-  const stage=document.getElementById('stage'),phone=stage&&stage.querySelector('.phone');
-  if(phone&&!reduce)stage.addEventListener('pointermove',e=>{const r=stage.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;phone.style.transform='rotateY('+(x*14).toFixed(1)+'deg) rotateX('+(-y*10).toFixed(1)+'deg) rotate(2deg)'});
-  stage&&stage.addEventListener('pointerleave',()=>{phone.style.transform=''});
-  // Mascot watches the pointer.
-  const svg=document.querySelector('.buddy svg'),pupils=svg&&svg.querySelector('.pupils');
-  addEventListener('pointermove',e=>{if(!pupils)return;const r=svg.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy)||1,k=Math.min(7,d/30);pupils.setAttribute('transform','translate('+(dx/d*k).toFixed(1)+' '+(dy/d*k).toFixed(1)+')')},{passive:true});
+${SPOTFX_JS}
+${HANDOFF_JS}
   // Agent demo: plays when scrolled into view, types the assistant's lines, loops.
   const log=document.getElementById('agentlog');
   if(log){
