@@ -18,7 +18,7 @@ const MAX_HTML_BYTES = 2_000_000;
 const FETCH_TIMEOUT_MS = 8000;
 
 // ─── URL capture ────────────────────────────────────────────────────────────
-export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1', sign = null } = {}) {
+export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1', sign = null, hops = 0 } = {}) {
   let url;
   try {
     url = new URL(rawUrl);
@@ -41,8 +41,9 @@ export async function captureFromUrl(rawUrl, { fetchImpl = fetch, allowPrivate =
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location');
       if (!loc) throw new CaptureError('The store redirected without a destination');
+      if (hops >= 6) throw new CaptureError('That link redirects too many times');
       clearTimeout(timer);
-      return captureFromUrl(new URL(loc, url).toString(), { fetchImpl, allowPrivate, sign });
+      return captureFromUrl(new URL(loc, url).toString(), { fetchImpl, allowPrivate, sign, hops: hops + 1 });
     }
     if (!res.ok) throw new CaptureError(`The store returned ${res.status}`);
     html = await readCapped(res, MAX_HTML_BYTES);
@@ -76,10 +77,13 @@ export function parseProductHtml(html, pageUrl) {
     }
   }
 
+  let blocked = false;
   if (!items.length) {
     const price = dollarsToCents(meta['product:price:amount'] || meta['og:price:amount'] || meta['twitter:data1'] || '');
     const title = decode(meta['og:title'] || meta['twitter:title'] || titleTag(html) || '');
-    if (title) {
+    // A store's bot check ("Robot or human?", "Just a moment…") is not a product.
+    blocked = BOT_WALL.test(title);
+    if (title && !blocked) {
       items.push({
         title: title.slice(0, 140),
         variant: null,
@@ -106,8 +110,11 @@ export function parseProductHtml(html, pageUrl) {
     merchant,
     items: deduped.slice(0, 25),
     needs_review: deduped.some((i) => !i.price_cents) || !deduped.length,
+    ...(blocked ? { warning: `${merchant.name} doesn’t let Spot read its pages. Add the item and price below` } : {}),
   };
 }
+
+const BOT_WALL = /^\s*(robot or human\??|are you (a )?(robot|human)\??|just a moment\.*…?|access denied|attention required!?|pardon our interruption|verify you are (a )?human|please verify you are a human|security check|captcha)\b/i;
 
 function productFromLd(p, pageUrl) {
   const name = decode(String(p.name || '')).trim();
