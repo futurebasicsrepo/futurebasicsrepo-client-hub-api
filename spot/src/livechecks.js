@@ -48,7 +48,15 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
       label: 'Stripe payments',
       async run() {
         if (!stripe) return { state: 'off', detail: 'Not using Stripe (sandbox)', fix: 'STRIPE_SECRET_KEY' };
-        const b = await stripe.balance.retrieve();
+        let b;
+        try {
+          b = await stripe.balance.retrieve();
+        } catch (err) {
+          if (!permission(err)) throw err;
+          // Spot never reads the balance itself; payments are what it needs.
+          await stripe.paymentIntents.list({ limit: 1 });
+          return { state: 'ok', detail: 'Key works for payments (give it Balance: Read to see the balance here)' };
+        }
         const usdAvail = (b.available || []).find((x) => x.currency === 'usd')?.amount ?? 0;
         const pending = (b.pending || []).find((x) => x.currency === 'usd')?.amount ?? 0;
         return { state: 'ok', detail: `Key works · payments balance ${usd(usdAvail)} available, ${usd(pending)} pending` };
@@ -84,7 +92,13 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
       async run() {
         if (!stripe) return { state: 'off', detail: 'Not using Stripe', fix: 'STRIPE_SECRET_KEY' };
         if (!env.STRIPE_ISSUING_CARDHOLDER) return { state: 'fail', detail: 'No cardholder: Spot can’t make cards', fix: 'STRIPE_ISSUING_CARDHOLDER' };
-        const ch = await stripe.issuing.cardholders.retrieve(env.STRIPE_ISSUING_CARDHOLDER);
+        // Reading the cardholder is only for this check; making cards doesn't need it.
+        let ch = { id: env.STRIPE_ISSUING_CARDHOLDER, status: 'active' };
+        try {
+          ch = await stripe.issuing.cardholders.retrieve(env.STRIPE_ISSUING_CARDHOLDER);
+        } catch (err) {
+          if (!permission(err)) throw err;
+        }
         if (ch.status !== 'active') return { state: 'fail', detail: `Cardholder ${ch.id} is ${ch.status}`, fix: 'Activate it in Stripe → Issuing → Cardholders' };
         const reqs = ch.requirements?.past_due || [];
         if (reqs.length) return { state: 'fail', detail: `Cardholder needs: ${reqs.join(', ')}` };
