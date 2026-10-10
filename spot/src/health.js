@@ -309,7 +309,7 @@ const cartRow=c=>'<div class="row"><div class="why">'+c.why.map(esc).join(' · '
 async function load(){
   const r=await fetch('/v1/admin/health');if(r.status===401){location.href='/admin';return}
   const h=await r.json();
-  $('#when').textContent='Updated '+new Date(h.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+' · last '+h.window_days+' days';
+  $('#when').textContent='Updated '+new Date(h.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})+' · last '+h.window_days+' days';
   $('#banner').className='banner '+h.status;
   $('#banner').innerHTML=h.status==='ok'?'<span aria-hidden="true">✓</span> All good: no stuck money, no failing services.':'<span aria-hidden="true">⚠</span> '+h.attention+' thing'+(h.attention===1?'':'s')+' need'+(h.attention===1?'s':'')+' a look.';
   const c=h.costs,rv=h.revenue;
@@ -354,7 +354,7 @@ async function load(){
     +'<tr><td><b>Net</b></td><td>earned minus costs</td><td><b>'+usd(h.net_cents)+'</b></td></tr></tbody></table></div>'
     +'<p class="est">Affiliate and interchange are estimates until the networks and Stripe pay out; actual commissions show in each network’s dashboard. Costs use list prices.</p>';
 }
-$('#refresh').onclick=load;load();setInterval(load,60000);
+$('#refresh').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Refreshing…';try{await load()}catch(err){$('#when').textContent=err.message}finally{b.disabled=false;b.textContent='Refresh'}};load();setInterval(load,60000);
 $('#runChecks').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/v1/admin/health/check',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const j=await r.json();if(!r.ok)throw new Error(j.error||'Checks failed');drawLive(j);load()}catch(err){$('#liveWhen').textContent=err.message}finally{b.disabled=false;b.textContent='Run checks'}};
 `;
 

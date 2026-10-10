@@ -113,6 +113,22 @@ test('a funded account, all events, an approved campaign: all green; a store tha
   assert.equal(r.ucp_quote.state, 'fail', 'no quote means carts would be charged an estimate');
 });
 
+test('read-only permissions Spot itself doesn’t need never show as broken; the Shopify token is really fetched', async () => {
+  const provider = fakeStripe({ faBalance: 20000 });
+  const denied = () => Promise.reject(Object.assign(new Error('Permission denied … balance_read'), { type: 'StripePermissionError', statusCode: 403 }));
+  provider.stripe.balance.retrieve = denied;
+  provider.stripe.issuing.cardholders.retrieve = denied;
+  provider.stripe.paymentIntents = { list: async () => ({ data: [] }) };
+  const shopifyAuth = { token: async () => 'tok_1' };
+  const live = createLiveChecks({ env: { ...env, SHOPIFY_CATALOG_CLIENT_ID: 'id', SHOPIFY_CATALOG_CLIENT_SECRET: 's' }, db: openDb(':memory:'), provider, direct, shopifyAuth, fetchImpl: fetchFake({ campaign: 'VERIFIED' }) });
+  const r = byName(await live.run(['stripe', 'issuing', 'shopify_token']));
+  assert.equal(r.stripe.state, 'ok');
+  assert.match(r.stripe.detail, /Balance: Read/);
+  assert.equal(r.issuing.state, 'ok', r.issuing.detail);
+  assert.match(r.issuing.detail, /\$200\.00 available/, 'still checks the money cards draw on');
+  assert.equal(r.shopify_token.state, 'ok');
+});
+
 test('a check that hangs or throws is reported, the rest still run', async () => {
   const provider = fakeStripe({ faBalance: 20000 });
   provider.stripe.balance.retrieve = async () => {

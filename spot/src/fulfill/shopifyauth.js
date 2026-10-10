@@ -49,6 +49,8 @@ export function createShopifyAuth({ env = process.env, fetchImpl = fetch, now = 
 
   return {
     enabled: Boolean(id && secret),
+    // A token, or null when Shopify refuses (the live check on /admin/health).
+    token: () => (id && secret ? token() : Promise.resolve(null)),
     // Headers for a call to a Shopify store's UCP endpoint, or null to call it as before.
     async headersFor(endpoint, buyerIp) {
       if (!id || !secret || !buyerIp || !isIP(String(buyerIp))) return null;
