@@ -301,7 +301,7 @@ await journey('J106', 'a pack drawn from a description can be re-run by staff, e
   const cid = a.json.client.id, pid = a.json.product.id;
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
   const pack = async () => (await adm(`/v1/admin/products/${pid}/tech-pack`)).json.techPack;
-  const settle = async () => { for (let i = 0; i < 120; i++) { const d = await pack(); if (d && ['done', 'failed'].includes(d.aiStatus)) break; await sleep(300); } for (let i = 0; i < 120; i++) { const c = (await adm(`/v1/admin/products/${pid}/tech-pack/check`)).json; if (c.loop && ['done', 'failed'].includes(c.loop.status)) break; await sleep(400); } await sleep(1500); return pack(); };
+  const settle = async () => { await sleep(1500); for (let i = 0; i < 160; i++) { const d = await pack(); if (d && ['done', 'failed'].includes(d.aiStatus)) { await sleep(2500); const e = await pack(); if (['done', 'failed'].includes(e.aiStatus)) break; } else await sleep(300); } for (let i = 0; i < 120; i++) { const c = (await adm(`/v1/admin/products/${pid}/tech-pack/check`)).json; if (c.loop && ['done', 'failed'].includes(c.loop.status)) break; await sleep(400); } await sleep(1500); return pack(); };
   let d = await settle(), front = d.data.sketches.find(k => k.image);
   ok(front && /concept render/i.test(front.label) && front.image !== art && front.callouts.length > 0, 'first run: the concept render is the front view and has callouts', front && [front.label, front.callouts.length]);
   ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: rerun' } })).status === 200, 'staff publish');
@@ -309,12 +309,15 @@ await journey('J106', 'a pack drawn from a description can be re-run by staff, e
   d = await settle(); front = d.data.sketches.find(k => k.image && /concept render/i.test(k.label)) || d.data.sketches.find(k => k.image);
   ok(d.aiStatus === 'done' && front && front.image !== art && front.callouts.length > 0 && front.callouts.some(c => c.photo || c.hphoto), 're-run: the render is still the front view, with callouts and detail pictures on them', front && [front.label, front.callouts.length, front.callouts.filter(c => c.photo || c.hphoto).length]);
   ok(d.data.artwork.length >= 1 && d.data.artwork.some(x => x.image === art), 'and the client\'s graphic is still their artwork');
-  // a pack left with the client's graphic sitting in a sketch slot and no front render (how an earlier version could leave it)
-  const data = structuredClone(d.data); data.sketches = [{ id: 'view-legacy', view: 'front', label: 'Reference photo', image: art, garmentWidthIn: null, callouts: [] }]; data.renderings = [];
-  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200, 'setup: a pack with the graphic in a sketch slot and no render');
+  // Adam's pack: the render was made earlier and sits with the colour renderings, the front view is still "to follow", and the upload is filed without a source
+  const oldRender = (await sharp({ create: { width: 800, height: 800, channels: 3, background: '#9aa3ad' } }).jpeg().toBuffer()).toString('base64');
+  const data = structuredClone(d.data); data.sketches = [{ id: 'view-legacy', view: 'front', label: 'Front view — concept render to follow', image: '', garmentWidthIn: null, callouts: [] }];
+  data.renderings = [{ id: 'concept-old', name: 'Concept render', note: 'Made from your graphic and your description. A first idea, not a final design.', image: `data:image/jpeg;base64,${oldRender}`, parts: [] }]; data.artwork = data.artwork.map(x => ({ ...x, source: '' }));
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200, 'setup: a pack with the render among the colour renderings, a blank front view and an upload with no source');
   ok((await adm(`/v1/admin/products/${pid}/tech-pack/ai`, { method: 'POST' })).status === 200, 'staff run the assistant again');
-  d = await settle(); front = d.data.sketches.find(k => k.image && k.image !== art);
-  ok(front && /^data:image\/jpeg/.test(front.image) && d.data.renderings.some(x => /^concept-/.test(x.id)), 'the render is made and becomes the front view; the graphic is not what the pack shows as the product', front && front.label);
+  d = await settle(); front = d.data.sketches.find(k => k.image);
+  ok(front && /^data:image\/jpeg/.test(front.image) && !/to follow/i.test(front.label), 'the front view now has the render (the Callouts page is no longer empty)', front && front.label);
+  ok(front && front.callouts.length > 0 && front.callouts.some(c => c.photo || c.hphoto), 'with the callouts pinned on it and detail pictures on them, from the one run', front && [front.callouts.length, front.callouts.filter(c => c.photo || c.hphoto).length]);
 });
 
 summary(); process.exit(bad ? 1 : 0);
