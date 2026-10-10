@@ -242,4 +242,51 @@ await journey('J104', 'a customer connects their own Shopify store and sends a p
   ok((await call(`/v1/shopify/stores/${sid}`, { token: tok, method: 'DELETE' })).status === 404, 'and doing it twice is a clean 404');
 });
 
+await journey('J105', 'the tech pack header carries the brand like the rest of the hub: logo and suffix for customer, staff and factory, the way home, the breadcrumb on its own row, the tab bar under it, and nothing overflowing on a phone', async () => {
+  if (!playwright) { ok(true, 'skipped: Playwright is not available'); return; }
+  const mail = `hdr-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: mail, name: 'Header Tester', title: 'Header hoodie', photos: [runner] } }); ok(r.status === 201, 'setup: a customer starts a pack', r.status);
+  const tok = r.json.token, cid = r.json.client.id, pid = r.json.product.id; await waitAi(call, tok, pid);
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: header' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${pid}/tech-pack/approve`, { method: 'POST', token: tok, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const sh = await adm(`/v1/admin/products/${pid}/tech-pack/shares`, { method: 'POST', body: { label: 'Header Mill', email: `headermill-${stamp}@chaos.test` } }), ftok = sh.json.url ? sh.json.url.split('/tp/')[1] : ''; ok(Boolean(ftok), 'setup: a factory link', [sh.status, sh.json]);
+  const shot = (n, pg) => pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j105-${n}.png`, clip: { x: 0, y: 0, width: pg.viewportSize().width, height: 230 } }).catch(() => {});
+  const bw = await playwright.chromium.launch();
+  const probe = pg => pg.evaluate(() => {
+    const q = s => document.querySelector(s), box = e => { const b = e && e.getBoundingClientRect(); return b && { top: b.top, bottom: b.bottom, left: b.left, width: b.width, height: b.height }; };
+    const hd = q('header.top'), logo = q('.top .brand-logo'), loaded = Boolean(logo && logo.complete && logo.naturalWidth > 0), suf = q('.top .brand-suffix'), home = q('#homeLink'), cr = q('#crumb'), tabs = q('#tabs');
+    return { header: box(hd), logo: box(logo), logoSrc: logo && logo.getAttribute('src'), loaded, suffix: suf && getComputedStyle(suf).display !== 'none' ? suf.innerText.trim() : '', href: home && home.getAttribute('href'), label: home && home.getAttribute('aria-label'),
+      crumbs: box(cr), crumbText: cr ? cr.innerText.trim() : '', crumbPos: cr && getComputedStyle(cr).position, headerPos: hd && getComputedStyle(hd).position, tabs: box(tabs), overflow: document.documentElement.scrollWidth - innerWidth, oldBrand: Boolean(q('.top .brand')) };
+  });
+  try {
+    const open = async (role, token, url, w, h) => { const ctx = await bw.newContext({ viewport: { width: w, height: h } }); if (token) await ctx.addInitScript(([k, t]) => { try { localStorage.setItem(k, t); } catch {} }, [role === 'admin' ? 'fb.admin.token' : 'fb.client.token', token]); await ctx.route('**/future_basics_true_vector_fixed.svg*', route => route.fulfill({ path: new URL('./fixtures/fb-logo.svg', import.meta.url).pathname, contentType: 'image/svg+xml' })); const pg = await ctx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(e.message)); await pg.goto(url, { waitUntil: 'domcontentloaded' }); await pg.waitForSelector('#tabs button', { timeout: 20000 }); await pg.keyboard.press('Escape'); await pg.waitForTimeout(400); return { ctx, pg }; };
+    // customer, desktop
+    let { ctx, pg } = await open('client', tok, `${BASE}/tech-packs/${pid}`, 1280, 860); let m = await probe(pg);
+    ok(m.logo && m.logo.width >= 120 && m.loaded && /future_basics/.test(m.logoSrc) && !m.oldBrand, 'customer: the Future Basics logo is in the bar and draws (the same file as the hub)', [m.logo, m.logoSrc, m.loaded]);
+    ok(/Client Hub/i.test(m.suffix) && m.href === '/' && /client hub/i.test(m.label), 'customer: "/ Client Hub" and the logo goes to the hub', [m.suffix, m.href]);
+    ok(Math.abs(m.header.height - 72) <= 1 && m.headerPos === 'sticky', 'customer: the bar is the hub\'s 72px and stays put', [m.header.height, m.headerPos]);
+    ok(m.crumbs.top >= m.header.bottom - 1 && m.crumbPos !== 'sticky' && m.crumbs.height > 0 && /Tech pack/i.test(m.crumbText) && /Projects/i.test(m.crumbText), 'customer: the breadcrumb is its own row under the bar, and scrolls away', [m.crumbs, m.crumbText]);
+    await pg.evaluate(() => scrollTo(0, 700)); await pg.waitForTimeout(250); const st = await pg.evaluate(() => ({ tabs: document.querySelector('#tabs').getBoundingClientRect().top, head: document.querySelector('header.top').getBoundingClientRect().bottom }));
+    ok(Math.abs(st.tabs - st.head) <= 1.5, 'customer: scrolled down, the tab bar sits directly under the bar (no gap, no overlap)', st);
+    await pg.evaluate(() => scrollTo(0, 0)); await shot('client', pg); ok(pg.errs.length === 0, 'customer: no script errors', pg.errs); await ctx.close();
+    // staff, desktop
+    ({ ctx, pg } = await open('admin', admin, `http://work.localhost:3127/tech-packs/${pid}`, 1280, 860)); m = await probe(pg);
+    ok(m.logo && m.logo.width >= 120 && /^\/ ?Work$/i.test(m.suffix) && /\/$/.test(m.href || '') && /work/i.test(m.label), 'staff: logo, "/ Work", and the logo goes to the console', [m.suffix, m.href, m.label]);
+    ok(m.crumbs.top >= m.header.bottom - 1 && /Clients/i.test(m.crumbText) && /Tech pack/i.test(m.crumbText), 'staff: the long breadcrumb (Clients › room › project › product) has its own row', m.crumbText);
+    await shot('staff', pg); ok(pg.errs.length === 0, 'staff: no script errors', pg.errs); await ctx.close();
+    // factory, desktop
+    ({ ctx, pg } = await open('factory', '', `${BASE}/tp/${ftok}`, 1280, 860)); m = await probe(pg);
+    ok(m.logo && m.logo.width >= 120 && /Tech pack/i.test(m.suffix) && !m.href && /^Future Basics$/.test(m.label), 'factory: logo and "/ Tech pack", and no link (a factory has no hub)', [m.suffix, m.href]);
+    ok(/Working on/i.test(m.crumbText), 'factory: the "working on" line is under the bar', m.crumbText);
+    await shot('factory', pg); ok(pg.errs.length === 0, 'factory: no script errors', pg.errs); await ctx.close();
+    // phone
+    for (const [role, token, url, name] of [['client', tok, `${BASE}/tech-packs/${pid}`, 'client'], ['factory', '', `${BASE}/tp/${ftok}`, 'factory']]) {
+      ({ ctx, pg } = await open(role, token, url, 390, 800)); m = await probe(pg);
+      ok(m.logo && m.logo.width >= 120 && m.logo.left >= 0 && m.suffix === '' && m.overflow <= 0, `${name} on a phone: the logo fits, the suffix steps aside, nothing scrolls sideways`, [m.logo, m.suffix, m.overflow]);
+      ok(m.header.height <= 62 && m.header.bottom <= m.crumbs.top + 1, `${name} on a phone: a compact bar with the row below it`, [m.header.height]);
+      await shot(`${name}-phone`, pg); ok(pg.errs.length === 0, `${name} on a phone: no script errors`, pg.errs); await ctx.close();
+    }
+  } finally { await bw.close(); }
+});
+
 summary(); process.exit(bad ? 1 : 0);
