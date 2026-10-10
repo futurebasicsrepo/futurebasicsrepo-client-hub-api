@@ -254,7 +254,7 @@ export function buddySvg(happy) {
 <circle cx="60" cy="116" r="9" fill="#ff9a7e"/><circle cx="140" cy="116" r="9" fill="#ff9a7e"/></svg>`;
 }
 
-export function payPage({ cart, links, provider, pageUrl }) {
+export function payPage({ cart, links, provider, pageUrl, commission = false }) {
   const name = cart.requester.name;
   const open = cart.status === 'open';
   const covered = ['paid', 'card_issued', 'completed'].includes(cart.status);
@@ -305,7 +305,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}<button type="button" class="nope" id="nope">Not this time</button></div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}<button type="button" class="nope" id="nope">Not this time</button></div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -679,6 +679,7 @@ async function draw(){
   if(c.status==='completed'&&!fl&&c.settle==='handoff'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">Marked as received.</p></section>'}
   if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+' refunded '+usd(c.total_cents)+'.</p></section>';
   if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
+  if(c.settle==='handoff'&&c.items[0]&&c.items[0].url&&c.status!=='canceled'&&c.status!=='expired')h+='<a class="btn ghost" href="/c/'+TOKEN+'/buy/0" target="_blank" rel="noopener">Buy it at '+esc(c.merchant.name)+' →</a><p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from '+esc(c.merchant.name)+'. Your price is the same.</p>';
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
   if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
   const busy=f&&['starting','working','awaiting_confirm','placed'].includes(f.state);

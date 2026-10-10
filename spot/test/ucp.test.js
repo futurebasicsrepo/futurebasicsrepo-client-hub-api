@@ -486,3 +486,43 @@ test('size/colour words that are part of the product name don’t block the matc
   assert.equal(matchVariant(variants, '0.5mm / Black', 'Uni Jetstream Ballpoint Pen - 0.5mm')?.id, 1);
   assert.equal(matchVariant(variants, '0.5mm / Red', 'Uni Jetstream Ballpoint Pen - 0.5mm'), null);
 });
+
+test('affiliate links: only when a person goes to the store, disclosed, never on Spot’s own card', async (t) => {
+  const { createAffiliate } = await import('../src/affiliate.js');
+  const off = createAffiliate({});
+  assert.deepEqual(off.wrap('https://shop.example/p'), { url: 'https://shop.example/p', via: null }, 'no key: the link is untouched');
+  const sovrn = createAffiliate({ SPOT_AFFILIATE_KEY: 'k1', SPOT_AMAZON_TAG: 'spot-20' });
+  assert.equal(sovrn.wrap('https://shop.example/p?x=1', { ref: 'abc' }).url, 'https://redirect.viglink.com?key=k1&u=https%3A%2F%2Fshop.example%2Fp%3Fx%3D1&cuid=abc');
+  assert.equal(sovrn.wrap('https://www.amazon.com/dp/B01?th=1').url, 'https://www.amazon.com/dp/B01?th=1&tag=spot-20', 'Amazon gets the Associates tag, not the network');
+  assert.match(createAffiliate({ SPOT_AFFILIATE_KEY: 'k1', SPOT_AFFILIATE_NETWORK: 'skimlinks' }).wrap('https://shop.example/p').url, /^https:\/\/go\.skimresources\.com\/\?id=k1&xs=1&url=https%3A%2F%2Fshop\.example%2Fp/);
+
+  // Pay at the store: the payer's trip to the checkout goes through the network.
+  const store = await startUcpStore();
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { PUBLIC_URL: 'https://spot.example', SPOT_AFFILIATE_KEY: 'k1' }, fulfill: { ucp: { allowPrivate: true } } });
+  t.after(async () => {
+    await app.close();
+    await store.close();
+  });
+  const call = async (method, url, payload) => {
+    const r = await app.inject({ method, url, payload });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body, headers: r.headers };
+  };
+  const made = (await call('POST', '/v1/carts', directCart(store.origin))).body;
+  await call('POST', `/v1/carts/${made.cart.token}/manage/prepare`, { k: made.manage_key, shipping });
+  assert.match((await call('GET', `/c/${made.cart.token}`)).body, /Spot may earn a commission from Puff Co\. Your price is the same\./);
+  const started = await call('POST', `/v1/carts/${made.cart.token}/direct/start`, { name: 'Mom' });
+  assert.equal(started.body.continue_url, `https://redirect.viglink.com?key=k1&u=${encodeURIComponent(`${store.origin}/checkout/chk_1`)}&cuid=${made.cart.token}`);
+  const events = (await call('GET', `/v1/carts/${made.cart.token}/manage?k=${made.manage_key}`)).body.events;
+  assert.ok(events.some((e) => e.kind === 'affiliate_link'));
+
+  // Spot buys with its own card: no disclosure, no affiliate link anywhere.
+  const card = (await call('POST', '/v1/carts', directCart(store.origin, { settle: 'card' }))).body;
+  assert.doesNotMatch((await call('GET', `/c/${card.cart.token}`)).body, /commission/);
+  assert.equal((await call('GET', `/c/${card.cart.token}/buy/0`)).status, 404);
+
+  // Venmo/Cash App: the requester's own trip to the store carries the tag.
+  const h = (await call('POST', '/v1/carts', directCart(store.origin, { settle: 'handoff', requester: { name: 'Kyle', venmo: 'kyle-r' } }))).body;
+  const go = await call('GET', `/c/${h.cart.token}/buy/0`);
+  assert.equal(go.status, 302);
+  assert.match(go.headers.location, /^https:\/\/redirect\.viglink\.com\?key=k1&u=/);
+});
