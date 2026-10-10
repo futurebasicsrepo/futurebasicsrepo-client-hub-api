@@ -53,6 +53,7 @@ function servicesConfig(env) {
     { name: 'issuing', label: 'Stripe Issuing (Spot cards)', configured: has('STRIPE_ISSUING_CARDHOLDER'), why: 'STRIPE_ISSUING_CARDHOLDER' },
     { name: 'shopify_token', label: 'Shopify agent token', configured: has('SHOPIFY_CATALOG_CLIENT_ID', 'SHOPIFY_CATALOG_CLIENT_SECRET'), why: 'SHOPIFY_CATALOG_CLIENT_ID / _SECRET' },
     { name: 'anthropic', label: 'Claude (lookups, screenshots, checkout agent)', configured: has('ANTHROPIC_API_KEY') || has('ANTHROPIC_AUTH_TOKEN'), why: 'ANTHROPIC_API_KEY' },
+    { name: 'shopify_app', label: 'Spot app for Shopify', configured: has('SHOPIFY_APP_CLIENT_ID', 'SHOPIFY_APP_CLIENT_SECRET'), why: 'SHOPIFY_APP_CLIENT_ID / _SECRET' },
     { name: 'checkout_agent', label: 'Spot’s checkout agent', configured: has('ANTHROPIC_API_KEY') || has('ANTHROPIC_AUTH_TOKEN'), why: 'ANTHROPIC_API_KEY' },
     { name: 'resend', label: 'Email (Resend)', configured: has('RESEND_API_KEY'), why: 'RESEND_API_KEY' },
     { name: 'twilio', label: 'Texts (Twilio)', configured: has('TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM'), why: 'TWILIO_ACCOUNT_SID / _AUTH_TOKEN / _FROM' },

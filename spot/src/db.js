@@ -173,6 +173,23 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       doc          TEXT NOT NULL,
       expires_at   INTEGER NOT NULL
     );
+    -- Shopify stores that installed the Spot app. The access token is
+    -- encrypted with a key from the app secret (see shopifyapp.js).
+    CREATE TABLE IF NOT EXISTS shopify_shops (
+      shop            TEXT PRIMARY KEY,
+      merchant_id     TEXT,
+      token           TEXT,
+      refresh         TEXT,
+      token_expires_at INTEGER,
+      scopes          TEXT,
+      primary_host    TEXT,
+      name            TEXT,
+      email           TEXT,
+      currency        TEXT,
+      installed_at    INTEGER NOT NULL,
+      uninstalled_at  INTEGER,
+      updated_at      INTEGER NOT NULL
+    );
     -- One ask across several stores: a cart per store, paid in one go.
     CREATE TABLE IF NOT EXISTS bundles (
       id           TEXT PRIMARY KEY,
@@ -500,6 +517,23 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       verify: (id) => db.prepare('UPDATE merchants SET verified_at = ? WHERE id = ?').run(Date.now(), id),
       list: () => db.prepare('SELECT id, domain, name, email, verified_at, created_at FROM merchants ORDER BY created_at DESC LIMIT 200').all(),
       countForDomain: (domain) => db.prepare('SELECT COUNT(*) AS n FROM merchants WHERE domain = ?').get(domain).n,
+      update: (id, { domain, name, email }) => db.prepare('UPDATE merchants SET domain = ?, name = ?, email = ? WHERE id = ?').run(domain, name, email, id),
+    },
+    shopify: {
+      get: (shop) => db.prepare('SELECT * FROM shopify_shops WHERE shop = ?').get(shop) || null,
+      save: (r) => {
+        const now = Date.now();
+        db.prepare(`INSERT INTO shopify_shops (shop, merchant_id, token, refresh, token_expires_at, scopes, primary_host, name, email, currency, installed_at, uninstalled_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+          ON CONFLICT (shop) DO UPDATE SET merchant_id = excluded.merchant_id, token = excluded.token, refresh = excluded.refresh, token_expires_at = excluded.token_expires_at,
+            scopes = excluded.scopes, primary_host = excluded.primary_host, name = excluded.name, email = excluded.email, currency = excluded.currency,
+            uninstalled_at = NULL, updated_at = excluded.updated_at`)
+          .run(r.shop, r.merchant_id ?? null, r.token ?? null, r.refresh ?? null, r.token_expires_at ?? null, r.scopes ?? null, r.primary_host ?? null, r.name ?? null, r.email ?? null, r.currency ?? null, now, now);
+      },
+      // Uninstalled: the token is dead, so forget it.
+      uninstall: (shop) => db.prepare('UPDATE shopify_shops SET token = NULL, refresh = NULL, token_expires_at = NULL, uninstalled_at = ?, updated_at = ? WHERE shop = ?').run(Date.now(), Date.now(), shop),
+      remove: (shop) => db.prepare('DELETE FROM shopify_shops WHERE shop = ?').run(shop),
+      count: () => db.prepare('SELECT COUNT(*) AS n FROM shopify_shops WHERE uninstalled_at IS NULL').get().n,
     },
     drafts: {
       put: (id, merchantId, doc) => {

@@ -1,0 +1,31 @@
+# The Spot app for Shopify. Paste the Client ID from the Dev Dashboard
+# (dev.shopify.com → your app → Settings) below, then run `npm run deploy`
+# in this folder. See README.md.
+client_id = "PASTE_CLIENT_ID_HERE"
+name = "Spot: Ask someone to pay"
+application_url = "https://spotmeplease.com/shopify"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[access_scopes]
+# Spot only reads products, to price the cart a shopper sends.
+scopes = "read_products"
+
+[auth]
+redirect_urls = [ "https://spotmeplease.com/shopify" ]
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://spotmeplease.com/shopify/webhooks"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://spotmeplease.com/shopify/webhooks"
+
+[pos]
+embedded = false
