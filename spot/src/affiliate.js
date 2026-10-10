@@ -43,7 +43,7 @@ export function createAffiliate(env = process.env) {
     if (network === 'skimlinks') {
       return { url: `https://go.skimresources.com/?id=${encodeURIComponent(key)}&xs=1&url=${encodeURIComponent(u.toString())}${sub ? `&xcust=${encodeURIComponent(sub)}` : ''}`, via: 'skimlinks' };
     }
-    return { url: `https://redirect.viglink.com?key=${encodeURIComponent(key)}&u=${encodeURIComponent(u.toString())}${sub ? `&cuid=${encodeURIComponent(sub)}` : ''}`, via: 'sovrn' };
+    return { url: `https://sovrn.co?key=${encodeURIComponent(key)}&u=${encodeURIComponent(u.toString())}${sub ? `&cuid=${encodeURIComponent(sub)}` : ''}`, via: 'sovrn' };
   }
 
   // Would a person's trip to this store carry a tag? (For the disclosure.)
