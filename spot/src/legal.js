@@ -71,6 +71,7 @@ export function termsPage({ origin, env = process.env }) {
 <ul>
 <li>Card, Apple Pay and Google Pay payments are processed by Stripe. Spot never sees or stores the buyer’s card number.</li>
 <li>The price is the cart (items plus the estimated shipping and tax), plus a Spot fee (currently $2 per ask, however many stores, plus card processing of 2.9% + 30¢ on the amount charged), plus a small allowance for tax and price changes at the store (5% of the cart, at most $15). All of it is shown before you pay. Whatever part of the allowance the store doesn’t charge is refunded to you automatically.</li>
+<li>When you go to a store yourself to pay or buy (paying the store directly, or buying it yourself after a Venmo or Cash App ask), the link may be an affiliate link, and Spot may earn a commission from the store. It never changes your price, and the page says so. Spot never uses affiliate links on purchases it makes with its own card.</li>
 <li>Spot buys the cart with its own single-use card, limited to that store and to what you paid for the goods. Nobody receives cash, a card or store credit, and the card can’t be used anywhere else.</li>
 <li>Spot doesn’t sell gift cards, prepaid cards, crypto, money orders or other cash equivalents, and won’t order them.</li>
 <li>Handoff links that send money straight to Venmo or Cash App carry no Spot fee.</li>

@@ -29,6 +29,7 @@ import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { registerMcpAuth } from './mcpauth.js';
 import { poppyJson } from './pap.js';
+import { createAffiliate } from './affiliate.js';
 import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
@@ -96,6 +97,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   };
   const publicUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
+  const affiliate = createAffiliate(env);
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const captureShot = capture.fromScreenshot || captureFromScreenshot;
   const captureText = capture.fromText || ((t) => captureFromText(t, { fromUrl: captureUrl }));
@@ -286,7 +288,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
         }
       }
     }
-    return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
+    const commission = cart.settle === 'direct' && affiliate.covers(cart.merchant.url);
+    return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`), commission }));
   });
 
   // The payer's receipt from Spot (linked from their receipt email): what
@@ -404,7 +407,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.pay(req);
     const email = req.body?.email ? String(req.body.email).trim().toLowerCase().slice(0, 200) : null;
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    return spot.directStart(req.params.token, { email, name: req.body?.name || null });
+    const out = await spot.directStart(req.params.token, { email, name: req.body?.name || null });
+    // The payer goes to the store through the affiliate link, if the store has one.
+    const a = affiliate.wrap(out.continue_url, { ref: req.params.token });
+    if (a.via) db.event(spot.load(req.params.token).id, 'affiliate_link', { via: a.via });
+    return { ...out, continue_url: a.url };
+  });
+  // Venmo / Cash App asks: the requester buys it themselves, so their trip to
+  // the store can carry an affiliate tag (Amazon Associates, or the network).
+  app.get('/c/:token/buy/:i', async (req, reply) => {
+    let cart;
+    try {
+      cart = spot.load(req.params.token);
+    } catch {
+      return html(reply, notFoundPage(), 404);
+    }
+    const item = cart.settle === 'handoff' ? cart.items[Number(req.params.i) || 0] : null;
+    if (!item?.url) return html(reply, notFoundPage(), 404);
+    const a = affiliate.wrap(item.url, { ref: cart.token });
+    if (a.via) db.event(cart.id, 'affiliate_link', { via: a.via });
+    return reply.redirect(a.url, 302);
   });
   app.get('/v1/carts/:token/direct/status', async (req, reply) => {
     reply.header('cache-control', 'no-store');
