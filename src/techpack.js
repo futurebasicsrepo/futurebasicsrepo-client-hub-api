@@ -261,7 +261,7 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
 export function techPackCompleteness(data) {
   const d = normalizeTechPack(data);
   const checks = [
-    ['style', 'Style number and name', Boolean(d.style.styleNumber && d.style.styleName)],
+    ['style', 'Style name', Boolean(d.style.styleName)], // the style number is ours to give: it is assigned when the pack is published
     ['sketches', 'Both mockup views (front + back, or lateral + medial)', mockupsComplete(d.sketches)],
     ['callouts', 'Callouts placed on the garment', d.sketches.some(s => s.callouts.some(c => c.x != null))],
     ['pom', 'Measurements with spec + tolerance', d.pom.length > 0 && d.pom.every(r => r.tolerance && Object.values(r.values).some(Boolean))],
@@ -272,7 +272,17 @@ export function techPackCompleteness(data) {
     ['care', 'Care instructions', Boolean(d.care.instructions)],
     ...(d.electronics.enabled ? [['electronics', 'Electronics: battery, power, radios, parts and certifications', ELEC.missing(d.electronics).length === 0]] : [])
   ].map(([key, label, ok]) => ({ key, label, ok }));
-  return { checks, missing: checks.filter(c => !c.ok).map(c => c.label), complete: checks.every(c => c.ok) };
+  // What a factory still has to ask about before it can quote or make this: not required to publish, but each gap is a round of questions and a slower, riskier sample.
+  const noPlaceholder = v => Boolean(String(v || '').trim()) && !/^(tbd|n\/a|-|—)$/i.test(String(v).trim());
+  const recommended = [
+    ['packaging', 'How it is packed: polybag, carton and units per carton', Boolean(d.packaging.polybag || d.packaging.carton || d.packaging.unitsPerCarton)],
+    ['labels', 'Labels: brand, size and care label, and where each sits', d.labels.length > 0],
+    ['construction', 'Construction notes: stitching, seams and finishing', d.construction.length >= 2],
+    ['origin', 'Country of origin, for the label', Boolean(d.care.countryOfOrigin)],
+    ['fibre', 'Fibre content, for the label', Boolean(d.care.fiber)],
+    ['sourcing', 'Where each material comes from (a supplier or a reference)', d.bom.length > 0 && d.bom.every(r => noPlaceholder(r.supplier) || noPlaceholder(r.ref))]
+  ].map(([key, label, ok]) => ({ key, label, ok }));
+  return { checks, missing: checks.filter(c => !c.ok).map(c => c.label), complete: checks.every(c => c.ok), recommended, missingRecommended: recommended.filter(c => !c.ok).map(c => c.label) };
 }
 
 // ---- verification: the acknowledgement chain and signatures for ONE published version ----
@@ -302,7 +312,8 @@ export function techPackReadiness(data, verification) {
   const footwear = d.sketches.some(s => ['lateral', 'medial', 'outsole'].includes(s.view)) || isFootwear(`${d.style.category} ${d.style.styleName}`);
   const viewA = footwear ? 'lateral' : 'front', viewB = footwear ? 'medial' : 'back';
   const front = d.sketches.some(s => s.view === viewA && s.image), back = d.sketches.some(s => s.view === viewB && s.image);
-  const artworkOk = d.artwork.length > 0 && d.artwork.every(a => a.image && a.pantones.length);
+  const noArt = !d.artwork.length; // a plain product has no artwork to approve: that is not a gap
+  const artworkOk = noArt || d.artwork.every(a => a.image && a.pantones.length);
   const placed = d.artwork.flatMap(a => a.placements.filter(p => p.widthIn));
   const checks = [
     { key: 'mockups', label: footwear ? 'Lateral + medial mockups uploaded' : 'Front + back garment mockups uploaded', ok: front && back, detail: front && back ? 'Both views uploaded' : `${[!front && viewA, !back && viewB].filter(Boolean).join(' and ')} view missing` },
@@ -310,8 +321,8 @@ export function techPackReadiness(data, verification) {
       detail: !callouts.length ? 'No callouts placed yet' : pendingCallouts.length ? `${pendingCallouts.length} pending: ${pendingCallouts.map(c => c.label).join(', ')}` : 'Factory acknowledged every callout' },
     { key: 'pom', label: `All ${d.pom.length} POM${d.pom.length === 1 ? '' : 's'} have spec + tolerance`, ok: d.pom.length > 0 && incompletePom.length === 0,
       detail: !d.pom.length ? 'No points of measure' : incompletePom.length ? `${incompletePom.length} incomplete: ${incompletePom.map(r => r.code || r.name).join(', ')}` : `Sample size ${sample || '—'} specified with tolerances` },
-    { key: 'artwork', label: 'Artwork uploaded and Pantone matched', ok: artworkOk, detail: artworkOk ? `${d.artwork.length} artwork file${d.artwork.length === 1 ? '' : 's'} with Pantone references` : d.artwork.length ? 'Artwork missing Pantone references' : 'No artwork uploaded — required for production' },
-    { key: 'placement', label: 'Artwork placed on garment with spec', ok: placed.length > 0, detail: placed.length ? `${placed.length} placement${placed.length === 1 ? '' : 's'} with width in inches` : 'No placements yet — required for production' }
+    { key: 'artwork', label: 'Artwork uploaded and Pantone matched', ok: artworkOk, detail: noArt ? 'No printed or embroidered artwork on this product' : artworkOk ? `${d.artwork.length} artwork file${d.artwork.length === 1 ? '' : 's'} with Pantone references` : 'Artwork missing Pantone references' },
+    { key: 'placement', label: 'Artwork placed on garment with spec', ok: noArt || placed.length > 0, detail: noArt ? 'Nothing to place' : placed.length ? `${placed.length} placement${placed.length === 1 ? '' : 's'} with width in inches` : 'No placements yet — required for production' }
   ];
   const ready = checks.every(c => c.ok);
   // Sign-off chain: client approves → Future Basics confirms → factory countersigns → locked.

@@ -6,6 +6,8 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
+import { gzip as gzipCb } from 'node:zlib';
+import { promisify } from 'node:util';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
 import { migrate, pool } from './db.js';
@@ -38,6 +40,7 @@ import { validateVendor, bankParts, maskedBank, last4, revealAllowed, clientView
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender, conceptPlacement } from './concept.js';
+import { packDiff, diffSummary, carriedAcks } from './pack-diff.js';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -88,8 +91,17 @@ app.addHook('onSend', async (_req, reply, payload) => {
     .header('x-content-type-options', 'nosniff')
     .header('referrer-policy', 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  // The pages and the pack data are text (a tech pack page is ~300 KB, a published pack with pictures several MB of JSON): compress what the browser can take, so a
+  // factory on a phone connection waits for a fifth of it. Streams, PDFs and images are left as they are; nothing here changes what is sent, only how.
+  const type = String(reply.getHeader('content-type') || ''), isText = /(json|html|javascript|css|svg|text\/)/i.test(type);
+  if ((typeof payload === 'string' || Buffer.isBuffer(payload)) && isText && payload.length > 1400 && /\bgzip\b/i.test(String(_req.headers['accept-encoding'] || '')) && !reply.getHeader('content-encoding')) {
+    const body = await gzipAsync(payload, { level: 5 });
+    reply.header('content-encoding', 'gzip').header('vary', 'Accept-Encoding').removeHeader('content-length');
+    return body;
+  }
   return payload;
 });
+const gzipAsync = promisify(gzipCb);
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const cleanName = value => basename(value).replace(/[^a-zA-Z0-9._-]/g, '-').slice(-160);
@@ -277,14 +289,30 @@ async function provisionReferralShare(tpId){
   return true;
 }
 // After a publish: a referring factory gets its first link; a factory holding an older version is told a new one replaces it.
+// A new version reaches a factory when the factory can open it. A link for quotation shows the newest version at once, so it is told at publish. A link to read and
+// countersign keeps showing the version the client approved until the client approves the new one, so that factory is told then (factoriesAfterClientApproval), never
+// about a version it cannot see yet. Either way the email says what changed, taken from the revision written at publish.
+function versionEmailIntro(tp,title,kind){
+  const last=(Array.isArray(tp.revisions)?tp.revisions:[]).find(r=>Number(r.version)===Number(tp.version))||{},all=last.changes||[];
+  const items=all.slice(0,6).map(c=>`<li><strong>${emailEscape(c.section)}</strong> · ${emailEscape(c.label)}${c.to?`: ${emailEscape(c.from?c.from+' → ':'')}${emailEscape(c.to)}`:c.kind==='removed'?' (removed)':''}</li>`).join(''),more=all.length>6?`<li>…and ${all.length-6} more, listed at the top of the pack.</li>`:'';
+  return `<p>Version ${tp.version} of <strong>${emailEscape(title)}</strong> replaces the one you have${last.summary?`. ${emailEscape(last.summary)}`:'.'}</p>${items?`<ul>${items}${more}</ul>`:''}<p>Open it${kind==='review'?', acknowledge the callouts that changed (the ones that did not change are still acknowledged), then countersign when Future Basics has signed':' and update your quote if it changes your price'}.</p>`;
+}
 async function factoriesAfterPublish(tp,title){
   try{
     await provisionReferralShare(tp.id);
     if(Number(tp.version)>1){
-      const rows=(await pool.query(`select id,kind from tech_pack_shares where tech_pack_id=$1 and revoked_at is null and waived_at is null and (expires_at is null or expires_at>now())`,[tp.id])).rows;
-      for(const r of rows)await emailFactoryShare(r.id,{subject:`New version of ${title}: v${tp.version}`,intro:`<p>Future Basics published version ${tp.version} of <strong>${emailEscape(title)}</strong>. It replaces the version you have: open it to see what changed${r.kind==='review'?', then acknowledge and countersign it':' and update your quote if it changes your price'}.</p>`});
+      const rows=(await pool.query(`select id,kind from tech_pack_shares where tech_pack_id=$1 and kind='quote' and revoked_at is null and waived_at is null and (expires_at is null or expires_at>now())`,[tp.id])).rows;
+      for(const r of rows)await emailFactoryShare(r.id,{subject:`New version of ${title}: v${tp.version}`,intro:versionEmailIntro(tp,title,r.kind)});
     }
   }catch(e){app.log.warn({err:e.message,packId:tp.id},'factories not told about the publish')}
+}
+// The client approved a version: the factories that read and countersign can now open it, so this is when they are told it is there.
+async function factoriesAfterClientApproval(tpId,title){
+  try{
+    const tp=(await pool.query('select id,version,revisions from tech_packs where id=$1',[tpId])).rows[0];if(!tp||Number(tp.version)<2)return;
+    const rows=(await pool.query(`select id,kind from tech_pack_shares where tech_pack_id=$1 and kind='review' and revoked_at is null and waived_at is null and (expires_at is null or expires_at>now())`,[tpId])).rows;
+    for(const r of rows)await emailFactoryShare(r.id,{subject:`New version of ${title}: v${tp.version}`,intro:versionEmailIntro(tp,title,r.kind)});
+  }catch(e){app.log.warn({err:e.message,packId:tpId},'factories not told the client approved')}
 }
 // Future Basics has signed: a factory assigned to produce it (read and sign) is next, and is told so.
 async function factoriesAfterBrandSign(tpId,title,version){
@@ -2398,15 +2426,20 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   { const ah=(await pool.query(`select h.*,p.title from tech_pack_heroes h join products p on p.id=h.product_id where h.tech_pack_id=$1 and h.status='approved' order by h.approved_at desc nulls last limit 1`,[ctx.techPack.id])).rows[0];
     const sk=normalizeTechPack(draftNow).sketches.find(x=>x.callouts.length&&!/^cutout-/.test(String(x.id||'')));
     if(ah&&sk&&!(sk.hero&&sk.hero.id===String(ah.id).replace(/-/g,'').slice(0,16))&&await placeCalloutsOnHero(ah))draftNow=(await pool.query('select data from tech_packs where id=$1',[ctx.techPack.id])).rows[0].data; }
+  // every published pack carries a style number a factory can quote on a purchase order; one the team typed is kept
+  { const d0=normalizeTechPack(draftNow);
+    if(!d0.style.styleNumber){const n=(await pool.query(`select nextval('style_number_seq') n`)).rows[0].n;d0.style.styleNumber=`FB-${String(new Date().getFullYear()).slice(2)}-${String(n).padStart(4,'0')}`;await pool.query('update tech_packs set data=$2 where id=$1',[ctx.techPack.id,d0]);draftNow=d0} }
   const pubData=await withApprovedHero(ctx.techPack.id,normalizeTechPack(draftNow));
+  // what changed since the version the factory already read, and which acknowledgements still stand (callouts whose words did not change)
+  const prevData=ctx.techPack.published_data||null,changes=prevData?packDiff(prevData,pubData):[],diffSummaryText=prevData?diffSummary(changes):'',acks=prevData?carriedAcks(prevData,pubData,normalizeVerification(ctx.techPack.verification,ctx.techPack.version).acks):{};
   const client=await pool.connect();
   try{
     await client.query('begin');
-    // A new version starts a fresh acknowledgement chain: acks and both signatures reset, and the pack unlocks.
+    // A new version starts a fresh sign-off chain: both signatures reset and the pack unlocks; acknowledgements stay only for callouts that did not change.
     const row=(await client.query(`update tech_packs set version=version+1,status='published',published_data=$6::jsonb,published_at=now(),published_by=$2,updated_at=now(),ai_reviewed_at=coalesce(ai_reviewed_at,case when ai_status='done' then now() end),ai_reviewed_by=coalesce(ai_reviewed_by,case when ai_status='done' then $2::uuid end),
       verification=$5::jsonb,locked_at=null,
-      revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text))
-      where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify(emptyVerification(ctx.techPack.version+1)),JSON.stringify(pubData)])).rows[0];
+      revisions=revisions||jsonb_build_array(jsonb_build_object('version',version+1,'publishedAt',now(),'by',$3::text,'note',$4::text,'summary',$7::text,'changes',$8::jsonb))
+      where id=$1 returning *`,[ctx.techPack.id,req.auth.sub,req.auth.email||'Future Basics',note,JSON.stringify({...emptyVerification(ctx.techPack.version+1),acks}),JSON.stringify(pubData),diffSummaryText,JSON.stringify(changes)])).rows[0];
     await client.query(`insert into tech_pack_versions(tech_pack_id,version,data,verification,note,published_by) values($1,$2,$3,$4,$5,$6)
       on conflict(tech_pack_id,version) do update set data=excluded.data,verification=excluded.verification,note=excluded.note,published_at=now(),published_by=excluded.published_by,locked_at=null`,
       [row.id,row.version,row.published_data,row.verification,note||null,req.auth.sub]);
@@ -4564,6 +4597,7 @@ app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(re
   await notifyStaff(`Tech pack v${row.version} approved — ${row.title}`,`<p>${emailEscape(name)} approved tech pack v${row.version} for <strong>${emailEscape(row.title)}</strong>. Next: issue the quote.</p>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack')}`);
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[row.client_id,row.product_id,req.auth.sub,`Tech pack v${row.version} approved by ${name}`,{techPackId:row.id,version:row.version}]);
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[row.client_id,`${name} approved tech pack v${row.version} for ${row.title} — ready for your signature`,row.product_id]);
+  factoriesAfterClientApproval(row.id,row.title);
   return publishedTechPackView((await pool.query(`${PUBLISHED_VIEW_SQL} where tp.id=$1`,[row.id])).rows[0],{audience:'client'});
 });
 // ---- Future Basics records the client's approval when they gave it another way (an email, a call, WeChat) and have not pressed the button themselves, so their project is never stuck ----
@@ -4590,6 +4624,7 @@ app.post('/v1/admin/products/:id/tech-pack/client-approval',{preHandler:[authent
   await flow(ctx.product.id,'pack-approved',{actorId:req.auth.sub,note:`v${tp.version} (recorded by Future Basics: ${how})`});
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Tech pack v${tp.version} approval recorded by Future Basics for ${name} (${how})`,{techPackId:tp.id,version:tp.version,onBehalf:true}]).catch(()=>{});
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[ctx.product.client_id,`Future Basics recorded your approval of tech pack v${tp.version} for ${ctx.product.title} (${how}). If that is not right, open the tech pack and undo it.`,ctx.product.id]).catch(()=>{});
+  factoriesAfterClientApproval(tp.id,ctx.product.title);
   return reply.code(201).send({techPack:techPackPayload(u)});
 });
 // The client says an approval recorded for them was not theirs: it is removed, and Future Basics is told.
@@ -4685,10 +4720,11 @@ app.post('/v1/tp/:token/ack',async(req,reply)=>{
   if(row.quote)return reply.code(403).send({error:'This link is for quotations only: send your quote from the Quote tab'});
   if(row.held)return reply.code(409).send({error:`A newer version is waiting for ${row.client_name}'s approval — nothing can be acknowledged until then`});
   if(row.locked_at)return reply.code(409).send({error:'This tech pack is signed and locked'});
-  const key=String(req.body?.key||'').slice(0,60),acknowledged=req.body?.acknowledged!==false;
-  const known=techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version)).callouts.some(c=>c.key===key);
-  if(!known)return reply.code(400).send({error:'Unknown callout'});
-  const updated=await updateVerification(row.id,row.version,v=>{if(acknowledged)v.acks[key]={by:row.share_label,at:new Date().toISOString()};else delete v.acks[key]});
+  // one callout, or `keys`: everything still open in one go (a factory that has read the whole pack should not press a button forty times)
+  const keys=Array.isArray(req.body?.keys)?req.body.keys.slice(0,400).map(k=>String(k).slice(0,60)):[String(req.body?.key||'').slice(0,60)],acknowledged=req.body?.acknowledged!==false;
+  const knownKeys=new Set(techPackReadiness(normalizeTechPack(row.published_data),normalizeVerification(row.verification,row.version)).callouts.map(c=>c.key));
+  if(!keys.length||keys.some(k=>!knownKeys.has(k)))return reply.code(400).send({error:'Unknown callout'});
+  const updated=await updateVerification(row.id,row.version,v=>{for(const key of keys){if(acknowledged)v.acks[key]=v.acks[key]||{by:row.share_label,at:new Date().toISOString()};else delete v.acks[key]}});
   if(!updated)return reply.code(409).send({error:'A new version of this tech pack was published — reload to see it'});
   return publishedTechPackView({...row,verification:updated.verification,locked_at:updated.locked_at},{audience:'factory',shareLabel:row.share_label});
 });
