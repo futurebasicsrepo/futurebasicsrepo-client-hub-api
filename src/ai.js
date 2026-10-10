@@ -521,9 +521,10 @@ async function translateStringsRaw(strings, { lang = 'zh' } = {}) {
 // Screenshots carry app chrome, captions, other items. Before drafting, ask where the product is and crop to it, so
 // callout positions, detail crops and the cover image all refer to the product rather than the whole screen.
 const LOCATE_SCHEMA = {
-  type: 'object', additionalProperties: false, required: ['found', 'product', 'box', 'issues'],
+  type: 'object', additionalProperties: false, required: ['found', 'artwork', 'product', 'box', 'issues'],
   properties: {
     found: { type: 'boolean', description: 'true when a physical product (garment, footwear, bag, accessory…) is clearly visible and could be manufactured from this reference' },
+    artwork: { type: 'boolean', description: 'true when the picture is only a graphic that would be printed, embroidered or applied ON a product (lettering, a logo, a pattern, an illustration) and shows no product itself; always false when found is true' },
     product: { type: 'string', description: 'Short name of the main product, e.g. "chunky running shoe", or empty' },
     box: { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], description: 'Bounding box of the main product as fractions of the image: x,y top-left; w,h size. Whole image when unsure.',
       properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, w: { type: 'number', minimum: 0, maximum: 1 }, h: { type: 'number', minimum: 0, maximum: 1 } } },
@@ -539,6 +540,10 @@ async function locateProductRaw(photoDataUrl) {
     const buf = Buffer.from(img.source.data, 'base64');
     const stats = await sharp(buf).stats();
     if (stats.channels.every(c => c.stdev < 2)) return { found: false, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'the image is blank' };
+    { // a graphic on a plain ground (black lettering on white): only two tones, both present
+      const g = await sharp(buf).flatten({ background: '#ffffff' }).greyscale().resize({ width: 64, fit: 'inside' }).raw().toBuffer(), dark = g.filter(v => v < 45).length, light = g.filter(v => v > 210).length;
+      if ((dark + light) / g.length > 0.97 && dark / g.length > 0.03 && light / g.length > 0.03) return { found: false, artwork: true, product: '', box: { x: 0, y: 0, w: 1, h: 1 }, issues: 'only lettering or a graphic on a plain background' };
+    }
     const { data, info } = await sharp(buf).greyscale().resize({ width: 160, fit: 'inside' }).raw().toBuffer({ resolveWithObject: true });
     const W = info.width, H = info.height, busyRow = new Array(H).fill(false), busyCol = new Array(W).fill(false);
     const sd = vals => { const m = vals.reduce((a, b) => a + b, 0) / vals.length; return Math.sqrt(vals.reduce((a, b) => a + (b - m) ** 2, 0) / vals.length); };
@@ -555,7 +560,7 @@ async function locateProductRaw(photoDataUrl) {
   }
   const client = new Anthropic();
   const image = dataUrlToImageBlock(photoDataUrl); if (!image) throw new Error('No readable photo');
-  const base = { model: AI_MODEL, max_tokens: 600, system: 'You prepare customer photos for a product-development studio. Find the one physical product the customer most likely wants made (a garment, shoe, bag, hat or accessory). Return its bounding box as fractions of the image, generous enough to include the whole item. Ignore app chrome, captions, hands and background. If there is no manufacturable product in view, say so.',
+  const base = { model: AI_MODEL, max_tokens: 600, system: 'You prepare customer photos for a product-development studio. Find the one physical product the customer most likely wants made (a garment, shoe, bag, hat or accessory). Return its bounding box as fractions of the image, generous enough to include the whole item. Ignore app chrome, captions, hands and background. If there is no manufacturable product in view, say so. If the picture is only a graphic (lettering, a logo, a pattern, an illustration) that would be printed or embroidered on a product, set found to false and artwork to true.',
     messages: [{ role: 'user', content: [image, { type: 'text', text: 'Locate the product.' }] }] };
   let response;
   try { response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low', format: { type: 'json_schema', schema: LOCATE_SCHEMA } } }); }
@@ -564,7 +569,7 @@ async function locateProductRaw(photoDataUrl) {
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
   const obj = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   const n = v => Math.min(1, Math.max(0, Number(v) || 0));
-  return { found: Boolean(obj.found), product: String(obj.product || '').slice(0, 80), box: { x: n(obj.box?.x), y: n(obj.box?.y), w: n(obj.box?.w) || 1, h: n(obj.box?.h) || 1 }, issues: String(obj.issues || '').slice(0, 300) };
+  return { found: Boolean(obj.found), artwork: Boolean(obj.artwork) && !obj.found, product: String(obj.product || '').slice(0, 80), box: { x: n(obj.box?.x), y: n(obj.box?.y), w: n(obj.box?.w) || 1, h: n(obj.box?.h) || 1 }, issues: String(obj.issues || '').slice(0, 300) };
 }
 
 // Crops the photo to the located box with some air around it. Returns the crop as a JPEG data URL and how much of

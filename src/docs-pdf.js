@@ -93,3 +93,40 @@ export function collectionPdf({ client, project, products, terms, images }) {
   doc.fillColor(CUE).circle(R - 20, y + 20, 4).fill();
   return b.finish();
 }
+
+// The signed vendor information form, for the finance file. sub: the vendor_submissions row (with client_name); data: the decrypted details;
+// full: show the whole bank and tax numbers (staff only, logged), otherwise only the last four digits.
+export function vendorPdf({ sub, data, full = false }) {
+  const b = brandDoc({ title: `Vendor information — ${sub.company_name}`, kind: 'Vendor information form', ref: `v${sub.version}`, footerNote: `Future Basics  ·  Vendor ${safe(sub.company_name)}  ·  confidential: contains payment details`, subject: 'Vendor information form' });
+  const { doc, L, R, CW } = b, STATE = { approved: ['Approved', GREEN], pending: ['Pending review', INK], rejected: ['Not approved', RED], superseded: ['Superseded', DIM] }[sub.status] || ['', INK];
+  const mask = v => !v ? '' : full ? v : `••••${String(v).slice(-4)}`;
+  let y = b.bodyTop;
+  doc.fillColor(INK).font('SG-B').fontSize(30).text('Vendor Information Form', L, y, { lineBreak: false });
+  pill(b, STATE[0], R - 118, y + 8, STATE[1]);
+  doc.fillColor(DIM).font('MONO').fontSize(10).text(`Version ${sub.version}  ·  submitted ${fmtDate(sub.created_at)}${sub.client_name ? '  ·  hub client ' + safe(sub.client_name) : ''}`, L, y + 40, { characterSpacing: .4 });
+  y += 74; doc.moveTo(L, y).lineTo(R, y).lineWidth(.6).strokeColor(LINE).stroke(); y += 14;
+  const section = (title) => { doc.fillColor(INK).font('MONO-M').fontSize(9).text(title, L, y, { characterSpacing: 1.4, lineBreak: false }); y += 20; };
+  const row = (a, b2) => { const w = (CW - 24) / 2; const y1 = fact(b, a[0], a[1], L, y, w), y2 = b2 ? fact(b, b2[0], b2[1], L + w + 24, y, w) : y; y = Math.max(y1, y2, y + 38) + 10; };
+  section('COMPANY INFORMATION');
+  row(['Company name', data.companyName], ['Tax ID #', mask(data.taxId)]);
+  row(['Company physical address', data.address], ['City, state, zip code', data.cityStateZip]);
+  row(['VAT reg. no (if applicable)', data.vatNo], ['Contact name', data.contactName]);
+  row(['Contact phone number', data.contactPhone], ['Email address', data.contactEmail]);
+  y += 6; section('BANK INFORMATION');
+  row(['Preferred payment method', METHODS_LABEL[sub.method] || sub.method], ['Payment currency', sub.currency]);
+  if (sub.method !== 'paypal') {
+    row(['Name as on bank account', data.accountName], ['Name of bank', data.bankName]);
+    row(['Bank address', data.bankAddress], ['Bank account #', mask(data.accountNumber)]);
+    row(['ABA / routing / bank code (ACH)', mask(data.routing)], ['SWIFT #', data.swift]);
+    row(['Bank telephone # or email', data.bankContact]);
+  } else row(['PayPal email', full ? data.paypalEmail : data.paypalEmail.replace(/^(.).*(@.*)$/, '$1••••$2')], ['Venmo', full ? data.venmo : (data.venmo ? data.venmo.slice(0, 2) + '••••' : '')]);
+  if (!full) { doc.fillColor(DIM).font('SG').fontSize(8.5).text('Account and tax numbers are shown by their last four digits only. The full numbers are held encrypted and opened only by named finance users; each opening is logged.', L, y - 4, { width: CW }); y = doc.y + 10; }
+  y += 4; doc.roundedRect(L, y, CW, 92, 12).lineWidth(1).strokeColor(LINE).stroke();
+  doc.fillColor(DIM).font('MONO').fontSize(8).text('VENDOR AUTHORIZATION', L + 18, y + 14, { characterSpacing: 1.2, lineBreak: false });
+  doc.fillColor(INK).font('SG').fontSize(9.5).text('By signing, the undersigned attests the banking information on this form is accurate and complete, and agrees to be paid by The Future Basics for invoices owed to their company to the account named above. Inaccurate banking information may result in delayed payments.', L + 18, y + 30, { width: CW - 36 });
+  y += 92 + 14;
+  const w3 = (CW - 48) / 3; fact(b, 'Signed by', sub.signed_name, L, y, w3); fact(b, 'Title', sub.signed_title, L + w3 + 24, y, w3); y = fact(b, 'Signed on', `${new Date(sub.signed_at).toISOString().replace('T', ' ').slice(0, 16)} UTC`, L + (w3 + 24) * 2, y, w3) + 8;
+  doc.fillColor(DIM).font('MONO').fontSize(7.5).text(`Typed signature recorded from the hub${sub.signed_ip ? ' · from ' + safe(sub.signed_ip) : ''}. Tax form (W-9 / W-8): ${safe(sub.tax_form_name || 'not attached')}.${sub.bank_changed ? ' Bank details differ from the previously approved version.' : ''}${sub.status === 'approved' ? ` Approved ${fmtDate(sub.reviewed_at)}${sub.verified_call ? ' after a verification call' : ''}.` : ''}`, L, y, { width: CW });
+  return b.finish();
+}
+const METHODS_LABEL = { ach: 'ACH (preferred)', wire: 'Wire transfer (international)', paypal: 'PayPal / Venmo' };

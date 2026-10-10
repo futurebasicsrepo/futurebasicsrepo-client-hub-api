@@ -93,14 +93,15 @@ test('banner status: database down is an outage, anything else amiss is degraded
 
 test('settings checks flag the dangerous ones and never print a secret', () => {
   const find = (rows, id) => rows.find(r => r.id === id);
-  const good = configChecks({ env: { JWT_SECRET: 'x'.repeat(40), UNSUBSCRIBE_SECRET: 'u-secret-value', CLIENT_HUB_URL: 'https://hub.example.com', WORK_HUB_URL: 'https://work.example.com' }, billing: billing(true), shopifyConfigured: () => true, techPackProduct: { id: 1 } });
+  const good = configChecks({ env: { JWT_SECRET: 'x'.repeat(40), UNSUBSCRIBE_SECRET: 'u-secret-value', VENDOR_DATA_KEY: 'ab'.repeat(32), CLIENT_HUB_URL: 'https://hub.example.com', WORK_HUB_URL: 'https://work.example.com' }, billing: billing(true), shopifyConfigured: () => true, techPackProduct: { id: 1 } });
   assert.ok(good.every(r => ['ok', 'info'].includes(r.status)), JSON.stringify(good.filter(r => !['ok', 'info'].includes(r.status))));
   const bad = configChecks({ env: { DEV_BYPASS_AUTH: 'true', JWT_SECRET: 'short', AI_FIXTURE: 'x', CLIENT_HUB_URL: 'http://localhost:3000' }, billing: billing(true), shopifyConfigured: () => false, techPackProduct: null });
   assert.equal(find(bad, 'bypass').status, 'down'); assert.equal(find(bad, 'jwt').status, 'warn'); assert.equal(find(bad, 'fixture').status, 'warn');
   assert.equal(find(bad, 'hub').status, 'warn'); assert.equal(find(bad, 'billing').status, 'warn'); assert.equal(find(bad, 'unsub').status, 'warn');
   assert.equal(find(configChecks({ env: {}, billing: billing(false), shopifyConfigured: () => false }), 'jwt').status, 'down');
   const text = JSON.stringify(good);
-  assert.ok(!text.includes('x'.repeat(40)) && !text.includes('u-secret-value'));
+  assert.ok(!text.includes('x'.repeat(40)) && !text.includes('u-secret-value') && !text.includes('ab'.repeat(32)));
+  assert.equal(find(configChecks({ env: {}, billing: billing(false), shopifyConfigured: () => false }), 'vendorvault').status, 'warn');
   assert.equal(find(configChecks({ env: { JWT_SECRET: 'x'.repeat(40) }, billing: billing(false), shopifyConfigured: () => false }), 'checkoutProduct').status, 'info');
 });
 
