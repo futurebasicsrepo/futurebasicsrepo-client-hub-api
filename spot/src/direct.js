@@ -56,18 +56,28 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
     // its own checkout with the cheapest shipping and the tax for that
     // address, read and then cancelled. Null when the store can't say, so
     // the caller keeps the estimate.
-    async quote(cart, ship, { buyerIp = null } = {}) {
+    // `why(reason)`, when given, hears why there's no answer (the live check).
+    async quote(cart, ship, { buyerIp = null, why = () => {} } = {}) {
       const d = ship && cart.merchant?.url ? await discovery(cart.merchant.url) : null;
-      if (!d?.lookup) return null;
+      if (!d?.lookup) return why('the store doesn’t answer agent checkout (UCP)'), null;
       let call = null;
       let co = null;
       try {
         call = await client(d, buyerIp);
         const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate });
-        if (!resolved?.lines) return null;
+        if (!resolved?.lines) return why(resolved?.unresolved ? `the store couldn’t match “${resolved.unresolved}”` : 'the store couldn’t find the item'), null;
         co = await call('POST', '/checkout-sessions', { line_items: resolved.lines, buyer: buyer(ship) });
         if (d.fulfillment) {
+          const priced = (x) => {
+            const m = (x.fulfillment?.methods || []).find((f) => f.type === 'shipping');
+            return Boolean(m?.groups?.length && m.groups.every((g) => g.selected_option_id || g.options?.length));
+          };
           co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, shipTo(co, ship)));
+          // Shipping rates can lag the address by a moment: ask once more.
+          if (!priced(co)) {
+            await new Promise((r) => setTimeout(r, 1500));
+            co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, shipTo(co, ship)));
+          }
           const pick = selectShipping(co);
           if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, pick));
           // A total without a chosen shipping option leaves shipping out.
@@ -76,20 +86,23 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
             // Some Shopify stores leave shipping out of agent checkout
             // (ColourPop); their own cart still prices it for the address.
             const rate = await cartShippingCents(cart.merchant.url, resolved.lines, ship, { fetchImpl });
-            if (rate == null || (co.currency && co.currency !== 'USD')) return null;
+            if (rate == null) return why(`no shipping options for ${ship.city}, ${ship.state} ${ship.postal_code}, from agent checkout or the store’s cart`), null;
+            if (co.currency && co.currency !== 'USD') return why(`priced in ${co.currency}, not USD`), null;
             const amount = (type) => co.totals?.find((t) => t.type === type)?.amount ?? null;
             const subtotal = amount('subtotal');
-            if (subtotal == null) return null;
+            if (subtotal == null) return why('the checkout had no subtotal'), null;
             const tax = amount('tax') ?? 0;
             return { total_cents: subtotal + rate + tax, subtotal_cents: subtotal, shipping_cents: rate, tax_cents: tax, shipping_from: 'cart' };
           }
         }
         const total = totalOf(co);
-        if (total == null || (co.currency && co.currency !== 'USD')) return null;
+        if (total == null) return why('the checkout had no total'), null;
+        if (co.currency && co.currency !== 'USD') return why(`priced in ${co.currency}, not USD`), null;
         const amount = (type) => co.totals?.find((t) => t.type === type)?.amount ?? null;
         return { total_cents: total, subtotal_cents: amount('subtotal'), shipping_cents: amount('fulfillment') ?? 0, tax_cents: amount('tax') ?? 0 };
       } catch (err) {
         console.error('store quote failed', cart.merchant?.url, err?.message);
+        why(`the store’s checkout said: ${String(err?.message || 'error').slice(0, 160)}`);
         return null;
       } finally {
         if (co?.id && call) await call('POST', `/checkout-sessions/${encodeURIComponent(co.id)}/cancel`, {}).catch(() => {});

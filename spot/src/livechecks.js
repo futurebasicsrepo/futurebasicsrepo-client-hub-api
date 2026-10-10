@@ -145,8 +145,9 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
         if (!(await direct.supports(origin))) return { state: 'fail', detail: `${origin} doesn’t answer agent checkout (UCP) right now` };
         const price = await productPrice(product, fetchImpl).catch(() => null);
         const cart = { merchant: { name: new URL(product).hostname, url: origin }, items: [{ title: price?.title || 'Test item', quantity: 1, price_cents: price?.cents || 100, url: product }] };
-        const q = await direct.quote(cart, { name: env.SPOT_LEGAL_NAME || 'Spot Check', line1, city, state, postal_code, email: env.SPOT_CONTACT_EMAIL || 'check@spotmeplease.com' });
-        if (!q) return { state: 'fail', detail: `Couldn’t get a total from ${origin}’s checkout: carts there would be charged an estimate` };
+        let reason = null;
+        const q = await direct.quote(cart, { name: env.SPOT_LEGAL_NAME || 'Spot Check', line1, city, state, postal_code, email: env.SPOT_CONTACT_EMAIL || 'check@spotmeplease.com' }, { why: (r) => (reason = r) });
+        if (!q) return { state: 'fail', detail: `Couldn’t get a total from ${origin}’s checkout${reason ? ` (${reason})` : ''}: carts there would be refused until it answers` };
         return { state: 'ok', detail: `${cart.items[0].title}: ${usd(q.subtotal_cents ?? 0)} + ${usd(q.shipping_cents)} shipping + ${usd(q.tax_cents)} tax = ${usd(q.total_cents)} (checkout cancelled)` };
       },
     },
