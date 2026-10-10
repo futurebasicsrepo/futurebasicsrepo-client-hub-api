@@ -206,7 +206,10 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
     return { merchant_id: merchantId, primary_host: host, name, email, currency: String(s.currencyCode || '').toUpperCase() };
   }
 
-  const editorLink = (shop, template) => `https://${shop}/admin/themes/current/editor?template=${template}&addAppBlockId=${encodeURIComponent(`${clientId}/${BLOCK_HANDLE}`)}&target=mainSection`;
+  // mainSection puts the button under the buy buttons, but only in themes
+  // whose main section takes app blocks; newAppsSection adds it in its own
+  // section, which every Online Store 2.0 theme takes.
+  const editorLink = (shop, template, target = 'mainSection') => `https://${shop}/admin/themes/current/editor?template=${template}&addAppBlockId=${encodeURIComponent(`${clientId}/${BLOCK_HANDLE}`)}&target=${target}`;
 
   // ─── The embedded admin page ────────────────────────────────────────────
   app.get('/shopify', async (req, reply) => {
@@ -255,7 +258,8 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
       currency: info.currency,
       currency_ok: info.currency === 'USD',
       add_to_product: editorLink(shop, 'product'),
-      add_to_cart: editorLink(shop, 'cart'),
+      add_to_product_section: editorLink(shop, 'product', 'newAppsSection'),
+      add_to_cart: editorLink(shop, 'cart', 'newAppsSection'),
     };
   });
 
@@ -400,7 +404,7 @@ a.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)
 <section class="card"><h2>Add the button to your store</h2>
 <p>Put “Ask someone to pay” under your buy buttons, your cart, or both. You can change its text, colors, roundness, size and font in the theme editor.</p>
 <div class="row"><a class="btn" id="addProduct" target="_top" href="#">Add to product pages</a><a class="btn ghost" id="addCart" target="_top" href="#">Add to the cart page</a></div>
-<p class="muted" style="margin-top:12px">Then press <b>Save</b> in the theme editor.</p></section>
+<p class="muted" style="margin-top:12px">Then press <b>Save</b> in the theme editor. If your theme says the block can’t be added there, <a id="addSection" target="_top" href="#">add it to product pages as its own section</a> instead, or in the editor choose <b>Add block → Apps → Ask someone to pay</b>.</p></section>
 <section class="card"><h2>How it works</h2><ol>
 <li>A shopper taps the button. Their cart, at your prices, opens in Spot.</li>
 <li>They send it to whoever’s paying, by text or any messaging app.</li>
@@ -410,7 +414,7 @@ a.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)
 <script>
 (async()=>{const st=document.getElementById('status');
 try{const t=await shopify.idToken();const r=await fetch('/shopify/api/setup',{method:'POST',headers:{authorization:'Bearer '+t}});const j=await r.json();if(!r.ok)throw new Error(j.error||'Something went wrong');
-document.getElementById('addProduct').href=j.add_to_product;document.getElementById('addCart').href=j.add_to_cart;
+document.getElementById('addProduct').href=j.add_to_product;document.getElementById('addSection').href=j.add_to_product_section;document.getElementById('addCart').href=j.add_to_cart;
 const e=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 st.innerHTML='<h1><span></span>Spot is on for '+e(j.name)+'</h1>'+(j.verified?'<p class="ok">✓ Verified: payers see “sent from '+e(j.name)+'’s checkout ✓”.</p>':'')+(j.currency_ok?'':'<p class="warn">Spot works with stores that sell in US dollars for now. Your store sells in '+e(j.currency)+'.</p>');
 }catch(err){st.innerHTML='<h1><span></span>Spot</h1><p class="warn"></p>';st.querySelector('.warn').textContent=err.message+'. Reload to try again.'}})();
