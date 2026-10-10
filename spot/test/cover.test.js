@@ -64,3 +64,28 @@ test('staff cover a $42.49 SKLZ total on a $36.74 card: the card can pay it, the
   const flagged = (ov.money || []).find((m) => m.id === cart.id);
   assert.ok(!flagged || !flagged.why.some((w) => /more than the/.test(w)), 'a covered charge isn’t "more than paid"');
 });
+
+test('Money to check: staff dismiss a card, a new problem brings it back, and a refunded order isn’t "needs a retry"', async (t) => {
+  const { a, call } = app(t);
+  const made = (await call('POST', '/v1/carts', { requester: { name: 'Kyle' }, merchant: { name: 'Nike', url: 'https://nike.com' }, items: [{ title: 'Dunk Low', price_cents: 11500 }] })).body;
+  await call('POST', `/v1/carts/${made.cart.token}/sandbox-pay`, { payer_name: 'Kyle' });
+  const id = a.spot.load(made.cart.token).id;
+  a.spot.patch(id, (c) => ({ ...c, fulfillment: { state: 'needs_you', reason: 'no longer available' } }));
+  const money = async () => (await call('GET', '/v1/admin/overview', undefined, admin)).body.money.find((m) => m.id === id);
+  assert.match((await money()).why[0], /needs a retry/);
+
+  assert.equal((await call('POST', `/v1/admin/carts/${id}/dismiss`, {})).status, 401, 'staff only');
+  assert.equal((await call('POST', `/v1/admin/carts/${id}/dismiss`, {}, admin)).status, 200);
+  assert.equal(await money(), undefined, 'dismissed');
+  assert.equal(a.spot.load(made.cart.token).status, 'card_issued', 'nothing moved');
+
+  a.spot.patch(id, (c) => ({ ...c, dispute: { at: Date.now(), reason: 'fraudulent' } }));
+  assert.ok((await money()).why.some((w) => /disputed/.test(w)), 'a new problem shows it again');
+  a.spot.patch(id, (c) => ({ ...c, dispute: null }));
+
+  await call('POST', `/v1/admin/carts/${id}/refund`, {}, admin);
+  assert.equal(a.spot.load(made.cart.token).status, 'refunded');
+  a.spot.patch(id, (c) => ({ ...c, money_dismissed: null }));
+  assert.equal(await money(), undefined, 'refunded: the retry is moot, nothing to check');
+  assert.equal((await call('POST', `/v1/admin/carts/${id}/dismiss`, {}, admin)).status, 409);
+});

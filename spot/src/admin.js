@@ -116,10 +116,13 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       if (c.status === 'refunding') why.push('Refund stuck: retrying every 5 minutes');
       if (c.dispute) why.push(`Payer disputed the payment${c.dispute.reason ? ` (${c.dispute.reason})` : ''}`);
       if (c.alert?.kind === 'charged_after_refund') why.push(`Store charged ${(c.alert.amount_cents / 100).toFixed(2)} after the payer was refunded`);
-      if (c.fulfillment?.state === 'needs_you') why.push(`Order needs a retry: ${c.fulfillment.reason || 'stopped'}`);
+      // Only while it can still be ordered: once refunded, the retry is moot.
+      if (c.fulfillment?.state === 'needs_you' && ['paid', 'card_issued'].includes(c.status)) why.push(`Order needs a retry: ${c.fulfillment.reason || 'stopped'}`);
       if ((c.refunds || []).some((r) => r.state === 'failed')) why.push('A partial refund failed: retrying');
       if (captured > goods) why.push(`Store charged ${(captured / 100).toFixed(2)}, more than the ${(goods / 100).toFixed(2)} paid for the goods`);
       if ((c.refunded_cents || 0) > c.total_cents) why.push('Refunded more than was paid');
+      // Dismissed by staff: hidden while it's the same problems; a new one shows it again.
+      if (why.length && c.money_dismissed && why.every((w) => c.money_dismissed.why.includes(w))) continue;
       if (why.length) out.push({ ...summary(c), captured_cents: captured, returned_cents: returned, why });
     }
     return [...new Map(out.map((x) => [x.id, x])).values()].slice(0, 100);
@@ -198,6 +201,15 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       await fulfiller.start(next, next.requester.shipping).then(() => (retried = true)).catch(() => {});
     }
     return { cart: summary(spot.byId(next.id)), retried };
+  });
+  // Hide a card from "Money to check". Nothing moves: Spot's own retries and
+  // deadline refunds still run, and a new problem brings it back.
+  app.post('/v1/admin/carts/:id/dismiss', async (req) => {
+    guard(req);
+    const why = (moneyChecks().find((m) => m.id === req.params.id) || {}).why;
+    if (!why) throw new CartError('Nothing to dismiss on this cart', 409);
+    const next = spot.patch(req.params.id, (c) => ({ ...c, money_dismissed: { at: Date.now(), why } }), 'money_dismissed');
+    return { cart: summary(next) };
   });
   app.post('/v1/admin/carts/:id/refund', async (req) => {
     guard(req);
@@ -305,7 +317,7 @@ async function load(){
   const r=await fetch('/v1/admin/overview');if(r.status===401)return location.reload();const d=await r.json();
   const c=d.counts,n=k=>c[k]||0;
   $('#stats').innerHTML=[['Needs you',d.held.length+(d.reported||[]).length],['Open',n('open')],['Paid',n('paid')+n('card_issued')],['Done',n('completed')],['Refunded',n('refunded')],['Signups',d.signup_total]].map(([l,v])=>'<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>').join('');
-  $('#money').innerHTML=d.money.length?d.money.map(m=>'<div class="hcard"><div class="why">'+m.why.map(esc).join('<br>')+'</div><div><b>'+usd(m.total_cents)+'</b> paid · '+esc(m.item||'cart')+' at '+esc(m.merchant)+' · <span class="pill '+esc(m.status)+'">'+esc(m.status)+'</span></div><div class="meta">store charged '+usd(m.captured_cents)+(m.returned_cents?' · store refunded '+usd(m.returned_cents):'')+' · refunded to payer '+usd(m.refunded_cents)+(m.payer_email?' · '+esc(m.payer_email):'')+' · '+when(m.created_at)+'</div>'+'<div class="row">'+(m.status==='card_issued'&&m.order_state==='needs_you'?'<button class="ab" data-act="cover" data-id="'+m.id+'">Spot covers the difference…</button>':'')+(['paid','card_issued','completed','refunding'].includes(m.status)&&m.refunded_cents<m.total_cents?'<button class="ab no" data-act="refund" data-id="'+m.id+'">Refund the rest</button>':'')+'</div>'+'</div>').join(''):'<p class="muted">All square. ✅</p>';
+  $('#money').innerHTML=d.money.length?d.money.map(m=>'<div class="hcard"><div class="why">'+m.why.map(esc).join('<br>')+'</div><div><b>'+usd(m.total_cents)+'</b> paid · '+esc(m.item||'cart')+' at '+esc(m.merchant)+' · <span class="pill '+esc(m.status)+'">'+esc(m.status)+'</span></div><div class="meta">store charged '+usd(m.captured_cents)+(m.returned_cents?' · store refunded '+usd(m.returned_cents):'')+' · refunded to payer '+usd(m.refunded_cents)+(m.payer_email?' · '+esc(m.payer_email):'')+' · '+when(m.created_at)+'</div>'+'<div class="row">'+(m.status==='card_issued'&&m.order_state==='needs_you'?'<button class="ab" data-act="cover" data-id="'+m.id+'">Spot covers the difference…</button>':'')+(['paid','card_issued','completed','refunding'].includes(m.status)&&m.refunded_cents<m.total_cents?'<button class="ab no" data-act="refund" data-id="'+m.id+'">Refund the rest</button>':'')+'<button class="ab" data-act="dismiss" data-id="'+m.id+'">Dismiss</button></div>'+'</div>').join(''):'<p class="muted">All square. ✅</p>';
   $('#held').innerHTML=d.held.length?d.held.map(h=>'<div class="hcard"><div class="why">'+esc(h.hold)+'</div><div><b>'+usd(h.total_cents)+'</b> · '+esc(h.item||'cart')+' at '+esc(h.merchant)+'</div><div class="meta">'+esc(h.requester)+' asked'+(h.payer?' · '+esc(h.payer)+' paid':'')+' · '+when(h.created_at)+(h.fingerprint?' · card '+esc(h.fingerprint):'')+(h.payer_email?' · '+esc(h.payer_email):'')+'</div><div class="row"><button class="ab go" data-act="release" data-id="'+h.id+'">Looks fine, release</button><button class="ab no" data-act="refund" data-id="'+h.id+'">Refund</button>'+(h.fingerprint?'<button class="ab" data-act="blockcard" data-v="'+esc(h.fingerprint)+'" data-id="'+h.id+'">Refund + block card</button>':'')+'</div></div>').join(''):'<p class="muted">Nothing held. 🎉</p>';
   const rep=d.reported||[];if(rep.length)$('#held').insertAdjacentHTML(d.held.length?'beforeend':'afterbegin',rep.map(x=>'<div class="hcard"><div class="why">'+(x.paused?'Paused: ':'')+'Reported by '+x.reports+' '+(x.reports===1?'person':'people')+' who got the link</div><div><b>'+usd(x.total_cents)+'</b> · '+esc(x.item||'cart')+' at '+esc(x.merchant)+'</div><div class="meta">'+esc(x.requester)+' asked · '+when(x.created_at)+' · last report '+when(x.reported_at)+'</div><div class="row"><button class="ab go" data-act="clearreports" data-id="'+x.id+'">Looks fine'+(x.paused?', unpause':'')+'</button></div></div>').join(''));
   if(rep.length&&!d.held.length){const m=$('#held').querySelector('p.muted');if(m)m.remove()}
@@ -331,6 +343,7 @@ document.addEventListener('click',async e=>{
     if(a==='release')await post('/v1/admin/carts/'+b.dataset.id+'/release');
     if(a==='clearreports')await post('/v1/admin/carts/'+b.dataset.id+'/clear-reports');
     if(a==='refund')await post('/v1/admin/carts/'+b.dataset.id+'/refund');
+    if(a==='dismiss')await post('/v1/admin/carts/'+b.dataset.id+'/dismiss');
     if(a==='cover'){const v=prompt('How much should Spot cover on this order, in dollars? (up to $25; the payer isn’t charged)');if(!v){b.disabled=false;return}const r=await post('/v1/admin/carts/'+b.dataset.id+'/cover',{cents:Math.round(parseFloat(v.replace(/[^0-9.]/g,''))*100)});alert(r.retried?'Covered. Spot is retrying the order now.':'Covered. Tap Try again on the order to retry.')}
     if(a==='blockcard'){await post('/v1/admin/blocks',{kind:'card',value:b.dataset.v,reason:'Blocked from a held payment'});await post('/v1/admin/carts/'+b.dataset.id+'/refund')}
     if(a==='unblock')await post('/v1/admin/blocks/remove',{kind:b.dataset.k,value:b.dataset.v});
