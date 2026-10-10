@@ -211,3 +211,21 @@ test('with live Stripe keys, flights stay off until SPOT_FLIGHTS_LIVE=on (seller
   assert.match(off.json().error, /Flights aren’t available/);
   assert.equal((await ask({ SPOT_FLIGHTS_LIVE: 'on' })).statusCode, 201);
 });
+
+test('frequent flyer numbers: checked, saved with the traveler, and sent to the airline', async () => {
+  const { cleanLoyalty } = await import('../src/flights.js');
+  assert.deepEqual(cleanLoyalty([{ airline: 'aa', number: '12 ab-34' }]), [{ airline: 'AA', number: '12AB34' }]);
+  assert.deepEqual(cleanLoyalty([{ airline: '', number: '' }]), [], 'blank rows are skipped');
+  assert.throws(() => cleanLoyalty([{ airline: 'American', number: '12AB34' }]), /2-letter code/);
+  assert.throws(() => cleanLoyalty([{ airline: 'AA', number: '<x>' }]), /looks wrong/);
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null });
+    return Response.json({ data: { id: 'ord_1', booking_reference: 'ABC123' } });
+  };
+  const f = createFlights({ env: { DUFFEL_ACCESS_TOKEN: 'duffel_test_abc' }, fetchImpl });
+  const offer = { id: 'off_1', total_amount: '100.00', currency: 'USD', passengers: [{ id: 'pas_a', type: 'adult' }] };
+  const { travelers, contact } = validateTravelers(offer.passengers, [{ given_name: 'Kyle', family_name: 'Riggle', born_on: '1990-01-01', gender: 'm', loyalty: [{ airline: 'DL', number: '9001234567' }] }], { email: 'k@x.co', phone: '+15125550100' });
+  await f.book({ offer, travelers, contact });
+  assert.deepEqual(calls.at(-1).body.data.passengers[0].loyalty_programme_accounts, [{ airline_iata_code: 'DL', account_number: '9001234567' }]);
+});

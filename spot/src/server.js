@@ -171,6 +171,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.setErrorHandler((err, req, reply) => {
     const status = err instanceof CartError || err instanceof CaptureError ? err.status : Number.isInteger(err.status) && err.status < 500 ? err.status : err.statusCode && err.statusCode < 500 ? err.statusCode : 500;
     if (status >= 500) req.log.error(err);
+    // Stripe says why it refused (a missing customer, a key without access): keep that.
+    else if (String(err?.type || '').startsWith('Stripe')) req.log.warn({ stripe: { type: err.type, code: err.code, message: err.message } }, 'stripe refused');
     reply.code(status).send({ error: status >= 500 ? 'Something went wrong' : err.message });
   });
 

@@ -66,9 +66,25 @@ export function validateTravelers(offerPassengers, travelers, contact) {
     if (!DAY.test(born) || born >= today || born < '1900-01-01') throw new CartError(`Traveler ${n}: date of birth looks wrong`);
     const gender = t?.gender === 'm' || t?.gender === 'f' ? t.gender : null;
     if (!gender) throw new CartError(`Traveler ${n}: gender as shown on their ID`);
-    return { id: offerPassengers[i].id, type: offerPassengers[i].type || 'adult', given_name: given, family_name: family, born_on: born, gender, title: gender === 'f' ? 'ms' : 'mr' };
+    const loyalty = cleanLoyalty(t?.loyalty, `Traveler ${n}`);
+    return { id: offerPassengers[i].id, type: offerPassengers[i].type || 'adult', given_name: given, family_name: family, born_on: born, gender, title: gender === 'f' ? 'ms' : 'mr', ...(loyalty.length ? { loyalty } : {}) };
   });
   return { travelers: out, contact: { email, phone } };
+}
+
+// Frequent flyer numbers: [{ airline: 'AA', number: '12AB34' }]. The airline
+// credits the miles when the number belongs to that airline (or a partner).
+export function cleanLoyalty(v, who = 'Traveler') {
+  if (v == null || v === '') return [];
+  if (!Array.isArray(v)) throw new CartError(`${who}: frequent flyer numbers must be a list`);
+  return v.slice(0, 5).flatMap((x) => {
+    const airline = String(x?.airline || '').trim().toUpperCase();
+    const number = String(x?.number || '').replace(/[\s-]/g, '').toUpperCase();
+    if (!airline && !number) return [];
+    if (!/^[A-Z0-9]{2}$/.test(airline)) throw new CartError(`${who}: use the airline's 2-letter code for a frequent flyer number, like AA or DL`);
+    if (!/^[A-Z0-9]{3,20}$/.test(number)) throw new CartError(`${who}: that frequent flyer number looks wrong`);
+    return [{ airline, number }];
+  });
 }
 
 function name(v) {
@@ -171,6 +187,7 @@ function duffel(token, fetchImpl) {
           born_on: t.born_on,
           email: contact.email,
           phone_number: contact.phone,
+          ...(t.loyalty?.length ? { loyalty_programme_accounts: t.loyalty.map((l) => ({ airline_iata_code: l.airline, account_number: l.number })) } : {}),
         })),
       });
       return { order_id: data.id, booking_reference: data.booking_reference };

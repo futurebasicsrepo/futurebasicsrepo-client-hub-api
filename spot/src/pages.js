@@ -566,7 +566,7 @@ function finishPanel(c,notice){
   $('#finish').onsubmit=async(e)=>{e.preventDefault();const f=e.target,b=$('#payBtn');$('#finErr').textContent='';b.disabled=true;
     const v=Object.fromEntries(new FormData(f));try{localStorage.setItem('spot:ship',JSON.stringify(fl||tr?{...saved(),email:v.email,phone:v.phone}:v))}catch{}
     try{
-      if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i]})),contact:{email:v.email,phone:v.phone}});
+      if(!stripeReady&&fl){const r=await api('/v1/carts/'+TOKEN+'/manage/travelers',{k:K,travelers:c.flight.passengers_list.map((_,i)=>({given_name:v['g'+i],family_name:v['f'+i],born_on:v['b'+i],gender:v['x'+i],loyalty:v['ln'+i]?[{airline:v['la'+i],number:v['ln'+i]}]:[]})),contact:{email:v.email,phone:v.phone}});
         if(r.price_changed)return finishPanel(r.cart,'Heads up: '+c.merchant.name+' changed the fare. The new total is '+usd(r.price_changed.to_cents)+'. Tap pay again if it still works for you.');v.name=v.g0||''}
       else if(!stripeReady&&tr){await api('/v1/carts/'+TOKEN+'/manage/riders',{k:K,riders:Array.from({length:c.train.passengers},(_,i)=>({given_name:v['g'+i],family_name:v['f'+i]})),contact:{email:v.email,phone:v.phone}});v.name=v.g0||''}
       else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
@@ -606,7 +606,10 @@ function travelersForm(c,s){
   return c.flight.passengers_list.map((_,i)=>{const p=t[i]||pt[i]||(i===0&&!t.length?{given_name:first[0],family_name:first.slice(1).join(' ')}:{});
     return (n>1?'<div class="small muted" style="margin:'+(i?'14px':'0')+' 0 6px">Traveler '+(i+1)+'</div>':'')
       +'<div class="row">'+inp('g'+i,'First name',p.given_name,'required autocomplete="'+(i?'off':'given-name')+'"')+inp('f'+i,'Last name',p.family_name,'required autocomplete="'+(i?'off':'family-name')+'"')+'</div>'
-      +'<div class="row trav" style="margin-top:6px;align-items:flex-end"><label class="dob"><span>Date of birth</span>'+inp('b'+i,'',p.born_on,'type="date" required max="'+new Date().toISOString().slice(0,10)+'"')+'</label><select name="x'+i+'" required aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f"'+(p.gender==='f'?' selected':'')+'>Female</option><option value="m"'+(p.gender==='m'?' selected':'')+'>Male</option></select></div>'}).join('')
+      +'<div class="row trav" style="margin-top:6px;align-items:flex-end"><label class="dob"><span>Date of birth</span>'+inp('b'+i,'',p.born_on,'type="date" required max="'+new Date().toISOString().slice(0,10)+'"')+'</label><select name="x'+i+'" required aria-label="Gender on ID"><option value="">Gender on ID</option><option value="f"'+(p.gender==='f'?' selected':'')+'>Female</option><option value="m"'+(p.gender==='m'?' selected':'')+'>Male</option></select></div>'
+      // Frequent flyer: their number for this airline if saved, else the first one saved.
+      +(function(){const code=(c.flight.airline&&c.flight.airline.code)||'';const ls=p.loyalty||[];const l=ls.find(x=>x.airline===code)||ls[0]||{airline:code,number:''};
+        return '<div class="row" style="margin-top:6px">'+inp('la'+i,'Airline',l.airline,'maxlength="2" autocapitalize="characters" aria-label="Frequent flyer airline code" style="max-width:90px"')+inp('ln'+i,'Frequent flyer # (optional)',l.number,'autocapitalize="characters" autocomplete="off" aria-label="Frequent flyer number"')+'</div>'})()}).join('')
     +'<p class="small muted" style="margin:8px 0 12px">Names exactly as on the ID you’ll travel with.</p>'
     +inp('email','Email for the e-ticket',s.email,'type="email" required autocomplete="email"')+'<div style="height:6px"></div>'+inp('phone','Mobile, for gate changes',s.phone,'type="tel" required autocomplete="tel"');
 }
