@@ -14,23 +14,22 @@ What exists, what the tech pack can already hand to Shopify, what it cannot yet,
 |---|---|---|
 | Product title, description | style name, description | yes |
 | Options: Size, Colour | `sizes`, `colorways` | yes (cross product = variants) |
-| Media | hero, colour renderings, front/back views | no: pictures are base64 inside the pack JSON; Shopify needs files at URLs. Move to the files store first. |
+| Media | hero, colour renderings, views, artwork | yes: `GET /v1/admin/products/:id/tech-pack/media` returns signed, expiring URLs Shopify can fetch (`/m/…`). Storage is still inline; see release-readiness. |
 | Metafields (specification) | BOM, measurements, construction, care, fibre, label list | yes, as JSON metafields (`custom.techpack_*`), read-only to the merchant |
 | Tags and collection | category, season, client | yes |
-| Variant SKU | none | **missing**: needs a SKU scheme (style number + size + colour code) |
-| Variant price, compare-at | price tiers carry SRP | partly: per product, not per variant |
+| Variant SKU, barcode | `commercial.variants[]` (generated from style number, colour and size; barcode checksum-checked) | yes |
+| Variant price, compare-at | `commercial.retailPrice`, `compareAtPrice`, per-variant override | yes |
 | Variant cost (`inventoryItem.cost`) | accepted quote tier | partly: quote exists, not linked to the pack version it priced |
-| Weight, dimensions | none | **missing** |
-| Barcode (GTIN) | none | **missing** |
-| HS code, country of origin | country of origin is free text on the pack | **missing as data** (`inventoryItem.harmonizedSystemCode`, `countryCodeOfOrigin`) |
+| Weight, dimensions | `commercial.weightGrams`, packed length, width, height | yes |
+| HS code, country of origin | `commercial.hsCode`; origin read from the care text as an ISO code (`FBCommercial.countryCode`) | yes (`inventoryItem.harmonizedSystemCode`, `countryCodeOfOrigin`) |
 | Status | pack lifecycle | map: published → DRAFT, factory countersigned and sample approved → ready, production complete → ACTIVE |
 
 ## Build order
 
-1. **A Commercial section on the tech pack**: SKU per size and colour (generated, editable), retail price and compare-at, weight and dimensions, barcode, HS code, country of origin as a code. Versioned and diffed like everything else, so a price or SKU change shows in "What changed". This is the data the app cannot work without, and the quote needs the same fields.
-2. **Images as files.** Store each pack picture once in the files store; the pack holds references. Fixes pack size and gives the app media URLs.
-3. **The export, as a button first**: "Create on your Shopify store". Draft product, options, variants with SKU, price, cost, weight and HS code, media, spec metafields. Idempotent: running it again updates the same product and reports what changed (reuse the pack diff). Store the mapping per pack version.
-4. **The app shell**: Shopify OAuth install (merchant, not the single store token used today), embedded admin page listing linked products with their lifecycle stage and version, "open in hub" links, and a theme block that shows the specification and care from the metafields on the product page if the merchant wants it.
+1. ~~A Commercial section on the tech pack~~ done: SKU per size and colour, price, weight, packed size, HS code, origin; versioned and diffed, price never shown to a factory.
+2. ~~Pictures as URLs~~ done for export (signed links). Moving the storage itself to files is a separate, later change.
+3. **The export, as a button first**: "Create on your Shopify store". Draft product, options (Size, Colour), variants with SKU, barcode, price, cost (from the accepted quote), weight and HS code, media from the signed links, spec metafields. Idempotent: running it again updates the same product and reports what changed (reuse the pack diff). Store the mapping per pack version.
+4. **The app shell**: Shopify OAuth install (merchant, not the single store token used today), embedded admin page listing linked products with lifecycle stage and version, "open in hub" links, and a theme block showing specification and care from the metafields.
 5. **Keep it linked**: webhooks for product update and delete; when the merchant changes price or title in Shopify, show it against the pack rather than overwriting; when a new pack version is published, offer "update the store draft" with the change list.
 6. **The sale loop**: inventory, orders and sell-through per product shown back in the hub next to the pack, so the next version of the pack starts from what sold.
 

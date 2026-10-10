@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
@@ -87,7 +87,7 @@ await app.register(multipart, {
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
-    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    .header('content-security-policy', reply.getHeader('content-security-policy') || "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     .header('x-content-type-options', 'nosniff')
     .header('referrer-policy', 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
@@ -2409,6 +2409,38 @@ async function withApprovedHero(packId,data){
     return {...data,renderings:[{id:`hero-${String(h.id).replace(/-/g,"").slice(0,16)}`,name:'Reference picture',note:'The approved picture this pack is built from',image},...rest].slice(0,6)};
   }catch(e){app.log.warn({err:e.message,packId},'approved hero not added to the published copy');return data}
 }
+// ---- Pack pictures as links. The pictures live inside the pack, so anything that needs them as files (the Shopify export most of all: Shopify fetches media from a URL)
+// gets a signed, expiring link to one picture of the PUBLISHED pack. The link is the permission: it names the product, the picture and an expiry, and is signed with the
+// server's secret, so it cannot be edited into another picture or kept forever. A draft is never served this way.
+const mediaSig=(pid,key,exp)=>createHmac('sha256',Buffer.from(secret)).update(`media|${pid}|${key}|${exp}`).digest('base64url').slice(0,32);
+const mediaUrl=(pid,key,ttl=3600)=>{const exp=Math.floor(Date.now()/1000)+ttl;return `${clientHubUrl}/m/${pid}/${encodeURIComponent(key)}/${exp}/${mediaSig(pid,key,exp)}`};
+function packMedia(data){
+  const d=normalizeTechPack(data),out=[];
+  d.sketches.forEach(sk=>{if(sk.image)out.push({key:`view.${sk.id}`,kind:'view',name:`${sk.view}${sk.label?' · '+sk.label:''}`,uri:sk.image});if(sk.hero?.image)out.push({key:`hero.${sk.id}`,kind:'hero',name:`${sk.view} · reference picture`,uri:sk.hero.image})});
+  d.renderings.forEach(r=>{if(r.image)out.push({key:`render.${r.id}`,kind:'rendering',name:r.name||'Rendering',uri:r.image})});
+  d.artwork.forEach(a=>{if(a.image)out.push({key:`art.${a.id}`,kind:'artwork',name:a.name||'Artwork',uri:a.image});if(a.clear)out.push({key:`artclear.${a.id}`,kind:'artwork',name:`${a.name||'Artwork'} · transparent`,uri:a.clear})});
+  return out.map(m=>{const x=/^data:(image\/[a-z+]+);base64,(.+)$/i.exec(m.uri);return x?{...m,mime:x[1].toLowerCase(),b64:x[2]}:null}).filter(Boolean);
+}
+const mediaList=(pid,row)=>packMedia(row.published_data).map(m=>({key:m.key,kind:m.kind,name:m.name,mime:m.mime,bytes:Math.floor(m.b64.length*3/4),url:mediaUrl(pid,m.key)}));
+app.get('/m/:pid/:key/:exp/:sig',async(req,reply)=>{
+  const {pid,key,exp,sig}=req.params;
+  if(!UUID_RE.test(String(pid))||!/^\d{9,11}$/.test(String(exp))||Number(exp)<Date.now()/1000)return reply.code(404).send({error:'This link has expired'});
+  const want=Buffer.from(mediaSig(pid,key,exp)),got=Buffer.from(String(sig||''));
+  if(want.length!==got.length||!timingSafeEqual(want,got))return reply.code(404).send({error:'Not found'});
+  const row=(await pool.query('select published_data from tech_packs where product_id=$1 and published_at is not null',[pid])).rows[0];if(!row)return reply.code(404).send({error:'Not found'});
+  const m=packMedia(row.published_data).find(x=>x.key===key);if(!m)return reply.code(404).send({error:'Not found'});
+  return reply.type(m.mime).header('cache-control','private, max-age=300').header('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; sandbox").header('x-content-type-options','nosniff').send(Buffer.from(m.b64,'base64'));
+});
+app.get('/v1/admin/products/:id/tech-pack/media',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and published_at is not null',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Publish the tech pack first'});
+  return {version:row.version,media:mediaList(req.params.id,row)};
+});
+app.get('/v1/products/:id/tech-pack/media',{preHandler:authenticate},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Tech pack not found'});
+  const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and client_id=$2 and published_at is not null',[req.params.id,req.auth.clientId||null])).rows[0];if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  return {version:row.version,media:mediaList(req.params.id,row)};
+});
 // Staff ask the client for the view the pack lacks (instead of publishing past the gate with a typed reason): a message in the project thread, an email, and a banner
 // in the client's editor with a button that adds the view. The request clears itself the moment the picture is there.
 app.post('/v1/admin/products/:id/tech-pack/request-views',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
