@@ -129,6 +129,18 @@ test('read-only permissions Spot itself doesn’t need never show as broken; the
   assert.equal(r.shopify_token.state, 'ok');
 });
 
+test('SPOT_CARD_BILLING with a suite: the quote ships to the real city, state and zip', async () => {
+  const { parseBilling } = await import('../src/fulfill/index.js');
+  assert.deepEqual(parseBilling('1 Main St|Austin|TX|78701'), { line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' });
+  assert.deepEqual(parseBilling('1 Main St|Suite 5|Austin|TX|78701'), { line1: '1 Main St', line2: 'Suite 5', city: 'Austin', state: 'TX', postal_code: '78701' });
+  assert.equal(parseBilling('1 Main St|Austin'), null);
+  let seen = null;
+  const live = createLiveChecks({ env: { ...env, SPOT_CARD_BILLING: '1 Main St|Suite 5|Austin|TX|78701' }, db: openDb(':memory:'), provider: fakeStripe({ faBalance: 20000 }), direct: { ...direct, quote: async (cart, ship) => ((seen = ship), direct.quote(cart, ship)) }, fetchImpl: fetchFake({ campaign: 'VERIFIED' }) });
+  const r = byName(await live.run(['ucp_quote']));
+  assert.equal(r.ucp_quote.state, 'ok', r.ucp_quote.detail);
+  assert.deepEqual([seen.line2, seen.city, seen.state, seen.postal_code], ['Suite 5', 'Austin', 'TX', '78701']);
+});
+
 test('a check that hangs or throws is reported, the rest still run', async () => {
   const provider = fakeStripe({ faBalance: 20000 });
   provider.stripe.balance.retrieve = async () => {

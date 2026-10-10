@@ -25,6 +25,15 @@ import { cardLimitCents } from '../cart.js';
 
 const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
+// SPOT_CARD_BILLING: "line1|city|state|zip", or with a suite or unit,
+// "line1|line2|city|state|zip". Null unless every part is there.
+export function parseBilling(value) {
+  const parts = String(value || '').split('|').map((x) => x.trim());
+  const [line1, line2, city, state, postal_code] = parts.length >= 5 ? parts : [parts[0], '', parts[1], parts[2], parts[3]];
+  if (!line1 || !city || !state || !postal_code) return null;
+  return { line1, ...(line2 ? { line2 } : {}), city, state, postal_code };
+}
+
 export function validateShipping(s) {
   const f = (v, n) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, n) : '');
   const out = {
@@ -73,8 +82,8 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
   // The card's billing address: Spot's business address, as on the company
   // cardholder ("line1|city|state|zip"). Stores check it against the card.
   const billing = (() => {
-    const [line1, city, state, postal_code] = String(env.SPOT_CARD_BILLING || '').split('|').map((x) => x.trim());
-    return line1 && city && state && postal_code ? { name: env.SPOT_LEGAL_NAME || 'Spot', line1, city, state, postal_code } : null;
+    const b = parseBilling(env.SPOT_CARD_BILLING);
+    return b ? { name: env.SPOT_LEGAL_NAME || 'Spot', ...b } : null;
   })();
   const cardFor = (cartId) => () => provider.revealCard(spot.byId(cartId));
 

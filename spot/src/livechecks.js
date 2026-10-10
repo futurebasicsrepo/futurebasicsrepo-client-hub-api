@@ -17,6 +17,7 @@
 import Stripe from 'stripe';
 import { anthropicClient } from './anthropic.js';
 import { usd } from './cart.js';
+import { parseBilling } from './fulfill/index.js';
 
 const TIMEOUT_MS = 20_000;
 const MIN_BALANCE_CENTS = 5000;
@@ -137,16 +138,17 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
       label: 'Store checkout quote (shipping + tax)',
       async run() {
         const product = env.SPOT_CHECK_PRODUCT_URL;
-        const [line1, city, state, postal_code] = String(env.SPOT_CARD_BILLING || '').split('|').map((x) => x.trim());
+        const addr = parseBilling(env.SPOT_CARD_BILLING);
+        const { line1, line2, city, state, postal_code } = addr || {};
         if (!product) return { state: 'off', detail: 'No product to price', fix: 'SPOT_CHECK_PRODUCT_URL (a product page on a Shopify store)' };
-        if (!line1 || !postal_code) return { state: 'off', detail: 'No address to price shipping to', fix: 'SPOT_CARD_BILLING (line1|city|state|zip)' };
+        if (!addr) return { state: 'off', detail: 'No address to price shipping to', fix: 'SPOT_CARD_BILLING (line1|city|state|zip, or line1|line2|city|state|zip)' };
         if (!direct?.quote) return { state: 'off', detail: 'Store checkout isn’t available on this server' };
         const origin = new URL(product).origin;
         if (!(await direct.supports(origin))) return { state: 'fail', detail: `${origin} doesn’t answer agent checkout (UCP) right now` };
         const price = await productPrice(product, fetchImpl).catch(() => null);
         const cart = { merchant: { name: new URL(product).hostname, url: origin }, items: [{ title: price?.title || 'Test item', quantity: 1, price_cents: price?.cents || 100, url: product }] };
         let reason = null;
-        const q = await direct.quote(cart, { name: env.SPOT_LEGAL_NAME || 'Spot Check', line1, city, state, postal_code, email: env.SPOT_CONTACT_EMAIL || 'check@spotmeplease.com' }, { why: (r) => (reason = r) });
+        const q = await direct.quote(cart, { name: env.SPOT_LEGAL_NAME || 'Spot Check', line1, ...(line2 ? { line2 } : {}), city, state, postal_code, email: env.SPOT_CONTACT_EMAIL || 'check@spotmeplease.com' }, { why: (r) => (reason = r) });
         if (!q) return { state: 'fail', detail: `Couldn’t get a total from ${origin}’s checkout${reason ? ` (${reason})` : ''}: carts there would be refused until it answers` };
         return { state: 'ok', detail: `${cart.items[0].title}: ${usd(q.subtotal_cents ?? 0)} + ${usd(q.shipping_cents)} shipping + ${usd(q.tax_cents)} tax = ${usd(q.total_cents)} (checkout cancelled)` };
       },

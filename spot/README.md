@@ -279,7 +279,7 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `STRIPE_PUBLISHABLE_KEY` | | For the pay page |
 | `STRIPE_WEBHOOK_SECRET` | | Webhook endpoint: `POST /v1/webhooks/stripe`, events `payment_intent.succeeded`, `payment_intent.amount_capturable_updated`, `issuing_authorization.request`, `issuing_authorization.updated`, `issuing_transaction.created` and `charge.dispute.created` |
 | `STRIPE_ISSUING_CARDHOLDER` | | Spot's own company cardholder (`ich_…`), made once in the Stripe dashboard. Every card is issued to it |
-| `SPOT_CARD_BILLING` | | The company cardholder's billing address as `line1|city|state|zip`, used when a store checks it |
+| `SPOT_CARD_BILLING` | | The company cardholder's billing address as `line1|city|state|zip` (or `line1|line2|city|state|zip` with a suite), used when a store checks it |
 | `SPOT_ORDER_DEADLINE_HOURS` | `72` | A paid card cart Spot hasn't ordered by then is refunded in full |
 | `SPOT_FLIGHTS_LIVE` | off | With a live Stripe key, flights are refused unless this is `on` |
 | `SPOT_APPROVAL_KEY` | made on first start | Ed25519 private key (PKCS#8 PEM) for signed approvals. Set it to pin the key across database restores |
