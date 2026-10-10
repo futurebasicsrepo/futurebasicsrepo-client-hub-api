@@ -87,9 +87,13 @@ test('an account holds your Spots, saved details, and asks from your own AI', as
   me = (await call('GET', '/v1/me', undefined, H)).body;
   assert.equal(me.ready.length, 1);
   assert.equal(me.ready[0].merchant.name, 'Delta');
+  // One your AI made for someone else to pay shows there too, so you can send or pay it.
+  await call('POST', '/v1/agent/asks', { requester: { name: 'Kyle' }, merchant: { name: 'Sports Basement' }, items: [{ title: '49ers Tee', price_cents: 2300 }] }, { authorization: `Bearer ${key.api_key}` });
+  me = (await call('GET', '/v1/me', undefined, H)).body;
+  assert.deepEqual(me.ready.map((c) => c.merchant.name).sort(), ['Delta', 'Sports Basement']);
   // A partner key's asks don't belong to anyone.
   await call('POST', '/v1/agent/asks', { requester: { name: 'Kyle' }, merchant: { name: 'Nike' }, items: [{ title: 'Dunk', price_cents: 100 }], for: 'self' }, { authorization: 'Bearer s3cret' });
-  assert.equal((await call('GET', '/v1/me', undefined, H)).body.ready.length, 1);
+  assert.equal((await call('GET', '/v1/me', undefined, H)).body.ready.length, 2);
 
   // Disconnect the AI; sign out.
   assert.equal((await call('POST', `/v1/me/keys/${key.name}/revoke`, {}, H)).status, 200);
