@@ -425,10 +425,37 @@ Set "found" to false if you can't find a specific product with a current price.`
   return withPhoto(draftFromLookup(v, text), fromUrl);
 }
 
+// The photo of the colour asked for, not the product's first one: Shopify
+// stores list each variant's own image at /products/<handle>.js.
+async function shopifyVariantPhoto(url) {
+  const { loadShopifyProduct } = await import('./fulfill/shopify.js');
+  const product = await loadShopifyProduct(url, {});
+  return product && { title: product.title, variants: product.variants };
+}
+async function colorPhoto(item, variantPhoto) {
+  if (!item.variant || !variantPhoto) return null;
+  const product = await variantPhoto(item.url);
+  if (!product?.variants?.length) return null;
+  // Every variant with all the words asked for (sold out ones too: they
+  // still have a photo). "Black" on Black / S…2XL is fine if they share one.
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9.]+/g, ' ').trim();
+  const inTitle = new Set(norm(product.title).split(' '));
+  const want = norm(item.variant).split(' ').filter((w) => w && !inTitle.has(w));
+  if (!want.length) return null;
+  const photoOf = (v) => v.featured_image?.src || (typeof v.featured_image === 'string' ? v.featured_image : null);
+  const hits = product.variants.filter((v) => {
+    const words = new Set([v.option1, v.option2, v.option3, v.title].map(norm).join(' ').split(' '));
+    return want.every((w) => words.has(w));
+  });
+  const photos = [...new Set(hits.map(photoOf).filter(Boolean))];
+  const src = photos.length === 1 ? photos[0] : null;
+  return src ? absolute(src, item.url) : null;
+}
+
 // Search finds the page, not a reliable image URL: read the photo (and the
 // price, if search missed it) off the product page itself. Best effort.
 const PHOTO_WAIT_MS = 6000;
-export async function withPhoto(draft, fromUrl) {
+export async function withPhoto(draft, fromUrl, variantPhoto = shopifyVariantPhoto) {
   const item = draft.items?.[0];
   if (draft.source !== 'lookup' || !item?.url || item.image_url) return draft;
   let timer;
@@ -436,7 +463,8 @@ export async function withPhoto(draft, fromUrl) {
     const page = await Promise.race([fromUrl(item.url), new Promise((_, no) => (timer = setTimeout(() => no(new Error('slow')), PHOTO_WAIT_MS)))]);
     const found = page?.items?.[0];
     if (!found || page.warning) return draft;
-    return { ...draft, items: [{ ...item, image_url: found.image_url || null, price_cents: item.price_cents || found.price_cents || null }, ...draft.items.slice(1)] };
+    const image = (await colorPhoto(item, variantPhoto).catch(() => null)) || found.image_url || null;
+    return { ...draft, items: [{ ...item, image_url: image, price_cents: item.price_cents || found.price_cents || null }, ...draft.items.slice(1)] };
   } catch {
     return draft;
   } finally {
