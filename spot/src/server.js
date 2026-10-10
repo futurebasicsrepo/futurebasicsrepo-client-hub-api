@@ -26,6 +26,7 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { registerMerchants } from './merchants.js';
+import { registerShopifyApp } from './shopifyapp.js';
 import { registerAccounts, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
 import { agentCardPage } from './agentcard.js';
@@ -46,7 +47,7 @@ import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
   // Who's calling, for rate limits and risk checks. X-Forwarded-For is
   // whatever the caller sends, so it's never trusted: Railway's edge puts
@@ -71,7 +72,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // Every response: no framing (clickjacking on pay/approve/account pages),
   // no type sniffing, link tokens kept out of Referer, HTTPS only.
   app.addHook('onSend', async (req, reply, payload) => {
-    if (!reply.hasHeader('x-frame-options')) reply.header('x-frame-options', 'DENY');
+    // The Shopify admin page is the one page meant to be framed (by Shopify,
+    // per its own frame-ancestors).
+    if (!reply.hasHeader('x-frame-options') && !reply.embeddable) reply.header('x-frame-options', 'DENY');
     if (!reply.hasHeader('content-security-policy')) reply.header('content-security-policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
     reply.header('x-content-type-options', 'nosniff');
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'strict-origin-when-cross-origin');
@@ -786,6 +789,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
+  registerShopifyApp(app, { db, env, urlFor, cfg, log: app.log, metrics, ...(shopifyFetch ? { fetchImpl: shopifyFetch } : {}) });
   registerAdmin(app, { db, spot, env, urlFor, backups, metrics });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });

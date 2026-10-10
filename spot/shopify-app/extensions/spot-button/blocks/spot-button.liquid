@@ -1,0 +1,128 @@
+{%- liquid
+  assign mode = 'product'
+  if template.name == 'cart'
+    assign mode = 'cart'
+  endif
+  assign variant_id = ''
+  if product
+    assign variant_id = product.selected_or_first_available_variant.id
+  endif
+-%}
+<div
+  class="spot-ask spot-ask--{{ block.settings.style }} spot-ask--{{ block.settings.size }} spot-ask--{{ block.settings.align }}{% if block.settings.full_width %} spot-ask--full{% endif %}{% unless block.settings.theme_font %} spot-ask--system{% endunless %}"
+  data-spot-shopify
+  data-shop="{{ shop.permanent_domain }}"
+  data-mode="{{ mode }}"
+  data-variant="{{ variant_id }}"
+  data-api="https://spotmeplease.com"
+  style="--spot-bg: {{ block.settings.color }}; --spot-fg: {{ block.settings.text_color }}; --spot-radius: {{ block.settings.radius }}px;"
+  {{ block.shopify_attributes }}
+>
+  <button type="button" class="spot-ask__btn">
+    <span class="spot-ask__dot" aria-hidden="true"></span>
+    <span>{{ block.settings.label | default: 'Ask someone to pay' | escape }}</span>
+  </button>
+  <p class="spot-ask__note">
+    {%- if block.settings.note != blank -%}{{ block.settings.note | escape }} {% endif -%}
+    <a href="https://spotmeplease.com/?ref={{ shop.permanent_domain | url_encode }}" target="_blank" rel="noopener">Powered by Spot</a>
+  </p>
+  <p class="spot-ask__msg" role="status" aria-live="polite"></p>
+</div>
+
+{% schema %}
+{
+  "name": "Ask someone to pay",
+  "target": "section",
+  "stylesheet": "spot-button.css",
+  "javascript": "spot-button.js",
+  "enabled_on": {
+    "templates": ["product", "cart"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "label",
+      "label": "Button text",
+      "default": "Ask someone to pay"
+    },
+    {
+      "type": "text",
+      "id": "note",
+      "label": "Line under the button",
+      "default": "They pay, it ships to you."
+    },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "Style",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "link", "label": "Text link" }
+      ],
+      "default": "solid"
+    },
+    {
+      "type": "color",
+      "id": "color",
+      "label": "Button color",
+      "default": "#ff5a36"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text color",
+      "info": "Used on the solid style.",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "radius",
+      "label": "Corner roundness",
+      "min": 0,
+      "max": 30,
+      "step": 1,
+      "unit": "px",
+      "default": 30
+    },
+    {
+      "type": "select",
+      "id": "size",
+      "label": "Size",
+      "options": [
+        { "value": "small", "label": "Small" },
+        { "value": "medium", "label": "Medium" },
+        { "value": "large", "label": "Large" }
+      ],
+      "default": "medium"
+    },
+    {
+      "type": "checkbox",
+      "id": "full_width",
+      "label": "Full width",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "align",
+      "label": "Alignment",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "center"
+    },
+    {
+      "type": "checkbox",
+      "id": "theme_font",
+      "label": "Use my theme’s font",
+      "default": true
+    },
+    {
+      "type": "paragraph",
+      "content": "The Spot dot and “Powered by Spot” always show, so payers know where the link goes."
+    }
+  ]
+}
+{% endschema %}

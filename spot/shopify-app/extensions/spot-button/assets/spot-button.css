@@ -1,0 +1,22 @@
+.spot-ask{--spot-bg:#ff5a36;--spot-fg:#fff;--spot-radius:30px;display:flex;flex-direction:column;gap:6px;margin:12px 0;font:inherit}
+.spot-ask--left{align-items:flex-start;text-align:left}
+.spot-ask--center{align-items:center;text-align:center}
+.spot-ask--right{align-items:flex-end;text-align:right}
+.spot-ask--system{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.spot-ask__btn{display:inline-flex;align-items:center;justify-content:center;gap:.55em;font:inherit;font-weight:700;line-height:1.2;cursor:pointer;border-radius:var(--spot-radius);border:2px solid var(--spot-bg);background:var(--spot-bg);color:var(--spot-fg);padding:.85em 1.4em;font-size:1rem;min-height:44px;transition:filter .15s,transform .15s}
+.spot-ask--full .spot-ask__btn{width:100%}
+.spot-ask--small .spot-ask__btn{font-size:.875rem;padding:.6em 1.1em;min-height:40px}
+.spot-ask--large .spot-ask__btn{font-size:1.125rem;padding:1em 1.6em;min-height:52px}
+.spot-ask--outline .spot-ask__btn{background:transparent;color:var(--spot-bg)}
+.spot-ask--link .spot-ask__btn{background:transparent;border-color:transparent;color:var(--spot-bg);padding-left:0;padding-right:0;text-decoration:underline;text-underline-offset:3px}
+.spot-ask__btn:hover{filter:brightness(.95)}
+.spot-ask__btn:active{transform:translateY(1px)}
+.spot-ask__btn:focus-visible{outline:2px solid var(--spot-bg);outline-offset:3px}
+.spot-ask__btn[aria-busy=true]{opacity:.7;cursor:progress}
+.spot-ask__dot{width:.7em;height:.7em;border-radius:50%;background:var(--spot-fg);flex:none}
+.spot-ask--outline .spot-ask__dot,.spot-ask--link .spot-ask__dot{background:#ff5a36}
+.spot-ask__note{margin:0;font-size:.8rem;opacity:.75}
+.spot-ask__note a{color:inherit}
+.spot-ask__msg{margin:0;font-size:.85rem;color:#b3261e}
+.spot-ask__msg:empty{display:none}
+@media (prefers-reduced-motion:reduce){.spot-ask__btn{transition:none}}
