@@ -116,8 +116,11 @@ export function stripeProvider(env = process.env) {
   // draw from. Set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…), or Spot uses the
   // account's one open financial account when Stripe asks for it.
   let financialAccount = env.STRIPE_ISSUING_FINANCIAL_ACCOUNT || null;
+  // Listing them is a preview API: Stripe only answers it on the matching
+  // .preview version of the API this SDK speaks.
+  const PREVIEW_VERSION = `${Stripe.API_VERSION.split('.')[0]}.preview`;
   async function findFinancialAccount() {
-    const res = await stripe.rawRequest('GET', '/v2/money_management/financial_accounts', {});
+    const res = await stripe.rawRequest('GET', '/v2/money_management/financial_accounts', {}, { apiVersion: PREVIEW_VERSION });
     const open = (res?.data || []).filter((a) => !a.status || a.status === 'open');
     if (open.length !== 1) throw new Error(`Stripe Issuing needs a financial account, and ${open.length ? `${open.length} are open` : 'none is open'}: set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…)`);
     return open[0].id;
