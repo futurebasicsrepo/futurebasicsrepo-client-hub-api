@@ -3293,7 +3293,7 @@ const trunc=(t,n)=>{const x=String(t??'').replace(/\s+/g,' ').trim();return x.le
 async function loopSay(loopId,{agent,kind='say',text,stage=null,score=null,data=null}){
   const ev={at:new Date().toISOString(),agent,kind,text:trunc(text,360),...(score!=null?{score}:{}),...(data?{data}:{})};
   await pool.query(`update tech_pack_loops set events=events||jsonb_build_array(jsonb_build_object('id',jsonb_array_length(events),'at',$2::text,'agent',$3::text,'kind',$4::text,'text',$5::text)||$6::jsonb),stage=coalesce($7,stage) where id=$1`,
-    [loopId,ev.at,agent,kind,ev.text,JSON.stringify({...(ev.score!=null?{score:ev.score}:{}),...(ev.data?{data:ev.data}:{})}),stage]).catch(e=>app.log.warn({err:e.message},'loop event not written'));
+    [loopId,ev.at,agent,kind,ev.text,JSON.stringify({...(ev.score!=null?{score:ev.score}:{}),...(ev.data?{data:ev.data}:{}),...(stage?{stage}:{})}),stage]).catch(e=>app.log.warn({err:e.message},'loop event not written'));
 }
 function loopView(row){
   if(!row)return null;
@@ -3343,10 +3343,10 @@ async function runLoopBody(loopId){
       else if(st.unavailable||st.limited)heroNote=st.unavailable||st.limited;
       if(heroNote)await say({agent:'design',kind:'say',stage:'draft',text:heroNote});
     }
-    await say(L.trigger==='build'?{agent:'design',kind:'say',stage:'compare',text:`Draft written from your photo: ${mine.callouts} callouts, ${mine.poms} measurements and ${mine.bom} materials. Handing it to the developer assistant to test.`}
-      :{agent:'design',kind:'say',stage:'compare',text:'Sending the pack to the developer assistant for a fresh look.'});
+    await say(L.trigger==='build'?{agent:'design',kind:'say',stage:'compare',text:`First draft is done: ${mine.callouts} callouts, ${mine.poms} measurements and ${mine.bom} materials. Over to you, developer assistant: please test it.`}
+      :{agent:'design',kind:'say',stage:'compare',text:'Developer assistant, here is the pack again. Could you take a fresh look?'});
     const cfg=imageConfig();
-    await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'I build the product from the materials, colours and measurements alone, without looking at the photo. Drawing it now…':'I read the materials, colours and measurements alone, without looking at the photo, and compare what they describe with it.'});
+    await say({agent:'developer',kind:'say',stage:'compare',text:cfg.configured&&cfg.provider!=='fixture'?'Thanks. I will not look at the photo: I build the product from the materials, colours and measurements alone. Drawing it now…':'Thanks. I will not look at the photo: I read the materials, colours and measurements alone and compare what they describe with it.'});
     const c1=await check(),v1=c1.verdict||{};start=c1.score;
     await pool.query('update tech_pack_loops set start_score=$2 where id=$1',[loopId,start]);
     await say({agent:'developer',kind:'verdict',stage:'compare',score:start,text:v1.summary||'Here is what I found.'});
@@ -3360,7 +3360,7 @@ async function runLoopBody(loopId){
       await say({agent:'design',kind:'say',stage:'done',text:v1.verdict==='cannot-judge'?'The developer assistant could not judge this one, so I am leaving the draft as it is.':start>=threshold?'Nothing I would change: the pack reads as the product in your photo.':'I will leave the draft as it is for a person to review.'});
     }else{
       for(let round=1;round<=rounds;round++){
-        await say({agent:'design',kind:'think',stage:'review',text:round===1?'Going through those findings against your photo…':`Round ${round}: going back over what is still open (${curScore}/100, the bar is ${threshold})…`});
+        await say({agent:'design',kind:'think',stage:'review',text:round===1?'Okay, let me go through those findings against your photo…':`Round ${round}: back to what is still open (${curScore}/100, the bar is ${threshold}). Let me think about it…`});
         const cur=await load();
         const r=await reconcile({pack:cur.data,photos:packPhotos(cur.data),verdict:cur_.verdict,promptText:prompt,history});
         for(const d of r.decisions)await say({agent:'design',kind:'decision',text:d.say});
@@ -3379,7 +3379,7 @@ async function runLoopBody(loopId){
         await pool.query('update tech_pack_loops set changes=$2,rounds=$3 where id=$1',[loopId,JSON.stringify(all),round]);
         await say({agent:'design',kind:'say',stage:'revise',text:`Changing ${applied.length} thing${applied.length===1?'':'s'}:`});
         for(const c of applied)await say({agent:'design',kind:'change',data:{from:trunc(c.from,80),to:trunc(c.to,80)},text:`${c.label}: ${trunc(c.from,60)||'(empty)'} → ${trunc(c.to,60)}`});
-        await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks. Testing the changed pack from scratch…'});
+        await say({agent:'developer',kind:'say',stage:'recheck',text:'Thanks, that helps. Testing the changed pack from scratch…'});
         const c2=await check(),baseline=curScore;
         if(c2.score<baseline-2){ // worse: take this round's changes back and try something else
           const live=(await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],back=revertChanges(live.data,applied);
