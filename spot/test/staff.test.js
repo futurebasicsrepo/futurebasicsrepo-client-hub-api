@@ -143,5 +143,6 @@ test('health records every service a purchase touches, and a card that failed to
   const after = (await a.inject({ method: 'GET', url: `/v1/carts/${made.token}` })).json().cart;
   assert.equal(after.status, 'card_issued');
   s = a.metrics.services();
-  assert.ok(s.issuing.ok_at > s.issuing.fail_at, 'Issuing reads as working again');
+  // Same-millisecond fail and retry are possible here; the dashboard reads a tie as working.
+  assert.ok(s.issuing.ok_at >= s.issuing.fail_at, 'Issuing reads as working again');
 });
