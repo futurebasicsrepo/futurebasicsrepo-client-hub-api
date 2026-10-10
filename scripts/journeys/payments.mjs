@@ -250,13 +250,14 @@ await journey('J105', 'the tech pack header carries the brand like the rest of t
   ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: header' } })).status === 200, 'staff publish');
   ok((await call(`/v1/products/${pid}/tech-pack/approve`, { method: 'POST', token: tok, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
   const sh = await adm(`/v1/admin/products/${pid}/tech-pack/shares`, { method: 'POST', body: { label: 'Header Mill', email: `headermill-${stamp}@chaos.test` } }), ftok = sh.json.url ? sh.json.url.split('/tp/')[1] : ''; ok(Boolean(ftok), 'setup: a factory link', [sh.status, sh.json]);
-  const shot = (n, pg) => pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j105-${n}.png`, clip: { x: 0, y: 0, width: pg.viewportSize().width, height: 230 } }).catch(() => {});
+  const shot = (n, pg) => pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j105-${n}.png`, clip: { x: 0, y: 0, width: pg.viewportSize().width, height: Math.min(pg.viewportSize().height, pg.viewportSize().width < 700 ? 800 : 300) } }).catch(() => {});
   const bw = await playwright.chromium.launch();
   const probe = pg => pg.evaluate(() => {
     const q = s => document.querySelector(s), box = e => { const b = e && e.getBoundingClientRect(); return b && { top: b.top, bottom: b.bottom, left: b.left, width: b.width, height: b.height }; };
     const hd = q('header.top'), logo = q('.top .brand-logo'), loaded = Boolean(logo && logo.complete && logo.naturalWidth > 0), suf = q('.top .brand-suffix'), home = q('#homeLink'), cr = q('#crumb'), tabs = q('#tabs');
     return { header: box(hd), logo: box(logo), logoSrc: logo && logo.getAttribute('src'), loaded, suffix: suf && getComputedStyle(suf).display !== 'none' ? suf.innerText.trim() : '', href: home && home.getAttribute('href'), label: home && home.getAttribute('aria-label'),
-      crumbs: box(cr), crumbText: cr ? cr.innerText.trim() : '', crumbPos: cr && getComputedStyle(cr).position, headerPos: hd && getComputedStyle(hd).position, tabs: box(tabs), overflow: document.documentElement.scrollWidth - innerWidth, oldBrand: Boolean(q('.top .brand')) };
+      crumbs: box(cr), crumbText: cr ? cr.innerText.trim() : '', mstatus: Boolean(q('#crumb .mstatus') && q('#crumb .mstatus').offsetParent), headStatus: Boolean(q('.top .acts .status') && q('.top .acts .status').offsetParent), headSave: Boolean(q('.top .acts [data-act="save"]') && q('.top .acts [data-act="save"]').offsetParent),
+      tabBtns: [...document.querySelectorAll('#tabs button')].map(b => { const r = b.getBoundingClientRect(), l = b.querySelector('b').getBoundingClientRect(); return { l: r.left, r: r.right, labelFits: l.width <= r.width + 0.5, on: b.classList.contains('on'), bg: getComputedStyle(b).backgroundColor }; }), tabsBottom: tabs && tabs.getBoundingClientRect().bottom, innerH: innerHeight, innerW: innerWidth, crumbPos: cr && getComputedStyle(cr).position, headerPos: hd && getComputedStyle(hd).position, tabs: box(tabs), overflow: document.documentElement.scrollWidth - innerWidth, oldBrand: Boolean(q('.top .brand')) };
   });
   try {
     const open = async (role, token, url, w, h) => { const ctx = await bw.newContext({ viewport: { width: w, height: h } }); if (token) await ctx.addInitScript(([k, t]) => { try { localStorage.setItem(k, t); } catch {} }, [role === 'admin' ? 'fb.admin.token' : 'fb.client.token', token]); await ctx.route('**/future_basics_true_vector_fixed.svg*', route => route.fulfill({ path: new URL('./fixtures/fb-logo.svg', import.meta.url).pathname, contentType: 'image/svg+xml' })); const pg = await ctx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(e.message)); await pg.goto(url, { waitUntil: 'domcontentloaded' }); await pg.waitForSelector('#tabs button', { timeout: 20000 }); await pg.keyboard.press('Escape'); await pg.waitForTimeout(400); return { ctx, pg }; };
@@ -265,25 +266,28 @@ await journey('J105', 'the tech pack header carries the brand like the rest of t
     ok(m.logo && m.logo.width >= 120 && m.loaded && /future_basics/.test(m.logoSrc) && !m.oldBrand, 'customer: the Future Basics logo is in the bar and draws (the same file as the hub)', [m.logo, m.logoSrc, m.loaded]);
     ok(/Client Hub/i.test(m.suffix) && m.href === '/' && /client hub/i.test(m.label), 'customer: "/ Client Hub" and the logo goes to the hub', [m.suffix, m.href]);
     ok(Math.abs(m.header.height - 72) <= 1 && m.headerPos === 'sticky', 'customer: the bar is the hub\'s 72px and stays put', [m.header.height, m.headerPos]);
-    ok(m.crumbs.top >= m.header.bottom - 1 && m.crumbPos !== 'sticky' && m.crumbs.height > 0 && /Tech pack/i.test(m.crumbText) && /Projects/i.test(m.crumbText), 'customer: the breadcrumb is its own row under the bar, and scrolls away', [m.crumbs, m.crumbText]);
+    ok(m.crumbs.top >= m.tabs.bottom - 1 && m.crumbPos !== 'sticky' && m.crumbs.height > 0 && /Tech pack/i.test(m.crumbText) && /Projects/i.test(m.crumbText), 'customer: the breadcrumb sits in the page under the tab bar and scrolls away', [m.crumbs, m.tabs, m.crumbText]);
+    const on = m.tabBtns.filter(b => b.on); ok(on.length === 1 && on[0].bg === 'rgb(75, 255, 154)' && m.tabBtns.every(b => b.labelFits), 'customer: the tab row is brand pills, the open tab in the brand green, every label fits', m.tabBtns.map(b => [b.on, b.bg, b.labelFits]));
     await pg.evaluate(() => scrollTo(0, 700)); await pg.waitForTimeout(250); const st = await pg.evaluate(() => ({ tabs: document.querySelector('#tabs').getBoundingClientRect().top, head: document.querySelector('header.top').getBoundingClientRect().bottom }));
     ok(Math.abs(st.tabs - st.head) <= 1.5, 'customer: scrolled down, the tab bar sits directly under the bar (no gap, no overlap)', st);
     await pg.evaluate(() => scrollTo(0, 0)); await shot('client', pg); ok(pg.errs.length === 0, 'customer: no script errors', pg.errs); await ctx.close();
     // staff, desktop
     ({ ctx, pg } = await open('admin', admin, `http://work.localhost:3127/tech-packs/${pid}`, 1280, 860)); m = await probe(pg);
     ok(m.logo && m.logo.width >= 120 && /^\/ ?Work$/i.test(m.suffix) && /\/$/.test(m.href || '') && /work/i.test(m.label), 'staff: logo, "/ Work", and the logo goes to the console', [m.suffix, m.href, m.label]);
-    ok(m.crumbs.top >= m.header.bottom - 1 && /Clients/i.test(m.crumbText) && /Tech pack/i.test(m.crumbText), 'staff: the long breadcrumb (Clients › room › project › product) has its own row', m.crumbText);
+    ok(m.crumbs.top >= m.tabs.bottom - 1 && /Clients/i.test(m.crumbText) && /Tech pack/i.test(m.crumbText), 'staff: the long breadcrumb (Clients › room › project › product) sits in the page, not in the bar', m.crumbText);
+    await pg.click('#acts details.more summary'); ok(await pg.isVisible('[data-act="airun"]'), 'staff: Run assistant is in More on a published pack too (it redrafts the working copy, not the published versions)');
     await shot('staff', pg); ok(pg.errs.length === 0, 'staff: no script errors', pg.errs); await ctx.close();
     // factory, desktop
     ({ ctx, pg } = await open('factory', '', `${BASE}/tp/${ftok}`, 1280, 860)); m = await probe(pg);
     ok(m.logo && m.logo.width >= 120 && /Tech pack/i.test(m.suffix) && !m.href && /^Future Basics$/.test(m.label), 'factory: logo and "/ Tech pack", and no link (a factory has no hub)', [m.suffix, m.href]);
-    ok(/Working on/i.test(m.crumbText), 'factory: the "working on" line is under the bar', m.crumbText);
+    ok(/Working on/i.test(m.crumbText) && m.crumbs.top >= m.tabs.bottom - 1, 'factory: the "working on" line is in the page under the tabs', m.crumbText);
     await shot('factory', pg); ok(pg.errs.length === 0, 'factory: no script errors', pg.errs); await ctx.close();
     // phone
     for (const [role, token, url, name] of [['client', tok, `${BASE}/tech-packs/${pid}`, 'client'], ['admin', admin, `http://work.localhost:3127/tech-packs/${pid}`, 'staff'], ['factory', '', `${BASE}/tp/${ftok}`, 'factory']]) {
       ({ ctx, pg } = await open(role, token, url, 390, 800)); m = await probe(pg);
       ok(m.logo && m.logo.width >= 120 && m.logo.left >= 0 && m.suffix === '' && m.overflow <= 0, `${name} on a phone: the logo fits, the suffix steps aside, nothing scrolls sideways`, [m.logo, m.suffix, m.overflow]);
-      ok(m.header.height <= (name === 'staff' ? 112 : 62) && m.header.bottom <= m.crumbs.top + 1, `${name} on a phone: a compact bar (staff's longer action row sits under the logo) with the breadcrumb row below it`, [m.header.height]);
+      ok(m.header.height <= 62 && m.header.bottom <= m.crumbs.top + 1 && !m.headStatus && !m.headSave && m.mstatus, `${name} on a phone: one slim bar (logo and the main buttons), the status and breadcrumb in the page row below`, [m.header.height, m.headStatus, m.headSave, m.mstatus]);
+      ok(m.tabsBottom >= m.innerH - 1 && m.tabBtns.every(b => b.l >= 0 && b.r <= m.innerW + 0.5 && b.labelFits), `${name} on a phone: the tab dock is at the bottom and every tab and label fits the screen`, [m.tabsBottom, m.innerH, m.tabBtns.map(b => [Math.round(b.l), Math.round(b.r), b.labelFits])]);
       await shot(`${name}-phone`, pg); ok(pg.errs.length === 0, `${name} on a phone: no script errors`, pg.errs); await ctx.close();
     }
   } finally { await bw.close(); }
