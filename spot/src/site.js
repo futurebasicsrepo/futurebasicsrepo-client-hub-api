@@ -21,7 +21,9 @@ export const SITE_CSS = `
 @media (prefers-color-scheme:dark){:root{--bg:#141210;--bg2:#1b1814;--card:#1f1b17;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47;--night:#0e0c0a;--night2:#1a1612;
   --sh-1:0 1px 2px rgba(0,0,0,.3),0 4px 14px -8px rgba(0,0,0,.5);--sh-2:0 1px 2px rgba(0,0,0,.25),0 16px 36px -20px rgba(0,0,0,.6);--sh-3:0 2px 4px rgba(0,0,0,.25),0 28px 56px -28px rgba(0,0,0,.7)}}
 *{box-sizing:border-box}html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 Bricolage,ui-sans-serif,-apple-system,system-ui,sans-serif;overflow-x:hidden}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 Bricolage,ui-sans-serif,-apple-system,system-ui,sans-serif;overflow-x:hidden;padding-top:env(safe-area-inset-top,0px)}
+/* Home-screen app on iPhone: pages scroll under a solid strip, not the status bar. */
+body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:40;pointer-events:none}
 a{color:inherit}img{max-width:100%;height:auto;display:block}
 .wrap{max-width:var(--wrap);margin:0 auto;padding:0 var(--gutter)}
 h1,h2,h3{font-weight:800;letter-spacing:-.035em;line-height:1.04;margin:0;text-wrap:balance}
@@ -41,7 +43,7 @@ p{margin:0}.muted{color:var(--muted)}
 .lead{font-size:clamp(17px,1.6vw,20px);line-height:1.55;color:var(--muted);max-width:620px;margin-top:18px}
 
 /* nav: one row at every width. Links fold into "More" (then "Menu") instead of wrapping. */
-nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .2s}
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .2s}
 nav.scrolled{border-bottom-color:var(--line)}
 nav>.wrap{max-width:var(--wrap);display:flex;align-items:center;gap:8px;height:68px;white-space:nowrap}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none;flex:none}

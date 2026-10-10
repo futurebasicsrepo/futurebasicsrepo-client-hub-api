@@ -262,7 +262,12 @@ body{background:var(--bg)}
 .list{display:grid;gap:8px}
 .row{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:4px;font-size:14px}
 .row .why{font-weight:700}.row small{color:var(--muted)}
-.svc{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.svc{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center}
+.row,.svc>span{min-width:0}.row small,.row b{overflow-wrap:anywhere}
+.svc>.st:first-child{width:16px;text-align:center}
+.row small,.svc>span:nth-child(2){line-height:1.45}
+/* Phones: the status word moves under the text, so the text gets the full width. */
+@media (max-width:520px){.svc{grid-template-columns:16px minmax(0,1fr);align-items:start;gap:4px 10px}.svc>.st:first-child{padding-top:2px}.svc>.st:last-child{grid-column:2;font-size:13px}}
 .st{font-weight:700;font-size:13px;white-space:nowrap}
 .st.ok{color:var(--good)}.st.failing{color:var(--bad)}.st.warn{color:var(--warn)}.st.unused,.st.off{color:var(--muted)}
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
