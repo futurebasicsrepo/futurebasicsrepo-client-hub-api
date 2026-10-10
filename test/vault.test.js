@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { seal, open, vaultReady, fingerprint } from '../src/vault.js';
-import { validateVendor, abaOk, maskedBank, clientView } from '../src/vendor.js';
+import { validateVendor, abaOk, maskedBank, clientView, revealAllowed } from '../src/vendor.js';
 
 const KEY = { VENDOR_DATA_KEY: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff' };
 
@@ -48,4 +48,10 @@ test('every way the form can be wrong is named', () => {
 test('the client view carries the masks and never a number', () => {
   const v = clientView({ id: 'x', version: 2, status: 'pending', company_name: 'Mill Co', method: 'ach', currency: 'USD', bank_mask: '••••6789', tax_last4: '6789', signed_name: 'Ann', data_enc: 'secret' });
   assert.equal(v.bank, '••••6789'); assert.ok(!JSON.stringify(v).includes('secret'));
+});
+test('only named finance users can open full bank details; nobody by default', () => {
+  assert.equal(revealAllowed('ann@tfb.com', {}), false);
+  const env = { VENDOR_REVEAL_EMAILS: 'Ann@TFB.com, @finance.example' };
+  assert.equal(revealAllowed('ann@tfb.com', env), true); assert.equal(revealAllowed('bob@finance.example', env), true);
+  assert.equal(revealAllowed('bob@tfb.com', env), false); assert.equal(revealAllowed('', env), false); assert.equal(revealAllowed('x@evilfinance.example', env), false);
 });

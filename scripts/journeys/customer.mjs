@@ -1241,10 +1241,18 @@ await journey('J95', 'vendor information: every hub client signs one form; bank 
 
   let l = await list(); const s1 = l.submissions[0];
   ok(l.submissions.length === 1 && s1.bank === '••••6789' && s1.taxLast4 === '6789' && s1.bankChanged === false && s1.taxFormName === 'w9.pdf' && !JSON.stringify(l).includes('000123456789'), 'staff see it masked, with the tax form, and no change flag on a first submission', s1);
-  const rv = await adm(`/v1/admin/vendor/${s1.id}/reveal`, { method: 'POST', body: {} }); ok(rv.status === 200 && rv.json.data.accountNumber === '000123456789' && rv.json.data.routing === '021000021' && rv.json.data.taxId === '12-3456789', 'staff can open the full details', rv.status);
-  ok(sql(`select count(*) from vendor_access_log where submission_id='${s1.id}' and action='reveal'`) === '1', 'and the opening is logged');
+  const myEmail = sql(`select email from users where client_id='${m.cid}' limit 1`), reveal = sid => `/v1/admin/vendor/${sid}/reveal`;
+  const mailCode = async since => { const mails = ((await call(`/v1/dev/outbox?since=${since}&to=${encodeURIComponent(myEmail)}`)).json.emails || []).filter(e => /code to open vendor/i.test(e.subject)); const last = mails[mails.length - 1]; return last ? { code: (/code is\s+(\d{6})/.exec(last.text) || [])[1], html: last.text } : null; };
+  ok((await adm(reveal(s1.id), { method: 'POST', body: {} })).status === 403 && (await adm(reveal(s1.id), { method: 'POST', body: { code: '123456' } })).status === 403, 'full details do not open without an emailed code');
+  ok((await call(`${reveal(s1.id)}-code`, { method: 'POST', token: m.token, body: {} })).status === 403, 'and a client cannot ask for one');
+  const t0 = Date.now() - 500, rc = await adm(`/v1/admin/vendor/${s1.id}/reveal-code`, { method: 'POST', body: {} }); ok(rc.status === 202 && /••••@/.test(rc.json.sentTo), 'a code is emailed to the finance user, whose address is shown only in part', rc.json);
+  const mc = await mailCode(t0); ok(mc && /^\d{6}$/.test(mc.code) && !mc.html.includes('000123456789'), 'the email carries a six-digit code and no bank number', mc && mc.code);
+  ok((await adm(reveal(s1.id), { method: 'POST', body: { code: mc.code === '000000' ? '111111' : '000000' } })).status === 403, 'a wrong code opens nothing');
+  const rv = await adm(reveal(s1.id), { method: 'POST', body: { code: mc.code } }); ok(rv.status === 200 && rv.json.data.accountNumber === '000123456789' && rv.json.data.routing === '021000021' && rv.json.data.taxId === '12-3456789', 'the right code opens the full details', rv.status);
+  ok((await adm(reveal(s1.id), { method: 'POST', body: { code: mc.code } })).status === 403, 'and works once');
+  ok(sql(`select count(*) from vendor_access_log where submission_id='${s1.id}' and action='reveal'`) === '1' && /opened the full bank details/.test(sql(`select title from notifications where client_id='${m.cid}' and type='vendor-reveal' order by created_at desc limit 1`)), 'the opening is logged and flagged to staff');
   const pm = await adm(`/v1/admin/vendor/${s1.id}/pdf`); ok(pm.status === 200 && /pdf/.test(pm.ct) && pm.text.startsWith('%PDF'), 'the signed form is a PDF on the letterhead');
-  ok((await adm(`/v1/admin/vendor/${s1.id}/pdf?full=1`)).status === 200 && sql(`select count(*) from vendor_access_log where submission_id='${s1.id}' and action='pdf-full'`) === '1', 'a full PDF is logged; the masked one is not');
+  ok((await adm(`/v1/admin/vendor/${s1.id}/pdf?full=1`)).status === 200 && sql(`select count(*) from vendor_access_log where submission_id='${s1.id}'`) === '1', 'there is no full-number PDF: asking for one gives the same masked form and logs nothing');
   ok((await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'reject' } })).status === 400, 'rejecting needs a reason');
   const ap1 = await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'approve' } }); ok(ap1.status === 200 && ap1.json.status === 'approved', 'the first form can be approved', ap1.json);
   ok((await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'approve' } })).status === 409, 'and only once');
@@ -1290,10 +1298,16 @@ await journey('J95', 'vendor information: every hub client signs one form; bank 
       const ap = await ac.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
       await ap.goto(`${BASE}/clients/${other.cid}#vendor`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#vendorBox .action', { timeout: 15000 });
       const txt = await ap.innerText('#vendorBox'); ok(/Browser Mill/.test(txt) && /••••3222/.test(txt) && !/555444333222/.test(txt), 'the console shows the form masked', txt.slice(0, 160));
-      await ap.click('#vendorBox .action .tools button:first-child'); await ap.waitForSelector('#vendorBox pre', { timeout: 8000 }); ok(/555444333222/.test(await ap.innerText('#vendorBox pre')), 'and opens the full details when asked');
+      const t1 = Date.now() - 500; await ap.click('#vendorBox .action .tools button:first-child'); await ap.waitForSelector('#vendorBox input[id^="vcode-"]', { timeout: 8000 }); const bc = await mailCode(t1); await ap.fill('#vendorBox input[id^="vcode-"]', bc.code); await ap.click('#vendorBox .vreveal button'); await ap.waitForFunction(() => document.querySelector('#vendorBox pre') || [...document.querySelectorAll('#vendorBox [id^="vcm-"]')].some(x => x.innerText), null, { timeout: 8000 }); ok(/555444333222/.test(await ap.locator('#vendorBox pre').first().innerText({ timeout: 2000 }).catch(() => '')), 'a finance user opens the full details with the emailed code', await ap.locator('#vendorBox [id^="vcm-"]').first().innerText().catch(() => ''));
       await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j95-console.png` }).catch(() => {});
       ok(ap.errs.length === 0, 'no script errors in the console', ap.errs); await ac.close();
     } finally { await bw.close(); }
+  }
+  { // guessing: after five wrong codes nothing opens, not even the right one
+    const sid = l.submissions[0].id, t2 = Date.now() - 500; await adm(`/v1/admin/vendor/${sid}/reveal-code`, { method: 'POST', body: {} });
+    const good = (await mailCode(t2)).code, wrong = good === '111111' ? '222222' : '111111'; let last = 0;
+    for (let i = 0; i < 6; i++) last = (await adm(reveal(sid), { method: 'POST', body: { code: wrong } })).status;
+    ok(last === 429 && (await adm(reveal(sid), { method: 'POST', body: { code: good } })).status === 429, 'guessing is stopped: after five wrong codes even the right one is refused for a while');
   }
 });
 

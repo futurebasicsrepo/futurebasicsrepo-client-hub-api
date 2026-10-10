@@ -120,7 +120,7 @@ export function vendorPdf({ sub, data, full = false }) {
     row(['ABA / routing / bank code (ACH)', mask(data.routing)], ['SWIFT #', data.swift]);
     row(['Bank telephone # or email', data.bankContact]);
   } else row(['PayPal email', full ? data.paypalEmail : data.paypalEmail.replace(/^(.).*(@.*)$/, '$1••••$2')], ['Venmo', full ? data.venmo : (data.venmo ? data.venmo.slice(0, 2) + '••••' : '')]);
-  if (!full) { doc.fillColor(DIM).font('SG').fontSize(8.5).text('Account numbers are shown by their last four digits. Staff can open the full details in the work console; each time is logged.', L, y - 4, { width: CW }); y = doc.y + 10; }
+  if (!full) { doc.fillColor(DIM).font('SG').fontSize(8.5).text('Account and tax numbers are shown by their last four digits only. The full numbers are held encrypted and opened only by named finance users; each opening is logged.', L, y - 4, { width: CW }); y = doc.y + 10; }
   y += 4; doc.roundedRect(L, y, CW, 92, 12).lineWidth(1).strokeColor(LINE).stroke();
   doc.fillColor(DIM).font('MONO').fontSize(8).text('VENDOR AUTHORIZATION', L + 18, y + 14, { characterSpacing: 1.2, lineBreak: false });
   doc.fillColor(INK).font('SG').fontSize(9.5).text('By signing, the undersigned attests the banking information on this form is accurate and complete, and agrees to be paid by The Future Basics for invoices owed to their company to the account named above. Inaccurate banking information may result in delayed payments.', L + 18, y + 30, { width: CW - 36 });

@@ -34,7 +34,7 @@ import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
 import { invoicePdf, collectionPdf, vendorPdf } from './docs-pdf.js';
 import { vaultReady, seal, open as unseal, fingerprint } from './vault.js';
-import { validateVendor, bankParts, maskedBank, last4, clientView as vendorClientView, adminView as vendorAdminView, PUBLIC_KEYS as VENDOR_PUBLIC } from './vendor.js';
+import { validateVendor, bankParts, maskedBank, last4, revealAllowed, clientView as vendorClientView, adminView as vendorAdminView, PUBLIC_KEYS as VENDOR_PUBLIC } from './vendor.js';
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender } from './concept.js';
@@ -1922,10 +1922,37 @@ async function vendorSubmission(req,reply){
   return row;
 }
 const vendorLog=(row,userId,action)=>pool.query('insert into vendor_access_log(submission_id,user_id,action) values($1,$2,$3)',[row.id,userId,action]);
+// Full bank details are last-four-only for everyone, with one narrow exception: a named finance user (VENDOR_REVEAL_EMAILS) who asks for a one-time code
+// sent to their own email, enters it, and sees the details for a moment. Each code opens one submission once; each opening is logged and flagged to staff.
+async function vendorRevealUser(req,reply){
+  const u=(await pool.query('select email,name from users where id=$1',[req.auth.sub])).rows[0];
+  if(!u||!revealAllowed(u.email)){reply.code(403).send({error:'Full bank details can only be opened by the finance users named for it (VENDOR_REVEAL_EMAILS). Everyone else sees the last four digits.'});return null}
+  return u;
+}
+app.post('/v1/admin/vendor/:sid/reveal-code',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await vendorSubmission(req,reply);if(!row)return;const u=await vendorRevealUser(req,reply);if(!u)return;
+  if(!throttle(`vreveal:${req.auth.sub}`,{limit:5,windowMs:15*60*1000}))return reply.code(429).send({error:'Too many codes: try again in a while'});
+  const code=String(randomInt(100000,1000000));
+  await pool.query(`insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval '5 minutes')`,[`vendor-reveal:${req.auth.sub}:${row.id}`,hash(code)]);
+  const sent=await sendHubEmail({to:u.email,subject:'Your code to open vendor bank details',html:hubEmailShell('Open vendor bank details',`<p>Your one-time code is <strong style="font-size:20px;letter-spacing:.15em">${code}</strong>. It opens one vendor's details once and expires in 5 minutes. If you did not ask for it, ignore this email and tell the team.</p>`)}).catch(()=>false);
+  if(!sent)return reply.code(502).send({error:'The code could not be emailed. Try again in a moment.'});
+  return reply.code(202).send({sentTo:u.email.replace(/^(.).*(@.*)$/,'$1••••$2')});
+});
 app.post('/v1/admin/vendor/:sid/reveal',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const row=await vendorSubmission(req,reply);if(!row)return;
+  const row=await vendorSubmission(req,reply);if(!row)return;const u=await vendorRevealUser(req,reply);if(!u)return;
+  // like sign-in: only wrong codes count, and once too many have been tried nothing is checked (a right code included) until the window passes
+  const gk=`vguess:${req.auth.sub}`,lock=throttles.get(gk);
+  if(lock&&lock.count>CODE_GUESS.limit&&Date.now()-lock.startedAt<=CODE_GUESS.windowMs&&process.env.DEV_BYPASS_AUTH!=='true')return reply.code(429).send({error:'Too many wrong codes: wait a while and ask for a new one'});
+  const code=cleanCode(typeof req.body?.code==='string'||typeof req.body?.code==='number'?req.body.code:'');
+  const used=code?(await pool.query(`update login_codes set consumed_at=now() where id=(select id from login_codes where email=$1 and code_hash=$2 and consumed_at is null and expires_at>now() order by created_at desc limit 1) returning id`,[`vendor-reveal:${req.auth.sub}:${row.id}`,hash(code)])).rows[0]:null;
+  if(!used){
+    if(!throttle(gk,CODE_GUESS)){await pool.query(`update login_codes set consumed_at=now() where email like $1 and consumed_at is null`,[`vendor-reveal:${req.auth.sub}:%`]).catch(()=>{});return reply.code(429).send({error:'Too many wrong codes: wait a while and ask for a new one'})}
+    return reply.code(403).send({error:'That code is wrong or has expired. Ask for a new one.'});
+  }
+  throttles.delete(gk);
   let data;try{data=unseal(row.data_enc)}catch{return reply.code(503).send({error:'The stored details cannot be opened: is VENDOR_DATA_KEY the same key they were saved with?'})}
   await vendorLog(row,req.auth.sub,'reveal');
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'vendor-reveal',$2,'vendor',$3)`,[row.client_id,`${u.name||u.email} opened the full bank details of ${row.client_name} (v${row.version})`,row.id]);
   return reply.header('cache-control','no-store').send({data});
 });
 app.post('/v1/admin/vendor/:sid/review',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
@@ -1948,8 +1975,8 @@ app.post('/v1/admin/vendor/:sid/review',{preHandler:[authenticate,adminOnly]},as
 app.get('/v1/admin/vendor/:sid/pdf',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const row=await vendorSubmission(req,reply);if(!row)return;
   let data;try{data=unseal(row.data_enc)}catch{return reply.code(503).send({error:'The stored details cannot be opened: is VENDOR_DATA_KEY the same key they were saved with?'})}
-  const full=req.query?.full==='1';if(full)await vendorLog(row,req.auth.sub,'pdf-full');
-  const buf=await vendorPdf({sub:row,data,full});
+  const buf=await vendorPdf({sub:row,data,full:false}); // the form on file never carries the whole numbers
+
   return reply.type('application/pdf').header('cache-control','no-store').header('content-disposition',`attachment; filename="vendor-information-${row.company_name.replace(/[^a-z0-9]+/gi,'-').slice(0,40)}-v${row.version}.pdf"`).send(buf);
 });
 

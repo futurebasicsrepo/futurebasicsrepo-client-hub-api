@@ -61,3 +61,10 @@ export const adminView = r => r && ({
   bankChanged: Boolean(r.bank_changed), verifiedCall: Boolean(r.verified_call), reviewNote: r.review_note || '', reviewedBy: r.reviewer_name || '', taxFormId: r.tax_form_file_id || null,
   taxFormName: r.tax_form_name || ''
 });
+
+// Who may open the full bank details: only the people named in VENDOR_REVEAL_EMAILS (comma separated; "@domain.com" names a whole domain).
+// Not set means nobody: everyone sees the last four digits and no more.
+export const revealAllowed = (email, env = process.env) => {
+  const e = String(email || '').trim().toLowerCase(); if (!e) return false;
+  return String(env.VENDOR_REVEAL_EMAILS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).some(x => x.startsWith('@') ? e.endsWith(x) : e === x);
+};
