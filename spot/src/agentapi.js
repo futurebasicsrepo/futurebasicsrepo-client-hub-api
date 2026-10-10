@@ -564,13 +564,22 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
 
   async function orderAsk(req, agent, askId, shipping) {
     const cart = owned(agent, askId);
+    // No address given: the one already on the ask (a signed-in user's ask
+    // carries it), else the signed-in user's saved one. The AI never needs
+    // to know the address to retry an order.
+    const saved = () => (req.spotUserId ? db?.users?.byId(req.spotUserId)?.shipping : null) || null;
+    const shipFor = (c) => {
+      const ship = shipping || c.requester?.shipping || saved();
+      if (!ship) throw new CartError('Give the shipping address: none is saved for this ask', 400);
+      return ship;
+    };
     if (cart.__bundle) {
       // Order from every store that's paid and not ordered yet.
       const ready = cart.carts.filter((c) => c.status === 'card_issued' && !['starting', 'working', 'awaiting_confirm', 'placed'].includes(c.fulfillment?.state));
       if (!ready.length) throw new CartError(cart.status === 'open' ? 'Nobody has paid yet' : 'Nothing left to order', 409);
       for (const c of ready) {
         try {
-          await fulfiller.start(c, shipping);
+          await fulfiller.start(c, shipFor(c));
           note(req, agent, 'order_started', { ask_id: cart.token, item: c.items[0]?.title, merchant: c.merchant.name, cents: c.cart_cents });
         } catch (err) {
           // One store failing doesn't stop the others; its state says why.
@@ -580,7 +589,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       return bundleView(req, { ...spot.loadBundle(cart.token), __bundle: true });
     }
     if (cart.kind === 'flight') throw new CartError('Flights are booked automatically once paid', 409);
-    await fulfiller.start(cart, shipping);
+    await fulfiller.start(cart, cart.kind === 'train' ? shipping : shipFor(cart));
     note(req, agent, 'order_started', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents });
     return view(req, spot.byId(cart.id));
   }
@@ -745,8 +754,8 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Order a paid Spot cart',
         description:
-          "Once someone has paid (status card_issued), place the order at the store, shipped to the given address. Spot buys it from the store with its own card; the requester confirms the final tap on their Spot page. If the store blocks automation, call it again to retry; if Spot can't order within 3 days the payer is refunded.",
-        inputSchema: { ask_id: z.string(), shipping: shippingShape },
+          "Once someone has paid (status card_issued), place the order at the store, shipped to the given address. Leave shipping out to use the address already on the ask or saved on your user's Spot account (don't ask your user for it again). Spot buys it from the store with its own card; the requester confirms the final tap on their Spot page. If the store blocks automation, call it again to retry; if Spot can't order within 3 days the payer is refunded.",
+        inputSchema: { ask_id: z.string(), shipping: shippingShape.optional() },
       },
       async ({ ask_id, shipping }) => {
         try {

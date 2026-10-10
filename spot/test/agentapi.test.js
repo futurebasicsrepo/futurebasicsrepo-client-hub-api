@@ -56,6 +56,19 @@ test('REST: an agent creates an ask, tracks it, and orders it once paid', async 
   assert.equal(o.order.state, 'needs_you');
   assert.match(o.next_step, /retry.*refunded in full/);
   assert.doesNotMatch(JSON.stringify(o), /card_ref|sandbox_secret|"number"/);
+
+  // Retrying needs no address from the AI: the one already on the ask is used.
+  const again = (await a.inject({ method: 'POST', url: `/v1/agent/asks/${ask.ask_id}/order`, headers: auth('s3cret-a'), payload: {} })).json();
+  assert.equal(again.order.state, 'needs_you', 'retried with the address on the ask');
+});
+
+test('ordering with no address and none saved asks for one', async (t) => {
+  const a = app(t);
+  const ask = (await a.inject({ method: 'POST', url: '/v1/agent/asks', headers: auth('s3cret-a'), payload: { requester: { name: 'Kyle' }, merchant: { name: 'Nike', url: 'https://www.nike.com' }, items } })).json();
+  await a.inject({ method: 'POST', url: `/v1/carts/${ask.ask_id}/sandbox-pay`, payload: { payer_name: 'Mom' } });
+  const r = await a.inject({ method: 'POST', url: `/v1/agent/asks/${ask.ask_id}/order`, headers: auth('s3cret-a'), payload: {} });
+  assert.equal(r.statusCode, 400);
+  assert.match(r.json().error, /shipping address/);
 });
 
 test('REST: a description it cannot price comes back as a draft to complete', async (t) => {
