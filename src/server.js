@@ -3362,7 +3362,9 @@ async function addConceptRender(packId,{artwork,title,category,description}){
     const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');return}
     const pack=normalizeTechPack(live.data);
     if(!have)pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your description, with your own graphic placed on it. A first idea, not a final design.',image,parts:[]},...pack.renderings.filter(r=>!/^concept-/.test(r.id))].slice(0,6);
-    const sk=pack.sketches.find(s=>!s.image&&/concept render/i.test(s.label))||(!pack.sketches.some(s=>s.image)?pack.sketches.find(s=>!s.image):null);
+    // a sketch holding only the client's own graphic is not a picture of the product: it counts as empty, so the render still becomes the front view
+    const empty=s=>!s.image||pack.artwork.some(a=>a.image===s.image);
+    const sk=pack.sketches.find(s=>empty(s)&&/concept render/i.test(s.label))||(pack.sketches.every(empty)?pack.sketches.find(empty):null);
     if(sk){
       sk.image=image;sk.label='Front view — concept render';
       const art=pack.artwork.find(a=>a.image===artwork)||pack.artwork.find(a=>a.source==='upload');
@@ -3477,7 +3479,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     {const items=[];if(artwork)items.push({image:artwork,name:'Your upload',source:'upload'});if(graphic)items.push({image:graphic.image,name:'Graphic from your photo',source:'cropped'});
      if(items.length)deriveArt(packId,row.product_id,items).catch(err=>app.log.warn({err:err.message,packId},'art files not derived'))}
     // a graphic and no product picture: the concept render becomes the front view before the exchange starts, so the check and the callouts have something to work on
-    {const conceptArt=artwork||(merged.sketches.every(k=>!k.image)?merged.artwork.find(a=>a.source==='upload')?.image:null);
+    {const conceptArt=artwork||(merged.sketches.every(k=>!k.image||merged.artwork.some(a=>a.image===k.image))?merged.artwork.find(a=>a.source==='upload')?.image:null);
      if(conceptArt)await addConceptRender(packId,{artwork:conceptArt,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'))}
     startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){

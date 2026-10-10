@@ -293,4 +293,28 @@ await journey('J105', 'the tech pack header carries the brand like the rest of t
   } finally { await bw.close(); }
 });
 
+await journey('J106', 'a pack drawn from a description can be re-run by staff, even once published: the concept render stays the front view with its callouts and detail pictures, and a graphic in a sketch slot does not stop the render from being the front view', async () => {
+  const sharp = (await import('sharp')).default;
+  const png = await sharp({ create: { width: 640, height: 320, channels: 3, background: '#ffffff' } }).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320"><rect x="40" y="90" width="90" height="150" fill="#000"/><rect x="160" y="60" width="60" height="180" fill="#000"/></svg>`), top: 0, left: 0 }]).png().toBuffer();
+  const art = `data:image/png;base64,${png.toString('base64')}`, mail = `rr-${stamp}@chaos.test`;
+  const a = await call('/v1/public/start', { body: { email: mail, name: 'Rerun Tester', title: 'A hoodie and matching sweatpants', notes: 'A hoodie and matching sweatpants', photos: [art] } }); ok(a.status === 201, 'a graphic with a description starts a room', a.status);
+  const cid = a.json.client.id, pid = a.json.product.id;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const pack = async () => (await adm(`/v1/admin/products/${pid}/tech-pack`)).json.techPack;
+  const settle = async () => { for (let i = 0; i < 120; i++) { const d = await pack(); if (d && ['done', 'failed'].includes(d.aiStatus)) break; await sleep(300); } for (let i = 0; i < 120; i++) { const c = (await adm(`/v1/admin/products/${pid}/tech-pack/check`)).json; if (c.loop && ['done', 'failed'].includes(c.loop.status)) break; await sleep(400); } await sleep(1500); return pack(); };
+  let d = await settle(), front = d.data.sketches.find(k => k.image);
+  ok(front && /concept render/i.test(front.label) && front.image !== art && front.callouts.length > 0, 'first run: the concept render is the front view and has callouts', front && [front.label, front.callouts.length]);
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: rerun' } })).status === 200, 'staff publish');
+  const r = await adm(`/v1/admin/products/${pid}/tech-pack/ai`, { method: 'POST' }); ok(r.status === 200 && r.json.aiStatus === 'pending', 'staff re-run it on the published pack', [r.status, r.json]);
+  d = await settle(); front = d.data.sketches.find(k => k.image && /concept render/i.test(k.label)) || d.data.sketches.find(k => k.image);
+  ok(d.aiStatus === 'done' && front && front.image !== art && front.callouts.length > 0 && front.callouts.some(c => c.photo || c.hphoto), 're-run: the render is still the front view, with callouts and detail pictures on them', front && [front.label, front.callouts.length, front.callouts.filter(c => c.photo || c.hphoto).length]);
+  ok(d.data.artwork.length >= 1 && d.data.artwork.some(x => x.image === art), 'and the client\'s graphic is still their artwork');
+  // a pack left with the client's graphic sitting in a sketch slot and no front render (how an earlier version could leave it)
+  const data = structuredClone(d.data); data.sketches = [{ id: 'view-legacy', view: 'front', label: 'Reference photo', image: art, garmentWidthIn: null, callouts: [] }]; data.renderings = [];
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200, 'setup: a pack with the graphic in a sketch slot and no render');
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack/ai`, { method: 'POST' })).status === 200, 'staff run the assistant again');
+  d = await settle(); front = d.data.sketches.find(k => k.image && k.image !== art);
+  ok(front && /^data:image\/jpeg/.test(front.image) && d.data.renderings.some(x => /^concept-/.test(x.id)), 'the render is made and becomes the front view; the graphic is not what the pack shows as the product', front && front.label);
+});
+
 summary(); process.exit(bad ? 1 : 0);

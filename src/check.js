@@ -267,10 +267,15 @@ export async function compareToPhoto({ photos = [], promptText = '', renders = [
 
 // ---- The whole check ----
 // Photos are the pack's own reference pictures: the first ones, preferring those labelled as reference photos.
+// The pictures the check holds the render up against. A graphic the client uploaded (a logo, lettering) is never a picture of the product, even if it sits in a sketch
+// slot, so it is left out; a real photo comes first, and a concept render (the front view of a pack drawn from a description) is used when there is no real photo.
 export function referencePhotos(input) {
   const p = normalizeTechPack(input);
-  const withImage = p.sketches.filter(s => s.image);
-  return [...withImage.filter(s => /reference|photo/i.test(s.label)), ...withImage.filter(s => !/reference|photo/i.test(s.label))].map(s => s.image).slice(0, 2);
+  const graphics = new Set((p.artwork || []).map(a => a.image).filter(Boolean));
+  const usable = p.sketches.filter(s => s.image && !graphics.has(s.image));
+  const concept = s => /concept render/i.test(s.label || '');
+  const real = usable.filter(s => !concept(s));
+  return [...real.filter(s => /reference|photo/i.test(s.label)), ...real.filter(s => !/reference|photo/i.test(s.label)), ...usable.filter(concept)].map(s => s.image).slice(0, 2);
 }
 
 export async function runSpecCheck({ pack, product = {}, promptText = '', cfg = imageConfig(), hero = null }) {
