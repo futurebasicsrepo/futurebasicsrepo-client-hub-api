@@ -82,7 +82,8 @@ export function termsPage({ origin, env = process.env }) {
 <ul>
 <li><b>Before the order is placed</b>, the buyer can cancel from the link in their receipt, and the requester can cancel from their Spot page. Either way the buyer gets a full refund, Spot fee included.</li>
 <li><b>Several stores:</b> if one store’s cart can’t be ordered, or is canceled, the buyer gets back that store’s share (its items, allowance and Spot fee); the others go ahead.</li>
-<li><b>If Spot can’t order it</b> within 3 days of payment (the store is out of stock, won’t accept the order, or anything else), the buyer is refunded in full automatically.</li>
+<li><b>When you pay</b>, your card is authorized for the total (a hold), and charged when the store accepts Spot’s order. Before the hold, Spot gets the store’s own total for the shipping address, shipping and tax included, wherever the store can give one.</li>
+<li><b>If Spot can’t order it</b> within 3 days of payment (the store is out of stock, won’t accept the order, or anything else), the hold is released and you’re never charged; anything already charged is refunded in full automatically.</li>
 <li><b>If the store charges less</b> than the buyer paid for the goods, or cancels, the difference (or everything) goes back to the buyer automatically.</li>
 <li><b>Returns:</b> contact us at <a href="mailto:${email}">${email}</a> within the store’s return window. We arrange the return with the store under its return policy, and when the store refunds Spot, we refund the buyer that amount. The Spot fee is refunded only when the whole order is.</li>
 <li><b>Flights:</b> if the airline can’t issue a ticket you paid for, you’re refunded in full automatically. Once a ticket is issued, changes and refunds follow the airline’s fare rules.</li>

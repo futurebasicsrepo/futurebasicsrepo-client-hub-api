@@ -215,7 +215,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       expired: 'The link expired before anyone paid.',
       canceled: 'The requester canceled this ask.',
       refunding: 'Refunding the payer.',
-      refunded: 'The payer was refunded.',
+      refunded: cart.released ? 'Not ordered. The payer’s card was only held, never charged, and the hold is released.' : 'The payer was refunded.',
     }[cart.status];
     return {
       ask_id: cart.token,

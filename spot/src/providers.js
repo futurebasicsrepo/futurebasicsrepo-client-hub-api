@@ -2,13 +2,21 @@
 // doesn't care which one is running:
 //
 //   name                         'sandbox' | 'stripe'
-//   createPayment(cart)          → { ref, client }   what the pay page needs
-//   issueCard(cart)              → { ref, brand, last4, exp_month, exp_year }
+//   createPayment(cart)          → { ref, client }   what the pay page needs;
+//                                  a hold on the payer's card, not a charge
+//   capturePayment(ref)          → 'captured' | 'already' | 'canceled'
+//                                  (once the store accepts the order)
+//   issueCard(cart, { ready })   → { ref, brand, last4, exp_month, exp_year }
+//                                  (ready: made switched off, before the hold)
+//   activateCard(ref, cents)     → void   (switch a ready card on)
+//   issuingAvailableCents()      → number | null   (what Spot's cards can spend)
 //   revealCard(cart)             → { number, cvc, exp_month, exp_year }
 //                                  (checkout only: never sent to a browser)
 //   cancelCard(cart)             → void
 //   setCardLimit(ref, cents)     → void   (Spot covering a difference)
-//   refund(cart, amountCents?, key?) → void   (whole payment when no amount)
+//   refund(cart, amountCents?, key?) → 'released' | 'refunded'
+//                                  (whole payment when no amount; a hold is
+//                                  released rather than refunded)
 //
 // An account's own saved card, for paying its AI's asks (funding.js):
 //   setupFunding(user, saved?)   → { mode, customer?, client_secret? }
@@ -42,10 +50,27 @@ export function sandboxProvider() {
     async cancelPayment() {
       return true;
     },
-    async issueCard(cart) {
+    // Payments are holds until captured. Tests set `issuingCents` to play a
+    // short Issuing balance, or `cardFails` to play a card Stripe won't make.
+    captured: new Set(),
+    released: [],
+    issuingCents: null,
+    cardFails: null,
+    async issuingAvailableCents() {
+      return this.issuingCents;
+    },
+    async capturePayment(ref) {
+      if (this.released.includes(ref)) return 'canceled';
+      if (this.captured.has(ref)) return 'already';
+      this.captured.add(ref);
+      return 'captured';
+    },
+    async issueCard(cart, { ready = false } = {}) {
+      if (this.cardFails) throw new Error(this.cardFails);
       const number = luhnNumber('4000009', 16);
       const now = new Date();
       return {
+        ...(ready ? { status: 'inactive' } : {}),
         ref: `sbx_card_${cart.id}`,
         brand: 'Visa',
         last4: number.slice(-4),
@@ -75,7 +100,7 @@ export function sandboxProvider() {
       if (funding.last4 === '3155' && !present) return { ref, status: 'failed', error: 'Your bank wants to check this payment. Approve it on your phone instead.' };
       this.charges.push({ cart: cart.id, amount_cents: cart.total_cents, present });
       this.charges.splice(0, this.charges.length - 200);
-      return { ref, status: 'succeeded' };
+      return { ref, status: 'held' };
     },
     async removeFunding() {},
     // What would have moved, for tests and the sandbox demo.
@@ -89,9 +114,21 @@ export function sandboxProvider() {
     async setCardLimit(ref, cents) {
       this.limits.set(ref, cents);
     },
+    activated: [],
+    async activateCard(ref, cents) {
+      this.activated.push(ref);
+      this.limits.set(ref, cents);
+    },
+    // A hold not yet captured is released (nothing was ever charged);
+    // anything else is refunded.
     async refund(cart, amountCents, key) {
-      if (cart.payment_ref) this.refunds.push({ cart: cart.id, amount_cents: amountCents ?? null, key: key || null });
+      if (!cart.payment_ref) return null;
+      const ref = String(cart.payment_ref).split('#')[0];
+      const held = !this.captured.has(ref);
+      this.refunds.push({ cart: cart.id, amount_cents: amountCents ?? null, key: key || null, ...(held ? { released: true } : {}) });
       this.refunds.splice(0, this.refunds.length - 200);
+      if (held && !amountCents) this.released.push(ref);
+      return held && !amountCents ? 'released' : 'refunded';
     },
   };
 }
@@ -121,6 +158,7 @@ export function stripeProvider(env = process.env) {
   // draw from. Set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…), or Spot uses the
   // account's one open financial account when Stripe asks for it.
   let financialAccount = env.STRIPE_ISSUING_FINANCIAL_ACCOUNT || null;
+  let balanceSeen = null;
   // Listing them is a preview API: Stripe only answers it on the matching
   // .preview version of the API this SDK speaks.
   const PREVIEW_VERSION = `${Stripe.API_VERSION.split('.')[0]}.preview`;
@@ -150,11 +188,14 @@ export function stripeProvider(env = process.env) {
         {
           amount: cart.total_cents,
           currency: 'usd',
+          // A hold, not a charge: captured once the store accepts the order
+          // (see capturePayment), released if Spot can't buy it.
+          capture_method: 'manual',
           automatic_payment_methods: { enabled: true },
           description: `Spot cart for ${cart.requester.name} at ${cart.merchant.name}`,
           metadata: { spot_cart_id: cart.id, ...(cart.bundle ? { spot_bundle: '1' } : {}) },
         },
-        { idempotencyKey: `spot-pi-${cart.id}-${cart.rev || 1}` },
+        { idempotencyKey: `spot-hold-${cart.id}-${cart.rev || 1}` },
       );
       return { ref: pi.id, client: clientFor(pi, env) };
     },
@@ -172,7 +213,10 @@ export function stripeProvider(env = process.env) {
     // One company cardholder (Spot itself), made once in the Stripe dashboard.
     // Cards are Spot's, used by Spot's checkout to buy what customers bought
     // from Spot; nobody outside Spot ever sees the number.
-    async issueCard(cart) {
+    // ready: made before the payer pays, switched off until the hold is in
+    // (activateCard), so a card Stripe won't make stops the payment instead
+    // of failing after it.
+    async issueCard(cart, { ready = false } = {}) {
       if (!cardholderId) throw new Error('STRIPE_ISSUING_CARDHOLDER is not set (Spot\'s company cardholder id, ich_…)');
       // Spending controls are enforced by the network, and back up the
       // real-time checks in the issuing_authorization.request webhook: even if
@@ -184,7 +228,7 @@ export function stripeProvider(env = process.env) {
             cardholder: cardholderId,
             currency: 'usd',
             type: 'virtual',
-            status: 'active',
+            status: ready ? 'inactive' : 'active',
             ...(fa ? { financial_account_v2: fa } : {}),
             spending_controls: {
               spending_limits: [{ amount: cardLimitCents(cart), interval: 'all_time' }],
@@ -193,7 +237,7 @@ export function stripeProvider(env = process.env) {
             metadata: { spot_cart_id: cart.id },
           },
           // A different body needs its own key; the account never changes for a cart.
-          { idempotencyKey: fa ? `spot-card-${cart.id}-${fa}` : `spot-card-${cart.id}` },
+          { idempotencyKey: `spot-card-${cart.id}${ready ? '-ready' : ''}${fa ? `-${fa}` : ''}` },
         );
       let card;
       try {
@@ -204,6 +248,42 @@ export function stripeProvider(env = process.env) {
         card = await create(financialAccount);
       }
       return { ref: card.id, brand: card.brand, last4: card.last4, exp_month: card.exp_month, exp_year: card.exp_year };
+    },
+    async activateCard(ref, cents) {
+      await stripe.issuing.cards.update(ref, {
+        status: 'active',
+        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: BLOCKED_CATEGORIES },
+      });
+    },
+
+    // What Spot's cards can spend right now (the Issuing financial account's
+    // available balance), or null when Stripe won't say. Read at most once a
+    // minute: it's checked before every payment.
+    async issuingAvailableCents() {
+      if (!financialAccount) return null;
+      if (balanceSeen && Date.now() - balanceSeen.at < 60_000) return balanceSeen.cents;
+      try {
+        const fa = await stripe.rawRequest('GET', `/v2/money_management/financial_accounts/${financialAccount}`, {}, { apiVersion: PREVIEW_VERSION });
+        const cents = Number(fa?.balance?.available?.usd?.value ?? fa?.balance?.available?.usd ?? NaN);
+        balanceSeen = { at: Date.now(), cents: Number.isFinite(cents) ? cents : null };
+      } catch {
+        balanceSeen = { at: Date.now(), cents: null };
+      }
+      return balanceSeen.cents;
+    },
+
+    async retrievePayment(ref) {
+      return stripe.paymentIntents.retrieve(String(ref).split('#')[0]);
+    },
+    // Take the money held on the payer's card. Safe to repeat.
+    async capturePayment(ref) {
+      const id = String(ref).split('#')[0];
+      const pi = await stripe.paymentIntents.retrieve(id);
+      if (pi.status === 'succeeded') return 'already';
+      if (pi.status === 'canceled') return 'canceled';
+      if (pi.status !== 'requires_capture') throw new Error(`Payment ${id} is ${pi.status}, not held`);
+      await stripe.paymentIntents.capture(id, {}, { idempotencyKey: `spot-capture-${id}` });
+      return 'captured';
     },
 
     // For Spot's own checkout only, at the moment it pays. The number passes
@@ -231,14 +311,34 @@ export function stripeProvider(env = process.env) {
       }
     },
 
-    // The whole payment, or part of it (unused cushion, a store return).
+    // The whole payment, or part of it (unused cushion, a store return). A
+    // hold not yet captured is released instead, so nothing ever shows as a
+    // charge on the payer's card: all of it, or (part of it) by capturing
+    // only the rest. 'released' or 'refunded' says which.
     async refund(cart, amountCents, key) {
-      if (!cart.payment_ref) return;
+      if (!cart.payment_ref) return null;
+      const id = String(cart.payment_ref).split('#')[0];
+      const pi = await stripe.paymentIntents.retrieve(id);
+      if (pi.status === 'canceled') return 'released';
+      if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(pi.status) && !amountCents) {
+        await stripe.paymentIntents.cancel(id);
+        return 'released';
+      }
+      if (pi.status === 'requires_capture') {
+        const keep = amountCents ? pi.amount_capturable - amountCents : 0;
+        if (keep <= 0) {
+          await stripe.paymentIntents.cancel(id, {}, { idempotencyKey: `spot-release-${id}` });
+          return 'released';
+        }
+        await stripe.paymentIntents.capture(id, { amount_to_capture: keep }, { idempotencyKey: `spot-capture-${id}` });
+        return 'released';
+      }
       await stripe.refunds.create(
         // A bundle's store carts hold "<payment>#<n>"; refunds go to the payment.
         { payment_intent: String(cart.payment_ref).split('#')[0], ...(amountCents ? { amount: amountCents } : {}), metadata: { spot_cart_id: cart.id } },
         { idempotencyKey: key ? `spot-refund-${cart.id}-${key}` : `spot-refund-${cart.id}` },
       );
+      return 'refunded';
     },
 
     // Apple Pay / Google Pay / card forms carry the payer's name, so the pay
@@ -298,12 +398,14 @@ export function stripeProvider(env = process.env) {
             customer: funding.customer,
             payment_method: funding.pm,
             confirm: true,
+            capture_method: 'manual',
             ...(present ? { automatic_payment_methods: { enabled: true, allow_redirects: 'never' } } : { off_session: true }),
             description: `Spot: ${cart.requester.name}'s AI at ${cart.merchant.name}`,
             metadata: { spot_cart_id: cart.id, spot_saved_card: '1' },
           },
-          { idempotencyKey: `spot-saved-${cart.id}-${present ? 'p' : 'o'}` },
+          { idempotencyKey: `spot-saved-hold-${cart.id}-${cart.rev || 1}-${present ? 'p' : 'o'}` },
         );
+        if (pi.status === 'requires_capture') return { ref: pi.id, status: 'held' };
         if (pi.status === 'succeeded') return { ref: pi.id, status: 'succeeded' };
         if (pi.status === 'requires_action') return { ref: pi.id, status: 'requires_action', client: clientFor(pi, env) };
         return { ref: pi.id, status: 'failed', error: 'The payment didn’t go through.' };

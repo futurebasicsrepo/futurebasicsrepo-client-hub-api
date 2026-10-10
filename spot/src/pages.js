@@ -476,6 +476,7 @@ function payScript(cart, provider, base = '/v1/carts/') {
   const settle=async(payer)=>{$('#payErr').textContent='';
     const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});
     if(error){$('#payErr').textContent=error.message;return false}
+    await api(B+T+'/paid',{}).catch(()=>{});
     for(let i=0;i<20;i++){const r=await api(B+T);if((r.cart||r.bundle).status!=='open')break;await new Promise(z=>setTimeout(z,1500))}
     celebrate(payer||'');return true};
   // Apple Pay / Google Pay / Link: shown only on devices that have one.
@@ -582,6 +583,7 @@ function finishPanel(c,notice){
       else if(!stripeReady){await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:v})}
       if(SAVED){b.textContent='approving…';const r=await api('/v1/carts/'+TOKEN+'/manage/pay-saved',{});
         if(r.action){const stripe=Stripe(r.action.publishable_key);const {error}=await stripe.handleNextAction({clientSecret:r.action.client_secret});if(error)throw error;
+          await api('/v1/carts/'+TOKEN+'/paid',{}).catch(()=>{});
           for(let i=0;i<20;i++){const x=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(x.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}}
         return draw()}
       if(c.settle==='direct'){b.textContent='opening '+c.merchant.name+'…';const r=await api('/v1/carts/'+TOKEN+'/direct/start',{email:v.email,name:v.name});location.href=r.continue_url;return}
@@ -590,6 +592,7 @@ function finishPanel(c,notice){
         const elements=stripe.elements({clientSecret:p.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
         const ex=elements.create('expressCheckout',{buttonHeight:52});ex.mount('#payEl');elements.create('payment',{layout:'tabs',wallets:{applePay:'never',googlePay:'never'}}).mount('#payEl');
         const confirmPay=async()=>{const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;
+          await api('/v1/carts/'+TOKEN+'/paid',{}).catch(()=>{});
           for(let i=0;i<20;i++){const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}draw()};
         ex.on('confirm',()=>confirmPay().catch(err=>{$('#finErr').textContent=err.message}));
         stripeReady=confirmPay;b.disabled=false;b.textContent='Pay '+usd(c.total_cents);return}
@@ -693,7 +696,7 @@ async function draw(){
       +'<div id="simOut" class="err"></div></section>';
   }
   if(c.status==='completed'&&!fl&&c.settle==='handoff'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">Marked as received.</p></section>'}
-  if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+' refunded '+usd(c.total_cents)+'.</p></section>';
+  if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>'+(c.released?'Not charged':'Refunded')+'</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+(c.released?' never charged: the '+usd(c.total_cents)+' hold is released.':' refunded '+usd(c.total_cents)+'.')+'</p></section>';
   if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
   if(c.settle==='handoff'&&c.items[0]&&c.items[0].url&&c.status!=='canceled'&&c.status!=='expired')h+='<a class="btn ghost" href="/c/'+TOKEN+'/buy/0'+(K?'?k='+encodeURIComponent(K):'')+'" target="_blank" rel="noopener">Buy it at '+esc(c.merchant.name)+' →</a><p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from '+esc(c.merchant.name)+'. Your price is the same.</p>';
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';

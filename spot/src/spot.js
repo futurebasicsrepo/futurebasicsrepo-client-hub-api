@@ -75,11 +75,21 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // through on a cart Spot no longer follows. It expires after that.
     if (cart.direct?.checkout_id && Date.now() - (cart.direct.started_at || 0) < 60 * 60_000) return cart;
     try {
-      return move(cart, 'expire');
+      const expired = move(cart, 'expire');
+      dropReadyCard(expired);
+      return expired;
     } catch {
       return db.byId(cart.id);
     }
   }
+
+  // A card made for a payment that never came: switch it off for good.
+  function dropReadyCard(cart) {
+    if (!cart.ready_card?.ref) return;
+    Promise.resolve(provider.cancelCard({ ...cart, card_ref: cart.ready_card.ref })).catch((err) => log.error?.({ err, cart: cart.id }, 'ready card cancel failed'));
+  }
+
+  const notReady = (cart) => `Spot can’t buy from ${cart.merchant?.name || 'this store'} right this minute, so nothing was charged. We’ve been alerted. Try again in a little while.`;
 
   return {
     provider,
@@ -235,7 +245,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         const booking = await flights.book(started.flight);
         const booked = move(started, 'book', { flight: { ...started.flight, booking } }, { booking_reference: booking.booking_reference });
         this.emit('booked', booked.id);
-        return booked;
+        return this.capture(booked);
       } catch (err) {
         log.error?.({ err, cart: cart.id }, 'flight booking failed');
         const reason = err.status === 410 ? 'The airline released the fare before it could be booked.' : `The airline couldn't book it: ${err.message}`;
@@ -411,8 +421,44 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const key = quoteKey(cart);
       if (cart.quote?.key === key && Date.now() - cart.quote.at < 30 * 60_000) return cart;
       const q = await this.quoter(cart, cart.requester.shipping).catch(() => null);
-      if (!q) return cart;
-      return this.applyQuote(cart, q);
+      if (q) return this.applyQuote(cart, q);
+      // A store that can price its own checkout must, before anyone's card
+      // is touched: an estimate is how a hold ends up short of the store's total.
+      if (this.quotable && (await this.quotable(cart).catch(() => false))) {
+        db.event(cart.id, 'quote_failed');
+        throw new CartError(`${cart.merchant.name} didn’t confirm its shipping and tax just now, so nothing was charged. Try again in a minute.`, 503);
+      }
+      return cart;
+    },
+    // Set by the server: can this cart's store price its own checkout?
+    quotable: null,
+
+    // Before any hold on the payer's card: Spot's own card for this order
+    // exists (made switched off; activateCard turns it on once the hold is
+    // in), and Spot's Issuing balance covers it. When either isn't so, the
+    // payer is told before anything is held, never refunded after.
+    async readyCard(cart) {
+      if (cart.kind === 'flight' || cart.status !== 'open' || cart.settle !== 'card' || !provider.issueCard) return cart;
+      const need = cardLimitCents(cart);
+      const avail = provider.issuingAvailableCents ? await provider.issuingAvailableCents().catch(() => null) : null;
+      if (avail != null && avail < need) {
+        log.error?.({ cart: cart.id, need_cents: need, available_cents: avail }, 'issuing balance too low to take a payment');
+        db.event(cart.id, 'card_not_ready', { reason: 'balance', need_cents: need, available_cents: avail });
+        throw new CartError(notReady(cart), 503);
+      }
+      if (cart.ready_card) return cart;
+      let card;
+      try {
+        card = await provider.issueCard(cart, { ready: true });
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'card not ready');
+        db.event(cart.id, 'card_not_ready', { reason: 'issue', message: err.message });
+        throw new CartError(notReady(cart), 503);
+      }
+      const next = { ...cart, ready_card: { ...card, status: undefined } };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'card_ready', { last4: card.last4 });
+      return next;
     },
     applyQuote(cart, q) {
       const totals = computeTotals(cart.items, Math.max(0, q.total_cents - cart.subtotal_cents), 'card', cfg);
@@ -463,6 +509,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take a card payment for this cart.${cart.requester.venmo || cart.requester.cashtag ? ' Send it straight to them on Venmo or Cash App instead.' : ''}`, 409);
       }
       cart = await this.confirmTotal(cart);
+      cart = await this.readyCard(cart);
       const { ref, client } = await provider.createPayment(cart);
       if (ref !== cart.payment_ref) {
         const next = { ...cart, payment_ref: ref };
@@ -529,13 +576,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.kind === 'train' ? !cart.train.riders : !cart.requester?.shipping) throw new CartError(cart.kind === 'train' ? 'Add who’s riding first' : 'Add where it ships first', 409);
       if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't charge your card for it.`, 409);
       cart = await this.confirmTotal(cart);
+      cart = await this.readyCard(cart);
       const ready = this.patch(cart.id, (c) => ({ ...c, saved_pay: how }));
       const r = await provider.chargeSaved(ready, funding, { present });
       if (r.ref && r.ref !== ready.payment_ref) {
         const cur = db.byId(cart.id);
         if (!db.save({ ...cur, payment_ref: r.ref }, 'open')) throw new CartError('Cart changed, try again', 409);
       }
-      if (r.status === 'succeeded') {
+      if (r.status === 'held' || r.status === 'succeeded') {
         const payer = { name: cart.requester.name?.split(' ')[0] || null, email: (cart.requester.shipping || cart.train?.contact)?.email || null, fingerprint: funding.fingerprint || null };
         return { cart: await this.paymentSucceeded({ paymentRef: r.ref, amountCents: cart.total_cents, payer, approval: how }) };
       }
@@ -652,16 +700,20 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     async refundCart(cart, { reason = 'refund', by = null, quiet = false } = {}) {
       const cur = cart.status === 'refunding' ? cart : move(cart, 'begin_refund', { refund_reason: reason, refund_started_at: Date.now() }, { reason, by });
       const already = cur.refunded_cents || 0;
+      let how = null;
       try {
         await provider.cancelCard(cur);
+        if (cur.ready_card?.ref && !cur.card_ref) await provider.cancelCard({ ...cur, card_ref: cur.ready_card.ref });
         // A bundle's carts share one payment: always name this cart's share.
-        if (cur.total_cents - already > 0) await provider.refund(cur, already || cur.bundle_id ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
+        if (cur.total_cents - already > 0) how = await provider.refund(cur, already || cur.bundle_id ? cur.total_cents - already : undefined, already ? 'rest' : undefined);
       } catch (err) {
         log.error?.({ err, cart: cur.id }, 'refund failed');
         db.event(cur.id, 'refund_failed', { message: err.message });
         throw new CartError('The refund didn’t go through just now. It’s queued and will be retried.', 502);
       }
-      const done = move(cur, 'refund', { refunded_at: Date.now(), refunded_before_cents: already, refunded_cents: cur.total_cents, card_canceled: cur.card_ref ? Date.now() : null }, { amount_cents: cur.total_cents - already });
+      // released: the payer's card was only ever held, so nothing comes back
+      // because nothing left; the hold just disappears.
+      const done = move(cur, 'refund', { refunded_at: Date.now(), refunded_before_cents: already, refunded_cents: cur.total_cents, card_canceled: cur.card_ref ? Date.now() : null, released: how === 'released' }, { amount_cents: cur.total_cents - already, released: how === 'released' });
       if (!quiet) this.emit('refunded', done.id);
       return done;
     },
@@ -719,6 +771,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
           // Money left Spot's card after the payer was refunded: a human looks.
           return this.patch(cart.id, (c) => ({ ...c, alert: { kind: 'charged_after_refund', amount_cents: cents, at: Date.now() } }), 'charged_after_refund');
         }
+        cur = await this.capture(cur);
         // Single use: once the store has charged, nothing else can.
         return this._cancelOnce(cur);
       }
@@ -727,6 +780,47 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         return next;
       }
       return cart;
+    },
+
+    // The store accepted the order: the payer's hold becomes a charge. Safe
+    // to repeat (a bundle's carts share one payment); a failure is marked
+    // capture_due for the sweeper to retry.
+    async capture(cart) {
+      if (!cart?.payment_ref || cart.payment_captured_at || cart.settle !== 'card' || !provider.capturePayment) return cart;
+      try {
+        const r = await provider.capturePayment(cart.payment_ref);
+        if (r === 'canceled') {
+          // The hold was released or ran out, yet the store charged Spot: a human looks.
+          log.error?.({ cart: cart.id }, 'store charged but the hold is gone');
+          return this.patch(cart.id, (c) => ({ ...c, capture_due: null, alert: { kind: 'hold_released', at: Date.now() } }), 'capture_failed');
+        }
+        return this.patch(cart.id, (c) => ({ ...c, payment_captured_at: Date.now(), capture_due: null }), 'payment_captured');
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'capture failed');
+        db.event(cart.id, 'capture_failed', { message: err.message });
+        return this.patch(cart.id, (c) => ({ ...c, capture_due: c.capture_due || Date.now() }));
+      }
+    },
+
+    // The pay page, once Stripe.js says the payer confirmed: the same as the
+    // payment webhook, so a slow or missing webhook never strands a payer.
+    async checkPayment(token) {
+      const cart = load(token);
+      if (cart.status !== 'open' || !cart.payment_ref || !provider.retrievePayment) return cart;
+      const pi = await provider.retrievePayment(cart.payment_ref);
+      return (await this.paidFromIntent(pi)) || db.byId(cart.id);
+    },
+    // A PaymentIntent that's held (or charged): move its cart on. `type` is
+    // the webhook event's, which says which when the object doesn't.
+    async paidFromIntent(pi, type = null) {
+      const held = pi?.status === 'requires_capture' || type === 'payment_intent.amount_capturable_updated';
+      if (!pi?.metadata?.spot_cart_id || !(held || pi.status === 'succeeded' || type === 'payment_intent.succeeded')) return null;
+      const payer = (await provider.payerFor?.(pi).catch(() => null)) || {};
+      return this.paymentSucceeded({
+        paymentRef: pi.id,
+        amountCents: held ? pi.amount_capturable : pi.amount_received,
+        payer: { ...payer, name: payer.name || pi.shipping?.name || null },
+      });
     },
 
     async _cancelOnce(cart) {
@@ -791,6 +885,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     //  - retry refunds stuck in `refunding` and partial refunds that failed
     //  - refund carts Spot couldn't order within the deadline
     //  - refund authorizations that expired without a charge, after 30 days
+    //  - capture a payer's hold that failed to capture when the store charged
     async sweepMoney(now = Date.now()) {
       const done = [];
       for (const id of db.idsForMoneySweep()) {
@@ -811,6 +906,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
               done.push(await this.refundCart(this.patch(cart.id, (c) => ({ ...c, release_after: null })), { reason: 'store_never_charged' }));
             }
           }
+          const cur = db.byId(id);
+          if (cur.capture_due && !cur.payment_captured_at && now - cur.capture_due > 60_000) done.push(await this.capture(cur));
           for (const r of cart.refunds || []) if (r.state === 'failed' && now - r.at > 5 * 60_000) done.push(await this._sendPart(db.byId(id), r.key));
         } catch (err) {
           log.error?.({ err, cart: id }, 'money sweep failed');
@@ -842,7 +939,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (last && Date.now() - last.at < ISSUE_RETRY_MS) return cart;
       }
       try {
-        const card = await provider.issueCard(cart);
+        let card;
+        if (cart.ready_card?.ref && provider.activateCard) {
+          await provider.activateCard(cart.ready_card.ref, cardLimitCents(cart));
+          card = cart.ready_card;
+        } else {
+          card = await provider.issueCard(cart);
+        }
         const issued = move(cart, 'issue', { card_ref: card.ref, card: { ...card, ref: undefined }, issued_at: Date.now() }, { last4: card.last4 });
         // "For me" carts go straight on to ordering once the card exists.
         try {
@@ -869,12 +972,16 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
           amount_cents: auth.amount_cents,
         });
         if (decision.approved) {
+          let spent;
           try {
-            move(cart, 'spend', { spent_at: Date.now(), spent_cents: auth.amount_cents, spent_merchant: auth.merchant?.name || null });
+            spent = move(cart, 'spend', { spent_at: Date.now(), spent_cents: auth.amount_cents, spent_merchant: auth.merchant?.name || null });
           } catch {
             // Lost a race with another authorization: the card is single use.
             return { approved: false, reason: 'card_not_active' };
           }
+          // The store took the order: now the payer's hold becomes a charge.
+          // After the answer, which has to go back to Stripe in time.
+          setImmediate(() => this.capture(spent).catch(() => {}));
         }
       }
       return decision;
@@ -914,7 +1021,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.payment_ref && cart.status === 'open' && provider.cancelPayment && !(await provider.cancelPayment(cart.payment_ref))) {
         throw new CartError('Someone is paying this right now. Try again in a minute.', 409);
       }
-      return move(cart, 'cancel');
+      const canceled = move(cart, 'cancel');
+      dropReadyCard(canceled);
+      return canceled;
     },
 
     // The requester cancels and gives the payer their money back, until Spot
@@ -986,11 +1095,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       for (const c of b.carts) {
         if (!(await this.canOrder(c))) throw new CartError(`Spot can't order from ${c.merchant.name} automatically yet, so it can't take a payment for this ask.`, 409);
       }
+      for (const c of b.carts) await this.readyCard(c);
       const total = b.carts.reduce((n, c) => n + c.total_cents, 0);
       const { ref, client } = await provider.createPayment({ id: b.id, total_cents: total, requester: b.carts[0].requester, merchant: { name: storesLabel(b.carts) }, payment_ref: b.payment_ref, bundle: true });
       if (ref !== b.payment_ref) db.bundles.setPayment(b.id, ref);
-      b.carts.forEach((c, i) => {
+      b.carts.forEach((c0, i) => {
         const pr = `${ref}#${i}`;
+        const c = db.byId(c0.id);
         if (c.payment_ref !== pr && !db.save({ ...c, payment_ref: pr }, 'open')) throw new CartError('Cart changed, try again', 409);
       });
       return client;
@@ -1201,6 +1312,8 @@ export function ownerCart(cart) {
     // Spot's card is Spot's: the requester only learns that ordering can start.
     card_ready: Boolean(cart.card_ref),
     paid_at: cart.paid_at || null,
+    // Refunded before the store charged: the payer's hold was released, never charged.
+    released: Boolean(cart.released),
     spent_at: cart.spent_at || null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,

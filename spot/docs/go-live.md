@@ -82,7 +82,7 @@ Spot is the seller: the payer buys the cart from Spot, and Spot buys it from the
 3. **Register the Apple Pay and Google Pay domains** under Settings → Payment method domains. Add `spotmeplease.com` and `www.spotmeplease.com`.
 4. **Add the webhook** under Developers → Webhooks → Add endpoint:
    - URL: `https://spotmeplease.com/v1/webhooks/stripe`
-   - Events: `payment_intent.succeeded`, `issuing_authorization.request`, `issuing_authorization.updated`, `issuing_transaction.created` and `charge.dispute.created`
+   - Events: `payment_intent.succeeded`, `payment_intent.amount_capturable_updated`, `issuing_authorization.request`, `issuing_authorization.updated`, `issuing_transaction.created` and `charge.dispute.created`
    - Copy the signing secret.
 5. **Turn on real-time card authorizations** in Issuing settings, pointed at the same endpoint. This is how Spot declines a card used at the wrong store.
 6. **Tighten Radar** under Radar → Rules. Spot's own rules (see /admin) catch patterns across links. Radar catches bad cards. Turn on "Block if CVC verification fails" and "Block if postal code verification fails", and review payments Radar scores as elevated risk.
