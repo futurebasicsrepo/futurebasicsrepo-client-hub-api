@@ -3,7 +3,7 @@
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { agentLabel } from './approvals.js';
-import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
+import { COVER_MAX_CENTS, CartError, cardLimitCents, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
@@ -522,6 +522,22 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // From /admin: refund whatever the payer hasn't had back yet and cancel
     // the card. Also retries a refund stuck in `refunding`.
+    // Staff: Spot pays up to COVER_MAX_CENTS of a store total above what the
+    // card allows (shipping came in over the estimate). The payer isn't
+    // charged more; the card's network limit goes up by the same amount.
+    async coverDifference(cartId, cents, { by = 'admin' } = {}) {
+      const cart = db.byId(cartId);
+      if (!cart) throw new CartError('Cart not found', 404);
+      if (cart.status !== 'card_issued' || cart.settle !== 'card' || cart.kind === 'flight' || !cart.card_ref) throw new CartError('Only a paid order whose card is ready can be covered', 409);
+      if (cart.fulfillment?.state === 'placed') throw new CartError('Already ordered', 409);
+      const amount = Math.round(Number(cents));
+      if (!Number.isFinite(amount) || amount < 1 || amount > COVER_MAX_CENTS) throw new CartError(`Spot can cover $0.01 to $${COVER_MAX_CENTS / 100} on one order`);
+      const next = { ...cart, cover_cents: amount };
+      if (provider.setCardLimit) await provider.setCardLimit(cart.card_ref, cardLimitCents(next));
+      db.event(cart.id, 'spot_covered', { amount_cents: amount, by, limit_cents: cardLimitCents(next) });
+      return this.patch(cart.id, (c) => ({ ...c, cover_cents: amount }), 'cover_set');
+    },
+
     async adminRefund(cartId) {
       const cart = db.byId(cartId);
       if (!cart) throw new CartError('Cart not found', 404);
@@ -1119,7 +1135,7 @@ export function publicCart(cart) {
     requester_verified: Boolean(cart.user_id),
     paused: pausedByReports(cart),
     // Spot's one-time card for this order can spend at most this, once.
-    card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) : null,
+    card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) + (cart.cover_cents || 0) : null,
   };
 }
 

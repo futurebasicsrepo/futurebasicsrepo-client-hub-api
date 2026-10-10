@@ -21,7 +21,7 @@
 import { runCheckoutAgent } from './agent.js';
 import { checkoutUrl, resolveShopifyCart } from './shopify.js';
 import { discover, runUcpCheckout } from './ucp.js';
-import { authLimitCents } from '../cart.js';
+import { cardLimitCents } from '../cart.js';
 
 const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
@@ -104,7 +104,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
   // Anything over the cap still waits for a person.
   function askConfirm(cartId, { total_cents, summary, screenshot }) {
     const cart = spot.byId(cartId);
-    if (cart?.saved_pay?.how === 'paid_by_rules' && Number.isFinite(total_cents) && total_cents <= authLimitCents(cart.cart_cents)) {
+    if (cart?.saved_pay?.how === 'paid_by_rules' && Number.isFinite(total_cents) && total_cents <= cardLimitCents(cart)) {
       update(cartId, { state: 'working', total_cents, summary }, 'order_confirmed_by_rules');
       step(cartId, 'Inside your rules, so Spot placed it without asking');
       spot.emit?.('approved', cartId, { by: 'rules', how: 'placed_order', amount_cents: total_cents });
@@ -205,7 +205,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           getCard: cardFor(cartId),
           billing,
           profileUrl: typeof ucp.profileUrl === 'function' ? ucp.profileUrl() : ucp.profileUrl || `${env.PUBLIC_URL || 'http://localhost:3000'}/.well-known/ucp`,
-          limit: authLimitCents(cart.cart_cents),
+          limit: cardLimitCents(cart),
           fetchImpl: ucp.fetchImpl,
           allowPrivate: ucp.allowPrivate,
           sign: ucp.sign,

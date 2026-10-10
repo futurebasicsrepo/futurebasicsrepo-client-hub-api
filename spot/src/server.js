@@ -58,7 +58,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('metrics', metrics);
   // Every caller of the payment provider is watched: card calls count as
   // Stripe Issuing, the rest as Stripe payments.
-  const ISSUING = ['issueCard', 'revealCard', 'cancelCard', 'answerAuthorization'];
+  const ISSUING = ['issueCard', 'revealCard', 'cancelCard', 'setCardLimit', 'answerAuthorization'];
   provider = watched(provider, metrics, (key) => (ISSUING.includes(key) ? 'issuing' : 'stripe'));
   app.addHook('onResponse', async (req, reply) => {
     metrics.request(req.routeOptions?.url || 'unmatched', reply.statusCode, Math.round(reply.elapsedTime || 0));
@@ -790,7 +790,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
   registerShopifyApp(app, { db, env, urlFor, cfg, log: app.log, metrics, ...(shopifyFetch ? { fetchImpl: shopifyFetch } : {}) });
-  registerAdmin(app, { db, spot, env, urlFor, backups, metrics });
+  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });
