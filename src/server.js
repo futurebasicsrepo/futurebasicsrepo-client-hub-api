@@ -37,7 +37,7 @@ import { vaultReady, seal, open as unseal, fingerprint } from './vault.js';
 import { validateVendor, bankParts, maskedBank, last4, revealAllowed, clientView as vendorClientView, adminView as vendorAdminView, PUBLIC_KEYS as VENDOR_PUBLIC } from './vendor.js';
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
-import { conceptRender } from './concept.js';
+import { conceptRender, conceptPlacement } from './concept.js';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -605,6 +605,7 @@ app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
 app.get('/tp-units.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-units.js',import.meta.url),'utf8')));
 app.get('/tp-i18n.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./tp-i18n.js',import.meta.url),'utf8')));
+app.get('/picker.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./picker.js',import.meta.url),'utf8')));
 app.get('/chat.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./chat.js',import.meta.url),'utf8')));
 // Self-hosted fonts (see src/fonts/fonts.css): the file names are fixed, so they cache for a year.
 const FONT_FILES=new Set(['fonts.css','space-grotesk-latin.woff2','space-grotesk-latin-ext.woff2','ibm-plex-mono-400.woff2','ibm-plex-mono-500.woff2']);
@@ -1386,6 +1387,34 @@ app.get('/v1/products/:id/files/:fid',{preHandler:authenticate},async(req,reply)
   const f=await readItem({...folderDirs(),product,id:decodeURIComponent(req.params.fid),admin:req.auth.role==='admin'});
   if(!f)return reply.code(404).send({error:'File not found'});
   return reply.type(f.mime).header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(f.name)}`).send(f.buf);
+});
+// Pictures already saved for this client, to pick from instead of uploading again: this product's folder, then the project's files, then the rest of the room.
+// A client sees what a client may see; staff see everything in the room. Each item has the URL the page fetches it from.
+const PICK_MIME=/^image\/(png|jpe?g|webp|svg\+xml)$/i;
+app.get('/v1/products/:id/pick-images',{preHandler:authenticate},async(req,reply)=>{
+  const product=await folderProduct(req,reply);if(!product)return;
+  const admin=req.auth.role==='admin',full=(await pool.query('select project_id from products where id=$1',[product.id])).rows[0];
+  const items=[],seen=new Set();
+  const add=i=>{const k=`${i.name}|${i.bytes}`;if(!PICK_MIME.test(i.mime)||seen.has(k)&&i.bytes)return;seen.add(k);items.push(i)};
+  const list=await listFiles({...folderDirs(),product,admin});
+  for(const g of list.groups)for(const i of g.items){if(i.source==='model'||!i.latest)continue;add({id:i.id,name:i.name,label:i.label||i.name,mime:i.mime,bytes:i.bytes||0,at:i.at,where:'This product',url:`/v1/products/${product.id}/files/${encodeURIComponent(i.id)}`})}
+  for(const f of (await listRoomFiles(pool,product.client_id,{admin})).map(roomFileView)){
+    const mine=f.productId===product.id,project=full?.project_id&&f.projectId===full.project_id;
+    add({id:f.id,name:f.name,label:f.name,mime:f.mime,bytes:f.bytes,at:f.at,where:mine?'This product':project?'This project':'Your room',url:f.url});
+  }
+  const rank={'This product':0,'This project':1,'Your room':2};
+  return {items:items.sort((a,b)=>rank[a.where]-rank[b.where]||new Date(b.at)-new Date(a.at)).slice(0,120)};
+});
+// The same list before a product exists (starting a tech pack from the hub): what was sent to the room, and the pictures kept in the client's product folders.
+app.get('/v1/pick-images',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role==='admin')return reply.code(403).send({error:'Open a tech pack to choose from its files'});
+  const items=[],seen=new Set();
+  const add=i=>{const k=`${i.name}|${i.bytes}`;if(!PICK_MIME.test(i.mime)||seen.has(k)&&i.bytes)return;seen.add(k);items.push(i)};
+  for(const f of (await listRoomFiles(pool,req.auth.clientId)).map(roomFileView))add({id:f.id,name:f.name,label:f.name,mime:f.mime,bytes:f.bytes,at:f.at,where:'Your room',url:f.url});
+  const rows=(await pool.query(`select av.id,av.original_name,av.mime_type,av.size_bytes,av.created_at,p.id product_id,p.title from asset_versions av join assets a on a.id=av.asset_id and av.version=a.current_version join products p on p.id=a.product_id
+    where p.client_id=$1 and a.visibility='client' and av.mime_type like 'image/%' order by av.created_at desc limit 80`,[req.auth.clientId])).rows;
+  for(const r of rows)add({id:`av:${r.id}`,name:r.original_name,label:r.original_name,mime:r.mime_type,bytes:Number(r.size_bytes)||0,at:r.created_at,where:r.title,url:`/v1/products/${r.product_id}/files/${encodeURIComponent('av:'+r.id)}`});
+  return {items:items.slice(0,120)};
 });
 app.post('/v1/admin/comments',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {productId,assetId,approvalId,body,visibility='client'}=req.body||{};if(!body?.trim())return reply.code(400).send({error:'Comment required'});
@@ -3091,22 +3120,31 @@ async function deriveArt(packId,productId,items){
         const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');continue}
         const pack=normalizeTechPack(live.data),a=pack.artwork.find(x=>x.image===it.image);
         if(!a){await db.query('rollback');continue}
-        a.note=note;a.source=it.source;if(!a.pantones.length)a.pantones=cols.map(({hex,name,code})=>({hex,name,code}));
+        a.note=note;a.source=it.source;if(cleaned.changed&&cleaned.png.length<1_500_000)a.clear=`data:image/png;base64,${cleaned.png.toString('base64')}`;if(!a.pantones.length)a.pantones=cols.map(({hex,name,code})=>({hex,name,code}));
         await db.query('update tech_packs set data=$2 where id=$1',[packId,normalizeTechPack(pack)]); // updated_at stays: it marks a person's last edit
         await db.query('commit');
       }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     }catch(e){app.log.warn({err:e.message,packId},'art files not derived')}
   }
 }
-// A concept render made from the client's graphic and their description: the first colour rendering, so the cover and the hub show something at once.
+// A concept render of the product the client described, with their own graphic placed on it. The render becomes the front view (so the callouts, the check and the
+// hero start from something), and the graphic sits on it as a placement the client and staff can drag and size. The graphic itself is never redrawn.
 async function addConceptRender(packId,{artwork,title,category,description}){
-  const image=await conceptRender({artwork,title,category,description});if(!image)return;
+  const first=(await pool.query('select data from tech_packs where id=$1',[packId])).rows[0];if(!first)return;
+  const have=normalizeTechPack(first.data).renderings.find(r=>/^concept-/.test(r.id)&&/placed on it/.test(r.note)); // an earlier render drew the lettering itself: it is replaced
+  const image=have?.image||await conceptRender({artwork,title,category,description});if(!image)return;
   const db=await pool.connect();
   try{
     await db.query('begin');
     const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');return}
-    const pack=normalizeTechPack(live.data);if(pack.renderings.some(r=>/^concept-/.test(r.id)))return await db.query('rollback');
-    pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your graphic and your description. A first idea, not a final design.',image,parts:[]},...pack.renderings].slice(0,6);
+    const pack=normalizeTechPack(live.data);
+    if(!have)pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your description, with your own graphic placed on it. A first idea, not a final design.',image,parts:[]},...pack.renderings.filter(r=>!/^concept-/.test(r.id))].slice(0,6);
+    const sk=pack.sketches.find(s=>!s.image&&/concept render/i.test(s.label))||(!pack.sketches.some(s=>s.image)?pack.sketches.find(s=>!s.image):null);
+    if(sk){
+      sk.image=image;sk.label='Front view — concept render';
+      const art=pack.artwork.find(a=>a.image===artwork)||pack.artwork.find(a=>a.source==='upload');
+      if(art&&!art.placements.some(pl=>pl.sketchId===sk.id))art.placements.push({sketchId:sk.id,...conceptPlacement({description,title}),widthIn:4,label:'Chest · drag to adjust'});
+    }
     await db.query('update tech_packs set data=$2,updated_at=now() where id=$1',[packId,normalizeTechPack(pack)]);
     await db.query('commit');
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
@@ -3215,7 +3253,9 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
     {const items=[];if(artwork)items.push({image:artwork,name:'Your upload',source:'upload'});if(graphic)items.push({image:graphic.image,name:'Graphic from your photo',source:'cropped'});
      if(items.length)deriveArt(packId,row.product_id,items).catch(err=>app.log.warn({err:err.message,packId},'art files not derived'))}
-    if(artwork)addConceptRender(packId,{artwork,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'));
+    // a graphic and no product picture: the concept render becomes the front view before the exchange starts, so the check and the callouts have something to work on
+    {const conceptArt=artwork||(merged.sketches.every(k=>!k.image)?merged.artwork.find(a=>a.source==='upload')?.image:null);
+     if(conceptArt)await addConceptRender(packId,{artwork:conceptArt,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'))}
     startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
@@ -3386,9 +3426,12 @@ async function runLoopBody(loopId){
     const pk=normalizeTechPack(row.data),mine={callouts:pk.sketches.reduce((n,s)=>n+s.callouts.length,0),poms:pk.pom.length,bom:pk.bom.length};
     // The reference picture first: the photo redrawn clean by an image model, so the render the developer assistant tests is guided by the real product, not by words alone.
     let heroNote='';
-    if(process.env.HERO_AUTO!=='off'&&heroConfig().configured&&!(await currentHero(L.tech_pack_id))&&await studioCapReached()){
+    // a concept render already is the reference picture (and a model redrawing it would drop the client's own logo, which sits on it as a placement)
+    const conceptFront=normalizeTechPack((await pool.query('select data from tech_packs where id=$1',[L.tech_pack_id])).rows[0]?.data).sketches.some(k=>k.image&&/concept render/i.test(k.label||''));
+    if(conceptFront)await say({agent:'design',kind:'say',stage:'draft',text:'The concept picture is the reference picture here: your own graphic sits on it, so I am using it as it is.'});
+    if(!conceptFront&&process.env.HERO_AUTO!=='off'&&heroConfig().configured&&!(await currentHero(L.tech_pack_id))&&await studioCapReached()){
       await say({agent:'design',kind:'say',stage:'draft',text:'The reference picture is queued: today\'s automatic limit is reached, so Future Basics will add it.'});
-    }else if(process.env.HERO_AUTO!=='off'&&heroConfig().configured&&!(await currentHero(L.tech_pack_id))){
+    }else if(!conceptFront&&process.env.HERO_AUTO!=='off'&&heroConfig().configured&&!(await currentHero(L.tech_pack_id))){
       await say({agent:'design',kind:'say',stage:'draft',text:'Making a clean reference picture from your photo (the best of a few tries) before the test.'});
       const hr=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[L.tech_pack_id])).rows[0],st=hr?await startHero(hr,{actor:L.requested_by,trigger:'auto'}):{};
       if(st.id){await runHero(st.id);const h=(await pool.query('select status,candidates,chosen,error from tech_pack_heroes where id=$1',[st.id])).rows[0],c=h?.candidates?.[h.chosen];

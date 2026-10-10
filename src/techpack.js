@@ -99,12 +99,13 @@ export function normalizeTechPack(input) {
       id: id(a?.id),
       name: str(a?.name, 120),
       image: image(a?.image),
+      clear: image(a?.clear), // the same graphic on a transparent background, made from the upload: what is laid over a garment picture
       source: ['upload', 'cropped'].includes(a?.source) ? a.source : '',
       note: str(a?.note, 400),
       pantones: list(a?.pantones, LIMITS.pantones, p => ({ hex: hex(p?.hex), name: str(p?.name, 60), code: str(p?.code, 40) })).filter(p => p.hex),
       placements: list(a?.placements, LIMITS.placements, p => ({
         sketchId: sketchIds.has(String(p?.sketchId)) ? String(p.sketchId) : '',
-        x: unit(p?.x), y: unit(p?.y), widthIn: inches(p?.widthIn), label: str(p?.label, 120)
+        x: unit(p?.x), y: unit(p?.y), w: unit(p?.w), widthIn: inches(p?.widthIn), label: str(p?.label, 120)
       })).filter(p => p.sketchId && p.x != null && p.y != null)
     })).filter(a => a.image || a.name),
     labels: list(src.labels, LIMITS.labels, r => ({ item: str(r?.item, 120), spec: str(r?.spec, 400), placement: str(r?.placement, 200) })).filter(r => r.item),

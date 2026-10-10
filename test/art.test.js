@@ -48,3 +48,14 @@ test('a graphic found on a product is cropped out; a missing, tiny or whole-pict
   assert.equal(await graphicCrop(photo, { present: true, box: { x: 0.1, y: 0.1, w: 0.02, h: 0.02 } }), null);
   assert.equal(await graphicCrop(photo, { present: true, box: { x: 0, y: 0, w: 1, h: 1 } }), null);
 });
+
+import { conceptPrompt, conceptPlacement } from '../src/concept.js';
+test('the concept render is asked for with a plain chest: the client\'s graphic is placed afterwards, never redrawn', () => {
+  const p = conceptPrompt({ title: 'A hoodie and matching sweatpants', description: 'A hoodie and matching sweatpants' });
+  assert.match(p, /plain and blank/i); assert.match(p, /never redrawn/i); assert.doesNotMatch(p, /exactly as it appears in the reference/i);
+});
+test('a set starts the graphic on the top, a single piece on its chest; both are fractions of the picture', () => {
+  const set = conceptPlacement({ title: 'A hoodie and matching sweatpants' }), one = conceptPlacement({ title: 'Cap', description: 'a dad cap' });
+  assert.ok(set.x < 0.5 && one.x === 0.5);
+  for (const v of [set, one]) for (const k of ['x', 'y', 'w']) assert.ok(v[k] > 0 && v[k] < 1);
+});
