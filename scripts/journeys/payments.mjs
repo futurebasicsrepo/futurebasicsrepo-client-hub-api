@@ -280,10 +280,10 @@ await journey('J105', 'the tech pack header carries the brand like the rest of t
     ok(/Working on/i.test(m.crumbText), 'factory: the "working on" line is under the bar', m.crumbText);
     await shot('factory', pg); ok(pg.errs.length === 0, 'factory: no script errors', pg.errs); await ctx.close();
     // phone
-    for (const [role, token, url, name] of [['client', tok, `${BASE}/tech-packs/${pid}`, 'client'], ['factory', '', `${BASE}/tp/${ftok}`, 'factory']]) {
+    for (const [role, token, url, name] of [['client', tok, `${BASE}/tech-packs/${pid}`, 'client'], ['admin', admin, `http://work.localhost:3127/tech-packs/${pid}`, 'staff'], ['factory', '', `${BASE}/tp/${ftok}`, 'factory']]) {
       ({ ctx, pg } = await open(role, token, url, 390, 800)); m = await probe(pg);
       ok(m.logo && m.logo.width >= 120 && m.logo.left >= 0 && m.suffix === '' && m.overflow <= 0, `${name} on a phone: the logo fits, the suffix steps aside, nothing scrolls sideways`, [m.logo, m.suffix, m.overflow]);
-      ok(m.header.height <= 62 && m.header.bottom <= m.crumbs.top + 1, `${name} on a phone: a compact bar with the row below it`, [m.header.height]);
+      ok(m.header.height <= (name === 'staff' ? 112 : 62) && m.header.bottom <= m.crumbs.top + 1, `${name} on a phone: a compact bar (staff's longer action row sits under the logo) with the breadcrumb row below it`, [m.header.height]);
       await shot(`${name}-phone`, pg); ok(pg.errs.length === 0, `${name} on a phone: no script errors`, pg.errs); await ctx.close();
     }
   } finally { await bw.close(); }
