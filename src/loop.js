@@ -154,3 +154,56 @@ export async function reconcile({ pack: input, photos = [], verdict, promptText 
     .map(d => ({ finding: d.finding, decision: d.decision === 'change' ? 'change' : 'keep', say: clip(d.say, 300) }));
   return { decisions, changes: validateChanges(raw.patches, pack), model: used };
 }
+
+// ---- A flagged line ----
+// A person (the client, or staff) flags one line of the pack and says in their own words what is wrong. The design assistant answers with changes to THAT line only,
+// inside the same limits as the exchange above, or with a sentence on why it is keeping it. The same validation applies: descriptive fields only, checked against what the
+// field holds right now, every change recorded and undoable.
+export const FLAG_SECTIONS = SECTIONS;
+export const FLAG_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['say', 'patches'],
+  properties: {
+    say: { type: 'string', description: 'One or two plain sentences to the person who flagged it: what you changed and why, or why you left it' },
+    patches: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['field', 'to', 'reason'],
+      properties: { field: { type: 'string', description: 'A field of the flagged line' }, to: { type: 'string', description: 'The full new value of that one field' }, reason: { type: 'string', description: 'Why, in one sentence' } } } }
+  }
+};
+// The line a flag points at, as the pack holds it right now; null when it is not there any more.
+export function flagRow(pack, t) {
+  if (!t || !FLAG_SECTIONS.includes(t.section)) return null;
+  const i = Number(t.index), sk = Number(t.sketch);
+  if (t.section === 'style') return { row: pack.style, label: 'Style' };
+  if (t.section === 'callouts') { const c = Number.isInteger(sk) && Number.isInteger(i) ? pack.sketches[sk]?.callouts?.[i] : null; return c ? { row: c, label: `Callout · ${clip(c.label, 40) || 'untitled'}` } : null; }
+  const r = Number.isInteger(i) ? pack[t.section]?.[i] : null; if (!r) return null;
+  return { row: r, label: `${SECTION_LABEL[t.section]} · ${clip(t.section === 'bom' ? r.component || r.material : t.section === 'colorways' ? r.name : r.area, 40) || `row ${i + 1}`}` };
+}
+const FLAG_SYSTEM = `You are the design assistant. You drafted this tech pack from the client's photo. A person has flagged ONE line of it and told you, in their own words, what is wrong.
+Change only that line, and only its descriptive fields (the ones you are offered). Make every edit specific and visual: colours as a name and a hex, materials with their surface and finish. Use the person's words where they are right, and the photo where they are not specific.
+Never change measurements, tolerances, sizes, care, compliance, artwork or labels: if the note is about one of those, or about anything outside this line, change nothing and say plainly that a person should check it.
+If the note is a question, or the photo does not support the change, change nothing and say why in a sentence. If you change something, say what and why in a sentence. Speak plainly and briefly, as a colleague, to the person who flagged it. Each patch changes one field of that line and gives its full new value.`;
+function fixtureFlag(target, row, note) { // test hook: a note of the form "set <field> to <value>" makes that edit; anything else is kept
+  const m = /set\s+([a-z]+)\s+to\s+(.+)$/i.exec(note), fields = FIELDS[target.section] || {}, key = m && Object.keys(fields).find(k => k.toLowerCase() === m[1].toLowerCase());
+  return key ? { say: `Test fixture: you are right, I changed ${key}.`, patches: [{ field: key, to: clip(m[2], fields[key]), reason: 'Test fixture: as flagged.' }] } : { say: 'Test fixture: I would not change anything for that.', patches: [] };
+}
+// → { say, changes: [validated change], model }
+export async function reviseFlag({ pack: input, target, note, photos = [], model = CHECK_MODEL() }) {
+  const pack = normalizeTechPack(input), found = flagRow(pack, target); if (!found) throw Object.assign(new Error('That line is not in the pack any more'), { statusCode: 404 });
+  const text = clip(note, 600); let raw, used = 'fixture';
+  if (process.env.AI_FIXTURE) raw = fixtureFlag(target, found.row, text);
+  else {
+    const content = [{ type: 'text', text: "The client's reference photo:" }];
+    for (const url of photos.slice(0, 2)) { const b = dataUrlToImageBlock(url); if (b) content.push(b); }
+    const fields = Object.keys(FIELDS[target.section]);
+    content.push({ type: 'text', text: `The style: ${JSON.stringify({ name: pack.style.styleName, category: pack.style.category, fabric: pack.style.fabricSummary })}\n\nThe flagged line (${found.label}): ${JSON.stringify(found.row)}\nYou may change only these fields of it: ${fields.join(', ')}.\n\nWhat the person wrote:\n${text}` });
+    const client = new Anthropic(), base = { model, max_tokens: 2000, system: FLAG_SYSTEM, messages: [{ role: 'user', content }] };
+    const response = await timed('anthropic', async () => {
+      try { return await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'medium', format: { type: 'json_schema', schema: FLAG_SCHEMA } } }); }
+      catch (e) { if (!(e instanceof Anthropic.BadRequestError)) throw e; return client.messages.create({ ...base, system: FLAG_SYSTEM + '\n\nRespond with a single JSON object matching this JSON schema and nothing else:\n' + JSON.stringify(FLAG_SCHEMA) }); }
+    });
+    if (response.stop_reason === 'refusal') throw new Error(`Model declined (${response.stop_details?.category || 'policy'})`);
+    const out = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    raw = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)); used = response.model || model;
+  }
+  const patches = (Array.isArray(raw.patches) ? raw.patches : []).slice(0, 6).map(p => ({ section: target.section, sketch: Number(target.sketch) || 0, index: Number(target.index) || 0, field: p?.field, to: p?.to, reason: p?.reason }));
+  return { say: clip(raw.say, 400), changes: validateChanges(patches, pack), model: used };
+}

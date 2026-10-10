@@ -7,7 +7,7 @@ import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, S } from './
 const BASE = 'http://127.0.0.1:3130', call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `jc${tag}-${stamp}-${++n}@chaos.test`;
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
-async function room(tag) { const r = await call('/v1/public/start', { body: { email: em(tag), name: 'Studio Customer', title: 'Layer runner', photos: [runner] } }); return { token: r.json.token, id: r.json.product.id, cid: r.json.client.id }; }
+async function room(tag) { const r = await call('/v1/public/start', { body: { email: em(tag), name: 'Studio Customer', title: 'Layer runner', photos: [runner] } }); if (!r.json.product) throw new Error(`room(${tag}): /start gave ${r.status} ${JSON.stringify(r.json).slice(0, 200)}`); return { token: r.json.token, id: r.json.product.id, cid: r.json.client.id }; }
 const studio = async m => (await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).json;
 
 await journey('J68', 'a customer asks for a tech pack and the whole studio runs by itself: reference picture approved, colourways drawn by part, 3D shape made, and their own pages show it', async () => {
@@ -1346,6 +1346,67 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
   const b = await start('Hoodie', ''); ok(b.status === 201, 'a graphic with a one-word title and no description still starts a room');
   let e = null; for (let i = 0; i < 100; i++) { e = await draftOf(b.json.token, b.json.product.id); if (e.techPack && ['done', 'failed'].includes(e.techPack.aiStatus)) break; await sleep(300); }
   ok(e.techPack.aiStatus === 'failed' && /could not make out a product/.test(e.techPack.aiError || ''), 'with nothing said about the product it asks for a better picture, as before', [e.techPack.aiStatus, e.techPack.aiError]);
+});
+
+await journey('J97', 'flag a line and say what is wrong: the design assistant changes that one line (or says why not), it can be undone, a submitted pack is closed to it, and measurements are never touched', async () => {
+  const m = await room('97'), other = await room('97b'), sub = await room('97c');
+  for (const r of [m, sub]) for (let i = 0; i < 160; i++) { const st = await studio(r); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const draft = async (r = m) => (await call(`/v1/products/${r.id}/tech-pack/draft`, { token: r.token })).json;
+  const flag = (body, r = m, token = r.token) => call(`/v1/products/${r.id}/tech-pack/flag`, { token, body });
+  const d0 = await draft(), bom = d0.techPack.data.bom, before = JSON.stringify(bom.slice(1));
+  ok(bom.length >= 2, 'the draft has materials to flag', bom.length);
+
+  const a = await flag({ section: 'bom', index: 0, sketch: 0, note: 'This is wrong: set material to Heathered grey knit mesh' });
+  ok(a.status === 201 && a.json.flag.outcome === 'changed' && a.json.flag.changes.length === 1 && /BOM/.test(a.json.flag.target), 'a flagged line is changed by the design assistant, and the answer says what', [a.status, a.json.error, a.json.flag]);
+  ok(a.json.flag.changes[0].from === bom[0].material && a.json.flag.changes[0].to === 'Heathered grey knit mesh' && a.json.data.bom[0].material === 'Heathered grey knit mesh', 'from what it was to what it became, in the saved pack');
+  ok(JSON.stringify(a.json.data.bom.slice(1)) === before, 'and no other line moved');
+  ok((await draft()).techPack.data.bom[0].material === 'Heathered grey knit mesh', 'it is saved, not only shown');
+  const put = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data: a.json.data, baseEtag: a.json.techPack.etag } }); ok(put.status === 200, 'the page can keep saving afterwards: its version number moved with the change', [put.status, put.json.error]);
+  const list = (await call(`/v1/products/${m.id}/tech-pack/flags`, { token: m.token })).json.flags; ok(list.length === 1 && list[0].note.startsWith('This is wrong') && list[0].by === 'client', 'the flag is on record with who made it and what they wrote');
+  const undo = await call(`/v1/products/${m.id}/tech-pack/flags/${a.json.flag.id}/undo`, { method: 'POST', token: m.token, body: {} });
+  ok(undo.status === 200 && undo.json.flag.undone === true && undo.json.data.bom[0].material === bom[0].material && undo.json.reverted.length === 1, 'undo puts the line back exactly as it was', [undo.status, undo.json.error]);
+  ok((await call(`/v1/products/${m.id}/tech-pack/flags/${a.json.flag.id}/undo`, { method: 'POST', token: m.token, body: {} })).status === 409, 'and cannot be undone twice');
+  const b = await flag({ section: 'bom', index: 0, sketch: 0, note: 'set material to Navy ribbed knit' }); await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data: { ...b.json.data, bom: b.json.data.bom.map((r, i) => i === 0 ? { ...r, material: 'Typed by hand' } : r) }, baseEtag: b.json.techPack.etag } });
+  ok((await call(`/v1/products/${m.id}/tech-pack/flags/${b.json.flag.id}/undo`, { method: 'POST', token: m.token, body: {} })).status === 409 && (await draft()).techPack.data.bom[0].material === 'Typed by hand', 'a line a person has edited since is never overwritten by an undo');
+
+  const k = await flag({ section: 'bom', index: 1, sketch: 0, note: 'The sole looks too big to me' }); ok(k.status === 201 && k.json.flag.outcome === 'kept' && k.json.flag.changes.length === 0 && k.json.flag.say, 'a note it would not act on changes nothing, and it says so', k.json.flag);
+  const c = await flag({ section: 'construction', index: 0, sketch: 0, note: 'set tolerance to 2mm' }); ok(c.status === 201 && c.json.flag.outcome === 'kept', 'a field the assistant is never allowed to change stays as it is, even when asked');
+  ok((await flag({ section: 'pom', index: 0, note: 'set value to 5' })).status === 400, 'measurements cannot be flagged');
+  ok((await flag({ section: 'bom', index: 99, note: 'set material to x' })).status === 404 && (await flag({ section: 'bom', index: 0, note: 'x' })).status === 400, 'a line that is not there, or a note with nothing in it, is refused');
+  ok((await flag({ section: 'bom', index: 0, note: 'set material to x' }, m, other.token)).status === 404 && (await call(`/v1/products/${m.id}/tech-pack/flag`, { body: { section: 'bom', index: 0, note: 'set material to x' } })).status === 401, 'another client cannot flag it, and neither can someone who is not signed in');
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='tech-pack-flag'`) === '4' && /assistant kept it/.test(sql(`select title from notifications where client_id='${m.cid}' and type='tech-pack-flag' order by created_at desc limit 1`)), 'staff are told each time a client flags a line, and whether it needs a person');
+
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' });
+  const st = await call(`/v1/admin/products/${m.id}/tech-pack/flag`, { token: admin, body: { section: 'colorways', index: 0, note: 'set notes to Match the sole exactly' } }); ok(st.status === 201 && st.json.flag.by === 'admin' && st.json.flag.outcome === 'changed', 'staff can flag a line too', [st.status, st.json.error]);
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/flag`, { token: m.token, body: { section: 'bom', index: 0, note: 'set material to x' } })).status === 403, 'a client cannot use the staff route');
+  ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='tech-pack-flag'`) === '4', 'and a staff flag does not notify staff of their own action');
+
+  const subm = await call(`/v1/products/${sub.id}/tech-pack/submit`, { method: 'POST', token: sub.token, body: { note: 'Please review' } }); ok(subm.status === 200, 'a pack is submitted', subm.json.error);
+  const sf = await flag({ section: 'bom', index: 0, note: 'set material to x' }, sub); ok(sf.status === 409 && /submitted/.test(sf.json.error), 'once submitted, the client can no longer flag lines: the pack is Future Basics\'s to change', [sf.status, sf.json.error]);
+  const adminS = await forge({ sub: sql(`select id from users where client_id='${sub.cid}' limit 1`), clientId: sub.cid, role: 'admin' });
+  ok((await call(`/v1/admin/products/${sub.id}/tech-pack/flag`, { token: adminS, body: { section: 'bom', index: 0, note: 'set material to Staff fix' } })).status === 201, 'but staff still can');
+
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, false], ['phone', { width: 390, height: 844 }, true]]) {
+        const r = await room('97' + name[0]); for (let i = 0; i < 160; i++) { const s2 = await studio(r); if (s2.loop && s2.loop.status === 'done') break; await sleep(300); }
+        const ctx = await bw.newContext({ viewport: vp, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+        const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+        await p.goto(`${BASE}/tech-packs/${r.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 });
+        await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('.flagbtn[data-sec="bom"]', { timeout: 10000 });
+        await p.locator('.flagbtn[data-sec="bom"]').first().click(); await p.waitForSelector('.flagpop textarea');
+        ok(/flag this line/i.test(await p.innerText('.flagpop')) && /Materials/.test(await p.innerText('.flagpop .fp-head')), `${name}: the flag button opens a small box naming the line`);
+        await p.fill('.flagpop textarea', 'Wrong finish: set material to Heathered grey knit mesh'); await p.click('.flagpop [data-fp="send"]'); await p.waitForSelector('.flagpop .fp-say', { timeout: 15000 });
+        ok(/Heathered grey knit mesh/.test(await p.innerText('.flagpop .fp-chg')) && await p.evaluate(() => document.querySelector(`.t[data-path='["bom",0,"material"]']`)?.value) === 'Heathered grey knit mesh', `${name}: it shows what changed, and the field on the page already has it`);
+        await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j97-${name}-flag.png` }).catch(() => {});
+        await p.click('.flagpop [data-fp="undo"]'); await p.waitForFunction(() => /Undone/i.test(document.querySelector('.flagpop')?.innerText || ''), null, { timeout: 8000 });
+        ok(await p.evaluate(() => document.querySelector(`.t[data-path='["bom",0,"material"]']`)?.value) !== 'Heathered grey knit mesh', `${name}: Undo puts it back on the page`);
+        await p.click('.flagpop [data-fp="done"]'); ok(await p.locator('.flagpop').count() === 0, `${name}: Done closes it`);
+        ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, `${name}: nothing spills sideways and no script errors`, p.errs); await ctx.close();
+      }
+    } finally { await bw.close(); }
+  }
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
