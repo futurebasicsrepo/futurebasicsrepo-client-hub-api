@@ -291,6 +291,22 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       return next;
     },
 
+    // "Pay it yourself": an ask that's waiting for a payer becomes the
+    // requester's own order. Same rules as reassign, the other way round.
+    payYourself(token, key) {
+      const cart = loadManaged(token, key);
+      if (cart.for === 'self') return cart;
+      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.kind === 'flight' || cart.kind === 'train') throw new CartError('Tickets are paid by the traveler for now', 400);
+      if (cart.bundle_id) throw new CartError('Multi-store asks can’t be paid this way yet', 400);
+      if (cart.approver) throw new CartError('This one is waiting on your approver', 409);
+      if (!['card', 'direct'].includes(cart.settle)) throw new CartError('This cart can only be paid by someone else', 400);
+      const next = { ...cart, for: 'self' };
+      if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
+      db.event(cart.id, 'paying_yourself');
+      return next;
+    },
+
     load,
     loadManaged,
     // The requester's private page, for messages sent to the requester.

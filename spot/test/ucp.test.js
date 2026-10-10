@@ -390,3 +390,41 @@ test('Shopify-style store with no card tokenizer: falls back to ordering through
   assert.equal(f.method, 'ucp');
   assert.equal(f.manual_url, `${store.origin}/checkout/chk_1`);
 });
+
+test('signed-in asks use the saved address, so the pay-at-store link works right away; and the requester can pay it themselves', async (t) => {
+  const store = await startUcpStore();
+  const { app } = await directSetup(t, store);
+  const call = async (method, url, payload, headers = {}) => {
+    const r = await app.inject({ method, url, payload, headers });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body, headers: r.headers };
+  };
+  const start = await call('POST', '/v1/auth/start', { email: 'kyle@example.com' });
+  const cookie = (await call('POST', '/v1/auth/verify', { email: 'kyle@example.com', code: start.body.code })).headers['set-cookie'].split(';')[0];
+  await call('POST', '/v1/me', { name: 'Kyle Riggle', shipping: { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' } }, { cookie });
+  const key = (await call('POST', '/v1/me/keys', { agent_name: 'Claude' }, { cookie })).body.api_key;
+  const auth = { authorization: `Bearer ${key}` };
+
+  const ask = await call('POST', '/v1/agent/asks', directCart(store.origin), auth);
+  assert.equal(ask.status, 201, JSON.stringify(ask.body));
+  const token = ask.body.ask_id;
+  const page = await call('GET', `/c/${token}`);
+  assert.doesNotMatch(page.body, /Waiting for/, 'no waiting on an address the account already has');
+  assert.match(page.body, /Pay Puff Co/);
+  assert.match(ask.body.requester_page_note, /pay it themselves/);
+
+  // Pay it yourself: the ask becomes the requester's own order.
+  const k = new URL(ask.body.requester_page).searchParams.get('k');
+  const manage = await call('GET', `/c/${token}/manage?k=${k}`);
+  assert.match(manage.body, /Pay it yourself/);
+  const claimed = await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k });
+  assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
+  assert.equal(claimed.body.cart.for, 'self');
+  assert.equal(claimed.body.cart.requester.shipping.line1, '1 Main St');
+
+  // From "Ready for you" on the account page: signed in, no key in the URL.
+  const back = await call('POST', `/v1/carts/${token}/manage/reassign`, {}, { cookie });
+  assert.equal(back.status, 200, JSON.stringify(back.body));
+  assert.equal(back.body.cart.for, 'other');
+  assert.match(back.body.share_message, /\/c\//);
+  assert.equal((await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k: 'wrong' })).status >= 400, true);
+});
