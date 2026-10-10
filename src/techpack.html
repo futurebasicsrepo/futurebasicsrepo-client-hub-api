@@ -88,32 +88,67 @@ table.tp[data-tbl="bom"] td:nth-child(1),table.tp[data-tbl="bom"] td:nth-child(2
 .top .crumbs [aria-current]{color:#fff;font-weight:600;padding:4px 0}.top .crumbs .sep{opacity:.45}.top .crumbs .meta{color:#aaa}
 body.has-crumbs .top .brand b{display:none}
 .metric{display:block;margin-top:2px;font-size:10.5px;line-height:1.3;color:#8b8b92;white-space:nowrap}.metric:empty{display:none}/* ---- The pop-up: the design assistant and the developer assistant at work ---- */
-.xchg{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:radial-gradient(120% 90% at 50% 0%,rgba(20,20,22,.55),rgba(8,8,10,.86));backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);opacity:0;transition:opacity .35s var(--ease)}
+.xchg{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:radial-gradient(120% 90% at 50% 0%,rgba(20,20,22,.55),rgba(8,8,10,.88));backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);opacity:0;transition:opacity .35s var(--ease)}
 .xchg[hidden]{display:none}.xchg.on{opacity:1}
-.xchg-card{position:relative;width:min(640px,100%);max-height:min(860px,calc(100dvh - 40px));display:flex;flex-direction:column;gap:16px;padding:26px 26px 22px;border-radius:30px;color:#f3f3ef;background:linear-gradient(180deg,#1a1b1f 0%,#0f1012 100%);border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 120px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;transform:translateY(18px) scale(.97);transition:transform .55s var(--ease)}
+.xchg-card{position:relative;width:min(700px,100%);max-height:min(900px,calc(100dvh - 40px));display:flex;flex-direction:column;gap:16px;padding:24px 26px 22px;border-radius:30px;color:#f3f3ef;background:linear-gradient(180deg,#1a1b1f 0%,#0e0f11 100%);border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 120px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden;transform:translateY(18px) scale(.97);transition:transform .55s var(--ease)}
 .xchg.on .xchg-card{transform:none}
-.xchg-card::before{content:"";position:absolute;inset:-30% -10% auto;height:70%;background:radial-gradient(50% 60% at 25% 40%,rgba(75,255,154,.16),transparent 70%),radial-gradient(50% 60% at 78% 40%,rgba(255,106,61,.17),transparent 70%);pointer-events:none;animation:xdrift 9s ease-in-out infinite alternate}
+.xchg-card::before{content:"";position:absolute;inset:-30% -10% auto;height:70%;background:radial-gradient(50% 60% at 22% 40%,rgba(75,255,154,.16),transparent 70%),radial-gradient(50% 60% at 80% 40%,rgba(255,106,61,.17),transparent 70%);pointer-events:none;animation:xdrift 9s ease-in-out infinite alternate}
+.xchg-grid{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(90% 55% at 50% 12%,#000,transparent 75%);mask-image:radial-gradient(90% 55% at 50% 12%,#000,transparent 75%)}
 @keyframes xdrift{to{transform:translate3d(0,6%,0) scale(1.06)}}
+.xchg>.xchg-card>*{position:relative}
 .xchg.needs .xchg-title span{color:#ffb48a}.xchg.needs .xchg-rail li:last-child i{background:#ff8a5c}.xchg.needs .xchg-wait{color:#ffb48a}
-.xchg-hide{all:unset;box-sizing:border-box;position:absolute;top:16px;right:18px;z-index:2;cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#bdbdc4}
+.xchg-bar{display:flex;align-items:center;min-height:26px;padding-right:70px}
+.xchg-mark{display:inline-flex;align-items:center;font:700 12px/1 'Space Grotesk',system-ui,sans-serif;letter-spacing:.22em;color:#f3f3ef}.xchg-mark i{width:6px;height:6px;margin-left:7px;border-radius:50%;background:var(--cue);box-shadow:0 0 10px rgba(75,255,154,.7);animation:xblink 2.4s ease-in-out infinite}
+@keyframes xblink{50%{opacity:.35}}
+.xchg-hide{all:unset;box-sizing:border-box;position:absolute!important;top:16px;right:18px;z-index:2;cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.16);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#bdbdc4}
 .xchg-hide:hover{border-color:#fff;color:#fff}.xchg-hide:focus-visible,.xchg-cta:focus-visible{outline:2px solid var(--cue);outline-offset:3px}
-.xchg-top{position:relative}.xchg-kicker{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#9a9aa3}
-.xchg-title{margin:6px 0 0;font:400 34px/1.05 'Instrument Serif',Georgia,serif;font-style:italic;letter-spacing:-.01em;min-height:36px}
+.xchg-top{margin-top:-4px}.xchg-kicker{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;color:#9a9aa3}
+.xchg-title{margin:6px 0 0;font:400 36px/1.04 'Instrument Serif',Georgia,serif;font-style:italic;letter-spacing:-.01em;min-height:38px}
 .xchg-title span{display:inline-block;animation:xin .5s var(--ease) both}
 @keyframes xin{from{opacity:0;transform:translateY(10px);filter:blur(4px)}}
-.xchg-agents{position:relative;display:grid;grid-template-columns:1fr minmax(80px,170px) 1fr;align-items:center;gap:6px}
-.xag{display:grid;justify-items:center;gap:7px;text-align:center;opacity:.5;transition:opacity .5s var(--ease),transform .5s var(--ease)}.xag.act{opacity:1;transform:translateY(-2px)}
-.xag b{font:500 13px 'Space Grotesk',system-ui,sans-serif}.xag small{display:block;margin-top:2px;font:400 11px 'Space Grotesk',system-ui,sans-serif;color:#9a9aa3}
-.xorb{position:relative;width:64px;height:64px;border-radius:50%}
-.xorb::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 32% 28%,var(--hi),var(--lo) 68%);box-shadow:0 0 0 1px rgba(255,255,255,.2) inset,0 10px 30px var(--glow);animation:xbreath 3.4s ease-in-out infinite}
-.xorb::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid var(--lo);opacity:0;transform:scale(.8)}
-.xag.act .xorb::after{animation:xping 1.8s var(--ease) infinite}
-@keyframes xbreath{50%{transform:scale(1.06)}}@keyframes xping{0%{opacity:.7;transform:scale(.85)}100%{opacity:0;transform:scale(1.5)}}
-.xag.design{--hi:#b9ffd8;--lo:#19c97d;--glow:rgba(75,255,154,.45)}.xag.developer{--hi:#ffc3a8;--lo:#f0521f;--glow:rgba(255,106,61,.45)}
-.xorb svg{position:absolute;inset:0;margin:auto;width:28px;height:28px;stroke:#0f1012;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;z-index:1}
-.xlink{width:100%;height:46px;overflow:visible}.xlink path{fill:none;stroke:rgba(255,255,255,.16);stroke-width:1.5;stroke-dasharray:3 5;animation:xflow 1.6s linear infinite}
+/* the two of them, facing each other across a desk */
+.xchg-agents{display:grid;grid-template-columns:1fr minmax(96px,176px) 1fr;align-items:start;gap:4px;padding:6px 0 0}
+.xag{display:grid;grid-template-columns:auto auto;grid-template-areas:"a b" "n n";justify-content:center;align-items:center;column-gap:14px;row-gap:10px;opacity:.55;transition:opacity .5s var(--ease)}.xag.act,.xag.talk{opacity:1}
+.xag.developer{grid-template-areas:"b a" "n n"}
+.xag>div{grid-area:n;text-align:center}.xag b{font:500 13.5px 'Space Grotesk',system-ui,sans-serif}.xag small{display:block;margin-top:2px;font:400 11px/1.35 'Space Grotesk',system-ui,sans-serif;color:#9a9aa3}
+.xag .xstat{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;min-height:14px;font:500 9.5px/1.3 'IBM Plex Mono',monospace;letter-spacing:.09em;text-transform:uppercase;color:var(--lo)}
+.xag .xstat::before{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.45}.xag.act .xstat::before{opacity:1;animation:xpulse 1.4s ease-in-out infinite}
+.xag.design{--hi:#b9ffd8;--lo:#4bff9a;--glow:rgba(75,255,154,.4);--lean:5px}.xag.developer{--hi:#ffc3a8;--lo:#ff8a5c;--glow:rgba(255,106,61,.4);--lean:-5px}
+/* the orb is the hub's own mark: a ring, a paper rim, a black disc, a dot that travels the ring */
+.xorb{grid-area:b;position:relative;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;background:#0a0b0d;box-shadow:0 0 0 3px #f3f3ef,0 14px 36px var(--glow);transition:transform .7s var(--ease),box-shadow .5s var(--ease)}
+.xorb::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1.5px solid var(--lo);opacity:0;pointer-events:none}
+.xag.talk .xorb::after{animation:xping 1.5s var(--ease) infinite}
+.xag.hear .xorb{transform:translateX(var(--lean))}.xag.talk .xorb{transform:scale(1.07)}
+.xsat{position:absolute;inset:-14px;border-radius:50%;border:1px solid rgba(255,255,255,.16);pointer-events:none}
+.xsat::after{content:"";position:absolute;top:3px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--lo);box-shadow:0 0 12px var(--glow)}
+.xag.act .xsat{animation:xorbit 6s linear infinite}.xag.talk .xsat{animation-duration:2.4s}
+@keyframes xorbit{to{transform:rotate(360deg)}}@keyframes xping{0%{opacity:.8;transform:scale(1)}100%{opacity:0;transform:scale(1.9)}}
+.xorb svg{width:26px;height:26px;stroke:var(--lo);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;animation:xbreath 3.6s ease-in-out infinite}
+@keyframes xbreath{50%{transform:scale(1.1)}}
+/* what each one is looking at: the design assistant has the photo, the developer assistant only the words */
+.xdesk{grid-area:a;position:relative;width:46px;height:58px;flex:none}
+.xdesk.polaroid{padding:4px 4px 13px;background:#f3f3ef;border-radius:3px;transform:rotate(-5deg);box-shadow:0 8px 20px rgba(0,0,0,.45)}.xdesk.polaroid .xph{display:block;width:100%;height:100%;border-radius:1px;background:#d9d9d4 center/cover no-repeat}
+.xdesk.blueprint{border:1px dashed rgba(255,138,92,.55);border-radius:3px;transform:rotate(4deg);background-image:linear-gradient(rgba(255,138,92,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(255,138,92,.16) 1px,transparent 1px);background-size:9px 9px;overflow:hidden}
+.xdesk.blueprint::before{content:"";position:absolute;inset:9px 8px;border:1px dashed rgba(255,138,92,.4);border-radius:40% 40% 8px 8px}
+.xdesk.blueprint::after{content:"";position:absolute;left:0;right:0;top:0;height:14px;background:linear-gradient(180deg,transparent,rgba(255,138,92,.45),transparent);opacity:0}
+.xag.developer.act .xdesk.blueprint::after{opacity:1;animation:xscan 2.2s ease-in-out infinite}
+@keyframes xscan{0%{transform:translateY(-14px)}100%{transform:translateY(58px)}}
+.xlinkwrap{position:relative;height:62px;align-self:start}
+.xlink{position:absolute;left:0;right:0;top:8px;width:100%;height:46px;overflow:visible}.xlink path{fill:none;stroke:rgba(255,255,255,.18);stroke-width:1.5;stroke-dasharray:3 5;animation:xflow 1.6s linear infinite;transition:stroke .6s}
 @keyframes xflow{to{stroke-dashoffset:-16}}
 .xlink .pk{fill:#fff;opacity:0}.xchg[data-dir="fwd"] .xlink .pf,.xchg[data-dir="back"] .xlink .pb{opacity:.95}
+.xhand{position:absolute;top:31px;left:0;z-index:2;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:0;pointer-events:none;transform:translate(-50%,-50%)}
+.xhand i{display:block;width:26px;height:32px;border-radius:4px;background:#f3f3ef linear-gradient(#f3f3ef,#f3f3ef);box-shadow:0 8px 18px rgba(0,0,0,.5);background-image:linear-gradient(#b8b8b2,#b8b8b2),linear-gradient(#b8b8b2,#b8b8b2),linear-gradient(#b8b8b2,#b8b8b2);background-size:16px 2px,16px 2px,10px 2px;background-position:5px 8px,5px 14px,5px 20px;background-repeat:no-repeat;position:relative}
+.xhand i::after{content:"";position:absolute;right:4px;bottom:4px;width:5px;height:5px;border-radius:50%;background:var(--cue)}
+.xhand[data-d="back"] i{background-color:#ffd9c8}.xhand[data-d="back"] i::after{background:#ff8a5c}
+.xhand em{font:500 8.5px/1 'IBM Plex Mono',monospace;font-style:normal;letter-spacing:.12em;text-transform:uppercase;color:#d6d6dc;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+.xhand.go[data-d="fwd"]{animation:xh-fwd 1.3s var(--ease) both}.xhand.go[data-d="back"]{animation:xh-back 1.3s var(--ease) both}
+@keyframes xh-fwd{0%{left:0%;opacity:0;transform:translate(-50%,-30%) rotate(-8deg) scale(.7)}18%{opacity:1}50%{transform:translate(-50%,-78%) rotate(3deg) scale(1)}84%{opacity:1}100%{left:100%;opacity:0;transform:translate(-50%,-30%) rotate(6deg) scale(.8)}}
+@keyframes xh-back{0%{left:100%;opacity:0;transform:translate(-50%,-30%) rotate(8deg) scale(.7)}18%{opacity:1}50%{transform:translate(-50%,-78%) rotate(-3deg) scale(1)}84%{opacity:1}100%{left:0%;opacity:0;transform:translate(-50%,-30%) rotate(-6deg) scale(.8)}}
+.xtag{position:absolute;left:50%;top:50px;transform:translateX(-50%) translateY(6px);white-space:nowrap;padding:3px 10px;border-radius:999px;border:1px solid rgba(75,255,154,.5);background:rgba(75,255,154,.1);color:#6dffae;font:500 9.5px/1.4 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;opacity:0;transition:all .7s var(--ease) .5s}
+.xchg.done .xtag{opacity:1;transform:translateX(-50%)}.xchg.done.needs .xtag{border-color:rgba(255,138,92,.55);background:rgba(255,106,61,.1);color:#ffb48a}
+.xchg.done .xag .xorb{transform:none}.xchg.done .xag.design .xorb{transform:translateX(9px)}.xchg.done .xag.developer .xorb{transform:translateX(-9px)}.xchg.done .xag{opacity:1}
+.xchg.done .xlink path{stroke:var(--cue);stroke-dasharray:none;animation:none;opacity:.85}.xchg.done.needs .xlink path{stroke:#ff8a5c;stroke-dasharray:2 7;opacity:.7}
 .xchg-rail{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:2px 0 0;padding:0;list-style:none}
 .xchg-rail::before{content:"";position:absolute;left:8%;right:8%;top:6px;height:2px;background:rgba(255,255,255,.12);border-radius:2px}
 .xchg-rail::after{content:"";position:absolute;left:8%;top:6px;height:2px;width:calc(84% * var(--p,0));background:linear-gradient(90deg,#4bff9a,#ff8a5c);border-radius:2px;transition:width .9s var(--ease)}
@@ -121,22 +156,31 @@ body.has-crumbs .top .brand b{display:none}
 .xchg-rail li i{position:relative;z-index:1;width:14px;height:14px;border-radius:50%;background:#26272c;border:2px solid #3a3b42;transition:all .4s var(--ease)}
 .xchg-rail li.on{color:#f3f3ef}.xchg-rail li.on i{background:var(--cue);border-color:var(--cue);box-shadow:0 0 0 6px rgba(75,255,154,.18);animation:xpulse 1.6s ease-in-out infinite}
 .xchg-rail li.ok{color:#bdbdc4}.xchg-rail li.ok i{background:#4bff9a;border-color:#4bff9a}
-@keyframes xpulse{50%{box-shadow:0 0 0 9px rgba(75,255,154,.05)}}
-.xchg-mid{position:relative;display:grid;grid-template-columns:1fr 128px;gap:14px;min-height:0;flex:1}
-.xchg-feed{display:flex;flex-direction:column;gap:9px;min-height:150px;max-height:300px;overflow-y:auto;padding:4px 4px 2px 0;scrollbar-width:thin;scrollbar-color:#3a3b42 transparent;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 14px);mask-image:linear-gradient(180deg,transparent 0,#000 14px)}
-.xm{max-width:92%;padding:10px 13px;border-radius:16px;font:400 13.5px/1.45 'Space Grotesk',system-ui,sans-serif;animation:xmsg .5s var(--ease) both}
+@keyframes xpulse{50%{box-shadow:0 0 0 9px rgba(75,255,154,.05);opacity:.7}}
+.xchg-mid{display:grid;grid-template-columns:1fr 128px;gap:14px;min-height:0;flex:1}
+.xchg-feed{display:flex;flex-direction:column;gap:10px;min-height:170px;max-height:320px;overflow-y:auto;padding:8px 16px 4px;scrollbar-width:thin;scrollbar-color:#3a3b42 transparent;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16px);mask-image:linear-gradient(180deg,transparent 0,#000 16px)}
+.xm{position:relative;max-width:88%;padding:10px 14px 11px;border-radius:18px;font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;animation:xmsg .55s var(--ease) both}
 @keyframes xmsg{from{opacity:0;transform:translateY(12px) scale(.97)}}
-.xm b{display:block;margin-bottom:3px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;opacity:.75}
-.xm p{margin:0}.xm.design{align-self:flex-start;background:rgba(75,255,154,.09);border:1px solid rgba(75,255,154,.24);border-bottom-left-radius:5px}.xm.design b{color:#6dffae}
-.xm.developer{align-self:flex-end;background:rgba(255,106,61,.09);border:1px solid rgba(255,106,61,.28);border-bottom-right-radius:5px}.xm.developer b{color:#ff8a5c}
-.xm.system{align-self:center;max-width:100%;padding:4px 8px;background:none;border:0;text-align:center;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#9a9aa3}
-.xm.kind-change{padding:7px 11px;font-size:12.5px}.xm.kind-change p{font-family:'IBM Plex Mono',monospace;font-size:11.5px}.xm .xd{color:#ff9d80;text-decoration:line-through;text-decoration-color:rgba(255,157,128,.5)}.xm .xa{color:#6dffae}
-.xm .xchip{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;background:rgba(255,255,255,.12);font:500 11px 'IBM Plex Mono',monospace}
-.xm.typing{display:flex;gap:5px;align-items:center;padding:12px 14px;animation:xmsg .4s var(--ease) both}.xm.typing i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4;animation:xdot 1.1s ease-in-out infinite}.xm.typing i:nth-child(2){animation-delay:.16s}.xm.typing i:nth-child(3){animation-delay:.32s}
+.xm b{display:flex;align-items:baseline;gap:8px;margin-bottom:4px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;opacity:.85}.xm b time{margin-left:auto;font-weight:400;letter-spacing:.06em;opacity:.55}
+.xm p{margin:0}.xm.design,.xm.developer{border:1px solid}
+.xm.design{align-self:flex-start;background:rgba(75,255,154,.09);border-color:rgba(75,255,154,.26);border-bottom-left-radius:5px}.xm.design b{color:#6dffae}
+.xm.developer{align-self:flex-end;background:rgba(255,106,61,.09);border-color:rgba(255,106,61,.3);border-bottom-right-radius:5px}.xm.developer b{color:#ff8a5c}
+.xm.design::before,.xm.developer::before{content:"";position:absolute;bottom:9px;width:7px;height:7px;border-radius:50%}
+.xm.design::before{left:-13px;background:#4bff9a;box-shadow:0 0 9px rgba(75,255,154,.7)}.xm.developer::before{right:-13px;background:#ff8a5c;box-shadow:0 0 9px rgba(255,106,61,.7)}
+.xm.system{align-self:center;max-width:100%;padding:4px 8px;background:none;border:0;text-align:center;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#9a9aa3}.xm.system::before{display:none}
+.xm.kind-think{background:none;border:1px dashed rgba(75,255,154,.35);border-radius:22px;border-bottom-left-radius:5px}.xm.kind-think p{font:italic 400 16px/1.35 'Instrument Serif',Georgia,serif;color:#c9ffe1}
+.xm.kind-finding{border-radius:12px;border-width:1px 1px 1px 3px;border-left-color:#ff8a5c;background:rgba(255,106,61,.06)}.xm.kind-finding p{font-size:13px;color:#f0d6ca}
+.xm.kind-verdict{display:flex;align-items:center;gap:14px;padding:11px 16px 12px 14px}.xm.kind-verdict>div{flex:1;min-width:0}.xm.kind-verdict b{margin-bottom:3px}
+.xbig{flex:none;font:400 44px/1 'Instrument Serif',Georgia,serif;letter-spacing:-.02em;color:#fff}.xbig small{font:400 11px 'IBM Plex Mono',monospace;color:#9a9aa3;margin-left:2px;letter-spacing:0}
+.xm.kind-change{padding:7px 12px}.xm.kind-change p{font-family:'IBM Plex Mono',monospace;font-size:11.5px}.xm .xd{color:#ff9d80;text-decoration:line-through;text-decoration-color:rgba(255,157,128,.5)}.xm .xa{color:#6dffae}
+.xround{display:flex;align-items:center;gap:12px;margin:10px 0 0;color:#9a9aa3;font:italic 400 19px/1 'Instrument Serif',Georgia,serif;animation:xmsg .5s var(--ease) both}.xround::before,.xround::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.12)}
+.xm.typing{display:flex;gap:5px;align-items:center;padding:11px 14px;animation:xmsg .4s var(--ease) both}.xm.typing i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4;animation:xdot 1.1s ease-in-out infinite}.xm.typing i:nth-child(2){animation-delay:.16s}.xm.typing i:nth-child(3){animation-delay:.32s}
+.xm.typing span{margin-left:6px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
 .xm.typing.design{color:#6dffae}.xm.typing.developer{color:#ff8a5c}@keyframes xdot{40%{transform:translateY(-4px);opacity:1}}
 .xchg-score{display:grid;justify-items:center;align-content:start;gap:8px;padding-top:2px;opacity:.35;transition:opacity .6s var(--ease)}.xchg-score.has{opacity:1}
 .xring{position:relative;width:112px;height:112px}.xring svg{width:100%;height:100%;transform:rotate(-90deg)}.xring circle{fill:none;stroke-width:7;stroke-linecap:round}
 .xring .trk{stroke:rgba(255,255,255,.1)}.xring .val{stroke:var(--sc,#4bff9a);stroke-dasharray:326.7;stroke-dashoffset:326.7;transition:stroke-dashoffset 1.3s var(--ease),stroke .6s}
+.xring .bar{stroke:#f3f3ef;stroke-width:2;stroke-linecap:butt}
 .xring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2px;font:400 34px/1 'Instrument Serif',Georgia,serif}.xring b small{align-self:center;margin-top:12px;font:400 11px 'IBM Plex Mono',monospace;color:#9a9aa3}
 .xchg-score>span{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#9a9aa3;text-align:center}
 .xdelta{padding:2px 9px;border-radius:999px;background:rgba(75,255,154,.16);color:#6dffae!important;opacity:0;transform:translateY(6px);transition:all .6s var(--ease) .5s}.xchg-score.up .xdelta{opacity:1;transform:none}
@@ -147,8 +191,8 @@ body.has-crumbs .top .brand b{display:none}
 .xchg.done .xburst i{animation:xspark 1.1s var(--ease) both;animation-delay:calc(var(--n)*18ms)}
 @keyframes xspark{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(.3)}}
 body.xchg-on{overflow:hidden}
-@media(max-width:600px){.xchg{padding:0;place-items:end center}.xchg-card{width:100%;max-height:94dvh;border-radius:28px 28px 0 0;padding:22px 18px 18px;gap:13px}.xchg-title{font-size:28px;padding-right:56px}.xchg-mid{grid-template-columns:1fr}.xchg-score{grid-template-columns:auto 1fr;justify-items:start;align-items:center;gap:14px}.xring{width:84px;height:84px}.xring b{font-size:27px}.xchg-feed{max-height:34dvh;min-height:120px}.xorb{width:54px;height:54px}.xchg-rail li{font-size:9px;letter-spacing:.04em}}
-@media(prefers-reduced-motion:reduce){.xchg *,.xchg *::before,.xchg *::after{animation:none!important;transition-duration:.01ms!important}.xlink .pk{display:none}}
+@media(max-width:600px){.xchg{padding:0;place-items:end center}.xchg-card{width:100%;max-height:95dvh;border-radius:28px 28px 0 0;padding:20px 16px 16px;gap:12px}.xchg-title{font-size:29px;padding-right:56px;min-height:32px}.xchg-agents{grid-template-columns:1fr 58px 1fr}.xag{column-gap:8px}.xag small{display:none}.xag b{font-size:12.5px}.xag .xstat{font-size:8.5px;letter-spacing:.05em;text-align:center}.xag .xstat::before{display:none}.xorb{width:48px;height:48px}.xorb svg{width:22px;height:22px}.xsat{inset:-11px}.xdesk{width:34px;height:44px}.xdesk.polaroid{padding:3px 3px 9px}.xlinkwrap{height:48px}.xlink{top:5px;height:38px}.xhand{top:24px}.xhand i{width:20px;height:25px}.xtag{top:42px;font-size:8.5px;padding:2px 8px}.xchg-mid{grid-template-columns:1fr}.xchg-score{grid-template-columns:auto 1fr;justify-items:start;align-items:center;gap:14px}.xring{width:84px;height:84px}.xring b{font-size:27px}.xchg-feed{max-height:32dvh;min-height:130px;padding:6px 14px 2px}.xm{max-width:92%;font-size:13.5px}.xbig{font-size:36px}.xchg-rail li{font-size:9px;letter-spacing:.04em}}
+@media(prefers-reduced-motion:reduce){.xchg *,.xchg *::before,.xchg *::after{animation:none!important;transition-duration:.01ms!important}.xlink .pk,.xhand{display:none}}
 .chk-shots{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 18px}.chk-shots figure{margin:0;min-width:0}.chk-img{display:grid;place-items:center;gap:8px;min-height:240px;padding:10px;border:1px solid var(--line);border-radius:18px;background:var(--fog);overflow:hidden}.chk-img{min-width:0}.chk-img img{max-width:100%;height:auto;max-height:340px;border-radius:12px;object-fit:contain}.chk-shots figcaption{margin-top:6px;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .chk-verdict{display:flex;gap:18px;align-items:center;margin:4px 0 16px}.chk-verdict p{margin:8px 0 0;max-width:62ch}.chk-score{display:flex;align-items:baseline;gap:2px;min-width:104px;justify-content:center;padding:14px 16px;border-radius:20px;border:1px solid var(--line)}.chk-score b{font:400 44px/1 'Instrument Serif',Georgia,serif}.chk-score small{color:var(--dim)}.chk-score.ok{background:#e3f6ea;border-color:#b6e2c6}.chk-score.warn{background:#fff6d6;border-color:#ecd98a}.chk-score.bad{background:#fbe3df;border-color:#efb7ae}
 .chk-pill{display:inline-block;padding:3px 10px;border-radius:999px;font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}.chk-pill.ok{background:#e3f6ea;color:#1c6b42}.chk-pill.warn{background:#fff1be;color:#7a5a00}.chk-pill.bad{background:#fbe3df;color:#9a2419}.chk-pill.mute{background:#ececef;color:#555}
@@ -989,66 +1033,136 @@ let aiWatch=null;
 const XSTEPS=[['draft','Draft'],['compare','Test'],['review','Review'],['revise','Revise'],['recheck','Re-test'],['done','Result']];
 const XTITLE={draft:'Reading the photo and drafting the pack',compare:'Testing the draft',review:'Going over the findings',revise:'Making the changes',recheck:'Testing it again',done:'Ready to review'};
 const XWHO={draft:'design',compare:'developer',review:'design',revise:'design',recheck:'developer'};
+// what each of them is doing at each step, in their own words
+const XSTAT={design:{draft:'Reading the photo, writing the pack',compare:'Waiting on the test',review:'Weighing the findings',revise:'Making the changes',recheck:'Waiting on the re-test'},developer:{draft:'Waiting for the pack',compare:'Drawing it from the words alone',review:'Waiting on the answer',revise:'Waiting on the changes',recheck:'Testing it again'}};
+const XTYPING={design:{draft:'is reading the photo',compare:'is thinking',review:'is thinking it over',revise:'is making changes',recheck:'is waiting'},developer:{draft:'is waiting',compare:'is drawing it from the pack',review:'is waiting',revise:'is waiting',recheck:'is testing it again'}};
 const XICON={design:'<svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4zM14 7l3 3"/></svg>',developer:'<svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>'};
-const X={el:null,seen:0,shown:0,title:'',stage:'',score:null,open:false,hidden:false};
+const X={el:null,seen:0,title:'',stage:'',score:null,first:null,open:false,hidden:false,queue:[],busy:false,round:0,t0:0,finish:null,last:'',gen:0,running:true,intro:false,bar:90};
 const loopState=lp=>({stage:lp.stage,events:lp.events||[],status:lp.status==='running'?'running':lp.status==='failed'?'failed':'done',startScore:lp.startScore,finalScore:lp.finalScore,outcome:lp.outcome||null,bar:lp.bar||90,changes:(lp.changes||[]).filter(c=>!c.undone).length});
+const xReduced=()=>matchMedia('(prefers-reduced-motion:reduce)').matches,xWait=ms=>new Promise(r=>setTimeout(r,ms));
 function xBuild(){
   const el=document.createElement('div');el.className='xchg';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-labelledby','xTitle');el.dataset.dir='fwd';
   const sparks=Array.from({length:14},(_,i)=>{const a=i/14*Math.PI*2,r=60+(i%3)*22;return `<i style="--n:${i};--x:${Math.round(Math.cos(a)*r)}px;--y:${Math.round(Math.sin(a)*r)}px;--c:${['#4bff9a','#ff8a5c','#fff'][i%3]}"></i>`}).join('');
-  el.innerHTML=`<div class="xchg-card"><button type="button" class="xchg-hide" data-act="xhide">Hide</button>
+  const path='M2,23 C42,2 118,44 158,23',dot=(r,b,k)=>`<circle class="pk ${k}" r="${r}"><animateMotion dur="1.5s"${b?` begin="${b}"`:''} repeatCount="indefinite"${k==='pb'?' keyPoints="1;0" keyTimes="0;1" calcMode="linear"':''} path="${path}"/></circle>`;
+  el.innerHTML=`<div class="xchg-card"><div class="xchg-grid" aria-hidden="true"></div><button type="button" class="xchg-hide" data-act="xhide">Hide</button>
+    <div class="xchg-bar"><span class="xchg-mark">FUTURE BASICS<i></i></span></div>
     <div class="xchg-top"><span class="xchg-kicker">Two assistants, one tech pack</span><h2 class="xchg-title" id="xTitle"></h2></div>
-    <div class="xchg-agents"><div class="xag design" data-who="design"><span class="xorb">${XICON.design}</span><div><b>Design assistant</b><small>drafts and fixes the pack</small></div></div>
-      <svg class="xlink" viewBox="0 0 160 46" preserveAspectRatio="none" aria-hidden="true"><path id="xp" d="M2,23 C42,2 118,44 158,23"/>
-        <g class="pf"><circle class="pk pf" r="3.2"><animateMotion dur="1.5s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pf" r="2.4"><animateMotion dur="1.5s" begin="-.5s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pf" r="2"><animateMotion dur="1.5s" begin="-1s" repeatCount="indefinite" path="M2,23 C42,2 118,44 158,23"/></circle></g>
-        <g class="pb"><circle class="pk pb" r="3.2"><animateMotion dur="1.5s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pb" r="2.4"><animateMotion dur="1.5s" begin="-.5s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle><circle class="pk pb" r="2"><animateMotion dur="1.5s" begin="-1s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" path="M2,23 C42,2 118,44 158,23"/></circle></g></svg>
-      <div class="xag developer" data-who="developer"><span class="xorb">${XICON.developer}</span><div><b>Developer assistant</b><small>tests it from the pack alone</small></div></div></div>
+    <div class="xchg-agents"><div class="xag design" data-who="design"><span class="xdesk polaroid" aria-hidden="true"><span class="xph"></span></span><span class="xorb"><i class="xsat"></i>${XICON.design}</span><div><b>Design assistant</b><small>drafts and fixes the pack</small><span class="xstat"></span></div></div>
+      <div class="xlinkwrap"><svg class="xlink" viewBox="0 0 160 46" preserveAspectRatio="none" aria-hidden="true"><path id="xp" d="${path}"/>
+        <g class="pf">${dot(3.2,'','pf')}${dot(2.4,'-.5s','pf')}${dot(2,'-1s','pf')}</g><g class="pb">${dot(3.2,'','pb')}${dot(2.4,'-.5s','pb')}${dot(2,'-1s','pb')}</g></svg>
+        <span class="xhand" data-d="fwd" aria-hidden="true"><i></i><em></em></span><span class="xtag"></span></div>
+      <div class="xag developer" data-who="developer"><span class="xdesk blueprint" aria-hidden="true"></span><span class="xorb"><i class="xsat"></i>${XICON.developer}</span><div><b>Developer assistant</b><small>tests it from the pack alone</small><span class="xstat"></span></div></div></div>
     <ol class="xchg-rail">${XSTEPS.map(([k,l])=>`<li data-k="${k}"><i></i>${l}</li>`).join('')}</ol>
     <div class="xchg-mid"><div class="xchg-feed" aria-live="polite" tabindex="0"></div>
-      <div class="xchg-score"><div class="xring"><svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" cx="60" cy="60" r="52"/></svg><b><span class="xnum">–</span><small>/100</small></b></div><span class="xlbl">Match with the photo</span><span class="xdelta"></span></div></div>
+      <div class="xchg-score"><div class="xring"><svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" cx="60" cy="60" r="52"/><line class="bar" x1="108" y1="60" x2="120" y2="60" transform="rotate(324 60 60)"/></svg><b><span class="xnum">–</span><small>/100</small></b></div><span class="xlbl">Match with the photo</span><span class="xdelta"></span></div></div>
     <div class="xchg-foot"><span class="xchg-wait">Usually two to four minutes. You can hide this and keep working.</span><span class="xburst" aria-hidden="true">${sparks}</span><button type="button" class="xchg-cta" data-act="xclose">See the tech pack</button></div></div>`;
   document.body.appendChild(el);return el;
 }
 function xOpen(){
-  if(!X.el)X.el=xBuild();const el=X.el;Object.assign(X,{seen:0,title:'',stage:'',score:null,open:true,hidden:false});
-  el.querySelector('.xchg-feed').innerHTML='';el.classList.remove('done','on');el.querySelector('.xchg-score').classList.remove('has','up');el.querySelector('.xnum').textContent='–';el.querySelector('.xring .val').style.strokeDashoffset='326.7';
+  if(!X.el)X.el=xBuild();const el=X.el;
+  Object.assign(X,{seen:0,title:'',stage:'',score:null,first:null,open:true,hidden:false,queue:[],busy:false,round:0,t0:0,finish:null,last:'',running:true,intro:false,bar:90});X.gen++;
+  el.querySelector('.xchg-feed').innerHTML='';el.classList.remove('done','on','needs');el.dataset.dir='fwd';el.querySelector('.xchg-score').classList.remove('has','up');el.querySelector('.xnum').textContent='–';el.querySelector('.xring .val').style.strokeDashoffset='326.7';el.querySelector('.xtag').textContent='';
+  el.querySelectorAll('.xag').forEach(a=>a.classList.remove('act','talk','hear'));
+  // the photo the design assistant is working from sits on its side of the desk
+  const img=(typeof S!=='undefined'&&S.pack)?((S.pack.sketches||[]).find(s=>s.image)?.image||(S.pack.artwork||[]).find(a=>a.image)?.image||''):'';
+  const ph=el.querySelector('.xph');ph.style.backgroundImage=/^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+$/.test(img)?`url("${img}")`:'';
+  xStage('draft');
   el.hidden=false;document.body.classList.add('xchg-on');requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('on')));
 }
 function xHide(){if(!X.el||!X.open)return;X.hidden=true;X.el.classList.remove('on');document.body.classList.remove('xchg-on');setTimeout(()=>{if(X.hidden)X.el.hidden=true},380)}
 function xShow(){if(!X.el)return;X.hidden=false;X.el.hidden=false;document.body.classList.add('xchg-on');requestAnimationFrame(()=>X.el.classList.add('on'))}
 function xClose(){if(!X.el)return;X.open=false;X.hidden=false;X.el.classList.remove('on');document.body.classList.remove('xchg-on');setTimeout(()=>{if(!X.open)X.el.hidden=true},380)}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&X.open&&!X.hidden)xHide()});
+const xName=a=>a==='design'?'Design assistant':'Developer assistant';
+function xStamp(e){const t=Date.parse(e.at);if(!t)return '';if(!X.t0)X.t0=t;const s=Math.max(0,Math.round((t-X.t0)/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`}
 function xBubble(e){
   if(e.agent==='system')return `<div class="xm system">${esc(e.text)}</div>`;
-  const who=e.agent==='design'?'Design assistant':'Developer assistant';let body;
+  const ts=xStamp(e),head=`<b>${xName(e.agent)}${e.kind==='finding'?' · finding':e.kind==='think'?' · thinking':''}${ts?`<time>${ts}</time>`:''}</b>`;let body;
   if(e.kind==='change'&&e.data){const i=e.text.indexOf(': ');body=`<p>${esc(i>0?e.text.slice(0,i):'')}: <span class="xd">${esc(e.data.from||'(empty)')}</span> → <span class="xa">${esc(e.data.to)}</span></p>`}
-  else body=`<p>${esc(e.text)}${e.kind==='verdict'&&e.score!=null?`<span class="xchip">${e.score}/100</span>`:''}</p>`;
-  return `<div class="xm ${e.agent} kind-${esc(e.kind)}"><b>${who}</b>${body}</div>`;
+  else if(e.kind==='verdict'&&e.score!=null)return `<div class="xm ${e.agent} kind-verdict"><span class="xbig">${e.score}<small>/100</small></span><div>${head}<p>${esc(e.text)}</p></div></div>`;
+  else body=`<p>${esc(e.text)}</p>`;
+  return `<div class="xm ${e.agent} kind-${esc(e.kind)}">${head}${body}</div>`;
 }
 function xScore(el,n,start){
   const sc=el.querySelector('.xchg-score'),num=el.querySelector('.xnum'),val=el.querySelector('.xring .val'),from=X.score??0;X.score=n;sc.classList.add('has');
-  val.style.strokeDashoffset=String(326.7*(1-Math.max(0,Math.min(100,n))/100));const bar=X.bar||90,col=n>=bar?'#4bff9a':n>=bar-20?'#ffd84a':'#ff7a59';el.style.setProperty('--sc',col);val.style.setProperty('--sc',col);el.querySelector('.xlbl').textContent=`Match with the photo · the bar is ${bar}`;
-  const t0=performance.now(),dur=matchMedia('(prefers-reduced-motion:reduce)').matches?1:1100;const step=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);num.textContent=Math.round(from+(n-from)*e);if(k<1)requestAnimationFrame(step)};requestAnimationFrame(step);
+  val.style.strokeDashoffset=String(326.7*(1-Math.max(0,Math.min(100,n))/100));const bar=X.bar||90,col=n>=bar?'#4bff9a':n>=bar-20?'#ffd84a':'#ff7a59';el.style.setProperty('--sc',col);val.style.setProperty('--sc',col);
+  el.querySelector('.xring .bar').setAttribute('transform',`rotate(${bar*3.6} 60 60)`);el.querySelector('.xlbl').textContent=`Match with the photo · the bar is ${bar}`;
+  const t0=performance.now(),dur=xReduced()?1:1100;const step=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);num.textContent=Math.round(from+(n-from)*e);if(k<1)requestAnimationFrame(step)};requestAnimationFrame(step);
   const dl=el.querySelector('.xdelta');if(start!=null&&n>start){dl.textContent='+'+(n-start)+' since the first test';sc.classList.add('up')}else sc.classList.remove('up');
 }
-function xUpdate(st){
-  const el=X.el;if(!el)return;const feed=el.querySelector('.xchg-feed'),running=st.status==='running',stage=running?st.stage:'done';
-  const idx=Math.max(0,XSTEPS.findIndex(s=>s[0]===stage));el.querySelector('.xchg-rail').style.setProperty('--p',String(idx/(XSTEPS.length-1)));
-  el.querySelectorAll('.xchg-rail li').forEach((li,i)=>{li.classList.toggle('ok',i<idx||(!running&&i===idx));li.classList.toggle('on',running&&i===idx)});
-  const bar=st.bar||90,needs=!running&&st.status!=='failed'&&st.outcome==='needs-review';X.bar=bar;
-  const title=!running&&st.status==='failed'?'Your draft is ready':needs?'Not ready: needs a person':XTITLE[stage]||'';
-  if(title!==X.title){X.title=title;el.querySelector('.xchg-title').innerHTML=`<span>${esc(title)}</span>`}
-  const speaker=running?(XWHO[stage]||'design'):null;el.querySelectorAll('.xag').forEach(a=>a.classList.toggle('act',running&&a.dataset.who===speaker));
-  const evs=st.events||[],last=evs.at(-1);if(last&&last.agent!=='system')el.dataset.dir=last.agent==='design'?'fwd':'back';else if(speaker)el.dataset.dir=speaker==='design'?'fwd':'back';
-  feed.querySelectorAll('.typing').forEach(t=>t.remove());
-  if(!evs.length&&running&&!feed.children.length)feed.insertAdjacentHTML('beforeend',xBubble({agent:'design',kind:'say',text:'Looking at the photo and drafting callouts, measurements, materials and colours.'}));
-  for(const e of evs){if(e.id<X.seen)continue;feed.insertAdjacentHTML('beforeend',xBubble(e));X.seen=e.id+1}
-  if(running)feed.insertAdjacentHTML('beforeend',`<div class="xm typing ${speaker}" aria-hidden="true"><i></i><i></i><i></i></div>`);
+// the step the two of them are on: the rail, the title, who is working and what they would say they are doing
+function xStage(stage){
+  const el=X.el;if(!el||!XSTEPS.some(s=>s[0]===stage))return;X.stage=stage;
+  const idx=XSTEPS.findIndex(s=>s[0]===stage);el.querySelector('.xchg-rail').style.setProperty('--p',String(idx/(XSTEPS.length-1)));
+  el.querySelectorAll('.xchg-rail li').forEach((li,i)=>{li.classList.toggle('ok',i<idx);li.classList.toggle('on',i===idx)});
+  if(XTITLE[stage]!==X.title){X.title=XTITLE[stage];el.querySelector('.xchg-title').innerHTML=`<span>${esc(X.title)}</span>`}
+  const speaker=XWHO[stage]||'design';el.querySelectorAll('.xag').forEach(a=>{a.classList.toggle('act',a.dataset.who===speaker);a.querySelector('.xstat').textContent=XSTAT[a.dataset.who][stage]||''});
+}
+function xTyping(agent,verb){
+  const feed=X.el?.querySelector('.xchg-feed');if(!feed)return;feed.querySelectorAll('.typing').forEach(t=>t.remove());if(!agent)return;
+  feed.insertAdjacentHTML('beforeend',`<div class="xm typing ${agent}" aria-hidden="true"><i></i><i></i><i></i><span>${agent==='design'?'Design':'Developer'} ${esc(verb||'is typing')}</span></div>`);feed.scrollTo({top:feed.scrollHeight,behavior:'smooth'});
+}
+// a bit of paper changes hands: the pack going over, the findings coming back
+function xHand(from,e){
+  const el=X.el,h=el.querySelector('.xhand');if(!h)return;const fwd=from==='design';
+  h.querySelector('em').textContent=fwd?(e.stage==='compare'?'The pack':'Revised pack'):'Findings';h.dataset.d=fwd?'fwd':'back';el.dataset.dir=fwd?'fwd':'back';
+  h.classList.remove('go');void h.offsetWidth;if(!xReduced())h.classList.add('go');
+}
+// the one who is talking leans in and rings out; the other leans toward them
+function xTalk(agent){
+  const el=X.el;el.querySelectorAll('.xag').forEach(a=>{a.classList.toggle('talk',a.dataset.who===agent);a.classList.toggle('hear',a.dataset.who!==agent)});
+  clearTimeout(X.talkT);X.talkT=setTimeout(()=>el.querySelectorAll('.xag').forEach(a=>a.classList.remove('talk','hear')),1900);
+}
+function xReveal(e){
+  const el=X.el,feed=el.querySelector('.xchg-feed');
+  if(e.stage&&e.stage!=='done')xStage(e.stage);
+  if(e.kind==='think'){X.round++;feed.insertAdjacentHTML('beforeend',`<div class="xround"><span>Round ${X.round}</span></div>`)}
+  feed.insertAdjacentHTML('beforeend',xBubble(e));
+  if(e.agent!=='system'){if(X.last&&X.last!==e.agent)xHand(X.last,e);X.last=e.agent;xTalk(e.agent)}
+  if(e.kind==='verdict'&&e.score!=null){if(X.first==null)X.first=e.score;xScore(el,e.score,X.first)}
   feed.scrollTo({top:feed.scrollHeight,behavior:'smooth'});
-  const scores=evs.filter(e=>e.kind==='verdict'&&e.score!=null),cur=scores.at(-1)?.score;
-  if(cur!=null&&cur!==X.score)xScore(el,cur,st.startScore??scores[0]?.score);
-  if(!running){el.classList.toggle('needs',needs);el.querySelector('.xchg-cta').textContent=needs?'Review the pack':'See the tech pack';const w=el.querySelector('.xchg-wait');if(w)w.textContent=needs?`Not ready: ${st.finalScore??X.score}/100, below the bar of ${bar}. A person will go through what is still open.`:st.status==='failed'?'':'Ready for your review.'}
-  if(!running&&!el.classList.contains('done')){el.classList.add('done');setTimeout(()=>el.querySelector('.xchg-cta')?.focus({preventScroll:true}),400)}
-  X.stage=stage;
+}
+// Messages arrive from the server in bursts; they are read out one at a time, each after a moment of typing, the way two people would say them.
+async function xPump(){
+  if(X.busy)return;X.busy=true;const gen=X.gen;
+  while(X.queue.length&&gen===X.gen&&X.el){
+    const e=X.queue.shift(),quick=xReduced()||X.hidden||X.queue.length>3;
+    const wait=e.agent==='system'?(quick?0:350):e.kind==='change'?(quick?0:240):e.kind==='finding'?(quick?0:650):quick?(X.hidden?0:260):Math.min(1500,480+String(e.text||'').length*13);
+    if(wait>0){if(e.agent!=='system'&&e.kind!=='change')xTyping(e.agent,XTYPING[e.agent]?.[e.stage||X.stage]);await xWait(wait);if(gen!==X.gen)return}
+    xTyping(null);xReveal(e);
+    if(!xReduced()&&!X.hidden)await xWait(e.kind==='change'?110:260);
+  }
+  if(gen!==X.gen)return;X.busy=false;xIdle();
+}
+function xIdle(){
+  if(!X.el)return;
+  if(!X.running){if(X.finish)xFinish(X.finish);return}
+  xStage(X.stage||'draft');xTyping(XWHO[X.stage||'draft']||'design',XTYPING[XWHO[X.stage||'draft']||'design'][X.stage||'draft']);
+}
+// the end: the two of them settle, side by side, or say plainly that a person has to take it from here
+function xFinish(st){
+  const el=X.el;if(!el||el.classList.contains('done'))return;
+  const failed=st.status==='failed',needs=!failed&&st.outcome==='needs-review',bar=st.bar||90;X.bar=bar;
+  xTyping(null);clearTimeout(X.talkT);el.querySelectorAll('.xag').forEach(a=>a.classList.remove('act','talk','hear'));
+  el.querySelector('.xchg-rail').style.setProperty('--p','1');el.querySelectorAll('.xchg-rail li').forEach(li=>{li.classList.add('ok');li.classList.remove('on')});
+  X.stage='done';const title=failed?'Your draft is ready':needs?'Not ready: needs a person':XTITLE.done;if(title!==X.title){X.title=title;el.querySelector('.xchg-title').innerHTML=`<span>${esc(title)}</span>`}
+  const fs=st.finalScore??X.score;if(!failed&&st.finalScore!=null&&X.score!==st.finalScore)xScore(el,st.finalScore,X.first);
+  const sd={design:needs?'Handing it to a person':failed?'':'Signed off',developer:needs?'Not convinced yet':failed?'':'Satisfied'};el.querySelectorAll('.xag').forEach(a=>a.querySelector('.xstat').textContent=sd[a.dataset.who]);
+  el.querySelector('.xtag').textContent=failed?'':needs?`Needs a person · ${fs}/100`:`Agreed · ${fs}/100`;
+  el.classList.toggle('needs',needs);el.querySelector('.xchg-cta').textContent=needs?'Review the pack':'See the tech pack';
+  const w=el.querySelector('.xchg-wait');if(w)w.textContent=needs?`Not ready: ${st.finalScore??X.score}/100, below the bar of ${bar}. A person will go through what is still open.`:failed?'':'Ready for your review.';
+  el.classList.add('done');setTimeout(()=>el.querySelector('.xchg-cta')?.focus({preventScroll:true}),400);
+}
+function xUpdate(st){
+  const el=X.el;if(!el)return;const running=st.status==='running';X.running=running;X.bar=st.bar||90;
+  const evs=st.events||[];
+  // before the first message there is already something to say
+  if(!evs.length&&running&&!X.intro){X.intro=true;X.queue.push({id:-1,agent:'design',kind:'say',stage:'draft',at:'',text:'Looking at the photo and drafting callouts, measurements, materials and colours.'})}
+  for(const e of evs){if(e.id<X.seen)continue;X.queue.push(e);X.seen=e.id+1}
+  if(!running)X.finish=st;
+  if(X.queue.length){xPump();return}
+  if(X.busy)return;
+  if(!running)xFinish(st);else{xStage(evs.length?X.stage||'draft':st.stage||'draft');xIdle()}
 }
 // Waits for the assistant's draft, then for the exchange with the developer assistant, with the pop-up showing each step as it happens.
 async function watchAiDraft(){

@@ -89,8 +89,10 @@ await journey('J61', 'the pop-up: both assistants, a live exchange, a score that
       await p.waitForFunction(() => /^\d+$/.test(document.querySelector('.xnum')?.textContent || ''), null, { timeout: 30000 }); await p.waitForFunction(() => document.querySelector('.xchg-score.has'), null, { timeout: 5000 }); ok(true, `${name}: the score ring fills once the first test is in`);
       await p.waitForFunction(() => document.querySelectorAll('.xchg .xm.kind-finding').length >= 1, null, { timeout: 10000 }).catch(() => {}); // the findings arrive a beat after the score
       ok(await p.locator('.xchg .xm.kind-finding').count() >= 1, `${name}: the developer assistant's findings are shown`);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j61-${name}-mid.png` }).catch(() => {});
       const w = await p.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: innerWidth, card: document.querySelector('.xchg-card').getBoundingClientRect().width })); ok(w.doc <= w.win + 1 && w.card <= w.win + 1, `${name}: nothing spills sideways`, w);
       await p.waitForSelector('.xchg.done', { timeout: 45000 }); ok(await p.locator('.xchg-cta').isVisible() && /Ready/.test(await p.innerText('.xchg-title')), `${name}: at the end it says ready and offers the pack`);
+      ok(/agreed/i.test(await p.innerText('.xtag')) && await p.locator('.xchg .xround').count() >= 1 && (await p.innerText('.xag.design .xstat')).length > 0, `${name}: they end agreed, with the rounds marked and each saying where they are`);
       ok(await p.locator('.xm.kind-change .xd').count() >= 1 && await p.locator('.xm.kind-change .xa').count() >= 1, `${name}: the change shows what it was and what it became`);
       await p.waitForFunction(() => document.querySelector('.xnum')?.textContent === '92', null, { timeout: 5000 }); ok(/\+34/.test(await p.innerText('.xdelta')), `${name}: the score ends at 92 with the gain shown`);
       await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j61-${name}-done.png` }).catch(() => {});
