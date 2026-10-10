@@ -331,6 +331,35 @@ test('pay the store directly: Spot builds the store’s checkout, the payer pays
   assert.equal(mine.cart.card_ready, false, 'no card was ever issued');
 });
 
+test('pay the store directly: a checkout the requester started for themselves isn’t handed to the payer', async (t) => {
+  const store = await startUcpStore();
+  const { app, call } = await directSetup(t, store);
+  const made = (await call('POST', '/v1/carts', directCart(store.origin))).body;
+  const { token } = made.cart;
+  const k = made.manage_key;
+  await call('POST', `/v1/carts/${token}/manage/prepare`, { k, shipping });
+
+  // Kyle starts paying it himself, then changes his mind and sends it on.
+  assert.equal((await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k })).status, 200);
+  const his = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Kyle Riggle', email: 'kyle@example.com' });
+  assert.equal(his.status, 200, JSON.stringify(his.body));
+  assert.equal((await call('POST', `/v1/carts/${token}/manage/reassign`, { k })).status, 200);
+
+  // Danielle gets her own checkout, with her as the buyer.
+  const hers = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Danielle', email: 'danielle@example.com' });
+  assert.equal(hers.status, 200, JSON.stringify(hers.body));
+  assert.notEqual(hers.body.continue_url, his.body.continue_url);
+  const created = store.log.filter((r) => r.method === 'POST' && r.url === '/ucp/checkout-sessions').at(-1);
+  assert.equal(created.body.buyer.email, 'danielle@example.com');
+  assert.equal((await call('POST', `/v1/carts/${token}/direct/start`, {})).body.continue_url, hers.body.continue_url, 'hers is reused for her');
+
+  await fetch(`${hers.body.continue_url}/pay`, { method: 'POST' });
+  await app.spot.sweepDirect();
+  const mine = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).body;
+  assert.equal(mine.cart.status, 'completed');
+  assert.equal(mine.cart.payer_name, 'Danielle', 'Kyle thanks Danielle, not himself');
+});
+
 test('pay the store directly: only for stores that take UCP checkout', async (t) => {
   const store = await startUcpStore();
   const { call } = await directSetup(t, store);
