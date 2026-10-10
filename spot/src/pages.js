@@ -55,6 +55,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .cc .n{font-size:20px;letter-spacing:.08em;margin:22px 0 10px}
 .cc .meta{display:flex;justify-content:space-between;font-size:13px;opacity:.9}
 .hero-note{display:flex;gap:10px;align-items:flex-start;background:color-mix(in srgb,var(--spot) 10%,transparent);border-radius:14px;padding:12px 14px;margin:12px 0;font-size:14px}
+.bmhow{margin-top:12px;font-size:14px}.bmhow ol{margin:0 0 10px;padding-left:20px}.bmhow li{margin:4px 0}
 .bm{display:inline-block;padding:8px 12px;border-radius:10px;background:var(--ink);color:var(--bg);font-weight:700;text-decoration:none;font-size:14px}
 footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 .sandbox{background:#fff3cd;color:#6b4e00;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;margin:10px 0}
@@ -170,7 +171,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 <section class="card desktop-only">
   <h2>Spot from any page</h2>
   <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it.</p>
-  <a class="bm" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a>
+  <div data-bmwrap><a class="bm" href="${esc(bookmarklet)}" draggable="true" data-bm>● Spot this</a><div class="bmhow" hidden><ol><li>Show your bookmarks bar: <b>⌘ Shift B</b> (Mac) or <b>Ctrl Shift B</b> (Windows).</li><li>Drag <b>● Spot this</b> onto it.</li><li>Won’t drag? Right-click the bookmarks bar → <b>Add page…</b>, name it <b>Spot this</b>, and paste the code below as the URL.</li></ol><button type="button" class="btn ghost bmcopy">Copy the code</button></div></div><script>document.querySelectorAll('[data-bm]').forEach(a=>{const how=a.closest('[data-bmwrap]').querySelector('.bmhow');a.addEventListener('click',e=>{e.preventDefault();how.hidden=false});how.querySelector('.bmcopy').addEventListener('click',async ev=>{try{await navigator.clipboard.writeText(a.getAttribute('href'));ev.target.textContent='Copied ✓ now paste it as the URL'}catch{prompt('Copy this, then paste it as the bookmark URL:',a.getAttribute('href'))}})})</script>
 </section>
 <footer>Spot · cart links for anyone, anywhere<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
 <script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, cardPct: cfg.cardPctBps || 0, cardFixed: cfg.cardFixedCents || 0, max: cfg.maxCartCents, cushionBps: AUTH_TOLERANCE_BPS, cushionMax: AUTH_TOLERANCE_MAX_CENTS, provider })}</script>

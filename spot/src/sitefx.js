@@ -178,12 +178,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:50;opa
 .confetti{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:4}
 .confetti i{position:absolute;width:9px;height:14px;border-radius:2px;left:var(--x);top:var(--y);animation:burst 1.3s cubic-bezier(.2,.7,.3,1) forwards}
 @keyframes burst{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(var(--r));opacity:0}}
-.spark{position:fixed;pointer-events:none;z-index:60;font-size:16px;animation:spark .9s ease-out forwards}
-@keyframes spark{to{transform:translateY(-34px) scale(.4);opacity:0}}
 
-/* buttons get a little life */
-.btn.primary:hover{animation:wiggle .5s}
-@keyframes wiggle{0%,100%{rotate:0}25%{rotate:-3deg}75%{rotate:3deg}}
 
 /* scroll story */
 .story{position:relative;height:340vh;background:var(--bg2)}
@@ -275,11 +270,6 @@ export const FX_JS = `
 
   // Click the mascot for a little celebration.
   const hb=document.querySelector('.hero .buddy');hb&&hb.addEventListener('click',()=>spotConfetti(hb,'50%','50%',30));
-
-  // Sparkles trail the pointer across the hero (desktop only).
-  const hero=document.querySelector('.hero');let last=0;
-  if(hero&&!reduce&&matchMedia('(hover:hover)').matches)hero.addEventListener('pointermove',e=>{const now=performance.now();if(now-last<70)return;last=now;
-    const s=document.createElement('span');s.className='spark';s.textContent=['✦','♡','✧','·'][Math.floor(Math.random()*4)];s.style.left=e.clientX+'px';s.style.top=e.clientY+'px';s.style.color=['#ff5a36','#ffb347','#4b7bff'][Math.floor(Math.random()*3)];document.body.appendChild(s);setTimeout(()=>s.remove(),900)});
 
   // Scroll story: the token rides three lanes as you scroll.
   const story=document.querySelector('.story');

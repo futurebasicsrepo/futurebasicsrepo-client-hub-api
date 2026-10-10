@@ -13,37 +13,56 @@ export const SITE_CSS = `
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-400.woff2) format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-600.woff2) format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-800.woff2) format('woff2');font-weight:800;font-display:swap}
-:root{--bg:#fbf7f1;--bg2:#f4ece1;--card:#fff;--ink:#1b1712;--muted:#6f675c;--line:#e8e0d4;--spot:#ff5a36;--spot2:#ffb347;--ok:#1d8a52;--night:#16130f;--night2:#221d18;--radius:22px}
-@media (prefers-color-scheme:dark){:root{--bg:#141210;--bg2:#1b1814;--card:#1f1b17;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47;--night:#0e0c0a;--night2:#1a1612}}
+:root{--bg:#fbf7f1;--bg2:#f4ece1;--card:#fff;--ink:#1b1712;--muted:#6f675c;--line:#e8e0d4;--spot:#ff5a36;--spot2:#ffb347;--ok:#1d8a52;--night:#16130f;--night2:#221d18;
+  --radius:20px;--r-md:14px;--r-sm:10px;--wrap:1200px;--gutter:20px;--sec:clamp(72px,9vw,112px);
+  --sh-1:0 1px 2px rgba(27,23,18,.05),0 4px 14px -8px rgba(27,23,18,.16);--sh-2:0 1px 2px rgba(27,23,18,.04),0 16px 36px -20px rgba(27,23,18,.28);--sh-3:0 2px 4px rgba(27,23,18,.04),0 28px 56px -28px rgba(27,23,18,.34)}
+@media (prefers-color-scheme:dark){:root{--bg:#141210;--bg2:#1b1814;--card:#1f1b17;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47;--night:#0e0c0a;--night2:#1a1612;
+  --sh-1:0 1px 2px rgba(0,0,0,.3),0 4px 14px -8px rgba(0,0,0,.5);--sh-2:0 1px 2px rgba(0,0,0,.25),0 16px 36px -20px rgba(0,0,0,.6);--sh-3:0 2px 4px rgba(0,0,0,.25),0 28px 56px -28px rgba(0,0,0,.7)}}
 *{box-sizing:border-box}html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 Bricolage,ui-sans-serif,-apple-system,system-ui,sans-serif;overflow-x:hidden}
 a{color:inherit}img{max-width:100%;height:auto;display:block}
-.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
-h1,h2,h3{font-weight:800;letter-spacing:-.035em;line-height:1.02;margin:0}
-h1{font-size:clamp(44px,7.4vw,86px)}h2{font-size:clamp(34px,5vw,56px)}h3{font-size:22px;letter-spacing:-.02em;line-height:1.15}
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 var(--gutter)}
+h1,h2,h3{font-weight:800;letter-spacing:-.035em;line-height:1.04;margin:0;text-wrap:balance}
+h1{font-size:clamp(40px,6vw,76px);line-height:1}h2{font-size:clamp(32px,4.4vw,52px)}h3{font-size:21px;letter-spacing:-.02em;line-height:1.2}
 p{margin:0}.muted{color:var(--muted)}
-.btn{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:15px 24px;font-weight:800;font-size:17px;text-decoration:none;border:0;cursor:pointer;font-family:inherit;transition:transform .15s}
-.btn:active{transform:scale(.97)}
-.btn.primary{background:var(--spot);color:#fff;box-shadow:0 10px 28px color-mix(in srgb,var(--spot) 35%,transparent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;min-height:52px;padding:0 24px;font-weight:800;font-size:17px;line-height:1;text-decoration:none;border:0;cursor:pointer;font-family:inherit;white-space:nowrap;transition:transform .15s,background-color .15s,border-color .15s,box-shadow .15s}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--spot);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 8px 20px -10px color-mix(in srgb,var(--spot) 70%,transparent)}
+.btn.primary:hover{background:color-mix(in srgb,var(--spot) 90%,#000)}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
-.pill{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:7px 13px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
-.pill i{width:8px;height:8px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 22%,transparent)}
-.sec{padding:110px 0}.sec.alt{background:var(--bg2)}
-.kicker{font-weight:600;color:var(--spot);letter-spacing:.02em;margin-bottom:14px;font-size:15px}
-.lead{font-size:clamp(18px,2vw,21px);color:var(--muted);max-width:640px;margin-top:18px}
+.btn.ghost:hover{border-color:color-mix(in srgb,var(--ink) 30%,var(--line))}
+.btn:focus-visible,nav a:focus-visible,nav summary:focus-visible{outline:2px solid var(--spot);outline-offset:3px}
+.pill{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:6px 12px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 3px color-mix(in srgb,var(--spot) 20%,transparent)}
+.sec{padding:var(--sec) 0}.sec.alt{background:var(--bg2)}
+.kicker{font-weight:700;color:var(--spot);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;font-size:13px}
+.lead{font-size:clamp(17px,1.6vw,20px);line-height:1.55;color:var(--muted);max-width:620px;margin-top:18px}
 
-/* nav */
-nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .2s}
+/* nav: one row at every width. Links fold into "More" (then "Menu") instead of wrapping. */
+nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid transparent;transition:border-color .2s}
 nav.scrolled{border-bottom-color:var(--line)}
-nav .wrap{display:flex;align-items:center;gap:22px;height:66px}
-.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none}
-.logo span{width:22px;height:22px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent)}
-nav .links{display:flex;gap:22px;margin-left:auto;font-weight:600;font-size:15px}
-nav .links a{text-decoration:none;color:var(--muted)}nav .links a:hover,nav .links a[aria-current]{color:var(--ink)}
-nav .btn{padding:10px 18px;font-size:15px}
-nav #navAcct{margin-left:-10px}
-@media (max-width:760px){nav .links{display:none}nav #navAcct{margin-left:auto}nav .wrap{gap:10px}}
-@media (max-width:400px){nav .btn{padding:9px 13px;font-size:14px}.logo{font-size:20px}}
+nav>.wrap{max-width:var(--wrap);display:flex;align-items:center;gap:8px;height:68px;white-space:nowrap}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none;flex:none}
+.logo span{width:20px;height:20px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 20%,transparent)}
+nav .links{display:flex;align-items:center;gap:2px;margin-left:auto;font-weight:600;font-size:15px}
+nav .links>a,nav .navmore summary{display:flex;align-items:center;gap:4px;height:40px;padding:0 12px;border-radius:var(--r-sm);text-decoration:none;color:var(--muted);transition:color .15s,background-color .15s;cursor:pointer}
+nav .links>a:hover,nav .navmore summary:hover,nav .navmore[open] summary{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+nav .links>a[aria-current]{color:var(--ink)}
+nav details.navmore{position:relative;border:0;padding:0}
+nav .navmore summary{font-size:15px;font-weight:600;letter-spacing:0;justify-content:flex-start}nav .navmore summary::after{content:none}
+nav .navmore summary{list-style:none}nav .navmore summary::-webkit-details-marker{display:none}
+nav .navmore summary svg{transition:transform .2s;opacity:.7}nav .navmore[open] summary svg{transform:rotate(180deg)}
+nav .navmore .ml-menu{display:none}
+nav .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:220px;display:flex;flex-direction:column;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-3)}
+nav .menu a{display:none;padding:0 12px;height:44px;align-items:center;border-radius:var(--r-sm);text-decoration:none;color:var(--ink);font-weight:600}
+nav .menu a:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}nav .menu a[aria-current]{color:var(--spot)}
+nav .menu .m3{display:flex}
+nav .navacts{display:flex;align-items:center;gap:8px;margin-left:12px;flex:none}
+nav .btn{min-height:40px;padding:0 16px;font-size:15px}
+@media (max-width:1180px){nav .links .p2{display:none}nav .menu .m2{display:flex}}
+@media (max-width:900px){nav .links .p1{display:none}nav .menu .m1{display:flex}nav .navmore .ml-more{display:none}nav .navmore .ml-menu{display:inline}}
+@media (max-width:600px){nav .links{display:none}nav .navacts{margin-left:auto}nav>.wrap{height:64px}nav .btn{min-height:44px;padding:0 15px}}
+@media (max-width:380px){nav .btn{padding:0 12px;font-size:14px}.logo{font-size:20px;gap:8px}nav .navacts{gap:6px}}
 
 /* hero */
 .hero{padding:64px 0 90px;position:relative}
@@ -90,8 +109,8 @@ nav #navAcct{margin-left:-10px}
 
 /* features */
 .feats{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:54px}
-.feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:30px}
-.feat .ic{font-size:30px;margin-bottom:14px}
+.feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px}
+.feat .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:18px;color:var(--spot);background:color-mix(in srgb,var(--spot) 12%,transparent)}.feat .ic svg{width:22px;height:22px}
 .feat p{color:var(--muted);margin-top:10px}
 @media (max-width:760px){.feats{grid-template-columns:1fr}}
 
@@ -119,11 +138,11 @@ tr.cost td{font-weight:800}
 
 /* uses */
 .uses{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:54px}
-.use{border-radius:var(--radius);padding:26px;color:#fff;min-height:250px;display:flex;flex-direction:column;gap:12px}
+.use{border-radius:var(--radius);padding:28px;color:#fff;min-height:240px;display:flex;flex-direction:column;gap:10px}
 .use:nth-child(1){background:linear-gradient(150deg,#ff5a36,#ff8a3d)}
-.use:nth-child(2){background:linear-gradient(150deg,#2a6df4,#6a5cff)}
-.use:nth-child(3){background:linear-gradient(150deg,#1d8a52,#3cb371)}
-.use .q{margin-top:auto;background:rgba(255,255,255,.18);border-radius:16px 16px 16px 5px;padding:10px 14px;font-weight:600;align-self:flex-start}
+.use:nth-child(2){background:linear-gradient(150deg,#2b2520,#453830)}
+.use:nth-child(3){background:linear-gradient(150deg,#176b41,#1d8a52)}
+.use .q{margin-top:auto;background:rgba(255,255,255,.16);border-radius:16px 16px 16px 5px;padding:10px 14px;font-weight:600;align-self:flex-start}
 .use p{opacity:.92}
 @media (max-width:860px){.uses{grid-template-columns:1fr}}
 
@@ -157,7 +176,7 @@ pre .k{color:#ffb347}pre .s{color:#8fd6a8}pre .c{color:#7d7368}
 /* faq */
 .faq{max-width:780px;margin:46px auto 0}
 details{border-bottom:1px solid var(--line);padding:20px 0}
-summary{cursor:pointer;font-weight:800;font-size:20px;letter-spacing:-.015em;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary{cursor:pointer;font-weight:800;font-size:19px;letter-spacing:-.015em;list-style:none;display:flex;justify-content:space-between;gap:16px}
 summary::-webkit-details-marker{display:none}
 summary::after{content:'+';color:var(--spot);font-size:26px;line-height:1;transition:transform .2s}
 details[open] summary::after{transform:rotate(45deg)}
@@ -202,17 +221,19 @@ details p{color:var(--muted);margin-top:12px}
 @media (max-width:1180px){.float{display:none}}
 
 /* marquee */
-.marquee{padding:34px 0 8px;overflow:hidden;display:flex;flex-direction:column;gap:14px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
-.mrow{display:flex;gap:14px;width:max-content;animation:slide 48s linear infinite}
-.mrow.rev{animation-direction:reverse;animation-duration:56s}
+.marquee{padding:24px 0 8px;overflow:hidden;display:flex;flex-direction:column;gap:12px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.mrow{display:flex;gap:12px;width:max-content;animation:slide 70s linear infinite}
+.mrow.rev{animation-direction:reverse;animation-duration:84s}
 .marquee:hover .mrow{animation-play-state:paused}
 @keyframes slide{to{transform:translateX(-50%)}}
-.ask{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px 16px 12px 12px;min-width:270px}
-.ask .em{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-size:24px;background:var(--bg2);flex:none}
+.ask{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 16px 10px 10px;min-width:270px}
+.ask .em{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:21px;background:var(--bg2);flex:none}
 .ask b{display:block;font-size:15px;line-height:1.2}.ask small{color:var(--muted);font-size:13px}
 .ask .amt{margin-left:auto;font-weight:800;font-size:15px}
-.ask .tag{font-size:12px;font-weight:700;color:#fff;background:var(--ok);padding:3px 8px;border-radius:99px;margin-left:8px}
-@media (prefers-reduced-motion:reduce){.mrow{animation:none;flex-wrap:wrap;width:auto;justify-content:center}.mrow.rev{display:none}.float{animation:none}}
+.ask .tag{font-size:12px;font-weight:700;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);padding:3px 9px;border-radius:99px;margin-left:8px}
+@media (prefers-reduced-motion:reduce){.mrow{animation:none;flex-wrap:wrap;width:auto;justify-content:center;padding:0 var(--gutter)}.mrow .ask:nth-child(n+7){display:none}.mrow.rev{display:none}.float{animation:none}}
+@media (prefers-reduced-motion:reduce) and (max-width:600px){.mrow .ask:nth-child(n+4){display:none}.ask{min-width:0;width:100%}}
+@media (max-width:600px){.sec .cta .btn{flex:1 1 100%}}
 
 /* staggered steps */
 .steps .step:nth-child(2){transition-delay:.12s}.steps .step:nth-child(3){transition-delay:.24s}
@@ -220,10 +241,10 @@ details p{color:var(--muted);margin-top:12px}
 .feats .feat:nth-child(3),.uses .use:nth-child(3),.safe div:nth-child(3){transition-delay:.2s}
 .feats .feat:nth-child(4),.safe div:nth-child(4){transition-delay:.3s}
 .step,.feat,.use{transition:opacity .6s,transform .6s,box-shadow .25s,translate .25s}
-.step:hover,.feat:hover{translate:0 -4px;box-shadow:0 18px 40px rgba(27,23,18,.08)}
+.step:hover,.feat:hover{translate:0 -2px}
 
 /* agent demo */
-.agentwin{background:var(--night2);border:1px solid #2e2821;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.35)}
+.agentwin{background:var(--night2);border:1px solid #2e2821;border-radius:var(--radius);overflow:hidden;box-shadow:0 30px 60px -30px rgba(0,0,0,.6)}
 .agentwin .bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #2e2821;color:#9a8f82;font-size:13px}
 .agentwin .bar i{width:10px;height:10px;border-radius:50%;background:#3a332b}
 .agentwin .bar span{margin-left:8px}
@@ -239,13 +260,15 @@ details p{color:var(--muted);margin-top:12px}
 @keyframes blink{50%{opacity:0}}
 .agents .more{margin-top:18px;color:#b9afa3;font-size:15px}.agents .more a{color:#fff}
 
-footer{padding:40px 0 60px;color:var(--muted);font-size:15px}
-footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
-footer a{text-decoration:none}footer .sp{margin-left:auto}
+footer{padding:40px 0 56px;color:var(--muted);font-size:15px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;gap:12px 20px;flex-wrap:wrap;align-items:center}
+footer a{text-decoration:none}footer a:hover{color:var(--ink)}footer .sp{margin-left:auto}
+footer .flinks{display:flex;flex-wrap:wrap;gap:8px 22px;flex-basis:100%;padding-top:6px;font-size:14.5px}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s,transform .6s}.reveal.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
 `;
 
+const tick = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor" opacity=".14"/><path d="M6.2 10.3l2.4 2.4 5.2-5.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const check = '<span class="y">✓</span>';
 const cross = '<span class="n">—</span>';
 
@@ -259,23 +282,40 @@ export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
 <style>${SITE_CSS}${FX_CSS}${extraCss}</style></head><body>`;
 }
 
+// Links carry a priority: p1 stays inline longest, p2 folds into "More" at
+// mid widths, p3 always lives in "More". The menu repeats every link and
+// shows only the ones folded away at the current width, so nothing wraps.
+const NAV_LINKS = [
+  ['/#how', 'How it works', 'how', 1],
+  ['/agent-card', 'Your AI’s card', 'card', 1],
+  ['/#agents', 'For AI builders', 'agents', 2],
+  ['/#stores', 'For stores', 'stores', 2],
+  ['/#rules', 'Rules for your AI', 'rules', 3],
+  ['/#trust', 'Trust', 'trust', 3],
+  ['/#faq', 'FAQ', 'faq', 3],
+];
+const chevron = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 export function siteNav(active = '') {
-  const a = (href, label, key) => `<a href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const a = ([href, label, key, p], cls) => `<a class="${cls}${p}" href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${a('/#how', 'How it works', 'how')}${a('/agent-card', 'Your AI’s card', 'card')}${a('/#rules', 'Rules for your AI', 'rules')}${a('/#agents', 'For AI builders', 'agents')}${a('/#stores', 'For stores', 'stores')}${a('/#trust', 'Trust', 'trust')}${a('/#faq', 'FAQ', 'faq')}</div>
-  <a class="btn ghost" href="/signin?next=/account" id="navAcct">Sign in</a><a class="btn primary" href="/new" id="navCta">Make a Spot</a>
+  <div class="links">${NAV_LINKS.filter((l) => l[3] < 3).map((l) => a(l, 'p')).join('')}<details class="navmore" id="navMore"><summary><span class="ml-more">More</span><span class="ml-menu">Menu</span>${chevron}</summary><div class="menu">${NAV_LINKS.map((l) => a(l, 'm')).join('')}</div></details></div>
+  <div class="navacts"><a class="btn ghost" href="/signin?next=/account" id="navAcct">Sign in</a><a class="btn primary" href="/new" id="navCta">Make a Spot</a></div>
 </div></nav>`;
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><a href="/new">Make a Spot</a><a href="/agent-card">Your AI’s card</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><span class="flinks"><a href="/new">Make a Spot</a><a href="/agent-card">Your AI’s card</a><a href="/#rules">Rules for your AI</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></span></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
 export const SITE_JS = `
   const nav=document.getElementById('nav');
   addEventListener('scroll',()=>nav&&nav.classList.toggle('scrolled',scrollY>8),{passive:true});
+  const more=document.getElementById('navMore');
+  if(more){addEventListener('click',e=>{if(more.open&&(!more.contains(e.target)||e.target.closest('.menu a')))more.open=false});
+    addEventListener('keydown',e=>{if(e.key==='Escape'&&more.open){more.open=false;more.querySelector('summary').focus()}})}
   try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
   try{const n=document.getElementById('navAcct');if(n&&localStorage.getItem('spot:in')){n.textContent='My Spots';n.href='/account'}}catch{}
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
@@ -297,7 +337,7 @@ ${siteNav()}
     <h1 style="margin-top:22px">Your AI shops.<br>You say <em class="circled">yes${circleMark}</em>.</h1>
     <p class="lead">Add Spot to <b>Claude</b> or <b>ChatGPT</b> and ask for anything: sneakers, a flight, the 7am train to New York. When you, or whoever’s paying, taps yes, Spot buys it with <b>a card made for that one order</b>.</p>
     <div class="cta"><a class="btn primary" href="/integrations#mcp">Add Spot to your AI →</a><a class="btn ghost" href="/new">Make a Spot</a></div>
-    <div class="proof"><span>🔒 Your AI never sees a card</span><span>🎯 Capped at the order</span><span>✍️ Every yes is signed</span></div>
+    <ul class="proof"><li>${tick}Your AI never sees a card</li><li>${tick}Capped at the order</li><li>${tick}Every yes is signed</li></ul>
     <p class="works">Works in <b>Claude</b>, <b>ChatGPT</b> and any MCP app. The person paying doesn’t need an account.</p>
   </div>
   ${yesStage()}
@@ -379,10 +419,10 @@ ${storySection()}
   <p class="kicker reveal">Why Spot</p>
   <h2 class="reveal">Asking is awkward.<br>Spot makes it a tap.</h2>
   <div class="feats">
-    <div class="feat tilt reveal"><div class="ic">🔒</div><h3>It can only buy that.</h3><p>Their money buys exactly that cart, from the store directly or through Spot, and it ships to you. No cash changes hands, so saying yes is easy.</p></div>
-    <div class="feat tilt reveal"><div class="ic">📱</div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
-    <div class="feat tilt reveal"><div class="ic">🛍️</div><h3>Any store, even several at once.</h3><p>Links, screenshots, or a few words. Put up to 5 stores in one link and one payment. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
-    <div class="feat tilt reveal"><div class="ic">✅</div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
+    <div class="feat tilt reveal"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg></div><h3>It can only buy that.</h3><p>Their money buys exactly that cart, from the store directly or through Spot, and it ships to you. No cash changes hands, so saying yes is easy.</p></div>
+    <div class="feat tilt reveal"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M11 17.5h2"/></svg></div><h3>Nothing to download.</h3><p>They open your link and pay with Apple Pay, Google Pay or a card. No app, no sign-up, no “what’s your Venmo?”</p></div>
+    <div class="feat tilt reveal"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8h13l-1 12.5h-11z"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg></div><h3>Any store, even several at once.</h3><p>Links, screenshots, or a few words. Put up to 5 stores in one link and one payment. Stores with agent checkout get paid directly, with no Spot fee.</p></div>
+    <div class="feat tilt reveal"><div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></svg></div><h3>You confirm the order.</h3><p>Spot’s checkout assistant fills in the store’s checkout for you, then waits. Nothing is placed until you tap.</p></div>
   </div>
   <div class="tablewrap reveal"><table>
     <thead><tr><th></th><th class="us">Spot</th><th>AI shopping apps</th><th>Payment requests</th><th>Shared-cart links</th></tr></thead>
