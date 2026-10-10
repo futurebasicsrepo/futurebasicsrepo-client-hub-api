@@ -10,7 +10,7 @@
 //   • nothing is placed without the requester's confirmation
 //   • hard caps on steps and wall-clock time
 import { anthropicClient } from '../anthropic.js';
-import { authLimitCents, dollarsToCents, usd } from '../cart.js';
+import { cardLimitCents, dollarsToCents, usd } from '../cart.js';
 import { isPaymentField, locate, snapshot } from './snapshot.js';
 
 export const MAX_STEPS = 45;
@@ -108,7 +108,7 @@ ${shipping.line1}${shipping.line2 ? `, ${shipping.line2}` : ''}
 ${shipping.city}, ${shipping.state} ${shipping.postal_code}, United States
 Email: ${shipping.email}${shipping.phone ? `\nPhone: ${shipping.phone}` : ''}
 
-The payment card is Spot's one-time card, limited to ${usd(authLimitCents(cart.cart_cents))} in total.
+The payment card is Spot's one-time card, limited to ${usd(cardLimitCents(cart))} in total.
 
 Rules:
 - Put exactly the cart above into the store's cart (right size/colour/quantity), then check out as a guest. Never create an account, log in, or tick marketing / newsletter / SMS opt-ins.
@@ -135,7 +135,7 @@ ${riders}
 Email for the e-ticket: ${ticket.email}${ticket.phone ? `\nPhone: ${ticket.phone}` : ''}
 Expected fare: ${usd(cart.cart_cents)} in total.
 
-The payment card is Spot's one-time card, limited to ${usd(authLimitCents(cart.cart_cents))} in total.
+The payment card is Spot's one-time card, limited to ${usd(cardLimitCents(cart))} in total.
 
 Rules:
 - Search for exactly this one-way trip, pick the train that departs at that time (and number, if given), and choose that fare class. Never pick a different train, date or station.
@@ -152,7 +152,7 @@ Rules:
 export async function runCheckoutAgent({ page, cart, shipping, getCard, billing = null, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model, onUsage }) {
   const anthropic = client ?? anthropicClient();
   const hosts = allowedHosts(cart, [startUrl && new URL(startUrl).hostname].filter(Boolean));
-  const limit = authLimitCents(cart.cart_cents);
+  const limit = cardLimitCents(cart);
   const started = Date.now();
   const seen = []; // everything sent to the model, for the no-card-leak test
 

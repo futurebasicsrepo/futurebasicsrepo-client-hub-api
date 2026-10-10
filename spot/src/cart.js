@@ -226,6 +226,14 @@ export function authLimitCents(cartCents) {
   return cartCents + cushionCents(cartCents);
 }
 
+// What one order's card may spend: the cart and its cushion, plus anything
+// Spot chose to cover itself (staff only, capped), e.g. when the store's
+// shipping came in above the estimate. The payer never pays the covered part.
+export const COVER_MAX_CENTS = 2500;
+export function cardLimitCents(cart) {
+  return authLimitCents(cart.cart_cents) + Math.max(0, Math.min(Math.round(cart.cover_cents || 0), COVER_MAX_CENTS));
+}
+
 // Cash and cash-like merchants, by Stripe Issuing category (enforced by the
 // card network through spending controls) and by MCC (checked again here, in
 // the real-time webhook). Gift cards sold by ordinary retailers carry the
@@ -257,7 +265,7 @@ export function decideAuthorization(cart, auth) {
   if (!Number.isInteger(auth.amount_cents) || auth.amount_cents <= 0) return { approved: false, reason: 'amount' };
   const m = auth.merchant || {};
   if (BLOCKED_MCCS.has(String(m.category_code || '')) || BLOCKED_CATEGORIES.includes(m.category)) return { approved: false, reason: 'blocked_category' };
-  if (auth.amount_cents > authLimitCents(cart.cart_cents)) return { approved: false, reason: 'over_limit' };
+  if (auth.amount_cents > cardLimitCents(cart)) return { approved: false, reason: 'over_limit' };
   if (!merchantMatches(cart.merchant, m)) return { approved: false, reason: 'wrong_merchant' };
   return { approved: true, reason: 'ok' };
 }
