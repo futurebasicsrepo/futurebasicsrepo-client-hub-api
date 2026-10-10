@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
-import { payableHandler, pickVariant } from '../src/fulfill/ucp.js';
+import { orderRef, payableHandler, pickVariant } from '../src/fulfill/ucp.js';
 
 const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
@@ -673,4 +673,11 @@ test('Shopify agent token: fetched once, used only for Shopify stores with a buy
     console.error = quiet;
   }
   assert.deepEqual(seen[2], { auth: null, ip: null, signed: false }, 'refused token: retried as before');
+});
+
+test('order numbers: the one a shopper knows, never a store’s internal id', () => {
+  assert.equal(orderRef({ id: 'gid://shopify/Order/7872717684808' }), null);
+  assert.equal(orderRef({ id: 'gid://shopify/Order/1', name: '#SB1042' }), 'SB1042');
+  assert.equal(orderRef({ id: 'ord_888' }), 'ord_888');
+  assert.equal(orderRef(null), null);
 });
