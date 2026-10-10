@@ -447,7 +447,7 @@ function directScript(cart) {
 const watch=async()=>{for(let i=0;i<240;i++){try{const r=await api('/v1/carts/'+T+'/direct/status');if(r.cart.status==='completed'){celebrate(r.cart.payer_name||'');return}}catch{}await new Promise(z=>setTimeout(z,5000))}};
 ${cart.pay_at_store?.started ? 'watch();' : ''}
 ${cart.pay_at_store?.ready ? '' : "setTimeout(()=>location.reload(),15000);"}
-const go=$('#go');if(go&&!go.disabled)go.onclick=async()=>{go.disabled=true;go.textContent='opening '+${json(cart.merchant.name)}+'…';$('#payErr').textContent='';
+if(go&&!go.disabled)go.onclick=async()=>{go.disabled=true;go.textContent='opening '+${json(cart.merchant.name)}+'…';$('#payErr').textContent='';
   try{const r=await api('/v1/carts/'+T+'/direct/start',{name:$('#payer').value.trim()});watch();location.href=r.continue_url}
   catch(e){$('#payErr').textContent=e.message;go.disabled=false;go.textContent='Try again'}};`;
 }
