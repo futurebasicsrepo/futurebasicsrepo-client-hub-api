@@ -48,6 +48,24 @@ test('staff: a confirmed @thefuturebasics.com email opens /admin and the health 
   assert.equal((await call('GET', '/v1/admin/health', undefined, { cookie: `spot_session=${tok}` })).status, 401);
 });
 
+test('staff see Admin and Health on their account page (on any device); everyone else doesn’t', async (t) => {
+  const { call, signIn } = app(t);
+  const kyle = await signIn('kyle@thefuturebasics.com');
+  const me = (await call('GET', '/v1/me', undefined, kyle)).body;
+  assert.deepEqual(me.staff, { admin_url: '/admin', health_url: '/admin/health' });
+  const page = (await call('GET', '/account', undefined, kyle)).body;
+  assert.match(page, /id="staffBar"[^>]*hidden/, 'shown by the page only when /v1/me says staff');
+  const other = await signIn('kyle@gmail.com');
+  assert.equal((await call('GET', '/v1/me', undefined, other)).body.staff, undefined);
+});
+
+test('admin tables stack into cards on phones', async (t) => {
+  const { call, signIn } = app(t);
+  const page = (await call('GET', '/admin', undefined, await signIn('kyle@thefuturebasics.com'))).body;
+  assert.match(page, /@media \(max-width:640px\)\{\n\.tw\{/);
+  assert.match(page, /dataset\.label=hs\[i\]/, 'each cell carries its column name');
+});
+
 test('staff: SPOT_ADMIN_DOMAIN changes or turns off the domain', async (t) => {
   const other = app(t, { SPOT_ADMIN_DOMAIN: 'example.org' });
   const h = await other.signIn('ops@example.org');
