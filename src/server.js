@@ -13,7 +13,7 @@ import { setSink, recordRequest, trackJob, declareJob, trackedFetch, timed, repo
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
 import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, heroThumb, callJsonSchema, refineHero, HERO_APPROVE_MIN, HERO_REFINE_ROUNDS } from './studio.js';
-import { reconcile, applyChanges, revertChanges } from './loop.js';
+import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTIONS } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
@@ -4326,6 +4326,75 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   await syncCardQuietly(row.product_id,data);
   return draftView({...row,...updated,title:data.style.styleName||row.title});
 });
+// ---- Flag a line, say what is wrong: the design assistant changes that one line, or says why it will not. Every change can be undone. ----
+// The client flags lines of their own draft (while it is still theirs); staff flag lines of any pack that is not yet published. Same limits as the exchange between the assistants:
+// descriptive fields only, checked against what the field holds now. Nothing here touches measurements, sizes, care, compliance, artwork or labels.
+const flagView=r=>({id:r.id,section:r.section,index:r.row_index,sketch:r.sketch,target:r.target,note:r.note,say:r.say||'',outcome:r.outcome,by:r.author_role,at:r.created_at,undone:Boolean(r.undone_at),
+  changes:(r.changes||[]).map(c=>({id:c.id,path:c.path,label:c.label,from:c.from,to:c.to,reason:c.reason,undone:Boolean(c.undone)}))});
+async function flagContext(req,reply,admin){
+  if(!UUID_RE.test(String(req.params.id))){reply.code(404).send({error:'Tech pack not found'});return null}
+  if(admin){
+    const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack){reply.code(404).send({error:'Tech pack not found'});return null}
+    if(ctx.techPack.published_at){reply.code(409).send({error:'This version is published: it cannot be changed. Start the next version first'});return null}
+    return {row:ctx.techPack,clientId:ctx.product.client_id,clientName:ctx.product.client_name,title:ctx.product.title,admin:true};
+  }
+  if(req.auth.role!=='client'||req.auth.preview){reply.code(403).send({error:'Sign in to your client hub to flag a line'});return null}
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row){reply.code(404).send({error:'Tech pack draft not found'});return null}
+  if(row.status!=='draft'){reply.code(409).send({error:'This tech pack has been submitted to Future Basics: ask them to reopen it if you need changes'});return null}
+  return {row,clientId:row.client_id,clientName:row.client_name,title:row.title,admin:false};
+}
+for(const admin of [false,true]){
+  const base=admin?'/v1/admin/products/:id/tech-pack':'/v1/products/:id/tech-pack',pre=admin?[authenticate,adminOnly]:authenticate;
+  app.post(base+'/flag',{preHandler:pre},async(req,reply)=>{
+    const ctx=await flagContext(req,reply,admin);if(!ctx)return;
+    const b=req.body||{},note=String(b.note||'').replace(/\s+/g,' ').trim().slice(0,600),section=String(b.section||'');
+    if(!FLAG_SECTIONS.includes(section))return reply.code(400).send({error:'That part of the pack cannot be flagged here'});
+    if(note.length<3)return reply.code(400).send({error:'Say what is wrong with it'});
+    if(!aiEnabled())return reply.code(503).send({error:'The design assistant is not available just now: change the line yourself, or message Future Basics'});
+    if(!throttle(`flag:${ctx.row.id}`,{limit:20,windowMs:3600_000}))return reply.code(429).send({error:'That is a lot of flags in a row: give it a little while, or edit the lines yourself'});
+    const target={section,index:Number.isInteger(Number(b.index))?Number(b.index):0,sketch:Number.isInteger(Number(b.sketch))?Number(b.sketch):0};
+    const pack=normalizeTechPack(ctx.row.data),found=flagRow(pack,target);if(!found)return reply.code(404).send({error:'That line is not in the pack any more: reload and try again'});
+    let r;try{r=await reviseFlag({pack,target,note,photos:packPhotos(pack)})}catch(e){app.log.warn({err:String(e.message||e).slice(0,300),packId:ctx.row.id},'flag not answered');return reply.code(e.statusCode||502).send({error:e.statusCode===404?e.message:'The design assistant could not look at that just now. Try again in a moment, or change the line yourself.'})}
+    const db=await pool.connect();let applied=[],skipped=[],saved,flag;
+    try{
+      await db.query('begin');
+      const live=(await db.query('select data,status,published_at from tech_packs where id=$1 for update',[ctx.row.id])).rows[0];
+      if(live.published_at||(!admin&&live.status!=='draft')){await db.query('rollback');return reply.code(409).send({error:'This pack was sent or published while the assistant was looking at it, so nothing was changed'})}
+      const done=applyChanges(live.data,r.changes);applied=done.applied;skipped=done.skipped;
+      if(applied.length)saved=(await db.query('update tech_packs set data=$2,updated_at=now() where id=$1 returning *',[ctx.row.id,done.pack])).rows[0];
+      else saved=(await db.query('select * from tech_packs where id=$1',[ctx.row.id])).rows[0];
+      const say=skipped.length&&!applied.length&&r.changes.length?`${r.say} (That line changed while I was looking, so I left it exactly as it is.)`:r.say;
+      flag=(await db.query(`insert into tech_pack_flags(tech_pack_id,product_id,client_id,author_id,author_role,section,row_index,sketch,target,note,say,changes,outcome,model) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`,
+        [ctx.row.id,ctx.row.product_id,ctx.clientId,req.auth.sub||null,admin?'admin':'client',section,section==='style'?null:target.index,section==='callouts'?target.sketch:null,found.label,note,say,JSON.stringify(applied),applied.length?'changed':'kept',r.model])).rows[0];
+      await db.query('commit');
+    }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+    if(applied.length&&ctx.row.initiated_by==='client')await syncCardQuietly(ctx.row.product_id,saved.data);
+    if(!admin)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-flag',$2,'product',$3)`,[ctx.clientId,`${ctx.clientName} flagged ${found.label} on ${ctx.title}: “${note.slice(0,120)}” (${applied.length?'assistant changed it':'assistant kept it: needs a person'})`,ctx.row.product_id]).catch(()=>{});
+    return reply.code(201).send({flag:flagView(flag),data:normalizeTechPack(saved.data),techPack:techPackPayload({...ctx.row,...saved})});
+  });
+  app.get(base+'/flags',{preHandler:pre},async(req,reply)=>{
+    const ctx=await flagContext(req,reply,admin);if(!ctx)return;
+    return {flags:(await pool.query('select * from tech_pack_flags where tech_pack_id=$1 order by created_at desc limit 50',[ctx.row.id])).rows.map(flagView)};
+  });
+  app.post(base+'/flags/:fid/undo',{preHandler:pre},async(req,reply)=>{
+    const ctx=await flagContext(req,reply,admin);if(!ctx)return;if(!UUID_RE.test(String(req.params.fid)))return reply.code(404).send({error:'Not found'});
+    const db=await pool.connect();let flag,saved,reverted=[],kept=[];
+    try{
+      await db.query('begin');
+      const f=(await db.query('select * from tech_pack_flags where id=$1 and tech_pack_id=$2 for update',[req.params.fid,ctx.row.id])).rows[0];if(!f){await db.query('rollback');return reply.code(404).send({error:'Not found'})}
+      const live=(await db.query('select data,status,published_at from tech_packs where id=$1 for update',[ctx.row.id])).rows[0];
+      if(live.published_at||(!admin&&live.status!=='draft')){await db.query('rollback');return reply.code(409).send({error:'This pack was sent or published, so that change can no longer be undone here'})}
+      const back=revertChanges(live.data,(f.changes||[]).filter(c=>!c.undone));reverted=back.reverted;kept=back.kept;
+      if(!reverted.length){await db.query('rollback');return reply.code(409).send({error:'That line has been edited since, so there is nothing to undo: change it by hand if you want it back'})}
+      saved=(await db.query('update tech_packs set data=$2,updated_at=now() where id=$1 returning *',[ctx.row.id,back.pack])).rows[0];
+      const ids=new Set(reverted.map(c=>c.id)),changes=(f.changes||[]).map(c=>ids.has(c.id)?{...c,undone:true}:c);
+      flag=(await db.query('update tech_pack_flags set changes=$2,undone_at=case when $3 then now() else undone_at end where id=$1 returning *',[f.id,JSON.stringify(changes),changes.every(c=>c.undone)])).rows[0];
+      await db.query('commit');
+    }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+    if(ctx.row.initiated_by==='client')await syncCardQuietly(ctx.row.product_id,saved.data);
+    return {flag:flagView(flag),reverted:reverted.map(c=>c.id),kept:kept.map(c=>c.id),data:normalizeTechPack(saved.data),techPack:techPackPayload({...ctx.row,...saved})};
+  });
+}
 // Colourway tiles on demand: the first photo recoloured to each colourway in the pack, saved as renderings.
 async function colorwayTilesFor(data){const photo=data.sketches.find(s=>s.image)?.image;if(!photo)return {error:'Add a photo under Callouts first — the tiles are made from it'};if(!data.colorways.length)return {error:'Add at least one colourway with a swatch first'};
   const tiles=await renderColorways(photo,data.colorways);if(!tiles.length)return {error:'Could not separate the product from its background in this photo — try a photo on a plain backdrop'};return {renderings:mergeColorwayTiles(data.renderings,tiles),count:tiles.length}}

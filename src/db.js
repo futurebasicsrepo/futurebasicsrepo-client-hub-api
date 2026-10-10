@@ -626,6 +626,27 @@ export async function migrate() {
       finished_at timestamptz
     );
     create index if not exists tech_pack_loops_pack_idx on tech_pack_loops(tech_pack_id, created_at desc);
+    -- A person flags one line of a tech pack and says what is wrong; the design assistant answers with a change to that line (or a reason it kept it). Every change can be undone.
+    create table if not exists tech_pack_flags (
+      id uuid primary key default gen_random_uuid(),
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      product_id uuid not null references products(id) on delete cascade,
+      client_id uuid not null references clients(id) on delete cascade,
+      author_id uuid references users(id) on delete set null,
+      author_role text not null,
+      section text not null,
+      row_index integer,
+      sketch integer,
+      target text,
+      note text not null,
+      say text,
+      changes jsonb not null default '[]',
+      outcome text not null check (outcome in ('changed','kept')),
+      model text,
+      undone_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists tech_pack_flags_pack_idx on tech_pack_flags(tech_pack_id,created_at desc);
     create table if not exists tech_pack_models (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
