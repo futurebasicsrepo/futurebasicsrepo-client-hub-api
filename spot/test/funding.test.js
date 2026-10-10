@@ -209,7 +209,7 @@ test('Stripe Issuing on newer financial accounts: Spot finds the open account an
     return { id: 'ic_1', brand: 'Visa', last4: '4242', exp_month: 1, exp_year: 2030 };
   };
   let listed = 0;
-  p.stripe.rawRequest = async (method, path) => (listed++, assert.equal(path, '/v2/money_management/financial_accounts'), { data: [{ id: 'fa_closed', status: 'closed' }, { id: 'fa_live', status: 'open' }] });
+  p.stripe.rawRequest = async (method, path, params, opts) => (listed++, assert.equal(path, '/v2/money_management/financial_accounts'), assert.match(opts.apiVersion, /^\d{4}-\d\d-\d\d\.preview$/, 'the list is a preview API'), { data: [{ id: 'fa_closed', status: 'closed' }, { id: 'fa_live', status: 'open' }] });
   const card = await p.issueCard({ id: 'cart1', cart_cents: 3499 });
   assert.equal(card.ref, 'ic_1');
   assert.equal(calls[1].body.financial_account_v2, 'fa_live');
