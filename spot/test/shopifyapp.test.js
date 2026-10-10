@@ -80,6 +80,8 @@ test('install: token exchange, a verified store, the token sealed at rest, theme
   assert.equal(r.body.verified, true);
   assert.equal(r.body.currency_ok, true);
   assert.match(r.body.add_to_product, /^https:\/\/sklz-test\.myshopify\.com\/admin\/themes\/current\/editor\?template=product&addAppBlockId=client-abc%2Fspot-button/);
+  assert.match(r.body.add_to_product_section, /template=product&.*&target=newAppsSection$/, 'a fallback for themes whose main section takes no app blocks');
+  assert.match(r.body.add_to_cart, /template=cart&.*&target=newAppsSection$/, 'cart pages get their own section');
   const exchange = shopify.calls.find((c) => c.url.endsWith('/admin/oauth/access_token'));
   assert.equal(exchange.body.grant_type, 'urn:ietf:params:oauth:grant-type:token-exchange');
   assert.equal(exchange.body.requested_token_type, 'urn:shopify:params:oauth:token-type:offline-access-token');
