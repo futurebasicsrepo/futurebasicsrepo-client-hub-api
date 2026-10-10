@@ -79,7 +79,7 @@ ${siteNav('card')}
 <section class="sec alt"><div class="wrap">
   <p class="kicker reveal">Safer than handing over a card</p>
   <h2 class="reveal">Built for agents, not adapted for them.</h2>
-  <table class="vs reveal">
+  <div class="tablewrap reveal" style="margin-top:28px"><table class="vs">
     <thead><tr><th></th><th>Your card, saved in an AI</th><th>A bank’s virtual card</th><th>Spot</th></tr></thead>
     <tbody>
       <tr><td>Spend cap</td><td>Your credit limit</td><td>One you set by hand</td><td class="y">Each card capped at its order</td></tr>
@@ -90,7 +90,7 @@ ${siteNav('card')}
       <tr><td>Proof of who said yes</td><td>No</td><td>No</td><td class="y">Every yes is signed</td></tr>
       <tr><td>Apply for credit</td><td>Already have it</td><td>Yes</td><td class="y">No: save the card you have</td></tr>
     </tbody>
-  </table>
+  </table></div>
 </div></section>
 
 <section class="sec"><div class="wrap" style="max-width:760px">
