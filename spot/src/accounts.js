@@ -185,7 +185,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const carts = db.users.carts(user.id, 100).map((c) => ({ ...ownerCart(c), created_at: c.created_at, manage_url: urlFor(req, `/c/${c.token}/manage`) }));
     return {
       user: profile(user),
-      ready: carts.filter((c) => c.for === 'self' && c.status === 'open'),
+      // Open asks for you to finish, plus any your AI built (even ones meant for someone else to pay).
+      ready: carts.filter((c) => c.status === 'open' && (c.for === 'self' || c.built_by)),
       carts,
       keys: keysOf(user.id),
       approver: approverView(user.id),
