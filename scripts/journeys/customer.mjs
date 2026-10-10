@@ -1530,4 +1530,81 @@ const bad = await journey('J98', 'a new version tells the factory what changed, 
   }
 });
 
+await journey('J99', 'a missing view is asked for, not overridden: staff request it, the client is told three ways and gets a button, and it clears when the picture is in', async () => {
+  const m = await room('99'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); ok(d.techPack.viewRequest === null, 'nothing is asked of the client to begin with');
+  const refused = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: {} });
+  ok(refused.status === 409 && Array.isArray(refused.json.missingViews) && refused.json.missingViews.length >= 1, 'the publish refusal names the views that are missing', [refused.status, refused.json.missingViews]);
+  const want = refused.json.missingViews;
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', token: m.token, body: {} })).status === 403, 'only staff can ask');
+  const ask = await adm(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', body: { note: 'Same lighting as the first one please' } });
+  ok(ask.status === 200 && ask.json.requested.join() === want.join(), 'staff ask for exactly those views', [ask.status, ask.json]);
+  d = await draft(); ok(d.techPack.viewRequest && d.techPack.viewRequest.views.join() === want.join(), 'the client\'s editor is told which views', d.techPack.viewRequest);
+  const msgs = sql(`select string_agg(body,' | ') from project_messages where client_id='${m.cid}' and author_role='admin'`); ok(want.every(v => msgs.includes(v)) && /lighting/.test(msgs), 'the project thread has the request, with the staff note', msgs.slice(0, 160));
+  ok(Number(sql(`select count(*) from notifications where client_id='${m.cid}' and title like 'We need the %'`)) === 1, 'and a notification is raised once');
+  const clientEmail = sql(`select contact_email from clients where id='${m.cid}'`), mail = ((await call(`/v1/dev/outbox?to=${encodeURIComponent(clientEmail)}`)).json.emails || []).filter(e => /One more picture/.test(e.subject)); ok(mail.length === 1 && want.every(v => mail[0].text.includes(v)), 'and the client is emailed once', mail.map(e => e.subject));
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="calls"]');
+      await p.waitForSelector('.view-ask [data-act="addview"]', { timeout: 10000 });
+      ok(new RegExp(want[0]).test(await p.innerText('.view-ask')), 'the editor shows the request with an Add button');
+      await p.click(`.view-ask [data-act="addview"][data-view="${want[0]}"]`); await p.waitForSelector('.panel[data-panel="calls"] .stage .pickbtn', { timeout: 5000 });
+      ok(/Add the|mockup/i.test(await p.innerText('.panel[data-panel="calls"] .stage')) && p.errs.length === 0, 'pressing it opens that view, ready for a file or a pick from saved files', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j99-ask.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  // the pictures arrive (here by saving the draft with them): the request clears, and the gate stops naming those views
+  d = await draft(); const data = structuredClone(d.techPack.data);
+  for (const v of want) { const sk = data.sketches.find(k => k.view === v) || (data.sketches.push({ id: 'v' + v, view: v, label: '', image: '', garmentWidthIn: null, callouts: [] }), data.sketches.at(-1)); sk.image = jpeg(); }
+  const sv = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data, etag: d.techPack.etag } }); ok(sv.status === 200, 'the client saves the pictures', [sv.status, sv.json.error]);
+  d = await draft(); ok(d.techPack.viewRequest === null, 'the request clears itself once both pictures are in', d.techPack.viewRequest);
+  const again = await adm(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', body: {} }); ok(again.status === 409, 'and asking again is refused: nothing is missing');
+  const pub = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: {} }); ok(!/mockups/i.test(JSON.stringify(pub.json.problems || [])), 'the publish gate no longer lists the mockups', pub.json.problems);
+});
+
+await journey('J100', 'commercial facts: price, weight, HS code and a SKU for every size and colour are kept; a factory gets everything but what the client charges', async () => {
+  const m = await room('100'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); const data = structuredClone(d.techPack.data);
+  data.commercial = { retailPrice: '$89', compareAtPrice: '120', weightGrams: '420', hsCode: '611020', currency: 'usd', variants: [] }; data.care.countryOfOrigin = 'Made in Vietnam';
+  const sv = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data, etag: d.techPack.etag } }); ok(sv.status === 200, 'the client saves the commercial facts', [sv.status, sv.json.error]);
+  d = await draft(); const c = d.techPack.data.commercial; ok(c.retailPrice === '89' && c.weightGrams === '420' && c.hsCode === '6110.20' && c.currency === 'USD', 'they are cleaned as they are saved (price as a number, HS code with its dot, currency in capitals)', c);
+  ok(d.completeness.missingRecommended.some(x => /Commercial|SKU|price/i.test(x)), 'and what is still missing for a sale is listed (a SKU on every size and colour)', d.completeness.missingRecommended);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
+      await p.waitForSelector('[data-commercial] [data-act="syncsku"]'); const sizes = d.techPack.data.sizes.length, colours = Math.max(1, d.techPack.data.colorways.length);
+      await p.click('[data-commercial] [data-act="syncsku"]'); await p.waitForFunction(n => document.querySelectorAll('[data-commercial] tbody tr').length === n, sizes * colours, { timeout: 8000 });
+      const first = p.locator('[data-commercial] tbody tr').first().locator('input.t').first(); await first.fill('MY-SKU-1'); await p.click('#tabs button[data-tab="bom"]');
+      ok(/Retail price/i.test(await p.innerText('[data-commercial]')) && /Vietnam \(VN\)/i.test(await p.innerText('[data-commercial]')), 'the Commercial block shows price fields and reads the country of origin as VN');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j100-commercial.png`, fullPage: false }).catch(() => {});
+      for (let i = 0; i < 40; i++) { d = await draft(); if (d.techPack.data.commercial.variants.some(v => v.sku === 'MY-SKU-1')) break; await sleep(300); }
+      ok(d.techPack.data.commercial.variants.length === sizes * colours && d.techPack.data.commercial.variants[0].sku === 'MY-SKU-1' && p.errs.length === 0, 'Generate SKUs makes one row per size and colour, and a typed SKU is saved', [d.techPack.data.commercial.variants.length, p.errs]); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: commercial' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 100' } }), ftok = sh.json.url.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${ftok}`)).json.techPack.data.commercial, cv = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack.data.commercial;
+  ok(fv.retailPrice === '' && fv.compareAtPrice === '' && fv.variants.every(v => v.price === '') && fv.weightGrams === '420' && fv.hsCode === '6110.20' && fv.variants[0].sku === 'MY-SKU-1', 'the factory gets weight, HS code and SKUs, and no price', fv);
+  ok(cv.retailPrice === '89' && cv.variants[0].sku === 'MY-SKU-1', 'the client still sees their own price', cv.retailPrice);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('[data-commercial]');
+      const txt = await p.innerText('[data-commercial]'); ok(/MY-SKU-1/.test(txt) && /420/.test(txt) && !/Retail price|Compare-at|\b89\b/i.test(txt) && p.errs.length === 0, 'on the factory page the block shows the SKUs and weight and no price field', txt.slice(0, 160)); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);

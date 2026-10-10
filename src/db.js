@@ -553,6 +553,7 @@ export async function migrate() {
       unique(tech_pack_id,stage,version)
     );
     alter table tech_packs add column if not exists pay_variant_id text;
+    alter table tech_packs add column if not exists view_request jsonb; -- {views, at, by}: staff asked the client for a view the pack still lacks
     -- Every payment a client has made through the store, one row per order. Tech packs, memberships and anything else the store sold them.
     create table if not exists payments (
       id uuid primary key default gen_random_uuid(),

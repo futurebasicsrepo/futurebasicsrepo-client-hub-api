@@ -30,7 +30,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
+import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
@@ -628,6 +628,7 @@ app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
+app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
@@ -2278,7 +2279,8 @@ function techPackPayload(row){
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
   return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiReviewedAt:row.ai_reviewed_at||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
-    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row)};
+    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row),
+    viewRequest:(()=>{const r=row.view_request;if(!r||!Array.isArray(r.views))return null;const still=missingViews(row.data).filter(v=>r.views.includes(v));return still.length?{views:still,at:r.at}:null})()};
 }
 // Applies a change to the verification chain of the CURRENT published version only; a concurrent publish makes the write a no-op.
 // The tech pack PDF is filed in the product's folder when a version is published and re-made when its signatures or pictures change.
@@ -2407,6 +2409,25 @@ async function withApprovedHero(packId,data){
     return {...data,renderings:[{id:`hero-${String(h.id).replace(/-/g,"").slice(0,16)}`,name:'Reference picture',note:'The approved picture this pack is built from',image},...rest].slice(0,6)};
   }catch(e){app.log.warn({err:e.message,packId},'approved hero not added to the published copy');return data}
 }
+// Staff ask the client for the view the pack lacks (instead of publishing past the gate with a typed reason): a message in the project thread, an email, and a banner
+// in the client's editor with a button that adds the view. The request clears itself the moment the picture is there.
+app.post('/v1/admin/products/:id/tech-pack/request-views',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  const missing=missingViews(ctx.techPack.data);if(!missing.length)return reply.code(409).send({error:'Both views are already in the pack'});
+  const names=missing.join(' and '),title=ctx.product.title;
+  const note=String(req.body?.note||'').trim().slice(0,400),link=`${clientHubUrl}/tech-packs/${ctx.product.id}`;
+  await pool.query(`update tech_packs set view_request=$2 where id=$1`,[ctx.techPack.id,JSON.stringify({views:missing,at:new Date().toISOString(),by:req.auth.email||'Future Basics'})]);
+  const text=`To finish your tech pack for ${title} we need a picture of the ${names} ${missing.length>1?'views':'view'}: a photo, a sketch or a screenshot of that side. Open the tech pack, go to Callouts and use "Add the ${missing[0]} view" (you can pick one from your saved files).${note?`\n\n${note}`:''}`;
+  if(ctx.product.project_id)await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4)`,[ctx.product.project_id,ctx.product.client_id,req.auth.sub,text]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[ctx.product.client_id,`We need the ${names} ${missing.length>1?'views':'view'} for ${title}`,ctx.product.id]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Asked the client for the ${names} ${missing.length>1?'views':'view'} of ${title}`,{techPackId:ctx.techPack.id,views:missing}]).catch(()=>{});
+  let emailed=false;
+  if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
+    const first=String(ctx.product.client_contact_name||'').split(' ')[0]||'there';
+    emailed=await sendHubEmail({to:ctx.product.client_contact_email,subject:`One more picture for your tech pack — ${title}`,html:hubEmailShell('One more picture for your tech pack',`<p>Hi ${emailEscape(first)},</p><p>To finish the tech pack for <strong>${emailEscape(title)}</strong> we need a picture of the <strong>${emailEscape(names)}</strong> ${missing.length>1?'views':'view'}: a photo, a sketch or a screenshot of that side. You can pick one from your saved files or upload it.</p>${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}${hubButton(link,'Add the picture')}`)}).catch(()=>false);
+  }
+  return {requested:missing,emailed};
+});
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
@@ -2419,7 +2440,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   if(!gate.ok&&override.length<5){
     let started=false;
     if(aiEnabled()&&(!lastCheck||(lastCheck.status!=='pending'&&gate.problems.some(p=>/spec check has not run|changed after the last spec check/.test(p))))){const r=await startSpecCheck({...ctx.techPack},{trigger:'publish',actor:req.auth.sub}).catch(()=>null);started=Boolean(r?.id)}
-    return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started});
+    return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started,missingViews:missingViews(ctx.techPack.data)});
   }
   if(!gate.ok)note=[note,`Published before every check passed: ${override}`].filter(Boolean).join(' · ');
   let draftNow=ctx.techPack.data;

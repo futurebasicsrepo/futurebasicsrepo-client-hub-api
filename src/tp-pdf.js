@@ -50,7 +50,8 @@ export async function techPackPdf({ pack: input, product = {}, version = null, p
   const viewsWithCallouts = p.sketches.filter(x => x.callouts.length);
   const tiles = p.renderings.filter(x => x.image && !/^cutout-/.test(String(x.id || '')));
   const refs = p.sketches.filter(x => x.image && !x.callouts.length && !/^cutout-/.test(String(x.id || '')));
-  const hasFinish = p.labels.length || Object.values(p.packaging).some(Boolean) || Object.values(p.care).some(Boolean) || p.notes;
+  const cm = p.commercial, hasCommercial = Boolean(cm.weightGrams || cm.hsCode || cm.lengthCm || cm.variants.some(v => v.sku || v.barcode)); // never the price: the printed pack goes to factories
+  const hasFinish = p.labels.length || Object.values(p.packaging).some(Boolean) || Object.values(p.care).some(Boolean) || p.notes || hasCommercial;
   const v = verification, group = CAT.groupOf(st.category, st.styleName || product.title);
   const present = [['Design details', viewsWithCallouts.length > 0], ['Colourways', tiles.length > 0 || p.parts.length > 0], ['Materials & trims', p.bom.length > 0], ['Measurements', p.pom.length > 0], ['Construction', p.construction.length > 0],
     ['Labels, packaging & care', Boolean(hasFinish)], ['Artwork', p.artwork.length > 0], ['Electronics', p.electronics.enabled], ['Sample room checks', true], ['Reference pictures', refs.length > 0], ['Sign-off', Boolean(v)]].filter(x => x[1]).map((x, i) => ({ title: x[0], n: String(i + 1).padStart(2, '0') }));
@@ -149,8 +150,9 @@ export async function techPackPdf({ pack: input, product = {}, version = null, p
     if (p.construction.length && doc.y + 150 < b.bodyBottom) doc.y += 22; else doc.addPage();
     heading(b, num('Labels, packaging & care'), 'Labels, packaging & care');
     if (p.labels.length) table(b, [{ h: 'Label or item', w: 2, bold: true }, { h: 'Spec', w: 5 }, { h: 'Placement', w: 3 }], p.labels.map(r => [r.item, r.spec, r.placement]), { fontSize: 10 });
-    const pk = [['Fold', p.packaging.fold], ['Polybag', p.packaging.polybag], ['Carton', p.packaging.carton], ['Units per carton', p.packaging.unitsPerCarton]].filter(x => x[1]), cr = [['Fibre content', p.care.fiber], ['Country of origin', p.care.countryOfOrigin]].filter(x => x[1]);
+    const pk = [['Fold', p.packaging.fold], ['Polybag', p.packaging.polybag], ['Carton', p.packaging.carton], ['Units per carton', p.packaging.unitsPerCarton], ['Weight of one unit', cm.weightGrams && cm.weightGrams + ' g'], ['Packed size', cm.lengthCm && cm.widthCm && cm.heightCm && `${cm.lengthCm} × ${cm.widthCm} × ${cm.heightCm} cm`], ['HS code', cm.hsCode]].filter(x => x[1]), cr = [['Fibre content', p.care.fiber], ['Country of origin', p.care.countryOfOrigin]].filter(x => x[1]);
     const col = (x, w, t, rows, texts) => { let yy = doc.y; doc.fillColor(INK).font('MONO-M').fontSize(8).text(t.toUpperCase(), x, yy, { characterSpacing: 1, lineBreak: false }); yy += 16; rows.forEach(r => { yy = kv(b, r[0], r[1], x, yy, w) + 6; }); texts.forEach(([k, tx]) => { doc.fillColor(INK).font('SG-B').fontSize(9.5).text(k + '. ', x, yy, { continued: true, width: w }).font('SG').text(safe(tx), { width: w }); yy = doc.y + 6; }); return yy; };
+    if (cm.variants.some(v => v.sku || v.barcode)) { room(b, 90); doc.y += 12; mini(b, 'SKUs and barcodes', doc.y); table(b, [{ h: 'SKU', w: 4, mono: true }, { h: 'Size', w: 1 }, { h: 'Colour', w: 3 }, { h: 'Barcode', w: 3, mono: true }], cm.variants.slice(0, 60).map(v => [v.sku, v.size, v.colour, v.barcode]), { fontSize: 9 }); }
     if (pk.length || p.packaging.notes || cr.length || p.care.instructions || p.care.compliance) {
       room(b, 150); doc.y += 12; const y0 = doc.y, hw = (CW - 24) / 2;
       const a1 = col(L, hw, 'Packaging', pk, p.packaging.notes ? [['Notes', p.packaging.notes]] : []); doc.y = y0;
