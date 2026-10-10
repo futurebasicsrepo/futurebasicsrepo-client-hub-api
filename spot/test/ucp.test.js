@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
-import { orderRef, payableHandler, pickVariant } from '../src/fulfill/ucp.js';
+import { discover, orderRef, payableHandler, pickVariant, runUcpCheckout } from '../src/fulfill/ucp.js';
 
 const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
@@ -13,7 +13,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -104,7 +104,8 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
         const dest = { id: 'dest_1', type: 'shipping_address', ...method.destinations[0] };
         const ship = picked === 'express' ? 1500 : 800;
         Object.assign(co, {
-          status: picked ? 'ready_for_complete' : 'incomplete',
+          status: escalate && picked ? 'requires_escalation' : picked ? 'ready_for_complete' : 'incomplete',
+          ...(escalate && picked ? { messages: [{ type: 'error', code: 'requires_escalation', severity: 'requires_buyer_input', content: 'An extension interaction is required to complete the checkout.' }] } : {}),
           fulfillment: { methods: [{ id: 'ship_1', type: 'shipping', line_item_ids: ['li_0'], selected_destination_id: 'dest_1', destinations: [dest], groups: [{ id: 'pkg_1', ...(picked ? { selected_option_id: picked } : {}), options: [{ id: 'express', title: 'Express', totals: [{ type: 'total', amount: 1500 }] }, { id: 'standard', title: 'Standard', totals: [{ type: 'total', amount: 800 }] }] }] }] },
           totals: picked ? [{ type: 'subtotal', amount: 25000 }, { type: 'fulfillment', amount: ship }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 25000 + ship + 1100 }] : co.totals,
         });
@@ -680,4 +681,25 @@ test('order numbers: the one a shopper knows, never a store’s internal id', ()
   assert.equal(orderRef({ id: 'gid://shopify/Order/1', name: '#SB1042' }), 'SB1042');
   assert.equal(orderRef({ id: 'ord_888' }), 'ord_888');
   assert.equal(orderRef(null), null);
+});
+
+// SKLZ: "An extension interaction is required to complete the checkout."
+// The store's API can't take that step, its page can: with the browser agent
+// on, Spot cancels the API checkout and orders on the page instead.
+test('a checkout that needs a step only the store’s page can take falls back to the page when the agent is on', async (t) => {
+  const store = await startUcpStore({ escalate: true });
+  t.after(() => store.close());
+  const discovery = await discover(store.origin, { allowPrivate: true });
+  const cart = { id: 'c1', merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }], cart_cents: 25000 };
+  const opts = { discovery, cart, shipping, getCard: async () => assert.fail('no card is handed out'), profileUrl: 'https://spot.example/.well-known/ucp', limit: 30000, allowPrivate: true, confirm: async () => true };
+
+  const steps = [];
+  assert.equal(await runUcpCheckout({ ...opts, fallback: true, progress: (s) => steps.push(s) }), null, 'agent on: order on the page');
+  assert.ok(store.log.some((r) => r.method === 'POST' && /\/checkout-sessions\/chk_1\/cancel$/.test(r.url)), 'the API checkout is cancelled');
+  assert.ok(steps.some((s) => /extension interaction/.test(s)), 'the step says why');
+
+  const out = await runUcpCheckout({ ...opts, fallback: false });
+  assert.equal(out.status, 'needs_you', 'agent off: the requester gets the store’s checkout');
+  assert.match(out.reason, /extension interaction is required/);
+  assert.equal(out.manual_url, `${store.origin}/checkout/chk_2`);
 });
