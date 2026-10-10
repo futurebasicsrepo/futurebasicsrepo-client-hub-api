@@ -12,6 +12,7 @@
 // account when the email matches.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { startSession, userForEmail } from './accounts.js';
+import { proveEmail } from './staff.js';
 
 const FLOW_COOKIE = 'spot_oauth';
 const b64 = (buf) => Buffer.from(buf).toString('base64url');
@@ -145,6 +146,8 @@ export function registerOAuth(app, { db, env, urlFor, fetchImpl = fetch, log = c
     }
     const user = db.users.byId(userId);
     if (!user) return fail('failed');
+    // Google checked this address; Facebook's email doesn't count for staff access.
+    if (name === 'google' && who.email && user.email === who.email.trim().toLowerCase()) proveEmail(db, userId, user.email);
     if (!user.name && who.name) {
       const { id, email, created_at, ...doc } = user;
       db.users.save(userId, { ...doc, name: who.name.slice(0, 60) });

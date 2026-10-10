@@ -74,7 +74,7 @@ ${note ? `<p style="margin:16px 0 0;font:14px/1.5 -apple-system,BlinkMacSystemFo
 </table></td></tr></table></body></html>`;
 }
 
-export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null, verified = null } = {}) {
+export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null, verified = null, metrics = null } = {}) {
   // Every text but a sign-in code: only to a confirmed number.
   const textTo = async (phone, body) => {
     const e164 = normalizePhone(phone);
@@ -91,8 +91,11 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
     });
     if (!res.ok) {
       log.warn?.({ status: res.status }, 'email send failed');
+      metrics?.fail('resend', `HTTP ${res.status}`);
       return 'failed';
     }
+    metrics?.ok('resend');
+    metrics?.count('email:sent');
     return 'sent';
   }
 
@@ -107,8 +110,11 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
     });
     if (!res.ok) {
       log.warn?.({ status: res.status }, 'sms send failed');
+      metrics?.fail('twilio', `HTTP ${res.status}`);
       return 'failed';
     }
+    metrics?.ok('twilio');
+    metrics?.count('sms:sent', Math.max(1, Math.ceil(String(body).length / 153)));
     return 'sent';
   }
 
