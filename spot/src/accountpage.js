@@ -114,6 +114,12 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .stop{display:flex;justify-content:space-between;align-items:center;gap:12px 16px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .stop>span{flex:1 1 220px;min-width:0}
 .aicard{grid-template-columns:auto minmax(0,1fr) auto}
+.khead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.kname{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;font-size:17px}.kname small{color:var(--muted);font-size:13px;width:100%}
+.spend{margin:10px 0 0;font-size:15px;color:var(--muted)}.spend b{color:var(--ink);font-size:17px}.spend .bar{height:6px;border-radius:9px;background:var(--line);margin:8px 0 4px;overflow:hidden}.spend .bar i{display:block;height:100%;background:var(--spot);border-radius:9px}.spend.over .bar i{background:#c2321b}.spend.over small{color:#c2321b}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}.chips span{font-size:13px;padding:5px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line)}
+.nocap{margin:10px 0 0;font-size:14px;color:var(--ink)}
+.rules{margin-top:10px}.fl{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:var(--ink)}.fl em{font-style:normal;font-weight:400;color:var(--muted)}.fl small{font-weight:400;color:var(--muted)}
+.cur{position:relative;display:block}.cur i{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--muted);pointer-events:none}.rules{gap:14px}
 .keyc details{padding:8px 0}.keyc summary{font-size:15px}.keyc:first-child{padding-top:0}
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
@@ -260,7 +266,12 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
 </section><p class="err" id="err"></p>`,
     script: `${PASSKEY_JS}
-const usd=c=>'$'+(c/100).toFixed(2);
+// Spot charges in US dollars; the viewer's locale decides how that's written (e.g. "US$" outside the US).
+const CUR='USD',FMT=(()=>{const o={style:'currency',currency:CUR};try{return new Intl.NumberFormat(navigator.language||'en-US',o)}catch{return new Intl.NumberFormat('en-US',o)}})();
+const CUR_SYM=(FMT.formatToParts(0).find(p=>p.type==='currency')||{}).value||'$';
+// Whole amounts read cleaner without cents ($100, not $100.00).
+const FMT0=new Intl.NumberFormat(FMT.resolvedOptions().locale,{style:'currency',currency:CUR,maximumFractionDigits:0});
+const money=c=>((c||0)%100?FMT:FMT0).format((c||0)/100),usd=money;
 const fmtPhone=p=>{const m=/^\\+1(\\d{3})(\\d{3})(\\d{4})$/.exec(p||'');return m?'('+m[1]+') '+m[2]+'-'+m[3]:p};
 const LABEL={open:['waiting',''],paid:['paid','warn'],card_issued:['paid','ok'],completed:['done','ok'],canceled:['canceled',''],expired:['expired',''],refunded:['refunded','']};
 
@@ -326,31 +337,46 @@ $('#ready').addEventListener('click',async e=>{const b=e.target.closest('[data-a
   catch(err){b.disabled=false;$('#err').textContent=err.message}});
 $('#cartSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cartFilter=b.dataset.f;document.querySelectorAll('#cartSeg button').forEach(x=>x.setAttribute('aria-selected',String(x===b)));renderCarts()});
 const ACT={connected:'Connected',ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
-const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
-const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
+const PAY={link:'A link I pay myself',tap:'My card, after I tap Approve',auto:'My card, automatically'};
+const APV={never:'Refuse it',over_limit:'Ask my approver',always:'Always ask my approver'};
 // Under the header: which AI is connected, its cap, and the card it uses. Tap to change them.
 function aiStrip(){
   const keys=me.keys.filter(k=>!k.revoked),c=(me.funding||{}).card;
   const cap=k=>{const r=k.rules||{};return r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':r.monthly_cents?usd(r.monthly_cents)+' a month':'no cap set'};
-  const ai=keys.length?keys.map(k=>'<span>🤖 <b>'+esc(k.name)+'</b> <small>· '+esc(cap(k))+'</small></span>').join(''):'<span>🤖 <b>No AI connected</b></span>';
+  const ai=keys.length?keys.map(k=>'<span>🤖 <b>'+esc(keyName(k.name))+'</b> <small>· '+esc(cap(k))+'</small></span>').join(''):'<span>🤖 <b>No AI connected</b></span>';
   $('#aiStrip').innerHTML=ai+'<span>💳 '+(c?'<b>'+esc(c.label)+'</b>':'<small>No card yet</small>')+'</span><span class="go2">'+(keys.length?'Cap, card &amp; rules →':'Connect →')+'</span>';
   $('#aiStrip').hidden=false;
   $('#pCardSum').textContent=c?c.label+', for your AI':'None saved yet';
 }
 $('#aiStrip').onclick=()=>{tab('ai',true);document.querySelector('.tabs').scrollIntoView({block:'start',behavior:'smooth'})};
+// What a person calls their AI: "claude-fa7111" → "Claude".
+const keyName=n=>{const b=String(n||'').replace(/-[0-9a-f]{6}$/,'');return AI_NAME[b]||b.replace(/-/g,' ').replace(/^./,c=>c.toUpperCase())||'Your AI'};
 function keyRow(k){
-  const r=k.rules||{};
-  const rules=[r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':'',r.monthly_cents?usd(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'only '+r.stores.join(', '):'',r.approver&&r.approver!=='never'?(r.approver==='always'?'every ask goes to your approver':'over the limit goes to your approver'):'',r.pay==='tap'?'you approve each with a tap':r.pay==='auto'?'pays automatically inside these rules':''].filter(Boolean).join(' · ')||'No rules yet';
-  const acts=(k.activity||[]).map(e=>{const d=e.detail||{};return '<li><b>'+esc(ACT[e.kind]||e.kind)+'</b> '+esc([d.item,d.merchant,d.cents!=null?usd(d.cents):'',d.reason].filter(Boolean).join(' · '))+' <small class="sub">'+new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</small></li>'}).join('');
-  if(k.revoked)return '<div class="trav"><span>'+esc(k.name)+' <small class="sub">· disconnected</small></span></div>';
-  return '<div class="keyc"><div class="trav" style="border:0"><span><b>🤖 '+esc(k.name)+'</b> <small class="sub">· connected '+new Date(k.created_at).toLocaleDateString()+' · '+usd(k.month_cents||0)+' asked this month</small></span><button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button></div>'
-    +'<p class="sub" style="margin:0 0 6px">'+esc(rules)+'</p>'
-    +'<details class="more"'+(k.rules&&(k.rules.max_order_cents||k.rules.monthly_cents)?'':' open')+'><summary>Spending cap &amp; rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><select name="pay" aria-label="How it pays">'+Object.entries(PAY).map(([v,l])=>'<option value="'+v+'"'+((r.pay||'link')===v?' selected':'')+((v!=='link'&&!(me.funding&&me.funding.card))||(v==='auto'&&!(me.funding&&me.funding.auto_ok))?' disabled':'')+'>Inside the rules: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
-    +(acts?'<details class="more"><summary>Activity</summary><ul class="acts">'+acts+'</ul></details>':'<p class="sub" style="margin:0">No activity yet.</p>')+'</div>';
+  const r=k.rules||{},spent=k.month_cents||0,card=me.funding&&me.funding.card;
+  const chips=[r.max_order_cents?'Up to '+money(r.max_order_cents)+' an order':'',r.monthly_cents?money(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'Only '+r.stores.join(', '):'',r.approver==='always'?'Every ask goes to your approver':r.approver==='over_limit'?'Over the limit → your approver':'',r.pay==='tap'?'Card, after you tap':r.pay==='auto'?'Card, automatically':''].filter(Boolean);
+  const acts=(k.activity||[]).map(e=>{const d=e.detail||{};return '<li><b>'+esc(ACT[e.kind]||e.kind)+'</b> '+esc([d.item,d.merchant,d.cents!=null?money(d.cents):'',d.reason].filter(Boolean).join(' · '))+' <small class="sub">'+new Date(e.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</small></li>'}).join('');
+  if(k.revoked)return '<div class="trav"><span>'+esc(keyName(k.name))+' <small class="sub">· disconnected</small></span></div>';
+  const cap=r.monthly_cents,pct=cap?Math.min(100,Math.round(spent/cap*100)):0,over=cap&&spent>cap;
+  const since=new Date(k.created_at).toLocaleDateString([], {month:'short',day:'numeric'});
+  const field=(name,label,val,hint)=>'<label class="fl"><span>'+label+'</span><span class="cur"><i aria-hidden="true">'+esc(CUR_SYM)+'</i><input style="padding-left:calc(20px + '+(CUR_SYM.length*0.62).toFixed(2)+'em)" name="'+name+'" inputmode="decimal" placeholder="No cap" value="'+(val?(val/100):'')+'" aria-label="'+label+' in '+CUR+'"></span>'+(hint?'<small>'+hint+'</small>':'')+'</label>';
+  return '<div class="keyc"><div class="khead"><span class="kname">🤖 <b>'+esc(keyName(k.name))+'</b><small>'+esc(k.name)+' · since '+since+'</small></span><button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button></div>'
+    +'<div class="spend'+(over?' over':'')+'"><b>'+money(spent)+'</b> asked this month'+(cap?' <span>of '+money(cap)+'</span><div class="bar" role="progressbar" aria-valuenow="'+pct+'" aria-valuemin="0" aria-valuemax="100"><i style="width:'+pct+'%"></i></div>'+(over?'<small>Over its monthly cap: new asks follow “If it goes over”.</small>':''):'')+'</div>'
+    +(chips.length?'<div class="chips">'+chips.map(c=>'<span>'+esc(c)+'</span>').join('')+'</div>':'<p class="nocap">⚠️ No cap yet: it can ask for any amount. Set one below.</p>')
+    +'<details class="more"'+(r.max_order_cents||r.monthly_cents?'':' open')+'><summary>Spending cap &amp; rules</summary><form class="f rules" data-rules="'+esc(k.name)+'">'
+    +'<div class="two">'+field('max','Per order',r.max_order_cents)+field('month','Per month',r.monthly_cents)+'</div>'
+    +'<label class="fl"><span>Only these stores <em>(optional)</em></span><input name="stores" placeholder="target.com, nike.com" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Only these stores"></label>'
+    +'<label class="fl"><span>If it goes over</span><select name="approver">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>'+l+'</option>').join('')+'</select></label>'
+    +'<label class="fl"><span>Inside the rules, pay by</span><select name="pay">'+Object.entries(PAY).map(([v,l])=>'<option value="'+v+'"'+((r.pay||'link')===v?' selected':'')+((v!=='link'&&!card)||(v==='auto'&&!(me.funding&&me.funding.auto_ok))?' disabled':'')+'>'+l+'</option>').join('')+'</select>'+(card?'':'<small>Add a card below to let it use your card.</small>')+'</label>'
+    +'<div class="btnrow"><button class="btn primary">Save</button><span class="ok-msg" data-saved hidden>Saved ✓</span></div><p class="err" data-err></p></form></details>'
+    +(acts?'<details class="more"><summary>Activity</summary><ul class="acts">'+acts+'</ul></details>':'<p class="sub" style="margin:8px 0 0">No activity yet.</p>')+'</div>';
 }
-document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rules]');if(!f)return;e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(f));
-  const c=x=>x.trim()?Math.round(parseFloat(x.replace(/[$,]/g,''))*100):null;
-  try{await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:c(v.max),monthly_cents:c(v.month),stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver,pay:v.pay});load()}catch(err){$('#err').textContent=err.message}});
+document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rules]');if(!f)return;e.preventDefault();const er=f.querySelector('[data-err]');er.textContent='';const v=Object.fromEntries(new FormData(f));
+  const c=x=>{x=String(x).replace(/[^0-9.]/g,'');return x?Math.round(parseFloat(x)*100):null};
+  const max=c(v.max),month=c(v.month);
+  if(max&&month&&month<max){er.textContent='The monthly cap can’t be less than the per-order cap.';return}
+  const b=f.querySelector('button');b.disabled=true;
+  try{const r=await post('/v1/me/keys/'+encodeURIComponent(f.dataset.rules)+'/rules',{max_order_cents:max,monthly_cents:month,stores:v.stores.split(/[\s,]+/).filter(Boolean),approver:v.approver,pay:v.pay});me.keys=r.keys;$('#keys').innerHTML=me.keys.map(keyRow).join('');aiStrip();const ok=document.querySelector('[data-rules="'+CSS.escape(f.dataset.rules)+'"] [data-saved]');if(ok){ok.closest('details').open=true;ok.hidden=false;setTimeout(()=>{ok.hidden=true},2500)}}
+  catch(err){er.textContent=err.message;b.disabled=false}});
 $('#apvForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
   try{const r=await post('/v1/me/approver',v);$('#apvOk').textContent=r.confirm_link?'Test mode: they would get this link by email.':'Sent. They need to tap Yes in the email.';if(r.confirm_link)console.log(r.confirm_link);e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 // Spots made on this device before signing in join the account.
