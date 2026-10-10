@@ -1,7 +1,7 @@
 // Server-rendered pages. No build step: each page is one HTML string with
 // inline CSS and a small inline script. Everything interpolated from a cart
 // goes through esc(), and data handed to scripts goes through json().
-import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, usd } from './cart.js';
+import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, cssSafe, usd } from './cart.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -277,7 +277,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 
   const products = cart.items
     .map(
-      (i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+      (i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(cssSafe(i.image_url))}')"` : ''}></div>
 <div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `×${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
 <div class="p">${usd(i.price_cents * i.quantity)}</div></div>`,
     )
@@ -308,7 +308,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}<button type="button" class="nope" id="nope">Not this time</button></div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}${cart.for === 'self' || cart.kind === 'flight' || cart.kind === 'train' || cart.bundle_id ? '' : '<button type="button" class="nope" id="nope">Not this time</button>'}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -541,7 +541,7 @@ function finishPanel(c,notice){
   if(c.pay_at_store&&c.pay_at_store.started)h+='<p class="small" style="margin:12px 0 0">Paying at '+esc(c.merchant.name)+'? This page updates as soon as the store confirms your order.</p>';
   if(fl)h+='<section class="card">'+itinerary(c.flight)+totals(c)+'</section>';
   else if(tr)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
-  else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(i.image_url)+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
+  else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(String(i.image_url).replace(/["'()\\\\\\s]/g,function(c){return '%'+c.charCodeAt(0).toString(16).padStart(2,'0')}))+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
     +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
   const payLabel=(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents));
   if(fl)h+='<section class="card"><h2>Who’s flying</h2><form id="finish">'+travelersForm(c,s)
@@ -682,7 +682,7 @@ async function draw(){
   if(c.status==='completed'&&!fl&&c.settle==='handoff'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">Marked as received.</p></section>'}
   if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+' refunded '+usd(c.total_cents)+'.</p></section>';
   if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
-  if(c.settle==='handoff'&&c.items[0]&&c.items[0].url&&c.status!=='canceled'&&c.status!=='expired')h+='<a class="btn ghost" href="/c/'+TOKEN+'/buy/0" target="_blank" rel="noopener">Buy it at '+esc(c.merchant.name)+' →</a><p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from '+esc(c.merchant.name)+'. Your price is the same.</p>';
+  if(c.settle==='handoff'&&c.items[0]&&c.items[0].url&&c.status!=='canceled'&&c.status!=='expired')h+='<a class="btn ghost" href="/c/'+TOKEN+'/buy/0'+(K?'?k='+encodeURIComponent(K):'')+'" target="_blank" rel="noopener">Buy it at '+esc(c.merchant.name)+' →</a><p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from '+esc(c.merchant.name)+'. Your price is the same.</p>';
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
   if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
   const busy=f&&['starting','working','awaiting_confirm','placed'].includes(f.state);
@@ -773,7 +773,7 @@ export function bundlePayPage({ bundle: b, provider, pageUrl, cardUrl }) {
 <style>${PAY_CSS}.store-h{font-weight:800;margin:14px 0 4px;font-size:15px;color:var(--muted)}</style>
 ${provider === 'stripe' && open ? '<script src="https://js.stripe.com/v3/"></script>' : ''}`;
   const section = (st) => `<div class="store-h bub">🛍️ ${esc(st.merchant.name)} · ${usd(st.cart_cents)}</div>${st.items
-    .map((i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(i.image_url)}')"` : ''}></div>
+    .map((i) => `<div class="pcard bub"><div class="thumb" ${i.image_url ? `style="background-image:url('${esc(cssSafe(i.image_url))}')"` : ''}></div>
 <div><div class="t">${esc(i.title)}</div><div class="v">${esc([i.variant, i.quantity > 1 ? `×${i.quantity}` : ''].filter(Boolean).join(' · '))}</div></div>
 <div class="p">${usd(i.price_cents * i.quantity)}</div></div>`)
     .join('')}`;

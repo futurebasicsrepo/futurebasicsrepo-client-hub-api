@@ -1,3 +1,5 @@
+import { Resvg } from '@resvg/resvg-js';
+import { isIP } from 'node:net';
 import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -39,7 +41,44 @@ import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch } = {}) {
-  const app = Fastify({ logger, bodyLimit: 8 * 1024 * 1024, trustProxy: true });
+  const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
+  // Who's calling, for rate limits and risk checks. X-Forwarded-For is
+  // whatever the caller sends, so it's never trusted: Railway's edge puts
+  // the real client address in X-Real-IP, and that's the only one used.
+  const behindEdge = Boolean(env.RAILWAY_ENVIRONMENT_ID || env.RAILWAY_PROJECT_ID || env.SPOT_BEHIND_PROXY === '1');
+  app.addHook('onRequest', async (req) => {
+    const real = behindEdge ? String(req.headers['x-real-ip'] || '').trim() : '';
+    if (real && isIP(real)) req.headers['x-forwarded-for'] = real;
+    else delete req.headers['x-forwarded-for'];
+  });
+  // Every response: no framing (clickjacking on pay/approve/account pages),
+  // no type sniffing, link tokens kept out of Referer, HTTPS only.
+  app.addHook('onSend', async (req, reply, payload) => {
+    if (!reply.hasHeader('x-frame-options')) reply.header('x-frame-options', 'DENY');
+    if (!reply.hasHeader('content-security-policy')) reply.header('content-security-policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    reply.header('x-content-type-options', 'nosniff');
+    if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'strict-origin-when-cross-origin');
+    if (behindEdge) reply.header('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    return payload;
+  });
+  // Writes that act on a signed-in person's links: JSON from this site only,
+  // so another site can't post a form at them with the person's cookie.
+  app.addHook('preHandler', async (req) => {
+    if (req.method !== 'POST' || !/^\/v1\/(carts|bundles)\/[^/]+\/manage\//.test(req.url)) return;
+    if (!String(req.headers['content-type'] || '').startsWith('application/json')) throw new CartError('Send JSON', 415);
+    const origin = req.headers.origin;
+    if (origin && origin !== 'null') {
+      const hostOf = (h) => {
+        try {
+          return new URL(h.includes('://') ? h : `http://${h}`).hostname;
+        } catch {
+          return '';
+        }
+      };
+      const ours = [req.headers.host, req.headers['x-forwarded-host'], canonical?.host].filter(Boolean).map(hostOf);
+      if (!ours.includes(hostOf(origin))) throw new CartError('Not allowed from another site', 403);
+    }
+  });
   const risk = createRisk({ db, env });
   const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
@@ -75,7 +114,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('signing', signing);
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
-  spot.direct = createDirect({ profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) });
+  spot.direct = createDirect({ profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
@@ -150,6 +189,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     create: limit('create', Number(process.env.SPOT_CREATE_PER_10M || 20), 600_000),
     pay: limit('pay', 60, 600_000),
     thanks: limit('thanks', 20, 600_000),
+    // Each of these makes Spot fetch from somewhere else.
+    check: limit('check', 60, 600_000),
+    card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
   const sweeper = setInterval(() => {
@@ -237,7 +279,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     ['caveat-700.woff2', readFileSync(require.resolve('@fontsource/caveat/files/caveat-latin-700-normal.woff2'))],
   ]);
   app.get('/fonts/:file', async (req, reply) => {
-    const f = fonts[req.params.file];
+    const f = Object.hasOwn(fonts, req.params.file) ? fonts[req.params.file] : null;
     if (!f) return reply.code(404).send();
     return reply.type('font/woff2').header('cache-control', 'public, max-age=31536000, immutable').send(f);
   });
@@ -253,7 +295,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   };
   const demoCards = {};
   app.get('/site/:file', async (req, reply) => {
-    const which = { 'card-open.png': 'open', 'card-covered.png': 'covered', 'card-agent.png': 'agent' }[req.params.file];
+    const files = { 'card-open.png': 'open', 'card-covered.png': 'covered', 'card-agent.png': 'agent' };
+    const which = Object.hasOwn(files, req.params.file) ? files[req.params.file] : null;
     if (!which) return reply.code(404).send();
     const cart = {
       open: demo,
@@ -262,6 +305,24 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }[which];
     demoCards[which] ||= await renderShareCard(cart);
     return reply.type('image/png').header('cache-control', 'public, max-age=86400').send(demoCards[which]);
+  });
+
+  // Icons for browsers, home screens and crawlers: the Spot dot.
+  const ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#ff5a36"/></svg>`;
+  const iconPng = {};
+  const pngIcon = (size, bg) => (iconPng[`${size}${bg}`] ||= new Resvg(bg ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="${bg}"/><circle cx="16" cy="16" r="11" fill="#ff5a36"/></svg>` : ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng());
+  const cacheDay = 'public, max-age=86400';
+  app.get('/favicon.svg', async (req, reply) => reply.type('image/svg+xml').header('cache-control', cacheDay).send(ICON_SVG));
+  app.get('/favicon.ico', async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(pngIcon(48)));
+  for (const p of ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png']) app.get(p, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(pngIcon(180, '#fbf7f1')));
+  app.get('/robots.txt', async (req, reply) => reply.type('text/plain').header('cache-control', cacheDay).send(`User-agent: *\nDisallow: /c/\nDisallow: /b/\nDisallow: /account\nDisallow: /admin\nDisallow: /v1/\nDisallow: /oauth/\nDisallow: /approvals/\nAllow: /\n`));
+  // Spot's crawler names this page in its user agent.
+  app.get('/for-stores', async (req, reply) => reply.redirect('/#stores', 302));
+
+  // Pages that don't exist: a page for people, JSON for programs.
+  app.setNotFoundHandler(async (req, reply) => {
+    if (['GET', 'HEAD'].includes(req.method) && String(req.headers.accept || '').includes('text/html')) return html(reply, notFoundPage(), 404);
+    return reply.code(404).send({ error: 'Not found' });
   });
 
   app.post('/v1/waitlist', async (req) => {
@@ -338,6 +399,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // changes when the cart does (e.g. flips to "covered").
   const cards = new Map();
   app.get('/c/:token/card.png', async (req, reply) => {
+    limits.card(req);
     let cart;
     try {
       cart = spot.load(req.params.token);
@@ -368,7 +430,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Capture ──────────────────────────────────────────────────────────────
-  app.post('/v1/capture', async (req) => {
+  // Screenshots arrive as base64, so capture takes bigger bodies than the rest.
+  app.post('/v1/capture', { bodyLimit: 8 * 1024 * 1024 }, async (req) => {
     limits.capture(req);
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
@@ -385,6 +448,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Carts ────────────────────────────────────────────────────────────────
   // Does this store let the payer pay it directly (UCP checkout)?
   app.get('/v1/stores/check', async (req) => {
+    limits.check(req);
     const url = String(req.query.url || '');
     return { pay_at_store: url ? await spot.direct.supports(url) : false };
   });
@@ -451,6 +515,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
     const item = cart.settle === 'handoff' ? cart.items[Number(req.params.i) || 0] : null;
     if (!item?.url) return html(reply, notFoundPage(), 404);
+    // Only for the person who made the link (their page passes its key):
+    // otherwise spotmeplease.com would forward anyone to any address.
+    try {
+      spot.loadManaged(req.params.token, { k: req.query.k, userId: accounts.userIdOf(req) });
+    } catch {
+      return reply.redirect(`/c/${encodeURIComponent(cart.token)}`, 302);
+    }
     const a = affiliate.wrap(item.url, { ref: cart.token });
     if (a.via) db.event(cart.id, 'affiliate_link', { via: a.via });
     return reply.redirect(a.url, 302);
@@ -613,7 +684,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const { cart, price_changed } = await spot.setTravelers(req.params.token, keyOf(req), req.body || {});
     return { cart: ownerCart(cart), price_changed };
   });
-  app.post('/v1/carts/:token/manage/edit', async (req) => ({ cart: ownerCart(spot.edit(req.params.token, keyOf(req), req.body?.cart)) }));
+  app.post('/v1/carts/:token/manage/edit', async (req) => {
+    const c = req.body?.cart;
+    const input = c && Array.isArray(c.items) ? { ...c, items: c.items.map(splitVariant) } : c;
+    return { cart: ownerCart(await spot.edit(req.params.token, keyOf(req), input)) };
+  });
   // The requester says thanks to whoever paid. JSON only, so another site
   // can't post one for a signed-in requester.
   app.post('/v1/carts/:token/manage/thanks', async (req) => {

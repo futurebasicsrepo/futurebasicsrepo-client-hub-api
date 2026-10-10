@@ -38,6 +38,9 @@ export function sandboxProvider() {
     async createPayment(cart) {
       return { ref: `sbx_pi_${cart.id}`, client: { mode: 'sandbox' } };
     },
+    async cancelPayment() {
+      return true;
+    },
     async issueCard(cart) {
       const number = luhnNumber('4000009', 16);
       const now = new Date();
@@ -132,9 +135,19 @@ export function stripeProvider(env = process.env) {
           description: `Spot cart for ${cart.requester.name} at ${cart.merchant.name}`,
           metadata: { spot_cart_id: cart.id, ...(cart.bundle ? { spot_bundle: '1' } : {}) },
         },
-        { idempotencyKey: `spot-pi-${cart.id}` },
+        { idempotencyKey: `spot-pi-${cart.id}-${cart.rev || 1}` },
       );
       return { ref: pi.id, client: clientFor(pi, env) };
+    },
+
+    // Stop a payment nobody has finished, so it can't charge an old amount.
+    // false: someone is paying it right now (or already has).
+    async cancelPayment(ref) {
+      const pi = await stripe.paymentIntents.retrieve(ref);
+      if (pi.status === 'canceled') return true;
+      if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(pi.status)) return false;
+      await stripe.paymentIntents.cancel(ref);
+      return true;
     },
 
     // One company cardholder (Spot itself), made once in the Stripe dashboard.

@@ -35,7 +35,7 @@ export const SESSION_COOKIE = 'spot_session';
 const CODE_TTL = 10 * 60_000;
 const SESSION_TTL = 30 * 86400_000;
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL = /^[^@\s:]+@[^@\s:]+\.[^@\s:]+$/;
 
 export function sessionUserId(db, req) {
   const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([A-Za-z0-9_-]{43})`));
@@ -141,7 +141,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       limit(`ip:${req.ip}`, 20, 3600_000);
       limit(`phone:${phone}`, 5, 3600_000);
       if (db.optouts.has(phone)) throw new CartError('This number replied STOP to Spot texts. Text START to our number, or sign in with email.', 409);
-      const code = newCode(phone);
+      const code = newCode(`signin:${phone}`);
       if (provider.name === 'sandbox' && !smsReady()) return { sent: 'screen', code };
       const sent = await notifier.sendSignInText(phone, code, new URL(urlFor(req, '/')).hostname);
       if (sent !== 'sent') throw new CartError('We couldn’t text that number just now. Try again, or use email.', 503);
@@ -151,7 +151,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (!EMAIL.test(email)) throw new CartError('That email looks wrong');
     limit(`ip:${req.ip}`, 20, 3600_000);
     limit(`email:${email}`, 5, 3600_000);
-    const code = newCode(email);
+    // Sign-in codes live apart from add-an-email codes (link:…), so one can never pass for the other.
+    const code = newCode(`signin:${email}`);
     const sent = showCode() ? 'shown' : await notifier.sendSignInCode(email, code);
     if (sent !== 'sent' && sent !== 'shown') throw new CartError('We couldn’t send the email just now. Try again in a minute.', 503);
     return { sent: sent === 'sent' ? 'email' : 'screen', ...(sent === 'shown' ? { code } : {}) };
@@ -163,7 +164,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const email = phone || String(req.body?.email || '').trim().toLowerCase();
     const code = String(req.body?.code || '').replace(/\D/g, '');
     limit(`verify:${req.ip}`, 30, 3600_000);
-    checkCode(email, code);
+    checkCode(`signin:${email}`, code);
 
     const user = phone ? userForPhone(db, phone) : userForEmail(db, email);
     startSession(db, req, reply, urlFor, user.id);

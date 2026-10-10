@@ -561,7 +561,9 @@ test('affiliate links: only when a person goes to the store, disclosed, never on
 
   // Venmo/Cash App: the requester's own trip to the store carries the tag.
   const h = (await call('POST', '/v1/carts', directCart(store.origin, { settle: 'handoff', requester: { name: 'Kyle', venmo: 'kyle-r' } }))).body;
-  const go = await call('GET', `/c/${h.cart.token}/buy/0`);
+  // Strangers don't get forwarded from spotmeplease.com to the item's address.
+  assert.equal((await call('GET', `/c/${h.cart.token}/buy/0`)).headers.location, `/c/${h.cart.token}`);
+  const go = await call('GET', `/c/${h.cart.token}/buy/0?k=${h.manage_key}`);
   assert.equal(go.status, 302);
   assert.match(go.headers.location, /^https:\/\/sovrn\.co\?key=k1&u=/);
 });

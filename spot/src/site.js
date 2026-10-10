@@ -61,7 +61,7 @@ nav .navacts{display:flex;align-items:center;gap:8px;margin-left:12px;flex:none}
 nav .btn{min-height:40px;padding:0 16px;font-size:15px}
 @media (max-width:1180px){nav .links .p2{display:none}nav .menu .m2{display:flex}}
 @media (max-width:900px){nav .links .p1{display:none}nav .menu .m1{display:flex}nav .navmore .ml-more{display:none}nav .navmore .ml-menu{display:inline}}
-@media (max-width:600px){nav .links{display:none}nav .navacts{margin-left:auto}nav>.wrap{height:64px}nav .btn{min-height:44px;padding:0 15px}}
+@media (max-width:600px){nav .links>a,nav #navAcct{display:none}nav .links{margin-left:auto}nav .menu a{display:flex}nav .navmore summary{padding:0 10px}nav .navacts{margin-left:4px}nav>.wrap{height:64px}nav .btn{min-height:44px;padding:0 15px}}
 @media (max-width:380px){nav .btn{padding:0 12px;font-size:14px}.logo{font-size:20px;gap:8px}nav .navacts{gap:6px}}
 
 /* hero */
@@ -300,7 +300,7 @@ export function siteNav(active = '') {
   const a = ([href, label, key, p], cls) => `<a class="${cls}${p}" href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${NAV_LINKS.filter((l) => l[3] < 3).map((l) => a(l, 'p')).join('')}<details class="navmore" id="navMore"><summary><span class="ml-more">More</span><span class="ml-menu">Menu</span>${chevron}</summary><div class="menu">${NAV_LINKS.map((l) => a(l, 'm')).join('')}</div></details></div>
+  <div class="links">${NAV_LINKS.filter((l) => l[3] < 3).map((l) => a(l, 'p')).join('')}<details class="navmore" id="navMore"><summary><span class="ml-more">More</span><span class="ml-menu">Menu</span>${chevron}</summary><div class="menu">${NAV_LINKS.map((l) => a(l, 'm')).join('')}<a class="macct" href="/signin?next=/account" id="navAcctM">Sign in</a></div></details></div>
   <div class="navacts"><a class="btn ghost" href="/signin?next=/account" id="navAcct">Sign in</a><a class="btn primary" href="/new" id="navCta">Make a Spot</a></div>
 </div></nav>`;
 }
@@ -317,7 +317,7 @@ export const SITE_JS = `
   if(more){addEventListener('click',e=>{if(more.open&&(!more.contains(e.target)||e.target.closest('.menu a')))more.open=false});
     addEventListener('keydown',e=>{if(e.key==='Escape'&&more.open){more.open=false;more.querySelector('summary').focus()}})}
   try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
-  try{const n=document.getElementById('navAcct');if(n&&localStorage.getItem('spot:in')){n.textContent='My Spots';n.href='/account'}}catch{}
+  try{if(localStorage.getItem('spot:in'))for(const id of ['navAcct','navAcctM']){const n=document.getElementById(id);if(n){n.textContent='My Spots';n.href='/account'}}}catch{}
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
   const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;

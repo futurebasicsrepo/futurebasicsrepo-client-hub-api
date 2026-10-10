@@ -26,7 +26,7 @@ import { authLimitCents } from '../cart.js';
 const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
 export function validateShipping(s) {
-  const f = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+  const f = (v, n) => (typeof v === 'string' || typeof v === 'number' ? String(v).trim().slice(0, n) : '');
   const out = {
     name: f(s?.name, 80),
     line1: f(s?.line1, 120),
@@ -40,8 +40,21 @@ export function validateShipping(s) {
   const missing = ['name', 'line1', 'city', 'state', 'postal_code', 'email'].filter((k) => !out[k]);
   if (missing.length) throw Object.assign(new Error(`Shipping needs: ${missing.join(', ')}`), { status: 400 });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(out.email)) throw Object.assign(new Error('That email looks wrong'), { status: 400 });
+  // US addresses: a state (or its name) and a 5-digit ZIP, so a store's checkout takes them.
+  const st = out.state.toUpperCase().replace(/\./g, '');
+  const code = US_STATES[st] ? st : STATE_CODES[st.replace(/\s+/g, ' ')];
+  if (!code) throw Object.assign(new Error('Use a US state, like TX'), { status: 400 });
+  out.state = code;
+  if (!/^\d{5}(-\d{4})?$/.test(out.postal_code)) throw Object.assign(new Error('Use a 5-digit ZIP code'), { status: 400 });
   return out;
 }
+
+const US_STATES = Object.fromEntries(
+  'AL Alabama|AK Alaska|AZ Arizona|AR Arkansas|CA California|CO Colorado|CT Connecticut|DE Delaware|DC District of Columbia|FL Florida|GA Georgia|HI Hawaii|ID Idaho|IL Illinois|IN Indiana|IA Iowa|KS Kansas|KY Kentucky|LA Louisiana|ME Maine|MD Maryland|MA Massachusetts|MI Michigan|MN Minnesota|MS Mississippi|MO Missouri|MT Montana|NE Nebraska|NV Nevada|NH New Hampshire|NJ New Jersey|NM New Mexico|NY New York|NC North Carolina|ND North Dakota|OH Ohio|OK Oklahoma|OR Oregon|PA Pennsylvania|RI Rhode Island|SC South Carolina|SD South Dakota|TN Tennessee|TX Texas|UT Utah|VT Vermont|VA Virginia|WA Washington|WV West Virginia|WI Wisconsin|WY Wyoming|PR Puerto Rico|GU Guam|VI Virgin Islands|AS American Samoa|MP Northern Mariana Islands|AA Armed Forces Americas|AE Armed Forces Europe|AP Armed Forces Pacific'
+    .split('|')
+    .map((x) => [x.slice(0, 2), x.slice(3)]),
+);
+const STATE_CODES = Object.fromEntries(Object.entries(US_STATES).map(([c, n]) => [n.toUpperCase(), c]));
 
 // Where a train ticket goes, in the shape the checkout expects: the first
 // rider's name, the e-ticket email, and every rider for the booking form.

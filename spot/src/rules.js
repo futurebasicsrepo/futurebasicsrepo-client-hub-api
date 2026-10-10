@@ -31,14 +31,22 @@ export function normalizeRules(b = {}) {
     if (!Number.isFinite(n) || n < 100 || n > 1_000_000_00) throw new CartError(`${name} must be between $1 and $1,000,000`);
     return n;
   };
-  const stores = Array.isArray(b.stores)
-    ? [...new Set(b.stores.map((s) => domainOf(String(s))).filter(Boolean))].slice(0, 50)
-    : [];
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw new CartError('Rules must be an object');
+  // A bad list is refused, never read as "no store rule" (that would allow every store).
+  if (b.stores != null && !Array.isArray(b.stores)) throw new CartError('stores must be a list of store domains, like ["nike.com"]');
+  const stores = [];
+  for (const raw of b.stores || []) {
+    const d = domainOf(String(raw));
+    if (!d || !/^([a-z0-9-]+\.)+[a-z]{2,}$/.test(d) || d.split('.').some((p) => !p)) throw new CartError(`"${String(raw).slice(0, 60)}" isn’t a store domain, like nike.com`);
+    if (!stores.includes(d)) stores.push(d);
+  }
+  if (stores.length > 50) throw new CartError('Up to 50 stores');
   const approver = b.approver == null ? 'never' : String(b.approver);
   if (!APPROVER.includes(approver)) throw new CartError(`approver must be one of ${APPROVER.join(', ')}`);
   const pay = b.pay == null ? 'link' : String(b.pay);
   if (!PAY.includes(pay)) throw new CartError(`pay must be one of ${PAY.join(', ')}`);
   const out = { max_order_cents: cents(b.max_order_cents, 'max_order_cents'), monthly_cents: cents(b.monthly_cents, 'monthly_cents'), stores, approver, pay };
+  if (out.monthly_cents && out.max_order_cents && out.monthly_cents < out.max_order_cents) throw new CartError('The monthly limit can’t be lower than the per-order limit');
   if (pay === 'auto' && !out.max_order_cents) throw new CartError('Set a max per order before letting your AI pay on its own: it caps every card');
   const empty = !out.max_order_cents && !out.monthly_cents && !out.stores.length && out.approver === 'never' && pay === 'link';
   return empty ? null : out;

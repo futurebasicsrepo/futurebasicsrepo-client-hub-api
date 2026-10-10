@@ -59,11 +59,28 @@ async function guard(url, allowPrivate) {
   return u;
 }
 
+// The whole exchange, body included, fits in the time limit and in
+// MAX_BODY bytes: a store that streams forever can't hold Spot's memory.
+const MAX_BODY = 2 * 1024 * 1024;
 async function send(fetchImpl, url, init, ms = TIMEOUT_MS) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetchImpl(url, { ...init, signal: ctrl.signal, redirect: 'error' });
+    const res = await fetchImpl(url, { ...init, signal: ctrl.signal, redirect: 'error' });
+    const chunks = [];
+    let size = 0;
+    if (res.body) {
+      for await (const c of res.body) {
+        size += c.length;
+        if (size > MAX_BODY) {
+          ctrl.abort();
+          throw new UcpError('The store sent too much');
+        }
+        chunks.push(c);
+      }
+    }
+    const text = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+    return { ok: res.ok, status: res.status, headers: res.headers, text: async () => text, json: async () => JSON.parse(text) };
   } finally {
     clearTimeout(t);
   }

@@ -271,6 +271,9 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
     const name = `${slug}-${randomBytes(3).toString('hex')}`;
     db.addKey(sha(token('spot_')), name, user.email || user.phone || 'unknown', user.id);
     db.agentEvents.add(`key:${name}`, user.id, 'connected', { via: appName });
+    // Reconnecting the same app keeps the limits the person set for it.
+    const prev = db.users.keys(user.id).find((k) => k.name !== name && k.rules && k.name.startsWith(`${slug}-`));
+    if (prev) db.keyRules.set(user.id, name, prev.rules);
     return name;
   }
 

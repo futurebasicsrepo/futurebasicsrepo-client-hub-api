@@ -68,7 +68,17 @@ async function json(p) {
   return body;
 }
 
-const safeNext = (n) => (typeof n === 'string' && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n.slice(0, 300) : '/account');
+// Only a path on this site. Browsers drop tabs and newlines and read "\" as
+// "/", so "/\tevil.com" or "/\\evil.com" would leave it: resolve it and check.
+const safeNext = (n) => {
+  if (typeof n !== 'string' || !n.startsWith('/') || /[\u0000-\u001f\\]/.test(n)) return '/account';
+  try {
+    const u = new URL(n, 'https://spot.invalid');
+    return u.origin === 'https://spot.invalid' ? `${u.pathname}${u.search}${u.hash}`.slice(0, 300) : '/account';
+  } catch {
+    return '/account';
+  }
+};
 
 export function registerOAuth(app, { db, env, urlFor, fetchImpl = fetch, log = console }) {
   const providers = oauthProviders(env);

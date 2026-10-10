@@ -115,7 +115,8 @@ export function validateCart(input, cfg = config()) {
   const items = rawItems.map((it, i) => {
     const title = str(it?.title, 140);
     if (!title) throw new CartError(`Item ${i + 1} needs a name`);
-    const qty = Number.parseInt(it?.quantity ?? 1, 10);
+    // Whole numbers only: "20abc" must not read as 20 here and 1 in a spending check.
+    const qty = Number(it?.quantity ?? 1);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new CartError(`Item ${i + 1} quantity must be 1–20`);
     const price = cents(it?.price_cents);
     if (price === null || price < 1) throw new CartError(`Item ${i + 1} needs a price`);
@@ -362,11 +363,14 @@ function str(v, max) {
   return typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : '';
 }
 
+export const cssSafe = (u) => String(u).replace(/["'()\\\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase());
+
 function safeUrl(v) {
   if (typeof v !== 'string' || !v) return null;
   try {
     const u = new URL(v);
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString().slice(0, 1000) : null;
+    // Quotes and brackets are encoded, so a URL can't break out of CSS url('…').
+    return u.protocol === 'https:' || u.protocol === 'http:' ? cssSafe(u.toString()).slice(0, 1000) : null;
   } catch {
     return null;
   }
