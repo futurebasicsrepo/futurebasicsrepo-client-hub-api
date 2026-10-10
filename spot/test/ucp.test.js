@@ -526,3 +526,23 @@ test('affiliate links: only when a person goes to the store, disclosed, never on
   assert.equal(go.status, 302);
   assert.match(go.headers.location, /^https:\/\/redirect\.viglink\.com\?key=k1&u=/);
 });
+
+test('every pay page’s script runs (pay at store, Spot buys, handoff, after a decline)', async (t) => {
+  const vm = await import('node:vm');
+  const store = await startUcpStore();
+  const { app } = await directSetup(t, store);
+  const scriptsOk = (html, label) => {
+    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    assert.ok(scripts.length, `${label}: has a script`);
+    for (const s of scripts) assert.doesNotThrow(() => new vm.Script(s), `${label}: script parses`);
+  };
+  const make = async (payload) => (await app.inject({ method: 'POST', url: '/v1/carts', payload })).json();
+  const direct = await make(directCart(store.origin));
+  await app.inject({ method: 'POST', url: `/v1/carts/${direct.cart.token}/manage/prepare`, payload: { k: direct.manage_key, shipping } });
+  const card = await make(directCart(store.origin, { settle: 'card' }));
+  const handoff = await make(directCart(store.origin, { settle: 'handoff', requester: { name: 'Kyle', venmo: 'kyle-r' } }));
+  for (const [label, c] of [['pay at store', direct], ['Spot buys', card], ['handoff', handoff]]) {
+    const html = (await app.inject({ url: `/c/${c.cart.token}` })).body;
+    scriptsOk(html, label);
+  }
+});
