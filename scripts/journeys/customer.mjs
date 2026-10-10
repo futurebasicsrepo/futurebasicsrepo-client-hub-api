@@ -1332,7 +1332,16 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
   const dl = await fetch(BASE + mine.url, { headers: { Authorization: 'Bearer ' + tok } }); const got = Buffer.from(await dl.arrayBuffer()); ok(dl.status === 200 && got.equals(png), 'and the client can download exactly what they uploaded', [dl.status, got.length, png.length]);
   const admin = await forge({ sub: sql(`select id from users where client_id='${cid}' limit 1`), clientId: cid, role: 'admin' });
   const af = (await call(`/v1/products/${pid}/files`, { token: admin })).json; ok(af.groups.some(g => g.key === 'uploads' && g.items.some(i => i.id === mine.id)), 'staff see it in the same folder');
-  ok(/render|concept/i.test(f.groups.flatMap(g => g.items).map(i => i.label).join(' ')) || true, 'the render is in the folder too');
+  ok(ups.length === 1, 'and only once: the pack\'s copy of it is not listed a second time', ups.map(i => i.name));
+  // the art files made from it: the original untouched, a clean copy, the inks, and whether it is big enough to print
+  for (let i = 0; i < 60 && !((d.techPack.data.artwork[0] || {}).note); i++) { await sleep(300); d = await draftOf(tok, pid); }
+  const art0 = d.techPack.data.artwork[0]; ok(/Kept exactly as you sent it/.test(art0.note) && /640 × 320|\d+ × \d+ px/.test(art0.note) && art0.source === 'upload', 'the artwork says it is kept as sent, and how big it is for print', art0.note);
+  ok(/too small to print|dpi/.test(art0.note), 'a small file is flagged as small for print', art0.note);
+  ok(art0.pantones.length >= 1 && /^PANTONE .+ C$/.test(art0.pantones[0].code), 'the inks are found and matched to Pantone C chips', art0.pantones);
+  ok(art0.image === art, 'and the artwork itself is exactly the upload');
+  const f2 = (await call(`/v1/products/${pid}/files`, { token: tok })).json, clean = f2.groups.flatMap(g => g.items).find(i => /Art file/.test(i.label || '')); ok(clean && clean.group === 'design' && /\.png$/i.test(clean.name), 'the files folder has a clean art file under Design files', f2.groups.flatMap(g => g.items).map(i => i.label));
+  const cdl = await fetch(BASE + clean.url, { headers: { Authorization: 'Bearer ' + tok } }), cbuf = Buffer.from(await cdl.arrayBuffer()), cm = await sharp(cbuf).metadata(), craw = await sharp(cbuf).ensureAlpha().raw().toBuffer();
+  ok(cdl.status === 200 && cm.hasAlpha && cm.width < 640 && craw[3] === 0, 'it is a transparent, trimmed PNG', [cm.width, cm.height, cm.hasAlpha]);
 
   const b = await start('Hoodie', ''); ok(b.status === 201, 'a graphic with a one-word title and no description still starts a room');
   let e = null; for (let i = 0; i < 100; i++) { e = await draftOf(b.json.token, b.json.product.id); if (e.techPack && ['done', 'failed'].includes(e.techPack.aiStatus)) break; await sleep(300); }
