@@ -521,10 +521,13 @@ async function translateStringsRaw(strings, { lang = 'zh' } = {}) {
 // Screenshots carry app chrome, captions, other items. Before drafting, ask where the product is and crop to it, so
 // callout positions, detail crops and the cover image all refer to the product rather than the whole screen.
 const LOCATE_SCHEMA = {
-  type: 'object', additionalProperties: false, required: ['found', 'artwork', 'product', 'box', 'issues'],
+  type: 'object', additionalProperties: false, required: ['found', 'artwork', 'graphic', 'product', 'box', 'issues'],
   properties: {
     found: { type: 'boolean', description: 'true when a physical product (garment, footwear, bag, accessory…) is clearly visible and could be manufactured from this reference' },
     artwork: { type: 'boolean', description: 'true when the picture is only a graphic that would be printed, embroidered or applied ON a product (lettering, a logo, a pattern, an illustration) and shows no product itself; always false when found is true' },
+    graphic: { type: 'object', additionalProperties: false, required: ['present', 'box'], description: 'A distinct printed, embroidered or applied graphic ON the product (lettering, a logo, a print panel) that would need its own art file. present is false when there is none, or when the picture is only the graphic.',
+      properties: { present: { type: 'boolean' }, box: { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], description: 'Bounding box of that graphic as fractions of the image, zero when absent.',
+        properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, w: { type: 'number', minimum: 0, maximum: 1 }, h: { type: 'number', minimum: 0, maximum: 1 } } } } },
     product: { type: 'string', description: 'Short name of the main product, e.g. "chunky running shoe", or empty' },
     box: { type: 'object', additionalProperties: false, required: ['x', 'y', 'w', 'h'], description: 'Bounding box of the main product as fractions of the image: x,y top-left; w,h size. Whole image when unsure.',
       properties: { x: { type: 'number', minimum: 0, maximum: 1 }, y: { type: 'number', minimum: 0, maximum: 1 }, w: { type: 'number', minimum: 0, maximum: 1 }, h: { type: 'number', minimum: 0, maximum: 1 } } },
@@ -560,7 +563,7 @@ async function locateProductRaw(photoDataUrl) {
   }
   const client = new Anthropic();
   const image = dataUrlToImageBlock(photoDataUrl); if (!image) throw new Error('No readable photo');
-  const base = { model: AI_MODEL, max_tokens: 600, system: 'You prepare customer photos for a product-development studio. Find the one physical product the customer most likely wants made (a garment, shoe, bag, hat or accessory). Return its bounding box as fractions of the image, generous enough to include the whole item. Ignore app chrome, captions, hands and background. If there is no manufacturable product in view, say so. If the picture is only a graphic (lettering, a logo, a pattern, an illustration) that would be printed or embroidered on a product, set found to false and artwork to true.',
+  const base = { model: AI_MODEL, max_tokens: 600, system: 'You prepare customer photos for a product-development studio. Find the one physical product the customer most likely wants made (a garment, shoe, bag, hat or accessory). Return its bounding box as fractions of the image, generous enough to include the whole item. Ignore app chrome, captions, hands and background. If there is no manufacturable product in view, say so. If the picture is only a graphic (lettering, a logo, a pattern, an illustration) that would be printed or embroidered on a product, set found to false and artwork to true. If the product carries a distinct printed, embroidered or applied graphic (lettering, a logo, a print panel), also give that graphic its own box.',
     messages: [{ role: 'user', content: [image, { type: 'text', text: 'Locate the product.' }] }] };
   let response;
   try { response = await client.beta.messages.create({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low', format: { type: 'json_schema', schema: LOCATE_SCHEMA } } }); }
@@ -569,7 +572,7 @@ async function locateProductRaw(photoDataUrl) {
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
   const obj = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   const n = v => Math.min(1, Math.max(0, Number(v) || 0));
-  return { found: Boolean(obj.found), artwork: Boolean(obj.artwork) && !obj.found, product: String(obj.product || '').slice(0, 80), box: { x: n(obj.box?.x), y: n(obj.box?.y), w: n(obj.box?.w) || 1, h: n(obj.box?.h) || 1 }, issues: String(obj.issues || '').slice(0, 300) };
+  return { found: Boolean(obj.found), artwork: Boolean(obj.artwork) && !obj.found, graphic: obj.found && obj.graphic?.present ? { present: true, box: { x: n(obj.graphic.box?.x), y: n(obj.graphic.box?.y), w: n(obj.graphic.box?.w), h: n(obj.graphic.box?.h) } } : { present: false }, product: String(obj.product || '').slice(0, 80), box: { x: n(obj.box?.x), y: n(obj.box?.y), w: n(obj.box?.w) || 1, h: n(obj.box?.h) || 1 }, issues: String(obj.issues || '').slice(0, 300) };
 }
 
 // Crops the photo to the located box with some air around it. Returns the crop as a JPEG data URL and how much of

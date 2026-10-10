@@ -99,6 +99,8 @@ export function normalizeTechPack(input) {
       id: id(a?.id),
       name: str(a?.name, 120),
       image: image(a?.image),
+      source: ['upload', 'cropped'].includes(a?.source) ? a.source : '',
+      note: str(a?.note, 400),
       pantones: list(a?.pantones, LIMITS.pantones, p => ({ hex: hex(p?.hex), name: str(p?.name, 60), code: str(p?.code, 40) })).filter(p => p.hex),
       placements: list(a?.placements, LIMITS.placements, p => ({
         sketchId: sketchIds.has(String(p?.sketchId)) ? String(p.sketchId) : '',

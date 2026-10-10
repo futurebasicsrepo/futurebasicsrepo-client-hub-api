@@ -38,6 +38,7 @@ import { validateVendor, bankParts, maskedBank, last4, revealAllowed, clientView
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender } from './concept.js';
+import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -2741,6 +2742,7 @@ async function createClientDraft(db,{clientId,clientName,project,title,productTy
   await applyFlow(db,product.id,'product-created',{owner:'client',actorId:userId||null});
   const seed=normalizeTechPack({...seedTechPack({product}),sketches});seed.style.designer=clientName;
   const pack=(await db.query(`insert into tech_packs(product_id,client_id,status,data,created_by,initiated_by,source) values($1,$2,'draft',$3,$4,'client',$5) returning *`,[product.id,clientId,seed,userId||null,source])).rows[0];
+  await storeOriginals(db,{productId:product.id,userId:userId||null,images:sketches.map(x=>x.image).filter(Boolean)}); // what they sent, exactly as sent
   const how=source==='photo'?' from a photo':'';
   await db.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,
     [clientId,product.id,userId||null,`${clientName} started a tech pack for ${product.title}${how}`,{techPackId:pack.id,initiatedBy:'client',source}]);
@@ -3041,12 +3043,60 @@ async function autoDraftProduct(product,{photos=[],actorId=null,reason='created'
   await startAiRun(pack);
   return {ai:'pending',techPackId:pack.id,from:images.length||hasImage?'photo':'brief'};
 }
-// The client's own upload stays in the pack as downloadable artwork (the files folder lists it under "Your uploads"); it is not a sketch of a product.
-function withClientUpload(pack,image){
+// A file made or kept for a product: one asset (a versioned file in the product's folder), written to disk. role says whose file it is: the client's own
+// upload ('client', listed under Your uploads) or something we made for them ('admin', listed under Design files).
+const artSlug=t=>String(t||'art').normalize('NFKD').replace(/[^\w.\- ]+/g,'').trim().replace(/\s+/g,'-').slice(0,60)||'art';
+async function saveAssetFile(db,{productId,name,kind,buf,filename,mime,notes=null,userId=null,role='admin'}){
+  const storageName=`${randomBytes(18).toString('hex')}-${cleanName(filename)}`,path=join(uploadDir,storageName);
+  await writeFile(path,buf,{flag:'wx'});
+  try{
+    const asset=(await db.query(`insert into assets(product_id,name,kind,visibility) values($1,$2,$3,'client') on conflict(product_id,name) do update set updated_at=now() returning id`,[productId,name,kind])).rows[0];
+    const version=(await db.query('update assets set current_version=current_version+1,updated_at=now() where id=$1 returning current_version',[asset.id])).rows[0].current_version;
+    return (await db.query(`insert into asset_versions(asset_id,uploader_id,version,original_name,storage_name,mime_type,size_bytes,notes,uploader_role) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
+      [asset.id,userId,version,cleanName(filename),storageName,mime,buf.length,notes,role])).rows[0];
+  }catch(e){await unlink(path).catch(()=>{});throw e}
+}
+// What the client sent is kept exactly as sent, as its own file in the product's folder, whatever the assistant later crops or cleans. (Inside the caller's transaction:
+// a savepoint means a failure here never takes the new product down with it.)
+async function storeOriginals(db,{productId,userId,images}){
+  let i=0;for(const image of images){
+    const d=parseImage(image);i++;if(!d)continue;
+    try{
+      await db.query('savepoint originals');
+      await saveAssetFile(db,{productId,name:i===1?'Your upload':`Your upload ${i}`,kind:'upload',buf:d.buf,filename:`your-upload${i===1?'':'-'+i}.${d.type==='jpeg'?'jpg':d.type}`,mime:`image/${d.type}`,notes:'Exactly as you sent it',userId,role:'client'});
+      await db.query('release savepoint originals');
+    }catch(e){await db.query('rollback to savepoint originals').catch(()=>{});app.log.warn({err:e.message,productId},'original upload not filed')}
+  }
+}
+// A graphic goes into the pack as artwork (the client's own file for a graphic-only upload; a crop for a graphic found on a product). It is not a sketch of the product.
+function withArtwork(pack,{image,name,source,clearSketch=false}){
   const p=structuredClone(pack);
-  p.sketches=p.sketches.map(s=>s.image===image?{...s,image:'',label:'Front view — concept render to follow'}:s);
-  if(!p.artwork.some(a=>a.image===image))p.artwork=[{id:`art-${Date.now().toString(36)}`,name:'Your upload',image,pantones:[],placements:[]},...p.artwork].slice(0,12);
+  if(clearSketch)p.sketches=p.sketches.map(s=>s.image===image?{...s,image:'',label:'Front view — concept render to follow'}:s);
+  if(!p.artwork.some(a=>a.image===image))p.artwork=[{id:`art-${Date.now().toString(36)}${Math.random().toString(36).slice(2,5)}`,name,image,source,note:'',pantones:[],placements:[]},...p.artwork].slice(0,12);
   return normalizeTechPack(p);
+}
+const withClientUpload=(pack,image)=>withArtwork(pack,{image,name:'Your upload',source:'upload',clearSketch:true});
+// The art files made from a graphic: a clean copy on a transparent background (a design file in the folder), the inks matched to Pantone C chips, and whether it is big
+// enough to print. Written back into the pack's artwork entry so the Art tab shows it. Never alters the graphic itself; never fails the draft.
+async function deriveArt(packId,productId,items){
+  for(const it of items){
+    try{
+      const cleaned=await cleanArt(it.image),cols=await artColours(cleaned.png),pc=printCheck({widthPx:cleaned.width,heightPx:cleaned.height});
+      if(cleaned.changed)await saveAssetFile(pool,{productId,name:`Art file · ${it.name}`,kind:'artwork',buf:cleaned.png,filename:`${artSlug(it.name)}-clean.png`,mime:'image/png',notes:`Background removed (${cleaned.background}) and trimmed. Made from your upload, which is unchanged.`});
+      const note=it.source==='cropped'?`Cropped from your photo as a starting point, so it is small and may be skewed. ${pc.message} Replace it with the real art file for production.`
+        :`Kept exactly as you sent it. ${pc.message}${cleaned.changed?' A clean copy on a transparent background is in your files.':''}`;
+      const db=await pool.connect();
+      try{
+        await db.query('begin');
+        const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');continue}
+        const pack=normalizeTechPack(live.data),a=pack.artwork.find(x=>x.image===it.image);
+        if(!a){await db.query('rollback');continue}
+        a.note=note;a.source=it.source;if(!a.pantones.length)a.pantones=cols.map(({hex,name,code})=>({hex,name,code}));
+        await db.query('update tech_packs set data=$2 where id=$1',[packId,normalizeTechPack(pack)]); // updated_at stays: it marks a person's last edit
+        await db.query('commit');
+      }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+    }catch(e){app.log.warn({err:e.message,packId},'art files not derived')}
+  }
 }
 // A concept render made from the client's graphic and their description: the first colour rendering, so the cover and the hub show something at once.
 async function addConceptRender(packId,{artwork,title,category,description}){
@@ -3072,7 +3122,7 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     let original=data.sketches.find(s=>s.image)?.image,artwork=null;
     const briefText=await productBriefText(row.product_id,row.description_html);
     if(!original&&!briefText)throw new NoProductError('There is no photo or brief on this product yet — add a photo under Callouts or write the brief, then run the assistant again.');
-    let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null,cutout=null;
+    let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null,cutout=null,graphic=null;
     if(original){
       // Only a decoder failure means the file is bad. An API error carries "invalid_request_error" in its text (a low
       // credit balance, a bad key) and must surface as what it is, never as "could not open this image".
@@ -3101,6 +3151,8 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       if(draftLooksEmpty(draft))throw new NoProductError('The assistant could not draft enough from this brief. Add a photo, or more detail to the brief, and run it again.');
       draft.pomResearch={skipped:'no photo to research from'};
     }else{
+      // a distinct graphic on the product (lettering, a logo, a print) is cropped out as a starting point for the artwork; the photo is untouched
+      try{if(where.graphic?.present)graphic=await graphicCrop(original,where.graphic)}catch(e){app.log.warn({err:e.message,packId},'graphic not cropped')}
       try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
       const working=structuredClone(data);
       if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
@@ -3154,12 +3206,15 @@ async function enrichPhotoDraft(packId,{force=false}={}){
       }
       merged=mergeClientEdits(origForMerge,currentForMerge,drafted);
       if(artwork)merged=withClientUpload(merged,artwork);
+      if(graphic)merged=withArtwork(merged,{image:graphic.image,name:'Graphic from your photo',source:'cropped'});
       await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null,ai_draft=$4,ai_draft_at=now() where id=$1`,[packId,merged,first.model,JSON.stringify(draftSnapshot(drafted))]); // the assistant's own output is kept so later edits can be measured against it // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
     if(row.initiated_by==='client')await syncCardQuietly(row.product_id,merged);
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
+    {const items=[];if(artwork)items.push({image:artwork,name:'Your upload',source:'upload'});if(graphic)items.push({image:graphic.image,name:'Graphic from your photo',source:'cropped'});
+     if(items.length)deriveArt(packId,row.product_id,items).catch(err=>app.log.warn({err:err.message,packId},'art files not derived'))}
     if(artwork)addConceptRender(packId,{artwork,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'));
     startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){

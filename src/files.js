@@ -38,9 +38,12 @@ export async function listFiles({ pool, uploadDir, meshDir, product, admin = fal
   const tp = (await pool.query(`select data,published_data,published_at,initiated_by,updated_at from tech_packs where product_id=$1`, [product.id])).rows[0];
   if (tp) {
     const pack = normalizeTechPack(tp.published_data || tp.data), at = tp.published_at || tp.updated_at, mine = tp.initiated_by === 'client';
-    pack.artwork.forEach(a => { const it = a.image && inPackImage(`art:${a.id}`, `Artwork — ${a.name || 'artwork'}`, a.image, 'uploads', at); if (it) { it.name = `${slug('artwork-' + (a.name || a.id))}.${it.name.split('.').pop()}`; items.push(it); } });
+    // what the client sent is filed as its own file (kind 'upload'): the pack's copy of it is not listed a second time. A graphic we cropped out of their photo is ours, so it is a design file.
+    const hasOriginals = av.some(r => r.kind === 'upload' && (r.visibility === 'client' || admin));
+    pack.artwork.forEach(a => { if (a.source === 'upload' && hasOriginals) return; const it = a.image && inPackImage(`art:${a.id}`, `Artwork — ${a.name || 'artwork'}`, a.image, a.source === 'cropped' ? 'design' : 'uploads', at); if (it) { it.name = `${slug('artwork-' + (a.name || a.id))}.${it.name.split('.').pop()}`; items.push(it); } });
     pack.sketches.forEach((s, i) => {
       if (/^cutout-/.test(String(s.id || ''))) return;
+      if (hasOriginals && mine && /^(Reference photo|Original upload)/i.test(s.label || '')) return;
       if (s.image) { const it = inPackImage(`sk:${s.id}`, `Reference — ${s.view}${s.label ? ' ' + s.label : ''}`, s.image, mine && (i === 0 || /^(Reference photo|Original upload)/i.test(s.label || '')) ? 'uploads' : 'design', at); if (it) { it.name = `${slug('reference-' + s.view + (s.label ? '-' + s.label : '') + (pack.sketches.filter(x => x.view === s.view).length > 1 ? '-' + (i + 1) : ''))}.${it.name.split('.').pop()}`; items.push(it); } }
       if (s.hero && s.hero.image) { const it = inPackImage(`hero:${s.id}`, `Hero image — ${s.view}`, s.hero.image, 'design', at); if (it) { it.name = `${slug('hero-image-' + s.view)}.${it.name.split('.').pop()}`; items.push(it); } }
     });
