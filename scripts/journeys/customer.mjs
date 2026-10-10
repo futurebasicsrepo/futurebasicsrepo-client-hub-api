@@ -1114,4 +1114,95 @@ await journey('J93', 'the join link opens a hub room with no tech pack: company,
   }
 });
 
+await journey('J94', 'All files: a client sends files outside a product and sees only their own plus what staff switch on; a factory sees only what staff switch on, only in a project it is assigned a pack in', async () => {
+  const m = await room('94'), other = await room('94b');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const send = (path, token, name, body = 'hello', type = 'application/pdf') => { const fd = new FormData(); fd.append('file', new Blob([body], { type }), name); return call(path, { method: 'POST', token, raw: fd }); };
+  const mine = async tok => (await call('/v1/room-files', { token: tok })).json, names = r => (r.files || []).map(f => f.name).sort();
+  const projectId = sql(`select project_id from products where id='${m.id}'`), otherProject = sql(`select project_id from products where id='${other.id}'`);
+  sql(`update clients set name='Secret Brand Co' where id='${m.cid}'`);
+
+  const a = await send('/v1/room-files', m.token, 'brief.pdf', 'the client brief');
+  ok(a.status === 201 && a.json.file.by === 'client' && a.json.file.name === 'brief.pdf' && a.json.file.source === 'room', 'a client can send a file that belongs to no product', [a.status, a.json]);
+  ok((await send('/v1/room-files', m.token, 'virus.exe', 'x', 'application/octet-stream')).status === 415, 'a file type that is not allowed is refused');
+  ok((await send(`/v1/room-files?projectId=${otherProject}`, m.token, 'x.pdf')).status === 400 && (await send('/v1/room-files?projectId=nope', m.token, 'x.pdf')).status === 400, 'it cannot be filed under someone else\'s project, or one that does not exist');
+  ok((await send('/v1/room-files', '', 'x.pdf')).status === 401, 'and it needs a sign-in');
+  const sent = await mine(m.token); ok(names(sent).join() === 'brief.pdf' && sent.projects.some(pr => pr.id === projectId), 'their list shows it, and the projects they can file under', sent);
+  ok((await mine(other.token)).files.length === 0 && (await call(a.json.file.url, { token: other.token })).status === 404, 'another client sees nothing of it and cannot take it');
+  const dl = await call(a.json.file.url, { token: m.token }); ok(dl.status === 200 && dl.text === 'the client brief', 'the sender can take it back');
+  ok((await call(a.json.file.url, { token: admin })).status === 200, 'staff can take it');
+
+  const own = (await adm(`/v1/admin/clients/${m.cid}/room-files`)).json; ok(names(own).join() === 'brief.pdf' && own.projects.length >= 1 && own.products.some(p => p.id === m.id), 'staff see it in the room, with the projects and products to file it under', own);
+  ok((await send(`/v1/admin/clients/${m.cid}/room-files`, m.token, 'x.pdf')).status === 403 && (await call(`/v1/admin/clients/${m.cid}/room-files`, { token: m.token })).status === 403, 'a client cannot use the staff routes');
+  const b = await send(`/v1/admin/clients/${m.cid}/room-files?note=Final%20dieline`, admin, 'spec.pdf', 'the dieline'); ok(b.status === 201 && b.json.file.clientVisible === false && b.json.file.factoryVisible === false && b.json.file.note === 'Final dieline', 'staff add a file: hidden from everyone but staff until they switch it on', b.json);
+  ok(names(await mine(m.token)).join() === 'brief.pdf' && (await call(b.json.file.url, { token: m.token })).status === 404, 'so the client does not see it, and cannot guess its way to it');
+  ok((await call(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}`, { method: 'PATCH', token: m.token, body: { clientVisible: true } })).status === 403, 'a client cannot switch it on themselves');
+  const sw = body => adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}`, { method: 'PATCH', body });
+  ok((await sw({ clientVisible: true })).status === 200, 'staff switch it on for the client');
+  const both = await mine(m.token); ok(names(both).join() === 'brief.pdf,spec.pdf' && both.files.find(f => f.name === 'spec.pdf').by === 'admin', 'now the client sees their own file and the shared one', names(both));
+  ok((await call(b.json.file.url, { token: m.token })).text === 'the dieline', 'and can take it');
+  ok((await mine(other.token)).files.length === 0, 'still nothing for anyone else');
+  ok((await sw({ factoryVisible: true })).status === 400 && (await send(`/v1/admin/clients/${m.cid}/room-files?factoryVisible=1`, admin, 'f.pdf')).status === 400, 'a factory switch needs a project first: a factory only sees files in its project');
+  ok((await sw({ projectId: otherProject })).status === 400, 'a file cannot be filed under another client\'s project');
+  const filed = await sw({ projectId }); ok(filed.status === 200 && filed.json.file.projectId === projectId && filed.json.file.projectName, 'staff file it under the project', filed.json);
+
+  // a factory assigned a pack in this project
+  for (let i = 0; i < 160; i++) { const st = await studio(m); if (st.loop && st.loop.status === 'done') break; await sleep(300); }
+  const s1 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Files Mill ${stamp}`, contactEmail: 'files@factory.cn', country: 'China' } })).json, s2 = (await adm('/v1/admin/suppliers', { method: 'POST', body: { name: `Other Mill ${stamp}` } })).json;
+  sql(`update tech_packs set published_at=now(), version=1, published_data=data, initiated_by='brand', verification='{"version":1,"acks":{}}'::jsonb where product_id='${m.id}'`);
+  const assign = supplierId => adm(`/v1/admin/products/${m.id}/tech-pack/factory`, { method: 'POST', body: { supplierId, mode: 'quote', email: false } });
+  const ga = await assign(s1.id); ok(ga.status === 201, 'the factory is assigned the pack', ga.json);
+  const page1 = ga.json.assignment.pageUrl.split('/factory/')[1];
+  let pg = (await call(`/v1/factory/${page1}`)).json; ok(Array.isArray(pg.files) && pg.files.length === 0, 'its page has no files while none is switched on for factories', pg.files);
+  const factoryUrl = id => `/v1/factory/${page1}/files/${encodeURIComponent(id)}`;
+  ok((await call(factoryUrl(b.json.file.id))).status === 404, 'and the file cannot be fetched by guessing');
+  ok((await sw({ factoryVisible: true })).status === 200, 'staff switch it on for factories');
+  pg = (await call(`/v1/factory/${page1}`)).json; ok(pg.files.length === 1 && pg.files[0].name === 'spec.pdf' && pg.files[0].packs.length === 1, 'the factory\'s page lists it, with the pack it is for', pg.files);
+  ok(!JSON.stringify(pg).includes('Secret Brand Co') && !JSON.stringify(pg.files).includes(m.cid), 'without the client\'s name or room');
+  const fd1 = await call(factoryUrl(b.json.file.id)); ok(fd1.status === 200 && fd1.text === 'the dieline', 'and it can take it', fd1.status);
+  ok((await call(factoryUrl(a.json.file.id))).status === 404, 'the client\'s own file is not reachable by the factory, even by id');
+  const pageUrl2 = (await adm(`/v1/admin/suppliers/${s2.id}/factory-page/rotate`, { method: 'POST', body: {} })).json.pageUrl.split('/factory/')[1];
+  ok((await call(`/v1/factory/${pageUrl2}`)).json.files.length === 0 && (await call(`/v1/factory/${pageUrl2}/files/${encodeURIComponent(b.json.file.id)}`)).status === 404, 'another factory sees none of it');
+  // chat attachments belong to the thread; staff can pass one on to the factory
+  const chat = await send(`/v1/admin/projects/${projectId}/uploads?body=Artwork%20attached`, admin, 'chat-art.pdf', 'chat art'); ok(chat.status === 201, 'staff attach a file in the project thread', chat.status);
+  const cl = await mine(m.token), pf = cl.files.find(f => f.name === 'chat-art.pdf'); ok(pf && pf.source === 'chat' && pf.id.startsWith('pf:'), 'the client\'s All files shows it too: it was already shared in the thread', names(cl));
+  ok((await call(`/v1/factory/${page1}`)).json.files.length === 1, 'but it is not passed to the factory until staff say so');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(pf.id)}`, { method: 'PATCH', body: { factoryVisible: true } })).status === 200 && (await call(`/v1/factory/${page1}`)).json.files.length === 2, 'staff pass it on');
+  // unassign: the factory loses the project's files at once
+  ok((await assign(null)).status === 200, 'staff unassign the factory');
+  ok((await call(`/v1/factory/${page1}`)).json.files.length === 0 && (await call(factoryUrl(b.json.file.id))).status === 404, 'its page empties and the file link stops working');
+  await assign(s1.id);
+  sql(`update projects set archived_at=now(), status='archived' where id='${projectId}'`);
+  ok((await call(`/v1/factory/${page1}`)).json.files.length === 0, 'an archived project hands nothing to a factory');
+  sql(`update projects set archived_at=null, status='active' where id='${projectId}'`);
+
+  ok((await call(`/v1/room-files/${encodeURIComponent(b.json.file.id)}`, { method: 'DELETE', token: m.token })).status === 404, 'a client cannot delete what staff added');
+  ok((await call(`/v1/room-files/${encodeURIComponent(a.json.file.id)}`, { method: 'DELETE', token: m.token })).status === 200 && names(await mine(m.token)).join() === 'chat-art.pdf,spec.pdf', 'they can delete what they sent');
+  ok((await call(`/v1/room-files/${encodeURIComponent(a.json.file.id)}`, { method: 'DELETE', token: other.token })).status === 404, 'and nobody else can');
+  ok((await adm(`/v1/admin/room-files/${encodeURIComponent(b.json.file.id)}`, { method: 'DELETE' })).status === 200 && (await call(factoryUrl(b.json.file.id))).status === 404 && names(await mine(m.token)).join() === 'chat-art.pdf', 'staff delete a file and it is gone for everyone');
+
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const c = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await c.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await p.waitForSelector('#allFiles:not(.hidden) #rfList', { timeout: 15000 });
+      ok(/chat-art\.pdf/.test(await p.innerText('#rfList')) && await p.locator('#rfPick').isVisible(), 'the hub shows the files panel with what was shared and a Send a file button');
+      await p.setInputFiles('#rfInput', { name: 'from-phone.pdf', mimeType: 'application/pdf', buffer: Buffer.from('phone file') }); await p.waitForFunction(() => /from-phone\.pdf/.test(document.getElementById('rfList').innerText), null, { timeout: 10000 });
+      ok(sql(`select count(*) from room_files where client_id='${m.cid}' and original_name='from-phone.pdf' and uploader_role='client'`) === '1' && /Remove/.test(await p.innerText('#rfList')), 'a file sent from the panel lands in the room and can be removed by its sender');
+      ok(sql(`select count(*) from notifications where client_id='${m.cid}' and type='client-room-file' and read_at is null`) !== '0', 'staff are told it arrived');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && p.errs.length === 0, 'with no script errors', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j94-hub.png`, fullPage: true }).catch(() => {}); await c.close();
+      const ac = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ac.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await ac.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/clients/${m.cid}#files`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#roomFilesBox .action', { timeout: 15000 });
+      const txt = await ap.innerText('#roomFilesBox'); ok(/from-phone\.pdf/.test(txt) && /chat-art\.pdf/.test(txt) && /Hidden from client|Client sees it/.test(txt), 'the console\'s All files shows everything with the switches', txt.slice(0, 200));
+      await ap.setInputFiles('#rfFileIn', { name: 'console-add.pdf', mimeType: 'application/pdf', buffer: Buffer.from('console') }); await ap.click('#rfDrop button'); await ap.waitForFunction(() => /console-add\.pdf/.test(document.getElementById('roomFilesBox').innerText), null, { timeout: 10000 });
+      ok(sql(`select count(*) from room_files where client_id='${m.cid}' and original_name='console-add.pdf' and uploader_role='admin' and not client_visible and not factory_visible`) === '1', 'a file added from the console starts hidden');
+      ok(await ap.locator('#rfFac').isDisabled(), 'and the factory switch waits for a project');
+      ok(ap.errs.length === 0, 'no script errors in the console', ap.errs); await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j94-console.png` }).catch(() => {}); await ac.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

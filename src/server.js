@@ -34,6 +34,7 @@ import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
 import { invoicePdf, collectionPdf } from './docs-pdf.js';
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
+import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -1872,6 +1873,89 @@ app.get('/v1/project-files/:id/download',{preHandler:authenticate},async(req,rep
   return reply.type(row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`).send(createReadStream(join(uploadDir,row.storage_name)));
 });
 
+// ---- All files: what is sent in a room outside a product (src/room-files.js says who sees what) ----
+async function storeRoomFile(clientId,userId,role,part,{projectId=null,productId=null,note=null,clientVisible=false,factoryVisible=false}={}){
+  const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, Word, Excel, PowerPoint, CSV, TXT'),{statusCode:415});
+  const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
+  try{
+    await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
+    if(part.file.truncated)throw Object.assign(new Error('That file is too large'),{statusCode:413});
+    return (await pool.query(`insert into room_files(client_id,project_id,product_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes,note,client_visible,factory_visible)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,[clientId,projectId,productId,userId,role,originalName,storageName,part.mimetype,part.file.bytesRead,note,clientVisible,factoryVisible])).rows[0];
+  }catch(error){await unlink(path).catch(()=>{});throw error}
+}
+// A file belongs to a project and/or a product of this room. A product brings its project with it. null when either is not this client's.
+async function roomTargets(clientId,projectId,productId){
+  let project=projectId||null,product=productId||null;
+  if((project&&!UUID_RE.test(String(project)))||(product&&!UUID_RE.test(String(product))))return null;
+  if(product){const p=(await pool.query('select id,project_id from products where id=$1 and client_id=$2',[product,clientId])).rows[0];if(!p)return null;if(!project)project=p.project_id;else if(p.project_id&&p.project_id!==project)return null}
+  if(project&&!(await pool.query('select 1 from projects where id=$1 and client_id=$2',[project,clientId])).rowCount)return null;
+  return {projectId:project,productId:product};
+}
+const roomFileView=f=>({...f,url:f.source==='room'?`/v1/room-files/${encodeURIComponent(f.id)}/download`:`/v1/project-files/${f.id.slice(3)}/download`});
+const roomProjectsFor=async clientId=>(await pool.query(`select id,name from projects where client_id=$1 and archived_at is null and status not in ('archive','archived') order by name`,[clientId])).rows;
+app.get('/v1/room-files',{preHandler:authenticate},async(req)=>({files:(await listRoomFiles(pool,req.auth.clientId)).map(roomFileView),projects:await roomProjectsFor(req.auth.clientId)}));
+app.post('/v1/room-files',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role==='admin')return reply.code(403).send({error:'Staff add files from the work console'});
+  const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to send'});
+  const t=await roomTargets(req.auth.clientId,req.query?.projectId,req.query?.productId);if(!t){part.file.resume();return reply.code(400).send({error:'That project or product is not in your room'})}
+  const file=await storeRoomFile(req.auth.clientId,req.auth.sub,'client',part,{...t,note:String(req.query?.note||'').trim().slice(0,500)||null});
+  const c=(await pool.query('select name from clients where id=$1',[req.auth.clientId])).rows[0];
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-room-file',$2,'room-file',$3)`,[req.auth.clientId,`${c?.name||'A client'} sent ${file.original_name}`,file.id]);
+  return reply.code(201).send({file:roomFileView((await listRoomFiles(pool,req.auth.clientId)).find(f=>f.id===`rf:${file.id}`))});
+});
+app.delete('/v1/room-files/:fid',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role==='admin')return reply.code(403).send({error:'Not allowed'});
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),{clientId:req.auth.clientId});
+  if(!f||f.source!=='rf'||f.row.uploader_role!=='client')return reply.code(404).send({error:'File not found'});
+  await pool.query('delete from room_files where id=$1',[f.id]);await unlink(join(uploadDir,f.row.storage_name)).catch(()=>{});
+  return {deleted:true};
+});
+app.get('/v1/room-files/:fid/download',{preHandler:authenticate},async(req,reply)=>{
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),req.auth.role==='admin'?{admin:true}:{clientId:req.auth.clientId});
+  if(!f)return reply.code(404).send({error:'File not found'});
+  return reply.type(f.row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(f.row.original_name)}`).send(createReadStream(join(uploadDir,f.row.storage_name)));
+});
+app.get('/v1/admin/clients/:id/room-files',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Client not found'});
+  const c=(await pool.query('select id,name from clients where id=$1',[req.params.id])).rows[0];if(!c)return reply.code(404).send({error:'Client not found'});
+  const products=(await pool.query('select id,title,project_id from products where client_id=$1 order by title',[c.id])).rows;
+  return {client:c,files:(await listRoomFiles(pool,c.id,{admin:true})).map(roomFileView),projects:await roomProjectsFor(c.id),products};
+});
+app.post('/v1/admin/clients/:id/room-files',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Client not found'});
+  const c=(await pool.query('select id from clients where id=$1',[req.params.id])).rows[0];if(!c)return reply.code(404).send({error:'Client not found'});
+  const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to add'});
+  const t=await roomTargets(c.id,req.query?.projectId,req.query?.productId);if(!t){part.file.resume();return reply.code(400).send({error:'That project or product is not in this room'})}
+  const on=v=>v==='1'||v==='true',factoryVisible=on(req.query?.factoryVisible);
+  if(factoryVisible&&!t.projectId){part.file.resume();return reply.code(400).send({error:'Choose a project first: a factory only sees files in the project it is assigned to'})}
+  const file=await storeRoomFile(c.id,req.auth.sub,'admin',part,{...t,note:String(req.query?.note||'').trim().slice(0,500)||null,clientVisible:on(req.query?.clientVisible),factoryVisible});
+  return reply.code(201).send({file:roomFileView((await listRoomFiles(pool,c.id,{admin:true})).find(f=>f.id===`rf:${file.id}`))});
+});
+// Staff decide who sees a file: the client (room files only: chat attachments are already in the thread), a factory (needs a project), and where it is filed.
+app.patch('/v1/admin/room-files/:fid',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),{admin:true});if(!f)return reply.code(404).send({error:'File not found'});
+  const b=req.body||{},row=f.row,room=f.source==='rf';
+  let projectId=row.project_id,productId=room?row.product_id:null;
+  if(room&&('projectId' in b||'productId' in b)){
+    const t=await roomTargets(row.client_id,'projectId' in b?b.projectId:null,'productId' in b?b.productId:null);if(!t)return reply.code(400).send({error:'That project or product is not in this room'});
+    projectId=t.projectId;productId=t.productId;
+  }
+  const factoryVisible='factoryVisible' in b?Boolean(b.factoryVisible):row.factory_visible;
+  if(factoryVisible&&!projectId)return reply.code(400).send({error:'Choose a project first: a factory only sees files in the project it is assigned to'});
+  if(room){
+    await pool.query(`update room_files set project_id=$2,product_id=$3,client_visible=$4,factory_visible=$5,note=$6 where id=$1`,
+      [f.id,projectId,productId,'clientVisible' in b?Boolean(b.clientVisible):row.client_visible,factoryVisible&&Boolean(projectId),'note' in b?(String(b.note||'').trim().slice(0,500)||null):row.note]);
+  }else await pool.query('update project_files set factory_visible=$2 where id=$1',[f.id,factoryVisible]);
+  const list=await listRoomFiles(pool,row.client_id,{admin:true});
+  return {file:roomFileView(list.find(x=>x.id===`${f.source}:${f.id}`))};
+});
+app.delete('/v1/admin/room-files/:fid',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),{admin:true});if(!f||f.source!=='rf')return reply.code(404).send({error:'File not found'});
+  await pool.query('delete from room_files where id=$1',[f.id]);await unlink(join(uploadDir,f.row.storage_name)).catch(()=>{});
+  return {deleted:true};
+});
+
 app.get('/v1/products/:id', { preHandler: authenticate }, async (req, reply) => {
   const product=withRendering((await pool.query(`select p.*,${HAS_RENDERING_SQL} from products p where p.id=$1 and p.client_id=$2
     and not exists(select 1 from projects archived_project where archived_project.id=p.project_id
@@ -2377,10 +2461,17 @@ app.get('/v1/factory/:token',async(req,reply)=>{
   const listed=rows.filter(r=>!r.referral||!assignedPacks.has(r.tp_id));
   const stateOf=r=>{const v=normalizeVerification(r.verification,r.version);return r.kind==='quote'?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review')};
   const needsAction=listed.filter(r=>{const st=stateOf(r);return st==='needs-quote'||st==='to-review'||r.unread>0}).length;
-  return {factory:sup.name,startLink:page.startUrl,fairLink:await fairLinkFor(sup.id),started:counts.started,needsAction,packs:listed.map(r=>{
+  return {factory:sup.name,startLink:page.startUrl,fairLink:await fairLinkFor(sup.id),started:counts.started,needsAction,files:(await listFactoryFiles(pool,sup.id)).map(f=>({...f,url:`/v1/factory/${encodeURIComponent(req.params.token)}/files/${encodeURIComponent(f.id)}`})),packs:listed.map(r=>{
     const v=normalizeVerification(r.verification,r.version),quote=r.kind==='quote';
     const state=quote?(r.quoted_at?'quoted':r.waived_at?'closed':'needs-quote'):(r.locked_at||v.factorySign?'signed':'to-review');
     return {unread:r.unread||0,title:r.title,version:r.version,kind:r.kind,origin:r.referral?'referral':'assigned',client:quote?'':r.client_name,state,quotedAt:r.quoted_at,assignedAt:r.assigned_at,image:`/r/${r.product_id}/${renderingSig(r.product_id)}.jpg`,href:`/tp/${factoryShareToken(r.share_id)}`}})};
+});
+app.get('/v1/factory/:token/files/:fid',async(req,reply)=>{
+  if(!throttle(`factorypage:${req.ip}`,{limit:300,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests: try again in a while'});
+  const sup=(await pool.query('select id,page_epoch from suppliers where page_hash=$1',[hash(String(req.params.token||''))])).rows[0];
+  if(!sup||factoryPageToken(sup.id,sup.page_epoch)!==String(req.params.token))return reply.code(404).send({error:'This factory page link is not valid'});
+  const f=await fileFor(pool,decodeURIComponent(req.params.fid),{supplierId:sup.id});if(!f)return reply.code(404).send({error:'File not found'});
+  return reply.type(f.row.mime_type||'application/octet-stream').header('cache-control','no-store').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(f.row.original_name)}`).send(createReadStream(join(uploadDir,f.row.storage_name)));
 });
 app.get('/factory/:token',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').header('referrer-policy','no-referrer').type('text/html').send(readFileSync(new URL('./factory.html',import.meta.url),'utf8')));
 // Staff decide, link by link, whether this factory may see and download the 3D shape. Off by default; it can be switched either way at any time.
