@@ -500,7 +500,7 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
           type: 'card',
           selected: true,
           display: { brand: String(cart.card?.brand || 'visa').toLowerCase(), last_digits: String(card.number).slice(-4) },
-          ...(b ? { billing_address: { street_address: b.line1, address_locality: b.city, address_region: b.state, postal_code: b.postal_code, address_country: 'US' } } : {}),
+          ...(b ? { billing_address: { street_address: b.line1, ...(b.line2 ? { extended_address: b.line2 } : {}), address_locality: b.city, address_region: b.state, postal_code: b.postal_code, address_country: 'US' } } : {}),
           credential: { type: 'token', token },
         }],
       },

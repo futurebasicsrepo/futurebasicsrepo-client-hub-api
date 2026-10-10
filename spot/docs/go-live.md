@@ -89,7 +89,7 @@ Spot is the seller: the payer buys the cart from Spot, and Spot buys it from the
 7. **Set the Railway variables:**
    - `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and `STRIPE_WEBHOOK_SECRET`
    - `STRIPE_ISSUING_CARDHOLDER` = the company cardholder id (`ich_…`)
-   - `SPOT_CARD_BILLING` = the cardholder's billing address as `street|city|state|zip`
+   - `SPOT_CARD_BILLING` = the cardholder's billing address as `street|city|state|zip` (or `street|suite|city|state|zip`)
 
    Start with the **test** keys (`sk_test_…`, `pk_test_…`) and do step 8 first.
 8. **Before live keys** (not code, but they gate going live):
