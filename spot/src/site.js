@@ -1,6 +1,7 @@
 // The public website at "/". The app itself lives at /new.
 // Visuals are the real product: the share card is rendered by sharecard.js
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
+import { HOME_SCREEN_TAGS } from './appicon.js';
 import { buddySvg } from './pages.js';
 import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, noteSection, storySection } from './sitefx.js';
 import { HANDOFF_CSS, HANDOFF_JS, SPOTFX_CSS, SPOTFX_JS, beatsSection, guideSpot, handoffSection, spotBuddy, yesStage } from './spotfx.js';
@@ -274,7 +275,7 @@ const cross = '<span class="n">—</span>';
 
 export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><meta name="theme-color" content="#ff5a36">
+<title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><meta name="theme-color" content="#ff5a36">${HOME_SCREEN_TAGS}
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">

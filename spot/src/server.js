@@ -12,6 +12,7 @@ import { openDb } from './db.js';
 import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
 import { fetchProductImage, renderShareCard } from './sharecard.js';
+import { appIconPng, appIconSvg, manifest } from './appicon.js';
 import { sitePage } from './site.js';
 import { privacyPage, termsPage } from './legal.js';
 import { COMING_SOON, integrationsPage } from './integrations.js';
@@ -310,14 +311,21 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return reply.type('image/png').header('cache-control', 'public, max-age=86400').send(demoCards[which]);
   });
 
-  // Icons for browsers, home screens and crawlers: the Spot dot.
+  // Icons for browser tabs and crawlers: the Spot dot.
   const ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#ff5a36"/></svg>`;
   const iconPng = {};
-  const pngIcon = (size, bg) => (iconPng[`${size}${bg}`] ||= new Resvg(bg ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="${bg}"/><circle cx="16" cy="16" r="11" fill="#ff5a36"/></svg>` : ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng());
+  const pngIcon = (size) => (iconPng[size] ||= new Resvg(ICON_SVG, { fitTo: { mode: 'width', value: size } }).render().asPng());
   const cacheDay = 'public, max-age=86400';
   app.get('/favicon.svg', async (req, reply) => reply.type('image/svg+xml').header('cache-control', cacheDay).send(ICON_SVG));
   app.get('/favicon.ico', async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(pngIcon(48)));
-  for (const p of ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png']) app.get(p, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(pngIcon(180, '#fbf7f1')));
+  // Home screen: Spot himself, on a cream tile (iOS rounds the corners).
+  for (const p of ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png']) app.get(p, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(180)));
+  const appIcons = { 'icon-192.png': [192], 'icon-512.png': [512], 'icon-maskable-512.png': [512, { fill: 0.66 }] };
+  for (const [file, spec] of Object.entries(appIcons)) app.get(`/${file}`, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(...spec)));
+  app.get('/manifest.webmanifest', async (req, reply) => reply.type('application/manifest+json').header('cache-control', cacheDay).send(JSON.stringify(manifest())));
+  // The logo, for app directories and partner portals.
+  app.get('/logo.svg', async (req, reply) => reply.type('image/svg+xml').header('cache-control', cacheDay).send(appIconSvg({ bg: null, fill: 1 })));
+  app.get('/logo.png', async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(1200)));
   app.get('/robots.txt', async (req, reply) => reply.type('text/plain').header('cache-control', cacheDay).send(`User-agent: *\nDisallow: /c/\nDisallow: /b/\nDisallow: /account\nDisallow: /admin\nDisallow: /v1/\nDisallow: /oauth/\nDisallow: /approvals/\nAllow: /\n`));
   // Spot's crawler names this page in its user agent.
   app.get('/for-stores', async (req, reply) => reply.redirect('/#stores', 302));
