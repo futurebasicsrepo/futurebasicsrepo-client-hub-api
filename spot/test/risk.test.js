@@ -76,13 +76,13 @@ test('a card paying too many Spots is held until someone releases or refunds it'
   assert.equal((await admin('POST', `/v1/admin/carts/${heldThird.id}/release`, {})).status, 409);
 });
 
-test('admin: off without a token, sign-in by cookie, JSON-only writes', async (t) => {
-  const off = app(t, { SPOT_ADMIN_TOKEN: '' });
+test('admin: off without a token or staff domain, sign-in by cookie, JSON-only writes', async (t) => {
+  const off = app(t, { SPOT_ADMIN_TOKEN: '', SPOT_ADMIN_DOMAIN: '' });
   assert.equal((await off.call('GET', '/admin')).status, 404);
   assert.equal((await off.call('GET', '/v1/admin/overview')).status, 404);
 
   const { call, a } = app(t);
-  assert.match((await call('GET', '/admin')).body, /Paste the admin token/);
+  assert.match((await call('GET', '/admin')).body, /paste the admin token/i);
   assert.equal((await call('GET', '/v1/admin/overview')).status, 401);
   assert.equal((await call('POST', '/admin/login', { token: 'nope' })).status, 401);
   const ok = await call('POST', '/admin/login', { token: ADMIN });

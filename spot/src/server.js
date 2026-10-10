@@ -38,6 +38,7 @@ import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
 import { createDirect } from './direct.js';
 import { createShopifyAuth } from './fulfill/shopifyauth.js';
+import { createMetrics } from './metrics.js';
 import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
@@ -48,6 +49,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // whatever the caller sends, so it's never trusted: Railway's edge puts
   // the real client address in X-Real-IP, and that's the only one used.
   const behindEdge = Boolean(env.RAILWAY_ENVIRONMENT_ID || env.RAILWAY_PROJECT_ID || env.SPOT_BEHIND_PROXY === '1');
+  // Counters and timings for /admin/health (metrics.js).
+  const metrics = createMetrics(db);
+  app.decorate('metrics', metrics);
+  app.addHook('onResponse', async (req, reply) => {
+    metrics.request(req.routeOptions?.url || 'unmatched', reply.statusCode, Math.round(reply.elapsedTime || 0));
+  });
+  app.addHook('onClose', async () => metrics.close());
   app.addHook('onRequest', async (req) => {
     const real = behindEdge ? String(req.headers['x-real-ip'] || '').trim() : '';
     if (real && isIP(real)) req.headers['x-forwarded-for'] = real;
@@ -82,7 +90,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
   });
   const risk = createRisk({ db, env });
-  const spot = createSpot({ db, provider, flights, risk, cfg, log: app.log });
+  const spot = createSpot({ db, provider: watched(provider, metrics, provider.name === 'stripe' ? 'stripe' : 'payments_sandbox'), flights: watched(flights, metrics, 'duffel'), risk, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
   // One public address: pages opened on www. or the Railway domain move to
@@ -116,14 +124,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('signing', signing);
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
-  spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth: fulfill.shopifyAuth || createShopifyAuth({ env, log: console }), ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
+  spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth: fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics }), ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
   spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
-  const notifier = createNotifier({ env, log: app.log, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
   // Nightly database backups (started from the entry point, not in tests).
   const backups = createBackups({ db, env, dir: backupDir || join(dirname(env.SPOT_DB || './data/spot.db'), 'backups'), notifier, log: app.log, ...(backupFetch ? { fetchImpl: backupFetch } : {}) });
   app.decorate('backups', backups);
@@ -149,8 +157,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const affiliate = createAffiliate(env);
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
-  const captureShot = capture.fromScreenshot || captureFromScreenshot;
-  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes }));
+  const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
+  const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, ...aiHooks }));
   // A signed-in person's saved sizes, for lookups that don't name one.
   const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
 
@@ -759,7 +768,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
-  registerAdmin(app, { db, spot, env, urlFor, backups });
+  registerAdmin(app, { db, spot, env, urlFor, backups, metrics });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });
@@ -873,5 +882,28 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   app.listen({ port, host: '0.0.0.0' }).catch((err) => {
     app.log.error(err);
     process.exit(1);
+  });
+}
+
+// Record success and failure of a service's calls for /admin/health, without
+// changing what the calls do. Only functions are wrapped; plain fields pass through.
+function watched(target, metrics, name) {
+  if (!target) return target;
+  return new Proxy(target, {
+    get(obj, key, recv) {
+      const v = Reflect.get(obj, key, recv);
+      if (typeof v !== 'function' || ['verifyWebhook', 'constructor'].includes(key)) return v;
+      return function (...args) {
+        let out;
+        try {
+          out = v.apply(obj, args);
+        } catch (err) {
+          metrics.fail(name, err);
+          throw err;
+        }
+        if (out && typeof out.then === 'function') return out.then((x) => (metrics.ok(name), x), (err) => (metrics.fail(name, err), Promise.reject(err)));
+        return out;
+      };
+    },
   });
 }

@@ -21,6 +21,7 @@
 // Codes and sessions are stored only as SHA-256 hashes. The cookie is
 // HttpOnly + SameSite=Lax, and every write needs a JSON body, so other sites
 // can't act for a signed-in visitor.
+import { proveEmail } from './staff.js';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CartError, handleOk } from './cart.js';
 import { validateShipping } from './fulfill/index.js';
@@ -168,6 +169,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     checkCode(`signin:${email}`, code);
 
     const user = phone ? userForPhone(db, phone) : userForEmail(db, email);
+    if (!phone) proveEmail(db, user.id, email);
     startSession(db, req, reply, urlFor, user.id);
     return { user: profile(user) };
   });
@@ -260,6 +262,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const now = db.users.byId(user.id);
     if (to.email) {
       if (now.email !== to.email) db.users.setEmail(user.id, to.email);
+      proveEmail(db, user.id, to.email);
     } else {
       // One phone per account: the old number stops signing you in.
       for (const i of db.identities.ofUser(user.id)) if (i.provider === 'phone' && i.subject !== to.phone) db.identities.remove('phone', i.subject);

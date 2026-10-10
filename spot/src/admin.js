@@ -1,6 +1,9 @@
 // /admin: the operator's view. Held payments to release or refund, recent
 // carts, block lists, API keys and signups.
 //
+//   SPOT_ADMIN_DOMAIN  company email domain (default thefuturebasics.com; "" turns it
+//                      off): anyone signed in with a confirmed email there is let
+//                      in, no token needed (staff.js). /admin/health is the dashboard.
 //   SPOT_ADMIN_TOKEN   long random secret (16+ characters). Unset → /admin is
 //                      a 404. Sign in once per browser; API calls can also
 //                      send "Authorization: Bearer <token>".
@@ -11,12 +14,16 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { CartError } from './cart.js';
 import { SITE_JS, siteHead } from './site.js';
+import { sessionUserId } from './accounts.js';
+import { isStaff, staffDomain } from './staff.js';
+import { HEALTH_CSS, healthPage, healthReport } from './health.js';
 
 const COOKIE = 'spot_admin';
 const KINDS = ['card', 'email', 'ip', 'phone'];
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
+export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) {
   const token = env.SPOT_ADMIN_TOKEN && env.SPOT_ADMIN_TOKEN.length >= 16 ? env.SPOT_ADMIN_TOKEN : null;
   const want = token ? Buffer.from(sha(token)) : null;
   const same = (v) => {
@@ -25,7 +32,12 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
   };
   const cookieOf = (req) => (String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${COOKIE}=([a-f0-9]{64})`)) || [])[1];
 
+  const domain = staffDomain(env);
+  const enabled = Boolean(token || domain);
+  // Signed in on Spot with a confirmed company email (staff.js).
+  const staff = (req) => Boolean(domain) && isStaff(db, env, sessionUserId(db, req));
   function authed(req) {
+    if (staff(req)) return true;
     if (!token) return false;
     const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '')?.[1];
     if (bearer) return same(bearer.trim());
@@ -34,14 +46,14 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
     return Boolean(c) && c.length === 64 && timingSafeEqual(Buffer.from(c), Buffer.from(sha(sha(token))));
   }
   const guard = (req) => {
-    if (!token) throw new CartError('Not found', 404);
+    if (!enabled) throw new CartError('Not found', 404);
     if (req.method === 'POST' && !String(req.headers['content-type'] || '').startsWith('application/json')) throw new CartError('JSON only', 415);
     if (!authed(req)) throw new CartError('Sign in first', 401);
   };
 
   app.get('/admin', async (req, reply) => {
-    if (!token) return reply.code(404).type('text/plain').send('Not found');
-    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req) }));
+    if (!enabled) return reply.code(404).type('text/plain').send('Not found');
+    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req), domain, hasToken: Boolean(token) }));
   });
 
   app.post('/admin/login', async (req, reply) => {
@@ -130,6 +142,19 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups }) {
     };
   });
 
+  // Health: stuck money, services, traffic, funnel, AI cost, revenue (health.js).
+  app.get('/admin/health', async (req, reply) => {
+    if (!enabled) return reply.code(404).type('text/plain').send('Not found');
+    if (!authed(req)) return reply.redirect('/admin', 302);
+    const head = siteHead({ title: 'Spot health', desc: 'Spot health', origin: urlFor(req, ''), path: '/admin/health', extraCss: CSS + HEALTH_CSS }).replace('<head>', '<head><meta name="robots" content="noindex">');
+    return reply.type('text/html').header('cache-control', 'no-store').send(healthPage({ head }));
+  });
+  app.get('/v1/admin/health', async (req, reply) => {
+    guard(req);
+    reply.header('cache-control', 'no-store');
+    return healthReport({ db, env, metrics, backups, moneyChecks, summary });
+  });
+
   app.post('/v1/admin/carts/:id/release', async (req) => {
     guard(req);
     return { cart: summary(await spot.release(req.params.id)) };
@@ -204,19 +229,21 @@ form.inline input,form.inline select{font:inherit;font-size:15px;padding:9px 12p
 .login input{width:100%;font:inherit;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:14px 0}
 `;
 
-function adminPage({ origin, signedIn }) {
+function adminPage({ origin, signedIn, domain, hasToken = true }) {
   const head = siteHead({ title: 'Spot admin', desc: 'Spot operator view', origin, path: '/admin', extraCss: CSS }).replace('<head>', '<head><meta name="robots" content="noindex">');
   if (!signedIn) {
     return `${head}
-<main class="wrap"><form class="login" id="login"><h1 style="font-size:32px">Spot admin</h1><p class="muted" style="margin:6px 0 0">Paste the admin token from Railway (SPOT_ADMIN_TOKEN).</p>
-<input type="password" name="token" id="token" autocomplete="current-password" required aria-label="Admin token"><button class="ab go" style="width:100%">Sign in</button><p class="err" id="err"></p></form></main>
+<main class="wrap"><form class="login" id="login"><h1 style="font-size:32px">Spot admin</h1>
+${domain ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/signin?next=/admin">Sign in with your @${esc(domain)} email</a><p class="muted" style="margin:8px 0 0;font-size:14px">Use a sign-in code or Google. Already signed in? Sign out and back in once with your company email.</p>` : ''}
+${hasToken ? `<p class="muted" style="margin:${domain ? '18px' : '6px'} 0 0">${domain ? 'Or paste' : 'Paste'} the admin token from Railway (SPOT_ADMIN_TOKEN).</p>
+<input type="password" name="token" id="token" autocomplete="current-password" required aria-label="Admin token"><button class="ab go" style="width:100%">Sign in</button>` : ''}<p class="err" id="err"></p></form></main>
 <script>(()=>{${SITE_JS}
 document.getElementById('login').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value})});if(r.ok)location.reload();else document.getElementById('err').textContent=(await r.json().catch(()=>({}))).error||'Try again'})})();</script>
 </body></html>`;
   }
   return `${head}
 <main class="adm"><div class="wrap">
-  <div class="bar"><h1>Spot admin</h1><div class="row"><button class="ab" id="refresh">Refresh</button><button class="ab" id="logout">Sign out</button></div></div>
+  <div class="bar"><h1>Spot admin</h1><div class="row"><a class="ab" href="/admin/health" style="text-decoration:none">Health</a><button class="ab" id="refresh">Refresh</button><button class="ab" id="logout">Sign out</button></div></div>
   <div class="stats" id="stats"></div>
   <section class="panel"><h2>Needs you</h2><div class="held" id="held"><p class="muted">Loading…</p></div></section>
   <section class="panel"><h2>Money to check</h2><p class="muted" style="margin-top:0">Refunds in flight, disputes, stuck orders and anything that doesn’t add up. Spot retries refunds by itself; refund here to give back whatever’s left.</p><div class="held" id="money"></div></section>

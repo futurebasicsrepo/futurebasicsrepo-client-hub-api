@@ -10,7 +10,7 @@ import { isIP } from 'node:net';
 
 const TOKEN_URL = 'https://api.shopify.com/auth/access_token';
 
-export function createShopifyAuth({ env = process.env, fetchImpl = fetch, now = Date.now, log = console } = {}) {
+export function createShopifyAuth({ env = process.env, fetchImpl = fetch, now = Date.now, log = console, metrics = null } = {}) {
   const id = String(env.SHOPIFY_CATALOG_CLIENT_ID || '').trim();
   const secret = String(env.SHOPIFY_CATALOG_CLIENT_SECRET || '').trim();
   let cached = null; // { token, until }
@@ -33,10 +33,12 @@ export function createShopifyAuth({ env = process.env, fetchImpl = fetch, now = 
         // Docs say an hour; refresh a few minutes early whatever it says.
         const life = Math.min(Number(body.expires_in) || 3600, 3600) * 1000;
         cached = { token: body.access_token, until: now() + life - 5 * 60_000 };
+        metrics?.ok('shopify_token');
         return cached.token;
       } catch (err) {
         failedAt = now();
         log.error?.('shopify token failed', err.message);
+        metrics?.fail('shopify_token', err);
         return null;
       } finally {
         pending = null;

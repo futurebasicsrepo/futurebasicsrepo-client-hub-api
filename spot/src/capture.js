@@ -308,7 +308,7 @@ Read the items they intend to buy. Copy titles, options and prices exactly as pr
 
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
-export async function captureFromScreenshot({ data, media_type }, { client } = {}) {
+export async function captureFromScreenshot({ data, media_type }, { client, onUsage, onError } = {}) {
   if (!IMAGE_TYPES.includes(media_type)) throw new CaptureError('Screenshot must be PNG, JPEG, WebP or GIF');
   if (!data || typeof data !== 'string') throw new CaptureError('Screenshot is empty');
   const anthropic = client ?? anthropicClient();
@@ -333,9 +333,11 @@ export async function captureFromScreenshot({ data, media_type }, { client } = {
         },
       ],
     });
+    onUsage?.(response.model, response.usage);
   } catch (err) {
     // The model being unreachable or misconfigured isn't the shopper's
     // problem to read about: say what they can do instead.
+    onError?.(err);
     if (err instanceof Anthropic.APIError) {
       console.error('screenshot capture failed', err.status, err.message);
       throw new CaptureError('Couldn’t read screenshots right now. Paste a link or type what you want instead');
@@ -411,7 +413,7 @@ export function draftFromDescription(text) {
 
 const LOOKUP_SCHEMA_HINT = `{"found": true|false, "merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00"}`;
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl, sizes = '' } = {}) {
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, sizes = '', onUsage, onError } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   if (url) return fromUrl(url);
@@ -441,11 +443,13 @@ Set "found" to false if you can't find a specific product with a current price.`
         tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
         messages,
       });
+      onUsage?.(response.model, response.usage);
       if (response.stop_reason !== 'pause_turn') break;
       messages.push({ role: 'assistant', content: response.content });
     }
   } catch (err) {
     // Can't look it up right now: let them fill in the store and price.
+    onError?.(err);
     if (err instanceof Anthropic.APIError) {
       console.error('text lookup failed', err.status, err.message);
       return { ...draftFromDescription(text), warning: 'I couldn’t look that up right now. Add the store and price below' };
