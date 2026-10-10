@@ -13,7 +13,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false, noShipOptions = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false, noShipOptions = false, slowRates = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -98,6 +98,12 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     if (m) {
       const co = sessions.get(m[1]);
       if (req.method === 'GET' && !m[2]) return send(200, view(co));
+      if (req.method === 'PUT' && slowRates && !co.rates_asked) {
+        // Rates not ready on the first address PUT.
+        co.rates_asked = true;
+        Object.assign(co, { fulfillment: { methods: [] } });
+        return send(200, view(co));
+      }
       if (req.method === 'PUT' && noShipOptions) {
         // Like ColourPop: agent checkout takes the address but offers no shipping.
         Object.assign(co, { status: 'requires_escalation', fulfillment: { methods: [] }, totals: [{ type: 'subtotal', amount: 25000 }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 26100 }] });
@@ -815,6 +821,20 @@ test('store quote: a Shopify store that leaves shipping out of agent checkout is
   assert.deepEqual(add.body.items, [{ id: 222, quantity: 1 }], 'the same variant the checkout used');
   assert.ok(store.log.some((r) => r.url === '/cart/clear.js'), 'nothing is left in the store’s cart');
   assert.ok(store.log.some((r) => /\/checkout-sessions\/[^/]+\/cancel$/.test(r.url)), 'the quote checkout is cancelled');
-  // An address the store doesn't ship to: no quote, the estimate stands.
-  assert.equal(await direct.quote(cart, { ...shipping, state: 'CA', postal_code: '94105' }), null);
+  // An address the store doesn't ship to: no quote, and the reason is said.
+  let why = null;
+  assert.equal(await direct.quote(cart, { ...shipping, state: 'CA', postal_code: '94105' }, { why: (r) => (why = r) }), null);
+  assert.match(why, /no shipping options for .*CA 94105/);
+});
+
+test('store quote: shipping rates that lag the address are asked for once more', async (t) => {
+  const store = await startUcpStore({ mcp: true, slowRates: true });
+  t.after(() => store.close());
+  const { createDirect } = await import('../src/direct.js');
+  const direct = createDirect({ profileUrl: 'https://spot.example/.well-known/ucp', allowPrivate: true });
+  const cart = { merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] };
+  const q = await direct.quote(cart, shipping);
+  assert.ok(q && !q.shipping_from, `priced from agent checkout on the second ask: ${JSON.stringify(q)}`);
+  assert.ok(q.shipping_cents > 0);
+  assert.ok(!store.log.some((r) => r.url === '/cart/add.js'), 'no need for the cart fallback');
 });
