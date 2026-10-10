@@ -26,6 +26,7 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { registerMerchants } from './merchants.js';
+import { createLiveChecks } from './livechecks.js';
 import { registerShopifyApp } from './shopifyapp.js';
 import { registerAccounts, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
@@ -134,7 +135,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('signing', signing);
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
-  spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth: fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics }), ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
+  const shopifyAuth = fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics });
+  spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
@@ -792,7 +794,20 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Stripe webhooks ──────────────────────────────────────────────────────
   const merchants = registerMerchants(app, { db, env, urlFor, cfg, ...(merchantFetch ? { fetchImpl: merchantFetch } : {}) });
   registerShopifyApp(app, { db, env, urlFor, cfg, log: app.log, metrics, ...(shopifyFetch ? { fetchImpl: shopifyFetch } : {}) });
-  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller });
+  // "Run checks" on /admin/health: every outside service, for real, at no cost.
+  const liveChecks = createLiveChecks({
+    env,
+    provider,
+    db,
+    direct: spot.direct,
+    shopifyAuth,
+    backups,
+    metrics,
+    publicUrl: env.PUBLIC_URL || null,
+    launchBrowser: fulfill.launch || (async () => (await import('playwright')).chromium.launch({ args: ['--no-sandbox'] })),
+    ...(fulfill.liveFetch ? { fetchImpl: fulfill.liveFetch } : {}),
+  });
+  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller, liveChecks });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });

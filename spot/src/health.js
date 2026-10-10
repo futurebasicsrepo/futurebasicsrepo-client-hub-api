@@ -264,7 +264,7 @@ body{background:var(--bg)}
 .row .why{font-weight:700}.row small{color:var(--muted)}
 .svc{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
 .st{font-weight:700;font-size:13px;white-space:nowrap}
-.st.ok{color:var(--good)}.st.failing{color:var(--bad)}.st.unused,.st.off{color:var(--muted)}
+.st.ok{color:var(--good)}.st.failing{color:var(--bad)}.st.warn{color:var(--warn)}.st.unused,.st.off{color:var(--muted)}
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;position:relative}
 .chart h3{font-size:14px;margin:0;color:var(--ink)}.chart .big{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -290,6 +290,13 @@ const usd=c=>{const v=(c||0)/100,big=Math.abs(v)>=1000;return (v<0?'−':'')+'$'
 const n=x=>(x||0).toLocaleString('en-US');
 const ago=t=>{if(!t)return 'never';const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<90?m+' min ago':m<2880?Math.round(m/60)+' h ago':Math.round(m/1440)+' days ago'};
 const ST={ok:['✓','Working'],failing:['✕','Failing'],unused:['○','No calls yet'],off:['–','Not set up']};
+const LS={ok:['✓','Works','ok'],warn:['!','Check','warn'],fail:['✕','Broken','failing'],off:['–','Not set up','off']};
+function drawLive(live){
+  if(!live){$('#live').innerHTML='<div class="row"><small>Not run yet. Run checks before launch, and after changing settings.</small></div>';return}
+  $('#liveWhen').textContent='Last run '+new Date(live.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' · '+(live.failing?live.failing+' broken':'nothing broken')+(live.warnings?' · '+live.warnings+' to check':'');
+  const order={fail:0,warn:1,ok:2,off:3};
+  $('#live').innerHTML=live.results.slice().sort((a,b)=>order[a.state]-order[b.state]).map(r=>{const [ic,word,cls]=LS[r.state]||LS.off;return '<div class="row svc"><span class="st '+cls+'" aria-hidden="true">'+ic+'</span><span><b>'+esc(r.label)+'</b><br><small>'+esc(r.detail||'')+(r.fix?' · <b>Fix:</b> '+esc(r.fix):'')+' · '+r.ms+' ms</small></span><span class="st '+cls+'">'+word+'</span></div>'}).join('');
+}
 function bars(id,title,rows,key,fmt){
   const vals=rows.map(r=>r[key]||0),max=Math.max(1,...vals),w=100/vals.length,total=vals.reduce((a,b)=>a+b,0);
   const marks=vals.map((v,i)=>{const h=v?Math.max(2,v/max*60):0;return (h?'<rect class="m" x="'+(i*w+w*0.12).toFixed(2)+'" y="'+(62-h).toFixed(2)+'" width="'+(w*0.76).toFixed(2)+'" height="'+h.toFixed(2)+'" rx="1.2"/>':'')+'<rect class="hit" data-i="'+i+'" x="'+(i*w).toFixed(2)+'" y="0" width="'+w.toFixed(2)+'" height="64"/>'}).join('');
@@ -318,6 +325,7 @@ async function load(){
   $('#stuck').innerHTML=stuck.length?stuck.map(cartRow).join(''):'<div class="row"><small>Nothing stuck. Every paid Spot has its card and order moving.</small></div>';
   $('#held').innerHTML=h.held.length?h.held.map(x=>cartRow({...x,why:['Held by risk checks: '+(x.hold||'review')+' (release or refund in /admin)']})).join(''):'';
   $('#autopay').innerHTML=h.autopay_failed.length?h.autopay_failed.map(a=>'<div class="row"><div class="why">Auto-pay fell back to a tap</div><div>'+esc(a.merchant||'')+' · '+usd(a.cents)+' · '+esc(a.reason||'')+' <small>· '+esc(a.agent)+' · '+ago(a.at)+'</small></div></div>').join(''):'<div class="row"><small>No auto-pay fallbacks this week.</small></div>';
+  drawLive(h.live);
   $('#svcs').innerHTML=h.services.map(s=>{const [ic,word]=ST[s.state];return '<div class="row svc"><span class="st '+s.state+'" aria-hidden="true">'+ic+'</span><span><b>'+esc(s.label)+'</b><br><small>'+(s.state==='off'?'Set '+esc(s.why)+' in Railway':'Last worked '+ago(s.ok_at)+(s.fail?' · '+n(s.fail)+' failure'+(s.fail===1?'':'s'):'')+(s.error?' · '+esc(s.error):''))+'</small></span><span class="st '+s.state+'">'+word+'</span></div>'}).join('')
     +(h.backup?'<div class="row svc"><span class="st '+(h.backup.ok===false?'failing':'ok')+'" aria-hidden="true">'+(h.backup.ok===false?'✕':'✓')+'</span><span><b>Database backups</b><br><small>'+(h.backup.last_at?'Last '+ago(h.backup.last_at):'None yet')+(h.backup.error?' · '+esc(h.backup.error):'')+'</small></span><span class="st '+(h.backup.ok===false?'failing':'ok')+'">'+(h.backup.ok===false?'Failing':'Working')+'</span></div>':'');
   const F=h.funnel;
@@ -347,6 +355,7 @@ async function load(){
     +'<p class="est">Affiliate and interchange are estimates until the networks and Stripe pay out; actual commissions show in each network’s dashboard. Costs use list prices.</p>';
 }
 $('#refresh').onclick=load;load();setInterval(load,60000);
+$('#runChecks').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/v1/admin/health/check',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const j=await r.json();if(!r.ok)throw new Error(j.error||'Checks failed');drawLive(j);load()}catch(err){$('#liveWhen').textContent=err.message}finally{b.disabled=false;b.textContent='Run checks'}};
 `;
 
 export function healthPage({ head }) {
@@ -356,6 +365,9 @@ export function healthPage({ head }) {
   <div class="banner" id="banner">Checking…</div>
   <div class="tiles" id="tiles"></div>
   <h2>Stuck money</h2><div class="list" id="stuck"></div><div class="list" id="held" style="margin-top:8px"></div>
+  <div class="bar" style="margin-top:34px"><h2 style="margin:0">Live checks</h2><button class="ab" id="runChecks">Run checks</button></div>
+  <p class="sub" id="liveWhen">Calls every service for real, at no cost: nothing is charged or sent.</p>
+  <div class="list" id="live" style="margin-top:10px"></div>
   <h2>Services</h2><div class="list" id="svcs"></div>
   <h2>Spots</h2><div class="charts" id="funnel"></div>
   <h2>Traffic</h2><div class="charts" id="trafficCharts"></div><div id="timing"></div>
