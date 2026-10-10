@@ -59,6 +59,7 @@ nav .menu{position:absolute;right:0;top:calc(100% + 8px);min-width:220px;display
 nav .menu a{display:none;padding:0 12px;height:44px;align-items:center;border-radius:var(--r-sm);text-decoration:none;color:var(--ink);font-weight:600}
 nav .menu a:hover{background:color-mix(in srgb,var(--ink) 6%,transparent)}nav .menu a[aria-current]{color:var(--spot)}
 nav .menu .m3{display:flex}
+nav .menu .mstaff{display:flex}nav .menu a[hidden]{display:none}
 nav .navacts{display:flex;align-items:center;gap:8px;margin-left:12px;flex:none}
 nav .btn{min-height:40px;padding:0 16px;font-size:15px}
 @media (max-width:1180px){nav .links .p2{display:none}nav .menu .m2{display:flex}}
@@ -319,7 +320,7 @@ export function siteNav(active = '') {
   const a = ([href, label, key, p], cls) => `<a class="${cls}${p}" href="${href}"${active === key ? ' aria-current="page"' : ''}>${label}</a>`;
   return `<nav id="nav"><div class="wrap">
   <a class="logo" href="/"><span></span>Spot</a>
-  <div class="links">${NAV_LINKS.filter((l) => l[3] < 3).map((l) => a(l, 'p')).join('')}<details class="navmore" id="navMore"><summary><span class="ml-more">More</span><span class="ml-menu">Menu</span>${chevron}</summary><div class="menu">${NAV_LINKS.map((l) => a(l, 'm')).join('')}<a class="macct" href="/signin?next=/account" id="navAcctM">Sign in</a></div></details></div>
+  <div class="links">${NAV_LINKS.filter((l) => l[3] < 3).map((l) => a(l, 'p')).join('')}<details class="navmore" id="navMore"><summary><span class="ml-more">More</span><span class="ml-menu">Menu</span>${chevron}</summary><div class="menu">${NAV_LINKS.map((l) => a(l, 'm')).join('')}<a class="macct" href="/signin?next=/account" id="navAcctM">Sign in</a><a class="mstaff" href="/admin" id="navAdminM" hidden>Admin</a><a class="mstaff" href="/admin/health" id="navHealthM" hidden>Health</a></div></details></div>
   <div class="navacts"><a class="btn ghost" href="/signin?next=/account" id="navAcct">Sign in</a><a class="btn primary" href="/new" id="navCta">Make a Spot</a></div>
 </div></nav>`;
 }
@@ -337,6 +338,8 @@ export const SITE_JS = `
     addEventListener('keydown',e=>{if(e.key==='Escape'&&more.open){more.open=false;more.querySelector('summary').focus()}})}
   try{if(localStorage.getItem('spot:me'))document.getElementById('navCta').textContent='Open Spot'}catch{}
   try{if(localStorage.getItem('spot:in'))for(const id of ['navAcct','navAcctM']){const n=document.getElementById(id);if(n){n.textContent='My Spots';n.href='/account'}}}catch{}
+  // Spot team: set by the account page from /v1/me (the dashboards still check on the server).
+  try{if(localStorage.getItem('spot:in')&&localStorage.getItem('spot:staff'))for(const id of ['navAdminM','navHealthM']){const n=document.getElementById(id);if(n)n.hidden=false}}catch{}
   const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
   const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;

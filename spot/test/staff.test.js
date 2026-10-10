@@ -55,6 +55,10 @@ test('staff see Admin and Health on their account page (on any device); everyone
   assert.deepEqual(me.staff, { admin_url: '/admin', health_url: '/admin/health' });
   const page = (await call('GET', '/account', undefined, kyle)).body;
   assert.match(page, /id="staffBar"[^>]*hidden/, 'shown by the page only when /v1/me says staff');
+  assert.match(page, /localStorage\.setItem\('spot:staff','1'\)/, 'remembered for the site menu');
+  const home = (await call('GET', '/', undefined, kyle)).body;
+  assert.match(home, /id="navAdminM" hidden>Admin<\/a>/, 'Admin in the menu, shown only for staff');
+  assert.match(home, /id="navHealthM" hidden>Health<\/a>/);
   const other = await signIn('kyle@gmail.com');
   assert.equal((await call('GET', '/v1/me', undefined, other)).body.staff, undefined);
 });
