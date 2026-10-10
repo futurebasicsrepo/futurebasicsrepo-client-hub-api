@@ -3353,28 +3353,37 @@ async function deriveArt(packId,productId,items){
 // A concept render of the product the client described, with their own graphic placed on it. The render becomes the front view (so the callouts, the check and the
 // hero start from something), and the graphic sits on it as a placement the client and staff can drag and size. The graphic itself is never redrawn.
 async function addConceptRender(packId,{artwork,title,category,description}){
-  const first=(await pool.query('select data from tech_packs where id=$1',[packId])).rows[0];if(!first)return;
-  const have=normalizeTechPack(first.data).renderings.find(r=>/^concept-/.test(r.id)&&/placed on it/.test(r.note)); // an earlier render drew the lettering itself: it is replaced
-  const image=have?.image||await conceptRender({artwork,title,category,description});if(!image)return;
+  const first=(await pool.query('select data from tech_packs where id=$1',[packId])).rows[0];if(!first)return {front:false};
+  const seen=normalizeTechPack(first.data).renderings;
+  const have=seen.find(r=>/^concept-/.test(r.id)&&/placed on it/.test(r.note)); // an earlier render drew the lettering itself: it is replaced
+  const old=seen.find(r=>/^concept-/.test(r.id)&&!/placed on it/.test(r.note));
+  let image=have?.image,why='';
+  if(!image){try{image=await conceptRender({artwork,title,category,description})}catch(e){why=String(e.message||e).slice(0,200)}}
+  const usedOld=!image&&Boolean(old); // a render that drew its own lettering still beats a blank front view; the graphic is placed on it and can be moved
+  if(usedOld)image=old.image;
+  if(!image)throw new Error(why||'No image model is connected, so no concept render could be made');
   const db=await pool.connect();
   try{
     await db.query('begin');
-    const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');return}
+    const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');return {front:false}}
     const pack=normalizeTechPack(live.data);
-    if(!have)pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your description, with your own graphic placed on it. A first idea, not a final design.',image,parts:[]},...pack.renderings.filter(r=>!/^concept-/.test(r.id))].slice(0,6);
-    const sk=pack.sketches.find(s=>!s.image&&/concept render/i.test(s.label))||(!pack.sketches.some(s=>s.image)?pack.sketches.find(s=>!s.image):null);
+    if(!have&&!usedOld)pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your description, with your own graphic placed on it. A first idea, not a final design.',image,parts:[]},...pack.renderings.filter(r=>!/^concept-/.test(r.id))].slice(0,6);
+    // a sketch holding only the client's own graphic is not a picture of the product: it counts as empty, so the render still becomes the front view
+    const empty=s=>!s.image||pack.artwork.some(a=>a.image===s.image);
+    const sk=pack.sketches.find(s=>empty(s)&&/concept render/i.test(s.label))||(pack.sketches.every(empty)?pack.sketches.find(empty):null);
     if(sk){
       sk.image=image;sk.label='Front view — concept render';
-      const art=pack.artwork.find(a=>a.image===artwork)||pack.artwork.find(a=>a.source==='upload');
+      const art=pack.artwork.find(a=>a.image===artwork)||pack.artwork.find(a=>a.source==='upload')||pack.artwork[0];
       if(art&&!art.placements.some(pl=>pl.sketchId===sk.id))art.placements.push({sketchId:sk.id,...conceptPlacement({description,title}),widthIn:4,label:'Chest · drag to adjust'});
     }
     await db.query('update tech_packs set data=$2,updated_at=now() where id=$1',[packId,normalizeTechPack(pack)]);
     await db.query('commit');
+    return {front:Boolean(sk),usedOld,why};
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 }
-async function enrichPhotoDraft(packId,{force=false}={}){
-  const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+1,ai_error=null
-    where id=$1 and (ai_status='pending' or $2) returning *`,[packId,force])).rows[0];
+async function enrichPhotoDraft(packId,{force=false,free=false,conceptPass=false}={}){
+  const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+$3,ai_error=null
+    where id=$1 and (ai_status='pending' or $2) returning *`,[packId,force,free?0:1])).rows[0];
   if(!claimed)return;
   const row=(await pool.query(`select tp.*,p.title,p.product_type,p.description_html from tech_packs tp join products p on p.id=tp.product_id where tp.id=$1`,[packId])).rows[0];
   if(!row)return;
@@ -3414,10 +3423,10 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     }else{
       // a distinct graphic on the product (lettering, a logo, a print) is cropped out as a starting point for the artwork; the photo is untouched
       try{if(where.graphic?.present)graphic=await graphicCrop(original,where.graphic)}catch(e){app.log.warn({err:e.message,packId},'graphic not cropped')}
-      try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
+      if(!conceptPass)try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')} // our own render is not cropped: the graphic's placement on it is measured on the whole picture
       const working=structuredClone(data);
       if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
-        if(crop.coverage<0.85&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
+        if(crop.coverage<0.85&&!conceptPass&&working.sketches.length<12)working.sketches.push({id:`photo-original-${Date.now().toString(36)}`,view:'detail',label:'Original upload',image:original,garmentWidthIn:null,callouts:[]})}
       photos=working.sketches.map(s=>s.image).filter(Boolean);
       // background removed as an extra view for the cover and the colourway tiles; the assistant still reads the real photo
       if(cutoutEnabled()){try{const c=await cutoutFromPhoto(photo);if(c.image){cutout=c;placeCutout(working,c)}else app.log.info({packId,quality:c.quality},'cut-out below the quality bar — crop kept')}catch(e){app.log.warn({err:e.message,packId},'cut-out failed')}}
@@ -3476,10 +3485,18 @@ async function enrichPhotoDraft(packId,{force=false}={}){
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
     {const items=[];if(artwork)items.push({image:artwork,name:'Your upload',source:'upload'});if(graphic)items.push({image:graphic.image,name:'Graphic from your photo',source:'cropped'});
      if(items.length)deriveArt(packId,row.product_id,items).catch(err=>app.log.warn({err:err.message,packId},'art files not derived'))}
-    // a graphic and no product picture: the concept render becomes the front view before the exchange starts, so the check and the callouts have something to work on
-    {const conceptArt=artwork||(merged.sketches.every(k=>!k.image)?merged.artwork.find(a=>a.source==='upload')?.image:null);
-     if(conceptArt)await addConceptRender(packId,{artwork:conceptArt,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'))}
-    startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
+    // a graphic and no product picture: the concept render becomes the front view. It is then read like a photo (a second, free pass: the callouts are pinned on it and the
+    // detail pictures cut from it) before the exchange starts, so a pack drawn from a description ends with a picture, pins and detail photos like any other.
+    let frontSet=false;
+    {const noProduct=k=>!k.image||merged.artwork.some(a=>a.image===k.image);
+     const conceptArt=artwork||(merged.sketches.every(noProduct)?(merged.artwork.find(a=>a.source==='upload')||merged.artwork.find(a=>/upload/i.test(a.name))||merged.artwork[0])?.image:null);
+     if(conceptArt){
+       try{const made=await addConceptRender(packId,{artwork:conceptArt,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')});frontSet=made.front&&!conceptPass;
+         if(made.usedOld)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-ai',$2,'product',$3)`,[row.client_id,`The new concept render for ${row.title} could not be made (${made.why||'image model error'}), so the earlier render was put on the front view. Run the assistant again to try for a fresh one.`,row.product_id]).catch(()=>{})}
+       catch(err){app.log.warn({err:err.message,packId},'concept render not made');
+         await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack-ai',$2,'product',$3)`,[row.client_id,`No concept render could be made for ${row.title}: ${String(err.message).slice(0,160)}. The front view is still empty. Run the assistant again, or add a picture under Callouts.`,row.product_id]).catch(()=>{})}}}
+    if(frontSet)setImmediate(()=>enrichPhotoDraft(packId,{force:true,free:true,conceptPass:true}).catch(err=>app.log.warn({err:err.message,packId},'concept pass failed')));
+    else startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);
     // an API-side failure (key, credits, rate limit, outage) is ours: the client is told so, never asked for another photo
@@ -4225,7 +4242,8 @@ app.post('/v1/admin/products/:id/tech-pack/ai',{preHandler:[authenticate,adminOn
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack first'});
   if(ctx.techPack.ai_status==='pending'&&new Date(ctx.techPack.ai_started_at||0)>new Date(Date.now()-AI_STALE_MINUTES*60000))return reply.code(409).send({error:'The assistant is already running on this pack'});
-  if(!normalizeTechPack(ctx.techPack.data).sketches.some(s=>s.image))return reply.code(400).send({error:'Add a photo or sketch first — the assistant reads the first view'});
+  {const cur=normalizeTechPack(ctx.techPack.data); // a pack with a graphic or a written brief can be drafted without a product photo; only one with nothing at all to read is refused
+   if(!cur.sketches.some(s=>s.image)&&!cur.artwork.length&&!(await productBriefText(ctx.product.id,ctx.product.description_html)))return reply.code(400).send({error:'Add a photo or sketch first — the assistant reads the first view'})}
   if(ctx.techPack.ai_status==='locked'||!ctx.techPack.billing)await pool.query(`update tech_packs set billing='admin' where id=$1`,[ctx.techPack.id]);
   // Start over (explicit, staff only): drop everything the assistant and the customer put in the pack except the reference photo,
   // forget the earlier assistant draft, and run as a first run. For a pack whose earlier runs left values that now read as the

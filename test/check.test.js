@@ -121,3 +121,13 @@ test('an image model name the account does not know falls back once, and only th
     await assert.rejects(openaiEdit({ images: [Buffer.from('x')], prompt: 'p', cfg }), /refused the request \(401\)/); assert.deepEqual(seen, ['gpt-image-2.5-sunburst'], 'a key problem is not retried');
   } finally { globalThis.fetch = real; delete process.env.OPENAI_API_KEY; }
 });
+
+test('the check is held up against the product, never against the client\'s own graphic; a concept render stands in when there is no real photo', () => {
+  const logo = 'data:image/png;base64,LOGO', photo = 'data:image/jpeg;base64,PHOTO', render = 'data:image/jpeg;base64,RENDER';
+  const pack = sketches => normalizeTechPack({ sketches, artwork: [{ id: 'a1', name: 'Your upload', image: logo, source: 'upload', note: '', pantones: [], placements: [] }] });
+  const sk = (label, image, id = label) => ({ id, view: 'front', label, image, garmentWidthIn: null, callouts: [] });
+  assert.deepEqual(referencePhotos(pack([sk('Reference photo', logo, 'logo'), sk('Front view — concept render', render, 'cr')])), [render], 'the logo in a "Reference photo" slot is skipped, the render is the reference');
+  assert.deepEqual(referencePhotos(pack([sk('Front view — concept render', render, 'cr'), sk('Reference photo', photo, 'ph')])), [photo, render], 'a real photo comes before the render');
+  assert.deepEqual(referencePhotos(pack([sk('Reference photo', logo, 'logo')])), [], 'only a graphic: nothing to compare to, rather than a wrong comparison');
+  assert.deepEqual(referencePhotos(normalizeTechPack({ sketches: [sk('Front view', photo, 'f')] })), [photo], 'a pack with no artwork is unchanged');
+});
