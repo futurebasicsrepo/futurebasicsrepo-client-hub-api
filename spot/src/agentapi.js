@@ -265,6 +265,22 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     const storeUrl = merchant?.url || items.find((i) => i.url)?.url;
     const direct = !payMode && (b.settle === 'direct' || (b.settle == null && storeUrl && (await spot.direct?.supports(storeUrl))));
     if (direct && !merchant?.url && storeUrl) merchant = { ...merchant, url: new URL(storeUrl).origin };
+    // Check the store's own checkout takes this exact cart (every item found,
+    // in that size or colour, in stock) before anyone gets a link.
+    if (direct && spot.direct?.verify) {
+      const v = await spot.direct.verify({ merchant, items });
+      if (v.ok) items = v.items;
+      else if (v.reason !== 'no_direct') {
+        const err = new CartError(
+          v.reason === 'unavailable'
+            ? `${merchant.name} doesn’t have "${v.item}" in that size or color right now. Check with your user and call again with another size or color.`
+            : `Couldn’t find "${v.item}" on ${merchant.name}. Call again with the product page url for each item (url), and the size or color in variant.`,
+          422,
+        );
+        err.draft = { merchant, items };
+        throw err;
+      }
+    }
     let settle = direct ? 'direct' : forSelf ? 'card' : b.settle;
     // Stores that don't allow AI checkout (Amazon): Spot can't buy there, so
     // whoever pays sends the money to the requester's Venmo / Cash App and

@@ -18,7 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { assertPublicHost } from '../capture.js';
 import { usd } from '../cart.js';
-import { resolveShopifyCart } from './shopify.js';
+import { resolveShopifyCart, findShopifyProduct } from './shopify.js';
 
 export const UCP_VERSION = '2026-08-25';
 const SPEC = `https://ucp.dev/${UCP_VERSION}/specification`;
@@ -218,6 +218,15 @@ export function pickVariant(product, item, inputId) {
 }
 
 export async function resolveItems(call, cart, opts = {}) {
+  // Named but not linked: find the product on the store by its name.
+  if (cart.items.some((i) => !i.url) && cart.merchant?.url) {
+    const origin = new URL(cart.merchant.url).origin;
+    const items = [];
+    for (const i of cart.items) items.push(i.url ? i : { ...i, url: await findShopifyProduct(origin, i.title, opts).catch(() => null) });
+    const missing = items.find((i) => !i.url);
+    if (missing) return { unresolved: missing.title, not_found: true };
+    cart = { ...cart, items };
+  }
   const ids = cart.items.map((i) => i.url).filter(Boolean);
   if (ids.length !== cart.items.length) return null;
   const res = await call('POST', '/catalog/lookup', { ids, context: { address_country: 'US' } });
@@ -225,10 +234,13 @@ export async function resolveItems(call, cart, opts = {}) {
   for (const item of cart.items) {
     const product = (res.products || []).find((p) => p.variants?.some((v) => v.inputs?.some((i) => i.id === item.url)));
     const v = product && pickVariant(product, item, item.url);
-    if (!v) return (await shopifyLines(cart, opts)) || { unresolved: item.title };
+    if (!v) {
+      const r = (await shopifyLines(cart, opts)) || { unresolved: item.title };
+      return r.lines ? { ...r, items: cart.items } : r;
+    }
     lines.push({ item: { id: v.id }, quantity: item.quantity });
   }
-  return { lines };
+  return { lines, items: cart.items };
 }
 
 // Shopify's UCP catalog looks items up by Shopify id, not by product link.
@@ -237,7 +249,7 @@ export async function resolveItems(call, cart, opts = {}) {
 async function shopifyLines(cart, opts) {
   const r = await resolveShopifyCart(cart, opts).catch(() => null);
   if (!r?.lines) return r?.unresolved ? { unresolved: r.unresolved } : null;
-  return { lines: r.lines.map((l) => ({ item: { id: `gid://shopify/ProductVariant/${l.variant_id}` }, quantity: l.quantity })) };
+  return { lines: r.lines.map((l) => ({ item: { id: `gid://shopify/ProductVariant/${l.variant_id}` }, quantity: l.quantity })), items: cart.items };
 }
 
 // ─── Checkout ───────────────────────────────────────────────────────────────

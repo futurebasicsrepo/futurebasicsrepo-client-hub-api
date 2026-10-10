@@ -553,6 +553,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const link = urlFor(req, `/c/${cart.token}`);
     return { cart: ownerCart(cart), link, share_message: shareMessage(cart, link) };
   });
+  app.post('/v1/carts/:token/decline', async (req) => {
+    limits.pay(req);
+    spot.decline(req.params.token, { name: req.body?.name });
+    return { ok: true };
+  });
   app.post('/v1/carts/:token/manage/pay-yourself', async (req) => ({ cart: ownerCart(spot.payYourself(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/riders', async (req) => ({ cart: ownerCart(spot.setRiders(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/travelers', async (req) => {

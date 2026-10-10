@@ -196,6 +196,7 @@ const PAY_CSS = `
 .pcard .t{font-weight:700;line-height:1.2}.pcard .v{color:var(--muted);font-size:14px}
 .pcard .p{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
 .act{padding:10px 0 4px}
+.nope{display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:15px;text-decoration:underline;cursor:pointer;padding:4px 8px}
 /* The pay button rides along at the bottom, so it's one tap from opening the link. */
 .act.stick{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 18px)}
 .act.stick:has(details[open]),.act.stick:has(input:focus){position:static;margin:0;padding:10px 0 4px;background:none}
@@ -299,7 +300,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}<button type="button" class="nope" id="nope">Not this time</button></div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -318,6 +319,11 @@ function celebrate(payer){
   for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}
   document.body.appendChild(c);setTimeout(()=>c.remove(),3000);scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 }
+const nope=$('#nope');if(nope)nope.onclick=async()=>{if(!confirm('Let '+${json(name)}+' know you can’t spot this one?'))return;nope.disabled=true;
+  try{const nm=$('#payer');await api('/v1/carts/'+${json(cart.token)}+'/decline',{name:nm?nm.value:''});
+    const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
+    $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">no worries 💛</div><div class="bub" style="animation-delay:.45s">I let '+${json(esc(name))}+' know. nothing was charged.</div>')}
+  catch(e){nope.disabled=false;alert(e.message)}};
 ${open && cart.settle === 'card' ? payScript(cart, provider) : ''}
 ${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });

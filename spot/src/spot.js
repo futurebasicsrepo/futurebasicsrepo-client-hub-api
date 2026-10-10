@@ -293,6 +293,20 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // "Pay it yourself": an ask that's waiting for a payer becomes the
     // requester's own order. Same rules as reassign, the other way round.
+    // "Not this time" from whoever got the link: the requester hears, and the
+    // ask stays open for them to pay it themselves or send it to someone else.
+    decline(token, { name } = {}) {
+      const cart = load(token);
+      if (cart.status !== 'open') throw new CartError('This one is already taken care of', 409);
+      if (cart.for === 'self') throw new CartError('This one isn’t waiting on anyone else', 400);
+      const n = (cart.declines || []).length;
+      if (n >= 5) return cart;
+      const who = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40) || null;
+      const next = this.patch(cart.id, (c) => ({ ...c, declines: [...(c.declines || []), { name: who, at: Date.now() }] }), 'declined');
+      this.emit?.('declined', cart.id, { name: who, n });
+      return next;
+    },
+
     payYourself(token, key) {
       const cart = loadManaged(token, key);
       if (cart.for === 'self') return cart;

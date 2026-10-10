@@ -101,6 +101,17 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       }];
     }
     switch (kind) {
+      case 'declined': {
+        const by = extra?.name || 'They';
+        return [{
+          key: `declined:${extra?.n ?? 0}`,
+          to: requesterContact(cart),
+          subject: `${by} can’t spot this one`,
+          text: `${by} passed on your ${item} from ${store}, no hard feelings. Pay it yourself or send it to someone else: ${link}`,
+          html: mail({ preheader: `${by} passed on ${item}`, title: `${esc(by)} can’t spot this one`, lines: [`${esc(by)} passed on <b>${esc(item)}</b> from ${esc(store)}. No hard feelings.`, 'The link still works: pay it yourself, or send it to someone else.'], cta: { label: 'Pay it or send it on →', url: link } }),
+          sms: `Spot: ${by} passed on your ${store} order (${item}). Pay it yourself or send it to someone else: ${link}`,
+        }];
+      }
       case 'covered':
         return [{
           key: 'covered',
