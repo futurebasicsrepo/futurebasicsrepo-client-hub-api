@@ -60,3 +60,12 @@ test('the new labels and numbered lines read in every factory language, and a ch
     assert.ok(sum && !/measurement|style detail|commercial detail|label/.test(sum), `${l}: ${sum}`);
   }
 });
+
+test('sample stages and inspection are cleaned, diffed and carried by the pack', () => {
+  const a = normalizeTechPack({ style: { styleName: 'Hoodie' }, sampling: [{ stage: 'Fit sample', qty: '2', status: 'nonsense', due: '2026-11-01' }, { stage: '' }], inspection: { aql: '2.5', tests: [{ name: 'Wash', method: 'AATCC 61', accept: '4' }, { name: '' }] } });
+  assert.equal(a.sampling.length, 1); assert.equal(a.sampling[0].status, 'planned'); assert.equal(a.inspection.tests.length, 1);
+  const b = normalizeTechPack({ ...a, sampling: [{ ...a.sampling[0], status: 'approved' }, { stage: 'Pre-production sample', qty: '5' }], inspection: { ...a.inspection, aql: '1.5', tests: [{ name: 'Wash', method: 'AATCC 61', accept: '4.5' }] } });
+  const c = packDiff(a, b), kinds = c.map(x => `${x.kind}:${x.label}`).sort();
+  assert.deepEqual(kinds, ['added:Pre-production sample', 'changed:AQL', 'changed:Fit sample', 'changed:Test: Wash']);
+  assert.match(diffSummary(c), /sample or inspection details/);
+});

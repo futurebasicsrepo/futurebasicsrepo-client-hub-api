@@ -1665,4 +1665,41 @@ await journey('J101', 'a question about one callout: the factory asks where the 
   }
 });
 
+await journey('J102', 'samples and inspection: the usual stages in one press, a written inspection standard, all of it on the factory page and in the pack PDF', async () => {
+  const m = await room('102'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); ok(d.completeness.missingRecommended.some(x => /samples/i.test(x)) && d.completeness.missingRecommended.some(x => /inspected/i.test(x)), 'what is missing about samples and inspection is listed, not required');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
+      await p.waitForSelector('[data-sampling] [data-act="sampstages"]'); await p.click('[data-sampling] [data-act="sampstages"]'); await p.waitForFunction(() => document.querySelectorAll('[data-sampling] tbody tr').length === 4);
+      await p.locator('[data-inspection] textarea').fill('Final inspection to ISO 2859-1, AQL 2.5 major / 4.0 minor.'); await p.locator('[data-inspection] input.t').first().fill('2.5');
+      await p.click('[data-inspection] [data-act="add"]'); await p.locator('[data-inspection] tbody tr').first().locator('input.t').first().fill('Wash fastness');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j102-samples.png` }).catch(() => {});
+      for (let i = 0; i < 40; i++) { d = await draft(); if (d.techPack.data.inspection.tests.some(t => t.name === 'Wash fastness') && d.techPack.data.inspection.aql === '2.5') break; await sleep(300); }
+      ok(d.techPack.data.sampling.length === 4 && d.techPack.data.sampling[0].stage === 'Proto sample' && /ISO 2859/.test(d.techPack.data.inspection.standard) && d.techPack.data.inspection.tests[0].name === 'Wash fastness' && p.errs.length === 0, 'the usual stages, the standard and a test are saved from the page', [d.techPack.data.sampling.length, d.techPack.data.inspection, p.errs]); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  d = await draft(); ok(!d.completeness.missingRecommended.some(x => /samples|inspected/i.test(x)), 'and they are no longer listed as missing', d.completeness.missingRecommended);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: samples' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 102' } }), ftok = sh.json.url.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${ftok}`)).json.techPack.data; ok(fv.sampling.length === 4 && fv.inspection.aql === '2.5' && fv.inspection.tests.length === 1, 'the factory gets the sample plan and the inspection standard');
+  let pdfItem = null; for (let i = 0; i < 40 && !pdfItem; i++) { const f = (await call(`/v1/products/${m.id}/files`, { token: m.token })).json; pdfItem = (f.groups || []).flatMap(g => g.items).find(x => /pdf/i.test(x.mime) && /tech.?pack|pack v/i.test(`${x.label} ${x.name} ${x.note || ''}`)); if (!pdfItem) await sleep(500); }
+  const pdfRes = pdfItem ? await fetch(BASE + pdfItem.url, { headers: { Authorization: 'Bearer ' + m.token } }) : null, pdfBuf = pdfRes ? Buffer.from(await pdfRes.arrayBuffer()) : Buffer.alloc(0);
+  ok(pdfRes && pdfRes.status === 200 && pdfBuf.subarray(0, 4).toString() === '%PDF' && pdfBuf.length > 5000, 'the pack PDF is built with the new section', [pdfItem && pdfItem.name, pdfBuf.length])
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('[data-sampling]');
+      const txt = await p.innerText('[data-sampling]') + await p.innerText('[data-inspection]'); ok(/Top of production/i.test(txt) && /Wash fastness/i.test(txt) && /ISO 2859/.test(txt) && await p.locator('[data-sampling] [data-act]').count() === 0 && p.errs.length === 0, 'the factory page shows them read-only', txt.slice(0, 120)); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);
