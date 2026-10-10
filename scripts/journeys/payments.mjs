@@ -132,4 +132,114 @@ const bad = await journey('J103', 'the published pack as a Shopify product: prev
   ok((await call(X, { token: tok })).status === 403 && (await call(X, { token: tok, body: {} })).status === 403, 'the client cannot run it');
 });
 
+await journey('J104', 'a customer connects their own Shopify store and sends a published pack to it: a forged callback gets nothing, our cost never leaves, a revoked store asks to reconnect', async () => {
+  const APP = 'journey-app-secret', { createHmac } = await import('node:crypto');
+  const mock2 = async (path, body) => (await fetch(MOCK + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })).json();
+  const storeProducts = async token => (await (await fetch(`${MOCK}/__mock/products?token=${encodeURIComponent(token)}`)).json()).products;
+  const mainCount = async () => (await (await fetch(MOCK + '/__mock/products')).json()).products.length;
+  const mail = `merch-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: mail, name: 'Merchant Tester', title: 'Merchant hoodie', photos: [runner] } }); ok(r.status === 201, 'setup: a customer starts a pack', r.status);
+  const tok = r.json.token, cid = r.json.client.id, pid = r.json.product.id; await waitAi(call, tok, pid);
+  const other = await call('/v1/public/start', { body: { email: `merch2-${stamp}@chaos.test`, name: 'Someone Else', title: 'Another hoodie', photos: [runner] } }); const tok2 = other.json.token;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  // a published pack with commercial facts, and a price tier whose internal cost must never reach the customer's store
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: merchant' } })).status === 200, 'staff publish');
+  const d = (await adm(`/v1/admin/products/${pid}/tech-pack`)).json, data = structuredClone(d.techPack.data), n = data.sizes.length * Math.max(1, data.colorways.length);
+  data.commercial = { retailPrice: '89', compareAtPrice: '120', weightGrams: '420', hsCode: '611020', currency: 'USD', variants: [] }; data.care.countryOfOrigin = 'Made in Vietnam'; data.style.styleName = 'Merchant hoodie';
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200 && (await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: merchant v2' } })).status === 200, 'with price, weight, HS code and origin, v2 is published');
+  sql(`insert into price_tiers(product_id,min_quantity,unit_cost_cents,wholesale_cents,srp_cents) values('${pid}',100,1111,2150,8900)`);
+
+  // the hub: what can be connected, and what a bad address does
+  let st = await call('/v1/shopify/stores', { token: tok }); ok(st.status === 200 && st.json.ready === true && st.json.stores.length === 0, 'the hub says stores can be connected and none are', st.json);
+  ok((await call('/v1/shopify/stores')).status === 401, 'and asks for a sign-in');
+  for (const bad of ['', 'evil.com', 'shop.myshopify.com.evil.com', 'https://evil.com/a.myshopify.com']) ok((await call('/v1/shopify/connect', { token: tok, body: { shop: bad } })).status === 422, `a bad address is refused: ${bad || '(empty)'}`);
+  const go = async (shop, t = tok) => { const c = await call('/v1/shopify/connect', { token: t, body: { shop } }); const u = c.json.url ? new URL(c.json.url) : null; return { c, u, state: u && u.searchParams.get('state') }; };
+  const sign = q => ({ ...q, hmac: createHmac('sha256', APP).update(Object.keys(q).sort().map(k => `${k}=${q[k]}`).join('&')).digest('hex') });
+  const back = async q => { const res = await fetch(`${BASE}/v1/shopify/callback?${new URLSearchParams(q)}`, { redirect: 'manual' }); return { status: res.status, loc: res.headers.get('location') || '' }; };
+  const now = () => String(Math.floor(Date.now() / 1000)), stores = () => Number(sql(`select count(*) from client_shopify_stores where client_id='${cid}' and status<>'removed'`));
+  const a = await go('Merchant-One.myshopify.com'); ok(a.c.status === 200 && a.u.host === 'merchant-one.myshopify.com' && a.u.pathname === '/admin/oauth/authorize' && a.u.searchParams.get('client_id') === 'journey-app' && /write_products/.test(a.u.searchParams.get('scope')) && a.state.length >= 30, 'connecting sends the merchant to their own shop\'s authorize page with our app, scopes and a random state', a.c.json);
+  const why = l => (l.match(/why=([a-z-]+)/) || [])[1];
+  // forged and broken callbacks connect nothing
+  let x = await back({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: now(), hmac: 'f'.repeat(64) }); ok(why(x.loc) === 'bad-signature' && stores() === 0, 'a callback with a wrong signature is refused', x);
+  x = await back({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: now() }); ok(why(x.loc) === 'bad-signature' && stores() === 0, 'a callback with no signature is refused');
+  x = await back({ ...sign({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: now() }), shop: 'merchant-two.myshopify.com' }); ok(why(x.loc) === 'bad-signature' && stores() === 0, 'changing the shop after signing is refused');
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-two.myshopify.com', state: a.state, timestamp: now() })); ok(why(x.loc) === 'state' && stores() === 0, 'a validly signed callback for a different shop than the one that started it is refused', x);
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: 'made-up-state', timestamp: now() })); ok(why(x.loc) === 'state' && stores() === 0, 'a state we never issued is refused');
+  x = await back(sign({ code: 'goodcode1', shop: 'evil.com', state: a.state, timestamp: now() })); ok(why(x.loc) === 'bad-shop' && stores() === 0, 'a non-Shopify host is refused');
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: String(Math.floor(Date.now() / 1000) - 7200) })); ok(why(x.loc) === 'expired' && stores() === 0, 'a stale timestamp is refused');
+  const old = await go('merchant-old.myshopify.com'); sql(`update shopify_oauth_states set expires_at=now()-interval '1 minute' where state='${old.state}'`);
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-old.myshopify.com', state: old.state, timestamp: now() })); ok(why(x.loc) === 'state' && stores() === 0, 'an expired state is refused');
+  const bc = await go('merchant-bad.myshopify.com'); x = await back(sign({ code: 'badcode', shop: 'merchant-bad.myshopify.com', state: bc.state, timestamp: now() })); ok(why(x.loc) === 'code' && stores() === 0, 'a code Shopify does not accept connects nothing');
+  const ns = await go('merchant-ns.myshopify.com'); x = await back(sign({ code: 'noscope1', shop: 'merchant-ns.myshopify.com', state: ns.state, timestamp: now() })); ok(why(x.loc) === 'scopes' && stores() === 0, 'an install without permission to write products connects nothing');
+  ok(x.loc.startsWith('http://127.0.0.1:3127/'), 'and every refusal lands back on the hub, not on a blank page', x.loc);
+  // the real one
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: now(), host: 'YWRtaW4=' })); ok(/shopify=connected/.test(x.loc) && stores() === 1, 'the real callback connects the store', x);
+  x = await back(sign({ code: 'goodcode1', shop: 'merchant-one.myshopify.com', state: a.state, timestamp: now() })); ok(why(x.loc) === 'state' && stores() === 1, 'the same callback cannot be replayed');
+  const sealed = sql(`select token_sealed from client_shopify_stores where client_id='${cid}'`); ok(/^v1\./.test(sealed) && !sealed.includes('mock-merchant') && !sealed.includes('goodcode1'), 'the token is sealed in the database', sealed.slice(0, 20));
+  const hooks = (await (await fetch(MOCK + '/__mock/webhooks')).json()).hooks; ok(hooks['mock-merchant-goodcode1'] === 'http://127.0.0.1:3127/shopify/webhooks', 'the uninstall webhook was registered with the store', hooks);
+  st = await call('/v1/shopify/stores', { token: tok }); const store = st.json.stores[0]; ok(st.json.stores.length === 1 && store.shop === 'merchant-one.myshopify.com' && store.name === 'Mock Merchant Store' && store.status === 'connected' && !/token|secret|mock-merchant/i.test(st.text), 'the hub lists it with its name and never any token', st.json);
+  // nobody else can see it, use it or remove it
+  ok((await call('/v1/shopify/stores', { token: tok2 })).json.stores.length === 0, 'another customer sees no stores');
+  const X = `/v1/products/${pid}/tech-pack/shopify-export`;
+  ok((await call(`${X}?storeId=${store.id}`, { token: tok2 })).status === 404 && (await call(X, { token: tok2, body: { storeId: store.id } })).status === 404, 'another customer cannot export this pack, or through this store');
+  ok((await call(`/v1/shopify/stores/${store.id}`, { token: tok2, method: 'DELETE' })).status === 404 && stores() === 1, 'or disconnect it');
+  ok((await call(X, { token: tok })).status === 200 && (await call(`/v1/products/${pid}/tech-pack/shopify-export`)).status === 401, 'the owner can ask, a stranger with no sign-in cannot');
+  // the export, to their own store
+  const before = await mainCount(); let gx = await call(X, { token: tok }); ok(gx.json.store?.shop === 'merchant-one.myshopify.com' && gx.json.summary.mode === 'create' && gx.json.summary.variants === n && gx.json.needsStore === false, 'with one store connected the pack page already knows where it will go', gx.json.summary);
+  const pv = await call(X, { token: tok, body: { preview: true } }); ok(pv.status === 200 && pv.json.preview && (await storeProducts('mock-merchant-goodcode1')).length === 0, 'a preview sends nothing');
+  const ex = await call(X, { token: tok, body: {} }); ok(ex.status === 201 && ex.json.report.mode === 'create' && ex.json.report.variants.created === n && /admin\.shopify\.com\/store\/merchant-one\//.test(ex.json.report.adminUrl), 'the export creates the draft on THEIR store', [ex.status, ex.json.error, ex.json.report]);
+  const mine = await storeProducts('mock-merchant-goodcode1'); ok(mine.length === 1 && mine[0].status === 'DRAFT' && mine[0].variants.length === n && mine[0].title === 'Merchant hoodie', 'a DRAFT with every variant is in their store', [mine.length, mine[0] && mine[0].status]);
+  ok(await mainCount() === before, 'and nothing was made on the Future Basics store');
+  ok(mine[0].variants.every(v => v.inventoryItem.cost === '21.50'), 'their cost is what they pay Future Basics (the wholesale price), not our internal cost', mine[0].variants.map(v => v.inventoryItem.cost));
+  ok(!JSON.stringify(mine).includes('11.11') && !JSON.stringify(mine).includes('1111'), 'our internal unit cost appears nowhere in their store');
+  ok(sql(`select coalesce(shopify_product_id,'-') from products where id='${pid}'`) === '-', 'the product record is not linked to the customer\'s Shopify product (that link is Future Basics\' own store)');
+  ok(sql(`select count(*) from shopify_exports where product_id='${pid}' and store_id='${store.id}'`) === '1' && sql(`select count(*) from activities where product_id='${pid}' and summary like '%merchant-one.myshopify.com%'`) === '1', 'the export is on record against that store');
+  // staff exporting to Future Basics' own store is a separate history
+  const adminGet = await adm(`/v1/admin/products/${pid}/tech-pack/shopify-export`); ok(adminGet.json.last === null && adminGet.json.stores.length === 1 && adminGet.json.stores[0].id === store.id, 'staff see their own store has no export yet, and the customer\'s store as an option', adminGet.json.stores);
+  // the merchant changes the price in Shopify; the customer re-sends: the specification updates, the price stands
+  await mock2('/__mock/product-edit', { id: mine[0].id, price: '95.00', title: 'Merchant hoodie (Autumn)' });
+  const re = await call(X, { token: tok, body: {} }); ok(re.status === 200 && re.json.report.mode === 'update' && re.json.report.variants.created === 0 && re.json.report.variants.updated === n, 're-sending updates, creates nothing', [re.status, re.json.error, re.json.report]);
+  const after = await storeProducts('mock-merchant-goodcode1'); ok(after.length === 1 && after[0].title === 'Merchant hoodie (Autumn)' && after[0].variants.every(v => v.price === '95.00'), 'it did not retitle the product or touch the price the merchant set', [after[0].title, after[0].variants.map(v => v.price)]);
+  // staff can send the same pack to the customer's store too, and it carries on from the same product
+  const sx = await adm(`/v1/admin/products/${pid}/tech-pack/shopify-export`, { body: { storeId: store.id } }); ok(sx.status === 200 && sx.json.report.mode === 'update' && sx.json.report.productId === mine[0].id, 'staff can send to the customer\'s store, and it continues the same product', [sx.status, sx.json.error]);
+  // the page
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, tok);
+      const pg = await ctx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(e.message));
+      await pg.goto(`${BASE}/?shopify=error&why=state`, { waitUntil: 'domcontentloaded' }); await pg.waitForSelector('#shopPanel:not(.hidden)', { timeout: 20000 });
+      const panel = await pg.innerText('#shopPanel'); ok(/merchant-one\.myshopify\.com/i.test(panel) && /Connected/i.test(panel) && /Disconnect/i.test(panel) && /already used or has expired/i.test(panel), 'the hub shows the store, its state, and the plain-words reason a sign-in failed', panel.slice(0, 260));
+      ok(!/\?shopify=/.test(pg.url()), 'and cleans the address bar', pg.url());
+      await pg.locator('#shopPanel').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j104-hub.png` }).catch(() => {});
+      await pg.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'domcontentloaded' }); await pg.waitForSelector('#acts details.more summary', { timeout: 20000 });
+      await pg.click('#acts details.more summary'); await pg.click('[data-act="shopify"]'); await pg.waitForSelector('dialog.shopify [data-sx="go"]', { timeout: 10000 });
+      const txt = await pg.innerText('dialog.shopify'); ok(/Send to my Shopify store/.test(txt) && /merchant-one\.myshopify\.com/.test(txt) && /Update on Shopify/.test(txt) && /never removes a variant/.test(txt), 'the customer\'s pack menu opens the dialog for their store', txt.slice(0, 240));
+      await pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j104-dialog.png` }).catch(() => {});
+      await pg.click('dialog.shopify [data-sx="go"]'); await pg.waitForFunction(() => /Product updated/.test(document.querySelector('dialog.shopify')?.innerText || ''), null, { timeout: 15000 });
+      ok(await pg.locator('dialog.shopify a[href*="merchant-one"]').count() === 1 && pg.errs.length === 0, 'pressing it updates their product and links to it', pg.errs);
+      await ctx.close();
+    } finally { await bw.close(); }
+  }
+  // the store is revoked in Shopify (token refused): the next send says so and the hub asks to reconnect
+  await mock2('/__mock/revoke', { token: 'mock-merchant-goodcode1' });
+  const dead = await call(X, { token: tok, body: {} }); ok(dead.status === 409 && /Reconnect/.test(dead.json.error), 'a refused token says to reconnect', [dead.status, dead.json.error]);
+  ok(sql(`select status from client_shopify_stores where id='${store.id}'`) === 'needs-reconnect' && (await call('/v1/shopify/stores', { token: tok })).json.stores[0].status === 'needs-reconnect', 'and the store is marked for reconnecting in the hub');
+  ok((await call(X, { token: tok, body: {} })).status === 409, 'it stays blocked until reconnected');
+  const re2 = await go('merchant-one.myshopify.com'); x = await back(sign({ code: 'goodcode1~2', shop: 'merchant-one.myshopify.com', state: re2.state, timestamp: now() }));
+  ok(/shopify=connected/.test(x.loc) && stores() === 1 && sql(`select id||status from client_shopify_stores where client_id='${cid}' and status<>'removed'`) === store.id + 'connected', 'reconnecting the same store reuses its row (one store, connected again)', x);
+  const again = await call(X, { token: tok, body: {} }); ok(again.status === 200 && again.json.report.mode === 'update', 'and the pack carries on updating the same product', [again.status, again.json.error]);
+  // the webhook: only Shopify can say the app was removed
+  const body = JSON.stringify({ id: 1 }), good = createHmac('sha256', APP).update(body).digest('base64');
+  const hook = (sig, shop = 'merchant-one.myshopify.com', topic = 'app/uninstalled') => fetch(`${BASE}/shopify/webhooks`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Hmac-Sha256': sig, 'X-Shopify-Topic': topic, 'X-Shopify-Shop-Domain': shop }, body });
+  ok((await hook('bad')).status === 401 && (await hook('')).status === 401 && stores() === 1, 'a webhook with a wrong signature is refused and changes nothing');
+  ok((await hook(good)).status === 200 && stores() === 0 && sql(`select coalesce(token_sealed,'-') from client_shopify_stores where id='${store.id}'`) === '-', 'a signed uninstall webhook removes the store and wipes its token');
+  const gone = await call(X, { token: tok }); ok(gone.status === 200 && gone.json.needsStore === true && gone.json.stores.length === 0 && (await call(X, { token: tok, body: {} })).status === 409, 'the pack page then asks them to connect a store, and nothing is sent', gone.json.needsStore);
+  ok((await hook(good, 'unknown-shop.myshopify.com', 'customers/data_request')).status === 200 && (await hook(good, 'unknown-shop.myshopify.com', 'shop/redact')).status === 200, 'the privacy topics are answered');
+  // disconnect from the hub
+  const b = await go('merchant-three.myshopify.com'); await back(sign({ code: 'goodcode3', shop: 'merchant-three.myshopify.com', state: b.state, timestamp: now() })); ok(stores() === 1, 'a second store connects');
+  const sid = sql(`select id from client_shopify_stores where client_id='${cid}' and status<>'removed'`), del = await call(`/v1/shopify/stores/${sid}`, { token: tok, method: 'DELETE' });
+  ok(del.status === 200 && stores() === 0 && sql(`select coalesce(token_sealed,'-') from client_shopify_stores where id='${sid}'`) === '-', 'disconnecting from the hub removes the store and wipes the token', del.json);
+  ok((await call(`/v1/shopify/stores/${sid}`, { token: tok, method: 'DELETE' })).status === 404, 'and doing it twice is a clean 404');
+});
+
 summary(); process.exit(bad ? 1 : 0);

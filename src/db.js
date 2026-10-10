@@ -852,6 +852,34 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists shopify_exports_product_idx on shopify_exports(product_id, created_at desc);
+    -- A customer's own Shopify store, connected from their hub. The access token is sealed (AES-256-GCM) before it is stored.
+    create table if not exists client_shopify_stores (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      shop text not null,
+      shop_name text,
+      currency text,
+      token_sealed text,
+      scope text,
+      status text not null default 'connected' check (status in ('connected','needs-reconnect','removed')),
+      connected_by uuid references users(id) on delete set null,
+      webhook_ok boolean not null default false,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create unique index if not exists client_shopify_stores_live_idx on client_shopify_stores(client_id, shop) where status <> 'removed';
+    -- one row per install attempt: random state, who started it, for which shop; used once, expires
+    create table if not exists shopify_oauth_states (
+      state text primary key,
+      client_id uuid not null references clients(id) on delete cascade,
+      user_id uuid references users(id) on delete set null,
+      shop text not null,
+      expires_at timestamptz not null,
+      used_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+    alter table shopify_exports add column if not exists store_id uuid references client_shopify_stores(id) on delete set null;
+    create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,

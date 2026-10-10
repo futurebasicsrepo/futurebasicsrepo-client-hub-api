@@ -164,3 +164,12 @@ test('a good test but a failed run in the last hour is a warning; an old credit 
   assert.equal(assistantVerdict({ probe: ok, tel: { lastErrorAt: Date.now() - 600e3, lastError: creditErr.message, lastOkAt: null } }).status, 'ok');
   assert.equal(assistantVerdict({ probe: ok, tel: { lastErrorAt: Date.now() - 7200e3, lastError: '500', lastOkAt: null } }).status, 'ok');
 });
+
+test('the customer Shopify stores row says what is missing and never prints the secret', () => {
+  const row = env => configChecks({ env, billing: { effective: false, mode: 'auto' }, shopifyConfigured: () => false }).find(r => r.id === 'shopifyapp');
+  assert.equal(row({}).status, 'info');
+  assert.equal(row({ SHOPIFY_APP_CLIENT_ID: 'id' }).status, 'warn');
+  assert.equal(row({ SHOPIFY_APP_CLIENT_SECRET: 's' }).status, 'warn');
+  const ready = row({ SHOPIFY_APP_CLIENT_ID: 'id', SHOPIFY_APP_CLIENT_SECRET: 'super-secret-value' });
+  assert.equal(ready.status, 'ok'); assert.ok(!JSON.stringify(ready).includes('super-secret-value'));
+});

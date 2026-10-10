@@ -42,6 +42,8 @@ import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender, conceptPlacement } from './concept.js';
 import { packDiff, diffSummary, carriedAcks } from './pack-diff.js';
 import { buildShopifyExport, exportToShopify, planSummary } from './pack-export.js';
+import { appConfig, shopDomain, authorizeUrl, verifyOAuthQuery, verifyWebhook, newState, exchangeCode, sealer, SHOP_INFO_QUERY, UNINSTALL_WEBHOOK, merchantExec } from './shopify-merchant.js';
+import { Readable } from 'node:stream';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -2442,44 +2444,139 @@ app.get('/v1/products/:id/tech-pack/media',{preHandler:authenticate},async(req,r
   const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and client_id=$2 and published_at is not null',[req.params.id,req.auth.clientId||null])).rows[0];if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return {version:row.version,media:mediaList(req.params.id,row)};
 });
+// A customer's own store: the token is sealed in the database and opened only to make a call. A refused token marks the store for reconnecting instead of failing silently.
+const tokenSeal=sealer(process.env);
+const merchantOrigin=shop=>process.env.SHOPIFY_MERCHANT_ORIGIN?String(process.env.SHOPIFY_MERCHANT_ORIGIN).replace(/\/$/,''):`https://${shop}`;
+const storeView=r=>({id:r.id,shop:r.shop,name:r.shop_name||r.shop,currency:r.currency||'',status:r.status,connectedAt:r.created_at,webhook:Boolean(r.webhook_ok),adminUrl:`https://admin.shopify.com/store/${String(r.shop).split('.')[0]}`});
+async function storeExec(store){
+  const token=tokenSeal.open(store.token_sealed);
+  if(!token){await pool.query(`update client_shopify_stores set status='needs-reconnect',updated_at=now() where id=$1`,[store.id]).catch(()=>{});throw Object.assign(new Error(`Reconnect ${store.shop} from your hub: the saved connection can no longer be used.`),{statusCode:409,refused:true})}
+  return merchantExec({shop:store.shop,token,origin:merchantOrigin(store.shop),version:process.env.SHOPIFY_API_VERSION||'2026-07',onRefused:()=>pool.query(`update client_shopify_stores set status='needs-reconnect',updated_at=now() where id=$1`,[store.id]).catch(()=>{})});
+}
+const liveStores=clientId=>pool.query(`select * from client_shopify_stores where client_id=$1 and status<>'removed' order by created_at`,[clientId]).then(r=>r.rows);
 // ---- The published pack as a Shopify product ("Create on your Shopify store"). A preview says what will be made and what is missing; the export makes a DRAFT product
 // with its options, variants (SKU, barcode, price, cost, weight, HS code, origin), pictures and specification metafields. Run again it updates the specification and adds
-// what is new, and never removes or retitles anything. It runs through the store this server is connected to; the engine takes the Shopify call as a parameter so a
-// merchant's own store can use it once the install flow exists.
-async function shopifyExportContext(productId){
+// what is new, and never removes or retitles anything. Staff run it through the store this server is connected to, or through a customer's connected store; a customer runs
+// it through their own. The engine takes the Shopify call as a parameter, so it is the same code either way.
+// Cost: Future Basics' own store gets the first price tier's unit cost; a customer's store gets what the customer pays (the wholesale price). Our internal cost never leaves.
+async function shopifyExportContext(productId,{clientId=null,store=null}={}){
   const ctx=await loadAdminTechPack(productId);if(!ctx||!ctx.techPack)return {status:404,error:'Tech pack not found'};
+  if(clientId&&ctx.product.client_id!==clientId)return {status:404,error:'Tech pack not found'};
+  if(store&&store.client_id!==ctx.product.client_id)return {status:404,error:'Store not found'};
   if(!ctx.techPack.published_at)return {status:409,error:'Publish the tech pack first: the store gets the published version'};
-  const tier=(await pool.query('select unit_cost_cents from price_tiers where product_id=$1 and unit_cost_cents is not null order by min_quantity limit 1',[productId])).rows[0];
+  const tier=(await pool.query(`select ${store?'wholesale_cents':'unit_cost_cents'} as c from price_tiers where product_id=$1 and ${store?'wholesale_cents':'unit_cost_cents'} is not null order by min_quantity limit 1`,[productId])).rows[0];
   const pub=normalizeTechPack(ctx.techPack.published_data),media=packMedia(pub).map(m=>({key:m.key,kind:m.kind,name:m.name,mime:m.mime,url:mediaUrl(productId,m.key,6*3600)}));
-  const plan=buildShopifyExport({pack:pub,product:{title:ctx.product.title,client_slug:ctx.product.client_slug},version:ctx.techPack.version,cost:tier?Number(tier.unit_cost_cents)/100:'',media,hubUrl:`${clientHubUrl}/tech-packs/${productId}`});
-  const last=(await pool.query('select * from shopify_exports where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]||null;
-  const linked=(await pool.query('select shopify_product_id from products where id=$1',[productId])).rows[0]?.shopify_product_id||null;
+  const plan=buildShopifyExport({pack:pub,product:{title:ctx.product.title,client_slug:ctx.product.client_slug},version:ctx.techPack.version,cost:tier?Number(tier.c)/100:'',media,hubUrl:`${clientHubUrl}/tech-packs/${productId}`});
+  const last=(await pool.query('select * from shopify_exports where product_id=$1 and store_id is not distinct from $2 order by created_at desc limit 1',[productId,store?store.id:null])).rows[0]||null;
+  const linked=store?null:(await pool.query('select shopify_product_id from products where id=$1',[productId])).rows[0]?.shopify_product_id||null;
   return {ctx,plan,last,linked};
 }
-const shopifyAdminUrl=gid=>`https://admin.shopify.com/store/${(process.env.SHOPIFY_STORE_DOMAIN||'').split('.')[0]}/products/${String(gid).split('/').pop()}`;
-app.get('/v1/admin/products/:id/tech-pack/shopify-export',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
-  const c=await shopifyExportContext(req.params.id);if(c.error)return reply.code(c.status).send({error:c.error});
-  const existing=c.last?{id:c.last.shopify_product_id}:null;
-  return {configured:shopifyConfigured(),summary:planSummary(c.plan,existing),packVersion:c.ctx.techPack.version,
-    last:c.last?{mode:c.last.mode,version:c.last.version,at:c.last.created_at,productId:c.last.shopify_product_id,adminUrl:shopifyAdminUrl(c.last.shopify_product_id),report:c.last.report}:null,
-    behind:c.last?c.ctx.techPack.version>c.last.version:false,linkedElsewhere:!c.last&&Boolean(c.linked)?c.linked:null};
+const shopifyAdminUrl=(gid,shop=null)=>`https://admin.shopify.com/store/${(shop?String(shop):(process.env.SHOPIFY_STORE_DOMAIN||'')).split('.')[0]}/products/${String(gid).split('/').pop()}`;
+const exportRunning=new Set();
+// Which store an export goes to. Staff: the server's own store unless they name one of the customer's; a customer: their own, the only one when they have one.
+async function exportTarget(req){
+  const asked=String((req.method==='GET'?req.query?.storeId:req.body?.storeId)||'');
+  if(!asked&&!req.exportClient)return {store:null};
+  if(asked){if(!UUID_RE.test(asked))return {error:'Store not found',status:404};const r=(await pool.query(`select * from client_shopify_stores where id=$1 and status<>'removed'`,[asked])).rows[0];if(!r||(req.exportClient&&r.client_id!==req.exportClient))return {error:'Store not found',status:404};return {store:r}}
+  const all=await liveStores(req.exportClient);if(all.length===1)return {store:all[0]};
+  return {error:all.length?'Choose which store to send it to':'Connect your Shopify store first (Your Shopify store, on your hub home)',status:409,none:!all.length};
+}
+function shopifyExportRoutes(path,pre,mine){
+  const prep=async(req,reply)=>{
+    if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+    req.exportClient=mine?req.auth.clientId||'':null;if(mine&&!req.exportClient)return reply.code(404).send({error:'Tech pack not found'});
+  };
+  app.get(path,{preHandler:[...pre,prep]},async(req,reply)=>{
+    const t=await exportTarget(req);if(t.error&&t.status!==409)return reply.code(t.status).send({error:t.error});
+    const store=t.store||null,c=await shopifyExportContext(req.params.id,{clientId:req.exportClient||null,store});if(c.error)return reply.code(c.status).send({error:c.error});
+    const existing=c.last?{id:c.last.shopify_product_id}:null,owner=c.ctx.product.client_id,stores=(await liveStores(owner)).map(storeView);
+    return {configured:mine?Boolean(store):shopifyConfigured()||Boolean(store),needsStore:Boolean(mine&&!store),appReady:appConfig(process.env).ready,store:store?storeView(store):null,stores,summary:planSummary(c.plan,existing),packVersion:c.ctx.techPack.version,
+      last:c.last?{mode:c.last.mode,version:c.last.version,at:c.last.created_at,productId:c.last.shopify_product_id,adminUrl:shopifyAdminUrl(c.last.shopify_product_id,store?.shop),report:c.last.report}:null,
+      behind:c.last?c.ctx.techPack.version>c.last.version:false,linkedElsewhere:!c.last&&Boolean(c.linked)?c.linked:null};
+  });
+  app.post(path,{preHandler:[...pre,prep]},async(req,reply)=>{
+    const t=await exportTarget(req);if(t.error&&!(t.none&&req.body?.preview===true))return reply.code(t.status).send({error:t.error});
+    const store=t.store||null,c=await shopifyExportContext(req.params.id,{clientId:req.exportClient||null,store});if(c.error)return reply.code(c.status).send({error:c.error});
+    const existing=c.last?{id:c.last.shopify_product_id,lastPrices:c.last.last_prices||{}}:null;
+    if(req.body?.preview===true)return {preview:true,summary:planSummary(c.plan,existing),issues:c.plan.issues};
+    if(!store&&!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
+    if(!store&&!existing&&c.linked)return reply.code(409).send({error:'This product is already linked to a Shopify product that was made from its brief. Unlink it first, or export from the brief\'s own product.',linkedProductId:c.linked});
+    if(store&&store.status!=='connected')return reply.code(409).send({error:`Reconnect ${store.shop} from your hub first.`});
+    if(c.plan.errors.length)return reply.code(422).send({error:c.plan.errors[0].text,issues:c.plan.issues});
+    const lock=`${c.ctx.product.id}:${store?store.id:'own'}`;if(exportRunning.has(lock))return reply.code(409).send({error:'An export of this pack to that store is already running'});
+    exportRunning.add(lock);
+    const where=store?` on ${store.shop}`:' on Shopify';let report;
+    try{
+      let exec=shopifyGraphql;if(store)exec=await storeExec(store);
+      try{report=await exportToShopify({plan:c.plan,exec,existing})}
+      catch(e){await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Shopify export of ${c.ctx.product.title}${store?where:''} failed: ${String(e.message).slice(0,200)}`,{techPackId:c.ctx.techPack.id,failed:true}]).catch(()=>{});return reply.code(e.statusCode||502).send({error:e.message,issues:e.issues||undefined})}
+      await pool.query(`insert into shopify_exports(product_id,tech_pack_id,version,mode,shopify_product_id,report,last_prices,exported_by,store_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[c.ctx.product.id,c.ctx.techPack.id,c.ctx.techPack.version,report.mode,report.productId,JSON.stringify({variants:report.variants,files:report.files,note:report.note||'',warnings:c.plan.warnings.map(w=>w.text)}),JSON.stringify(report.lastPrices),req.auth.sub,store?store.id:null]);
+      if(!store&&report.mode==='create')await pool.query(`update products set shopify_product_id=$2,shopify_handle=$3,shopify_status=$4,shopify_synced_at=now(),updated_at=now() where id=$1`,[c.ctx.product.id,report.productId,report.handle,report.status]);
+      await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Tech pack v${c.ctx.techPack.version} ${report.mode==='create'?'created a draft product':'updated the product'}${where} (${report.variants.created} new, ${report.variants.updated} updated variants)`,{techPackId:c.ctx.techPack.id,shopifyProductId:report.productId,mode:report.mode,storeId:store?store.id:null}]).catch(()=>{});
+    }finally{exportRunning.delete(lock)}
+    return reply.code(report.mode==='create'?201:200).send({report:{mode:report.mode,productId:report.productId,adminUrl:shopifyAdminUrl(report.productId,store?.shop),status:report.status,variants:report.variants,files:report.files,note:report.note||''},warnings:c.plan.warnings.map(w=>w.text),version:c.ctx.techPack.version});
+  });
+}
+shopifyExportRoutes('/v1/admin/products/:id/tech-pack/shopify-export',[authenticate,adminOnly],false);
+shopifyExportRoutes('/v1/products/:id/tech-pack/shopify-export',[authenticate],true);
+// ---- A customer connects their own Shopify store. Authorization-code install: the hub asks for a single-use state tied to the customer and the shop, Shopify sends the
+// merchant back with a signed query, and only a callback that proves the signature, the state and the shop trades its code for a token (sealed before it is stored).
+const SHOPIFY_STATE_MINUTES=15;
+const hubShopifyUrl=(q)=>`${clientHubUrl}/?${new URLSearchParams(q)}`;
+app.get('/v1/shopify/stores',{preHandler:authenticate},async(req,reply)=>{
+  if(!req.auth.clientId)return reply.code(404).send({error:'No client room on this session'});
+  return {ready:appConfig(process.env).ready&&tokenSeal.ready,scopes:appConfig(process.env).scopes,stores:(await liveStores(req.auth.clientId)).map(storeView)};
 });
-app.post('/v1/admin/products/:id/tech-pack/shopify-export',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
-  const c=await shopifyExportContext(req.params.id);if(c.error)return reply.code(c.status).send({error:c.error});
-  const existing=c.last?{id:c.last.shopify_product_id,lastPrices:c.last.last_prices||{}}:null;
-  if(req.body?.preview===true)return {preview:true,summary:planSummary(c.plan,existing),issues:c.plan.issues};
-  if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
-  if(!existing&&c.linked)return reply.code(409).send({error:'This product is already linked to a Shopify product that was made from its brief. Unlink it first, or export from the brief\'s own product.',linkedProductId:c.linked});
-  if(c.plan.errors.length)return reply.code(422).send({error:c.plan.errors[0].text,issues:c.plan.issues});
-  let report;
-  try{report=await exportToShopify({plan:c.plan,exec:shopifyGraphql,existing})}
-  catch(e){await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Shopify export of ${c.ctx.product.title} failed: ${String(e.message).slice(0,200)}`,{techPackId:c.ctx.techPack.id,failed:true}]).catch(()=>{});return reply.code(e.statusCode||502).send({error:e.message,issues:e.issues||undefined})}
-  await pool.query(`insert into shopify_exports(product_id,tech_pack_id,version,mode,shopify_product_id,report,last_prices,exported_by) values($1,$2,$3,$4,$5,$6,$7,$8)`,[c.ctx.product.id,c.ctx.techPack.id,c.ctx.techPack.version,report.mode,report.productId,JSON.stringify({variants:report.variants,files:report.files,note:report.note||'',warnings:c.plan.warnings.map(w=>w.text)}),JSON.stringify(report.lastPrices),req.auth.sub]);
-  if(report.mode==='create')await pool.query(`update products set shopify_product_id=$2,shopify_handle=$3,shopify_status=$4,shopify_synced_at=now(),updated_at=now() where id=$1`,[c.ctx.product.id,report.productId,report.handle,report.status]);
-  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Tech pack v${c.ctx.techPack.version} ${report.mode==='create'?'created a draft product':'updated the product'} on Shopify (${report.variants.created} new, ${report.variants.updated} updated variants)`,{techPackId:c.ctx.techPack.id,shopifyProductId:report.productId,mode:report.mode}]).catch(()=>{});
-  return reply.code(report.mode==='create'?201:200).send({report:{mode:report.mode,productId:report.productId,adminUrl:shopifyAdminUrl(report.productId),status:report.status,variants:report.variants,files:report.files,note:report.note||''},warnings:c.plan.warnings.map(w=>w.text),version:c.ctx.techPack.version});
+app.post('/v1/shopify/connect',{preHandler:authenticate},async(req,reply)=>{
+  if(!req.auth.clientId)return reply.code(404).send({error:'No client room on this session'});
+  const cfg=appConfig(process.env);if(!cfg.ready||!tokenSeal.ready)return reply.code(503).send({error:'Connecting a store is not set up on this server yet'});
+  const shop=shopDomain(req.body?.shop);if(!shop)return reply.code(422).send({error:'Enter your store address, like my-store.myshopify.com'});
+  const mine=(await liveStores(req.auth.clientId)).filter(x=>x.status==='connected').length;if(mine>=5)return reply.code(409).send({error:'Five stores is the limit for one room'});
+  const state=newState();await pool.query(`delete from shopify_oauth_states where expires_at<now()-interval '1 day'`).catch(()=>{});
+  await pool.query(`insert into shopify_oauth_states(state,client_id,user_id,shop,expires_at) values($1,$2,$3,$4,now()+($5||' minutes')::interval)`,[state,req.auth.clientId,req.auth.sub,shop,String(SHOPIFY_STATE_MINUTES)]);
+  const redirectUri=process.env.SHOPIFY_APP_REDIRECT_URI||`${req.protocol}://${req.headers.host}/v1/shopify/callback`;
+  return {url:authorizeUrl({shop,clientId:cfg.clientId,scopes:cfg.scopes,redirectUri,state}),shop};
+});
+app.get('/v1/shopify/callback',async(req,reply)=>{
+  const q=req.query||{},cfg=appConfig(process.env),back=(reason,extra={})=>reply.redirect(hubShopifyUrl({shopify:reason,...extra}));
+  if(!cfg.ready||!tokenSeal.ready)return back('error',{why:'not-set-up'});
+  if(!verifyOAuthQuery(q,cfg.secret))return back('error',{why:'bad-signature'});
+  const shop=shopDomain(q.shop);if(!shop||shop!==String(q.shop||'').toLowerCase())return back('error',{why:'bad-shop'});
+  const stamp=Number(q.timestamp);if(Number.isFinite(stamp)&&Math.abs(Date.now()/1000-stamp)>3600)return back('error',{why:'expired'});
+  // used once: the update only matches a state that is unused, unexpired and for this shop
+  const st=(await pool.query(`update shopify_oauth_states set used_at=now() where state=$1 and used_at is null and expires_at>now() and shop=$2 returning client_id,user_id`,[String(q.state||''),shop])).rows[0];
+  if(!st)return back('error',{why:'state'});
+  if(!q.code)return back('error',{why:'declined'});
+  let got;try{got=await exchangeCode({shop,code:String(q.code),clientId:cfg.clientId,secret:cfg.secret,origin:merchantOrigin(shop)})}catch(e){app.log.warn({err:e.message,shop},'shopify install: code not accepted');return back('error',{why:'code'})}
+  const need=['read_products','write_products'],granted=got.scope.split(',').map(x=>x.trim());
+  if(need.some(x=>!granted.includes(x)&&!granted.includes(x.replace('read_','write_'))))return back('error',{why:'scopes'});
+  const exec=merchantExec({shop,token:got.token,origin:merchantOrigin(shop),version:process.env.SHOPIFY_API_VERSION||'2026-07'});
+  let info={name:shop,currency:''};try{const d=await exec(SHOP_INFO_QUERY);info={name:d.shop?.name||shop,currency:d.shop?.currencyCode||''}}catch(e){app.log.warn({err:e.message,shop},'shopify install: shop info not read')}
+  const sealed=tokenSeal.seal(got.token);
+  const row=(await pool.query(`insert into client_shopify_stores(client_id,shop,shop_name,currency,token_sealed,scope,status,connected_by) values($1,$2,$3,$4,$5,$6,'connected',$7)
+    on conflict (client_id,shop) where status<>'removed' do update set shop_name=excluded.shop_name,currency=excluded.currency,token_sealed=excluded.token_sealed,scope=excluded.scope,status='connected',connected_by=excluded.connected_by,updated_at=now() returning id`,[st.client_id,shop,info.name,info.currency,sealed,got.scope,st.user_id])).rows[0];
+  // tell us when the merchant removes the app (best effort: the next call finds out anyway)
+  try{const uri=process.env.SHOPIFY_WEBHOOK_URL||`${req.protocol}://${req.headers.host}/shopify/webhooks`;const w=(await exec(UNINSTALL_WEBHOOK,{uri})).webhookSubscriptionCreate;
+    await pool.query('update client_shopify_stores set webhook_ok=$2 where id=$1',[row.id,!(w.userErrors||[]).length||(w.userErrors||[]).some(e=>/already|taken/i.test(e.message))])}catch(e){app.log.warn({err:e.message,shop},'shopify install: uninstall webhook not registered')}
+  await pool.query(`insert into activities(client_id,actor_id,type,summary,metadata) values($1,$2,'integration',$3,$4)`,[st.client_id,st.user_id,`Connected the Shopify store ${shop}`,{storeId:row.id,shop}]).catch(()=>{});
+  return back('connected',{shop});
+});
+app.delete('/v1/shopify/stores/:id',{preHandler:authenticate},async(req,reply)=>{
+  if(!req.auth.clientId||!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Store not found'});
+  const r=(await pool.query(`update client_shopify_stores set status='removed',token_sealed=null,updated_at=now() where id=$1 and client_id=$2 and status<>'removed' returning shop`,[req.params.id,req.auth.clientId])).rows[0];if(!r)return reply.code(404).send({error:'Store not found'});
+  await pool.query(`insert into activities(client_id,actor_id,type,summary,metadata) values($1,$2,'integration',$3,$4)`,[req.auth.clientId,req.auth.sub,`Disconnected the Shopify store ${r.shop}`,{shop:r.shop}]).catch(()=>{});
+  return {ok:true,note:`${r.shop} is disconnected here. To remove the app from the store itself, open Apps in your Shopify admin.`};
+});
+// Shopify's webhooks are signed over the raw body, so this route (and only this one) keeps it. App uninstalled: the token is dead, so the store stops being usable.
+// We hold no customer data of a store's customers, so the three privacy topics have nothing to send back or erase; shop/redact also drops our copy of the store.
+app.post('/shopify/webhooks',{preParsing:async(req,_reply,payload)=>{const chunks=[];for await(const c of payload)chunks.push(c);req.rawBody=Buffer.concat(chunks);return Readable.from(req.rawBody)}},async(req,reply)=>{
+  const cfg=appConfig(process.env);if(!verifyWebhook(req.rawBody,req.headers['x-shopify-hmac-sha256'],cfg.secret))return reply.code(401).send({error:'Bad signature'});
+  const topic=String(req.headers['x-shopify-topic']||''),shop=shopDomain(req.headers['x-shopify-shop-domain']);
+  if(shop&&(topic==='app/uninstalled'||topic==='shop/redact')){
+    const gone=await pool.query(`update client_shopify_stores set status='removed',token_sealed=null,updated_at=now() where shop=$1 and status<>'removed' returning client_id,shop`,[shop]);
+    for(const r of gone.rows)await pool.query(`insert into activities(client_id,type,summary,metadata) values($1,'integration',$2,$3)`,[r.client_id,`The Shopify store ${r.shop} removed the app`,{shop:r.shop,topic}]).catch(()=>{});
+  }
+  return reply.code(200).send({ok:true});
 });
 // Staff ask the client for the view the pack lacks (instead of publishing past the gate with a typed reason): a message in the project thread, an email, and a banner
 // in the client's editor with a button that adds the view. The request clears itself the moment the picture is there.
