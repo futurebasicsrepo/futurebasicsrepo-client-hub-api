@@ -85,6 +85,8 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .lead{color:var(--muted);margin:0 0 14px;font-size:15px}
 .tabs{position:sticky;top:64px;z-index:5;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:24px -4px 20px;padding:4px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .tabs::-webkit-scrollbar{display:none}
+.staffbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 0;padding:10px 14px;border:1.5px dashed var(--line);border-radius:16px}
+.staffbar[hidden]{display:none}.staffbar span{font-weight:700;font-size:14px;color:var(--muted);margin-right:auto}
 .aistrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .aistrip span{white-space:nowrap}.aistrip small{color:var(--muted)}.aistrip .go2{margin-left:auto;color:var(--spot);font-weight:700}
 .tabs button{flex:none;font:600 15px Bricolage,system-ui,sans-serif;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
@@ -216,6 +218,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     path: '/account',
     title: 'Your account · Spot',
     body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
+<div class="staffbar" id="staffBar" role="navigation" aria-label="Spot team" hidden><span>Spot team</span><a class="btn ghost sm" id="staffAdmin" href="/admin">Admin</a><a class="btn ghost sm" id="staffHealth" href="/admin/health">Health</a></div>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
 <nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
@@ -290,7 +293,7 @@ const fromHash=()=>{const h=location.hash.slice(1);const el=h&&document.getEleme
 fromHash();addEventListener('hashchange',fromHash);
 let me=null;
 async function load(){
-  const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
+  const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in');localStorage.removeItem('spot:staff')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
   me=await r.json();const u=me.user;
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
@@ -311,6 +314,8 @@ async function load(){
   $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
   drawFunding();
   aiStrip();
+  if(me.staff){$('#staffBar').hidden=false;$('#staffAdmin').href=me.staff.admin_url;$('#staffHealth').href=me.staff.health_url}
+  try{if(me.staff)localStorage.setItem('spot:staff','1');else localStorage.removeItem('spot:staff')}catch{}
   $('#keys').innerHTML=me.keys.length?me.keys.map(keyRow).join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
   const a=me.approver;
   $('#apv').innerHTML=a?'<div class="trav"><span>'+esc(a.name||a.email)+' <small class="sub">· '+esc(a.email)+' · '+(a.confirmed?'confirmed':'waiting for them to agree')+'</small></span><button class="linkbtn" id="apvRm">Remove</button></div>':'<p class="sub" style="margin:0">No approver yet.</p>';
@@ -450,7 +455,7 @@ $('#fundForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
     if(MODE==='stripe'){const {error,setupIntent}=await fundStripe.stripe.confirmSetup({elements:fundStripe.elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;body={setup_intent:setupIntent.id}}
     else body={test_card:$('#fundTest').value};
     me.funding=await post('/v1/me/funding',body);$('#fundForm').hidden=true;$('#fundEl').innerHTML='';load()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
-$('#out').onclick=async()=>{await post('/v1/auth/logout');try{localStorage.removeItem('spot:in')}catch{}location.href='/'};
+$('#out').onclick=async()=>{await post('/v1/auth/logout');try{localStorage.removeItem('spot:in');localStorage.removeItem('spot:staff')}catch{}location.href='/'};
 claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
   });
 }

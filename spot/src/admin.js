@@ -269,6 +269,20 @@ th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white
 th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 tr:last-child td{border-bottom:0}
+/* Phones: each row becomes a card, each cell "Label  value". */
+@media (max-width:640px){
+.tw{overflow:visible;border:0;background:none}
+.tw thead{display:none}
+.tw table,.tw tbody,.tw tr,.tw td{display:block;width:auto;min-width:0;box-sizing:border-box}
+.tw table{width:100%;table-layout:auto}
+.tw tr{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 14px;margin:0 0 10px}
+.tw td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;white-space:normal;text-align:right;overflow-wrap:anywhere}
+.tw td::before{content:attr(data-label);flex:none;text-align:left;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tw td:not([data-label])::before,.tw td[data-label=""]::before{content:none}
+.tw td:empty{display:none}
+.tw td.num{text-align:right}
+.tw td:last-child{border-bottom:0}
+}
 .pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--line)}
 .pill.completed,.pill.card_issued{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 .pill.paid{background:color-mix(in srgb,var(--spot2) 30%,transparent)}
@@ -313,6 +327,9 @@ document.getElementById('login').addEventListener('submit',async e=>{e.preventDe
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const usd=c=>'$'+(c/100).toFixed(2),when=t=>new Date(t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 const post=async(u,b)=>{const r=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Failed');return d};
+// Each cell carries its column name, for the phone layout.
+const label=()=>document.querySelectorAll('.tw table').forEach(t=>{const hs=[...t.querySelectorAll('thead th')].map(th=>th.textContent.trim());t.querySelectorAll('tbody tr').forEach(tr=>[...tr.children].forEach((td,i)=>{if(!td.hasAttribute('colspan')&&!td.dataset.label)td.dataset.label=hs[i]||''}))});
+new MutationObserver(label).observe(document.body,{childList:true,subtree:true});
 async function load(){
   const r=await fetch('/v1/admin/overview');if(r.status===401)return location.reload();const d=await r.json();
   const c=d.counts,n=k=>c[k]||0;

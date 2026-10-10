@@ -21,7 +21,7 @@
 // Codes and sessions are stored only as SHA-256 hashes. The cookie is
 // HttpOnly + SameSite=Lax, and every write needs a JSON body, so other sites
 // can't act for a signed-in visitor.
-import { proveEmail } from './staff.js';
+import { isStaff, proveEmail } from './staff.js';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CartError, handleOk } from './cart.js';
 import { validateShipping } from './fulfill/index.js';
@@ -196,6 +196,8 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       passkeys: db.passkeys.ofUser(user.id),
       linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
+      // Company staff (a confirmed @thefuturebasics.com email) get the dashboards.
+      ...(isStaff(db, env, user.id) ? { staff: { admin_url: '/admin', health_url: '/admin/health' } } : {}),
     };
   });
 
