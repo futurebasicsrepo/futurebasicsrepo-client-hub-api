@@ -1,4 +1,5 @@
 import { Resvg } from '@resvg/resvg-js';
+import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
@@ -39,6 +40,8 @@ import { createBackups, restoreOnBoot } from './backup.js';
 import { createDirect } from './direct.js';
 import { createShopifyAuth } from './fulfill/shopifyauth.js';
 import { createMetrics } from './metrics.js';
+import { connectPage } from './connect.js';
+import { standardsPage } from './standards.js';
 import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
@@ -278,6 +281,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.get('/terms', async (req, reply) => html(reply, termsPage({ origin: urlFor(req, ''), env })));
   app.get('/privacy', async (req, reply) => html(reply, privacyPage({ origin: urlFor(req, ''), env })));
   app.get('/integrations', async (req, reply) => html(reply, integrationsPage({ origin: urlFor(req, '') })));
+  app.get('/connect', async (req, reply) => html(reply, connectPage({ origin: urlFor(req, '') })));
+  app.get('/standards', async (req, reply) => html(reply, standardsPage({ origin: urlFor(req, '') })));
   app.get('/agent-card', async (req, reply) => html(reply, agentCardPage({ origin: urlFor(req, '') })));
 
   // The browser extension, built for this server's address.
@@ -698,6 +703,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const cart = spot.reassign(req.params.token, keyOf(req));
     const link = urlFor(req, `/c/${cart.token}`);
     return { cart: ownerCart(cart), link, share_message: shareMessage(cart, link) };
+  });
+  // Whoever got the link says they don't know the sender (or it's a scam).
+  app.post('/v1/carts/:token/report', async (req) => {
+    limits.pay(req);
+    const by = createHash('sha256').update(`report:${req.ip}`).digest('hex').slice(0, 16);
+    const cart = spot.report(req.params.token, { by, reason: req.body?.reason });
+    return { ok: true, paused: Boolean(publicCart(cart).paused) };
   });
   app.post('/v1/carts/:token/decline', async (req) => {
     limits.pay(req);

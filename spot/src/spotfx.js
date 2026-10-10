@@ -65,7 +65,7 @@ export function beatsSection() {
       <div class="bvis cardvis" aria-hidden="true"><div class="mcard"><span>•••• 0417</span><b>$57.77 cap</b><em>amtrak.com only</em><i>closed ✓</i></div></div></article>
   </div>
   <div class="modechips reveal">
-    <a href="#how">Someone else pays</a><a href="#for-you">Flights &amp; trains</a><a href="#rules">Rules &amp; a kill switch</a><a href="/agent-card">Your AI’s card</a><a href="#stores">Pay the store directly</a>
+    <a href="#how">Someone else pays</a><a href="#ask">Flights &amp; trains</a><a href="#rules">Rules &amp; a kill switch</a><a href="/agent-card">Your AI’s card</a><a href="#stores">Pay the store directly</a>
   </div>
 </div></section>`;
 }
@@ -210,7 +210,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;opa
 .gspot.jump{animation:jump .9s cubic-bezier(.3,1.4,.5,1)}
 .gsay{max-width:230px;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px;line-height:1.3;border-radius:16px 16px 4px 16px;padding:9px 13px;margin-bottom:46px;opacity:0;transform:translateY(8px) scale(.9);transform-origin:100% 100%;transition:opacity .25s,transform .3s cubic-bezier(.2,1.5,.4,1)}
 .gsay.show{opacity:1;transform:none}
-@media (max-width:600px){.gspot{width:56px}.gsay{font-size:13px;max-width:190px;margin-bottom:34px}.guide{right:10px;bottom:10px}}
+/* On phones Spot keeps quiet: a speech bubble there sits on top of the text. Tap him for confetti. */
+@media (max-width:600px){.gspot{width:52px}.gsay{display:none}.guide{right:10px;bottom:10px}}
 
 @media (prefers-reduced-motion:reduce){
   .fa,.fb,.fc,.fd,.fe,.herospot,.gspot,.vcard::after,.blobby::before,.blobby::after,.hero2::before,.hero2::after,.spotb .sb-arm-r,.spotb.happy .sb-arm-l,.spotb.happy .sb-arm-r{animation:none}

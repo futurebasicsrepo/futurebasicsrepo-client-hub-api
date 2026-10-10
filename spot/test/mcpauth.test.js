@@ -229,3 +229,49 @@ test('the MCP SDK client signs in on its own and lists the tools', async (t) => 
   const { tools } = await c.listTools();
   assert.ok(tools.some((x) => x.name === 'create_spot_ask'));
 });
+
+test('Allow sets spending caps: $100 an order and $500 a month unless the person picks others', async (t) => {
+  const { a, call } = app(t);
+  const client = (await call('POST', '/oauth/register', { client_name: 'Claude', redirect_uris: [CLAUDE] })).body;
+  const { verifier, challenge } = pkce();
+  const q = { response_type: 'code', client_id: client.client_id, redirect_uri: CLAUDE, code_challenge: challenge, code_challenge_method: 'S256', state: 's', scope: 'spot' };
+  const cookie = await signIn(call);
+  const connect = async (limits) => {
+    const r = await call('POST', '/oauth/authorize', { params: q, allow: true, ...(limits !== undefined ? { limits } : {}) }, { cookie });
+    if (r.status !== 200) return r;
+    const code = new URL(r.body.redirect).searchParams.get('code');
+    const tok = await a.inject({ method: 'POST', url: '/oauth/token', ...form({ grant_type: 'authorization_code', code, redirect_uri: CLAUDE, client_id: client.client_id, code_verifier: verifier }) });
+    assert.equal(tok.statusCode, 200, tok.body);
+    const me = (await call('GET', '/v1/me', undefined, { cookie })).body;
+    const made = me.keys.find((k) => !seen.has(k.name));
+    seen.add(made.name);
+    return made;
+  };
+  const seen = new Set();
+
+  const page = (await call('GET', `/oauth/authorize?${new URLSearchParams(q)}`, undefined, { cookie })).body;
+  assert.match(page, /Spending caps for Claude/);
+  assert.match(page, /<option value="10000" selected>Up to \$100<\/option>/, 'per order starts at $100');
+  assert.match(page, /<option value="50000" selected>Up to \$500<\/option>/, 'per month starts at $500');
+
+  const first = await connect({ max_order_cents: 10000, monthly_cents: 50000 });
+  assert.equal(first.rules.max_order_cents, 10000);
+  assert.equal(first.rules.monthly_cents, 50000);
+  assert.equal(first.rules.pay, 'link', 'still waits for a yes');
+
+  // The person sets a store list later; reconnecting keeps it, with the caps picked now.
+  await call('POST', `/v1/me/keys/${first.name}/rules`, { max_order_cents: 7500, monthly_cents: 20000, stores: ['target.com'], approver: 'never', pay: 'link' }, { cookie });
+  const again = (await call('GET', `/oauth/authorize?${new URLSearchParams(q)}`, undefined, { cookie })).body;
+  assert.match(again, /<option value="7500" selected>Up to \$75<\/option>/, 'prefilled with what this app had');
+  const second = await connect({ max_order_cents: 25000, monthly_cents: 100000 });
+  assert.deepEqual(second.rules.stores, ['target.com']);
+  assert.equal(second.rules.max_order_cents, 25000);
+
+  // "No cap" is a choice; a month below an order is refused.
+  const bad = await connect({ max_order_cents: 50000, monthly_cents: 20000 });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /monthly limit can’t be lower/);
+  const none = await connect({ max_order_cents: null, monthly_cents: null });
+  assert.deepEqual(none.rules.stores, ['target.com'], 'other rules stay');
+  assert.equal(none.rules.max_order_cents, null);
+});

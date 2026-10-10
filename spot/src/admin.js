@@ -123,6 +123,14 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) 
     return [...new Map(out.map((x) => [x.id, x])).values()].slice(0, 100);
   };
 
+  // Open links someone said they don't know the sender of; two reports pause it.
+  const reportedLinks = () =>
+    db.raw
+      .prepare("SELECT id FROM carts WHERE status = 'open' AND json_array_length(COALESCE(json_extract(doc, '$.reports'), '[]')) > 0 ORDER BY created_at DESC LIMIT 50")
+      .all()
+      .map((r) => db.byId(r.id))
+      .map((c) => ({ ...summary(c), reports: c.reports.length, paused: c.reports.length >= 2, reported_at: c.reports.at(-1).at }));
+
   app.get('/v1/admin/overview', async (req, reply) => {
     guard(req);
     reply.header('cache-control', 'no-store');
@@ -139,6 +147,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) 
       signup_total: signups.length,
       backups: backups?.status() || null,
       money: moneyChecks(),
+      reported: reportedLinks(),
     };
   });
 
@@ -158,6 +167,10 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) 
   app.post('/v1/admin/carts/:id/release', async (req) => {
     guard(req);
     return { cart: summary(await spot.release(req.params.id)) };
+  });
+  app.post('/v1/admin/carts/:id/clear-reports', async (req) => {
+    guard(req);
+    return { cart: summary(spot.clearReports(req.params.id)) };
   });
   app.post('/v1/admin/carts/:id/refund', async (req) => {
     guard(req);
@@ -264,9 +277,11 @@ const post=async(u,b)=>{const r=await fetch(u,{method:'POST',headers:{'content-t
 async function load(){
   const r=await fetch('/v1/admin/overview');if(r.status===401)return location.reload();const d=await r.json();
   const c=d.counts,n=k=>c[k]||0;
-  $('#stats').innerHTML=[['Needs you',d.held.length],['Open',n('open')],['Paid',n('paid')+n('card_issued')],['Done',n('completed')],['Refunded',n('refunded')],['Signups',d.signup_total]].map(([l,v])=>'<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>').join('');
+  $('#stats').innerHTML=[['Needs you',d.held.length+(d.reported||[]).length],['Open',n('open')],['Paid',n('paid')+n('card_issued')],['Done',n('completed')],['Refunded',n('refunded')],['Signups',d.signup_total]].map(([l,v])=>'<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>').join('');
   $('#money').innerHTML=d.money.length?d.money.map(m=>'<div class="hcard"><div class="why">'+m.why.map(esc).join('<br>')+'</div><div><b>'+usd(m.total_cents)+'</b> paid · '+esc(m.item||'cart')+' at '+esc(m.merchant)+' · <span class="pill '+esc(m.status)+'">'+esc(m.status)+'</span></div><div class="meta">store charged '+usd(m.captured_cents)+(m.returned_cents?' · store refunded '+usd(m.returned_cents):'')+' · refunded to payer '+usd(m.refunded_cents)+(m.payer_email?' · '+esc(m.payer_email):'')+' · '+when(m.created_at)+'</div>'+(['paid','card_issued','completed','refunding'].includes(m.status)&&m.refunded_cents<m.total_cents?'<div class="row"><button class="ab no" data-act="refund" data-id="'+m.id+'">Refund the rest</button></div>':'')+'</div>').join(''):'<p class="muted">All square. ✅</p>';
   $('#held').innerHTML=d.held.length?d.held.map(h=>'<div class="hcard"><div class="why">'+esc(h.hold)+'</div><div><b>'+usd(h.total_cents)+'</b> · '+esc(h.item||'cart')+' at '+esc(h.merchant)+'</div><div class="meta">'+esc(h.requester)+' asked'+(h.payer?' · '+esc(h.payer)+' paid':'')+' · '+when(h.created_at)+(h.fingerprint?' · card '+esc(h.fingerprint):'')+(h.payer_email?' · '+esc(h.payer_email):'')+'</div><div class="row"><button class="ab go" data-act="release" data-id="'+h.id+'">Looks fine, release</button><button class="ab no" data-act="refund" data-id="'+h.id+'">Refund</button>'+(h.fingerprint?'<button class="ab" data-act="blockcard" data-v="'+esc(h.fingerprint)+'" data-id="'+h.id+'">Refund + block card</button>':'')+'</div></div>').join(''):'<p class="muted">Nothing held. 🎉</p>';
+  const rep=d.reported||[];if(rep.length)$('#held').insertAdjacentHTML(d.held.length?'beforeend':'afterbegin',rep.map(x=>'<div class="hcard"><div class="why">'+(x.paused?'Paused: ':'')+'Reported by '+x.reports+' '+(x.reports===1?'person':'people')+' who got the link</div><div><b>'+usd(x.total_cents)+'</b> · '+esc(x.item||'cart')+' at '+esc(x.merchant)+'</div><div class="meta">'+esc(x.requester)+' asked · '+when(x.created_at)+' · last report '+when(x.reported_at)+'</div><div class="row"><button class="ab go" data-act="clearreports" data-id="'+x.id+'">Looks fine'+(x.paused?', unpause':'')+'</button></div></div>').join(''));
+  if(rep.length&&!d.held.length){const m=$('#held').querySelector('p.muted');if(m)m.remove()}
   $('#recent').innerHTML=d.recent.map(x=>'<tr><td>'+when(x.created_at)+'</td><td><span class="pill '+(x.hold&&x.status==='paid'?'hold':x.status)+'">'+(x.hold&&x.status==='paid'?'held':x.status.replace('_',' '))+'</span></td><td>'+(x.kind==='flight'?'✈️ ':'')+esc(x.item||'')+(x.items>1?' +'+(x.items-1):'')+'</td><td>'+esc(x.merchant)+'</td><td>'+esc(x.requester)+(x.agent?' <span class="muted">via '+esc(x.agent)+'</span>':'')+'</td><td>'+esc(x.payer||'')+'</td><td class="num">'+usd(x.total_cents)+'</td><td>'+esc([x.for==='self'?'for me':'',x.order,x.booking,x.risk].filter(Boolean).join(' · '))+'</td><td>'+(['paid','card_issued','refunding'].includes(x.status)?'<button class="ab no" data-act="refund" data-id="'+x.id+'">Refund</button>':'')+'</td></tr>').join('')||'<tr><td colspan="9" class="muted">No carts yet.</td></tr>';
   $('#blocks').innerHTML=d.blocks.map(b=>'<tr><td>'+esc(b.kind)+'</td><td>'+esc(b.value)+'</td><td>'+esc(b.reason||'')+'</td><td>'+when(b.at)+'</td><td><button class="ab" data-act="unblock" data-k="'+esc(b.kind)+'" data-v="'+esc(b.value)+'">Remove</button></td></tr>').join('')||'<tr><td colspan="5" class="muted">Nothing blocked.</td></tr>';
   $('#merchants').innerHTML=(d.merchants||[]).map(m=>'<tr><td>'+esc(m.name)+'</td><td>'+esc(m.domain)+'</td><td>'+esc(m.email)+'</td><td>'+when(m.created_at)+'</td><td>'+(m.verified_at?'✓ '+when(m.verified_at):'not yet')+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No stores yet.</td></tr>';
@@ -287,6 +302,7 @@ document.addEventListener('click',async e=>{
   b.disabled=true;$('#err').textContent='';
   try{
     if(a==='release')await post('/v1/admin/carts/'+b.dataset.id+'/release');
+    if(a==='clearreports')await post('/v1/admin/carts/'+b.dataset.id+'/clear-reports');
     if(a==='refund')await post('/v1/admin/carts/'+b.dataset.id+'/refund');
     if(a==='blockcard'){await post('/v1/admin/blocks',{kind:'card',value:b.dataset.v,reason:'Blocked from a held payment'});await post('/v1/admin/carts/'+b.dataset.id+'/refund')}
     if(a==='unblock')await post('/v1/admin/blocks/remove',{kind:b.dataset.k,value:b.dataset.v});

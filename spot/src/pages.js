@@ -205,6 +205,7 @@ const PAY_CSS = `
 .costs .cl span{color:var(--muted)}.costs .cl small{display:block;font-size:12px;opacity:.85}
 .costs .cl b{white-space:nowrap}.costs .tot{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-size:16px}.costs .tot span{color:var(--ink);font-weight:700}
 .nope{display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:15px;text-decoration:underline;cursor:pointer;padding:4px 8px}
+.nope.report{margin-top:2px;font-size:13px}
 /* The pay button rides along at the bottom, so it's one tap from opening the link. */
 .act.stick{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 18px)}
 .act.stick:has(details[open]),.act.stick:has(input:focus){position:static;margin:0;padding:10px 0 4px;background:none}
@@ -260,7 +261,8 @@ export function buddySvg(happy) {
 
 export function payPage({ cart, links, provider, pageUrl, commission = false }) {
   const name = cart.requester.name;
-  const open = cart.status === 'open';
+  // Reported by more than one person: shown, but nobody can pay it.
+  const open = cart.status === 'open' && !cart.paused;
   const covered = ['paid', 'card_issued', 'completed'].includes(cart.status);
   const first = cart.items[0];
   const total = usd(cart.settle === 'card' ? cart.total_cents : cart.cart_cents);
@@ -287,6 +289,8 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
   let lines;
   if (covered) {
     lines = [`<div class="bub big">${esc(cart.payer_name || 'Someone')} already spotted ${esc(name)} 🎉</div>`, `<div class="bub">nothing left to do here. you're all good.</div>`];
+  } else if (cart.paused && cart.status === 'open') {
+    lines = [`<div class="bub big">this link is paused 🛡️</div>`, `<div class="bub">more than one person told Spot they don’t know who sent it, so it can’t be paid while Spot checks. nothing was charged.</div>`];
   } else if (!open) {
     const why = { expired: 'this link expired', canceled: `${esc(name)} canceled this one`, refunded: 'this one was refunded' }[cart.status] || 'this link is closed';
     lines = [`<div class="bub big">oh! ${why}.</div>`, `<div class="bub">ask ${esc(name)} for a fresh one 🙂</div>`];
@@ -309,7 +313,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}${cart.for === 'self' || cart.kind === 'flight' || cart.kind === 'train' || cart.bundle_id ? '' : '<button type="button" class="nope" id="nope">Not this time</button>'}</div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}${commission ? `<p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from ${esc(cart.merchant.name)}. Your price is the same.</p>` : ''}${cart.for === 'self' || cart.kind === 'flight' || cart.kind === 'train' || cart.bundle_id ? '' : `<button type="button" class="nope" id="nope">Not this time</button><button type="button" class="nope report" id="report">Don’t know ${esc(name)}? Report this link</button>`}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -328,6 +332,11 @@ function celebrate(payer){
   for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}
   document.body.appendChild(c);setTimeout(()=>c.remove(),3000);scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 }
+const rep=$('#report');if(rep)rep.onclick=async()=>{if(!confirm('Report this link to Spot? Don’t pay links from people you don’t know.'))return;rep.disabled=true;
+  try{await api('/v1/carts/'+${json(cart.token)}+'/report',{reason:'unknown_sender'});
+    const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
+    $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">thanks for telling me 🛡️</div><div class="bub" style="animation-delay:.45s">nothing was charged. Spot will take a look, and links reported by more than one person stop working.</div>')}
+  catch(e){rep.disabled=false;alert(e.message)}};
 const nope=$('#nope');if(nope)nope.onclick=async()=>{if(!confirm('Let '+${json(name)}+' know you can’t spot this one?'))return;nope.disabled=true;
   try{const nm=$('#payer');await api('/v1/carts/'+${json(cart.token)}+'/decline',{name:nm?nm.value:''});
     const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
