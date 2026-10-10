@@ -1374,6 +1374,8 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
       await p.click('#tabs button[data-tab="calls"]'); await p.waitForSelector('.panel[data-panel="calls"] .stage img.base', { timeout: 10000 });
       const cs = { empty: await p.locator('.panel[data-panel="calls"] .stage .empty').count(), overlays: await p.locator('.panel[data-panel="calls"] .art-overlay img').count(), note: await p.locator('.panel[data-panel="calls"] .concept-note').count() };
       ok(cs.empty === 0 && cs.overlays === 1 && cs.note === 1, 'Callouts: the front view is the concept render with the client\'s logo on it, not an empty drop box', cs);
+      const hb = await p.evaluate(() => { const r = e => { const b = e && e.getBoundingClientRect(); return b && { cy: b.top + b.height / 2, h: b.height, top: b.top }; }, acts = document.querySelector('.top .acts'); return { save: r(acts.querySelector('[data-act="save"]')), more: r(acts.querySelector('.more > summary')), submit: r(acts.querySelector('.go, .btn.go, [data-act="submit"]')) }; });
+      ok(hb.save && hb.more && Math.abs(hb.save.cy - hb.more.cy) <= 1.5 && Math.abs(hb.save.h - hb.more.h) <= 2, 'the header "More" button lines up with the other header pills (same centre line, same height)', hb);
       await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j96-callouts.png` }).catch(() => {});
       const admin2 = await forge({ sub: sql(`select id from users where client_id='${cid}' limit 1`), clientId: cid, role: 'admin' });
       const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin2);
