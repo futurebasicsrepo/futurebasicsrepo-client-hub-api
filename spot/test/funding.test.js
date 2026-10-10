@@ -184,3 +184,17 @@ test('automatic: the order is placed without a tap when the store total is insid
   const got = (await ai('GET', `/v1/agent/asks/${r.body.ask_id}`)).body;
   assert.deepEqual(got.approvals.map((x) => [x.approved_by, x.how]), [['rules', 'paid_by_rules'], ['rules', 'placed_order']]);
 });
+
+test('a saved Stripe customer from other keys (test mode) is replaced, not a dead end', async () => {
+  const { stripeProvider } = await import('../src/providers.js');
+  const p = stripeProvider({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_PUBLISHABLE_KEY: 'pk_test_x' });
+  const made = [];
+  p.stripe.customers.create = async () => (made.push(1), { id: `cus_new${made.length}` });
+  p.stripe.setupIntents.create = async ({ customer }) => {
+    if (customer === 'cus_testmode') throw Object.assign(new Error("No such customer: 'cus_testmode'"), { type: 'StripeInvalidRequestError', code: 'resource_missing' });
+    return { client_secret: `seti_${customer}_secret` };
+  };
+  const out = await p.setupFunding({ id: 'u1', email: 'k@x.co' }, { customer: 'cus_testmode' });
+  assert.equal(out.customer, 'cus_new1');
+  assert.equal(out.client_secret, 'seti_cus_new1_secret');
+});

@@ -779,6 +779,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       family_name: z.string(),
       born_on: z.string().describe('YYYY-MM-DD'),
       gender: z.enum(['m', 'f']).describe('As shown on their ID'),
+      loyalty: z.array(z.object({ airline: z.string().describe('2-letter airline code, e.g. AA'), number: z.string() })).max(5).optional().describe('Frequent flyer numbers, if your user has them'),
     });
 
     server.registerTool(

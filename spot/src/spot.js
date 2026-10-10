@@ -1114,7 +1114,7 @@ export function ownerCart(cart) {
     refund_reason: cart.refund_reason || null,
     refunded_cents: cart.refunded_cents || 0,
     refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
-    travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender }) => ({ given_name, family_name, born_on, gender })) || null,
+    travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender, loyalty }) => ({ given_name, family_name, born_on, gender, loyalty: loyalty || [] })) || null,
     contact: cart.flight?.contact || cart.train?.contact || null,
     riders: cart.train?.riders || null,
   };

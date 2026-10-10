@@ -227,9 +227,20 @@ export function stripeProvider(env = process.env) {
     // A Stripe customer per account, and a SetupIntent the account page
     // confirms with Stripe.js: the card number goes to Stripe, never here.
     async setupFunding(user, saved) {
-      const customer = saved?.customer || (await stripe.customers.create({ email: user.email || undefined, name: user.name || undefined, metadata: { spot_user_id: user.id } }, { idempotencyKey: `spot-cus-${user.id}` })).id;
+      const make = () => stripe.customers.create({ email: user.email || undefined, name: user.name || undefined, metadata: { spot_user_id: user.id } }).then((c) => c.id);
+      let customer = saved?.customer || (await make());
       // Cards only: no Link, BLIK or bank redirects, which can't pay later off-session.
-      const si = await stripe.setupIntents.create({ customer, usage: 'off_session', payment_method_types: ['card'], metadata: { spot_user_id: user.id } });
+      const intent = (c) => stripe.setupIntents.create({ customer: c, usage: 'off_session', payment_method_types: ['card'], metadata: { spot_user_id: user.id } });
+      let si;
+      try {
+        si = await intent(customer);
+      } catch (err) {
+        // A customer saved under other keys (test mode, or an old account) isn't
+        // known here: start a new one rather than failing every time.
+        if (err?.code !== 'resource_missing' || !saved?.customer) throw err;
+        customer = await make();
+        si = await intent(customer);
+      }
       return { mode: 'stripe', customer, publishable_key: env.STRIPE_PUBLISHABLE_KEY, client_secret: si.client_secret };
     },
     async saveFunding(user, saved, input = {}) {

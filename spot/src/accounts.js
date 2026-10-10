@@ -28,6 +28,7 @@ import { ownerCart } from './spot.js';
 import { emailLayout, normalizePhone } from './notify.js';
 import { approverOf, monthStart, normalizeRules } from './rules.js';
 import { fundingOf, fundingView } from './funding.js';
+import { cleanLoyalty } from './flights.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -415,6 +416,8 @@ function cleanTravelers(list) {
     const s = (v, n) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, n) : '');
     const out = { given_name: s(t?.given_name, 40), family_name: s(t?.family_name, 40), born_on: DAY.test(t?.born_on || '') ? t.born_on : '', gender: t?.gender === 'm' || t?.gender === 'f' ? t.gender : '' };
     if (!out.given_name || !out.family_name) throw new CartError('Each saved traveler needs a first and last name');
+    const loyalty = cleanLoyalty(t?.loyalty, `${out.given_name} ${out.family_name}`);
+    if (loyalty.length) out.loyalty = loyalty;
     return out;
   });
 }

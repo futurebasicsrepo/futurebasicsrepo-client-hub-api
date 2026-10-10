@@ -188,7 +188,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     <div class="btnrow"><button class="btn primary">Save sizes</button><span class="ok-msg" id="sizeOk"></span></div>
   </form>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
-    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
+    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="two"><input name="la" placeholder="Airline (e.g. AA)" maxlength="2" autocapitalize="characters" aria-label="Frequent flyer airline code"><input name="ln" placeholder="Frequent flyer # (optional)" autocapitalize="characters" autocomplete="off" aria-label="Frequent flyer number"></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
   </div>
 </section>
 <section id="signinSec"><h2>Sign-in methods</h2><p class="sub">Every way you can get into this account. Add your phone and email so either one works.</p>
@@ -240,7 +240,7 @@ async function load(){
       +'<div class="racts"><a class="go" href="'+esc(c.manage_url)+'">Finish →</a>'+(canAsk?'<button type="button" class="go ghost" data-ask="'+esc(c.token)+'" data-url="'+esc(c.manage_url)+'">Ask someone to pay 💸</button>':'')+'</div></div>'}).join('');
   renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';for(const el of $('#sizeForm').elements)if(el.name)el.value=(u.sizes||{})[el.name]||'';
-  $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
+  $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+((t.loyalty||[]).length?' <small class="sub">· ✈️ '+t.loyalty.map(l=>esc(l.airline+' '+l.number)).join(', ')+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
   const NAMES={google:'Google',facebook:'Facebook'};
   $('#methods').innerHTML=row('✉️',u.email?esc(u.email):'Email',u.email?'Sign-in codes and receipts':'Not added yet',u.email?'<button class="linkbtn" data-add="email">Change</button>':'<button class="btn ghost" data-add="email">Add email</button>')
@@ -302,7 +302,7 @@ $('#sizeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
   try{await post('/v1/me',{sizes:Object.fromEntries(new FormData(e.target))});$('#sizeOk').textContent='Saved';setTimeout(()=>$('#sizeOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
 $('#payForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
   try{await post('/v1/me',{venmo:v.venmo,cashtag:v.cashtag});$('#payOk').textContent='Saved';setTimeout(()=>$('#payOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
-$('#travForm').addEventListener('submit',async e=>{e.preventDefault();const t=Object.fromEntries(new FormData(e.target));try{await post('/v1/me',{travelers:[...me.user.travelers,t]});e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
+$('#travForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));const t={given_name:f.given_name,family_name:f.family_name,born_on:f.born_on,gender:f.gender,loyalty:f.ln?[{airline:f.la,number:f.ln}]:[]};try{await post('/v1/me',{travelers:[...me.user.travelers,t]});e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 document.addEventListener('click',async e=>{const rm=e.target.closest('[data-rm]'),rv=e.target.closest('[data-revoke]');
   try{if(rm){await post('/v1/me',{travelers:me.user.travelers.filter((_,i)=>i!==+rm.dataset.rm)});load()}
     if(rv){if(!confirm('Disconnect this AI? It stops working right away.'))return;await post('/v1/me/keys/'+encodeURIComponent(rv.dataset.revoke)+'/revoke');load()}}catch(err){$('#err').textContent=err.message}});
@@ -357,7 +357,7 @@ document.addEventListener('click',async e=>{const id=e.target.id;if(!['fundAdd',
     if(id==='autoOff'){me.funding=await post('/v1/me/funding/auto',{on:false});load()}
     if(id==='aiStop'){if(!confirm('Stop every AI on your account? New asks are refused, and cards not used yet are canceled and refunded.'))return;const r=await post('/v1/me/ai/stop');$('#addOk').textContent='';alert('Stopped. '+(r.refunded?r.refunded+' unused card'+(r.refunded>1?'s':'')+' canceled and refunded.':'Nothing was waiting to be bought.')+(r.still_ordering?' '+r.still_ordering+' order'+(r.still_ordering>1?'s are':' is')+' already being placed.':''));load()}
     if(id==='aiResume'){await post('/v1/me/ai/resume');load()}
-  }catch(err){$('#err').textContent=err.message}});
+  }catch(err){$('#err').textContent=err.message;$('#err').scrollIntoView({block:'center',behavior:'smooth'})}});
 $('#fundForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const b=$('#fundSave');b.disabled=true;
   try{let body;
     if(MODE==='stripe'){const {error,setupIntent}=await fundStripe.stripe.confirmSetup({elements:fundStripe.elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error)throw error;body={setup_intent:setupIntent.id}}
