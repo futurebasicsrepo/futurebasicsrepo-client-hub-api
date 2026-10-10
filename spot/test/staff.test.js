@@ -116,3 +116,32 @@ test('health: stuck money, services, the $2 fee, Claude cost and traffic', async
   assert.equal(h.funnel.at(-1).made, 2);
   assert.doesNotMatch(JSON.stringify(h), /duffel_live_x|secret123/, 'no settings values in the report');
 });
+
+test('health records every service a purchase touches, and a card that failed to issue is retried on its own', async (t) => {
+  const provider = sandboxProvider();
+  let failIssue = true;
+  const realIssue = provider.issueCard.bind(provider);
+  provider.issueCard = async (c) => {
+    if (failIssue) throw new Error('The v2 financial account id must be specified.');
+    return realIssue(c);
+  };
+  const db = openDb(':memory:');
+  const a = buildApp({ db, provider, cfg, logger: false, env: {} });
+  t.after(() => a.close());
+  const cart = { requester: { name: 'Kyle' }, merchant: { name: 'SKLZ', url: 'https://sklz.com' }, items: [{ title: 'Pro Mini Hoop', price_cents: 3499 }] };
+  const made = (await a.inject({ method: 'POST', url: '/v1/carts', payload: cart })).json().cart;
+  await a.inject({ method: 'POST', url: `/v1/carts/${made.token}/sandbox-pay`, payload: {} });
+  let s = a.metrics.services();
+  assert.ok(s.stripe.ok_at, 'the payment counts as Stripe payments');
+  assert.ok(s.issuing.fail_at, 'the card counts as Stripe Issuing');
+  assert.match(s.issuing.error, /v2 financial account/);
+
+  // The provider is fixed; nobody opens the page; the sweeper finishes it.
+  failIssue = false;
+  db.raw.prepare("UPDATE cart_events SET at = at - 600000 WHERE kind = 'issue_failed'").run();
+  await a.spot.sweepIssue();
+  const after = (await a.inject({ method: 'GET', url: `/v1/carts/${made.token}` })).json().cart;
+  assert.equal(after.status, 'card_issued');
+  s = a.metrics.services();
+  assert.ok(s.issuing.ok_at > s.issuing.fail_at, 'Issuing reads as working again');
+});

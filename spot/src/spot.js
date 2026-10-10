@@ -750,6 +750,19 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // Issue the merchant-locked card. Safe to retry: a failed issue leaves
     // the cart `paid`, and the requester page retries on the next view, at
     // most once a minute (the page checks every few seconds).
+    // Paid carts whose card failed to issue: try again on the sweeper's
+    // clock, so a fix on Spot's side finishes them without anyone opening
+    // a page. Only carts that already failed once (a fresh payment is
+    // still issuing), and issue() itself waits ISSUE_RETRY_MS between tries.
+    async sweepIssue() {
+      for (const id of db.idsByStatus(['paid'])) {
+        const cart = db.byId(id);
+        if (!cart || cart.kind === 'flight' || cart.hold || cart.dispute) continue;
+        if (!db.events(cart.id).some((e) => e.kind === 'issue_failed')) continue;
+        await this.issue(cart, { retry: true }).catch(() => {});
+      }
+    },
+
     async issue(cart, { retry = false } = {}) {
       if (cart.status !== 'paid' || cart.kind === 'flight' || cart.hold || cart.dispute) return cart;
       if (retry) {

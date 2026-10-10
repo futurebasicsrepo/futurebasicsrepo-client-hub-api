@@ -52,6 +52,10 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // Counters and timings for /admin/health (metrics.js).
   const metrics = createMetrics(db);
   app.decorate('metrics', metrics);
+  // Every caller of the payment provider is watched: card calls count as
+  // Stripe Issuing, the rest as Stripe payments.
+  const ISSUING = ['issueCard', 'revealCard', 'cancelCard', 'answerAuthorization'];
+  provider = watched(provider, metrics, (key) => (ISSUING.includes(key) ? 'issuing' : 'stripe'));
   app.addHook('onResponse', async (req, reply) => {
     metrics.request(req.routeOptions?.url || 'unmatched', reply.statusCode, Math.round(reply.elapsedTime || 0));
   });
@@ -90,7 +94,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
   });
   const risk = createRisk({ db, env });
-  const spot = createSpot({ db, provider: watched(provider, metrics, provider.name === 'stripe' ? 'stripe' : 'payments_sandbox'), flights: watched(flights, metrics, 'duffel'), risk, cfg, log: app.log });
+  const spot = createSpot({ db, provider, flights: watched(flights, metrics, 'duffel'), risk, cfg, log: app.log });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
   // One public address: pages opened on www. or the Railway domain move to
@@ -122,7 +126,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const signing = createSigning({ db, env, origin: baseUrl });
   const signRequest = (u) => signing.signRequest(u);
   app.decorate('signing', signing);
-  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
   spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth: fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics }), ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
@@ -217,6 +221,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (++sweeps % 5 === 0) spot.sweepMoney().catch((err) => app.log.error({ err }, 'money sweep failed'));
     // Follows store checkouts that payers opened but haven't come back from.
     if (sweeps % 2 === 0) spot.sweepDirect().catch((err) => app.log.error({ err }, 'store checkout sweep failed'));
+    // Paid carts whose card didn't issue (a provider hiccup) get it once it works.
+    spot.sweepIssue().catch((err) => app.log.error({ err }, 'issue sweep failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -808,7 +814,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     let event;
     try {
       event = provider.verifyWebhook(req.rawBody, req.headers['stripe-signature']);
+      metrics.ok('stripe_webhook');
     } catch (err) {
+      metrics.fail('stripe_webhook', 'bad signature');
       req.log.warn({ err }, 'bad stripe signature');
       return reply.code(400).send({ error: 'Bad signature' });
     }
@@ -887,12 +895,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
 // Record success and failure of a service's calls for /admin/health, without
 // changing what the calls do. Only functions are wrapped; plain fields pass through.
-function watched(target, metrics, name) {
+function watched(target, metrics, nameOf) {
   if (!target) return target;
   return new Proxy(target, {
     get(obj, key, recv) {
       const v = Reflect.get(obj, key, recv);
       if (typeof v !== 'function' || ['verifyWebhook', 'constructor'].includes(key)) return v;
+      const name = typeof nameOf === 'function' ? nameOf(key) : nameOf;
       return function (...args) {
         let out;
         try {

@@ -149,7 +149,7 @@ Rules:
 
 // Runs one checkout. `confirm(summary)` resolves true/false when the
 // requester answers; `progress(step)` streams short status lines.
-export async function runCheckoutAgent({ page, cart, shipping, getCard, billing = null, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model }) {
+export async function runCheckoutAgent({ page, cart, shipping, getCard, billing = null, startUrl, client, confirm, progress = () => {}, maxSteps = MAX_STEPS, deadlineMs = 8 * 60_000, model, onUsage }) {
   const anthropic = client ?? anthropicClient();
   const hosts = allowedHosts(cart, [startUrl && new URL(startUrl).hostname].filter(Boolean));
   const limit = authLimitCents(cart.cart_cents);
@@ -176,6 +176,7 @@ export async function runCheckoutAgent({ page, cart, shipping, getCard, billing 
       tools: TOOLS,
       messages,
     });
+    onUsage?.(res.model, res.usage);
     if (res.stop_reason === 'refusal') return finish({ status: 'needs_you', reason: 'The checkout assistant declined this page' });
     messages.push({ role: 'assistant', content: res.content });
     const calls = res.content.filter((b) => b.type === 'tool_use');
