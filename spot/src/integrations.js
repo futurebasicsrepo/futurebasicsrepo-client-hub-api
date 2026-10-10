@@ -36,6 +36,7 @@ const CSS = `
 .codebox pre{background:var(--night2);color:#e9e2d8;border-radius:14px;padding:44px 18px 18px;overflow-x:auto;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;border:1px solid #2e2821}
 .codebox .copy{position:absolute;top:10px;right:10px;border:0;border-radius:8px;padding:6px 10px;font:600 13px Bricolage,system-ui;background:#3a322a;color:#f4efe8;cursor:pointer}
 .row2{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.bmhow{margin-top:14px;font-size:15px}.bmhow ol{margin:0 0 12px}.bmhow li{margin:4px 0}
 .soon-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:30px}
 .soon{min-width:0;background:var(--card);border:1px dashed var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:8px}
 .soon .top{display:flex;gap:10px;align-items:center;font-weight:800;line-height:1.2}
@@ -171,7 +172,8 @@ spot-merchant=mer_…   (from your registration)`;
   <div class="icard wide reveal" id="bookmarklet">
     <div class="top"><div class="ic">🔖</div><h3>Bookmarklet</h3><span class="badge live">Available</span></div>
     <p>No install at all: drag this to your bookmarks bar, then click it on any product page. Works in every desktop browser.</p>
-    <div class="row2"><a class="btn primary" href="${esc(bookmarklet)}" onclick="event.preventDefault();alert('Drag this button to your bookmarks bar.')">● Spot this</a><span class="muted" style="font-size:14px">← drag me</span></div>
+    <div data-bmwrap><div class="row2"><a class="btn primary" href="${esc(bookmarklet)}" draggable="true" data-bm>● Spot this</a><span class="muted" style="font-size:14px">← drag me to your bookmarks bar</span></div>
+    <div class="bmhow" hidden><ol><li>Show your bookmarks bar: <b>⌘ Shift B</b> (Mac) or <b>Ctrl Shift B</b> (Windows).</li><li>Drag <b>● Spot this</b> onto it.</li><li>Won’t drag? Right-click the bookmarks bar → <b>Add page…</b>, name it <b>Spot this</b>, and paste the code below as the URL.</li></ol><button type="button" class="btn ghost bmcopy">Copy the code</button></div></div><script>document.querySelectorAll('[data-bm]').forEach(a=>{const how=a.closest('[data-bmwrap]').querySelector('.bmhow');a.addEventListener('click',e=>{e.preventDefault();how.hidden=false});how.querySelector('.bmcopy').addEventListener('click',async ev=>{try{await navigator.clipboard.writeText(a.getAttribute('href'));ev.target.textContent='Copied ✓ now paste it as the URL'}catch{prompt('Copy this, then paste it as the bookmark URL:',a.getAttribute('href'))}})})</script>
   </div>
 
 </div>
