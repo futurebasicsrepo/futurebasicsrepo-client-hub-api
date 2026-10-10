@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
-import { payableHandler, pickVariant } from '../src/fulfill/ucp.js';
+import { orderRef, payableHandler, pickVariant } from '../src/fulfill/ucp.js';
 
 const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
@@ -331,6 +331,35 @@ test('pay the store directly: Spot builds the store’s checkout, the payer pays
   assert.equal(mine.cart.card_ready, false, 'no card was ever issued');
 });
 
+test('pay the store directly: a checkout the requester started for themselves isn’t handed to the payer', async (t) => {
+  const store = await startUcpStore();
+  const { app, call } = await directSetup(t, store);
+  const made = (await call('POST', '/v1/carts', directCart(store.origin))).body;
+  const { token } = made.cart;
+  const k = made.manage_key;
+  await call('POST', `/v1/carts/${token}/manage/prepare`, { k, shipping });
+
+  // Kyle starts paying it himself, then changes his mind and sends it on.
+  assert.equal((await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k })).status, 200);
+  const his = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Kyle Riggle', email: 'kyle@example.com' });
+  assert.equal(his.status, 200, JSON.stringify(his.body));
+  assert.equal((await call('POST', `/v1/carts/${token}/manage/reassign`, { k })).status, 200);
+
+  // Danielle gets her own checkout, with her as the buyer.
+  const hers = await call('POST', `/v1/carts/${token}/direct/start`, { name: 'Danielle', email: 'danielle@example.com' });
+  assert.equal(hers.status, 200, JSON.stringify(hers.body));
+  assert.notEqual(hers.body.continue_url, his.body.continue_url);
+  const created = store.log.filter((r) => r.method === 'POST' && r.url === '/ucp/checkout-sessions').at(-1);
+  assert.equal(created.body.buyer.email, 'danielle@example.com');
+  assert.equal((await call('POST', `/v1/carts/${token}/direct/start`, {})).body.continue_url, hers.body.continue_url, 'hers is reused for her');
+
+  await fetch(`${hers.body.continue_url}/pay`, { method: 'POST' });
+  await app.spot.sweepDirect();
+  const mine = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).body;
+  assert.equal(mine.cart.status, 'completed');
+  assert.equal(mine.cart.payer_name, 'Danielle', 'Kyle thanks Danielle, not himself');
+});
+
 test('pay the store directly: only for stores that take UCP checkout', async (t) => {
   const store = await startUcpStore();
   const { call } = await directSetup(t, store);
@@ -644,4 +673,11 @@ test('Shopify agent token: fetched once, used only for Shopify stores with a buy
     console.error = quiet;
   }
   assert.deepEqual(seen[2], { auth: null, ip: null, signed: false }, 'refused token: retried as before');
+});
+
+test('order numbers: the one a shopper knows, never a store’s internal id', () => {
+  assert.equal(orderRef({ id: 'gid://shopify/Order/7872717684808' }), null);
+  assert.equal(orderRef({ id: 'gid://shopify/Order/1', name: '#SB1042' }), 'SB1042');
+  assert.equal(orderRef({ id: 'ord_888' }), 'ord_888');
+  assert.equal(orderRef(null), null);
 });

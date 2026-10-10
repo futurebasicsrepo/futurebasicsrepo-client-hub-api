@@ -88,6 +88,16 @@ async function send(fetchImpl, url, init, ms = TIMEOUT_MS) {
 
 // Links from the store end up as buttons on the requester's page: web
 // links only.
+// The order number a shopper would recognize. Stores may only send an
+// internal id (Shopify sends "gid://shopify/Order/…"); that's no use to anyone.
+export function orderRef(order) {
+  for (const v of [order?.name, order?.label, order?.number, order?.order_number, order?.id]) {
+    const s = v == null ? '' : String(v).trim().replace(/^#/, '');
+    if (s && /^[\w.-]{1,40}$/.test(s)) return s;
+  }
+  return null;
+}
+
 export function link(u, allowPrivate) {
   try {
     const x = new URL(u);
@@ -493,7 +503,7 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
     return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `Paying didn't go through: ${err.message}`, manual_url: err.continueUrl || manual };
   }
   if (co.status === 'completed') {
-    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: co.order?.id || null, order_url: co.order?.permalink_url || null };
+    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: orderRef(co.order), order_url: co.order?.permalink_url || null };
   }
   return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: blocked(co, `${cart.merchant.name} needs you to finish paying`), manual_url: co.continue_url || manual };
 }

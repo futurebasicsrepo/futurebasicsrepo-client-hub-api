@@ -522,10 +522,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (d?.checkout_id && Date.now() - d.started_at < 30 * 60_000) {
         const now = await this.directSync(token);
         if (now.status !== 'open') throw new CartError('This cart is already taken care of', 409);
-        if (now.direct?.checkout_id) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
+        // Reuse it only for the same side: a checkout the requester started
+        // for themselves carries their name and email, so once the ask is
+        // sent on, the payer gets a fresh one.
+        if (now.direct?.checkout_id && now.direct.for === cart.for) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
       }
       const started = await this.direct.start(cart, { email, buyerIp: ip });
-      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
+      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), for: cart.for, payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
       return { continue_url: started.continue_url, total_cents: started.total_cents };
     },
 
@@ -546,7 +549,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (st.status === 'completed') {
         const done = move(db.byId(cart.id), 'store_paid', {
           paid_at: Date.now(),
-          payer: cart.payer || (d.payer_name ? { name: d.payer_name } : null),
+          // Paid for themselves: no payer to thank.
+          payer: cart.payer || (d.payer_name && cart.for !== 'self' ? { name: d.payer_name } : null),
           payer_contact: d.payer_email ? { email: d.payer_email } : cart.payer_contact || null,
           fulfillment: { state: 'placed', method: 'direct', order_number: st.order_number, order_url: st.order_url, total_cents: st.total_cents, placed_at: Date.now() },
         }, { order_number: st.order_number });
