@@ -198,7 +198,11 @@ test('stripe webhooks: payment issues Spot’s card at once (no billing step); a
   assert.equal(a.cart.status, 'open');
   const pay = await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
   assert.equal(pay.body.client_secret, `pi_${a.cart.token}_secret`);
-  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody() })).status, 409, 'no edits once a payer has started');
+  // Someone is in the middle of paying (the payment can't be canceled): no edits.
+  const cancelPayment = provider.cancelPayment;
+  provider.cancelPayment = async () => false;
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody() })).status, 409, 'no edits once a payer is paying');
+  provider.cancelPayment = cancelPayment;
 
   const hook = hookFor(app);
   assert.equal((await hook({}, 'forged')).statusCode, 400);
@@ -552,4 +556,58 @@ test('the pay page shows where every dollar goes: items, shipping + tax, room fo
   assert.match(page, new RegExp(`Card processing<small>card network, not Spot</small></span><b>${$(c.fee_cents - c.fee_keep_cents)}`));
   assert.match(page, new RegExp(`Spot fee</span><b>${$(c.fee_keep_cents)}`));
   assert.match(page, new RegExp(`Total</span><b>${$(c.total_cents)}`));
+});
+
+test('opening the pay page doesn’t lock the link: an edit cancels the unpaid payment and the next visit charges the new total', async (t) => {
+  const provider = stripeLike();
+  const canceled = [];
+  provider.cancelPayment = async (ref) => (canceled.push(ref), true);
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
+  const body = cartBody();
+  body.items[0].price_cents += 100;
+  const edited = await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: body });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.deepEqual(canceled, [`pi_${a.cart.token}`]);
+  assert.equal(app.spot.load(a.cart.token).payment_ref, null, 'the next visit starts a payment for the new total');
+  assert.ok(edited.body.cart.total_cents > a.cart.total_cents);
+});
+
+test('money that lands on a canceled link goes back, and a disputed payment is never refunded twice', async (t) => {
+  const log = [];
+  const provider = stripeLike(log);
+  provider.cancelPayment = async () => true;
+  const { app, call } = stripeSetup(provider);
+  t.after(() => app.close());
+  const hook = hookFor(app);
+
+  // The requester cancels while the payer is in Apple Pay; the money lands anyway.
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/manage/cancel`, { k: a.manage_key })).status, 200);
+  const landed = { type: 'payment_intent.succeeded', data: { object: { id: `pi_${a.cart.token}`, amount_received: a.cart.total_cents, latest_charge: 'ch_1', metadata: { spot_cart_id: 'x' } } } };
+  assert.equal((await hook(landed)).statusCode, 200);
+  assert.deepEqual(log.filter((x) => x[0] === 'refund'), [['refund', `pi_${a.cart.token}`, a.cart.total_cents, 'closed']]);
+  await hook(landed); // Stripe retries: the same idempotent refund, never a second payment kept
+  assert.equal(app.spot.load(a.cart.token).status, 'canceled');
+
+  // Disputed with the bank: the requester's refund button would pay them twice.
+  const b = await paidStripeCart(app, call, hook);
+  await hook({ type: 'charge.dispute.created', data: { object: { payment_intent: `pi_${b.cart.token}`, reason: 'fraudulent' } } });
+  const r = await call('POST', `/v1/carts/${b.cart.token}/manage/refund`, { k: b.manage_key });
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /disputed/);
+});
+
+test('an edit can’t switch how a link is paid (that would drop the fee from a Spot-bought cart)', async (t) => {
+  const { app, call } = setup(sandboxProvider());
+  t.after(() => app.close());
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  const r = await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody({ settle: 'handoff' }) });
+  assert.equal(r.status, 409);
+  const same = await call('POST', `/v1/carts/${a.cart.token}/manage/edit`, { k: a.manage_key, cart: cartBody({ settle: 'card' }) });
+  assert.equal(same.status, 200);
+  assert.ok(same.body.cart.fee_cents > 0, 'still priced as Spot buys it');
 });

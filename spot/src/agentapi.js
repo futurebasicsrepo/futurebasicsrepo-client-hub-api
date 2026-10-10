@@ -74,6 +74,21 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     used.set(k, n);
     if (used.size > 10_000) for (const key of used.keys()) if (!key.startsWith(day)) used.delete(key);
   }
+  // Finish links by email: an address other than the signed-in person's own
+  // gets at most 3 a day from all AIs together, so Spot can't be used to
+  // send mail to strangers.
+  function checkRecipient(req, email) {
+    if (!email) return;
+    const to = String(email).trim().toLowerCase();
+    if (!/^[^@\s:]+@[^@\s:]+\.[^@\s:]+$/.test(to)) throw new CartError('send_to_email looks wrong');
+    const own = req.spotUserId ? db.users.byId(req.spotUserId)?.email : null;
+    if (own && own.toLowerCase() === to) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const k = `${day}:to:${to}`;
+    const n = (used.get(k) || 0) + 1;
+    if (n > 3) throw new CartError('Spot already emailed that address 3 times today. Ask your user to sign in to Spot from this app to send more.', 429);
+    used.set(k, n);
+  }
   const QUOTA = { asks: Number(env.SPOT_KEY_ASKS_PER_DAY || 100), messages: Number(env.SPOT_KEY_MESSAGES_PER_DAY || 20), searches: Number(env.SPOT_KEY_SEARCHES_PER_DAY || 200) };
 
   // The AI activity log its owner sees on their account page.
@@ -239,6 +254,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     if (Array.isArray(b.stores) && b.stores.length) return createBundleAsk(req, agent, b);
     quota(agent, 'asks', QUOTA.asks);
     if (b.for === 'self' && (b.notify?.email || b.notify?.phone)) quota(agent, 'messages', QUOTA.messages);
+    checkRecipient(req, b.notify?.email);
     let merchant = b.merchant;
     let items = b.items;
     let extras = b.extras_cents || 0;
@@ -256,9 +272,10 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         throw err;
       }
     }
-    const goods = items.reduce((n, i) => n + Math.round(Number(i.price_cents) || 0) * (Math.round(Number(i.quantity)) || 1), 0) + (Math.round(Number(extras)) || 0);
-    const gateUrl = merchant?.url || items.find((i) => i.url)?.url || null;
-    const g = gate(req, agent, { cents: goods, storeUrl: gateUrl, merchant: merchant?.name });
+    const goods = items.reduce((n, i) => n + (Number(i.price_cents) || 0) * (i.quantity == null ? 1 : Number(i.quantity) || 0), 0) + (Math.round(Number(extras)) || 0);
+    // The store rule covers every link Spot might order from, not just the merchant's.
+    const gateUrls = [...new Set([merchant?.url, ...items.map((i) => i?.url)].filter((u) => typeof u === 'string' && u))];
+    const g = gate(req, agent, { cents: goods, storeUrl: gateUrls.length ? gateUrls : null, merchant: merchant?.name });
     // Paid from the account's own card (funding.js): 'tap' asks for one tap,
     // 'auto' (a separate opt-in) pays right away. Only for the user's own
     // asks inside the rules; anything else gets a link as before.
@@ -407,6 +424,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   async function createFlightAsk(req, agent, b = {}) {
     quota(agent, 'asks', QUOTA.asks);
     if (b.notify?.email || b.notify?.phone) quota(agent, 'messages', QUOTA.messages);
+    checkRecipient(req, b.notify?.email);
     if (!flights) throw new CartError('Flights are not enabled on this server', 404);
     // Selling flights with real money waits on a seller-of-travel decision
     // (registration, or the airline as merchant of record via Duffel). Until
@@ -434,6 +452,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   async function createTrainAsk(req, agent, b = {}) {
     quota(agent, 'asks', QUOTA.asks);
     if (b.notify?.email || b.notify?.phone) quota(agent, 'messages', QUOTA.messages);
+    checkRecipient(req, b.notify?.email);
     // Like flights: reselling travel with real money waits on a seller-of-
     // travel decision, so live Stripe keys keep trains off unless SPOT_TRAINS_LIVE=on.
     if (String(env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') && env.SPOT_TRAINS_LIVE !== 'on') throw new CartError('Train tickets aren’t available on Spot yet.', 403);
@@ -458,9 +477,11 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   async function createBundleAsk(req, agent, b) {
     quota(agent, 'asks', QUOTA.asks);
     if (b.for === 'self' && (b.notify?.email || b.notify?.phone)) quota(agent, 'messages', QUOTA.messages);
+    checkRecipient(req, b.notify?.email);
+    if (b.stores.some((st) => !st || typeof st !== 'object')) throw new CartError('Each store needs a merchant and items');
     const stores = b.stores.map((st) => ({ merchant: st.merchant, items: st.items, extras_cents: st.extras_cents }));
-    const goods = stores.reduce((n, st) => n + (st.items || []).reduce((m, i) => m + Math.round(Number(i.price_cents) || 0) * (Math.round(Number(i.quantity)) || 1), 0) + (Math.round(Number(st.extras_cents)) || 0), 0);
-    const urls = stores.map((st) => st.merchant?.url || (st.items || []).find((i) => i.url)?.url || null);
+    const goods = stores.reduce((n, st) => n + (Array.isArray(st.items) ? st.items : []).reduce((m, i) => m + (Number(i.price_cents) || 0) * (i.quantity == null ? 1 : Number(i.quantity) || 0), 0) + (Math.round(Number(st.extras_cents)) || 0), 0);
+    const urls = [...new Set(stores.flatMap((st) => [st.merchant?.url, ...(Array.isArray(st.items) ? st.items : []).map((i) => i?.url)]).filter((u) => typeof u === 'string' && u))];
     const g = gate(req, agent, { cents: goods, storeUrl: urls, merchant: stores.map((st) => st.merchant?.name).join(', ') });
     const user = g.route && req.spotUserId ? db.users.byId(req.spotUserId) : null;
     const forSelf = b.for === 'self' && !g.route;

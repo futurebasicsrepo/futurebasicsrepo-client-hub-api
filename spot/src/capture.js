@@ -79,7 +79,8 @@ export function parseProductHtml(html, pageUrl) {
 
   let blocked = false;
   if (!items.length) {
-    const price = dollarsToCents(meta['product:price:amount'] || meta['og:price:amount'] || meta['twitter:data1'] || '');
+    const cur = String(meta['product:price:currency'] || meta['og:price:currency'] || 'USD').toUpperCase();
+    const price = cur === 'USD' ? dollarsToCents(meta['product:price:amount'] || meta['og:price:amount'] || meta['twitter:data1'] || '') : null;
     const title = decode(meta['og:title'] || meta['twitter:title'] || titleTag(html) || '');
     // A store's bot check ("Robot or human?", "Just a moment…") is not a product.
     blocked = BOT_WALL.test(title);
@@ -121,7 +122,8 @@ function productFromLd(p, pageUrl) {
   if (!name) return null;
   const offers = [].concat(p.offers || []);
   const offerList = offers.flatMap((o) => (o?.['@type'] === 'AggregateOffer' ? [{ price: o.lowPrice ?? o.price, priceCurrency: o.priceCurrency }] : [o]));
-  const usd = offerList.find((o) => !o?.priceCurrency || String(o.priceCurrency).toUpperCase() === 'USD') || offerList[0];
+  // Only a US-dollar price counts: €30 is not $30, so another currency leaves the price for the person to fill in.
+  const usd = offerList.find((o) => !o?.priceCurrency || String(o.priceCurrency).toUpperCase() === 'USD');
   const price = usd ? dollarsToCents(usd.price ?? usd.priceSpecification?.price) : null;
   const image = [].concat(p.image || [])[0];
   return {
@@ -226,13 +228,50 @@ export async function assertPublicHost(rawHost) {
 }
 
 export function isPrivateAddress(ip) {
-  if (ip.includes(':')) {
-    const v = ip.toLowerCase();
-    if (v.startsWith('::ffff:')) return isPrivateAddress(v.slice(7));
-    return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80');
+  if (String(ip).includes(':')) {
+    const g = ipv6Groups(ip);
+    if (!g) return true; // can't read it: don't fetch it
+    const v4 = (hi, lo) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+    const zeros = (n) => g.slice(0, n).every((x) => x === 0);
+    // IPv4 hiding inside IPv6: mapped (::ffff:a.b.c.d), compatible (::a.b.c.d),
+    // NAT64 (64:ff9b::/96) and 6to4 (2002:AABB:CCDD::) all reach that IPv4.
+    if (zeros(5) && g[5] === 0xffff) return isPrivateAddress(v4(g[6], g[7]));
+    if (zeros(6)) return g[6] === 0 && g[7] <= 1 ? true : isPrivateAddress(v4(g[6], g[7]));
+    if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isPrivateAddress(v4(g[6], g[7]));
+    if (g[0] === 0x2002) return isPrivateAddress(v4(g[1], g[2]));
+    // Unique local fc00::/7, link-local fe80::/10, site-local fec0::/10, multicast ff00::/8.
+    return (g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00;
   }
-  const [a, b] = ip.split('.').map(Number);
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  const p = String(ip).split('.').map(Number);
+  if (p.length !== 4 || p.some((x) => !Number.isInteger(x) || x < 0 || x > 255)) return true;
+  const [a, b, c] = p;
+  return (
+    a === 10 || a === 127 || a === 0 || a >= 224 ||
+    (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113)
+  );
+}
+
+// "::ffff:127.0.0.1" / "fe80::1%eth0" → eight 16-bit numbers, or null.
+function ipv6Groups(ip) {
+  let v = String(ip).toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  const tail = v.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (tail) {
+    const n = tail.slice(1).map(Number);
+    if (n.some((x) => x > 255)) return null;
+    v = v.slice(0, -tail[0].length) + `${((n[0] << 8) | n[1]).toString(16)}:${((n[2] << 8) | n[3]).toString(16)}`;
+  }
+  const halves = v.split('::');
+  if (halves.length > 2) return null;
+  const part = (h) => (h ? h.split(':') : []);
+  const head = part(halves[0]);
+  const rest = halves.length === 2 ? part(halves[1]) : [];
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const all = [...head, ...Array(fill).fill('0'), ...rest];
+  if (all.length !== 8 || all.some((x) => !/^[0-9a-f]{1,4}$/.test(x))) return null;
+  return all.map((x) => parseInt(x, 16));
 }
 
 // ─── Screenshot capture (Claude vision) ─────────────────────────────────────

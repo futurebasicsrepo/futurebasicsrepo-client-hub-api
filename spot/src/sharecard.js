@@ -131,8 +131,14 @@ export async function fetchProductImage(url, { fetchImpl = fetch, allowPrivate =
       const res = await fetchImpl(u, { signal: ctrl.signal, redirect: 'error' });
       const type = (res.headers.get('content-type') || '').split(';')[0].trim();
       if (!res.ok || !['image/png', 'image/jpeg'].includes(type)) return null;
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > 4_000_000) return null;
+      const chunks = [];
+      let size = 0;
+      for await (const c of res.body || []) {
+        size += c.length;
+        if (size > 4_000_000) return null;
+        chunks.push(Buffer.from(c));
+      }
+      const buf = Buffer.concat(chunks);
       return `data:${type};base64,${buf.toString('base64')}`;
     } finally {
       clearTimeout(t);

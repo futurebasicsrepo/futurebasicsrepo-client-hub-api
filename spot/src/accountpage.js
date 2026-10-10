@@ -61,7 +61,7 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .sso-b:focus-visible{outline:3px solid var(--spot);outline-offset:2px}
 .pk-b{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px}.pk-b[hidden]{display:none}
 .meth{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
-.meth:last-child{border-bottom:0}.meth .ic{font-size:20px;width:28px;text-align:center}.meth small{display:block;color:var(--muted);font-size:13px}
+.meth>span:nth-child(2){min-width:0;overflow-wrap:anywhere}.meth:last-child{border-bottom:0}.meth .ic{font-size:20px;width:28px;text-align:center}.meth small{display:block;color:var(--muted);font-size:13px}
 .addf{display:grid;gap:8px;padding:10px 0 4px}.addf[hidden]{display:none}.addf .row{display:grid;grid-template-columns:1fr auto;gap:8px}
 .addf input{font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);min-width:0}
 .aicard{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center}
@@ -119,7 +119,7 @@ export function signinPage({ origin, providers = {}, texts = false }) {
 const ERRORS=${JSON.stringify(ERRORS)};
 let pkAbort=null;
 const q=new URLSearchParams(location.search);if(ERRORS[q.get('error')])$('#err').textContent=ERRORS[q.get('error')];
-const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';return n.startsWith('/')&&!n.startsWith('//')?n:'/account'})();
+const next=(()=>{const n=new URLSearchParams(location.search).get('next')||'/account';if(!n.startsWith('/')||/[\\u0000-\\u001f\\\\]/.test(n))return '/account';try{const u=new URL(n,location.origin);return u.origin===location.origin?u.pathname+u.search+u.hash:'/account'}catch(e){return '/account'}})();
 let mode=${JSON.stringify(texts ? 'phone' : 'email')},who='';
 const setMode=m=>{mode=m;document.querySelectorAll('#seg button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.mode===m)));
   const ph=m==='phone',em=$('#email');if(em){em.hidden=ph;em.required=!ph}$('#phone').hidden=!ph;$('#phone').required=ph;$('#smsOkBox').hidden=!ph;$('#smsOk').required=ph;
@@ -147,10 +147,10 @@ if(${!texts}&&pkOK()){$('#pkBtn').hidden=false;
   $('#pkBtn').onclick=async()=>{$('#err').textContent='';if(pkAbort)pkAbort.abort();pkAbort=null;
     const pre=pkPre;pkPre=null;
     try{await pkSignIn(undefined,undefined,pre);pkDone()}catch(err){
-      $('#err').textContent=err.name==='NotAllowedError'||err.name==='AbortError'||err.message==='cancelled'?'Face ID didn’t finish, or this device has no Spot passkey. Try again, or get a code.':err.message;
+      $('#err').textContent=err.name==='NotAllowedError'||err.name==='AbortError'||err.message==='cancelled'?'Face ID didn’t finish, or this device has no Spot passkey. Try again, or get a code.':err.name==='NotSupportedError'||err.name==='SecurityError'?'This browser can’t use passkeys. Get a code instead.':err.message;
     }finally{if(!pkPre)pkLoad()}};
   (async()=>{try{if(!(await PublicKeyCredential.isConditionalMediationAvailable?.())) return;pkAbort=new AbortController();
-    await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){if(err.name!=='AbortError'&&err.name!=='NotAllowedError'&&err.message!=='cancelled')$('#err').textContent=err.message}})()}
+    await pkSignIn('conditional',pkAbort.signal);pkDone()}catch(err){/* the quiet passkey offer on load: if this browser can't do it, just leave the code sign-in */}})()}
 const altOK=()=>!$('#pkBtn').hidden||Boolean(document.querySelector('.sso-b'));
 $('#or').hidden=${texts}||!altOK();
 $('#again').onclick=()=>{$('#codeForm').hidden=true;$('#seg').hidden=false;$('#emailForm').hidden=false;$('#or').hidden=${texts}||!altOK();$('#sso').hidden=${texts};$('#lead').textContent='We’ll send you a 6-digit code. No password needed.'};`,
@@ -230,7 +230,7 @@ const fmtPhone=p=>{const m=/^\\+1(\\d{3})(\\d{3})(\\d{4})$/.exec(p||'');return m
 const LABEL={open:['waiting',''],paid:['paid','warn'],card_issued:['paid','ok'],completed:['done','ok'],canceled:['canceled',''],expired:['expired',''],refunded:['refunded','']};
 let me=null;
 async function load(){
-  const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}const na=document.getElementById('navAcct');if(na){na.textContent='My Spots';na.href='/account'}
+  const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
   me=await r.json();const u=me.user;
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
@@ -324,8 +324,8 @@ $('#addForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').t
     if(r.code){$('#addDev').hidden=false;$('#addDev').textContent='Test mode: your code is '+r.code;$('#addCodeVal').value=r.code}else $('#addCodeVal').value='';
     $('#addCodeVal').focus()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#addCode').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';
-  try{const r=await post('/v1/me/link/verify',{[adding]:addWhat,code:$('#addCodeVal').value});const what=adding==='phone'?'Phone':'Email';addReset();
-    $('#addOk').textContent=r.merged?what+' added. It had its own Spot account, so we moved everything from it into this one.':what+' added. You can sign in with it now.';load()}catch(err){$('#err').textContent=err.message}});
+  try{const r=await post('/v1/me/link/verify',{[adding]:addWhat,code:$('#addCodeVal').value});const what=adding==='phone'?'Phone':'Email';const had=adding==='phone'?me.user.phone:me.user.email;addReset();
+    $('#addOk').textContent=(had?what+' changed to '+addWhat+'. Sign in with it from now on; the old one no longer works.':what+' added. You can sign in with it now.')+(r.merged?' It had its own Spot account, so its Spots, AI connections and settings moved into this one.':'');load()}catch(err){$('#err').textContent=err.message}});
 $('#addCancel').onclick=addReset;
 $('#addPk').onclick=async()=>{$('#err').textContent='';try{await pkRegister(pkDeviceName());$('#addOk').textContent='';load()}
   catch(err){if(err.name==='InvalidStateError')$('#err').textContent='This device already has a Spot passkey.';else if(err.name!=='NotAllowedError'&&err.name!=='AbortError')$('#err').textContent=err.message}};

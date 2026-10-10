@@ -221,24 +221,28 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           store_never_charged: `${store} never charged for it.`,
           admin: 'Spot refunded it.',
         }[cart.refund_reason] || 'It was refunded.';
+        // What this refund returned: the rest, after any earlier partial refunds.
+        const back = Math.max(0, cart.total_cents - (cart.refunded_before_cents ?? 0));
         const out = [];
         if (cart.payer_contact?.email) {
           out.push({
             key: 'refunded_payer',
             to: { email: cart.payer_contact.email },
             subject: `Refunded: ${item}`,
-            text: `${why} We refunded ${usd(cart.total_cents)} to your card; it usually shows in 5–10 business days.`,
-            html: mail({ preheader: `${usd(cart.total_cents)} back to your card`, title: 'You’ve been refunded', lines: [esc(why), `We refunded <b>${usd(cart.total_cents)}</b> to your card, Spot fee included. It usually shows in 5–10 business days.`] }),
+            text: `${why} We refunded ${usd(back)} to your card; it usually shows in 5–10 business days.`,
+            html: mail({ preheader: `${usd(back)} back to your card`, title: 'You’ve been refunded', lines: [esc(why), `We refunded <b>${usd(back)}</b> to your card, Spot fee included. It usually shows in 5–10 business days.`] }),
           });
         }
         const to = requesterContact(cart).email;
+        // The requester didn't cancel it, the payer did: say so in their words.
+        const whyFor = cart.refund_reason === 'payer_canceled' ? `${payer} canceled it before it was ordered.` : why;
         if (to && !['requester_canceled'].includes(cart.refund_reason) && cart.for !== 'self') {
           out.push({
             key: 'refunded_requester',
             to: { email: to },
             subject: `Your ${store} Spot was refunded`,
-            text: `${why} ${payer} got their money back. ${link}`,
-            html: mail({ preheader: `${payer} was refunded`, title: 'This one was refunded', lines: [esc(why), `${esc(payer)} got their money back, so nothing was ordered.`], cta: { label: 'Open your Spot', url: link } }),
+            text: `${whyFor} ${payer} got their money back. ${link}`,
+            html: mail({ preheader: `${payer} was refunded`, title: 'This one was refunded', lines: [esc(whyFor), `${esc(payer)} got their money back, so nothing was ordered.`], cta: { label: 'Open your Spot', url: link } }),
           });
         }
         return out;

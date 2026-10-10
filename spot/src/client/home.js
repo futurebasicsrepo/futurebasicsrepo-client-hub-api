@@ -135,15 +135,28 @@
       draft = { merchant: d.merchant || { name: '', url: null }, items: d.items?.length ? d.items : [blank()], extras_cents: d.extras_cents || 0, note: '' };
       made = null;
       const priced = draft.items.every((i) => i.price_cents > 0);
-      if (!d.needs_review && priced && draft.merchant.name && me.name && !basket.length) {
-        await create();
-        ready();
+      // Sure of everything: make the link straight away. Anything the
+      // server refuses (a gift card, over the cap, a store that doesn't take
+      // direct checkout) opens the check step with the reason, to fix there.
+      if (!d.needs_review && priced && draft.merchant.name && me.name && !basket.length && me.settle !== 'direct') {
+        try {
+          await create();
+          ready();
+        } catch (e) {
+          check(e.message);
+        }
       } else {
         check(d.warning || (priced ? '' : "I couldn't find every price. fill them in below"));
       }
     } catch (e) {
       $('#capErr').textContent = e.message;
       say('hmm, that one got away from me');
+      // Don't resend a screenshot that didn't work with the next try.
+      if (image) {
+        image = null;
+        $('#chip').hidden = true;
+        $('#shot').value = '';
+      }
     } finally {
       btn.disabled = false;
       btn.textContent = 'Spot it';
@@ -320,6 +333,8 @@
     draft.extras_cents = toCents($('#extras').value) || 0;
     if (!draft.merchant.name) return ($('#checkErr').textContent = 'Which store is this from?');
     if (!draft.items.length || draft.items.some((i) => !i.title || !(i.price_cents > 0))) return ($('#checkErr').textContent = 'Give every item a name and a price first');
+    // Multi-store asks are bought by Spot, and Spot can't buy from Amazon.
+    if (/^amazon\b/i.test(draft.merchant.name) || draft.items.some((i) => { try { return /(^|\.)(amazon|amzn)\.[a-z.]+$/i.test(new URL(i.url).hostname); } catch (e) { return false; } })) return ($('#checkErr').textContent = 'Amazon can’t be part of a multi-store ask. Send it as its own link, straight to your Venmo or Cash App.');
     // Keep what they typed about themselves for the next store's check.
     const nm = $('#name').value.trim();
     if (nm) {

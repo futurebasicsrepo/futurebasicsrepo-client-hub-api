@@ -72,9 +72,14 @@ async function safeFetchJson(url) {
   });
   const res = await fetch(u, { redirect: 'error', signal: AbortSignal.timeout(5000), headers: { accept: 'application/json' } });
   if (!res.ok) throw new PapError(`${u.hostname} answered ${res.status}`);
-  const text = await res.text();
-  if (text.length > 64 * 1024) throw new PapError('Document too large');
-  return JSON.parse(text);
+  const chunks = [];
+  let size = 0;
+  for await (const c of res.body || []) {
+    size += c.length;
+    if (size > 64 * 1024) throw new PapError('Document too large');
+    chunks.push(Buffer.from(c));
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 // Same domain: the same host, or one a subdomain of the other.

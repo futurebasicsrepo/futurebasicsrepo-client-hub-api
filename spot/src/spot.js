@@ -61,7 +61,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     return next;
   }
 
+  const closedWhy = (cart) => (cart.status === 'expired' ? 'This link has expired' : cart.status === 'canceled' ? 'This link was canceled' : 'This one is already paid');
+
   function expire(cart) {
+    // Not while the payer is on the store's checkout: their order would go
+    // through on a cart Spot no longer follows. It expires after that.
+    if (cart.direct?.checkout_id && Date.now() - (cart.direct.started_at || 0) < 60 * 60_000) return cart;
     try {
       return move(cart, 'expire');
     } catch {
@@ -242,11 +247,36 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // Fix a link after making it (a wrong price, a missed item). Only while
     // nobody has started paying, so a payer is never charged a moved amount.
-    edit(token, key, input) {
-      const cart = loadManaged(token, key);
-      if (cart.status !== 'open' || cart.payment_ref || cart.kind === 'flight') throw new CartError('This cart can no longer be changed', 409);
-      const v = validateCart({ ...input, requester: { ...cart.requester, ...(input?.requester || {}) } }, feeCfg(cart.bundle_index || 0));
-      const next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
+    async edit(token, key, input) {
+      let cart = loadManaged(token, key);
+      if (cart.status !== 'open' || cart.kind === 'flight' || cart.bundle_id && cart.payment_ref) throw new CartError('This cart can no longer be changed', 409);
+      // Opening the pay page starts a payment. Until someone actually pays,
+      // that payment is canceled and the next visit starts one for the new total.
+      if (cart.payment_ref) {
+        if (!provider.cancelPayment || !(await provider.cancelPayment(cart.payment_ref))) throw new CartError('Someone is paying this right now, so it can’t be changed', 409);
+        const cleared = { ...cart, payment_ref: null };
+        if (!db.save(cleared, 'open')) throw new CartError('Cart changed, try again', 409);
+        db.event(cart.id, 'payment_reset');
+        cart = cleared;
+      }
+      // How it's paid, and for whom, are set when the link is made: an edit
+      // that changed them would price it one way and pay it another.
+      if (input?.settle && input.settle !== cart.settle) throw new CartError('How it’s paid can’t change on an existing link. Make a new one instead.', 409);
+      const v = validateCart({ ...input, settle: cart.settle, for: cart.for, requester: { ...cart.requester, ...(input?.requester || {}) } }, feeCfg(cart.bundle_index || 0));
+      let next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
+      // Paid at the store: the store's checkout has to take the new cart too,
+      // and a checkout someone already opened was built from the old one.
+      if (cart.settle === 'direct') {
+        if (cart.direct?.checkout_id && Date.now() - (cart.direct.started_at || 0) < 60 * 60_000) throw new CartError('Someone is paying this at the store right now, so it can’t be changed', 409);
+        if (this.direct?.verify) {
+          const r = await this.direct.verify({ merchant: next.merchant, items: next.items });
+          if (r.ok) next = { ...next, items: r.items, direct: null };
+          else if (r.reason === 'choose') throw new CartError(`Which ${r.choose.name.toLowerCase()}? ${next.merchant.name} has "${r.item}" in ${r.choose.values.join(', ')}. Add it after the name.`, 422);
+          else if (r.reason === 'unavailable') throw new CartError(`${next.merchant.name} doesn’t have "${r.item}" in that size or color right now.`, 422);
+          else if (r.reason === 'no_direct') throw new CartError(`${next.merchant.name || 'That store'} doesn’t take direct checkout. Make a new link instead.`, 409);
+          else throw new CartError(`${next.merchant.name} couldn’t find "${r.item}". Use the product link.`, 422);
+        }
+      }
       // Changed items aren't the store's cart any more.
       if (cart.source && JSON.stringify(v.items) !== JSON.stringify(cart.items)) next.source = { ...cart.source, verified: false, edited: true };
       if (cart.bundle_id) {
@@ -263,7 +293,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // "For me" carts: the requester confirms where it ships before paying.
     prepare(token, key, shippingInput) {
       const cart = loadManaged(token, key);
-      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
       if (cart.kind === 'flight') throw new CartError('Flights don\'t ship. Add who\'s flying instead.', 400);
       if (cart.kind === 'train') throw new CartError('Train tickets don\'t ship. Add who\'s riding instead.', 400);
       const shipping = validateShipping(shippingInput);
@@ -280,7 +310,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     reassign(token, key) {
       const cart = loadManaged(token, key);
       if (cart.for !== 'self') return cart;
-      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
       if (cart.kind === 'flight' || cart.kind === 'train') throw new CartError('Tickets are paid by the traveler for now', 400);
       if (cart.bundle_id) throw new CartError('Multi-store asks can’t be sent on yet', 400);
       if (!['card', 'direct'].includes(cart.settle)) throw new CartError('This cart can’t be sent on', 400);
@@ -301,7 +331,11 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.for === 'self') throw new CartError('This one isn’t waiting on anyone else', 400);
       const n = (cart.declines || []).length;
       if (n >= 5) return cart;
-      const who = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40) || null;
+      let who = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 30) || null;
+      // Just a first name: it goes into an email and a text to the requester,
+      // so nothing that reads like a link, an address or a message.
+      if (who && (/[/:@\\<>{}]|www\.|\.[a-z]{2,}\b/i.test(who) || who.split(' ').length > 3)) who = null;
+      if (cart.bundle_id) throw new CartError('Open the link you were sent to answer this one', 400);
       const next = this.patch(cart.id, (c) => ({ ...c, declines: [...(c.declines || []), { name: who, at: Date.now() }] }), 'declined');
       this.emit?.('declined', cart.id, { name: who, n });
       return next;
@@ -310,7 +344,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     payYourself(token, key) {
       const cart = loadManaged(token, key);
       if (cart.for === 'self') return cart;
-      if (cart.status !== 'open') throw new CartError('This cart is already paid', 409);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
       if (cart.kind === 'flight' || cart.kind === 'train') throw new CartError('Tickets are paid by the traveler for now', 400);
       if (cart.bundle_id) throw new CartError('Multi-store asks can’t be paid this way yet', 400);
       if (cart.approver) throw new CartError('This one is waiting on your approver', 409);
@@ -367,9 +401,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // Payer opened the pay page and wants to pay by card / wallet.
     async startPayment(token) {
       const cart = load(token);
-      if (cart.settle !== 'card') throw new CartError('This cart is paid directly by Venmo or Cash App', 409);
+      if (cart.settle !== 'card') throw new CartError(cart.settle === 'direct' ? 'This one is paid on the store’s own checkout' : 'This one is paid straight to them on Venmo or Cash App', 409);
       if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
-      if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already covered', 409);
+      if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : cart.status === 'canceled' ? 'This link was canceled' : 'This cart is already covered', 409);
       if (cart.kind === 'flight' && !cart.flight.travelers) throw new CartError('Add who\'s flying first', 409);
       if (cart.kind === 'train' && !cart.train.riders) throw new CartError('Add who\'s riding first', 409);
       if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
@@ -389,9 +423,21 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (bundle) return this._bundlePaid(bundle, amountCents, payer);
       const cart = db.byPayment(paymentRef);
       if (!cart) throw new CartError('Unknown payment', 404);
+      // Canceled or expired while the payer was in Apple Pay: the money
+      // landed on a cart nobody will order, so it goes straight back (once:
+      // the refund's idempotency key makes webhook retries safe).
+      if (cart.status === 'canceled' || cart.status === 'expired') {
+        if (!cart.paid_at) {
+          db.event(cart.id, 'paid_while_closed', { status: cart.status, amount_cents: amountCents });
+          await provider.refund(cart, amountCents, 'closed');
+        }
+        return cart;
+      }
       if (cart.status !== 'open') return cart; // duplicate webhook delivery
       if (amountCents !== cart.total_cents) {
+        // Money landed that doesn't match: give it back rather than keep it.
         db.event(cart.id, 'amount_mismatch', { expected: cart.total_cents, got: amountCents });
+        await provider.refund(cart, amountCents, 'mismatch').catch((err) => log.error?.({ err, cart: cart.id }, 'refund of mismatched payment failed'));
         throw new CartError('Payment amount does not match cart', 409);
       }
       // The payer's email is kept only to say thanks when the gift is ordered;
@@ -539,7 +585,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         db.event(cur.id, 'refund_failed', { message: err.message });
         throw new CartError('The refund didn’t go through just now. It’s queued and will be retried.', 502);
       }
-      const done = move(cur, 'refund', { refunded_at: Date.now(), refunded_cents: cur.total_cents, card_canceled: cur.card_ref ? Date.now() : null }, { amount_cents: cur.total_cents - already });
+      const done = move(cur, 'refund', { refunded_at: Date.now(), refunded_before_cents: already, refunded_cents: cur.total_cents, card_canceled: cur.card_ref ? Date.now() : null }, { amount_cents: cur.total_cents - already });
       if (!quiet) this.emit('refunded', done.id);
       return done;
     },
@@ -660,6 +706,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       const cart = load(token);
       if (cart.kind === 'flight') throw new CartError('Flights are booked right away, so they can’t be canceled here. Contact us.', 409);
       if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(cart.status === 'refunded' ? 'This was already refunded' : 'This order can no longer be canceled', 409);
+      if (cart.dispute) throw new CartError('This payment is disputed with your bank, which handles the refund. Contact us if you need help.', 409);
       if (ordering(cart)) throw new CartError('Spot is placing this order right now, so it can’t be canceled. Contact us about a return.', 409);
       return this.refundCart(cart, { reason: 'payer_canceled', by: 'payer' });
     },
@@ -771,6 +818,13 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     async cancel(token, key) {
       const cart = loadManaged(token, key);
+      // The payer may be paying the store right now: canceling here wouldn't stop that order.
+      if (cart.status === 'open' && cart.direct?.checkout_id && Date.now() - (cart.direct.started_at || 0) < 60 * 60_000) {
+        throw new CartError('Someone is paying this at the store right now, so it can’t be canceled. If they finish, it’s ordered; if not, you can cancel in an hour.', 409);
+      }
+      if (cart.payment_ref && cart.status === 'open' && provider.cancelPayment && !(await provider.cancelPayment(cart.payment_ref))) {
+        throw new CartError('Someone is paying this right now. Try again in a minute.', 409);
+      }
       return move(cart, 'cancel');
     },
 
@@ -779,6 +833,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     async refund(token, key) {
       const cart = loadManaged(token, key);
       if (!['paid', 'card_issued'].includes(cart.status)) throw new CartError(`Can't refund a cart that is ${cart.status}`, 409);
+      // The payer's bank already reversed it: a refund too would pay them twice.
+      if (cart.dispute) throw new CartError('The payer disputed this payment with their bank, which is returning their money. No refund needed.', 409);
       if (ordering(cart)) throw new CartError('Spot is placing this order right now. Try again if it stops.', 409);
       return this.refundCart(cart, { reason: 'requester_canceled', by: 'requester' });
     },
@@ -836,7 +892,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // each store's cart holds "<payment>#<n>" so refunds go back per store.
     async startBundlePayment(token) {
       const b = this.loadBundle(token);
-      if (b.status !== 'open') throw new CartError(b.status === 'expired' ? 'This link has expired' : 'This is already covered', 409);
+      if (b.status !== 'open') throw new CartError(b.status === 'expired' ? 'This link has expired' : b.status === 'canceled' ? 'This link was canceled' : 'This is already covered', 409);
       if (b.for === 'self' && !b.carts[0].requester.shipping) throw new CartError('Add where it ships first', 409);
       for (const c of b.carts) {
         if (!(await this.canOrder(c))) throw new CartError(`Spot can't order from ${c.merchant.name} automatically yet, so it can't take a payment for this ask.`, 409);
@@ -854,7 +910,15 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     async _bundlePaid(bundle, amountCents, payer) {
       const carts = db.bundles.carts(bundle.id);
       const open = carts.filter((c) => c.status === 'open');
-      if (!open.length) return carts[0]; // duplicate webhook delivery
+      if (!open.length) {
+        // Every store canceled or expired before the money landed (and none
+        // was paid by this payment): it all goes back, once.
+        if (!carts.some((c) => c.paid_at)) {
+          for (const c of carts) db.event(c.id, 'paid_while_closed', { status: c.status, bundle: bundle.token });
+          await provider.refund({ ...carts[0], id: bundle.id, payment_ref: bundle.payment_ref || String(carts[0].payment_ref || '').split('#')[0] }, amountCents, 'closed');
+        }
+        return carts[0];
+      }
       const total = carts.reduce((n, c) => n + c.total_cents, 0);
       if (amountCents !== total) {
         for (const c of carts) db.event(c.id, 'amount_mismatch', { expected: total, got: amountCents });

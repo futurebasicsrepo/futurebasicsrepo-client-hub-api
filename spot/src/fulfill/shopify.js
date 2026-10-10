@@ -11,16 +11,33 @@ import { assertPublicHost } from '../capture.js';
 const TIMEOUT_MS = 6000;
 
 export async function fetchJson(url, { fetchImpl = fetch, allowPrivate = process.env.SPOT_ALLOW_PRIVATE_FETCH === '1' } = {}) {
-  const u = new URL(url);
-  if (!allowPrivate) await assertPublicHost(u.hostname);
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetchImpl(u, { signal: ctrl.signal, redirect: 'follow', headers: { accept: 'application/json' } });
-    if (!res.ok) return null;
-    // Shopify serves /products/<handle>.js as JSON with a text/javascript type.
-    if (!/json|javascript/.test(res.headers.get('content-type') || '')) return null;
-    return await res.json();
+    let u = new URL(url);
+    // Redirects are followed by hand, so each hop is checked for a public host.
+    for (let hop = 0; ; hop++) {
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+      if (!allowPrivate) await assertPublicHost(u.hostname);
+      const res = await fetchImpl(u, { signal: ctrl.signal, redirect: 'manual', headers: { accept: 'application/json' } });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (!loc || hop >= 4) return null;
+        u = new URL(loc, u);
+        continue;
+      }
+      if (!res.ok) return null;
+      // Shopify serves /products/<handle>.js as JSON with a text/javascript type.
+      if (!/json|javascript/.test(res.headers.get('content-type') || '')) return null;
+      const chunks = [];
+      let size = 0;
+      for await (const c of res.body || []) {
+        size += c.length;
+        if (size > 2 * 1024 * 1024) return null;
+        chunks.push(Buffer.from(c));
+      }
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    }
   } catch {
     return null;
   } finally {
