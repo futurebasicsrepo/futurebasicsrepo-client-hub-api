@@ -621,7 +621,7 @@ async function draw(){
   if(fl&&c.status==='refunded')h+='<section class="card"><h2>We couldn’t book this one</h2><p class="muted" style="margin:0">'+esc(fl.error||'The airline said no.')+' You’ve been refunded in full. Ask your assistant to find another.</p></section>';
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
   if(c.kind==='train'&&c.train)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
-  if(!self)h+='<section class="card">'+(SHARE&&c.status==='open'?'<h2>Send it to whoever’s paying 💸</h2><p class="small muted" style="margin-top:0">They pay on this link, then you tell Spot where it ships.</p>':'')+'<div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div>'+(c.status==='open'?'<button class="btn" id="share">'+(navigator.share?'Share link':'Copy link')+'</button>':'')+'<div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  if(!self)h+='<section class="card">'+(SHARE&&c.status==='open'?'<h2>Send it to whoever’s paying 💸</h2><p class="small muted" style="margin-top:0">They pay on this link, then you tell Spot where it ships.</p>':'')+'<div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div>'+(c.status==='open'?'<button class="btn" id="share">'+(navigator.share?'Share link':'Copy link')+'</button>':'')+(c.status==='open'&&!c.bundle_id&&!c.approver&&['card','direct'].includes(c.settle)?'<button class="btn ghost" id="claim">Pay it yourself</button><div class="err" id="claimErr"></div>':'')+'<div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
   if(c.settle==='direct'&&c.status==='open'&&!self){
     const sh=c.requester.shipping;
     h+='<section class="card" id="shipDirect"><h2>'+(sh?'Ships to':'Where should it ship?')+'</h2>'
@@ -654,6 +654,7 @@ async function draw(){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   const ds=$('#dShip');if(ds)ds.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(ds))});draw()}catch(err){$('#dShipErr').textContent=err.message}};
   on('editShip',()=>{$('#dShip').hidden=false;$('#editShip').remove()});
+  on('claim',async()=>{const b=$('#claim');b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/manage/pay-yourself',{k:K});SHARE=null;draw()}catch(e){b.disabled=false;$('#claimErr').textContent=e.message}});
   on('share',async()=>{const text=(SHARE&&SHARE.share_message)||('psst… can you spot me? 👀 '+(c.items[0]?.title||'')+' from '+c.merchant.name+'\\n'+r.link);try{if(navigator.share)await navigator.share({text});else{await navigator.clipboard.writeText(text);$('#share').textContent='Copied ✓'}}catch{}});
   const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
   on('cap',()=>sim('capture'));on('ret',()=>sim('refund'));on('rel',()=>sim('closed'));
