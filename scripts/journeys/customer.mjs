@@ -2,8 +2,10 @@
 // approved by itself when it is good enough, the colourway pictures and the 3D shape follow, and the customer's own pages show it all.
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
+import zlib from 'node:zlib';
 import sharp from 'sharp';
-import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, S } from './lib.mjs';
+import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, S, waitAi } from './lib.mjs';
 const BASE = 'http://127.0.0.1:3130', call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `jc${tag}-${stamp}-${++n}@chaos.test`;
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
@@ -1464,4 +1466,68 @@ await journey('J97', 'flag a line and say what is wrong: the design assistant ch
   }
 });
 
-const bad = summary(); process.exit(bad ? 1 : 0);
+const bad = await journey('J98', 'a new version tells the factory what changed, keeps its acknowledgements for callouts that did not change, and says so in the email', async () => {
+  const m = await room('98'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const dr = (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  ok(!dr.completeness.missing.some(x => /style number/i.test(x)) && Array.isArray(dr.completeness.missingRecommended) && dr.completeness.missingRecommended.some(x => /packed/i.test(x)) && dr.completeness.missingRecommended.some(x => /country of origin/i.test(x)), 'the client is told what a factory will still ask about (packing, origin), without it blocking anything, and is not asked for a style number', dr.completeness);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: v1' } })).status === 200, 'staff publish v1');
+  const v1 = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack;
+  ok(/^FB-\d\d-\d{4}$/.test(v1.data.style.styleNumber), 'publishing gives the pack a style number a factory can put on a purchase order', v1.data.style.styleNumber);
+  ok(v1.readiness.checks.find(c => c.key === 'artwork').ok && v1.readiness.checks.find(c => c.key === 'placement').ok, 'a product with no artwork is not marked as missing artwork or placement', v1.readiness.checks.map(c => [c.key, c.ok]));
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves v1');
+  const shareEmail = `mill98-${stamp}@chaos.test`, sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 98', email: shareEmail } }); ok(sh.status === 201, 'staff send the factory a link', [sh.status, sh.json.error]);
+  const ftok = sh.json.url.split('/tp/')[1];
+  let fv = await call(`/v1/tp/${ftok}`); const callouts = fv.json.techPack.readiness.callouts; ok(callouts.length >= 3, 'the pack has callouts to acknowledge', callouts.length);
+  const badAck = await call(`/v1/tp/${ftok}/ack`, { method: 'POST', body: { keys: [callouts[0].key, 'nope:1'] } });
+  ok(badAck.status === 400 && (await call(`/v1/tp/${ftok}`)).json.techPack.readiness.pendingCalloutKeys.length === callouts.length, 'acknowledging a list with one unknown callout is refused and records none of it', badAck.status);
+  const allAck = await call(`/v1/tp/${ftok}/ack`, { method: 'POST', body: { keys: callouts.map(c => c.key) } });
+  ok(allAck.status === 200 && allAck.json.techPack.readiness.pendingCalloutKeys.length === 0, 'a factory that has read the whole pack acknowledges every callout in one go', [allAck.status, allAck.json.error]);
+  // the page and the pack data travel compressed to a browser that accepts it, byte for byte the same once unpacked
+  const raw = (path, enc) => new Promise(res => http.get(BASE + path, { headers: { 'accept-encoding': enc } }, r => { const ch = []; r.on('data', c => ch.push(c)); r.on('end', () => res({ status: r.statusCode, enc: r.headers['content-encoding'], body: Buffer.concat(ch) })); }));
+  for (const path of [`/v1/tp/${ftok}`, `/tp/${ftok}`]) { const plain = await raw(path, 'identity'), gz = await raw(path, 'gzip'); ok(plain.status === 200 && !plain.enc && gz.enc === 'gzip' && zlib.gunzipSync(gz.body).equals(plain.body) && gz.body.length < plain.body.length * (path.startsWith('/v1') ? 0.95 : 0.5), `${path.startsWith('/v1') ? 'the pack data' : 'the page'} is compressed for a browser that accepts it and identical once unpacked`, [plain.status, plain.enc, gz.enc, plain.body.length, gz.body.length]); }
+  const rev1 = fv.json.techPack.revisions.at(-1); ok(rev1.version === 1 && !rev1.summary && (rev1.changes || []).length === 0, 'v1 has nothing to say about changes', rev1);
+  // staff change one callout and one measurement, then publish v2
+  const data = structuredClone(fv.json.techPack.data), sk = data.sketches.find(x => x.callouts.length), co = sk.callouts[0], oldSpec = co.spec; co.spec = 'Changed in v2: ' + oldSpec;
+  const pom = data.pom[0], size = Object.keys(pom.values)[0], oldVal = pom.values[size]; pom.values[size] = '99.5';
+  const put = await adm(`/v1/admin/products/${m.id}/tech-pack`, { method: 'PUT', body: { data } }); ok(put.status === 200, 'staff edit the pack', [put.status, put.json.error]);
+  const pub2 = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: v2' } }); ok(pub2.status === 200 && pub2.json.techPack.version === 2, 'staff publish v2', [pub2.status, pub2.json.error]);
+  // until the client approves v2 the factory's link still shows v1 (it must never act on a version the client has not signed), and it is not emailed about v2 yet
+  const heldView = await call(`/v1/tp/${ftok}`); ok(heldView.json.held === true && heldView.json.techPack.version === 1, 'before the client approves, the factory link still shows v1', [heldView.json.held, heldView.json.techPack.version]);
+  ok(((await call(`/v1/dev/outbox?to=${encodeURIComponent(shareEmail)}`)).json.emails || []).filter(e => /New version/.test(e.subject)).length === 0, 'and the factory is not told about a version it cannot open yet');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves v2');
+  fv = await call(`/v1/tp/${ftok}`); const rev2 = fv.json.techPack.revisions.at(-1);
+  ok(rev2.version === 2 && /^2 changes: /.test(rev2.summary) && rev2.changes.length === 2, 'the revision says exactly what changed', rev2);
+  const mc = rev2.changes.find(c => c.section === 'Measurements'), cc = rev2.changes.find(c => c.section === 'Callouts');
+  ok(mc && mc.from === `${size}: ${oldVal}` && mc.to === `${size}: 99.5` && cc && cc.kind === 'changed' && cc.to.includes('Changed in v2'), 'with the measurement and callout, from and to', [mc, cc]);
+  const pend = fv.json.techPack.readiness.pendingCalloutKeys; ok(pend.length === 1 && pend[0] === `${sk.id}:${co.n}`, 'only the callout that changed needs acknowledging again', pend);
+  ok(fv.json.techPack.readiness.callouts.length - pend.length === callouts.length - 1, 'every other acknowledgement stood');
+  ok(!fv.json.techPack.readiness.brandSign && !fv.json.techPack.readiness.factorySign && fv.json.techPack.readiness.clientSign.name === 'Pat Client' && fv.json.techPack.readiness.clientSign.at > rev2.publishedAt, 'signatures never carry over: only the client\'s fresh approval of v2 is on it', fv.json.techPack.readiness.clientSign);
+  const mails = ((await call(`/v1/dev/outbox?to=${encodeURIComponent(shareEmail)}`)).json.emails || []).filter(e => /New version/.test(e.subject));
+  ok(mails.length === 1 && /2 changes/.test(mails[0].text) && /Changed in v2/.test(mails[0].text), 'the factory email carries the summary and the changes, not just "something changed"', mails.map(e => e.text));
+  // the same change list reaches the client's own view
+  const cv = await call(`/v1/products/${m.id}/tech-pack`, { token: m.token }); ok(cv.json.techPack.revisions.at(-1).changes.length === 2, 'the client sees the same list');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      // the one-press acknowledgement on the page: a second pack, nothing acknowledged yet
+      { const m2 = await room('98b'); await waitAi(call, m2.token, m2.id);
+        const adm2 = (p, o = {}) => call(p, { token: admin2, ...o }), admin2 = await forge({ sub: sql(`select id from users where client_id='${m2.cid}' limit 1`), clientId: m2.cid, role: 'admin' });
+        await adm2(`/v1/admin/products/${m2.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: bulk ack' } }); await call(`/v1/products/${m2.id}/tech-pack/approve`, { method: 'POST', token: m2.token, body: { name: 'Pat Two' } });
+        const s2 = await adm2(`/v1/admin/products/${m2.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 98b' } }), t2 = s2.json.url.split('/tp/')[1];
+        const c2 = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p2 = await c2.newPage(); p2.errs = []; p2.on('pageerror', e => p2.errs.push(e.message)); p2.on('dialog', d => d.accept());
+        await p2.goto(`${BASE}/tp/${t2}`, { waitUntil: 'domcontentloaded' }); await p2.waitForSelector('[data-act="ackall"]', { timeout: 20000 });
+        const label = await p2.innerText('[data-act="ackall"]'); await p2.click('[data-act="ackall"]'); await p2.waitForFunction(() => !document.querySelector('[data-act="ackall"]'), null, { timeout: 10000 });
+        const fv2 = (await call(`/v1/tp/${t2}`)).json; ok(/Acknowledge all \d+ remaining/.test(label) && fv2.techPack.readiness.pendingCalloutKeys.length === 0 && p2.errs.length === 0, 'on the page, one press (and one confirmation) acknowledges everything still open', [label, fv2.techPack.readiness.pendingCalloutKeys, p2.errs]); await c2.close(); }
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }); const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('details.chg', { timeout: 20000 });
+      const txt = await p.innerText('details.chg'); ok(/What changed in v2/i.test(txt) && /Changed in v2/.test(txt) && /99\.5/.test(txt), 'the factory page opens with what changed in v2', txt.slice(0, 200));
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j98-factory.png` }).catch(() => {});
+      await p.click('details.chg [data-act="chgseen"]'); ok(await p.evaluate(() => !document.querySelector('details.chg').open), '"Got it" folds it away');
+      await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForSelector('details.chg'); ok(await p.evaluate(() => !document.querySelector('details.chg').open), 'and it stays folded on the next visit, until there is a new version');
+      ok(p.errs.length === 0, 'no script errors', p.errs); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
+summary(); process.exit(bad ? 1 : 0);

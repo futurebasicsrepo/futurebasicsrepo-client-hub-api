@@ -217,7 +217,9 @@ export async function techPackPdf({ pack: input, product = {}, version = null, p
   if (v) {
     doc.addPage(); heading(b, num('Sign-off'), 'Sign-off', `${version ? 'version ' + version + ' · ' : ''}client → Future Basics → factory`);
     table(b, [{ h: 'Party', w: 2, bold: true }, { h: 'Name', w: 3 }, { h: 'Date', w: 2 }, { h: 'Signature', w: 4 }], [['Client', v.clientSign], ['Future Basics', v.brandSign], ['Factory', v.factorySign]].map(([w, sg]) => [w, sg ? sg.name : '', sg ? fmtDate(sg.at) : '', sg ? { t: 'Signed in the hub' } : { line: true }]), { fontSize: 11, pad: 12 });
-    if (revisions.length) { doc.y += 14; mini(b, 'Revisions', doc.y); table(b, [{ h: 'Version', w: 1, mono: true }, { h: 'Date', w: 2 }, { h: 'By', w: 2 }, { h: 'Note', w: 6 }], revisions.slice().reverse().map(x => ['v' + x.version, fmtDate(x.publishedAt), x.by || '', x.note || '']), { fontSize: 10 }); }
+    if (revisions.length) { doc.y += 14; mini(b, 'Revisions', doc.y); table(b, [{ h: 'Version', w: 1, mono: true }, { h: 'Date', w: 2 }, { h: 'By', w: 2 }, { h: 'Note', w: 6 }], revisions.slice().reverse().map(x => ['v' + x.version, fmtDate(x.publishedAt), x.by || '', [x.summary, x.note].filter(Boolean).join(' · ')]), { fontSize: 10 });
+      const last = revisions[revisions.length - 1], ch = (last && last.changes) || [];
+      if (ch.length) { doc.y += 14; mini(b, `What changed in v${last.version}`, doc.y); table(b, [{ h: 'Section', w: 2, bold: true }, { h: 'Item', w: 4 }, { h: 'Was → now', w: 6 }], ch.slice(0, 14).map(c => [c.section, c.label, c.kind === 'removed' ? 'removed' : (c.from ? c.from + ' → ' : '') + c.to]), { fontSize: 9 }); if (ch.length > 14) { doc.y += 4; doc.font('MONO').fontSize(8).fillColor('#717177').text(`…and ${ch.length - 14} more: see the pack online`, { lineBreak: false }); } } }
   }
   return b.finish();
 }
