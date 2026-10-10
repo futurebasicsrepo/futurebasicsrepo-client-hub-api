@@ -420,5 +420,11 @@ test('signed-in asks use the saved address, so the pay-at-store link works right
   assert.equal(claimed.status, 200, JSON.stringify(claimed.body));
   assert.equal(claimed.body.cart.for, 'self');
   assert.equal(claimed.body.cart.requester.shipping.line1, '1 Main St');
+
+  // From "Ready for you" on the account page: signed in, no key in the URL.
+  const back = await call('POST', `/v1/carts/${token}/manage/reassign`, {}, { cookie });
+  assert.equal(back.status, 200, JSON.stringify(back.body));
+  assert.equal(back.body.cart.for, 'other');
+  assert.match(back.body.share_message, /\/c\//);
   assert.equal((await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k: 'wrong' })).status >= 400, true);
 });

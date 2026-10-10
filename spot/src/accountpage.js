@@ -14,9 +14,14 @@ const CSS = `
 .acct section{margin-top:34px}
 .box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
 .ready{display:grid;gap:10px}
-.rcard{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--card);border:1.5px solid var(--spot);border-radius:18px;padding:14px 16px;text-decoration:none;color:var(--ink)}
+.rcard{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--card);border:1.5px solid var(--spot);border-radius:18px;padding:14px 16px;color:var(--ink)}
+.rcard .rinfo{text-decoration:none;color:inherit}
 .rcard b{display:block}.rcard small{color:var(--muted)}
-.rcard .go{background:var(--spot);color:#fff;font-weight:700;border-radius:999px;padding:10px 16px;white-space:nowrap}
+.rcard .racts{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.rcard .go{background:var(--spot);color:#fff;font-weight:700;border-radius:999px;padding:10px 16px;white-space:nowrap;text-align:center;text-decoration:none;border:1.5px solid var(--spot);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.rcard .go.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.rcard .go:disabled{opacity:.6}
+@media (max-width:560px){.rcard{grid-template-columns:1fr}.rcard .go{padding:12px 16px}}
 .list{display:grid;gap:0}
 .item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)}
 .item:last-child{border-bottom:0}
@@ -223,7 +228,10 @@ async function load(){
   me=await r.json();const u=me.user;
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
-  $('#ready').innerHTML=me.ready.map(c=>'<a class="rcard" href="'+esc(c.manage_url)+'"><span><b>'+(c.kind==='flight'?'✈️ ':c.kind==='train'?'🚆 ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></span><span class="go">Finish →</span></a>').join('');
+  // Finish it yourself, or hand it to whoever's paying: the same choice as on the cart's own page.
+  $('#ready').innerHTML=me.ready.map(c=>{const canAsk=c.kind!=='flight'&&c.kind!=='train'&&!c.bundle_id&&['card','direct'].includes(c.settle);
+    return '<div class="rcard"><a class="rinfo" href="'+esc(c.manage_url)+'"><b>'+(c.kind==='flight'?'✈️ ':c.kind==='train'?'🚆 ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></a>'
+      +'<div class="racts"><a class="go" href="'+esc(c.manage_url)+'">Finish →</a>'+(canAsk?'<button type="button" class="go ghost" data-ask="'+esc(c.token)+'" data-url="'+esc(c.manage_url)+'">Ask someone to pay 💸</button>':'')+'</div></div>'}).join('');
   renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
@@ -252,6 +260,13 @@ function renderCarts(){
   $('#carts').innerHTML=mine.length?mine.map(c=>{const [l,t]=LABEL[c.status]||[c.status,''];return '<a class="item" href="'+esc(c.manage_url)+'"><span>'+esc(c.items[0]?.title||'Cart')+(c.items.length>1?' +'+(c.items.length-1):'')+'<span class="st '+(c.held?'warn':t)+'">'+(c.held?'checking':l)+'</span>'+(c.built_by?'<span class="st ai">🤖 '+esc(aiName(c.built_by))+'</span>':'')+'<small>'+esc(c.merchant.name)+(c.for==='self'?' · for you':' · '+(c.payer_name?esc(c.payer_name)+' spotted you':'someone else pays'))+' · '+new Date(c.created_at).toLocaleDateString()+'</small></span><span class="amt">'+usd(c.total_cents)+'</span></a>'}).join('')
     :all.length?'<p class="sub" style="margin:0">'+(cartFilter==='ai'?'Your AI hasn’t asked for anything yet.':'Nothing you made yourself yet.')+'</p>':'<p class="sub" style="margin:0">No Spots yet. <a href="/new">Make one</a>, or ask your AI.</p>';
 }
+// "Ask someone to pay": the cart becomes a link for whoever's paying. Share
+// it right away; if the phone won't open the share sheet after the wait,
+// the cart's own page has the Share button.
+$('#ready').addEventListener('click',async e=>{const b=e.target.closest('[data-ask]');if(!b)return;b.disabled=true;$('#err').textContent='';
+  try{const r=await post('/v1/carts/'+b.dataset.ask+'/manage/reassign');
+    try{if(!navigator.share)throw 0;await navigator.share({text:r.share_message});load()}catch(x){if(x&&x.name==='AbortError'){load();return}location.href=b.dataset.url}}
+  catch(err){b.disabled=false;$('#err').textContent=err.message}});
 $('#cartSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cartFilter=b.dataset.f;document.querySelectorAll('#cartSeg button').forEach(x=>x.setAttribute('aria-selected',String(x===b)));renderCarts()});
 const ACT={connected:'Connected',ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
 const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
