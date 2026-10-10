@@ -60,3 +60,27 @@ test('tickets and paid carts stay with the requester', async (t) => {
   await call('POST', `/v1/carts/${paid.token}/sandbox-pay`, {});
   assert.equal((await call('POST', `/v1/carts/${paid.token}/manage/reassign`, { k: paid.k })).status, 409);
 });
+
+test('whoever gets the link can say "not this time": the requester hears, and the ask stays open', async (t) => {
+  const sent = [];
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: {}, notifyFetch: async (url, init) => { sent.push(String(init?.body || '')); return new Response('{}', { status: 200 }); } });
+  t.after(() => a.close());
+  const call = async (method, url, payload) => {
+    const r = await a.inject({ method, url, payload });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body };
+  };
+  const made = (await call('POST', '/v1/carts', { requester: { name: 'Kyle', email: 'kyle@example.com' }, merchant: { name: 'Nike', url: 'https://www.nike.com' }, items })).body;
+  const token = made.cart.token;
+  assert.match((await call('GET', `/c/${token}`)).body, /Not this time/);
+
+  const no = await call('POST', `/v1/carts/${token}/decline`, { name: 'Danielle' });
+  assert.equal(no.status, 200, JSON.stringify(no.body));
+  const mine = (await call('GET', `/v1/carts/${token}/manage?k=${made.manage_key}`)).body;
+  assert.equal(mine.cart.status, 'open', 'Kyle can still pay it or send it on');
+  assert.ok(mine.events.some((e) => e.kind === 'declined'));
+  assert.equal(a.spot.load(token).declines[0].name, 'Danielle');
+
+  // Once it's paid, there's nothing to decline.
+  await call('POST', `/v1/carts/${token}/sandbox-pay`, {});
+  assert.equal((await call('POST', `/v1/carts/${token}/decline`, {})).status, 409);
+});

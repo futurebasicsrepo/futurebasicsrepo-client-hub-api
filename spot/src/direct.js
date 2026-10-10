@@ -37,6 +37,16 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       return Boolean(d?.lookup);
     },
 
+    // Before a link goes out: the store finds every item, in that size or
+    // colour, in stock. Returns the items with their product links filled in.
+    async verify(cart) {
+      const d = cart.merchant?.url ? await discovery(cart.merchant.url) : null;
+      if (!d?.lookup) return { ok: false, reason: 'no_direct' };
+      const r = await resolveItems(client(d), cart, { fetchImpl, allowPrivate }).catch(() => null);
+      if (r?.lines) return { ok: true, items: r.items || cart.items };
+      return { ok: false, reason: r?.not_found ? 'not_found' : r?.unresolved ? 'unavailable' : 'not_found', item: r?.unresolved || cart.items.find((i) => !i.url)?.title || cart.items[0]?.title };
+    },
+
     // Builds the store's checkout for this cart: its items, shipped to the
     // requester. The buyer is the payer (the store sends them its receipt).
     async start(cart, { email = null } = {}) {

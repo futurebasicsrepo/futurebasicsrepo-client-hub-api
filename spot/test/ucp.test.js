@@ -52,6 +52,9 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
       res.writeHead(rpc ? 200 : code, { 'content-type': 'application/json' });
       res.end(JSON.stringify(rpc ? { jsonrpc: '2.0', id: rpc.id, result: { structuredContent: obj, content: [{ type: 'text', text: JSON.stringify(obj) }] } } : obj));
     };
+    if (req.url.startsWith('/search/suggest.json')) {
+      return send(200, { resources: { results: { products: [{ title: 'Super Puff Lite', url: '/products/puffer-lite?_pos=1' }, { title: 'Super Puff', url: '/products/puffer?_pos=2&_psq=x' }] } } });
+    }
     if (mcp && req.url === '/products/puffer.js') {
       return send(200, { id: 9001, title: 'Super Puff', variants: [{ id: 111, title: 'Black / S', option1: 'Black', option2: 'S', available: true, price: 25000 }, { id: 222, title: 'Black / M', option1: 'Black', option2: 'M', available: true, price: 25000 }] });
     }
@@ -447,4 +450,39 @@ test('an older pay-at-store ask picks up the address its owner saved later, so t
   const page = await call('GET', `/c/${token}`);
   assert.doesNotMatch(page.body, /Waiting for/);
   assert.match(page.body, /Pay Puff Co/);
+});
+
+test('before a link goes out: items are found by name, and a cart the store can’t fill is refused', async (t) => {
+  const store = await startUcpStore();
+  const { app } = await directSetup(t, store);
+  const call = async (method, url, payload, headers = {}) => {
+    const r = await app.inject({ method, url, payload, headers });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body };
+  };
+  const key = (await call('POST', '/v1/agent/keys', { email: 'dev@example.com', agent_name: 'Claude' })).body.api_key;
+  const auth = { authorization: `Bearer ${key}` };
+  const named = (title, variant) => directCart(store.origin, { items: [{ title, variant, quantity: 1, price_cents: 25000 }] });
+
+  // No product link: Spot finds it on the store by name (not the Lite).
+  const ok = await call('POST', '/v1/agent/asks', named('Super Puff (Black)', 'Black / M'), auth);
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  const cart = app.spot.load(ok.body.ask_id);
+  assert.equal(cart.items[0].url, `${store.origin}/products/puffer`, 'the link it found is kept for checkout');
+
+  // Not on the store: refused with how to fix it, and no link exists.
+  const missing = await call('POST', '/v1/agent/asks', named('Mystery Jacket', 'Black / M'), auth);
+  assert.equal(missing.status, 422);
+  assert.match(missing.body.error, /Couldn’t find "Mystery Jacket" on Puff Co/);
+
+  // On the store, but not in that size: refused too.
+  const size = await call('POST', '/v1/agent/asks', directCart(store.origin, { items: [{ title: 'Super Puff', variant: 'Red / XL', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] }), auth);
+  assert.equal(size.status, 422);
+  assert.match(size.body.error, /doesn’t have "Super Puff" in that size or color/);
+});
+
+test('size/colour words that are part of the product name don’t block the match', async () => {
+  const { matchVariant } = await import('../src/fulfill/shopify.js');
+  const variants = [{ id: 1, title: 'Black', option1: 'Black', available: true }, { id: 2, title: 'Blue', option1: 'Blue', available: true }];
+  assert.equal(matchVariant(variants, '0.5mm / Black', 'Uni Jetstream Ballpoint Pen - 0.5mm')?.id, 1);
+  assert.equal(matchVariant(variants, '0.5mm / Red', 'Uni Jetstream Ballpoint Pen - 0.5mm'), null);
 });

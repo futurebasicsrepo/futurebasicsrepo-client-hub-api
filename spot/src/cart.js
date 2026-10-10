@@ -187,7 +187,9 @@ export function computeTotals(items, extrasCents, settle, cfg = config(), { cush
   // No fee when the money never goes through Spot (handoff, direct).
   const room = settle === 'card' && cushion ? cushionCents(cart) : 0;
   const fee = settle === 'card' ? spotFee(cart, room, cfg) : 0;
-  return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, cushion_cents: room, fee_cents: fee, total_cents: cart + room + fee };
+  // What Spot keeps; the rest of the fee is what the card network charges.
+  const keep = settle === 'card' ? Math.min(fee, Math.round((cart * (cfg.feeBps || 0)) / 10000 + (cfg.feeFixedCents || 0))) : 0;
+  return { subtotal_cents: subtotal, extras_cents: extrasCents, cart_cents: cart, cushion_cents: room, fee_cents: fee, fee_keep_cents: keep, total_cents: cart + room + fee };
 }
 
 // Spot's fee, grossed up for card processing: Stripe takes p% + c of the

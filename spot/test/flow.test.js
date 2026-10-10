@@ -534,3 +534,22 @@ test('integrations page and the downloadable browser extension', async (t) => {
   new Function(extensionFiles('https://x.test')['background.js']); // parses
   assert.equal(zip({ 'a.txt': 'hi' }).readUInt32LE(0), 0x04034b50);
 });
+
+test('the pay page shows where every dollar goes: items, shipping + tax, room for tax, card processing, Spot fee', async (t) => {
+  const { buildApp } = await import('../src/server.js');
+  const { openDb } = await import('../src/db.js');
+  const { sandboxProvider } = await import('../src/providers.js');
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), logger: false, env: {} });
+  t.after(() => a.close());
+  const made = (await a.inject({ method: 'POST', url: '/v1/carts', payload: { requester: { name: 'Kyle' }, merchant: { name: 'Yoseka Stationery' }, items: [{ title: 'Uni Jetstream Pen', price_cents: 275 }], extras_cents: 800 } })).json();
+  const c = made.cart;
+  const page = (await a.inject({ url: `/c/${c.token}` })).body;
+  const $ = (n) => `\\$${(n / 100).toFixed(2)}`;
+  assert.match(page, new RegExp(`Item</span><b>${$(275)}`));
+  assert.match(page, new RegExp(`Shipping \\+ tax<small>[^<]*</small></span><b>${$(800)}`));
+  assert.match(page, /Room for price changes/);
+  assert.ok(c.fee_keep_cents > 0 && c.fee_keep_cents < c.fee_cents);
+  assert.match(page, new RegExp(`Card processing<small>card network, not Spot</small></span><b>${$(c.fee_cents - c.fee_keep_cents)}`));
+  assert.match(page, new RegExp(`Spot fee</span><b>${$(c.fee_keep_cents)}`));
+  assert.match(page, new RegExp(`Total</span><b>${$(c.total_cents)}`));
+});

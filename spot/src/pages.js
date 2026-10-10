@@ -196,6 +196,11 @@ const PAY_CSS = `
 .pcard .t{font-weight:700;line-height:1.2}.pcard .v{color:var(--muted);font-size:14px}
 .pcard .p{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
 .act{padding:10px 0 4px}
+.bub.costs{display:block;width:100%;max-width:none;box-sizing:border-box;padding:12px 16px}
+.costs .cl{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:15px;font-variant-numeric:tabular-nums}
+.costs .cl span{color:var(--muted)}.costs .cl small{display:block;font-size:12px;opacity:.85}
+.costs .cl b{white-space:nowrap}.costs .tot{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-size:16px}.costs .tot span{color:var(--ink);font-weight:700}
+.nope{display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:15px;text-decoration:underline;cursor:pointer;padding:4px 8px}
 /* The pay button rides along at the bottom, so it's one tap from opening the link. */
 .act.stick{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 18px)}
 .act.stick:has(details[open]),.act.stick:has(input:focus){position:static;margin:0;padding:10px 0 4px;background:none}
@@ -287,6 +292,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
       cart.note ? `<div class="bub quote">“${esc(cart.note)}” — ${esc(name)}</div>` : '',
       whoBox(cart),
       products,
+      costs(cart),
       `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
     ];
   }
@@ -299,7 +305,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}<button type="button" class="nope" id="nope">Not this time</button></div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;
@@ -318,9 +324,35 @@ function celebrate(payer){
   for(let i=0;i<70;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'vw';p.style.background=cols[i%cols.length];p.style.animationDelay=Math.random()*.4+'s';p.style.animationDuration=1.2+Math.random()+'s';c.appendChild(p)}
   document.body.appendChild(c);setTimeout(()=>c.remove(),3000);scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 }
+const nope=$('#nope');if(nope)nope.onclick=async()=>{if(!confirm('Let '+${json(name)}+' know you can’t spot this one?'))return;nope.disabled=true;
+  try{const nm=$('#payer');await api('/v1/carts/'+${json(cart.token)}+'/decline',{name:nm?nm.value:''});
+    const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
+    $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">no worries 💛</div><div class="bub" style="animation-delay:.45s">I let '+${json(esc(name))}+' know. nothing was charged.</div>')}
+  catch(e){nope.disabled=false;alert(e.message)}};
 ${open && cart.settle === 'card' ? payScript(cart, provider) : ''}
 ${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });
+}
+
+// Where every dollar goes, shown before anyone pays: the items, the
+// store's shipping and tax, the room for tax that comes back, card
+// processing, and Spot's own fee.
+function costs(cart) {
+  const row = (label, cents, note) => `<div class="cl"><span>${label}${note ? `<small>${note}</small>` : ''}</span><b>${usd(cents)}</b></div>`;
+  const store = esc(cart.merchant.name);
+  const card = cart.settle === 'card';
+  const rows = [row(cart.items.length > 1 ? `${cart.items.length} items` : 'Item', cart.subtotal_cents)];
+  if (cart.extras_cents) rows.push(row('Shipping + tax', cart.extras_cents, cart.settle === 'direct' ? `${store} shows the exact amount` : `${store}’s estimate`));
+  if (card && cart.cushion_cents) rows.push(row('Room for price changes', cart.cushion_cents, 'unused comes back to you'));
+  if (card && cart.fee_cents) {
+    const keep = cart.fee_keep_cents;
+    if (keep != null && keep < cart.fee_cents) {
+      rows.push(row('Card processing', cart.fee_cents - keep, 'card network, not Spot'));
+      rows.push(row('Spot fee', keep));
+    } else rows.push(row('Spot fee', cart.fee_cents, 'includes card processing'));
+  } else rows.push(`<div class="cl"><span>Spot fee</span><b>none</b></div>`);
+  const total = card ? cart.total_cents : cart.cart_cents;
+  return `<div class="bub costs" aria-label="Where your money goes">${rows.join('')}<div class="cl tot"><span>Total</span><b>${usd(total)}</b></div></div>`;
 }
 
 // Who's behind this ask: the AI that found it, the person who sent it (and
