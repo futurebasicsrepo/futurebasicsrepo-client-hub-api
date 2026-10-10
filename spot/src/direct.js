@@ -72,7 +72,17 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
           if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, pick));
           // A total without a chosen shipping option leaves shipping out.
           const shipping = (co.fulfillment?.methods || []).find((m) => m.type === 'shipping');
-          if (!shipping?.groups?.length || !shipping.groups.every((g) => g.selected_option_id)) return null;
+          if (!shipping?.groups?.length || !shipping.groups.every((g) => g.selected_option_id)) {
+            // Some Shopify stores leave shipping out of agent checkout
+            // (ColourPop); their own cart still prices it for the address.
+            const rate = await cartShippingCents(cart.merchant.url, resolved.lines, ship, { fetchImpl });
+            if (rate == null || (co.currency && co.currency !== 'USD')) return null;
+            const amount = (type) => co.totals?.find((t) => t.type === type)?.amount ?? null;
+            const subtotal = amount('subtotal');
+            if (subtotal == null) return null;
+            const tax = amount('tax') ?? 0;
+            return { total_cents: subtotal + rate + tax, subtotal_cents: subtotal, shipping_cents: rate, tax_cents: tax, shipping_from: 'cart' };
+          }
         }
         const total = totalOf(co);
         if (total == null || (co.currency && co.currency !== 'USD')) return null;
@@ -141,4 +151,38 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       };
     },
   };
+}
+
+// A Shopify store's cheapest shipping rate for these variants and address,
+// from its storefront cart (the same rates its checkout offers): add to a
+// fresh cart, ask for the rates, and drop the cart. Null when the store
+// isn't Shopify or won't say.
+const US_STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico' };
+
+export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fetch } = {}) {
+  let origin;
+  try {
+    origin = new URL(storeUrl).origin;
+  } catch {
+    return null;
+  }
+  const items = (lines || []).map((l) => ({ id: Number(String(l.item?.id || '').replace(/^gid:\/\/shopify\/ProductVariant\//, '')), quantity: l.quantity }));
+  if (!items.length || items.some((i) => !Number.isSafeInteger(i.id) || i.id <= 0)) return null;
+  try {
+    const add = await fetchImpl(`${origin}/cart/add.js`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items }), redirect: 'error', signal: AbortSignal.timeout(8000) });
+    if (!add.ok) return null;
+    const set = typeof add.headers.getSetCookie === 'function' ? add.headers.getSetCookie() : [add.headers.get('set-cookie')].filter(Boolean);
+    const cookie = set.map((c) => c.split(';')[0]).filter(Boolean).join('; ');
+    if (!cookie) return null;
+    const state = US_STATES[String(ship.state || '').toUpperCase()] || ship.state;
+    const q = new URLSearchParams({ 'shipping_address[zip]': ship.postal_code, 'shipping_address[country]': 'United States', 'shipping_address[province]': state });
+    const res = await fetchImpl(`${origin}/cart/shipping_rates.json?${q}`, { headers: { cookie, accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const rates = ((await res.json()).shipping_rates || []).map((r) => Math.round(Number(r.price) * 100)).filter((c) => Number.isFinite(c) && c >= 0);
+    // Leave nothing behind in the store's cart.
+    await fetchImpl(`${origin}/cart/clear.js`, { method: 'POST', headers: { cookie, accept: 'application/json' }, signal: AbortSignal.timeout(5000) }).catch(() => {});
+    return rates.length ? Math.min(...rates) : null;
+  } catch {
+    return null;
+  }
 }

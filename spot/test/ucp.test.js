@@ -13,7 +13,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false, noShipOptions = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -98,6 +98,11 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
     if (m) {
       const co = sessions.get(m[1]);
       if (req.method === 'GET' && !m[2]) return send(200, view(co));
+      if (req.method === 'PUT' && noShipOptions) {
+        // Like ColourPop: agent checkout takes the address but offers no shipping.
+        Object.assign(co, { status: 'requires_escalation', fulfillment: { methods: [] }, totals: [{ type: 'subtotal', amount: 25000 }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 26100 }] });
+        return send(200, view(co));
+      }
       if (req.method === 'PUT') {
         const method = body.fulfillment.methods[0];
         const picked = method.groups?.[0]?.selected_option_id;
@@ -121,6 +126,18 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
       }
     }
     if (req.url === '/tok/tokenize') return send(200, { token: 'tok_from_store' });
+    // The storefront cart (Shopify's AJAX API): rates for the cart's address.
+    if (req.method === 'POST' && req.url === '/cart/add.js') {
+      res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'cart=c1; path=/; HttpOnly' });
+      return res.end(JSON.stringify({ items: body.items }));
+    }
+    if (req.url.startsWith('/cart/shipping_rates.json')) {
+      if (!/cart=c1/.test(req.headers.cookie || '')) return send(422, { error: 'no cart' });
+      const q = new URL(req.url, origin).searchParams;
+      if (q.get('shipping_address[province]') !== 'Texas' || q.get('shipping_address[zip]') !== '78701') return send(200, { shipping_rates: [] });
+      return send(200, { shipping_rates: [{ name: 'Express', price: '15.00' }, { name: 'Standard', price: '5.99' }] });
+    }
+    if (req.url === '/cart/clear.js') return send(200, {});
     // The store's own checkout page: the payer pays the store here.
     const pay = req.url.match(/^\/checkout\/([^/]+)\/pay$/);
     if (pay && req.method === 'POST') {
@@ -784,4 +801,20 @@ test('an AI’s ask with an address is priced at the store’s real total before
   assert.equal(r.statusCode, 201, r.body);
   const ask = r.json();
   assert.equal(ask.cart_cents, 26900, 'shipping and tax from the store, though the AI gave no estimate');
+});
+
+test('store quote: a Shopify store that leaves shipping out of agent checkout is priced from its own cart', async (t) => {
+  const store = await startUcpStore({ mcp: true, noShipOptions: true });
+  t.after(() => store.close());
+  const { createDirect } = await import('../src/direct.js');
+  const direct = createDirect({ profileUrl: 'https://spot.example/.well-known/ucp', allowPrivate: true });
+  const cart = { merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] };
+  const q = await direct.quote(cart, shipping);
+  assert.deepEqual(q, { total_cents: 25000 + 599 + 1100, subtotal_cents: 25000, shipping_cents: 599, tax_cents: 1100, shipping_from: 'cart' }, 'cheapest cart rate for the address, plus the store’s tax');
+  const add = store.log.find((r) => r.url === '/cart/add.js');
+  assert.deepEqual(add.body.items, [{ id: 222, quantity: 1 }], 'the same variant the checkout used');
+  assert.ok(store.log.some((r) => r.url === '/cart/clear.js'), 'nothing is left in the store’s cart');
+  assert.ok(store.log.some((r) => /\/checkout-sessions\/[^/]+\/cancel$/.test(r.url)), 'the quote checkout is cancelled');
+  // An address the store doesn't ship to: no quote, the estimate stands.
+  assert.equal(await direct.quote(cart, { ...shipping, state: 'CA', postal_code: '94105' }), null);
 });
