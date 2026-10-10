@@ -1327,6 +1327,22 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
   ok(data.pom.length > 0 && data.bom.length > 0, 'the pack has measurements and materials', [data.pom.length, data.bom.length]);
   for (let i = 0; i < 60 && !(d.techPack.data.renderings || []).some(r => /^concept-/.test(r.id)); i++) { await sleep(300); d = await draftOf(tok, pid); }
   const cr = d.techPack.data.renderings.find(r => /^concept-/.test(r.id)); ok(cr && cr.name === 'Concept render' && /^data:image\/jpeg;base64,/.test(cr.image) && d.techPack.data.renderings[0].id === cr.id, 'a concept render made from the graphic and the description is the first rendering, so the cover shows something', cr && cr.name);
+  // the concept render is the front view, so the callouts page, the check and the hero have something to start from; the client's own graphic is placed on it, never redrawn
+  for (let i = 0; i < 60 && !d.techPack.data.sketches.some(sk => sk.image); i++) { await sleep(300); d = await draftOf(tok, pid); }
+  const front = d.techPack.data.sketches.find(sk => sk.image); ok(front && front.image === cr.image && /concept render/i.test(front.label) && front.label.indexOf('to follow') < 0, 'the concept render is the front view (the Callouts page is not empty)', front && front.label);
+  const place = d.techPack.data.artwork[0].placements.find(pl => pl.sketchId === front.id); ok(place && place.x > 0 && place.x < 1 && place.y > 0 && place.y < 1 && place.w > 0 && place.widthIn > 0 && /adjust/i.test(place.label), 'the client\'s graphic is placed on it as a placement that can be dragged and sized', place);
+  ok(d.techPack.data.artwork[0].image === art, 'and the placed graphic is still exactly the upload');
+  const stu = (await call(`/v1/products/${pid}/tech-pack/studio`, { token: tok })).json; ok(stu && !stu.error, 'the studio and check read the pack with its front view', stu && stu.error);
+  // "from your files": pictures already saved are offered instead of uploading again
+  const sendRoom = (token, name, buf) => { const fd = new FormData(); fd.append('file', new Blob([buf], { type: 'image/png' }), name); return call('/v1/room-files', { method: 'POST', token, raw: fd }); };
+  const rf = await sendRoom(tok, 'logo-from-room.png', png); ok(rf.status === 201, 'a picture can be sent to the room', [rf.status, rf.json.error]);
+  const pk = (await call(`/v1/products/${pid}/pick-images`, { token: tok })).json;
+  ok(pk.items.some(i => /logo-from-room\.png$/.test(i.name)) && pk.items.some(i => /upload/i.test(i.name) && i.where === 'This product') && pk.items.some(i => /concept|front/i.test(i.name + i.label)), 'the picker offers the room\'s pictures and this product\'s own, including the render', pk.items.map(i => i.where + ':' + i.name));
+  ok(pk.items.every(i => /^image\//.test(i.mime)), 'only pictures are offered', pk.items.map(i => i.mime));
+  const got1 = await fetch(BASE + pk.items.find(i => /logo-from-room/.test(i.name)).url, { headers: { Authorization: 'Bearer ' + tok } }); ok(got1.status === 200 && Buffer.from(await got1.arrayBuffer()).equals(png), 'a picked picture is fetched exactly as saved');
+  const pkAll = (await call('/v1/pick-images', { token: tok })).json; ok(pkAll.items.some(i => /logo-from-room/.test(i.name)) && pkAll.items.some(i => /upload/i.test(i.name)), 'before a product exists the hub offers the room\'s pictures and the product folders\'', pkAll.items.map(i => i.name));
+  const stranger = await room('96x'); ok((await call(`/v1/products/${pid}/pick-images`, { token: stranger.token })).status === 404 && !(await call('/v1/pick-images', { token: stranger.token })).json.items.some(i => /logo-from-room/.test(i.name)), 'another client cannot list or take them');
+  ok((await call(`/v1/products/${pid}/pick-images`, { token: '' })).status === 401, 'and it needs a sign-in');
   const f = (await call(`/v1/products/${pid}/files`, { token: tok })).json, ups = (f.groups.find(g => g.key === 'uploads') || { items: [] }).items;
   const mine = ups.find(i => /upload/i.test(i.label || '') || /upload/i.test(i.name)); ok(mine && /\.png$/i.test(mine.name) && /^image\/png/.test(mine.mime), 'the files folder lists the graphic under "Your uploads"', ups.map(i => i.name));
   const dl = await fetch(BASE + mine.url, { headers: { Authorization: 'Bearer ' + tok } }); const got = Buffer.from(await dl.arrayBuffer()); ok(dl.status === 200 && got.equals(png), 'and the client can download exactly what they uploaded', [dl.status, got.length, png.length]);
@@ -1339,6 +1355,7 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
   ok(/too small to print|dpi/.test(art0.note), 'a small file is flagged as small for print', art0.note);
   ok(art0.pantones.length >= 1 && /^PANTONE .+ C$/.test(art0.pantones[0].code), 'the inks are found and matched to Pantone C chips', art0.pantones);
   ok(art0.image === art, 'and the artwork itself is exactly the upload');
+  ok(/^data:image\/png;base64,/.test(art0.clear || ''), 'a transparent copy rides with it, so the logo sits on the garment picture without a white box', (art0.clear || '').slice(0, 30));
   const f2 = (await call(`/v1/products/${pid}/files`, { token: tok })).json, clean = f2.groups.flatMap(g => g.items).find(i => /Art file/.test(i.label || '')); ok(clean && clean.group === 'design' && /\.png$/i.test(clean.name), 'the files folder has a clean art file under Design files', f2.groups.flatMap(g => g.items).map(i => i.label));
   const cdl = await fetch(BASE + clean.url, { headers: { Authorization: 'Bearer ' + tok } }), cbuf = Buffer.from(await cdl.arrayBuffer()), cm = await sharp(cbuf).metadata(), craw = await sharp(cbuf).ensureAlpha().raw().toBuffer();
   ok(cdl.status === 200 && cm.hasAlpha && cm.width < 640 && craw[3] === 0, 'it is a transparent, trimmed PNG', [cm.width, cm.height, cm.hasAlpha]);
@@ -1346,6 +1363,42 @@ await journey('J96', 'a graphic with a description is not a dead end: the pack i
   const b = await start('Hoodie', ''); ok(b.status === 201, 'a graphic with a one-word title and no description still starts a room');
   let e = null; for (let i = 0; i < 100; i++) { e = await draftOf(b.json.token, b.json.product.id); if (e.techPack && ['done', 'failed'].includes(e.techPack.aiStatus)) break; await sleep(300); }
   ok(e.techPack.aiStatus === 'failed' && /could not make out a product/.test(e.techPack.aiError || ''), 'with nothing said about the product it asks for a better picture, as before', [e.techPack.aiStatus, e.techPack.aiError]);
+  // the screens: the concept render is on the Callouts page with the logo on it, the Check says what the picture is, and "from your files" works
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      for (let i = 0; i < 160; i++) { const s2 = await call(`/v1/products/${pid}/tech-pack/studio`, { token: tok }); if (s2.json.loop && s2.json.loop.status === 'done') break; await sleep(300); }
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, tok);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${pid}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await p.keyboard.press('Escape');
+      await p.click('#tabs button[data-tab="calls"]'); await p.waitForSelector('.panel[data-panel="calls"] .stage img.base', { timeout: 10000 });
+      const cs = { empty: await p.locator('.panel[data-panel="calls"] .stage .empty').count(), overlays: await p.locator('.panel[data-panel="calls"] .art-overlay img').count(), note: await p.locator('.panel[data-panel="calls"] .concept-note').count() };
+      ok(cs.empty === 0 && cs.overlays === 1 && cs.note === 1, 'Callouts: the front view is the concept render with the client\'s logo on it, not an empty drop box', cs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j96-callouts.png` }).catch(() => {});
+      const admin2 = await forge({ sub: sql(`select id from users where client_id='${cid}' limit 1`), clientId: cid, role: 'admin' });
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin2);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${pid}?as=work`, { waitUntil: 'domcontentloaded' }); await ap.waitForSelector('#tabs button[data-tab="check"]', { timeout: 20000 }); await ap.keyboard.press('Escape'); await ap.click('#tabs button[data-tab="check"]'); await ap.waitForSelector('.chk-shots figcaption', { timeout: 15000 });
+      const caps = await ap.locator('.chk-shots figcaption').allInnerTexts(); ok(/concept render/i.test(caps[0]) && ap.errs.length === 0, 'Check: the first picture is the concept render and says so, not "the client\'s photo"', [caps, ap.errs]);
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j96-check.png` }).catch(() => {}); await actx.close();
+      await p.click('#tabs button[data-tab="art"]'); await p.waitForSelector('.pickbtn[data-for="artfile"]');
+      const before = await p.locator('.panel[data-panel="art"] .arts .art').count();
+      await p.click('.pickbtn[data-for="artfile"]'); await p.waitForSelector('.fbpk .it', { timeout: 10000 });
+      ok(/this product/i.test(await p.innerText('.fbpk')) && /logo-from-room/.test(await p.innerText('.fbpk')), 'Art: "Choose from your files" lists this product\'s pictures and the room\'s');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j96-picker.png` }).catch(() => {});
+      await p.locator('.fbpk .it', { hasText: 'logo-from-room' }).click(); await p.click('.fbpk button.go');
+      await p.waitForFunction(n => document.querySelectorAll('.panel[data-panel="art"] .arts .art').length > n, before, { timeout: 10000 });
+      ok(await p.locator('.fbpk').count() === 0, 'a picked picture is added as artwork, the same as an uploaded one, and the box closes');
+      await ctx.close();
+      const hub = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await hub.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, tok);
+      const h = await hub.newPage(); h.errs = []; h.on('pageerror', e => h.errs.push(e.message));
+      await h.goto(`${BASE}/hub`, { waitUntil: 'domcontentloaded' }); await h.waitForFunction(() => typeof window.FBPick !== 'undefined' && document.getElementById('tpFromFiles'), null, { timeout: 20000 });
+      await h.evaluate(() => document.getElementById('techPackDialog').showModal()); await h.click('#tpFromFiles'); await h.waitForSelector('.fbpk .it', { timeout: 10000 });
+      await h.locator('.fbpk .it').first().click(); await h.click('.fbpk button.go');
+      await h.waitForFunction(() => !document.getElementById('tpShots').classList.contains('hidden') && document.querySelectorAll('#tpShots img').length > 0, null, { timeout: 15000 });
+      ok(h.errs.length === 0, 'Hub: starting a tech pack can take a picture from the saved files instead of the computer', h.errs); await hub.close();
+    } finally { await bw.close(); }
+  }
 });
 
 await journey('J97', 'flag a line and say what is wrong: the design assistant changes that one line (or says why not), it can be undone, a submitted pack is closed to it, and measurements are never touched', async () => {
