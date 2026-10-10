@@ -59,7 +59,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('metrics', metrics);
   // Every caller of the payment provider is watched: card calls count as
   // Stripe Issuing, the rest as Stripe payments.
-  const ISSUING = ['issueCard', 'revealCard', 'cancelCard', 'setCardLimit', 'answerAuthorization'];
+  const ISSUING = ['issueCard', 'revealCard', 'cancelCard', 'setCardLimit', 'answerAuthorization', 'activateCard', 'issuingAvailableCents'];
   provider = watched(provider, metrics, (key) => (ISSUING.includes(key) ? 'issuing' : 'stripe'));
   app.addHook('onResponse', async (req, reply) => {
     metrics.request(req.routeOptions?.url || 'unmatched', reply.statusCode, Math.round(reply.elapsedTime || 0));
@@ -143,6 +143,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
   // The store's real total (shipping, tax) before anyone pays (direct.js).
   spot.quoter = (cart, ship) => spot.direct.quote(cart, ship);
+  // Stores that can price their own checkout must, before a card is touched.
+  spot.quotable = (cart) => (cart.merchant?.url ? spot.direct.supports(cart.merchant.url) : false);
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
   const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
@@ -198,7 +200,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (status >= 500) req.log.error(err);
     // Stripe says why it refused (a missing customer, a key without access): keep that.
     else if (String(err?.type || '').startsWith('Stripe')) req.log.warn({ stripe: { type: err.type, code: err.code, message: err.message } }, 'stripe refused');
-    reply.code(status).send({ error: status >= 500 ? 'Something went wrong' : err.message });
+    // Spot's own errors are written for people (“nothing was charged, try again”), 5xx or not.
+    reply.code(status).send({ error: status >= 500 && !(err instanceof CartError) ? 'Something went wrong' : err.message });
   });
 
   // Small fixed-window limiter; enough to stop a script hammering capture
@@ -581,6 +584,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.pay(req);
     return spot.startBundlePayment(req.params.token);
   });
+  app.post('/v1/bundles/:token/paid', async (req) => {
+    limits.pay(req);
+    const b = spot.loadBundle(req.params.token);
+    if (b.status === 'open' && b.payment_ref && provider.retrievePayment) await spot.paidFromIntent(await provider.retrievePayment(b.payment_ref));
+    return { status: spot.loadBundle(req.params.token).status };
+  });
   app.post('/v1/bundles/:token/sandbox-pay', async (req) => {
     if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
     limits.pay(req);
@@ -660,6 +669,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.post('/v1/carts/:token/pay', async (req) => {
     limits.pay(req);
     return spot.startPayment(req.params.token);
+  });
+  // The pay page, right after Stripe.js confirms: don't wait on the webhook.
+  app.post('/v1/carts/:token/paid', async (req) => {
+    limits.pay(req);
+    const cart = await spot.checkPayment(req.params.token);
+    return { status: cart.status };
   });
 
   // Sandbox only: stands in for Apple Pay + the Stripe webhook.
@@ -855,15 +870,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
     const obj = event.data.object;
     switch (event.type) {
+      // The payer's card is held (or, for payments made before holds, charged).
+      // A capture later sends payment_intent.succeeded again: by then the
+      // cart has moved on, so it's a no-op.
+      case 'payment_intent.amount_capturable_updated':
       case 'payment_intent.succeeded':
-        if (obj.metadata?.spot_cart_id) {
-          const payer = (await provider.payerFor?.(obj).catch(() => null)) || {};
-          await spot.paymentSucceeded({
-            paymentRef: obj.id,
-            amountCents: obj.amount_received,
-            payer: { ...payer, name: payer.name || obj.shipping?.name || null },
-          });
-        }
+        await spot.paidFromIntent(obj, event.type);
         break;
       case 'issuing_authorization.request': {
         // Must answer within Stripe's real-time window, so this does no

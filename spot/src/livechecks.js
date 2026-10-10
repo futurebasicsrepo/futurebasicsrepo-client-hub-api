@@ -26,7 +26,7 @@ const msg = (err) => String(err?.message || err || 'failed').replace(/\b(sk|rk|p
 const permission = (err) => err?.type === 'StripePermissionError' || err?.statusCode === 403 || /permission/i.test(err?.message || '');
 
 // The Stripe events Spot acts on (server.js webhook).
-export const STRIPE_EVENTS = ['payment_intent.succeeded', 'issuing_authorization.request', 'issuing_transaction.created', 'issuing_authorization.updated', 'charge.dispute.created'];
+export const STRIPE_EVENTS = ['payment_intent.succeeded', 'payment_intent.amount_capturable_updated', 'issuing_authorization.request', 'issuing_transaction.created', 'issuing_authorization.updated', 'charge.dispute.created'];
 
 export function createLiveChecks({ env = process.env, provider, db, direct = null, shopifyAuth = null, backups = null, launchBrowser = null, fetchImpl = fetch, publicUrl = null, metrics = null }) {
   const stripe = provider?.name === 'stripe' ? provider.stripe : null;
@@ -89,12 +89,27 @@ export function createLiveChecks({ env = process.env, provider, db, direct = nul
         const reqs = ch.requirements?.past_due || [];
         if (reqs.length) return { state: 'fail', detail: `Cardholder needs: ${reqs.join(', ')}` };
         const fa = env.STRIPE_ISSUING_FINANCIAL_ACCOUNT;
-        if (!fa) return { state: 'ok', detail: `Cardholder ${ch.id} active · cards draw from Stripe’s Issuing balance` };
+        if (!fa) {
+          // Accounts on Stripe's financial accounts need one named to make a
+          // card; Spot looks it up, which needs the same Read permission.
+          let list;
+          try {
+            list = await stripe.rawRequest('GET', '/v2/money_management/financial_accounts', {}, { apiVersion: `${Stripe.API_VERSION.split('.')[0]}.preview` });
+          } catch (err) {
+            if (permission(err)) return { state: 'fail', detail: 'STRIPE_ISSUING_FINANCIAL_ACCOUNT isn’t set on this service, and the key can’t look the account up: Stripe won’t make Spot’s cards', fix: 'Set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…) on this service, and give the key Financial Accounts: Read' };
+            return { state: 'ok', detail: `Cardholder ${ch.id} active · cards draw from Stripe’s Issuing balance` };
+          }
+          const open = (list?.data || []).filter((a) => !a.status || a.status === 'open');
+          if (open.length) return { state: 'warn', detail: `Cardholder active · ${open.length} financial account${open.length > 1 ? 's' : ''} found, none named`, fix: 'Set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…) so the balance is checked before every payment' };
+          return { state: 'ok', detail: `Cardholder ${ch.id} active · cards draw from Stripe’s Issuing balance` };
+        }
         let acct;
         try {
           acct = await stripe.rawRequest('GET', `/v2/money_management/financial_accounts/${encodeURIComponent(fa)}`, {}, { apiVersion: `${Stripe.API_VERSION.split('.')[0]}.preview` });
         } catch (err) {
-          if (permission(err)) return { state: 'warn', detail: `Cardholder active · can’t read ${fa}’s balance to warn before cards get declined`, fix: 'Give Spot’s Stripe key Money Management → Financial Accounts: Read' };
+          // Stripe asks for this same permission to make a card on the account,
+          // so without it every order stops after the payer pays.
+          if (permission(err)) return { state: 'fail', detail: `Can’t read ${fa}: Stripe won’t make Spot’s cards without this permission, so no order can be paid for`, fix: 'Give Spot’s Stripe key Money Management → Financial Accounts: Read' };
           throw err;
         }
         const avail = Number(acct?.balance?.available?.usd?.value ?? acct?.balance?.available?.usd ?? NaN);

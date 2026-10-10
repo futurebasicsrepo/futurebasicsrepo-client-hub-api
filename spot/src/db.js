@@ -468,11 +468,11 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       prune: () => q.sessPrune.run(Date.now()),
     },
     // Carts the money sweep looks at: in flight, or completed with a pending
-    // release or a failed partial refund.
+    // release, a failed partial refund, or a hold still to capture.
     idsForMoneySweep: () =>
       db
         .prepare(`SELECT id FROM carts WHERE status IN ('refunding', 'paid', 'card_issued')
-                  OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR doc LIKE '%"state":"failed"%')) LIMIT 2000`)
+                  OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR json_extract(doc, '$.capture_due') IS NOT NULL OR doc LIKE '%"state":"failed"%')) LIMIT 2000`)
         .all()
         .map((r) => r.id),
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),

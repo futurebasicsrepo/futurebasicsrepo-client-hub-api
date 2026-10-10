@@ -224,7 +224,16 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         // What this refund returned: the rest, after any earlier partial refunds.
         const back = Math.max(0, cart.total_cents - (cart.refunded_before_cents ?? 0));
         const out = [];
-        if (cart.payer_contact?.email) {
+        // Only ever a hold on their card: it just goes away, nothing to refund.
+        if (cart.payer_contact?.email && cart.released) {
+          out.push({
+            key: 'refunded_payer',
+            to: { email: cart.payer_contact.email },
+            subject: `Not charged: ${item}`,
+            text: `${why} Your card was never charged: the ${usd(back)} hold is released, and your bank drops it within a few days.`,
+            html: mail({ preheader: 'Your card was never charged', title: 'You weren’t charged', lines: [esc(why), `Your card was never charged. The <b>${usd(back)}</b> hold is released; your bank drops it within a few days.`] }),
+          });
+        } else if (cart.payer_contact?.email) {
           out.push({
             key: 'refunded_payer',
             to: { email: cart.payer_contact.email },
@@ -241,8 +250,8 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
             key: 'refunded_requester',
             to: { email: to },
             subject: `Your ${store} Spot was refunded`,
-            text: `${whyFor} ${payer} got their money back. ${link}`,
-            html: mail({ preheader: `${payer} was refunded`, title: 'This one was refunded', lines: [esc(whyFor), `${esc(payer)} got their money back, so nothing was ordered.`], cta: { label: 'Open your Spot', url: link } }),
+            text: `${whyFor} ${payer} ${cart.released ? 'was never charged' : 'got their money back'}. ${link}`,
+            html: mail({ preheader: `${payer} ${cart.released ? 'wasn’t charged' : 'was refunded'}`, title: cart.released ? 'This one wasn’t ordered' : 'This one was refunded', lines: [esc(whyFor), `${esc(payer)} ${cart.released ? 'was never charged' : 'got their money back'}, so nothing was ordered.`], cta: { label: 'Open your Spot', url: link } }),
           });
         }
         return out;

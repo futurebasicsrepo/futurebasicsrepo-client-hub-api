@@ -88,12 +88,21 @@ test('live checks catch today’s failures, and say how to fix each', async () =
   assert.doesNotMatch(JSON.stringify(live.last()), /sk_test_x|whsec_x|re_x|tok\b/, 'no secrets in results');
 });
 
-test('a key without the financial-account permission is a warning with the exact fix, not a crash', async () => {
+test('a key without the financial-account permission fails (Stripe won’t make cards without it), with the exact fix', async () => {
   const live = createLiveChecks({ env, db: openDb(':memory:'), provider: fakeStripe({ faForbidden: true }), direct, fetchImpl: fetchFake({ campaign: 'VERIFIED' }) });
   const r = byName(await live.run(['issuing', 'twilio']));
-  assert.equal(r.issuing.state, 'warn');
+  assert.equal(r.issuing.state, 'fail');
   assert.match(r.issuing.fix, /Financial Accounts: Read/);
   assert.equal(r.twilio.state, 'ok');
+});
+
+test('no financial account set on the service, and a key that can’t look it up: fails with both fixes', async () => {
+  const { STRIPE_ISSUING_FINANCIAL_ACCOUNT, ...noFa } = env;
+  const live = createLiveChecks({ env: noFa, db: openDb(':memory:'), provider: fakeStripe({ faForbidden: true }), direct, fetchImpl: fetchFake({ campaign: 'VERIFIED' }) });
+  const r = byName(await live.run(['issuing']));
+  assert.equal(r.issuing.state, 'fail');
+  assert.match(r.issuing.detail, /isn’t set on this service/);
+  assert.match(r.issuing.fix, /STRIPE_ISSUING_FINANCIAL_ACCOUNT.*Financial Accounts: Read/);
 });
 
 test('a funded account, all events, an approved campaign: all green; a store that can’t quote is broken', async () => {

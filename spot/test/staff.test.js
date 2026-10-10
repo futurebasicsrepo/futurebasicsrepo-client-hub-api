@@ -60,11 +60,13 @@ test('staff: SPOT_ADMIN_DOMAIN changes or turns off the domain', async (t) => {
 
 test('health: stuck money, services, the $2 fee, Claude cost and traffic', async (t) => {
   const provider = sandboxProvider();
+  // Spot's card is made before the hold; switching it on after the hold is
+  // what can still fail once the payer has paid.
   let failIssue = false;
-  const realIssue = provider.issueCard.bind(provider);
-  provider.issueCard = async (cart) => {
+  const realActivate = provider.activateCard.bind(provider);
+  provider.activateCard = async (ref, cents) => {
     if (failIssue) throw new Error('The v2 financial account id must be specified.');
-    return realIssue(cart);
+    return realActivate(ref, cents);
   };
   const db = openDb(':memory:');
   const a = buildApp({ db, provider, cfg, logger: false, env: { STRIPE_SECRET_KEY: '', DUFFEL_ACCESS_TOKEN: 'duffel_live_x' } });
@@ -120,10 +122,10 @@ test('health: stuck money, services, the $2 fee, Claude cost and traffic', async
 test('health records every service a purchase touches, and a card that failed to issue is retried on its own', async (t) => {
   const provider = sandboxProvider();
   let failIssue = true;
-  const realIssue = provider.issueCard.bind(provider);
-  provider.issueCard = async (c) => {
+  const realActivate = provider.activateCard.bind(provider);
+  provider.activateCard = async (ref, cents) => {
     if (failIssue) throw new Error('The v2 financial account id must be specified.');
-    return realIssue(c);
+    return realActivate(ref, cents);
   };
   const db = openDb(':memory:');
   const a = buildApp({ db, provider, cfg, logger: false, env: {} });

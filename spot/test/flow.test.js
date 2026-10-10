@@ -76,7 +76,7 @@ test('card flow: create → pay → Spot’s card issued → merchant-locked sin
   assert.equal(mine.body.cart.card_ready, true);
   assert.equal(mine.body.cart.card, undefined, 'no card details, not even the last 4');
   assert.doesNotMatch(JSON.stringify(mine.body), /sandbox_secret|"number"|cvc/);
-  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'pay', 'approval_signed', 'issue']);
+  assert.deepEqual(mine.body.events.map((e) => e.kind), ['created', 'card_ready', 'pay', 'approval_signed', 'issue'], 'Spot’s card is made before the payer’s card is touched');
 
   // Wrong store, then over the limit: declined, card still live.
   const auth = (merchant_name, amount_cents) => call('POST', '/v1/sandbox/authorize', { token: cart.token, k, merchant_name, amount_cents });
@@ -137,10 +137,32 @@ test('refund cancels an issued card', async (t) => {
   assert.equal((await call('POST', '/v1/sandbox/authorize', { token: a.cart.token, k: a.manage_key, merchant_name: 'ARITZIA', amount_cents: 100 })).body.reason, 'card_not_active');
 });
 
-test('a failed card issue leaves the cart paid and is retried', async (t) => {
+test('a card Stripe won’t make stops the payment before anything is held', async (t) => {
+  const sbx = sandboxProvider();
+  sbx.cardFails = 'Permission denied: financial_account_read';
+  const { app, call } = setup(sbx);
+  t.after(() => app.close());
+  const a = (await call('POST', '/v1/carts', cartBody())).body;
+  const r = await call('POST', `/v1/carts/${a.cart.token}/pay`, {});
+  assert.equal(r.status, 503);
+  assert.match(r.body.error, /nothing was charged/);
+  const m = (await call('GET', `/v1/carts/${a.cart.token}/manage?k=${a.manage_key}`)).body;
+  assert.equal(m.cart.status, 'open', 'no payment was started');
+  assert.ok(m.events.some((e) => e.kind === 'card_not_ready'));
+  assert.ok(!app.spot.load(a.cart.token).payment_ref, 'no hold was ever created');
+
+  // Spot's Issuing balance can't cover the card: same, before the hold.
+  sbx.cardFails = null;
+  sbx.issuingCents = 1000;
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/pay`, {})).status, 503);
+  sbx.issuingCents = 100_000;
+  assert.equal((await call('POST', `/v1/carts/${a.cart.token}/sandbox-pay`, { payer_name: 'Mom' })).body.cart.status, 'card_issued');
+});
+
+test('a card that won’t switch on after the hold leaves the cart paid and is retried', async (t) => {
   let fail = true;
   const sbx = sandboxProvider();
-  const provider = { ...sbx, issueCard: async (c) => { if (fail) throw new Error('issuer down'); return sbx.issueCard(c); } };
+  const provider = { ...sbx, activateCard: async (ref, cents) => { if (fail) throw new Error('issuer down'); return sbx.activateCard(ref, cents); } };
   const { app, call } = setup(provider);
   t.after(() => app.close());
   const a = (await call('POST', '/v1/carts', cartBody())).body;
