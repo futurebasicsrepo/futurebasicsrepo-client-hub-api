@@ -49,26 +49,41 @@ export async function loadShopifyProduct(productUrl, opts) {
 // Pick the variant the requester meant. Captured variant text looks like
 // "Black / M" or "10.5"; Shopify variants have option1..3 and a title.
 export function matchVariant(variants, wanted, productTitle = '') {
+  const hits = variantHits(variants, wanted, productTitle);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+// Every in-stock variant that has all the words asked for (all of them, if
+// nothing was asked). One hit is a match; several mean a choice is missing.
+function variantHits(variants, wanted, productTitle = '') {
   const available = variants.filter((v) => v.available !== false);
   const pool = available.length ? available : variants;
-  if (pool.length === 1 || !wanted) return pool.length === 1 ? pool[0] : null;
+  if (pool.length <= 1) return pool;
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9.]+/g, ' ').trim();
   // "0.5mm / Black" on "Jetstream Pen - 0.5mm": the 0.5mm is the product, Black is the variant.
   const inTitle = new Set(norm(productTitle).split(' '));
   const want = norm(wanted).split(' ').filter((w) => w && !inTitle.has(w));
-  if (!want.length) return pool.length === 1 ? pool[0] : null;
-  let best = null;
-  let bestScore = 0;
-  for (const v of pool) {
+  if (!want.length) return pool;
+  return pool.filter((v) => {
     const opts = [v.option1, v.option2, v.option3, ...(v.title || '').split('/')].map(norm).filter(Boolean);
     const words = new Set(opts.flatMap((o) => o.split(' ')));
-    const score = want.filter((w) => words.has(w) || opts.includes(w)).length;
-    if (score > bestScore) {
-      best = v;
-      bestScore = score;
-    }
+    return want.every((w) => words.has(w) || opts.includes(w));
+  });
+}
+
+const SIZEISH = /^(\d*x{0,3}[sml]|\d*xl|one size|os|\d+(\.\d+)?( ?(w|wide|us|uk|eu))?|\d+ ?x ?\d+)$/i;
+
+// What's still to pick when several variants fit, e.g. { name: 'Size',
+// values: ['S', 'M', 'L'] }: the first option that differs between them.
+export function missingChoice(product, wanted) {
+  const hits = variantHits(product.variants || [], wanted, product.title);
+  if (hits.length < 2) return null;
+  const names = (product.options || []).map((o) => (typeof o === 'string' ? o : o?.name));
+  for (let i = 0; i < 3; i++) {
+    const values = [...new Set(hits.map((v) => v[`option${i + 1}`]).filter(Boolean))];
+    if (values.length > 1) return { name: names[i] || (values.every((x) => SIZEISH.test(x)) ? 'Size' : 'option'), values: values.slice(0, 12) };
   }
-  return bestScore === want.length ? best : null;
+  return null;
 }
 
 // Resolve every cart item to a Shopify variant. Returns null unless the
@@ -83,7 +98,7 @@ export async function resolveShopifyCart(cart, opts) {
     if (origin && origin !== product.origin) return null;
     origin = product.origin;
     const variant = matchVariant(product.variants, item.variant, product.title);
-    if (!variant) return { origin, unresolved: item.title };
+    if (!variant) return { origin, unresolved: item.title, choose: missingChoice(product, item.variant) };
     lines.push({ variant_id: variant.id, quantity: item.quantity, title: `${product.title}${variant.title && variant.title !== 'Default Title' ? ` — ${variant.title}` : ''}`, price_cents: variant.price });
   }
   return { origin, lines };

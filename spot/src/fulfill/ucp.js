@@ -209,10 +209,12 @@ export function pickVariant(product, item, inputId) {
   if (exact) return exact;
   const want = norm(item.variant).split(' ').filter(Boolean);
   if (want.length) {
-    return variants.find((v) => {
+    // Only a single fit: "Black" on a hoodie in Black / S…2XL is not a pick.
+    const fits = variants.filter((v) => {
       const have = norm([v.title, ...(v.options || []).map((o) => o.label || o.value)].join(' ')).split(' ');
       return want.every((w) => have.includes(w));
-    }) || null;
+    });
+    return fits.length === 1 ? fits[0] : null;
   }
   return variants.find((v) => v.inputs?.some((i) => i.id === inputId)) || (variants.length === 1 ? variants[0] : null);
 }
@@ -229,7 +231,11 @@ export async function resolveItems(call, cart, opts = {}) {
   }
   const ids = cart.items.map((i) => i.url).filter(Boolean);
   if (ids.length !== cart.items.length) return null;
-  const res = await call('POST', '/catalog/lookup', { ids, context: { address_country: 'US' } });
+  // If the store's lookup errors, its product pages still say what's what.
+  const res = await call('POST', '/catalog/lookup', { ids, context: { address_country: 'US' } }).catch((err) => {
+    console.error('ucp lookup failed', cart.merchant?.url, err.message);
+    return { products: [] };
+  });
   const lines = [];
   for (const item of cart.items) {
     const product = (res.products || []).find((p) => p.variants?.some((v) => v.inputs?.some((i) => i.id === item.url)));
@@ -248,7 +254,7 @@ export async function resolveItems(call, cart, opts = {}) {
 // links resolve to variant ids there, the same way the cart permalink does.
 async function shopifyLines(cart, opts) {
   const r = await resolveShopifyCart(cart, opts).catch(() => null);
-  if (!r?.lines) return r?.unresolved ? { unresolved: r.unresolved } : null;
+  if (!r?.lines) return r?.unresolved ? { unresolved: r.unresolved, choose: r.choose || null } : null;
   return { lines: r.lines.map((l) => ({ item: { id: `gid://shopify/ProductVariant/${l.variant_id}` }, quantity: l.quantity })), items: cart.items };
 }
 

@@ -13,7 +13,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -71,6 +71,10 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
           payment_handlers: {},
         },
       });
+    }
+    if (req.url === '/ucp/catalog/lookup' && lookupFails) {
+      res.writeHead(rpc ? 200 : 500, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify(rpc ? { jsonrpc: '2.0', id: rpc.id, error: { code: -32000, message: 'lookup is down' } } : { code: 'internal' }));
     }
     if (req.url === '/ucp/catalog/lookup') {
       return send(200, {
@@ -478,6 +482,41 @@ test('before a link goes out: items are found by name, and a cart the store can�
   const size = await call('POST', '/v1/agent/asks', directCart(store.origin, { items: [{ title: 'Super Puff', variant: 'Red / XL', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] }), auth);
   assert.equal(size.status, 422);
   assert.match(size.body.error, /doesn’t have "Super Puff" in that size or color/);
+});
+
+test('a size left out is asked for, never guessed', async (t) => {
+  const { matchVariant, missingChoice } = await import('../src/fulfill/shopify.js');
+  const hoodie = { title: 'Powerblend Hoodie, C Logo', options: [{ name: 'Color' }, { name: 'Size' }], variants: ['S', 'M', 'L', 'XS'].map((z, i) => ({ id: i + 1, title: `Black / ${z}`, option1: 'Black', option2: z, available: z !== 'XS' })) };
+  assert.equal(matchVariant(hoodie.variants, 'Black', hoodie.title), null, 'not size S just because it is first');
+  assert.equal(matchVariant(hoodie.variants, 'Black / M', hoodie.title)?.id, 2);
+  assert.deepEqual(missingChoice(hoodie, 'Black'), { name: 'Size', values: ['S', 'M', 'L'] }, 'only sizes in stock');
+  assert.equal(missingChoice(hoodie, 'Black / M'), null);
+  const ucpProduct = { variants: [{ id: 'a', title: 'Black / S' }, { id: 'b', title: 'Black / M' }] };
+  assert.equal(pickVariant(ucpProduct, { variant: 'Black' }, 'u'), null);
+
+  // On the website: the link isn't made until a size is picked, and the
+  // size can be typed after the name. The store's lookup erroring doesn't
+  // matter: its product page says what's what.
+  const store = await startUcpStore({ mcp: true, lookupFails: true });
+  const { app, call } = await directSetup(t, store);
+  const quiet = console.error;
+  console.error = () => {};
+  t.after(() => (console.error = quiet));
+  const item = (title, variant) => directCart(store.origin, { items: [{ title, variant, quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] });
+  const ask = await call('POST', '/v1/carts', item('Super Puff', 'Black'));
+  assert.equal(ask.status, 422);
+  assert.match(ask.body.error, /Which size\? Puff Co has "Super Puff" in S, M\. Add it after the name, like "Super Puff \(Black \/ M\)"/);
+  const typed = await call('POST', '/v1/carts', item('Super Puff (Black) (M)'));
+  assert.equal(typed.status, 201, JSON.stringify(typed.body));
+  assert.deepEqual([typed.body.cart.items[0].title, typed.body.cart.items[0].variant], ['Super Puff', 'Black / M']);
+
+  // An older link that never had a size: the payer is told why, not "couldn't find".
+  const old = app.spot.create(item('Super Puff', 'Black'), {}).cart;
+  await call('POST', `/v1/carts/${old.token}/manage/prepare`, { k: undefined, shipping });
+  app.spot.patch(old.id, (c) => ({ ...c, requester: { ...c.requester, shipping } }), 'test_ship');
+  const start = await call('POST', `/v1/carts/${old.token}/direct/start`, {});
+  assert.equal(start.status, 409);
+  assert.match(start.body.error, /Kyle Riggle still needs to pick a size for "Super Puff" \(S, M\)/);
 });
 
 test('size/colour words that are part of the product name don’t block the match', async () => {

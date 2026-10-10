@@ -44,7 +44,7 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       if (!d?.lookup) return { ok: false, reason: 'no_direct' };
       const r = await resolveItems(client(d), cart, { fetchImpl, allowPrivate }).catch(() => null);
       if (r?.lines) return { ok: true, items: r.items || cart.items };
-      return { ok: false, reason: r?.not_found ? 'not_found' : r?.unresolved ? 'unavailable' : 'not_found', item: r?.unresolved || cart.items.find((i) => !i.url)?.title || cart.items[0]?.title };
+      return { ok: false, reason: r?.not_found ? 'not_found' : r?.choose ? 'choose' : r?.unresolved ? 'unavailable' : 'not_found', choose: r?.choose || null, item: r?.unresolved || cart.items.find((i) => !i.url)?.title || cart.items[0]?.title };
     },
 
     // Builds the store's checkout for this cart: its items, shipped to the
@@ -56,7 +56,17 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       if (!ship) throw new CartError(`${cart.requester.name} hasn’t said where to ship it yet`, 409);
       const call = client(d);
       const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate }).catch(() => null);
-      if (!resolved?.lines) throw new CartError(resolved?.unresolved ? `${cart.merchant.name} doesn’t have "${resolved.unresolved}" in that size or color right now` : `${cart.merchant.name} couldn’t find these items`, 409);
+      if (!resolved?.lines) {
+        console.error('direct start: items not resolved', cart.token, JSON.stringify(resolved));
+        throw new CartError(
+          resolved?.choose
+            ? `${cart.requester.name} still needs to pick a ${resolved.choose.name.toLowerCase()} for "${resolved.unresolved}" (${resolved.choose.values.join(', ')}). Ask them to send a new link.`
+            : resolved?.unresolved
+              ? `${cart.merchant.name} doesn’t have "${resolved.unresolved}" in that size or color right now`
+              : `${cart.merchant.name} couldn’t find these items`,
+          409,
+        );
+      }
       const who = { ...ship, email: email || ship.email };
       let co = await call('POST', '/checkout-sessions', { line_items: resolved.lines, buyer: buyer(who) });
       if (d.fulfillment) {
