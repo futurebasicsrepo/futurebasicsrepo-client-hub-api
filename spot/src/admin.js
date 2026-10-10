@@ -23,7 +23,7 @@ const KINDS = ['card', 'email', 'ip', 'phone'];
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) {
+export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, liveChecks = null }) {
   const token = env.SPOT_ADMIN_TOKEN && env.SPOT_ADMIN_TOKEN.length >= 16 ? env.SPOT_ADMIN_TOKEN : null;
   const want = token ? Buffer.from(sha(token)) : null;
   const same = (v) => {
@@ -161,7 +161,21 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics }) 
   app.get('/v1/admin/health', async (req, reply) => {
     guard(req);
     reply.header('cache-control', 'no-store');
-    return healthReport({ db, env, metrics, backups, moneyChecks, summary });
+    const report = healthReport({ db, env, metrics, backups, moneyChecks, summary });
+    const live = liveChecks?.last() || null;
+    // A failing live check needs a look too (only if it's from the last day).
+    const liveFailing = live && Date.now() - live.at < 86_400_000 ? live.failing : 0;
+    return { ...report, live, attention: report.attention + liveFailing, status: report.attention + liveFailing ? 'attention' : 'ok' };
+  });
+  // Runs every live check now (at most every 30 seconds).
+  let lastRun = 0;
+  app.post('/v1/admin/health/check', async (req, reply) => {
+    guard(req);
+    if (!liveChecks) throw new CartError('Live checks aren’t available', 404);
+    if (Date.now() - lastRun < 30_000) throw new CartError('Checks just ran. Try again in a few seconds.', 429);
+    lastRun = Date.now();
+    reply.header('cache-control', 'no-store');
+    return liveChecks.run();
   });
 
   app.post('/v1/admin/carts/:id/release', async (req) => {
