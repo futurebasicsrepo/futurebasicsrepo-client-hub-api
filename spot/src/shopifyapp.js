@@ -25,6 +25,32 @@ import { CartError } from './cart.js';
 
 export const SHOPIFY_API_VERSION = '2026-07';
 export const BLOCK_HANDLE = 'spot-button';
+
+const THEME_FILES_QUERY = `query Files($files: [String!]!) {
+  themes(first: 1, roles: [MAIN]) { nodes { files(filenames: $files, first: 25) { nodes { filename body { ... on OnlineStoreThemeFileBodyText { content } } } } } }
+}`;
+
+// A JSON template's sections in page order: [{ id, type }]. Shopify puts a
+// comment header on templates the editor saved.
+export function parseTemplate(text) {
+  try {
+    const t = JSON.parse(String(text || '').replace(/\/\*[\s\S]*?\*\//g, ''));
+    return (t.order || Object.keys(t.sections || {})).map((id) => ({ id, type: t.sections?.[id]?.type })).filter((x) => x.type && !t.sections[x.id].disabled);
+  } catch {
+    return [];
+  }
+}
+
+// Does a section's schema take app blocks ({ "type": "@app" })?
+export function takesAppBlocks(liquid) {
+  const m = String(liquid || '').match(/{%-?\s*schema\s*-?%}([\s\S]*?){%-?\s*endschema\s*-?%}/);
+  if (!m) return false;
+  try {
+    return (JSON.parse(m[1]).blocks || []).some((b) => b.type === '@app');
+  } catch {
+    return /"type"\s*:\s*"@app"/.test(m[1]);
+  }
+}
 const SHOP = /^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$/;
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
@@ -188,6 +214,35 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
     return body.data;
   }
 
+  // Where the button can go in the store's live theme (read_themes): the
+  // first section of each template that takes app blocks, else the theme's
+  // Apps section, else nowhere (custom themes can have neither). Null when
+  // the theme can't be read (an install from before read_themes).
+  async function placements(shop, token) {
+    const files = async (names) => {
+      const data = await graphql(shop, token, THEME_FILES_QUERY, { files: names });
+      const nodes = data?.themes?.nodes?.[0]?.files?.nodes || [];
+      return new Map(nodes.map((n) => [n.filename, n.body?.content ?? '']));
+    };
+    let base;
+    try {
+      base = await files(['templates/product.json', 'templates/cart.json', 'sections/apps.liquid']);
+    } catch {
+      return null;
+    }
+    const templates = {};
+    for (const t of ['product', 'cart']) templates[t] = parseTemplate(base.get(`templates/${t}.json`));
+    const types = [...new Set(Object.values(templates).flatMap((tpl) => tpl.map((x) => x.type)))].slice(0, 20);
+    const sections = types.length ? await files(types.map((ty) => `sections/${ty}.liquid`)).catch(() => new Map()) : new Map();
+    const hasApps = base.has('sections/apps.liquid');
+    const out = {};
+    for (const [t, tpl] of Object.entries(templates)) {
+      const host = tpl.find((x) => takesAppBlocks(sections.get(`sections/${x.type}.liquid`)));
+      out[t] = host ? `sectionId:${host.id}` : hasApps ? 'newAppsSection' : null;
+    }
+    return out;
+  }
+
   // Make (or refresh) the store's Spot merchant from what Shopify says.
   async function onboard(shop, token, existing) {
     const data = await graphql(shop, token, `{ shop { name email contactEmail currencyCode primaryDomain { host } } }`);
@@ -250,6 +305,8 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
     }
     db.shopify.save({ ...row, ...info });
     const m = db.merchants.byId(info.merchant_id);
+    const where = await placements(shop, token);
+    const link = (t, fallback) => (where ? (where[t] ? editorLink(shop, t, where[t]) : null) : editorLink(shop, t, fallback));
     return {
       shop,
       name: info.name,
@@ -257,9 +314,11 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
       verified: Boolean(m?.verified_at),
       currency: info.currency,
       currency_ok: info.currency === 'USD',
-      add_to_product: editorLink(shop, 'product'),
-      add_to_product_section: editorLink(shop, 'product', 'newAppsSection'),
-      add_to_cart: editorLink(shop, 'cart', 'newAppsSection'),
+      add_to_product: link('product', 'mainSection'),
+      add_to_product_section: where ? null : editorLink(shop, 'product', 'newAppsSection'),
+      add_to_cart: link('cart', 'newAppsSection'),
+      // Read from the theme, or null when it couldn't be (no read_themes yet).
+      theme_checked: Boolean(where),
     };
   });
 
@@ -404,17 +463,21 @@ a.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)
 <section class="card"><h2>Add the button to your store</h2>
 <p>Put “Ask someone to pay” under your buy buttons, your cart, or both. You can change its text, colors, roundness, size and font in the theme editor.</p>
 <div class="row"><a class="btn" id="addProduct" target="_top" href="#">Add to product pages</a><a class="btn ghost" id="addCart" target="_top" href="#">Add to the cart page</a></div>
-<p class="muted" style="margin-top:12px">Then press <b>Save</b> in the theme editor. If your theme says the block can’t be added there, <a id="addSection" target="_top" href="#">add it to product pages as its own section</a> instead, or in the editor choose <b>Add block → Apps → Ask someone to pay</b>.</p></section>
+<p class="muted" style="margin-top:12px" id="addHelp">Then press <b>Save</b> in the theme editor. If your theme says the block can’t be added there, <a id="addSection" target="_top" href="#">add it to product pages as its own section</a> instead, or in the editor choose <b>Add block → Apps → Ask someone to pay</b>.</p>
+<p class="warn" id="noSlot" hidden></p></section>
 <section class="card"><h2>How it works</h2><ol>
 <li>A shopper taps the button. Their cart, at your prices, opens in Spot.</li>
 <li>They send it to whoever’s paying, by text or any messaging app.</li>
 <li>The payer pays on your own checkout when your store supports agent checkout, so the order and the customer are yours and Spot takes no fee. Otherwise Spot buys it from you and ships it to the shopper.</li></ol>
-<p style="margin-top:10px">Spot reads your product prices to build the cart, nothing else. <a href="/privacy" target="_blank" rel="noopener">Privacy</a> · <a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="mailto:hello@spotmeplease.com">hello@spotmeplease.com</a></p></section>
+<p style="margin-top:10px">Spot reads your product prices to build the cart, and your live theme to find where the button fits. It never changes your theme. <a href="/privacy" target="_blank" rel="noopener">Privacy</a> · <a href="/terms" target="_blank" rel="noopener">Terms</a> · <a href="mailto:hello@spotmeplease.com">hello@spotmeplease.com</a></p></section>
 </main>
 <script>
 (async()=>{const st=document.getElementById('status');
 try{const t=await shopify.idToken();const r=await fetch('/shopify/api/setup',{method:'POST',headers:{authorization:'Bearer '+t}});const j=await r.json();if(!r.ok)throw new Error(j.error||'Something went wrong');
-document.getElementById('addProduct').href=j.add_to_product;document.getElementById('addSection').href=j.add_to_product_section;document.getElementById('addCart').href=j.add_to_cart;
+const slot=(id,url)=>{const a=document.getElementById(id);if(url)a.href=url;else a.hidden=true};slot('addProduct',j.add_to_product);slot('addCart',j.add_to_cart);
+if(j.add_to_product_section)document.getElementById('addSection').href=j.add_to_product_section;else if(j.theme_checked)document.getElementById('addHelp').innerHTML='Then press <b>Save</b> in the theme editor.';
+const miss=[!j.add_to_product&&'product pages',!j.add_to_cart&&'the cart page'].filter(Boolean);
+if(miss.length){const n=document.getElementById('noSlot');n.hidden=false;n.textContent='Your theme has no place for app buttons on '+miss.join(' or ')+'. Add Shopify’s standard Apps section to your theme (Online Store → Themes → ⋯ → Edit code → Sections → Add a new section named “apps”), then reload this page. Or ask your theme developer to let the main section take app blocks.'}
 const e=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 st.innerHTML='<h1><span></span>Spot is on for '+e(j.name)+'</h1>'+(j.verified?'<p class="ok">✓ Verified: payers see “sent from '+e(j.name)+'’s checkout ✓”.</p>':'')+(j.currency_ok?'':'<p class="warn">Spot works with stores that sell in US dollars for now. Your store sells in '+e(j.currency)+'.</p>');
 }catch(err){st.innerHTML='<h1><span></span>Spot</h1><p class="warn"></p>';st.querySelector('.warn').textContent=err.message+'. Reload to try again.'}})();

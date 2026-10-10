@@ -8,7 +8,7 @@ they send it to whoever's paying.
 What's here:
 
 - `shopify.app.toml`: the app's config. It covers the scopes (`read_products`
-  only), the app URL (`https://spotmeplease.com/shopify`) and the webhooks
+  and `read_themes`), the app URL (`https://spotmeplease.com/shopify`) and the webhooks
   (uninstall and the three privacy topics).
 - `extensions/spot-button/`: the theme app extension. It holds the block and
   its design settings (text, style, colors, roundness, size, width, alignment,
@@ -41,7 +41,7 @@ What's here:
 4. **Try it on a dev store.**
    1. Dev Dashboard → your app → **Test your app** (or **Install app**) and
       pick a development store.
-   2. Shopify asks for the `read_products` scope and then opens Spot inside
+   2. Shopify asks for the `read_products` and `read_themes` scopes and then opens Spot inside
       the admin. It should say **Spot is on for (store) ✓ Verified**.
    3. Press **Add to product pages**, then press **Save** in the theme editor.
    4. Open a product on the storefront, tap **Ask someone to pay**, and check
@@ -57,7 +57,7 @@ What's here:
 
 ## How it works
 
-- **Install:** Shopify's managed install grants `read_products` and then
+- **Install:** Shopify's managed install grants `read_products` and `read_themes`, and then
   loads `/shopify` in the admin. App Bridge gives the page a session token, and
   Spot trades it for the store's offline access token (token exchange).
   - The token is stored encrypted with a key derived from the app secret.
@@ -73,6 +73,19 @@ What's here:
 - **Uninstall:** Spot drops the token at once, and the button stops working.
   `shop/redact` (48 hours later) deletes the store's record. Spot reads no
   Shopify customer data, so the customer privacy webhooks only acknowledge.
+
+## Where the button goes
+
+Spot reads the live theme (`read_themes`, never writes) and picks a place for
+each of the product and cart templates:
+
+1. the first section in the template whose schema takes app blocks
+   (`{"type": "@app"}`), by its real section id;
+2. otherwise the theme's Apps section (`sections/apps.liquid`), as its own section;
+3. otherwise no link. The admin page tells the merchant to add Shopify's
+   standard Apps section, or to ask their theme developer to let the main
+   section take app blocks. A link to a place the theme can't take shows
+   Shopify's "There is a problem with the app block" error.
 
 ## Limits for now
 
