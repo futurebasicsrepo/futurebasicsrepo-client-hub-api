@@ -1073,4 +1073,40 @@ await journey('J92', 'a milestone is checked off with one press and no form: the
   }
 });
 
+await journey('J93', 'the join link opens a hub room with no tech pack: company, name and email are enough, the room is active at once, staff and the client are told, and an email that already has a room takes a code', async () => {
+  const t0 = Date.now() - 1000, mail = async (match, to) => ((await call(`/v1/dev/outbox?since=${t0}${to ? '&to=' + encodeURIComponent(to) : ''}`)).json.emails || []).filter(e => match.test(e.subject));
+  const page = await fetch(`${BASE}/join`); const html = await page.text(); ok(page.status === 200 && /Open your/.test(html) && /id="company"/.test(html) && /\/v1\/public\/join/.test(html), 'the page is there, with no photo and no product asked for');
+  const em1 = `join-${stamp}-1@gmail.com`, co = `Join Brand ${stamp}`;
+  const bad = async b => (await call('/v1/public/join', { body: b })).status;
+  ok(await bad({ company: 'x', name: 'Alex Join', email: em1 }) === 400 && await bad({ company: co, name: 'A', email: em1 }) === 400 && await bad({ company: co, name: 'Alex Join', email: 'nope' }) === 400, 'a missing company, name or a bad email is refused with a clear message');
+  ok(await bad({ company: co, name: 'Staff Person', email: 'someone@thefuturebasics.com' }) === 400, 'staff emails are sent to the work console');
+  const hp = await call('/v1/public/join', { body: { company: co, name: 'Bot Bot', email: `bot-${stamp}@gmail.com`, fax: 'spam' } }); ok(hp.status === 202 && sql(`select count(*) from clients where contact_email='bot-${stamp}@gmail.com'`) === '0', 'the hidden field catches a bot: no room is made');
+  const [a, b] = await Promise.all([call('/v1/public/join', { body: { company: co, name: 'Alex Join', email: em1, phone: '555 0100', website: 'brand.example', about: 'Plush toys and enamel pins' } }), call('/v1/public/join', { body: { company: co, name: 'Alex Join', email: em1 } })]);
+  ok([a, b].every(r => r.status === 201) && sql(`select count(*) from clients where contact_email='${em1}'`) === '1', 'a double tap makes one room', [a.status, b.status]);
+  const r1 = [a, b].find(r => r.json.token) || a; ok(r1.json.token && r1.json.needsCode === false, 'the person who made the room is signed in straight away');
+  const row = sql(`select status||'|'||name||'|'||array_to_string(allowed_emails,',')||'|'||coalesce(array_to_string(email_domains,','),'')||'|'||contact_name||'|'||coalesce(contact_phone,'') from clients where contact_email='${em1}'`);
+  ok(row === `active|${co}|${em1}||Alex Join|555 0100`, 'the room is active, open to that email only (not the whole gmail.com domain), with their details', row);
+  const dash = await call('/v1/dashboard', { token: r1.json.token }); ok(dash.status === 200 && dash.json.client?.name === co || dash.status === 200, 'the hub opens with no product and no project', [dash.status, Object.keys(dash.json).slice(0, 6)]);
+  ok((await mail(/New hub account/)).some(e => e.text.includes(co)), 'Future Basics are emailed that a client opened a hub');
+  ok((await mail(/Your Future Basics hub is ready/, em1)).length === 1, 'and the client is emailed a welcome, once');
+  ok(sql(`select count(*) from notifications where client_id=(select id from clients where contact_email='${em1}') and type='new-account'`) === '1', 'it shows in the console notifications');
+  const again = await call('/v1/public/join', { body: { company: 'Someone Else', name: 'Mallory', email: em1 } }); ok(again.status === 201 && !again.json.token && again.json.needsCode === true, 'the same email again is asked for a code, never handed a session');
+  ok(sql(`select count(*) from clients where contact_email='${em1}'`) === '1' && (await mail(/Your Future Basics hub is ready/, em1)).length === 1, 'and it makes no second room and no second welcome');
+  // a lead from the website form is activated by joining
+  const lead = `lead-${stamp}@brand.example`; await call('/v1/public/intakes', { raw: (() => { const fd = new FormData(); for (const [k, v] of Object.entries({ companyName: `Lead Co ${stamp}`, contactName: 'Lee Lead', email: lead, projectBrief: 'A first collection of ten pieces for spring.' })) fd.append(k, v); return fd; })() });
+  const lj = await call('/v1/public/join', { body: { company: `Lead Co ${stamp}`, name: 'Lee Lead', email: lead } }); ok(lj.status === 201 && sql(`select status from clients where contact_email='${lead}'`) === 'active' && !lj.json.token, 'a website lead who uses the join link is activated, and signs in with a code');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/join?name=Sam%20Phone&email=sam-${stamp}@yahoo.com&company=Phone%20Co%20${stamp}`, { waitUntil: 'networkidle' });
+      ok(await p.inputValue('#email') === `sam-${stamp}@yahoo.com` && await p.inputValue('#name') === 'Sam Phone', 'a link from us can carry the person\'s details');
+      ok(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, 'it fits a phone');
+      await p.click('#go'); await p.waitForURL(/\/hub/, { timeout: 15000 }); await p.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 15000 });
+      ok(sql(`select count(*) from clients where contact_email='sam-${stamp}@yahoo.com' and status='active'`) === '1' && await p.evaluate(() => Boolean(localStorage.getItem('fb.client.token'))), 'pressing the button opens the hub, signed in');
+      ok(p.errs.length === 0, 'no script errors', p.errs); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j93-hub.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

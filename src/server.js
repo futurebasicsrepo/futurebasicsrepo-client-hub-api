@@ -571,6 +571,8 @@ app.get('/projects/:id', async (req,reply)=>String(req.headers.host||'').toLower
 const sendTechPack=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./techpack.html',import.meta.url),'utf8'));
 const sendStart=(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./start.html',import.meta.url),'utf8'));
 app.get('/start', sendStart);
+// Account sign-up without a tech pack: a short form that opens a hub room straight away (see POST /v1/public/join).
+app.get('/join',(_req,reply)=>reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./join.html',import.meta.url),'utf8')));
 // Client guide: how the hub works, with screenshots and an FAQ, plus the same guide as a PDF.
 const helpAssets=new URL('./help-assets/',import.meta.url);
 // The trade-fair page (the QR on the cards): brands start a tech pack, factories sign up for a referral link. Bilingual (see hub-i18n.js).
@@ -3898,6 +3900,56 @@ app.post('/v1/public/start',{bodyLimit:16_000_000},async(req,reply)=>{
       `<p>Hi${name?' '+emailEscape(name.split(' ')[0]):''},</p><p>${ai==='locked'?`Your photo is saved on a new tech pack draft for <strong>${emailEscape(product.title)}</strong>. Your first pack was on us; open this one to have the assistant draft it for $${(TECH_PACK_PRICE_CENTS/100).toFixed(0)}${MEMBERSHIP_URL?` or join the studio membership`:''} — or fill it in yourself, which is always free.`:`We turned your photo into the first page of a tech pack for <strong>${emailEscape(product.title)}</strong>. Add callouts, measurements, materials and colours whenever you like, then submit it and Future Basics will finish it with you.`}</p>${hubButton(link,'Open your tech pack')}<p style="color:#717177;font-size:13px">Sign in with this email address — we send a six-digit code, no password.</p>`)}).catch(e=>app.log.warn({err:e.message},'start: welcome email failed'));
     return reply.code(201).send({ok:true,token,needsCode:!token,email,product:{id:product.id,title:product.title},project:{id:project.id,name:project.name},client:{id:client.id,name:client.name},link,ai:ai||'off'});
   }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{release()}
+});
+// A new client opens their own hub room from a link, with no tech pack: company, name and email are enough. The room is active at once
+// and its only way in is that email (never the email's whole domain: a gmail.com address must not open the room to everyone on gmail.com).
+// Only a room made in this request hands out a session; an email that already has a room (or was a lead) takes a code like any known room.
+app.post('/v1/public/join',async(req,reply)=>{
+  if(!publicIntakeAllowed(req.ip,{bucket:'join',limit:Number(process.env.JOIN_RATE_LIMIT)||12}))return reply.code(429).send({error:'Too many submissions. Please try again in an hour.'});
+  const b=req.body||{};
+  if(String(b.fax||'').trim())return reply.code(202).send({ok:true});                       // honeypot
+  const one=(v,n)=>String(v??'').replace(/\s+/g,' ').trim().slice(0,n);
+  const company=one(b.company,140),name=one(b.name,140),email=one(b.email,254).toLowerCase(),phone=one(b.phone,80),site=one(b.website,300),about=String(b.about??'').trim().slice(0,1500);
+  if(company.length<2)return reply.code(400).send({error:'Enter your company or brand name'});
+  if(name.length<2)return reply.code(400).send({error:'Enter your name'});
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))return reply.code(400).send({error:'Enter the email you want to sign in with'});
+  if(emailDomain(email)==='thefuturebasics.com')return reply.code(400).send({error:'Future Basics staff sign in to the work console'});
+  const attribution=await withPartner(cleanAttribution(b.attribution));
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    await db.query('select pg_advisory_xact_lock(hashtext($1))',[email]); // two taps at once: the second waits and finds the room the first made
+    let client=await clientForEmail(email,db),brandNew=false,activatedLead=false;
+    if(!client){
+      const lead=(await db.query(`select * from clients where status='lead' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at desc limit 1`,[email])).rows[0];
+      if(lead){
+        client=(await db.query(`update clients set status='active',allowed_emails=(select array_agg(distinct e) from unnest(allowed_emails||$2::text[]) e),activated_at=coalesce(activated_at,now()),
+          contact_name=coalesce(nullif(contact_name,''),$3),contact_phone=coalesce(nullif(contact_phone,''),nullif($4,'')),website_url=coalesce(nullif(website_url,''),nullif($5,'')) where id=$1 returning *`,[lead.id,[email],name,phone,site])).rows[0];
+        activatedLead=true;
+      }else{
+        const base=intakeSlug(company);
+        for(let attempt=0;attempt<8&&!client;attempt++){
+          const slug=attempt===0?base:`${base.slice(0,40)}-${randomBytes(attempt<4?3:5).toString('hex')}`;
+          client=(await db.query(`insert into clients(slug,name,status,contact_name,contact_email,contact_phone,website_url,allowed_emails,notes,activated_at,acquisition)
+            values($1,$2,'active',$3,$4,nullif($5,''),nullif($6,''),$7,$8,now(),$9::jsonb) on conflict(slug) do nothing returning *`,
+            [slug,company,name,email,phone,site,[email],`Self-serve · opened from the join link${about?`\nAbout: ${about}`:''}`,attribution?JSON.stringify(attribution):null])).rows[0]||null;
+        }
+        if(!client)throw new Error('could not find a free room name');
+        brandNew=true;
+      }
+    }
+    const user=(await db.query(`insert into users(client_id,email,name,role) values($1,$2,$3,'client') on conflict(email) do update set client_id=excluded.client_id,role=excluded.role returning *`,[client.id,email,name])).rows[0];
+    if(brandNew||activatedLead)await db.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'new-account',$2,'client',$3)`,[client.id,`${company} opened a hub account (${name}, ${email})`,client.id]);
+    await db.query('commit');
+    let token=null;
+    if(brandNew)token=await issueClientToken(user,client,email,{unverified:true});
+    else if(throttle(`code:${email}`,CODE_ASK)){const code=String(randomInt(100000,1000000));await pool.query('insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval \'10 minutes\')',[email,hash(code)]);await sendCode(email,code).catch(e=>app.log.warn({err:e.message},'join: code email failed'))}
+    if(brandNew||activatedLead){
+      notifyStaff(`New hub account — ${company}`,`<p><strong>${emailEscape(company)}</strong> opened a hub room from the join link.</p><p>${emailEscape(name)} · ${emailEscape(email)}${phone?' · '+emailEscape(phone):''}${site?'<br>'+emailEscape(site):''}</p>${about?`<p>${emailEscape(about)}</p>`:''}${hubButton(`${workHubUrl}/clients/${client.id}`,'Open the room')}`).catch(()=>{});
+      sendHubEmail({to:email,subject:'Your Future Basics hub is ready',html:hubEmailShell('Your hub is ready',`<p>Hi ${emailEscape(name.split(' ')[0])},</p><p>Your private room for <strong>${emailEscape(company)}</strong> is open. This is where your tech packs, quotes, samples, files and messages with us live.</p><p>Sign in any time with this email: we send a six-digit code, so there is no password to remember. To start your first product, add a photo and a few words, and the assistant drafts the tech pack for you.</p>${hubButton(`${clientHubUrl}/hub`,'Open your hub')}<p style="font-size:12px;color:#717177">If you did not ask for this, you can ignore this email.</p>`)}).catch(e=>app.log.warn({err:e.message},'join: welcome email failed'));
+    }
+    return reply.code(201).send({ok:true,token,needsCode:!token,email,client:{id:client.id,name:client.name}});
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
 });
 // Signed-in clients start tech packs from the hub: with photos the assistant drafts the pack (same path as /start),
 // without photos they get the blank template. `project` is an existing project row or null to use/create "Product development".

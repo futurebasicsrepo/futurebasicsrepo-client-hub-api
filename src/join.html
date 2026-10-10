@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Open your hub — Future Basics</title><link rel="icon" href="/icons/techpack-v3-192.png" type="image/png"><meta name="theme-color" content="#141416">
+  <meta name="description" content="Open your private Future Basics hub: your tech packs, quotes, samples, files and messages in one room.">
+  <style>
+    @import url('/fonts/fonts.css');
+    :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--ok:#17603a;--bad:#a02a20;--ease:cubic-bezier(.22,1,.36,1)}
+    *{box-sizing:border-box}html{background:var(--fog)}body{margin:0;color:var(--ink);font:400 16px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh;-webkit-font-smoothing:antialiased}
+    button,input,textarea{font:inherit}.hidden{display:none!important}
+    header{height:60px;background:var(--ink);color:#fff;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
+    .wm{font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:12px}.wm i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cue);margin-left:8px;vertical-align:1px}
+    header a{color:#fff;text-decoration:none;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;border:1px solid rgba(255,255,255,.3);border-radius:999px}
+    .hero{background:var(--ink);color:#fff;padding:34px 18px 96px;position:relative;overflow:hidden;isolation:isolate}
+    .hero::before{content:"";position:absolute;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:28px 28px;-webkit-mask-image:radial-gradient(120% 90% at 50% 40%,#000 30%,transparent 85%);mask-image:radial-gradient(120% 90% at 50% 40%,#000 30%,transparent 85%)}
+    .hero-in{max-width:560px;margin:0 auto}
+    .meta{font:500 10px/1.35 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.15em;color:#9d9da4}
+    h1{font-weight:500;letter-spacing:-.045em;line-height:.96;font-size:clamp(36px,10vw,58px);margin:12px 0}h1 em{font-style:normal;color:var(--cue)}
+    .lede{margin:0;color:#c9c9cf;max-width:44ch}
+    .card{max-width:560px;margin:-64px auto 40px;padding:24px 20px 22px;background:var(--paper);border:1px solid var(--line);border-radius:26px;box-shadow:0 24px 60px rgba(20,20,22,.14);position:relative}
+    @media(min-width:620px){.card{padding:30px 32px 26px}}
+    label{display:block;margin:0 0 14px}label span{display:block;font:500 10px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--dim);margin-bottom:6px}label span em{font-style:normal;text-transform:none;letter-spacing:0;color:#9a9aa1}
+    input,textarea{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s}
+    input:focus,textarea:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(75,255,154,.35)}textarea{min-height:92px;resize:vertical}
+    .row{display:grid;gap:0 14px}@media(min-width:620px){.row{grid-template-columns:1fr 1fr}}
+    .go{width:100%;margin-top:6px;padding:16px;border:0;border-radius:999px;background:var(--ink);color:#fff;font-weight:500;font-size:16px;cursor:pointer;transition:transform .2s var(--ease)}.go:hover{transform:translateY(-1px)}.go:disabled{opacity:.6;cursor:wait}
+    .msg{min-height:22px;margin:12px 0 0;font-size:14px}.msg.err{color:var(--bad)}.msg.ok{color:var(--ok)}
+    .fine{margin:14px 0 0;color:var(--dim);font-size:13px}.fine a{color:var(--ink)}
+    .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+    .steps{display:grid;gap:10px;margin:0 0 20px;padding:0;list-style:none;font-size:14px;color:#33333a}.steps li{display:grid;grid-template-columns:22px 1fr;gap:10px}.steps b{font:500 11px 'IBM Plex Mono',monospace;color:var(--ok);padding-top:2px}
+    @media(prefers-reduced-motion:no-preference){.card{animation:rise .7s var(--ease) both}@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}}
+  </style>
+</head>
+<body>
+  <header><span class="wm">Future Basics<i></i></span><a href="/help">How it works</a></header>
+  <section class="hero"><div class="hero-in"><span class="meta">Client hub · private to you</span><h1>Open your <em>hub</em>.</h1><p class="lede">One private room for your tech packs, quotes, samples, files and messages with us. Takes a minute, and there is no password.</p></div></section>
+  <main class="card">
+    <form id="joinForm" novalidate>
+      <ul class="steps"><li><b>01</b><span>Tell us who you are.</span></li><li><b>02</b><span>Your room opens straight away.</span></li><li><b>03</b><span>Start a tech pack whenever you are ready: a photo and a few words is enough.</span></li></ul>
+      <label><span>Company or brand</span><input id="company" name="company" autocomplete="organization" required maxlength="140"></label>
+      <div class="row"><label><span>Your name</span><input id="name" name="name" autocomplete="name" required maxlength="140"></label><label><span>Work email</span><input id="email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="254"></label></div>
+      <div class="row"><label><span>Phone <em>(optional)</em></span><input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="80"></label><label><span>Website <em>(optional)</em></span><input id="website" name="website" inputmode="url" autocomplete="url" maxlength="300"></label></div>
+      <label><span>What do you make, or want to make? <em>(optional)</em></span><textarea id="about" name="about" maxlength="1500" placeholder="Streetwear, plush toys, jewelry, a charger…"></textarea></label>
+      <input class="hp" id="fax" name="fax" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <button class="go" id="go" type="submit"><span id="goLabel">Open my hub</span></button>
+      <p class="msg" id="msg" role="status"></p>
+      <p class="fine">We use your email only to run your account and reach you about your work. Already have a hub? <a href="/hub">Sign in</a>.</p>
+    </form>
+    <form id="codeForm" class="hidden" novalidate>
+      <span class="meta" style="color:var(--dim)">One more step</span>
+      <h2 style="font-weight:500;letter-spacing:-.03em;font-size:26px;margin:8px 0 6px">Check your email.</h2>
+      <p style="margin:0 0 16px;color:#33333a">This email already has a hub, so we sent a six-digit code to <b id="codeEmail"></b>. Enter it to sign in.</p>
+      <label><span>Six-digit code</span><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"></label>
+      <button class="go" type="submit">Sign in</button>
+      <p class="msg" id="codeMsg" role="status"></p>
+      <p class="fine"><a href="#" id="resend">Send a new code</a> · <a href="#" id="change">Use a different email</a></p>
+    </form>
+  </main>
+  <script>
+    const KEY='fb.client.token',$=s=>document.querySelector(s);
+    async function api(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||'Something went wrong. Please try again.');return d}
+    // Where this visit came from (ad links, the referrer): first touch is kept, the same as /start.
+    const attribution=(()=>{let saved=null;try{saved=JSON.parse(localStorage.getItem('fb.attr')||'null')}catch{}const q=new URLSearchParams(location.search),g=k=>(q.get(k)||'').trim().slice(0,120)||undefined;
+      const fresh={source:g('utm_source')||g('ref')||g('source'),medium:g('utm_medium'),campaign:g('utm_campaign'),referrer:document.referrer&&!document.referrer.startsWith(location.origin)?document.referrer.slice(0,120):undefined,landing:(location.pathname+location.search).slice(0,120),firstSeenAt:new Date().toISOString()};
+      Object.keys(fresh).forEach(k=>fresh[k]===undefined&&delete fresh[k]);const any=fresh.source||fresh.campaign||fresh.medium||fresh.referrer;
+      const out=saved&&(saved.source||saved.campaign||saved.referrer)?saved:(any?fresh:saved||fresh);try{localStorage.setItem('fb.attr',JSON.stringify(out))}catch{}return out})();
+    // A link from us can carry the person's details: /join?name=Alex&email=alex@brand.com&company=Brand
+    {const q=new URLSearchParams(location.search);for(const k of['company','name','email','phone','website'])if(q.get(k))$('#'+k).value=q.get(k).slice(0,254)}
+    const say=(t,c='')=>{const m=$('#msg');m.textContent=t;m.className='msg '+c};let pending=null;
+    $('#joinForm').addEventListener('submit',async e=>{e.preventDefault();say('');
+      const v=k=>$('#'+k).value.trim();
+      if(v('company').length<2)return say('Enter your company or brand name.','err');if(v('name').length<2)return say('Enter your name.','err');if(!/^\S+@\S+\.\S+$/.test(v('email')))return say('Enter the email you want to sign in with.','err');
+      const go=$('#go');go.disabled=true;$('#goLabel').textContent='Opening your hub…';
+      try{const d=await api('/v1/public/join',{company:v('company'),name:v('name'),email:v('email'),phone:v('phone'),website:v('website'),about:v('about'),fax:$('#fax').value,attribution});
+        if(d.token){try{localStorage.setItem(KEY,d.token)}catch{}$('#goLabel').textContent='Opening your hub…';location.href='/hub';return}
+        pending=d;$('#codeEmail').textContent=d.email||v('email');$('#joinForm').classList.add('hidden');$('#codeForm').classList.remove('hidden');setTimeout(()=>$('#code').focus(),200);
+      }catch(err){say(err.message,'err');go.disabled=false;$('#goLabel').textContent='Open my hub'}});
+    $('#codeForm').addEventListener('submit',async e=>{e.preventDefault();const m=$('#codeMsg');m.textContent='';m.className='msg';const b=e.target.querySelector('button');b.disabled=true;
+      try{const d=await api('/v1/auth/verify',{email:pending.email,code:$('#code').value.trim()});try{localStorage.setItem(KEY,d.token)}catch{}location.href='/hub'}catch(err){m.textContent=err.message;m.className='msg err';b.disabled=false}});
+    $('#resend').addEventListener('click',async e=>{e.preventDefault();const m=$('#codeMsg');try{await api('/v1/auth/code',{email:pending.email});m.textContent='A new code is on its way. It can take a minute; use the latest one.';m.className='msg ok'}catch(err){m.textContent=err.message;m.className='msg err'}});
+    $('#change').addEventListener('click',e=>{e.preventDefault();$('#codeForm').classList.add('hidden');$('#joinForm').classList.remove('hidden');$('#go').disabled=false;$('#goLabel').textContent='Open my hub';$('#email').focus()});
+  </script>
+</body>
+</html>
