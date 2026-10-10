@@ -55,7 +55,10 @@ test('an account holds your Spots, saved details, and asks from your own AI', as
   const H = { cookie };
   assert.equal((await call('GET', '/v1/me')).status, 401);
   assert.equal((await call('GET', '/account')).status, 302);
-  assert.equal((await call('GET', '/account', undefined, H)).status, 200);
+  const page = await call('GET', '/account', undefined, H);
+  assert.equal(page.status, 200);
+  assert.match(page.body, /id="aiStrip"/, 'your AI, its cap and your card sit right under the header');
+  assert.match(page.body, /data-tab="ai"[^>]*>AI &amp; card</);
 
   // Made while signed in → in the account; claim the earlier one.
   const made = (await call('POST', '/v1/carts', { requester: { name: 'Kyle' }, merchant: { name: 'Aritzia' }, items: [{ title: 'Super Puff', price_cents: 25000 }] }, H)).body;

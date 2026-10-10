@@ -85,8 +85,10 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .lead{color:var(--muted);margin:0 0 14px;font-size:15px}
 .tabs{position:sticky;top:64px;z-index:5;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:24px -4px 20px;padding:4px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .tabs::-webkit-scrollbar{display:none}
-.tabs button{flex:none;font:600 15px Bricolage,system-ui,sans-serif;border:0;background:none;color:var(--muted);padding:10px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
-.tabs button[aria-selected=true]{background:var(--ink);color:var(--bg)}
+.aistrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.aistrip span{white-space:nowrap}.aistrip small{color:var(--muted)}.aistrip .go2{margin-left:auto;color:var(--spot);font-weight:700}
+.tabs button{flex:none;font:600 15px Bricolage,system-ui,sans-serif;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 .tabs button:focus-visible{outline:3px solid var(--spot);outline-offset:1px}
 .panel[hidden]{display:none}
 .grp{margin-bottom:28px}.grp:last-child{margin-bottom:0}
@@ -98,6 +100,8 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .pane{padding:0}.pane summary::after{content:none}.pane summary{font-size:16px;font-weight:600;letter-spacing:0;justify-content:initial}.pane .ps{font-weight:400}
 .pane summary{list-style:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:16px 18px;cursor:pointer;min-height:56px}
 .pane summary::-webkit-details-marker{display:none}
+.plink{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:16px 18px;min-height:56px;text-decoration:none;color:var(--ink);font-size:16px;font-weight:600}
+.plink .ps{font-weight:400;color:var(--muted)}.plink .go2{color:var(--spot);font-weight:700;font-size:15px}
 .pane .pt{font-weight:700}
 .pane .ps{color:var(--muted);font-size:14px;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pane .ps.empty{color:var(--spot)}
@@ -206,8 +210,9 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     path: '/account',
     title: 'Your account · Spot',
     body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
+<button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
-<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">Your AI</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
+<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="connectAi">Connect a new AI</button></div>
     <div id="connectOut" class="connect" hidden>
       <p style="margin:14px 0 6px"><b>Add Spot to your AI app, then tap Allow.</b> No key to copy.</p>
@@ -227,7 +232,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
   <div class="box"><div id="apv"></div>
     <form class="f" id="apvForm" style="margin-top:10px"><div class="two"><input name="name" placeholder="Their name" aria-label="Approver name"><input name="email" type="email" placeholder="Their email" required aria-label="Approver email"></div><div class="btnrow"><button class="btn primary">Ask them</button><span class="ok-msg" id="apvOk"></span></div></form>
   </div>
-</div></section><section class="panel" data-panel="details" hidden><h2 class="sr">Saved details</h2><p class="lead">Filled in for you at checkout, and used by your AI so it doesn’t have to ask.</p><div class="panes"><details class="pane" id="pAddr"><summary><span class="pt">Shipping address</span><span class="ps" id="pAddrSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="shipForm">
+</div></section><section class="panel" data-panel="details" hidden><h2 class="sr">Saved details</h2><p class="lead">Filled in for you at checkout, and used by your AI so it doesn’t have to ask.</p><div class="panes"><a class="pane plink" href="#ai"><span class="pt">Card</span><span class="ps" id="pCardSum"></span><span class="go2">AI &amp; card →</span></a><details class="pane" id="pAddr"><summary><span class="pt">Shipping address</span><span class="ps" id="pAddrSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="shipForm">
     <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
     <input name="line1" placeholder="Street" autocomplete="address-line1" aria-label="Street">
     <input name="line2" placeholder="Apt, suite (optional)" autocomplete="address-line2" aria-label="Apt or suite">
@@ -294,6 +299,7 @@ async function load(){
   $('#pks').innerHTML=me.passkeys.map(k=>'<div class="trav"><span>🔑 '+esc(k.name||'Passkey')+' <small class="sub">· added '+new Date(k.created_at).toLocaleDateString()+(k.used_at?', last used '+new Date(k.used_at).toLocaleDateString():'')+'</small></span><button class="linkbtn" data-pk="'+esc(k.id)+'">Remove</button></div>').join('');
   $('#addPk').hidden=!pkOK();$('#pkNo').hidden=pkOK();
   drawFunding();
+  aiStrip();
   $('#keys').innerHTML=me.keys.length?me.keys.map(keyRow).join(''):'<p class="sub" style="margin:0">No AI connected yet.</p>';
   const a=me.approver;
   $('#apv').innerHTML=a?'<div class="trav"><span>'+esc(a.name||a.email)+' <small class="sub">· '+esc(a.email)+' · '+(a.confirmed?'confirmed':'waiting for them to agree')+'</small></span><button class="linkbtn" id="apvRm">Remove</button></div>':'<p class="sub" style="margin:0">No approver yet.</p>';
@@ -322,6 +328,16 @@ $('#cartSeg').addEventListener('click',e=>{const b=e.target.closest('button');if
 const ACT={connected:'Connected',ask_created:'Asked',ask_routed:'Sent to your approver',blocked_by_rule:'Blocked',flight_ask:'Held a flight',order_started:'Started the order',message_sent:'Sent you a link',rules_changed:'Rules changed',disconnected:'Disconnected',paid_from_card:'Paid from your card',autopay_failed:'Couldn’t pay on its own, sent you Approve',ai_stopped:'Stopped by your kill switch',ai_resumed:'Turned back on'};
 const PAY={link:'send me a link to pay',tap:'charge my card when I tap Approve',auto:'pay automatically (no tap)'};
 const APV={never:'refuse',over_limit:'send to my approver',always:'always send to my approver'};
+// Under the header: which AI is connected, its cap, and the card it uses. Tap to change them.
+function aiStrip(){
+  const keys=me.keys.filter(k=>!k.revoked),c=(me.funding||{}).card;
+  const cap=k=>{const r=k.rules||{};return r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':r.monthly_cents?usd(r.monthly_cents)+' a month':'no cap set'};
+  const ai=keys.length?keys.map(k=>'<span>🤖 <b>'+esc(k.name)+'</b> <small>· '+esc(cap(k))+'</small></span>').join(''):'<span>🤖 <b>No AI connected</b></span>';
+  $('#aiStrip').innerHTML=ai+'<span>💳 '+(c?'<b>'+esc(c.label)+'</b>':'<small>No card yet</small>')+'</span><span class="go2">'+(keys.length?'Cap, card &amp; rules →':'Connect →')+'</span>';
+  $('#aiStrip').hidden=false;
+  $('#pCardSum').textContent=c?c.label+', for your AI':'None saved yet';
+}
+$('#aiStrip').onclick=()=>{tab('ai',true);document.querySelector('.tabs').scrollIntoView({block:'start',behavior:'smooth'})};
 function keyRow(k){
   const r=k.rules||{};
   const rules=[r.max_order_cents?'up to '+usd(r.max_order_cents)+' an order':'',r.monthly_cents?usd(r.monthly_cents)+' a month':'',r.stores&&r.stores.length?'only '+r.stores.join(', '):'',r.approver&&r.approver!=='never'?(r.approver==='always'?'every ask goes to your approver':'over the limit goes to your approver'):'',r.pay==='tap'?'you approve each with a tap':r.pay==='auto'?'pays automatically inside these rules':''].filter(Boolean).join(' · ')||'No rules yet';
@@ -329,7 +345,7 @@ function keyRow(k){
   if(k.revoked)return '<div class="trav"><span>'+esc(k.name)+' <small class="sub">· disconnected</small></span></div>';
   return '<div class="keyc"><div class="trav" style="border:0"><span><b>🤖 '+esc(k.name)+'</b> <small class="sub">· connected '+new Date(k.created_at).toLocaleDateString()+' · '+usd(k.month_cents||0)+' asked this month</small></span><button class="linkbtn" data-revoke="'+esc(k.name)+'">Disconnect</button></div>'
     +'<p class="sub" style="margin:0 0 6px">'+esc(rules)+'</p>'
-    +'<details class="more"><summary>Rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><select name="pay" aria-label="How it pays">'+Object.entries(PAY).map(([v,l])=>'<option value="'+v+'"'+((r.pay||'link')===v?' selected':'')+((v!=='link'&&!(me.funding&&me.funding.card))||(v==='auto'&&!(me.funding&&me.funding.auto_ok))?' disabled':'')+'>Inside the rules: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
+    +'<details class="more"'+(k.rules&&(k.rules.max_order_cents||k.rules.monthly_cents)?'':' open')+'><summary>Spending cap &amp; rules</summary><form class="f" data-rules="'+esc(k.name)+'" style="margin-top:8px"><div class="two"><input name="max" inputmode="decimal" placeholder="Max per order, $" value="'+(r.max_order_cents?r.max_order_cents/100:'')+'" aria-label="Max per order in dollars"><input name="month" inputmode="decimal" placeholder="Max per month, $" value="'+(r.monthly_cents?r.monthly_cents/100:'')+'" aria-label="Max per month in dollars"></div><input name="stores" placeholder="Only these stores (e.g. target.com, nike.com)" value="'+esc((r.stores||[]).join(', '))+'" aria-label="Allowed stores"><select name="approver" aria-label="When a rule is broken">'+Object.entries(APV).map(([v,l])=>'<option value="'+v+'"'+((r.approver||'never')===v?' selected':'')+'>When over a limit: '+l+'</option>').join('')+'</select><select name="pay" aria-label="How it pays">'+Object.entries(PAY).map(([v,l])=>'<option value="'+v+'"'+((r.pay||'link')===v?' selected':'')+((v!=='link'&&!(me.funding&&me.funding.card))||(v==='auto'&&!(me.funding&&me.funding.auto_ok))?' disabled':'')+'>Inside the rules: '+l+'</option>').join('')+'</select><div class="btnrow"><button class="btn ghost">Save rules</button></div></form></details>'
     +(acts?'<details class="more"><summary>Activity</summary><ul class="acts">'+acts+'</ul></details>':'<p class="sub" style="margin:0">No activity yet.</p>')+'</div>';
 }
 document.addEventListener('submit',async e=>{const f=e.target.closest('[data-rules]');if(!f)return;e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(f));
