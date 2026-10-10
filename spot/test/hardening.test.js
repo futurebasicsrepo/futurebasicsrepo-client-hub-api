@@ -57,6 +57,29 @@ test('every response carries security headers; unknown pages get a page', async 
   assert.equal((await call('GET', '/apple-touch-icon.png')).headers['content-type'], 'image/png');
 });
 
+test('add to home screen: a manifest, Spot as the icon, and the tags on every page', async (t) => {
+  const { call } = app(t);
+  const m = await call('GET', '/manifest.webmanifest');
+  assert.equal(m.status, 200);
+  assert.match(m.headers['content-type'], /application\/manifest\+json/);
+  const man = typeof m.body === 'string' ? JSON.parse(m.body) : m.body;
+  assert.equal(man.short_name, 'Spot');
+  assert.equal(man.display, 'standalone');
+  for (const icon of man.icons) {
+    const r = await call('GET', icon.src);
+    assert.equal(r.status, 200, icon.src);
+    assert.equal(r.headers['content-type'], 'image/png');
+  }
+  assert.ok(man.icons.some((i) => i.purpose === 'maskable'));
+  assert.equal((await call('GET', '/icon-999.png')).status, 404);
+  assert.match((await call('GET', '/logo.svg')).body, /<svg[\s\S]*#ff5a36/);
+  for (const path of ['/', '/new']) {
+    const page = (await call('GET', path)).body;
+    assert.match(page, /<link rel="manifest" href="\/manifest.webmanifest">/, path);
+    assert.match(page, /apple-mobile-web-app-title" content="Spot"/, path);
+  }
+});
+
 test('manage actions only take JSON from this site', async (t) => {
   const { call } = app(t);
   const made = (await call('POST', '/v1/carts', cart())).body;

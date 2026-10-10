@@ -1,6 +1,7 @@
 // Server-rendered pages. No build step: each page is one HTML string with
 // inline CSS and a small inline script. Everything interpolated from a cart
 // goes through esc(), and data handed to scripts goes through json().
+import { HOME_SCREEN_TAGS } from './appicon.js';
 import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, cssSafe, usd } from './cart.js';
 
 const esc = (s) =>
@@ -66,7 +67,7 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;text-align:center}
 
 function shell({ title, head = '', body, script = '' }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>${esc(title)}</title><meta name="theme-color" content="#ff5a36">
+<title>${esc(title)}</title><meta name="theme-color" content="#ff5a36">${HOME_SCREEN_TAGS}
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">
 ${head}<style>${CSS}</style></head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`;
 }
