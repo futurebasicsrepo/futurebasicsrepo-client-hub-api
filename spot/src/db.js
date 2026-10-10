@@ -385,10 +385,10 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
         const from = userRow(q.userById.get(fromId));
         const into = userRow(q.userById.get(intoId));
         if (!from || !into || fromId === intoId) return;
-        const pick = ({ phone, name, shipping, travelers }) => ({ phone: phone || null, name: name || null, shipping: shipping || null, travelers: travelers || [] });
+        const pick = ({ phone, name, shipping, travelers, venmo, cashtag, sizes }) => ({ phone: phone || null, name: name || null, shipping: shipping || null, travelers: travelers || [], venmo: venmo || null, cashtag: cashtag || null, sizes: sizes || null });
         const a = pick(into);
         const b = pick(from);
-        const doc = { phone: a.phone || b.phone, name: a.name || b.name, shipping: a.shipping || b.shipping, travelers: a.travelers.length ? a.travelers : b.travelers };
+        const doc = { phone: a.phone || b.phone, name: a.name || b.name, shipping: a.shipping || b.shipping, travelers: a.travelers.length ? a.travelers : b.travelers, venmo: a.venmo || b.venmo, cashtag: a.cashtag || b.cashtag, sizes: a.sizes || b.sizes };
         db.exec('BEGIN');
         try {
           db.prepare("UPDATE carts SET doc = json_set(doc, '$.user_id', ?) WHERE json_extract(doc, '$.user_id') = ?").run(intoId, fromId);

@@ -80,7 +80,7 @@ test('MCP: tools are listed and callable over streamable HTTP', async (t) => {
 
   const c = await connect('s3cret-a');
   const { tools } = await c.listTools();
-  assert.deepEqual(tools.map((x) => x.name).sort(), ['create_flight_ask', 'create_spot_ask', 'create_train_ask', 'get_spot_ask', 'order_spot_ask', 'search_flights']);
+  assert.deepEqual(tools.map((x) => x.name).sort(), ['create_flight_ask', 'create_spot_ask', 'create_train_ask', 'get_my_sizes', 'get_spot_ask', 'order_spot_ask', 'search_flights']);
   const day = new Date(Date.now() + 9 * 864e5).toISOString().slice(0, 10);
   const fares = await c.callTool({ name: 'search_flights', arguments: { origin: 'AUS', destination: 'JFK', departure_date: day } });
   assert.ok(!fares.isError, JSON.stringify(fares.content));

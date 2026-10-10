@@ -48,6 +48,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .err{color:#c62828;font-weight:600;margin-top:10px;min-height:1em}
 .edit-item{display:grid;grid-template-columns:1fr 64px 34px;gap:6px;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
 .edit-item [data-f=title]{grid-column:1/-1}
+.found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}.found .thumb{width:72px;height:72px}.found a{font-size:13px;font-weight:600;color:var(--muted)}
 .edit-item input{padding:10px}
 .x{border:0;background:transparent;font-size:20px;color:var(--muted);cursor:pointer}
 .linkbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;word-break:break-all;font-weight:600}
@@ -132,6 +133,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 <section id="check" hidden>
   <div class="card">
     <p class="small" id="checkMsg" style="margin:0 0 6px;color:var(--warn)"></p>
+    <div class="item found" id="found" hidden></div>
     <label for="merchant">Store</label><input id="merchant" placeholder="Store name">
     <label>Items</label><div id="items"></div>
     <button class="btn ghost small" id="addItem" type="button">+ Add item</button>

@@ -185,6 +185,14 @@
         totals();
       }).catch(() => {});
     }
+    // What it found, with the photo, so a lookup is easy to sanity-check.
+    const top = draft.items.length === 1 && draft.items[0];
+    $('#found').hidden = !(top && top.image_url);
+    if (top && top.image_url) {
+      const img = String(top.image_url).replace(/["'()\\]/g, (c) => '%' + c.charCodeAt(0).toString(16));
+      $('#found').innerHTML = '<div class="thumb" style="background-image:url(\'' + esc(img) + '\')"></div><div><div class="t">' + esc(top.title) + '</div><div class="v">' + esc([top.variant, draft.merchant.name].filter(Boolean).join(' · ')) + '</div>' +
+        (top.url && /^https?:/i.test(top.url) ? '<a href="' + esc(top.url) + '" target="_blank" rel="noopener">See it at the store ↗</a>' : '') + '</div>';
+    }
     $('#note').value = draft.note || '';
     $('#saveCheck').textContent = made ? 'Save changes' : 'Looks good →';
     renderItems();

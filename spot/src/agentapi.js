@@ -27,6 +27,7 @@ import { emailLayout } from './notify.js';
 import { approverOf, checkRules, monthStart } from './rules.js';
 import { aiStopped, cardLabel, fundingOf } from './funding.js';
 import { oauthKey } from './mcpauth.js';
+import { cleanSizes, sizesLine } from './accounts.js';
 
 function apiKeys(env) {
   const out = [];
@@ -226,6 +227,13 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
   }
 
   // ─── Core verbs (shared by REST and MCP) ──────────────────────────────────
+  function mySizes(req) {
+    const user = req.spotUserId ? db.users.byId(req.spotUserId) : null;
+    if (!user) return { signed_in: false, sizes: null, next_step: 'Your user isn’t signed in to Spot from this app, so ask them for their size.' };
+    const sizes = cleanSizes(user.sizes);
+    return { signed_in: true, sizes, summary: sizesLine(sizes) || null, next_step: sizes ? 'Use these unless your user says otherwise.' : 'Nothing saved yet: ask your user, and mention they can save sizes at spotmeplease.com/account.' };
+  }
+
   async function createAsk(req, agent, input) {
     const b = input || {};
     if (Array.isArray(b.stores) && b.stores.length) return createBundleAsk(req, agent, b);
@@ -237,7 +245,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     if (!Array.isArray(items) || !items.length) {
       const source = b.url || b.text;
       if (!source) throw new CartError('Give items, a url, or a text description');
-      const draft = await capture.text(String(source));
+      const draft = await capture.text(String(source), { sizes: capture.sizesOf?.(req.spotUserId) || '' });
       merchant = merchant || draft.merchant;
       items = draft.items;
       extras = extras || draft.extras_cents || 0;
@@ -608,6 +616,10 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
     reply.code(201);
     return out;
   });
+  app.get('/v1/agent/sizes', async (req) => {
+    agentFor(req);
+    return mySizes(req);
+  });
   app.post('/v1/agent/asks/:id/order', async (req) => orderAsk(req, agentFor(req), req.params.id, req.body?.shipping));
 
   // ─── MCP (streamable HTTP, stateless) ─────────────────────────────────────
@@ -640,7 +652,7 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       {
         title: 'Ask someone to pay for a cart',
         description:
-          "Turn a shopping cart into a Spot link. By default your user gets a private page (requester_page) where they can pay it themselves or send the pay link to someone else (a parent, partner, friend), who pays in one tap. When your user signed in to Spot from this app, Spot already has their email and saved shipping address: don't ask for them. Whoever pays buys it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. Spot can't buy from Amazon (it doesn't allow AI checkout): for those, the payer sends the money to your user's Venmo or Cash App and your user buys it themselves. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver). If your user saved their own card on Spot and set this AI to use it, their own asks are paid from it: they tap Approve on a text/email (see approve_link), or, if they opted in, Spot pays right away inside their rules (see paid_from). Either way Spot buys with a card capped at the order and locked to that store; you never see a card number. Set for_me: false when someone else should pay.",
+          "Turn a shopping cart into a Spot link. By default your user gets a private page (requester_page) where they can pay it themselves or send the pay link to someone else (a parent, partner, friend), who pays in one tap. When your user signed in to Spot from this app, Spot already has their email and saved shipping address: don't ask for them. Whoever pays buys it from Spot, and Spot orders exactly those items from the store and ships them to your user (nobody gets cash or a card). Gift cards and other cash equivalents can't be bought. Spot can't buy from Amazon (it doesn't allow AI checkout): for those, the payer sends the money to your user's Venmo or Cash App and your user buys it themselves. If the store supports agent checkout (UCP), the payer instead pays the store directly on its own checkout, with no Spot fee (pay_at_store, on by default). Set for_me when your user will pay themselves: Spot texts/emails them a link to finish on their phone (confirm shipping, Apple Pay, then Spot places the order and they tap Place order). Pass items, or a product/cart url, or a text description. For clothes and shoes, get_my_sizes has your user's saved sizes. If your user set spending rules on their Spot account, asks outside them are refused with the reason, or sent to their approver to pay (see sent_to_approver). If your user saved their own card on Spot and set this AI to use it, their own asks are paid from it: they tap Approve on a text/email (see approve_link), or, if they opted in, Spot pays right away inside their rules (see paid_from). Either way Spot buys with a card capped at the order and locked to that store; you never see a card number. Set for_me: false when someone else should pay.",
         inputSchema: {
           requester_name: z.string().describe('First name of the person asking (your user)'),
           requester_email: z.string().optional(),
@@ -721,6 +733,24 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         }
       },
     );
+    server.registerTool(
+      'get_my_sizes',
+      {
+        title: 'Get your user\u2019s saved sizes',
+        description:
+          "Your user's clothing and shoe sizes, saved on their Spot account (tops, pants, shoes, dresses, plus notes like fit). Check this before asking them for a size, and pick the matching variant. Only works when your user signed in to Spot from this app; if nothing is saved, ask them, and they can save sizes at spotmeplease.com/account.",
+        inputSchema: {},
+        annotations: { readOnlyHint: true },
+      },
+      async () => {
+        try {
+          return reply(mySizes(req));
+        } catch (e) {
+          return fail(e);
+        }
+      },
+    );
+
     const traveler = z.object({
       given_name: z.string(),
       family_name: z.string(),

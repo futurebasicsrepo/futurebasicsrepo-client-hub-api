@@ -22,7 +22,7 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { registerMerchants } from './merchants.js';
-import { registerAccounts } from './accounts.js';
+import { registerAccounts, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
 import { agentCardPage } from './agentcard.js';
 import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
@@ -100,7 +100,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const affiliate = createAffiliate(env);
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const captureShot = capture.fromScreenshot || captureFromScreenshot;
-  const captureText = capture.fromText || ((t) => captureFromText(t, { fromUrl: captureUrl }));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes }));
+  // A signed-in person's saved sizes, for lookups that don't name one.
+  const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
 
   // Keep the raw body: Stripe signs the exact bytes it sent.
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
@@ -361,7 +363,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.capture(req);
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
-    if (b.text) return captureText(String(b.text));
+    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)) });
     if (b.image?.data) {
       if (!process.env.ANTHROPIC_API_KEY && !capture.fromScreenshot) {
         throw new CaptureError('Screenshot capture is not configured on this server — paste a link or enter items');
@@ -616,7 +618,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   const mcpAuth = registerMcpAuth(app, { db, urlFor, papFetch });
-  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText } });
+  registerAgentApi(app, { spot, fulfiller, notifier, flights, db, provider, env, urlFor, approvals, mcpChallenge: mcpAuth.challenge, capture: { url: captureUrl, text: captureText, sizesOf } });
 
   // Sandbox only: what the store does with Spot's card after checkout: charge
   // it (capture), refund a return, or release / reverse the authorization.
