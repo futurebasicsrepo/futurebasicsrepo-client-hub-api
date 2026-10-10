@@ -6,7 +6,9 @@ async function room(tag) { const r = await call('/v1/public/start', { body: { em
 const studio = async m => (await call(`/v1/products/${m.id}/tech-pack/studio`, { token: m.token })).json;
 async function settled(m) { let st; for (let i = 0; i < 160; i++) { st = await studio(m); if (st.loop && st.loop.status === 'done' && !st.working) return st; await sleep(300); } return st; }
 
-sql(`update tech_pack_heroes set created_at=now()-interval '3 days' where trigger='auto'`); // earlier journeys share this database: start the day's count at zero
+// earlier journeys share this database, and the studio of the last pack they made may still be running: let it finish, then start the day's count at zero
+for (let i = 0, last = '', calm = 0; i < 100 && calm < 6; i++) { const now = sql(`select count(*)||'/'||count(*) filter (where status='generating') from tech_pack_heroes where trigger='auto'`); calm = now === last && /\/0$/.test(now) ? calm + 1 : 0; last = now; await sleep(300); }
+sql(`update tech_pack_heroes set created_at=now()-interval '3 days' where trigger='auto'`);
 sql(`delete from notifications where type='studio-cap'`);
 await journey('J72', 'a busy day cannot run the bill up: past the daily limit new packs wait for their picture, staff are told once, the customer is told it is queued, and staff can still run it by hand', async () => {
   const a = await room('72a'), first = await settled(a);

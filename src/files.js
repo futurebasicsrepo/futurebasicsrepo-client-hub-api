@@ -100,7 +100,15 @@ export async function buildZip({ pool, uploadDir, meshDir, product, admin = fals
 
 // ---- the tech pack PDFs: one per published version, made by the server and filed as a versioned asset ----
 // A version's PDF is made once when it is published and made again (in place, not as a new version) when its signatures or pictures change.
-export async function refreshTechPackPdf({ pool, uploadDir, productId, version = null, actorId = null }) {
+export async function refreshTechPackPdf(args) {
+  // one maker per product at a time, across requests and servers: the publish hook and the folder's catch-up can ask for the same PDF in the same moment
+  const lock = await args.pool.connect();
+  try {
+    await lock.query('select pg_advisory_lock(hashtext($1))', ['tppdf:' + args.productId]);
+    try { return await makeTechPackPdf({ ...args, pool: lock }); } finally { await lock.query('select pg_advisory_unlock(hashtext($1))', ['tppdf:' + args.productId]).catch(() => {}); }
+  } finally { lock.release(); }
+}
+async function makeTechPackPdf({ pool, uploadDir, productId, version = null, actorId = null }) {
   const tp = (await pool.query(`select tp.*,p.title,p.client_id c_id,c.name client_name,pr.name project_name from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=tp.client_id left join projects pr on pr.id=p.project_id where tp.product_id=$1`, [productId])).rows[0];
   if (!tp || !tp.published_at || !tp.published_data) return null;
   const v = version ?? tp.version;
