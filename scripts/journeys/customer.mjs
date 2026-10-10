@@ -1104,6 +1104,10 @@ await journey('J93', 'the join link opens a hub room with no tech pack: company,
       ok(await p.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, 'it fits a phone');
       await p.click('#go'); await p.waitForURL(/\/hub/, { timeout: 15000 }); await p.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 15000 });
       ok(sql(`select count(*) from clients where contact_email='sam-${stamp}@yahoo.com' and status='active'`) === '1' && await p.evaluate(() => Boolean(localStorage.getItem('fb.client.token'))), 'pressing the button opens the hub, signed in');
+      await p.waitForSelector('.first-run', { timeout: 10000 }); ok(/Start your first tech pack/.test(await p.innerText('.first-run')), 'a new room opens on "Start your first tech pack", not an empty list');
+      await p.click('.first-run button'); await p.waitForSelector('#techPackDialog[open]'); await p.setInputFiles('#tpPhotos', { name: 'shoe.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(runner.split(',')[1], 'base64') }); await p.fill('#techPackForm [name=title]', 'First runner');
+      await p.click('#tpSubmit'); await p.waitForURL(/\/tech-packs\//, { timeout: 30000 });
+      ok(sql(`select count(*) from products p join clients c on c.id=p.client_id where c.contact_email='sam-${stamp}@yahoo.com' and p.title='First runner'`) === '1' && sql(`select count(*) from tech_packs t join clients c on c.id=t.client_id where c.contact_email='sam-${stamp}@yahoo.com' and t.initiated_by='client'`) === '1', 'from that card they start a tech pack inside their own room: the product and the client-started draft exist');
       ok(p.errs.length === 0, 'no script errors', p.errs); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j93-hub.png` }).catch(() => {}); await ctx.close();
     } finally { await bw.close(); }
   }
