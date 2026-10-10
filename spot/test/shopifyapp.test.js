@@ -35,7 +35,7 @@ function fakeShopify({ currency = 'USD', variants , theme = null } = {}) {
     const body = JSON.parse(init.body || '{}');
     calls.push({ url, body, headers: init.headers });
     const json = (o, status = 200) => ({ ok: status < 400, status, json: async () => o });
-    if (url === `https://${SHOP}/admin/oauth/access_token`) return json({ access_token: (live = `shpat_offline_${++issued}`), scope: 'read_products' });
+    if (url === `https://${SHOP}/admin/oauth/access_token`) return json({ access_token: (live = `shpat_offline_${++issued}`), scope: 'read_products,read_themes' });
     if (url.startsWith(`https://${SHOP}/admin/api/`)) {
       if (init.headers['x-shopify-access-token'] !== live) return json({ errors: 'Invalid API key or access token' }, 401);
       if (body.query.includes('themes(')) {
@@ -248,4 +248,14 @@ test('theme parsing: templates with comment headers, and sections that do or don
   assert.equal(takesAppBlocks(customTheme['sections/exhibition.liquid']), false);
   assert.equal(takesAppBlocks('{%- schema -%}{"blocks":[{"type":"@app"}]}{%- endschema -%}'), true);
   assert.equal(takesAppBlocks(''), false);
+});
+
+test('a store that granted read_themes after installing gets a new token, so the theme can be read', async (t) => {
+  const { db, call, shopify } = app(t, { theme: customTheme });
+  await install(call);
+  db.shopify.save({ ...db.shopify.get(SHOP), scopes: 'read_products' });
+  const before = shopify.calls.filter((c) => c.url.endsWith('/admin/oauth/access_token')).length;
+  const r = (await install(call)).body;
+  assert.equal(shopify.calls.filter((c) => c.url.endsWith('/admin/oauth/access_token')).length, before + 1, 'traded the session token again');
+  assert.equal(r.theme_checked, true);
 });
