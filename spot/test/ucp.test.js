@@ -428,3 +428,23 @@ test('signed-in asks use the saved address, so the pay-at-store link works right
   assert.match(back.body.share_message, /\/c\//);
   assert.equal((await call('POST', `/v1/carts/${token}/manage/pay-yourself`, { k: 'wrong' })).status >= 400, true);
 });
+
+test('an older pay-at-store ask picks up the address its owner saved later, so the payer isn’t stuck', async (t) => {
+  const store = await startUcpStore();
+  const { app } = await directSetup(t, store);
+  const call = async (method, url, payload, headers = {}) => {
+    const r = await app.inject({ method, url, payload, headers });
+    return { status: r.statusCode, body: r.headers['content-type']?.includes('json') ? r.json() : r.body, headers: r.headers };
+  };
+  const start = await call('POST', '/v1/auth/start', { email: 'kyle@example.com' });
+  const cookie = (await call('POST', '/v1/auth/verify', { email: 'kyle@example.com', code: start.body.code })).headers['set-cookie'].split(';')[0];
+  const key = (await call('POST', '/v1/me/keys', { agent_name: 'Claude' }, { cookie })).body.api_key;
+  const ask = await call('POST', '/v1/agent/asks', directCart(store.origin), { authorization: `Bearer ${key}` });
+  const token = ask.body.ask_id;
+  assert.match((await call('GET', `/c/${token}`)).body, /Waiting for Kyle Riggle to add where it ships/, 'no address saved yet');
+
+  await call('POST', '/v1/me', { shipping: { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701' } }, { cookie });
+  const page = await call('GET', `/c/${token}`);
+  assert.doesNotMatch(page.body, /Waiting for/);
+  assert.match(page.body, /Pay Puff Co/);
+});
