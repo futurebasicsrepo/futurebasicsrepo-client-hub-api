@@ -3,12 +3,19 @@
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { agentLabel } from './approvals.js';
-import { CartError, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
+import { COVER_MAX_CENTS, CartError, cardLimitCents, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
 
 const ISSUE_RETRY_MS = 60_000;
+
+// A store quote is good for these exact items shipped to this address.
+export function quoteKey(cart) {
+  const items = (cart.items || []).map((i) => [i.title, i.variant || '', i.quantity, i.price_cents, i.url || '']);
+  const s = cart.requester?.shipping || {};
+  return createHash('sha256').update(JSON.stringify([cart.merchant?.url || '', items, [s.line1, s.line2 || '', s.city, s.state, s.postal_code]])).digest('hex').slice(0, 16);
+}
 
 export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
@@ -390,6 +397,30 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // Set by the server: can Spot place orders at this cart's store? Card
     // payments are only taken for carts Spot can actually buy.
     canOrder: async () => true,
+    // Set by the server: the store's real total for a cart shipped to an
+    // address (shipping and tax included), or null when it can't say.
+    quoter: null,
+    quoteKey,
+
+    // Before money moves: the store prices this cart shipped to the
+    // requester, and the cart is priced at that, so Spot's card covers what
+    // the store will really charge. Reused for 30 minutes while the items
+    // and address stay the same; without an answer the estimate stands.
+    async confirmTotal(cart) {
+      if (!this.quoter || cart.status !== 'open' || cart.settle !== 'card' || (cart.kind || 'goods') !== 'goods' || cart.bundle_id || !cart.requester?.shipping) return cart;
+      const key = quoteKey(cart);
+      if (cart.quote?.key === key && Date.now() - cart.quote.at < 30 * 60_000) return cart;
+      const q = await this.quoter(cart, cart.requester.shipping).catch(() => null);
+      if (!q) return cart;
+      return this.applyQuote(cart, q);
+    },
+    applyQuote(cart, q) {
+      const totals = computeTotals(cart.items, Math.max(0, q.total_cents - cart.subtotal_cents), 'card', cfg);
+      const next = { ...cart, ...totals, quote: { total_cents: q.total_cents, shipping_cents: q.shipping_cents, tax_cents: q.tax_cents, key: quoteKey(cart), at: Date.now() } };
+      if (!db.save(next, 'open')) return db.byId(cart.id);
+      db.event(cart.id, 'store_quote', { was_cents: cart.total_cents, now_cents: next.total_cents, store_total_cents: q.total_cents, shipping_cents: q.shipping_cents, tax_cents: q.tax_cents });
+      return next;
+    },
     // Set by the server: tells people when something happens (events.js).
     emit: () => {},
 
@@ -421,7 +452,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // Payer opened the pay page and wants to pay by card / wallet.
     async startPayment(token) {
-      const cart = load(token);
+      let cart = load(token);
       if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'card') throw new CartError(cart.settle === 'direct' ? 'This one is paid on the store’s own checkout' : 'This one is paid straight to them on Venmo or Cash App', 409);
       if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
@@ -431,6 +462,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
         throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take a card payment for this cart.${cart.requester.venmo || cart.requester.cashtag ? ' Send it straight to them on Venmo or Cash App instead.' : ''}`, 409);
       }
+      cart = await this.confirmTotal(cart);
       const { ref, client } = await provider.createPayment(cart);
       if (ref !== cart.payment_ref) {
         const next = { ...cart, payment_ref: ref };
@@ -491,11 +523,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // to its AI paying on its own. `present`: the person is on the page, so
     // their bank can ask them to verify (then `action` goes back to Stripe.js).
     async paySaved(token, funding, { present = false, how }) {
-      const cart = load(token);
+      let cart = load(token);
       if (cart.settle !== 'card' || cart.bundle_id || cart.kind === 'flight' || cart.for !== 'self') throw new CartError('This ask can’t be paid with a saved card', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This ask has expired' : 'This ask is already paid', 409);
       if (cart.kind === 'train' ? !cart.train.riders : !cart.requester?.shipping) throw new CartError(cart.kind === 'train' ? 'Add who’s riding first' : 'Add where it ships first', 409);
       if (!(await this.canOrder(cart))) throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't charge your card for it.`, 409);
+      cart = await this.confirmTotal(cart);
       const ready = this.patch(cart.id, (c) => ({ ...c, saved_pay: how }));
       const r = await provider.chargeSaved(ready, funding, { present });
       if (r.ref && r.ref !== ready.payment_ref) {
@@ -522,6 +555,22 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // From /admin: refund whatever the payer hasn't had back yet and cancel
     // the card. Also retries a refund stuck in `refunding`.
+    // Staff: Spot pays up to COVER_MAX_CENTS of a store total above what the
+    // card allows (shipping came in over the estimate). The payer isn't
+    // charged more; the card's network limit goes up by the same amount.
+    async coverDifference(cartId, cents, { by = 'admin' } = {}) {
+      const cart = db.byId(cartId);
+      if (!cart) throw new CartError('Cart not found', 404);
+      if (cart.status !== 'card_issued' || cart.settle !== 'card' || cart.kind === 'flight' || !cart.card_ref) throw new CartError('Only a paid order whose card is ready can be covered', 409);
+      if (cart.fulfillment?.state === 'placed') throw new CartError('Already ordered', 409);
+      const amount = Math.round(Number(cents));
+      if (!Number.isFinite(amount) || amount < 1 || amount > COVER_MAX_CENTS) throw new CartError(`Spot can cover $0.01 to $${COVER_MAX_CENTS / 100} on one order`);
+      const next = { ...cart, cover_cents: amount };
+      if (provider.setCardLimit) await provider.setCardLimit(cart.card_ref, cardLimitCents(next));
+      db.event(cart.id, 'spot_covered', { amount_cents: amount, by, limit_cents: cardLimitCents(next) });
+      return this.patch(cart.id, (c) => ({ ...c, cover_cents: amount }), 'cover_set');
+    },
+
     async adminRefund(cartId) {
       const cart = db.byId(cartId);
       if (!cart) throw new CartError('Cart not found', 404);
@@ -1118,8 +1167,10 @@ export function publicCart(cart) {
     // The asker signed in with a code to their email or phone.
     requester_verified: Boolean(cart.user_id),
     paused: pausedByReports(cart),
+    // Shipping and tax came from the store's own checkout, not an estimate.
+    shipping_confirmed: Boolean(cart.quote),
     // Spot's one-time card for this order can spend at most this, once.
-    card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) : null,
+    card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) + (cart.cover_cents || 0) : null,
   };
 }
 

@@ -7,6 +7,7 @@
 //   revealCard(cart)             → { number, cvc, exp_month, exp_year }
 //                                  (checkout only: never sent to a browser)
 //   cancelCard(cart)             → void
+//   setCardLimit(ref, cents)     → void   (Spot covering a difference)
 //   refund(cart, amountCents?, key?) → void   (whole payment when no amount)
 //
 // An account's own saved card, for paying its AI's asks (funding.js):
@@ -24,7 +25,7 @@
 // no Stripe keys are set.
 import { randomInt } from 'node:crypto';
 import Stripe from 'stripe';
-import { BLOCKED_CATEGORIES, authLimitCents } from './cart.js';
+import { BLOCKED_CATEGORIES, cardLimitCents } from './cart.js';
 
 export function pickProvider(env = process.env) {
   if (env.STRIPE_SECRET_KEY) return stripeProvider(env);
@@ -83,6 +84,10 @@ export function sandboxProvider() {
     async cancelCard(cart) {
       if (cart.card_ref) this.canceled.push(cart.card_ref);
       this.canceled.splice(0, this.canceled.length - 200);
+    },
+    limits: new Map(),
+    async setCardLimit(ref, cents) {
+      this.limits.set(ref, cents);
     },
     async refund(cart, amountCents, key) {
       if (cart.payment_ref) this.refunds.push({ cart: cart.id, amount_cents: amountCents ?? null, key: key || null });
@@ -182,7 +187,7 @@ export function stripeProvider(env = process.env) {
             status: 'active',
             ...(fa ? { financial_account_v2: fa } : {}),
             spending_controls: {
-              spending_limits: [{ amount: authLimitCents(cart.cart_cents), interval: 'all_time' }],
+              spending_limits: [{ amount: cardLimitCents(cart), interval: 'all_time' }],
               blocked_categories: BLOCKED_CATEGORIES,
             },
             metadata: { spot_cart_id: cart.id },
@@ -207,6 +212,13 @@ export function stripeProvider(env = process.env) {
     async revealCard(cart) {
       const card = await stripe.issuing.cards.retrieve(cart.card_ref, { expand: ['number', 'cvc'] });
       return { number: card.number, cvc: card.cvc, exp_month: card.exp_month, exp_year: card.exp_year };
+    },
+
+    // Raise (or lower) a card's network spending limit, keeping its blocks.
+    async setCardLimit(ref, cents) {
+      await stripe.issuing.cards.update(ref, {
+        spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: BLOCKED_CATEGORIES },
+      });
     },
 
     async cancelCard(cart) {

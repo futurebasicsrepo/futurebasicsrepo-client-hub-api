@@ -355,7 +355,7 @@ function costs(cart) {
   const store = esc(cart.merchant.name);
   const card = cart.settle === 'card';
   const rows = [row(cart.items.length > 1 ? `${cart.items.length} items` : 'Item', cart.subtotal_cents)];
-  if (cart.extras_cents) rows.push(row('Shipping + tax', cart.extras_cents, cart.settle === 'direct' ? `${store} shows the exact amount` : `${store}’s estimate`));
+  if (cart.extras_cents) rows.push(row('Shipping + tax', cart.extras_cents, cart.settle === 'direct' ? `${store} shows the exact amount` : cart.quote ? `from ${store}’s checkout` : `${store}’s estimate`));
   if (card && cart.cushion_cents) rows.push(row('Room for price changes', cart.cushion_cents, 'unused comes back to you'));
   if (card && cart.fee_cents) {
     const keep = cart.fee_keep_cents;
@@ -447,7 +447,7 @@ ${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>
   return `<details><summary>how this works</summary>
 <p>${card ? (cart.kind === 'flight' ? `You're buying this ticket from Spot, and Spot books it with ${esc(cart.merchant.name)}.` : `You're buying this from Spot as a gift for ${esc(cart.requester.name)}. Spot orders exactly these items from ${esc(cart.merchant.name)} and ships them to ${esc(cart.requester.name)}. Nobody gets cash or a card. Changed your mind? Cancel for a full refund until it's ordered, from the link in your receipt.`) : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
 <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
-${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+${cart.extras_cents ? `<div class="sum"><span>Shipping + tax${cart.quote ? '' : ' (est.)'}</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
 ${cart.cushion_cents ? `<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to ${usd(cart.cushion_cents)}</span></div>` : ''}
 ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
 <div class="sum"><b>Total</b><b>${usd(card ? cart.total_cents : cart.cart_cents)}</b></div></details>`;
@@ -552,7 +552,7 @@ function finishPanel(c,notice){
   if(fl)h+='<section class="card">'+itinerary(c.flight)+totals(c)+'</section>';
   else if(tr)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
   else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(String(i.image_url).replace(/["'()\\\\\\s]/g,function(c){return '%'+c.charCodeAt(0).toString(16).padStart(2,'0')}))+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
-    +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
+    +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax'+(c.shipping_confirmed?'':' (est.)')+'</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
   const payLabel=(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents));
   if(fl)h+='<section class="card"><h2>Who’s flying</h2><form id="finish">'+travelersForm(c,s)
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+payLabel+'</button><div class="err" id="finErr"></div></form>'
@@ -751,7 +751,7 @@ async function draw(){
   let h='<h1 style="font-size:28px">🧾 Your Spot receipt</h1><span class="pill">'+esc(status)+'</span>'
     +'<section class="card"><p class="muted" style="margin-top:0">'+(c.kind==='flight'?'You bought this ticket from Spot.':'You bought this from Spot as a gift for '+esc(c.requester.name)+'. Spot orders it from '+esc(c.merchant.name)+' and ships it to them.')+'</p>'
     +c.items.map(i=>'<div class="sum"><span>'+esc(i.title)+(i.quantity>1?' ×'+i.quantity:'')+'</span><span>'+usd(i.price_cents*i.quantity)+'</span></div>').join('')
-    +(c.extras_cents?'<div class="sum"><span>Shipping + tax (est.)</span><span>'+usd(c.extras_cents)+'</span></div>':'')
+    +(c.extras_cents?'<div class="sum"><span>Shipping + tax'+(c.shipping_confirmed?'':' (est.)')+'</span><span>'+usd(c.extras_cents)+'</span></div>':'')
     +(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>'+usd(c.cushion_cents)+'</span></div>':'')
     +'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div><div class="sum total"><span>Paid</span><span>'+usd(c.total_cents)+'</span></div>'
     +(r.ordered?'<p class="small muted">Ordered'+(r.ordered.order_number?' · order #'+esc(r.ordered.order_number):'')+'. Returns go through Spot: reply to your receipt email.</p>':'')

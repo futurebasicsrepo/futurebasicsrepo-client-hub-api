@@ -403,7 +403,8 @@ function blocked(co, fallback) {
 }
 
 // Returns null when UCP can't take this cart (items not in the store's
-// catalog), so the caller falls back to the other ways of ordering.
+// catalog, or a checkout only a page can finish), so the caller falls back
+// to the other ways of ordering.
 export async function runUcpCheckout(opts) {
   const out = await checkout(opts);
   if (out) {
@@ -435,6 +436,15 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
   }
 
   const manual = co.continue_url || null;
+  // The store wants a person for something its API can't answer (a checkout
+  // extension, a missing field). With the browser agent on, it orders on the
+  // store's own page, which can (null = fall back); otherwise the requester
+  // gets the checkout.
+  if (fallback && (co.status === 'requires_escalation' || co.status === 'incomplete')) {
+    progress(`${cart.merchant.name}'s checkout needs a step its API can't take: ${blocked(co, 'more info')}`);
+    await call('POST', `/checkout-sessions/${encodeURIComponent(co.id)}/cancel`, {}).catch(() => {});
+    return null;
+  }
   if (co.status === 'requires_escalation' || co.status === 'incomplete' || TERMINAL.includes(co.status)) {
     return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: blocked(co, `${cart.merchant.name} needs you to finish this checkout`), manual_url: manual };
   }

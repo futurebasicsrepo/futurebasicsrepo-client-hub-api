@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
-import { orderRef, payableHandler, pickVariant } from '../src/fulfill/ucp.js';
+import { discover, orderRef, payableHandler, pickVariant, runUcpCheckout } from '../src/fulfill/ucp.js';
 
 const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
@@ -13,7 +13,7 @@ const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', stat
 // shipping options, a tokenizer, and completion. `mcp: true` serves it the
 // way Shopify does: over MCP only, with a catalog that looks items up by
 // Shopify id rather than by link (and /products/<handle>.js for the ids).
-async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false } = {}) {
+async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = true, mcp = false, lookupFails = false, escalate = false } = {}) {
   const log = [];
   let origin;
   const sessions = new Map();
@@ -104,7 +104,8 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
         const dest = { id: 'dest_1', type: 'shipping_address', ...method.destinations[0] };
         const ship = picked === 'express' ? 1500 : 800;
         Object.assign(co, {
-          status: picked ? 'ready_for_complete' : 'incomplete',
+          status: escalate && picked ? 'requires_escalation' : picked ? 'ready_for_complete' : 'incomplete',
+          ...(escalate && picked ? { messages: [{ type: 'error', code: 'requires_escalation', severity: 'requires_buyer_input', content: 'An extension interaction is required to complete the checkout.' }] } : {}),
           fulfillment: { methods: [{ id: 'ship_1', type: 'shipping', line_item_ids: ['li_0'], selected_destination_id: 'dest_1', destinations: [dest], groups: [{ id: 'pkg_1', ...(picked ? { selected_option_id: picked } : {}), options: [{ id: 'express', title: 'Express', totals: [{ type: 'total', amount: 1500 }] }, { id: 'standard', title: 'Standard', totals: [{ type: 'total', amount: 800 }] }] }] }] },
           totals: picked ? [{ type: 'subtotal', amount: 25000 }, { type: 'fulfillment', amount: ship }, { type: 'tax', amount: 1100 }, { type: 'total', amount: 25000 + ship + 1100 }] : co.totals,
         });
@@ -680,4 +681,107 @@ test('order numbers: the one a shopper knows, never a store’s internal id', ()
   assert.equal(orderRef({ id: 'gid://shopify/Order/1', name: '#SB1042' }), 'SB1042');
   assert.equal(orderRef({ id: 'ord_888' }), 'ord_888');
   assert.equal(orderRef(null), null);
+});
+
+// SKLZ: "An extension interaction is required to complete the checkout."
+// The store's API can't take that step, its page can: with the browser agent
+// on, Spot cancels the API checkout and orders on the page instead.
+test('a checkout that needs a step only the store’s page can take falls back to the page when the agent is on', async (t) => {
+  const store = await startUcpStore({ escalate: true });
+  t.after(() => store.close());
+  const discovery = await discover(store.origin, { allowPrivate: true });
+  const cart = { id: 'c1', merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }], cart_cents: 25000 };
+  const opts = { discovery, cart, shipping, getCard: async () => assert.fail('no card is handed out'), profileUrl: 'https://spot.example/.well-known/ucp', limit: 30000, allowPrivate: true, confirm: async () => true };
+
+  const steps = [];
+  assert.equal(await runUcpCheckout({ ...opts, fallback: true, progress: (s) => steps.push(s) }), null, 'agent on: order on the page');
+  assert.ok(store.log.some((r) => r.method === 'POST' && /\/checkout-sessions\/chk_1\/cancel$/.test(r.url)), 'the API checkout is cancelled');
+  assert.ok(steps.some((s) => /extension interaction/.test(s)), 'the step says why');
+
+  const out = await runUcpCheckout({ ...opts, fallback: false });
+  assert.equal(out.status, 'needs_you', 'agent off: the requester gets the store’s checkout');
+  assert.match(out.reason, /extension interaction is required/);
+  assert.equal(out.manual_url, `${store.origin}/checkout/chk_2`);
+});
+
+// Shipping and tax are the store's, not a guess: before anyone pays, Spot
+// prices the cart on the store's own checkout for the address (cheapest
+// shipping + tax), cancels that checkout, and charges that total.
+test('store quote: the real shipping and tax for the address, read and cancelled', async (t) => {
+  const store = await startUcpStore({});
+  t.after(() => store.close());
+  const { createDirect } = await import('../src/direct.js');
+  const direct = createDirect({ profileUrl: 'https://spot.example/.well-known/ucp', allowPrivate: true });
+  const cart = { merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }] };
+  const q = await direct.quote(cart, shipping);
+  assert.deepEqual(q, { total_cents: 26900, subtotal_cents: 25000, shipping_cents: 800, tax_cents: 1100 }, 'cheapest shipping ($8) and the tax for that address');
+  assert.ok(store.log.some((r) => r.method === 'POST' && /\/checkout-sessions\/chk_1\/cancel$/.test(r.url)), 'the quote checkout is cancelled');
+  assert.equal(await direct.quote(cart, null), null, 'no address, no quote');
+  assert.equal(await direct.quote({ ...cart, merchant: { name: 'Nope', url: 'http://127.0.0.1:1' } }, shipping), null, 'a store that can’t say keeps the estimate');
+});
+
+test('the SKLZ case: an ask made with no shipping estimate is charged the store’s real total, and the order fits the card', async (t) => {
+  const store = await startUcpStore({});
+  const { call, token, k, until } = await setupNoExtras(t, store);
+  const before = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).cart;
+  assert.equal(before.status, 'card_issued');
+  assert.equal(before.cart_cents, 26900, 'priced at the store’s total, not the $250 item alone');
+  assert.equal(before.extras_cents, 1900);
+  assert.equal(before.shipping_confirmed, true);
+  assert.ok(before.card_limit_cents >= 26900, 'the card covers the store total');
+  // Ordering at the store now goes through without stopping for the total.
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  const waiting = await until(['awaiting_confirm', 'needs_you']);
+  assert.equal(waiting.state, 'awaiting_confirm', JSON.stringify(waiting));
+  assert.equal(waiting.total_cents, 26900, 'the store’s total at checkout is the one Spot charged for');
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const f = await until(['placed', 'needs_you']);
+  assert.equal(f.state, 'placed', JSON.stringify(f));
+});
+
+async function setupNoExtras(t, store) {
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: 'off', PUBLIC_URL: 'https://spot.example' }, fulfill: { ucp: { allowPrivate: true } } });
+  t.after(async () => {
+    await app.close();
+    await store.close();
+  });
+  const call = async (method, url, payload) => (await app.inject({ method, url, payload })).json();
+  const made = await call('POST', '/v1/carts', {
+    requester: { name: 'Kyle Riggle' },
+    merchant: { name: 'Puff Co', url: store.origin },
+    items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }],
+    for: 'self',
+  });
+  const token = made.cart.token;
+  const k = made.manage_key;
+  assert.equal(made.cart.cart_cents, 25000, 'no estimate given');
+  await call('POST', `/v1/carts/${token}/manage/prepare`, { k, shipping });
+  await call('POST', `/v1/carts/${token}/sandbox-pay`, { payer_name: 'Kyle' });
+  const until = async (want) => {
+    for (let i = 0; i < 100; i++) {
+      const f = (await call('GET', `/v1/carts/${token}/manage?k=${k}`)).cart.fulfillment;
+      if (f && want.includes(f.state)) return f;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`never reached ${want}`);
+  };
+  return { call, token, k, until };
+}
+
+test('an AI’s ask with an address is priced at the store’s real total before the rules or anyone sees it', async (t) => {
+  const store = await startUcpStore({});
+  const app = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: 'off', PUBLIC_URL: 'https://spot.example', SPOT_API_KEYS: 'claude:s3cret-a' }, fulfill: { ucp: { allowPrivate: true } } });
+  t.after(async () => {
+    await app.close();
+    await store.close();
+  });
+  const r = await app.inject({
+    method: 'POST',
+    url: '/v1/agent/asks',
+    headers: { authorization: 'Bearer s3cret-a' },
+    payload: { for: 'self', settle: 'card', requester: { name: 'Kyle Riggle' }, merchant: { name: 'Puff Co', url: store.origin }, items: [{ title: 'Super Puff', variant: 'Black / M', quantity: 1, price_cents: 25000, url: `${store.origin}/products/puffer` }], ship_to: shipping },
+  });
+  assert.equal(r.statusCode, 201, r.body);
+  const ask = r.json();
+  assert.equal(ask.cart_cents, 26900, 'shipping and tax from the store, though the AI gave no estimate');
 });

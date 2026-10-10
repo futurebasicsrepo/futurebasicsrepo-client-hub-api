@@ -10,6 +10,7 @@
 //   supports(url)          → does this store take UCP checkout?
 //   start(cart, { email }) → { checkout_id, continue_url, total_cents }
 //   status(checkoutId)     → { status, order_number, order_url, total_cents }
+//   quote(cart, ship)      → { total_cents, subtotal_cents, shipping_cents, tax_cents } | null
 import { buyer, discover, orderRef, shipTo, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
 import { CartError } from './cart.js';
 
@@ -49,6 +50,40 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       const r = await resolveItems(await client(d, buyerIp), cart, { fetchImpl, allowPrivate }).catch(() => null);
       if (r?.lines) return { ok: true, items: r.items || cart.items };
       return { ok: false, reason: r?.not_found ? 'not_found' : r?.choose ? 'choose' : r?.unresolved ? 'unavailable' : 'not_found', choose: r?.choose || null, item: r?.unresolved || cart.items.find((i) => !i.url)?.title || cart.items[0]?.title };
+    },
+
+    // What the store will really charge for this cart shipped to `ship`:
+    // its own checkout with the cheapest shipping and the tax for that
+    // address, read and then cancelled. Null when the store can't say, so
+    // the caller keeps the estimate.
+    async quote(cart, ship, { buyerIp = null } = {}) {
+      const d = ship && cart.merchant?.url ? await discovery(cart.merchant.url) : null;
+      if (!d?.lookup) return null;
+      let call = null;
+      let co = null;
+      try {
+        call = await client(d, buyerIp);
+        const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate });
+        if (!resolved?.lines) return null;
+        co = await call('POST', '/checkout-sessions', { line_items: resolved.lines, buyer: buyer(ship) });
+        if (d.fulfillment) {
+          co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, shipTo(co, ship)));
+          const pick = selectShipping(co);
+          if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, pick));
+          // A total without a chosen shipping option leaves shipping out.
+          const shipping = (co.fulfillment?.methods || []).find((m) => m.type === 'shipping');
+          if (!shipping?.groups?.length || !shipping.groups.every((g) => g.selected_option_id)) return null;
+        }
+        const total = totalOf(co);
+        if (total == null || (co.currency && co.currency !== 'USD')) return null;
+        const amount = (type) => co.totals?.find((t) => t.type === type)?.amount ?? null;
+        return { total_cents: total, subtotal_cents: amount('subtotal'), shipping_cents: amount('fulfillment') ?? 0, tax_cents: amount('tax') ?? 0 };
+      } catch (err) {
+        console.error('store quote failed', cart.merchant?.url, err?.message);
+        return null;
+      } finally {
+        if (co?.id && call) await call('POST', `/checkout-sessions/${encodeURIComponent(co.id)}/cancel`, {}).catch(() => {});
+      }
     },
 
     // Builds the store's checkout for this cart: its items, shipped to the
