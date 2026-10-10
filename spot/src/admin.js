@@ -236,7 +236,7 @@ tr:last-child td{border-bottom:0}
 .pill.refunded,.pill.canceled,.pill.expired{color:var(--muted)}
 .pill.hold{background:var(--spot);color:#fff}
 form.inline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-form.inline input,form.inline select{font:inherit;font-size:15px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);min-width:0;flex:1 1 140px}
+form.inline input,form.inline select{font:inherit;font-size:16px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);min-width:0;flex:1 1 140px}
 .muted{color:var(--muted)}.err{color:var(--spot);font-weight:600;min-height:1.2em}
 .login{max-width:420px;margin:60px auto;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px}
 .login input{width:100%;font:inherit;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:14px 0}

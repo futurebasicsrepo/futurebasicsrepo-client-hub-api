@@ -96,3 +96,17 @@ test('report a link: one report noted, two people pause it, Spot can clear it', 
   const self = (await call('POST', '/v1/carts', { ...cart, for: 'self' })).body.cart;
   assert.equal((await call('POST', `/v1/carts/${self.token}/report`, {})).status, 400);
 });
+
+// iPhone Safari zooms in on any field under 16px when it's tapped, and the
+// page then slides left and right. Every field on these pages is 16px or more.
+test('phones: no text field small enough to make Safari zoom in', async (t) => {
+  const { call } = app(t);
+  const pages = ['/', '/integrations', '/connect', '/standards', '/new', '/signin', '/account', '/agent-card', '/texts', '/for-stores', `/admin?token=${ADMIN}`];
+  for (const p of pages) {
+    const html = (await call('GET', p)).body;
+    for (const rule of html.match(/[^{}]*(?:^|[\s,>}(])(?:input|select|textarea)(?![-\w])[^{}]*\{[^}]*\}/g) || []) {
+      const px = [...rule.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
+      for (const n of px) assert.ok(n >= 16, `${p}: ${rule.trim().slice(0, 90)}`);
+    }
+  }
+});

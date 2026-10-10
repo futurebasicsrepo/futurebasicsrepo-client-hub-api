@@ -20,18 +20,18 @@ const CSS = `
 .jump{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
 .jump a{padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--card);text-decoration:none;font-weight:600;font-size:14px}
 .igrid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:30px}
-.keyform{display:flex;gap:8px;flex-wrap:wrap}.keyform input{font:inherit;font-size:15px;padding:11px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);flex:1 1 180px;min-width:0}.keyform[hidden]{display:none}
+.keyform{display:flex;gap:8px;flex-wrap:wrap}.keyform input{font:inherit;font-size:16px;padding:11px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);flex:1 1 180px;min-width:0}.keyform[hidden]{display:none}
 .keyout{margin:0;font-weight:600;color:var(--spot);font-size:15px}.keyout:empty{display:none}
 .icard{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:28px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:90px}
 .icard.wide{grid-column:1/-1}
-.icard .top{display:flex;align-items:center;gap:12px}
+.icard .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .icard .ic{width:48px;height:48px;border-radius:14px;background:var(--bg2);display:grid;place-items:center;font-size:24px;flex:none}
 .badge{margin-left:auto;font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;letter-spacing:.02em}
 .badge.live{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
 .badge.soon{background:var(--bg2);color:var(--muted)}
 .icard p{color:var(--muted)}
 .icard ol{margin:0;padding-left:20px;color:var(--muted)}.icard ol li{margin:4px 0}
-.icard code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--bg2);padding:1px 6px;border-radius:6px}
+.icard code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--bg2);padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}
 .codebox{position:relative}
 .codebox pre{background:var(--night2);color:#e9e2d8;border-radius:14px;padding:44px 18px 18px;overflow-x:auto;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;border:1px solid #2e2821}
 .codebox .copy{position:absolute;top:10px;right:10px;border:0;border-radius:8px;padding:6px 10px;font:600 13px Bricolage,system-ui;background:#3a322a;color:#f4efe8;cursor:pointer}
@@ -43,7 +43,7 @@ const CSS = `
 .soon .badge{padding:3px 8px;flex:none}
 .soon p{color:var(--muted);font-size:15px}
 .soon form{display:flex;gap:6px;margin-top:auto}
-.soon input{flex:1;min-width:0;font:inherit;font-size:14px;padding:9px 12px;border-radius:99px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.soon input{flex:1;min-width:0;font:inherit;font-size:16px;padding:9px 12px;border-radius:99px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 .soon button{border:0;border-radius:99px;padding:9px 14px;font:700 14px Bricolage,system-ui;background:var(--ink);color:var(--bg);cursor:pointer}
 .soon .ok{color:var(--ok);font-weight:700;font-size:14px}
 .demo-btn{display:inline-flex;align-items:center;gap:8px;background:#ff5a36;color:#fff;border-radius:10px;padding:11px 16px;font-weight:700;text-decoration:none}
