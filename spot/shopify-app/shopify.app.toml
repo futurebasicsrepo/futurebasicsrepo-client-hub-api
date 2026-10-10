@@ -10,8 +10,9 @@ embedded = true
 automatically_update_urls_on_dev = false
 
 [access_scopes]
-# Spot only reads products, to price the cart a shopper sends.
-scopes = "read_products"
+# Spot reads products, to price the cart a shopper sends, and the live
+# theme, to find where the button can go (it never changes the theme).
+scopes = "read_products,read_themes"
 
 [auth]
 redirect_urls = [ "https://spotmeplease.com/shopify" ]

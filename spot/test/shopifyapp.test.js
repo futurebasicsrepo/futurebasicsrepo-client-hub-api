@@ -21,7 +21,7 @@ function sessionToken({ shop = SHOP, aud = CLIENT, secret = SECRET, exp = Math.f
   return `${h}.${p}.${createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url')}`;
 }
 
-function fakeShopify({ currency = 'USD', variants } = {}) {
+function fakeShopify({ currency = 'USD', variants , theme = null } = {}) {
   const calls = [];
   const catalog = variants || {
     'gid://shopify/ProductVariant/111': { id: 'gid://shopify/ProductVariant/111', title: 'Default Title', price: '34.99', availableForSale: true, media: { nodes: [] }, product: { title: 'Pro Mini Hoop', handle: 'pro-mini-hoop', status: 'ACTIVE', onlineStoreUrl: 'https://sklz.com/products/pro-mini-hoop', featuredMedia: { preview: { image: { url: 'https://cdn.shopify.com/hoop.jpg' } } } } },
@@ -38,6 +38,11 @@ function fakeShopify({ currency = 'USD', variants } = {}) {
     if (url === `https://${SHOP}/admin/oauth/access_token`) return json({ access_token: (live = `shpat_offline_${++issued}`), scope: 'read_products' });
     if (url.startsWith(`https://${SHOP}/admin/api/`)) {
       if (init.headers['x-shopify-access-token'] !== live) return json({ errors: 'Invalid API key or access token' }, 401);
+      if (body.query.includes('themes(')) {
+        if (!theme) return json({ errors: [{ message: 'Access denied for themes field.', extensions: { code: 'ACCESS_DENIED' } }] });
+        const nodes = body.variables.files.filter((f) => f in theme).map((filename) => ({ filename, body: { content: theme[filename] } }));
+        return json({ data: { themes: { nodes: [{ files: { nodes } }] } } });
+      }
       if (body.query.includes('shop {')) return json({ data: { shop: { name: 'SKLZ', email: 'owner@sklz.com', contactEmail: 'help@sklz.com', currencyCode: currency, primaryDomain: { host: 'www.sklz.com' } } } });
       return json({ data: { nodes: body.variables.ids.map((id) => catalog[id] || null) } });
     }
@@ -206,6 +211,41 @@ test('the theme block: valid schema, design settings, and it never sends prices'
   assert.match(js, /\/v1\/shopify\/asks/);
   assert.doesNotMatch(js, /price_cents|price:/, 'the storefront only sends variant ids and quantities');
   const toml = readFileSync(new URL('../shopify-app/shopify.app.toml', import.meta.url), 'utf8');
-  assert.match(toml, /scopes = "read_products"/);
+  assert.match(toml, /scopes = "read_products,read_themes"/);
   assert.match(toml, /compliance_topics = \[ "customers\/data_request", "customers\/redact", "shop\/redact" \]/);
+});
+
+// A theme like Future Basics': a custom product section with no app blocks,
+// no Apps section, and a cart section (not named "main") that takes them.
+const schemaOf = (o) => `<div></div>{% schema %}${JSON.stringify(o)}{% endschema %}`;
+const customTheme = {
+  'templates/product.json': '/* auto-generated */ {"sections":{"main":{"type":"exhibition"},"nav":{"type":"make-nav"}},"order":["main","nav"]}',
+  'templates/cart.json': '{"sections":{"cart-section":{"type":"main-cart"},"list":{"type":"product-list"}},"order":["cart-section","list"]}',
+  'sections/exhibition.liquid': schemaOf({ name: 'exhibition', blocks: [] }),
+  'sections/make-nav.liquid': schemaOf({ name: 'nav' }),
+  'sections/main-cart.liquid': schemaOf({ name: 'Cart', blocks: [{ type: '@theme' }, { type: '@app' }] }),
+  'sections/product-list.liquid': schemaOf({ name: 'List', blocks: [{ type: '@app' }] }),
+};
+
+test('the theme decides where the button goes: a section that takes app blocks, the Apps section, or nowhere', async (t) => {
+  const { call } = app(t, { theme: customTheme });
+  const r = (await install(call)).body;
+  assert.equal(r.theme_checked, true);
+  assert.match(r.add_to_cart, /template=cart&.*&target=sectionId%3Acart-section$|template=cart&.*&target=sectionId:cart-section$/, 'the cart section by its real id, not "main"');
+  assert.equal(r.add_to_product, null, 'no product section takes app blocks and there is no Apps section: no link that would fail');
+  assert.equal(r.add_to_product_section, null);
+
+  const withApps = app(t, { theme: { ...customTheme, 'sections/apps.liquid': schemaOf({ name: 'Apps', blocks: [{ type: '@app' }] }) } });
+  const r2 = (await install(withApps.call)).body;
+  assert.match(r2.add_to_product, /template=product&.*&target=newAppsSection$/, 'with an Apps section the button goes in its own section');
+});
+
+test('theme parsing: templates with comment headers, and sections that do or don’t take app blocks', async () => {
+  const { parseTemplate, takesAppBlocks } = await import('../src/shopifyapp.js');
+  assert.deepEqual(parseTemplate(customTheme['templates/product.json']), [{ id: 'main', type: 'exhibition' }, { id: 'nav', type: 'make-nav' }]);
+  assert.deepEqual(parseTemplate('not json'), []);
+  assert.equal(takesAppBlocks(customTheme['sections/main-cart.liquid']), true);
+  assert.equal(takesAppBlocks(customTheme['sections/exhibition.liquid']), false);
+  assert.equal(takesAppBlocks('{%- schema -%}{"blocks":[{"type":"@app"}]}{%- endschema -%}'), true);
+  assert.equal(takesAppBlocks(''), false);
 });
