@@ -1607,4 +1607,62 @@ await journey('J100', 'commercial facts: price, weight, HS code and a SKU for ev
   }
 });
 
+await journey('J101', 'a question about one callout: the factory asks where the callout is, staff see it open on that callout and answer in place, the client writes to the project thread with the callout named', async () => {
+  const m = await room('101'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: callout questions' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const mk = async label => { const s = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label, email: `${label.replace(/\W/g, '').toLowerCase()}-${stamp}@chaos.test` } }); return s.json.url.split('/tp/')[1]; };
+  const ftok = await mk('Mill 101'), other = await mk('Mill 101b');
+  const fv = (await call(`/v1/tp/${ftok}`)).json, co = fv.techPack.readiness.callouts[0], co2 = fv.techPack.readiness.callouts[1];
+  const ask = (tok, body) => call(`/v1/tp/${tok}/messages`, { method: 'POST', body });
+  ok((await ask(ftok, { body: 'x', key: 'nope:9' })).status === 400, 'a question about a callout that is not in the pack is refused');
+  ok((await ask(ftok, { body: '   ', key: co.key })).status === 400, 'and an empty one');
+  const q = await ask(ftok, { body: 'Is the edge radius measured before or after bonding?', key: co.key });
+  ok(q.status === 201 && q.json.message.calloutKey === co.key && q.json.message.calloutLabel === co.label && q.json.message.rawBody.startsWith('Is the edge') && q.json.message.body.startsWith(`About “${co.label}”`), 'the factory asks about one callout, and the message carries which', q.json);
+  ok((await ask(ftok, { body: 'And the general question: lead time?' })).status === 201, 'a general question still works');
+  const mine = (await call(`/v1/tp/${ftok}/messages`)).json.messages, theirs = (await call(`/v1/tp/${other}/messages`)).json.messages;
+  ok(mine.length === 2 && mine.filter(x => x.calloutKey === co.key).length === 1 && theirs.length === 0, 'it is in that factory\'s thread only, not another factory\'s', [mine.length, theirs.length]);
+  let cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 1 && cq.questions[0].key === co.key && cq.questions[0].shareLabel === 'Mill 101' && !cq.questions[0].answered, 'staff see one open question, on that callout, from that factory', cq);
+  ok(Number(sql(`select count(*) from notifications where client_id='${m.cid}' and title like '%asked about%'`)) === 1, 'and it raised a notification naming the callout');
+  const shareId = cq.questions[0].shareId;
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/messages`, { method: 'POST', body: { body: 'x', key: 'nope:9' } })).status === 400, 'a staff reply naming an unknown callout is refused');
+  const rep = await adm(`/v1/admin/tech-pack-shares/${shareId}/messages`, { method: 'POST', body: { body: 'After bonding, edge to edge.', key: co.key } }); ok(rep.status === 201 && rep.json.message.calloutKey === co.key, 'staff answer on the callout');
+  cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 0 && cq.questions[0].answered && cq.questions[0].replies[0].body.startsWith('After bonding'), 'the question is answered', cq);
+  const mail = ((await call(`/v1/dev/outbox?to=${encodeURIComponent('mill101-' + stamp + '@chaos.test')}`)).json.emails || []).filter(e => /Future Basics wrote to you/.test(e.subject)); ok(mail.length === 1 && /After bonding/.test(mail[0].text), 'the factory is emailed the answer', mail.map(e => e.subject));
+  const q2 = (await ask(ftok, { body: 'Is the pod flush or proud?', key: co2.key })).json.message;
+  const res = await adm(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', body: { resolved: true } }); ok(res.status === 200 && res.json.resolved === true, 'staff can mark a question resolved without writing back');
+  cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 0 && cq.questions.length === 2, 'resolved counts as answered', cq.open);
+  ok((await adm(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', body: { resolved: false } })).json.resolved === false && (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json.open === 1, 'and can be reopened');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/callout-questions`, { token: m.token })).status === 403 && (await call(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', token: m.token, body: {} })).status === 403, 'the client cannot read or resolve the factory\'s questions');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      // the factory, on a phone
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      await fp.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await fp.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await fp.click('#tabs button[data-tab="calls"]');
+      await fp.waitForSelector('.panel[data-panel="calls"] details.qa', { timeout: 10000 });
+      const box = fp.locator('.panel[data-panel="calls"] details.qa').nth(2); await box.locator('summary').click(); await box.locator('textarea').fill('Is this callout the same on the left side?'); await box.locator('[data-act="qask"]').click();
+      await fp.waitForFunction(() => /waiting for Future Basics/i.test(document.querySelector('.panel[data-panel="calls"]').innerText), null, { timeout: 8000 });
+      ok(fp.errs.length === 0, 'the factory page: ask about a callout, and see it waiting for Future Basics', fp.errs); await fp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j101-factory.png` }).catch(() => {}); await fctx.close();
+      // staff, on the pack
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}?as=work`, { waitUntil: 'domcontentloaded' }); await ap.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await ap.keyboard.press('Escape'); await ap.click('#tabs button[data-tab="calls"]');
+      await ap.waitForSelector('.panel[data-panel="calls"] details.qa.ask', { timeout: 10000 });
+      const openBox = ap.locator('.panel[data-panel="calls"] details.qa.ask').first(); ok(/open question/i.test(await openBox.locator('summary').innerText()) && /pod flush|left side/i.test(await openBox.innerText()), 'the work console shows the open question on its callout');
+      await openBox.locator('textarea').first().fill('Flush to the wall.'); await openBox.locator('[data-act="qreply"]').first().click();
+      await ap.waitForFunction(() => /Flush to the wall/.test(document.querySelector('.panel[data-panel="calls"]').innerText), null, { timeout: 8000 });
+      ok(ap.errs.length === 0, 'and staff reply in place', ap.errs); await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j101-staff.png` }).catch(() => {}); await actx.close();
+      // the client, on the published pack
+      const cctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message));
+      await cp.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await cp.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await cp.keyboard.press('Escape'); await cp.click('#tabs button[data-tab="calls"]');
+      await cp.waitForSelector('.panel[data-panel="calls"] details.qa', { timeout: 10000 }); const cb = cp.locator('.panel[data-panel="calls"] details.qa').first(); await cb.locator('summary').click(); await cb.locator('textarea').fill('Can this be a little longer?'); await cb.locator('[data-act="qclient"]').click();
+      for (let i = 0; i < 30 && !sql(`select 1 from project_messages where client_id='${m.cid}' and author_role='client' and body like 'About the callout%'`); i++) await sleep(250);
+      ok(/Can this be a little longer/.test(sql(`select string_agg(body,' | ') from project_messages where client_id='${m.cid}' and author_role='client'`)) && cp.errs.length === 0, 'the client asks on a callout: it lands in their project thread with the callout named', cp.errs); await cctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);

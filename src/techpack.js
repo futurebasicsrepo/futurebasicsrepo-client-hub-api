@@ -350,7 +350,7 @@ export function publishedTechPackView(row, extra = {}) {
   return {
     audience: extra.audience || 'client',
     shareLabel: extra.shareLabel || null,
-    product: { id: row.product_id, title: row.title, productType: row.product_type, imageUrl: row.shopify_image_url || null, imageAlt: row.shopify_image_alt || null, clientName: row.client_name, projectName: row.project_name || null },
+    product: { id: row.product_id, title: row.title, productType: row.product_type, imageUrl: row.shopify_image_url || null, imageAlt: row.shopify_image_alt || null, clientName: row.client_name, projectName: row.project_name || null, projectId: extra.audience === 'factory' ? null : (row.project_id || null) },
     techPack: {
       version: row.version, publishedAt: row.published_at, lockedAt: row.locked_at || null,
       data,

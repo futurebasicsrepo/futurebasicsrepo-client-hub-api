@@ -2680,7 +2680,7 @@ app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]
 });
 app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=>{
   if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
-  const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+  const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name,p.project_id
     from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
@@ -4603,7 +4603,7 @@ app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adm
   return {techPack:techPackPayload(row)};
 });
 // Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
-const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name,p.project_id
   from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id`;
 app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client')return reply.code(403).send({error:'Only the client approves their tech pack'});
@@ -4895,7 +4895,9 @@ app.post('/v1/invite/:code',async(req,reply)=>{
 });
 // ---- Messages between Future Basics and a factory about one pack: one thread per factory link, never shown to the client ----
 const cleanMsg=v=>String(v??'').replace(/\r/g,'').trim().slice(0,2000);
-const msgRow=(m,label)=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='admin'?'Future Basics':(m.author_name||label||'Factory'),body:m.body,created_at:m.created_at});
+const msgRow=(m,label)=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='admin'?'Future Basics':(m.author_name||label||'Factory'),body:m.callout_label?`About “${m.callout_label}”: ${m.body}`:m.body,rawBody:m.body,calloutKey:m.callout_key||null,calloutLabel:m.callout_label||null,resolved:Boolean(m.resolved_at),created_at:m.created_at});
+// a callout key checked against the pack the factory is looking at: {key,label} or null when it names nothing in it
+const calloutOf=(published,key)=>{const k=String(key||'').slice(0,60);if(!k)return null;const r=techPackReadiness(normalizeTechPack(published),emptyVerification(0)).callouts.find(c=>c.key===k);return r?{key:k,label:String(r.label||'').slice(0,80)}:null};
 app.get('/v1/tp/:token/messages',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const rows=(await pool.query('select * from factory_messages where share_id=$1 order by created_at',[row.share_id])).rows;
@@ -4906,8 +4908,9 @@ app.post('/v1/tp/:token/messages',async(req,reply)=>{
   if(!throttle(`fmsg:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many messages from this link. Please try again in an hour.'});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
-  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_name,body,factory_read_at) values($1,$2,'factory',$3,$4,now()) returning *`,[row.share_id,row.id,row.share_label,body])).rows[0];
-  const summary=`${row.share_label} wrote about ${row.title}: ${body.slice(0,140)}`;
+  const about=req.body?.key?calloutOf(row.published_data,req.body.key):null;if(req.body?.key&&!about)return reply.code(400).send({error:'Unknown callout'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_name,body,factory_read_at,callout_key,callout_label) values($1,$2,'factory',$3,$4,now(),$5,$6) returning *`,[row.share_id,row.id,row.share_label,body,about?.key||null,about?.label||null])).rows[0];
+  const summary=`${row.share_label} ${about?`asked about “${about.label}” on`:'wrote about'} ${row.title}: ${body.slice(0,140)}`;
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,shareId:row.share_id,messageId:m.id}]).catch(()=>{});
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-message',$2,'product',$3)`,[row.client_id,summary,row.product_id]).catch(()=>{});
   await notifyStaff(`Factory message: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> wrote about <strong>${emailEscape(row.title)}</strong>:</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack and answer')}`).catch(()=>{});
@@ -4932,7 +4935,8 @@ app.get('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,admi
 app.post('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const sh=await loadShareForStaff(req.params.id);if(!sh)return reply.code(404).send({error:'Link not found'});
   const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
-  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_id,author_name,body,staff_read_at) values($1,$2,'admin',$3,'Future Basics',$4,now()) returning *`,[sh.share_id,sh.id,req.auth.sub,body])).rows[0];
+  const pub=req.body?.key?(await pool.query('select published_data from tech_packs where id=$1',[sh.id])).rows[0]?.published_data:null,about=req.body?.key?calloutOf(pub,req.body.key):null;if(req.body?.key&&!about)return reply.code(400).send({error:'Unknown callout'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_id,author_name,body,staff_read_at,callout_key,callout_label) values($1,$2,'admin',$3,'Future Basics',$4,now(),$5,$6) returning *`,[sh.share_id,sh.id,req.auth.sub,body,about?.key||null,about?.label||null])).rows[0];
   await pool.query(`update factory_messages set staff_read_at=now() where share_id=$1 and author_role='factory' and staff_read_at is null`,[sh.share_id]); // answering counts as having read what came before
   // tell the factory: by email when we have one for it, with a link when the link can be worked out again (assigned and referred packs)
   const info=(await pool.query(`select s.email,s.assigned,s.referral,s.supplier_id,su.contact_email,su.page_epoch from tech_pack_shares s left join suppliers su on su.id=s.supplier_id where s.id=$1`,[sh.share_id])).rows[0];
@@ -4942,6 +4946,21 @@ app.post('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adm
     try{emailed=await sendHubEmail({to,replyTo:req.auth.email||intakeNotificationEmail,subject:`Future Basics wrote to you about ${sh.title}`,html:hubEmailShell(`About ${sh.title}`,`<p>Hello ${emailEscape(sh.share_label)},</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${link?hubButton(link,'Open the tech pack and reply'):'<p>Open your tech pack link and use the <strong>Messages</strong> tab to reply.</p>'}`)})}catch(e){app.log.warn({err:e.message,shareId:sh.share_id},'factory message email not sent')}
   }
   return reply.code(201).send({message:msgRow(m,sh.share_label),emailed:Boolean(emailed)});
+});
+// Staff: the questions factories asked about one callout each, still open or answered, across every link on the pack. A question is answered when staff replied about the
+// same callout after it, or marked it resolved.
+app.get('/v1/admin/products/:id/tech-pack/callout-questions',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return {questions:[],open:0};
+  const rows=(await pool.query(`select m.*,s.label share_label from factory_messages m join tech_pack_shares s on s.id=m.share_id where m.tech_pack_id=$1 and m.callout_key is not null order by m.created_at`,[tp.id])).rows;
+  const out=rows.filter(m=>m.author_role==='factory').map(q=>{const replies=rows.filter(r=>r.author_role==='admin'&&r.share_id===q.share_id&&r.callout_key===q.callout_key&&new Date(r.created_at)>new Date(q.created_at));
+    return {id:q.id,shareId:q.share_id,shareLabel:q.share_label,key:q.callout_key,label:q.callout_label,body:q.body,at:q.created_at,answered:Boolean(q.resolved_at)||replies.length>0,resolved:Boolean(q.resolved_at),replies:replies.map(r=>({body:r.body,at:r.created_at}))}});
+  return {questions:out,open:out.filter(q=>!q.answered).length};
+});
+app.post('/v1/admin/tech-pack-messages/:id/resolve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const r=(await pool.query(`update factory_messages set resolved_at=case when $2 then now() else null end where id=$1 and author_role='factory' and callout_key is not null returning id,resolved_at`,[req.params.id,req.body?.resolved!==false])).rows[0];
+  return r?{id:r.id,resolved:Boolean(r.resolved_at)}:reply.code(404).send({error:'Question not found'});
 });
 // Staff: the links sent for quotation, and what came back, side by side at one quantity.
 app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{

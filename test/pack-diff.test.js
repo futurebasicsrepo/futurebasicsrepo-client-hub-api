@@ -48,3 +48,15 @@ test('a long run of changes is capped', () => {
   const big = next(p => { p.pom = Array.from({ length: 70 }, (_, i) => ({ code: 'P' + i, name: 'Point ' + i, tolerance: '±1', values: { S: '1', M: '2', L: '3' } })); });
   assert.ok(packDiff(base(), big).length <= 60);
 });
+
+// the factory's page words for what changed
+import { createRequire } from 'node:module';
+test('the new labels and numbered lines read in every factory language, and a change summary translates item by item', () => {
+  globalThis.window = {}; createRequire(import.meta.url)('../src/tp-i18n.js'); const I = globalThis.window.FBTP_I18N;
+  for (const l of I.order) {
+    for (const k of ['Got it', 'Added', 'Removed', 'Changed', 'Ask about this', 'Barcode (GTIN)', 'HS code (customs)']) assert.ok(I.lookup(l, k, null), `${l}: ${k}`);
+    for (const k of ['What changed in v2', 'Acknowledge all 7 remaining', 'Your question (1) · waiting for Future Basics', 'Country of origin: Vietnam']) assert.ok(I.lookup(l, k, null) && I.lookup(l, k, null) !== k, `${l}: ${k}`);
+    const sum = I.lookup(l, '7 changes: 3 measurements, 1 style detail, 2 commercial details, 1 label.', null);
+    assert.ok(sum && !/measurement|style detail|commercial detail|label/.test(sum), `${l}: ${sum}`);
+  }
+});
