@@ -69,6 +69,48 @@ pre{background:var(--night);color:#f4efe8;border-radius:14px;padding:14px;overfl
 .stop{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin-top:12px}
 .btn.danger{background:#c8321b;color:#fff;border-color:#c8321b}
 .agree{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:8px 0}.agree[hidden]{display:none}.agree input{width:18px;height:18px;margin-top:2px;flex:none}
+
+/* Layout: a header, "Ready for you", then tabs. Each tab is one panel. */
+.acct{padding:28px 0 90px}
+.acct .wrap{max-width:760px}
+.ahead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.ahead h1{margin:0 0 4px;font-size:clamp(32px,6vw,48px);line-height:1.05}
+.ahead .sub{margin:0}
+.btn.sm{min-height:40px;padding:0 16px;font-size:15px}
+.acct section{margin-top:0}
+.readysec{margin-top:24px!important}
+.gt{font-size:19px;letter-spacing:-.01em;margin:0 0 4px}
+.bt{font-size:17px;margin:0 0 4px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.lead{color:var(--muted);margin:0 0 14px;font-size:15px}
+.tabs{position:sticky;top:64px;z-index:5;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin:24px -4px 20px;padding:4px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;font:600 15px Bricolage,system-ui,sans-serif;border:0;background:none;color:var(--muted);padding:10px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--bg)}
+.tabs button:focus-visible{outline:3px solid var(--spot);outline-offset:1px}
+.panel[hidden]{display:none}
+.grp{margin-bottom:28px}.grp:last-child{margin-bottom:0}
+.grp>.sub{margin-bottom:12px}
+.box{padding:18px 20px;border-radius:20px}
+.box+.box{margin-top:12px}
+.panes{display:grid;gap:10px}
+.pane{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.pane{padding:0}.pane summary::after{content:none}.pane summary{font-size:16px;font-weight:600;letter-spacing:0;justify-content:initial}.pane .ps{font-weight:400}
+.pane summary{list-style:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:16px 18px;cursor:pointer;min-height:56px}
+.pane summary::-webkit-details-marker{display:none}
+.pane .pt{font-weight:700}
+.pane .ps{color:var(--muted);font-size:14px;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pane .ps.empty{color:var(--spot)}
+.pane .chev{width:10px;height:10px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:-4px 4px 0 0;transition:transform .2s}
+.pane[open] .chev{transform:rotate(-135deg);margin-top:4px}
+.pane[open] summary{border-bottom:1px solid var(--line)}
+.pane .pb{padding:16px 18px 18px}
+.pane .btn{min-height:44px}
+@media (max-width:560px){.pane summary{grid-template-columns:1fr auto;row-gap:2px}.pane .ps{grid-column:1;grid-row:2;text-align:left}.pane .chev{grid-column:2;grid-row:1/3}}
+.stop{display:flex;justify-content:space-between;align-items:center;gap:12px 16px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.stop>span{flex:1 1 220px;min-width:0}
+.aicard{grid-template-columns:auto minmax(0,1fr) auto}
+.keyc details{padding:8px 0}.keyc summary{font-size:15px}.keyc:first-child{padding-top:0}
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
 
@@ -163,51 +205,9 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     head: provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : '',
     path: '/account',
     title: 'Your account · Spot',
-    body: `<div class="btnrow" style="justify-content:space-between"><h1 id="hi">Your Spot</h1><button class="btn ghost" id="out">Sign out</button></div>
-<p class="sub" id="who"></p>
-<section id="readySec" hidden><h2>Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
-<section><h2>Your Spots</h2><p class="sub">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section>
-<section><h2>Saved details</h2><p class="sub">Filled in for you at checkout.</p>
-  <form class="box f" id="shipForm">
-    <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
-    <input name="line1" placeholder="Street" autocomplete="address-line1" aria-label="Street">
-    <input name="line2" placeholder="Apt, suite (optional)" autocomplete="address-line2" aria-label="Apt or suite">
-    <div class="three"><input name="city" placeholder="City" autocomplete="address-level2" aria-label="City"><input name="state" placeholder="State" autocomplete="address-level1" aria-label="State"><input name="postal_code" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" aria-label="ZIP"></div>
-    <input name="phone" type="tel" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone">
-    <input name="email" type="email" placeholder="Email for receipts" autocomplete="email" aria-label="Email for receipts">
-    <div class="btnrow"><button class="btn primary">Save address</button><span class="ok-msg" id="shipOk"></span></div>
-  </form>
-  <form class="box f" id="payForm" style="margin-top:12px"><h3 style="font-size:18px;margin:0">Get paid on Venmo or Cash App</h3><p class="sub" style="margin:0">For stores Spot can’t buy from, like Amazon: whoever pays sends the money here and you buy it yourself.</p>
-    <div class="two"><input name="venmo" placeholder="Venmo @handle" autocapitalize="off" aria-label="Venmo handle"><input name="cashtag" placeholder="Cash App $cashtag" autocapitalize="off" aria-label="Cash App cashtag"></div>
-    <div class="btnrow"><button class="btn primary">Save</button><span class="ok-msg" id="payOk"></span></div>
-  </form>
-  <form class="box f" id="sizeForm" style="margin-top:12px"><h3 style="font-size:18px;margin:0">Your sizes</h3><p class="sub" style="margin:0">So “What do you want?” and your AI pick the right size without asking. Say it however the store would: M, 32x30, US 10.5.</p>
-    <div class="two"><input name="tops" placeholder="Tops (e.g. M)" maxlength="30" aria-label="Tops size"><input name="bottoms" placeholder="Pants (e.g. 32x30)" maxlength="30" aria-label="Pants size"></div>
-    <div class="two"><input name="shoes" placeholder="Shoes (e.g. US 10.5)" maxlength="30" aria-label="Shoe size"><input name="dresses" placeholder="Dresses (e.g. 6)" maxlength="30" aria-label="Dress size"></div>
-    <input name="notes" placeholder="Anything else (e.g. wide feet, slim fit)" maxlength="200" aria-label="Fit notes">
-    <div class="btnrow"><button class="btn primary">Save sizes</button><span class="ok-msg" id="sizeOk"></span></div>
-  </form>
-  <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
-    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="two"><input name="la" placeholder="Airline (e.g. AA)" maxlength="2" autocapitalize="characters" aria-label="Frequent flyer airline code"><input name="ln" placeholder="Frequent flyer # (optional)" autocapitalize="characters" autocomplete="off" aria-label="Frequent flyer number"></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
-  </div>
-</section>
-<section id="signinSec"><h2>Sign-in methods</h2><p class="sub">Every way you can get into this account. Add your phone and email so either one works.</p>
-  <div class="box"><div id="methods"></div>
-    <form class="addf" id="addForm" hidden><label class="sub" id="addLabel" for="addVal" style="margin:0"></label><div class="row"><input id="addVal" aria-describedby="addLabel"><button class="btn primary" id="addSend">Send code</button></div>${smsAgree('addSmsOk', true)}</form>
-    <form class="addf" id="addCode" hidden><p class="hint" id="addDev" hidden></p><label class="sub" id="addCodeLabel" for="addCodeVal" style="margin:0"></label><div class="row"><input id="addCodeVal" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••"><button class="btn primary">Verify</button></div><button type="button" class="linkbtn" id="addCancel" style="justify-self:start">Cancel</button></form>
-    <p class="ok-msg" id="addOk"></p>
-  </div>
-  <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
-    <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
-</section>
-<section id="ai-card"><h2>Your AI’s card</h2><p class="sub">Save your card once and your AI never needs it. Each purchase gets its own Spot card, capped at that order and locked to that store, then closed. You approve each one with a tap, unless you choose otherwise.</p>
-  <div class="box"><div id="fundCard"></div>
-    <form class="f" id="fundForm" hidden style="margin-top:10px"><div id="fundEl"></div><select id="fundTest" hidden aria-label="Test card"><option value="4242">Test card •4242 (works)</option><option value="0002">Test card •0002 (declined)</option><option value="3155">Test card •3155 (bank checks it)</option></select><div class="btnrow"><button class="btn primary" id="fundSave">Save card</button><button type="button" class="linkbtn" id="fundCancel">Cancel</button></div></form>
-    <div id="autoBox" hidden style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"></div>
-    <div class="stop" id="stopBox"></div>
-  </div>
-</section>
-<section><h2>Your AI</h2><p class="sub">Connect Claude or any MCP app. Anything it hands back to you shows up above under “Ready for you”. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
+    body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
+<section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
+<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">Your AI</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="connectAi">Connect a new AI</button></div>
     <div id="connectOut" class="connect" hidden>
       <p style="margin:14px 0 6px"><b>Add Spot to your AI app, then tap Allow.</b> No key to copy.</p>
@@ -217,17 +217,61 @@ export function accountPage({ origin, provider = 'sandbox' }) {
       <p class="sub" style="margin:10px 0 0">Another app, or one without sign-in? <button type="button" class="linkbtn" id="newKey">Get a key to paste instead</button></p>
       <div id="newKeyOut" hidden><p class="ok-msg" style="margin-top:12px">Paste this into your AI app’s MCP settings. The key is shown once.</p><pre id="cfg"></pre><button class="btn ghost" id="copyCfg">Copy</button></div>
     </div></div>
-</section>
-<section><h2>Your approver</h2><p class="sub">Someone who pays for, or turns down, what your AI asks for when your rules say so: a parent, a partner, your finance inbox. They agree by email first.</p>
+</div><div class="grp" id="ai-card"><h3 class="gt">Your AI’s card</h3><p class="sub">Each purchase gets its own Spot card, capped at that order and locked to that store, then closed. You approve each one with a tap, unless you choose otherwise.</p>
+  <div class="box"><div id="fundCard"></div>
+    <form class="f" id="fundForm" hidden style="margin-top:10px"><div id="fundEl"></div><select id="fundTest" hidden aria-label="Test card"><option value="4242">Test card •4242 (works)</option><option value="0002">Test card •0002 (declined)</option><option value="3155">Test card •3155 (bank checks it)</option></select><div class="btnrow"><button class="btn primary" id="fundSave">Save card</button><button type="button" class="linkbtn" id="fundCancel">Cancel</button></div></form>
+    <div id="autoBox" hidden style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"></div>
+    <div class="stop" id="stopBox"></div>
+  </div>
+</div><div class="grp"><h3 class="gt">Your approver</h3><p class="sub">Someone who pays for, or turns down, what your AI asks for when your rules say so: a parent, a partner, your finance inbox. They agree by email first.</p>
   <div class="box"><div id="apv"></div>
     <form class="f" id="apvForm" style="margin-top:10px"><div class="two"><input name="name" placeholder="Their name" aria-label="Approver name"><input name="email" type="email" placeholder="Their email" required aria-label="Approver email"></div><div class="btnrow"><button class="btn primary">Ask them</button><span class="ok-msg" id="apvOk"></span></div></form>
   </div>
-</section>
-<p class="err" id="err"></p>`,
+</div></section><section class="panel" data-panel="details" hidden><h2 class="sr">Saved details</h2><p class="lead">Filled in for you at checkout, and used by your AI so it doesn’t have to ask.</p><div class="panes"><details class="pane" id="pAddr"><summary><span class="pt">Shipping address</span><span class="ps" id="pAddrSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="shipForm">
+    <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
+    <input name="line1" placeholder="Street" autocomplete="address-line1" aria-label="Street">
+    <input name="line2" placeholder="Apt, suite (optional)" autocomplete="address-line2" aria-label="Apt or suite">
+    <div class="three"><input name="city" placeholder="City" autocomplete="address-level2" aria-label="City"><input name="state" placeholder="State" autocomplete="address-level1" aria-label="State"><input name="postal_code" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" aria-label="ZIP"></div>
+    <input name="phone" type="tel" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone">
+    <input name="email" type="email" placeholder="Email for receipts" autocomplete="email" aria-label="Email for receipts">
+    <div class="btnrow"><button class="btn primary">Save address</button><span class="ok-msg" id="shipOk"></span></div>
+  </form></div></details><details class="pane" id="pPay"><summary><span class="pt">Venmo &amp; Cash App</span><span class="ps" id="pPaySum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="payForm"><p class="sub" style="margin:0">For stores Spot can’t buy from, like Amazon: whoever pays sends the money here and you buy it yourself.</p>
+    <div class="two"><input name="venmo" placeholder="Venmo @handle" autocapitalize="off" aria-label="Venmo handle"><input name="cashtag" placeholder="Cash App $cashtag" autocapitalize="off" aria-label="Cash App cashtag"></div>
+    <div class="btnrow"><button class="btn primary">Save</button><span class="ok-msg" id="payOk"></span></div>
+  </form></div></details><details class="pane" id="pSize"><summary><span class="pt">Sizes</span><span class="ps" id="pSizeSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><form class="f" id="sizeForm"><p class="sub" style="margin:0">So “What do you want?” and your AI pick the right size without asking. Say it however the store would: M, 32x30, US 10.5.</p>
+    <div class="two"><input name="tops" placeholder="Tops (e.g. M)" maxlength="30" aria-label="Tops size"><input name="bottoms" placeholder="Pants (e.g. 32x30)" maxlength="30" aria-label="Pants size"></div>
+    <div class="two"><input name="shoes" placeholder="Shoes (e.g. US 10.5)" maxlength="30" aria-label="Shoe size"><input name="dresses" placeholder="Dresses (e.g. 6)" maxlength="30" aria-label="Dress size"></div>
+    <input name="notes" placeholder="Anything else (e.g. wide feet, slim fit)" maxlength="200" aria-label="Fit notes">
+    <div class="btnrow"><button class="btn primary">Save sizes</button><span class="ok-msg" id="sizeOk"></span></div>
+  </form></div></details><details class="pane" id="pTrav"><summary><span class="pt">Travelers</span><span class="ps" id="pTravSum"></span><span class="chev" aria-hidden="true"></span></summary><div class="pb"><div><p class="sub" style="margin:0">Names exactly as on their ID. Add a frequent flyer number and the miles are credited.</p><div id="travs"></div>
+    <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="two"><input name="la" placeholder="Airline (e.g. AA)" maxlength="2" autocapitalize="characters" aria-label="Frequent flyer airline code"><input name="ln" placeholder="Frequent flyer # (optional)" autocapitalize="characters" autocomplete="off" aria-label="Frequent flyer number"></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
+  </div></div></details></div></section><section class="panel" id="signinSec" data-panel="signin" hidden><h2 class="sr">Sign-in</h2><p class="lead">Every way you can get into this account. Add your phone and email so either one works.</p>
+  <div class="box"><div id="methods"></div>
+    <form class="addf" id="addForm" hidden><label class="sub" id="addLabel" for="addVal" style="margin:0"></label><div class="row"><input id="addVal" aria-describedby="addLabel"><button class="btn primary" id="addSend">Send code</button></div>${smsAgree('addSmsOk', true)}</form>
+    <form class="addf" id="addCode" hidden><p class="hint" id="addDev" hidden></p><label class="sub" id="addCodeLabel" for="addCodeVal" style="margin:0"></label><div class="row"><input id="addCodeVal" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="••••••"><button class="btn primary">Verify</button></div><button type="button" class="linkbtn" id="addCancel" style="justify-self:start">Cancel</button></form>
+    <p class="ok-msg" id="addOk"></p>
+  </div>
+  <div class="box"><h3 class="bt">Face ID &amp; passkeys</h3><p class="sub" style="margin:0">Sign in with a glance or a touch instead of waiting for a code. Your fingerprint or face never leaves your device.</p><div id="pks"></div>
+    <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="addPk" hidden>Add Face ID or a passkey</button></div><p class="sub" id="pkNo" style="margin:10px 0 0" hidden>This browser doesn’t support passkeys.</p></div>
+</section><p class="err" id="err"></p>`,
     script: `${PASSKEY_JS}
 const usd=c=>'$'+(c/100).toFixed(2);
 const fmtPhone=p=>{const m=/^\\+1(\\d{3})(\\d{3})(\\d{4})$/.exec(p||'');return m?'('+m[1]+') '+m[2]+'-'+m[3]:p};
 const LABEL={open:['waiting',''],paid:['paid','warn'],card_issued:['paid','ok'],completed:['done','ok'],canceled:['canceled',''],expired:['expired',''],refunded:['refunded','']};
+
+// One-line summaries on the saved-details rows, so they read without opening.
+function sums(u){const set=(id,t,empty)=>{const e=document.getElementById(id);if(!e)return;e.textContent=t||empty;e.classList.toggle('empty',!t)};
+  const a=u.shipping;set('pAddrSum',a?[a.line1,a.city,a.state].filter(Boolean).join(', '):'','Add an address');
+  set('pPaySum',[u.venmo?'@'+u.venmo:'',u.cashtag?'$'+u.cashtag:''].filter(Boolean).join(' · '),'Not set');
+  const z=u.sizes||{};set('pSizeSum',[z.tops&&'Tops '+z.tops,z.bottoms&&'Pants '+z.bottoms,z.shoes&&'Shoes '+z.shoes,z.dresses&&'Dresses '+z.dresses].filter(Boolean).join(' · '),'Add your sizes');
+  set('pTravSum',(u.travelers||[]).map(t=>t.given_name).join(', '),'None yet')}
+// Tabs: one panel at a time; the URL hash keeps your place (and #ai-card style links work).
+const PANELS=['spots','ai','details','signin'];
+function tab(k,push){if(!PANELS.includes(k))k='spots';document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===k)));
+  document.querySelectorAll('.panel').forEach(p=>p.hidden=p.dataset.panel!==k);if(push)history.replaceState(null,'','#'+k)}
+document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.onclick=()=>{tab(b.dataset.tab,true);const t=document.querySelector('.tabs');if(t.getBoundingClientRect().top<70)t.scrollIntoView({block:'start'})});
+const fromHash=()=>{const h=location.hash.slice(1);const el=h&&document.getElementById(h);const p=el&&el.closest('.panel');tab(p?p.dataset.panel:h,false);if(el&&p)setTimeout(()=>el.scrollIntoView({block:'start'}),50)};
+fromHash();addEventListener('hashchange',fromHash);
 let me=null;
 async function load(){
   const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
@@ -240,6 +284,7 @@ async function load(){
       +'<div class="racts"><a class="go" href="'+esc(c.manage_url)+'">Finish →</a>'+(canAsk?'<button type="button" class="go ghost" data-ask="'+esc(c.token)+'" data-url="'+esc(c.manage_url)+'">Ask someone to pay 💸</button>':'')+'</div></div>'}).join('');
   renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';for(const el of $('#sizeForm').elements)if(el.name)el.value=(u.sizes||{})[el.name]||'';
+  sums(u);
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+((t.loyalty||[]).length?' <small class="sub">· ✈️ '+t.loyalty.map(l=>esc(l.airline+' '+l.number)).join(', ')+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
   const NAMES={google:'Google',facebook:'Facebook'};

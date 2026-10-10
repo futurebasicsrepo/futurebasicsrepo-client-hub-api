@@ -37,6 +37,7 @@ test('🔑 add a passkey on /account, sign out, sign back in with it', { skip: !
   await page.locator('#codeForm button.btn').click();
   await page.waitForURL(`${base}/account`);
 
+  await page.click('[data-tab=signin]'); // passkeys live under the Sign-in tab
   await page.locator('#addPk').click();
   await page.locator('#pks .trav').waitFor();
   const user = db.users.byEmail('kyle@example.com');
@@ -67,6 +68,7 @@ test('🔑 add a passkey on /account, sign out, sign back in with it', { skip: !
 
   // Removing it: the next passkey sign-in is refused with a clear message.
   page.once('dialog', (d) => d.accept());
+  await page.click('[data-tab=signin]');
   await page.locator('[data-pk]').click();
   await page.locator('#pks .trav').waitFor({ state: 'detached' });
   assert.equal(db.passkeys.ofUser(user.id).length, 0);
