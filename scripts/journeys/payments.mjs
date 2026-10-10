@@ -111,9 +111,24 @@ const bad = await journey('J103', 'the published pack as a Shopify product: prev
   ok(JSON.parse(p.metafields.find(m => m.key === 'pack_version').value) === 3 && p.metafields.find(m => m.key === 'fibre').value === '100% organic cotton', 'the specification metafields are current (v3, the new fibre)');
   ok(Number(sql(`select count(*) from shopify_exports where product_id='${pid}'`)) === 2 && Number(sql(`select count(*) from activities where product_id='${pid}' and summary like '%on Shopify%'`)) === 2, 'both exports are on record, and in the activity log');
   ok((await adm(X)).json.behind === false, 'and the store is no longer behind');
+  // the same thing from the work console: the menu item, the preview, the update, the link
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const pg = await ctx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(e.message));
+      await pg.goto(`http://work.localhost:3127/tech-packs/${pid}`, { waitUntil: 'domcontentloaded' }); await pg.waitForSelector('#acts details.more summary', { timeout: 20000 }); await pg.keyboard.press('Escape');
+      await pg.click('#acts details.more summary'); await pg.click('[data-act="shopify"]'); await pg.waitForSelector('dialog.shopify [data-sx="go"]', { timeout: 10000 });
+      const txt = await pg.innerText('dialog.shopify'); ok(/up to date/i.test(txt) && /never removes a variant/i.test(txt) && /Update on Shopify/.test(txt) && /Open the product in Shopify/.test(txt), 'the dialog says what was sent last and what an update will and will not do', txt.slice(0, 260));
+      await pg.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j103-dialog.png` }).catch(() => {});
+      await pg.click('dialog.shopify [data-sx="go"]'); await pg.waitForFunction(() => /Product updated/.test(document.querySelector('dialog.shopify')?.innerText || ''), null, { timeout: 15000 });
+      ok(/left alone/.test(await pg.innerText('dialog.shopify')) && /MERCHANT-ONLY/.test(await pg.innerText('dialog.shopify')) && await pg.locator('dialog.shopify a[href*="admin.shopify.com"]').count() === 1 && pg.errs.length === 0, 'pressing it updates the product and reports the merchant\'s own variant it left alone', pg.errs);
+      await ctx.close();
+    } finally { await bw.close(); }
+  }
   // the store is down: said plainly, nothing recorded
   await mock('/__mock/fail', { on: true }); const down = await adm(X, { body: {} }); await mock('/__mock/fail', { on: false });
-  ok(down.status >= 400 && down.status < 600 && Number(sql(`select count(*) from shopify_exports where product_id='${pid}'`)) === 2, 'with the store down it fails with a message and records no export', [down.status, down.json.error]);
+  ok(down.status >= 400 && down.status < 600 && Number(sql(`select count(*) from shopify_exports where product_id='${pid}'`)) === 3, 'with the store down it fails with a message and records no export', [down.status, down.json.error]);
   ok((await call(X, { token: tok })).status === 403 && (await call(X, { token: tok, body: {} })).status === 403, 'the client cannot run it');
 });
 

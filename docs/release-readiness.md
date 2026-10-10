@@ -51,7 +51,7 @@ A pressure test of every way into a tech pack and every hand-off on the way to a
 1. **Pictures are still stored as base64 inside the pack JSON** (and again inside every published version). The signed links solve the export, not the size: a pack with forty callout photos is still megabytes in the database and in the page payload. The fix is a content-addressed picture store with the pack holding references; it touches the PDF, the check, the studio and the files folder, so it is its own change with its own test pass.
 2. **Staff publish still uses browser `confirm` and `prompt` boxes.** They work; they are not the experience the rest of the console has.
 3. **Browser dialogs** (the confirmation on "Acknowledge all") are English only.
-4. **The Shopify export itself** is the next build; the data and the picture links are ready.
+4. **Export to a customer's own store** needs the merchant install flow (OAuth per store). The export itself is built and works against the connected store; see `shopify-plm-app.md`.
 
 ## Not verified here
 

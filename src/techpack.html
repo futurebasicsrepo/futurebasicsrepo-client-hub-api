@@ -334,6 +334,7 @@ table.tp[data-tbl="bom"] td{border-bottom-color:rgba(20,20,22,.12)}
 .view-ask{margin:0 0 12px}.view-ask .addrow{margin-top:8px}
 .qa{margin:8px 0 0;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#fff}.qa.ask{border-color:#c98a00;background:#fffaf0}.qa>summary{cursor:pointer;font:500 12px 'Space Grotesk',system-ui,sans-serif}.qa textarea{width:100%;margin:8px 0 4px;font:inherit}.qa-m{display:grid;gap:2px;margin:8px 0;padding:8px 10px;border-radius:10px;background:var(--fog)}.qa-m.us{background:#eef6f0}.qa-m b{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}.qa-m span{white-space:pre-wrap;overflow-wrap:anywhere}.qa-m small{color:var(--dim)}.qa-q{border-top:1px solid var(--line);margin-top:6px;padding-top:4px}
 .tp td textarea{min-width:150px}
+dialog.shopify .pb{padding:18px 20px 20px}dialog.shopify h4{margin:14px 0 6px;font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}dialog.shopify .ph .x{border:0;background:none;color:#fff;font-size:22px;line-height:1;cursor:pointer}.sx-list{margin:0;padding-left:18px}.sx-list li{margin:4px 0}.sx-list.err li{color:#b3261e}.sx-list.warn li{color:#8a5a00}.err-note{border-color:#b3261e}
 </style><link rel="stylesheet" href="/chat.css">
 </head>
 <body>
@@ -881,6 +882,29 @@ function qaAct(act,b){
   if(act==='qresolve'){api(`/v1/admin/tech-pack-messages/${encodeURIComponent(b.dataset.id)}/resolve`,{method:'POST',body:JSON.stringify({resolved:b.dataset.resolved==='1'})}).then(loadCalloutQ).catch(e=>toast(e.message));return}
   if(act==='qclient')return qaSend(b,async text=>{await api(`/v1/projects/${encodeURIComponent(b.dataset.pid)}/messages`,{method:'POST',body:JSON.stringify({body:`About the callout “${b.dataset.label}” (${b.dataset.view} view, #${b.dataset.n}): ${text}`})});toast('Sent: Future Basics will answer in your project messages');b.closest('.qa').open=false});
 }
+// "Create on Shopify": a preview of what will be made and what is missing, then the export, then a link to the product. Staff only; the work happens on the server.
+async function openShopifyExport(){
+  document.querySelectorAll('details.more[open]').forEach(m=>m.open=false);
+  const dlg=document.createElement('dialog');dlg.className='pay shopify';dlg.innerHTML='<div class="ph"><b>Create on Shopify</b><button type="button" class="x" aria-label="Close" data-sx="close">×</button></div><div class="pb" data-sx-body><p class="meta">Checking the pack…</p></div>';
+  document.body.append(dlg);dlg.showModal();const body=dlg.querySelector('[data-sx-body]'),X=`/v1/admin/products/${S.product.id}/tech-pack/shopify-export`;
+  dlg.addEventListener('close',()=>dlg.remove());dlg.addEventListener('click',e=>{if(e.target.closest('[data-sx="close"]'))dlg.close()});
+  const list=(arr,cls)=>arr.length?`<ul class="sx-list ${cls}">${arr.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>`:'';
+  try{
+    if(S.dirty||!S.techPack)await save();
+    const d=await api(X),sm=d.summary,upd=sm.mode==='update';
+    const what=upd?`<p>This pack was sent to Shopify as v${d.last.version} on ${fmtDate(d.last.at)}${d.behind?` and is now at v${d.packVersion}`:': the store is up to date'}. Sending it again <b>updates the specification</b> (SKUs, barcodes, cost, weight, HS code, origin and the pack facts) and adds any new sizes or colours. It never removes a variant, never changes the title, description, tags or status, and sets a price only if you changed it in the pack.</p><p><a href="${esc(d.last.adminUrl)}" target="_blank" rel="noopener">Open the product in Shopify</a></p>`
+      :`<p>Creates a <b>draft</b> product <b>${esc(sm.title)}</b> from v${sm.version}: ${sm.variants} variant${sm.variants===1?'':'s'}${sm.options.length?` (${esc(sm.options.join(' · '))})`:''}, ${sm.files} picture${sm.files===1?'':'s'} and ${sm.metafields} specification fields. Nothing goes live until you publish it in Shopify.</p>`;
+    body.innerHTML=`${!d.configured?'<p class="note">Shopify is not connected to this server.</p>':''}${d.linkedElsewhere?'<p class="note">This product is already linked to a Shopify product made from its brief, so a second one will not be created. Unlink it first.</p>':''}${what}${sm.errors.length?`<h4>Fix before sending</h4>${list(sm.errors,'err')}`:''}${sm.warnings.length?`<h4>Worth fixing, not blocking</h4>${list(sm.warnings,'warn')}`:''}<div class="addrow"><button type="button" class="sbtn dark" data-sx="go" ${(!d.configured||d.linkedElsewhere||sm.errors.length)?'disabled':''}>${upd?'Update on Shopify':'Create draft product'}</button><button type="button" class="sbtn" data-sx="close">Close</button></div>`;
+    body.querySelector('[data-sx="go"]').onclick=async e=>{
+      const btn=e.currentTarget;btn.disabled=true;btn.textContent='Sending…';
+      try{
+        const r=await api(X,{method:'POST',body:JSON.stringify({})}),rp=r.report,v=rp.variants;
+        body.innerHTML=`<p><b>${rp.mode==='create'?'Draft product created':'Product updated'}.</b> ${v.created} variant${v.created===1?'':'s'} added, ${v.updated} updated${rp.files?`, ${rp.files} picture${rp.files===1?'':'s'}`:''}.</p>${v.notInPack.length?`<p class="note">In the store but not in the pack, left alone: ${esc(v.notInPack.join(', '))}.</p>`:''}${rp.note?`<p class="meta">${esc(rp.note)}</p>`:''}${list(r.warnings,'warn')}<div class="addrow"><a class="sbtn dark" href="${esc(rp.adminUrl)}" target="_blank" rel="noopener">Open in Shopify</a><button type="button" class="sbtn" data-sx="close">Close</button></div>`;
+        toast(rp.mode==='create'?'Draft product created on Shopify':'Shopify product updated');
+      }catch(x){btn.disabled=false;btn.textContent=upd?'Update on Shopify':'Create draft product';body.insertAdjacentHTML('afterbegin',`<p class="note err-note">${esc(x.message)}</p>`)}
+    };
+  }catch(e){body.innerHTML=`<p class="note">${esc(e.message)}</p><div class="addrow"><button type="button" class="sbtn" data-sx="close">Close</button></div>`}
+}
 function render(){$('#sheet').innerHTML=changesCard()+aboutCard()+panelStyle()+panelCalls()+panelPoms()+panelArt()+panelBom()+panelElec()+panelMsgs()+(MODE==='factory'&&S.view?.quoteMode?panelQuote():panelSign())+(MODE==='admin'?panelCheck():MODE==='client'?panelStudio():'');renderTabs();renderActs();localize($('#sheet'));schedulePrint();requestAnimationFrame(()=>declutter($('#sheet')));if(MODE==='factory')localize($('#tabs'));if(MODE==='factory')setTimeout(()=>{if(S.tab==='msgs')mountFactoryChat()},0);
   const p=S.pack;$('#printHeader').innerHTML=`Future Basics · Tech pack · ${esc(p.style.styleNumber||'')} ${esc(p.style.styleName||S.product.title)} · ${esc(p.style.season||'')} · ${MODE==='admin'?(S.preview?'v'+S.techPack?.version:'DRAFT'):'v'+S.view?.techPack?.version} · printed ${fmtDate(new Date())}`;localize($('#printHeader'))}
 const CLIENT_TAB_LABELS={calls:'Callouts',poms:'Measure',art:'Artwork',bom:'Materials'};
@@ -1123,6 +1147,7 @@ function renderActs(){const a=$('#acts');const p=S.pack;
     tp&&S.aiEnabled&&!tp.publishedAt&&S.pack.sketches.some(s=>s.image)&&tp.aiStatus!=='pending'?`<button type="button" data-act="airun" title="Have the assistant read the first view and draft the pack — your edits are kept">${tp.aiStatus==='done'?'Re-run assistant':'Run assistant'}</button>`:'',
     MODE==='admin'&&tp&&S.aiEnabled&&!tp.publishedAt&&S.pack.sketches.some(s=>s.image)&&tp.aiStatus!=='pending'?`<button type="button" data-act="startover" title="Wipe everything except the reference photo and have the assistant draw the pack again from scratch">Start over</button>`:'',
     ...(tp?[S.lang!=='en'?`<button type="button" data-act="lang" data-lang="en">Show in English</button>`:'',...I18N.order.map(l=>`<button type="button" data-act="lang" data-lang="${l}" ${S.translating?'disabled':''} title="Translate the pack for the factory — factory links open in the language you translated last, and the factory can switch">${S.translating&&S.translatingLang===l?'Translating…':(S.lang===l?'✓ ':'')+'Translate for factory — '+I18N.langs[l].native}</button>`)]:[]),
+    tp?.publishedAt?`<button type="button" data-act="shopify" title="Make this pack a draft product on your Shopify store, with its variants, SKUs, weight, HS code and pictures">Create on Shopify…</button>`:'',
     '<button type="button" data-act="print">Download PDF</button>',
     tp?.initiatedBy==='client'&&!tp.publishedAt&&tp.status==='submitted'?`<hr><button type="button" data-act="reopen" title="Hand the draft back to the client to keep working on it">Return to client to keep working</button>`:''])}`}
   else if(MODE==='client'&&S.draft){const tp=S.techPack,submitted=tp.status==='submitted';a.innerHTML=`<span class="status ${submitted?'edits':''} ${S.saving||S.dirty?'busy':''}">${submitted?'submitted':'your draft'}${S.saving?' · saving…':S.dirty?' · unsaved':''}</span>${submitted?'':`<button class="btn" data-act="save">Save</button><button class="btn primary" data-act="submit">Submit<span class="lg">&nbsp;to Future Basics</span></button>`}${actMenu(['<button type="button" data-act="print">Download PDF</button>'])}`}
@@ -1437,6 +1462,7 @@ document.addEventListener('change',async e=>{const el=e.target,act=el.dataset.ac
 document.addEventListener('click',e=>{const tab=e.target.closest('[data-tab]');if(tab){showTab(tab.dataset.tab);return}
   const b=e.target.closest('[data-act]');
   if(b&&/^q(ask|reply|resolve|client)$/.test(b.dataset.act||'')){qaAct(b.dataset.act,b);return}
+  if(b&&b.dataset.act==='shopify'){openShopifyExport();return}
   if(b&&b.dataset.act==='chgseen'){try{localStorage.setItem(b.dataset.key,'1')}catch{}const d=b.closest('details');if(d)d.open=false;return}
   // click on a stage while placing → new callout at that point
   const st=e.target.closest('[data-stage]');if(st&&S.placing&&!b&&!e.target.closest('[data-pin],[data-ov]')){const {x,y}=stageXY(st,e);const sk=S.pack.sketches[+st.dataset.si];sk.callouts.push(st.dataset.onhero?{n:nextN(sk),label:'',spec:'',note:'',photo:'',x:null,y:null,hx:x,hy:y,hphoto:''}:{n:nextN(sk),label:'',spec:'',note:'',photo:'',x,y});S.placing=false;S.sel={si:+st.dataset.si,ci:sk.callouts.length-1};rerender();markDirty();setTimeout(()=>{document.querySelector('.co.sel input.t')?.focus()},0);return}
