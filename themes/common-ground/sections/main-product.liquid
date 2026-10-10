@@ -90,9 +90,9 @@
             <span data-atc-text>{% if current.available %}{{ 'products.product.add_to_cart' | t }}{% else %}{{ 'products.product.sold_out' | t }}{% endif %}</span>
           </button>
         </div>
+        {%- render 'make-offer', product: product, current: current -%}
         {%- if section.settings.show_dynamic_checkout -%}{{ form | payment_button }}{%- endif -%}
       {%- endform -%}
-      {%- render 'make-offer', product: product, current: current -%}
 
       <div class="product__meta small">
         {%- if current.sku != blank -%}<span>{{ 'products.product.sku' | t }}: <span data-sku>{{ current.sku }}</span></span>{%- endif -%}
