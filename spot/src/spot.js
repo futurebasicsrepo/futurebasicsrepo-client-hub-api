@@ -513,7 +513,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // The payer taps "Pay <store>": build the store's checkout (reused for 30
     // minutes) and send them to it. Spot never takes this payment.
-    async directStart(token, { email = null, name = null } = {}) {
+    async directStart(token, { email = null, name = null, ip = null } = {}) {
       const cart = load(token);
       if (cart.settle !== 'direct') throw new CartError('This cart isn’t paid at the store', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already taken care of', 409);
@@ -524,7 +524,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (now.status !== 'open') throw new CartError('This cart is already taken care of', 409);
         if (now.direct?.checkout_id) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
       }
-      const started = await this.direct.start(cart, { email });
+      const started = await this.direct.start(cart, { email, buyerIp: ip });
       this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
       return { continue_url: started.continue_url, total_cents: started.total_cents };
     },

@@ -36,6 +36,7 @@ import { createEvents } from './events.js';
 import { registerPasskeys } from './passkeys.js';
 import { createBackups, restoreOnBoot } from './backup.js';
 import { createDirect } from './direct.js';
+import { createShopifyAuth } from './fulfill/shopifyauth.js';
 import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
@@ -114,7 +115,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('signing', signing);
   const fulfiller = createFulfiller({ spot, provider, env, log: app.log, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
-  spot.direct = createDirect({ profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
+  spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth: fulfill.shopifyAuth || createShopifyAuth({ env, log: console }), ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
   spot.onCardIssued = (cart) => fulfiller.autoStart(cart);
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
@@ -468,7 +469,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (input?.settle === 'direct' && !fromStore && spot.direct.verify && Array.isArray(input.items)) {
       input.items = input.items.map(splitVariant);
       const merchant = { ...(input.merchant || {}), url: input.merchant?.url ?? input.merchant_url };
-      const v = await spot.direct.verify({ merchant, items: input.items });
+      const v = await spot.direct.verify({ merchant, items: input.items }, { buyerIp: req.ip });
       const store = merchant.name || 'The store';
       if (v.ok) input.items = v.items;
       else if (v.reason === 'choose') {
@@ -500,7 +501,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.pay(req);
     const email = req.body?.email ? String(req.body.email).trim().toLowerCase().slice(0, 200) : null;
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    const out = await spot.directStart(req.params.token, { email, name: req.body?.name || null });
+    const out = await spot.directStart(req.params.token, { email, name: req.body?.name || null, ip: req.ip });
     // The payer goes to the store through the affiliate link, if the store has one.
     const a = affiliate.wrap(out.continue_url, { ref: req.params.token });
     if (a.via) db.event(spot.load(req.params.token).id, 'affiliate_link', { via: a.via });

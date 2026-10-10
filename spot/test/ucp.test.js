@@ -603,3 +603,45 @@ test('a store that refuses signed requests gets unsigned ones (Shopify: Authenti
   await call('POST', '/catalog/lookup', { ids: [] });
   assert.deepEqual(seen, [true, false, false], 'signed once, then unsigned for that store');
 });
+
+test('Shopify agent token: fetched once, used only for Shopify stores with a buyer, and dropped if refused', async () => {
+  const { createShopifyAuth } = await import('../src/fulfill/shopifyauth.js');
+  const { ucpClient } = await import('../src/fulfill/ucp.js');
+  let fetched = 0;
+  const tokenFetch = async (url, init) => {
+    fetched++;
+    assert.equal(url, 'https://api.shopify.com/auth/access_token');
+    assert.equal(JSON.parse(init.body).grant_type, 'client_credentials');
+    return Response.json({ access_token: 'tok_1', expires_in: 3600 });
+  };
+  const off = createShopifyAuth({ env: {}, fetchImpl: tokenFetch });
+  assert.equal(off.enabled, false);
+  assert.equal(await off.headersFor('https://a.myshopify.com/api/ucp/mcp', '203.0.113.5'), null);
+  const auth = createShopifyAuth({ env: { SHOPIFY_CATALOG_CLIENT_ID: 'id', SHOPIFY_CATALOG_CLIENT_SECRET: 'secret' }, fetchImpl: tokenFetch, log: {} });
+  assert.deepEqual(await auth.headersFor('https://a.myshopify.com/api/ucp/mcp', '203.0.113.5'), { authorization: 'Bearer tok_1', 'shopify-buyer-ip': '203.0.113.5' });
+  await auth.headersFor('https://b.myshopify.com/api/ucp/mcp', '203.0.113.6');
+  assert.equal(fetched, 1, 'one token for an hour');
+  assert.equal(await auth.headersFor('https://shop.example/ucp', '203.0.113.5'), null, 'not for other stores');
+  assert.equal(await auth.headersFor('https://a.myshopify.com/api/ucp/mcp', null), null, 'never without a real buyer');
+
+  // Sent instead of a signature; if the store refuses it, the call goes on without.
+  const seen = [];
+  const fetchImpl = async (u, init) => {
+    seen.push({ auth: init.headers.authorization || null, ip: init.headers['shopify-buyer-ip'] || null, signed: Boolean(init.headers.signature) });
+    const id = JSON.parse(init.body).id;
+    if (seen.length === 2) return new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32000, message: 'AuthenticationFailed' } }), { status: 422, headers: { 'content-type': 'application/json' } });
+    return Response.json({ jsonrpc: '2.0', id, result: { structuredContent: { ucp: { status: 'success' }, ok: true } } });
+  };
+  const opts = { endpoint: 'https://shop-t.example/api/ucp/mcp', transport: 'mcp', profileUrl: 'https://spot.example/.well-known/ucp', fetchImpl, allowPrivate: true };
+  const h = { authorization: 'Bearer tok_1', 'shopify-buyer-ip': '203.0.113.5' };
+  assert.equal((await ucpClient({ ...opts, auth: h })('POST', '/catalog/lookup', { ids: [] })).ok, true);
+  assert.deepEqual(seen[0], { auth: 'Bearer tok_1', ip: '203.0.113.5', signed: false });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    assert.equal((await ucpClient({ ...opts, auth: h })('POST', '/catalog/lookup', { ids: [] })).ok, true);
+  } finally {
+    console.error = quiet;
+  }
+  assert.deepEqual(seen[2], { auth: null, ip: null, signed: false }, 'refused token: retried as before');
+});

@@ -172,7 +172,7 @@ export function privacyPage({ origin, env = process.env }) {
 <ul>
 <li><b>Stripe</b>, for payments, refunds and Spot’s cards.</li>
 <li><b>Stores</b> Spot buys from, to ship your order (the requester’s name, shipping address, email and phone). Spot pays with its own card.</li>
-<li><b>Stores you pay directly</b>: Spot sends the store the cart, the requester’s name and shipping address, and the buyer’s email, so the store can take the payment on its own checkout and send its receipt. Your card goes to the store’s payment provider, never to Spot.</li>
+<li><b>Stores you pay directly</b>: Spot sends the store the cart, the requester’s name and shipping address, and the buyer’s email, so the store can take the payment on its own checkout and send its receipt. For stores on Shopify, Spot also passes the IP address of the person on the page, which Shopify requires for fraud checks. Your card goes to the store’s payment provider, never to Spot.</li>
 <li><b>Your approver</b>, if you name one: the cart your AI put together, the store and the total, why it came to them, and your first name and shipping address (so it can ship to you).</li>
 <li><b>Airlines and our flight-booking partner (Duffel)</b>, for traveler details and payment for your booking.</li>
 <li><b>Anthropic</b>, which provides the AI that reads screenshots and fills in store checkouts. Card numbers are never sent to it.</li>
