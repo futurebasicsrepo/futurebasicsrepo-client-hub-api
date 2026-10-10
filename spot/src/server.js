@@ -274,6 +274,18 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     // One store's part of a multi-store ask: the payer pays for all of it.
     const bundle = spot.bundleOf(cart);
     if (bundle) return reply.redirect(`/b/${bundle.token}`, 302);
+    // A pay-at-store ask still waiting on an address its owner already saved
+    // (asks made before Spot used it): fill it in, so the payer isn't stuck.
+    if (cart.settle === 'direct' && cart.status === 'open' && !cart.requester.shipping && cart.user_id) {
+      const owner = db.users.byId(cart.user_id);
+      if (owner?.shipping) {
+        try {
+          cart = spot.prepare(cart.token, { userId: cart.user_id }, { ...owner.shipping, email: owner.shipping.email || owner.email || undefined });
+        } catch {
+          // Incomplete address: the owner finishes it on their page.
+        }
+      }
+    }
     return html(reply, payPage({ cart: publicCart(cart), links: handoffLinks(cart), provider: provider.name, pageUrl: urlFor(req, `/c/${cart.token}`) }));
   });
 

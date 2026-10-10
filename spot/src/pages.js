@@ -196,6 +196,9 @@ const PAY_CSS = `
 .pcard .t{font-weight:700;line-height:1.2}.pcard .v{color:var(--muted);font-size:14px}
 .pcard .p{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
 .act{padding:10px 0 4px}
+/* The pay button rides along at the bottom, so it's one tap from opening the link. */
+.act.stick{position:sticky;bottom:0;z-index:5;margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to bottom,transparent,var(--bg) 18px)}
+.act.stick:has(details[open]),.act.stick:has(input:focus){position:static;margin:0;padding:10px 0 4px;background:none}
 .btn.go{font-size:19px;padding:17px;border-radius:18px;box-shadow:0 10px 24px color-mix(in srgb,var(--spot) 35%,transparent)}
 .btn.go:active{transform:scale(.98)}
 .namefield{display:flex;gap:8px;align-items:center;margin-top:6px}
@@ -252,8 +255,8 @@ export function payPage({ cart, links, provider, pageUrl }) {
   const covered = ['paid', 'card_issued', 'completed'].includes(cart.status);
   const first = cart.items[0];
   const total = usd(cart.settle === 'card' ? cart.total_cents : cart.cart_cents);
-  const ogTitle = covered ? `${cart.payer_name || 'Someone'} spotted ${name}! 🎉` : `psst… can you spot ${name}?`;
-  const ogDesc = `${first.title}${cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : ''} from ${cart.merchant.name} · ${usd(cart.cart_cents)} · tap to cover it`;
+  const ogTitle = covered ? `${cart.payer_name || 'Someone'} spotted ${name}! 🎉` : `psst… can you spot ${name} ${total}?`;
+  const ogDesc = `${first.title}${cart.items.length > 1 ? ` + ${cart.items.length - 1} more` : ''} from ${cart.merchant.name} · ${total} all in · ${cart.settle === 'direct' ? 'pay the store in one tap' : 'one tap with Apple Pay'}`;
   const head = `
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot">
 <meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}">
@@ -296,7 +299,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
 <div class="buddy">${buddySvg(covered)}<div class="hi">${covered ? 'yay!' : open ? 'hey 👋' : 'hmm…'}</div></div>
 <div class="chat" id="chat">${chat}</div>
 ${open ? lockCard(cart) : ''}
-${open ? `<div class="act" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
+${open ? `<div class="act${cart.settle === 'handoff' ? '' : ' stick'}" id="act">${actionBox(cart, links, provider, total)}</div>` : ''}
 ${open && cart.settle === 'card' && provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 ${open ? detailsBox(cart) : ''}
 <footer>By paying you agree to Spot’s <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>.<br><a href="/">make your own Spot</a></footer>`;

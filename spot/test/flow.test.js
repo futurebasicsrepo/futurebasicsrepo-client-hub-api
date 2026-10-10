@@ -40,8 +40,10 @@ test('card flow: create → pay → Spot’s card issued → merchant-locked sin
   // The shared link renders with a preview card and escapes user text.
   const page = await call('GET', `/c/${cart.token}`);
   assert.equal(page.status, 200);
-  assert.match(page.body, /<meta property="og:title" content="psst… can you spot Kyle\?">/);
-  assert.match(page.body, /og:description" content="Super Puff Shorty from Aritzia · \$271.00 · tap to cover it"/);
+  const all = `\\$${(cart.total_cents / 100).toFixed(2)}`;
+  assert.match(page.body, new RegExp(`<meta property="og:title" content="psst… can you spot Kyle ${all}\\?">`), 'the preview says who and how much');
+  assert.match(page.body, new RegExp(`og:description" content="Super Puff Shorty from Aritzia · ${all} all in · one tap with Apple Pay"`));
+  assert.match(page.body, /class="act stick"/, 'the pay button stays on screen');
   assert.match(page.body, new RegExp(`og:image" content="http://localhost(:80)?/c/${cart.token}/card.png"`));
   assert.match(page.body, /birthday &lt;3/);
   assert.match(page.body, /Spot Kyle \$295.39/);
