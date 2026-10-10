@@ -139,7 +139,22 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
 // hasn't registered with AuthenticationFailed, yet serves unsigned agents):
 // those are sent unsigned from then on.
 const unsignedHosts = new Set();
-export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
+export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null, auth = null }) {
+  // A store-issued token (Shopify's agent access) stands in for a signature.
+  // If the store won't take it, carry on the way Spot calls without one.
+  if (auth) {
+    const withToken = mcpOrRest({ endpoint, transport, profileUrl, fetchImpl, allowPrivate, sign: () => auth });
+    const without = ucpClient({ endpoint, transport, profileUrl, fetchImpl, allowPrivate, sign });
+    return async (method, path, body) => {
+      try {
+        return await withToken(method, path, body);
+      } catch (err) {
+        if (!(err instanceof UcpError) || (err.httpStatus !== 401 && err.httpStatus !== 403 && !/authenticat|buyer ip/i.test(err.message))) throw err;
+        console.error('ucp token refused', endpoint, err.message);
+        return without(method, path, body);
+      }
+    };
+  }
   const host = (() => {
     try {
       return new URL(endpoint).host;
@@ -161,6 +176,10 @@ export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl 
       return unsigned(method, path, body);
     }
   };
+}
+
+function mcpOrRest(o) {
+  return o.transport === 'mcp' ? mcpClient(o) : restClient(o);
 }
 
 function restClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign }) {

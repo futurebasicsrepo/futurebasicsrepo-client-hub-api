@@ -13,7 +13,7 @@
 import { buyer, discover, shipTo, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
 import { CartError } from './cart.js';
 
-export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null } = {}) {
+export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null, shopifyAuth = null } = {}) {
   const found = new Map(); // origin → { at, discovery } (stores rarely change)
   async function discovery(url) {
     let origin;
@@ -29,7 +29,11 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
     if (found.size > 1000) found.delete(found.keys().next().value);
     return d;
   }
-  const client = (d) => ucpClient({ endpoint: d.endpoint, transport: d.transport, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, fetchImpl, allowPrivate, sign });
+  // With a buyer on the page, Shopify stores get Spot's agent token (and that buyer's IP).
+  const client = async (d, buyerIp = null) => {
+    const auth = buyerIp && shopifyAuth ? await shopifyAuth.headersFor(d.endpoint, buyerIp).catch(() => null) : null;
+    return ucpClient({ endpoint: d.endpoint, transport: d.transport, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, fetchImpl, allowPrivate, sign, auth });
+  };
 
   return {
     async supports(url) {
@@ -39,10 +43,10 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
 
     // Before a link goes out: the store finds every item, in that size or
     // colour, in stock. Returns the items with their product links filled in.
-    async verify(cart) {
+    async verify(cart, { buyerIp = null } = {}) {
       const d = cart.merchant?.url ? await discovery(cart.merchant.url) : null;
       if (!d?.lookup) return { ok: false, reason: 'no_direct' };
-      const r = await resolveItems(client(d), cart, { fetchImpl, allowPrivate }).catch(() => null);
+      const r = await resolveItems(await client(d, buyerIp), cart, { fetchImpl, allowPrivate }).catch(() => null);
       if (r?.lines) return { ok: true, items: r.items || cart.items };
       return { ok: false, reason: r?.not_found ? 'not_found' : r?.choose ? 'choose' : r?.unresolved ? 'unavailable' : 'not_found', choose: r?.choose || null, item: r?.unresolved || cart.items.find((i) => !i.url)?.title || cart.items[0]?.title };
     },
@@ -60,12 +64,12 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       }
     },
 
-    async _start(cart, { email = null } = {}) {
+    async _start(cart, { email = null, buyerIp = null } = {}) {
       const d = await discovery(cart.merchant.url);
       if (!d?.lookup) throw new CartError(`${cart.merchant.name} doesn’t take direct checkout`, 409);
       const ship = cart.requester.shipping;
       if (!ship) throw new CartError(`${cart.requester.name} hasn’t said where to ship it yet`, 409);
-      const call = client(d);
+      const call = await client(d, buyerIp);
       const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate }).catch(() => null);
       if (!resolved?.lines) {
         console.error('direct start: items not resolved', cart.token, JSON.stringify(resolved));
@@ -87,12 +91,13 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
       }
       const continueUrl = link(co.continue_url, allowPrivate);
       if (!continueUrl) throw new CartError(`${cart.merchant.name} didn’t give a checkout page to pay on`, 502);
-      return { checkout_id: co.id, endpoint: d.endpoint, transport: d.transport, continue_url: continueUrl, total_cents: totalOf(co), currency: co.currency || 'USD' };
+      return { checkout_id: co.id, endpoint: d.endpoint, transport: d.transport, buyer_ip: buyerIp || null, continue_url: continueUrl, total_cents: totalOf(co), currency: co.currency || 'USD' };
     },
 
     async status(direct) {
       const d = { endpoint: direct.endpoint, transport: direct.transport || 'rest' };
-      const co = await client(d)('GET', `/checkout-sessions/${encodeURIComponent(direct.checkout_id)}`);
+      // Same buyer as the checkout was made for, so the same tier can read it.
+      const co = await (await client(d, direct.buyer_ip || null))('GET', `/checkout-sessions/${encodeURIComponent(direct.checkout_id)}`);
       return {
         status: co.status,
         total_cents: totalOf(co),
