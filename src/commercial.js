@@ -50,7 +50,8 @@
     const codes = new Map(); for (const name of colours) { let code = slug(name, 3) || 'CLR', i = 2; while ([...codes.values()].includes(code)) code = slug(name, 2) + i++; codes.set(name, code); }
     for (const colour of (colours.length ? colours : [''])) for (const size of (sizes.length ? sizes : [''])) {
       const key = `${size}|${colour}`.toLowerCase(), old = have.get(key);
-      if (old) { out.push(old); continue; }
+      if (old && old.sku) { out.push(old); continue; }
+      if (old) { let sku = [prefix, codes.get(colour), slug(size, 6)].filter(Boolean).join('-'), n = 2; const base = sku; while (used.has(sku)) sku = `${base}-${n++}`; used.add(sku); out.push({ ...old, sku }); continue; } // a row with its SKU blanked gets one back
       let sku = [prefix, codes.get(colour), slug(size, 6)].filter(Boolean).join('-'), n = 2; const base = sku; while (used.has(sku)) sku = `${base}-${n++}`; used.add(sku);
       out.push({ size, colour, sku, barcode: '', price: '' });
     }

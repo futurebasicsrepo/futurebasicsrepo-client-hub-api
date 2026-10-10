@@ -41,6 +41,7 @@ import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
 import { conceptRender, conceptPlacement } from './concept.js';
 import { packDiff, diffSummary, carriedAcks } from './pack-diff.js';
+import { buildShopifyExport, exportToShopify, planSummary } from './pack-export.js';
 import { cleanArt, artColours, printCheck, graphicCrop, parseImage } from './art.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
@@ -2440,6 +2441,45 @@ app.get('/v1/products/:id/tech-pack/media',{preHandler:authenticate},async(req,r
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Tech pack not found'});
   const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and client_id=$2 and published_at is not null',[req.params.id,req.auth.clientId||null])).rows[0];if(!row)return reply.code(404).send({error:'Tech pack not found'});
   return {version:row.version,media:mediaList(req.params.id,row)};
+});
+// ---- The published pack as a Shopify product ("Create on your Shopify store"). A preview says what will be made and what is missing; the export makes a DRAFT product
+// with its options, variants (SKU, barcode, price, cost, weight, HS code, origin), pictures and specification metafields. Run again it updates the specification and adds
+// what is new, and never removes or retitles anything. It runs through the store this server is connected to; the engine takes the Shopify call as a parameter so a
+// merchant's own store can use it once the install flow exists.
+async function shopifyExportContext(productId){
+  const ctx=await loadAdminTechPack(productId);if(!ctx||!ctx.techPack)return {status:404,error:'Tech pack not found'};
+  if(!ctx.techPack.published_at)return {status:409,error:'Publish the tech pack first: the store gets the published version'};
+  const tier=(await pool.query('select unit_cost_cents from price_tiers where product_id=$1 and unit_cost_cents is not null order by min_quantity limit 1',[productId])).rows[0];
+  const pub=normalizeTechPack(ctx.techPack.published_data),media=packMedia(pub).map(m=>({key:m.key,kind:m.kind,name:m.name,mime:m.mime,url:mediaUrl(productId,m.key,6*3600)}));
+  const plan=buildShopifyExport({pack:pub,product:{title:ctx.product.title,client_slug:ctx.product.client_slug},version:ctx.techPack.version,cost:tier?Number(tier.unit_cost_cents)/100:'',media,hubUrl:`${clientHubUrl}/tech-packs/${productId}`});
+  const last=(await pool.query('select * from shopify_exports where product_id=$1 order by created_at desc limit 1',[productId])).rows[0]||null;
+  const linked=(await pool.query('select shopify_product_id from products where id=$1',[productId])).rows[0]?.shopify_product_id||null;
+  return {ctx,plan,last,linked};
+}
+const shopifyAdminUrl=gid=>`https://admin.shopify.com/store/${(process.env.SHOPIFY_STORE_DOMAIN||'').split('.')[0]}/products/${String(gid).split('/').pop()}`;
+app.get('/v1/admin/products/:id/tech-pack/shopify-export',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const c=await shopifyExportContext(req.params.id);if(c.error)return reply.code(c.status).send({error:c.error});
+  const existing=c.last?{id:c.last.shopify_product_id}:null;
+  return {configured:shopifyConfigured(),summary:planSummary(c.plan,existing),packVersion:c.ctx.techPack.version,
+    last:c.last?{mode:c.last.mode,version:c.last.version,at:c.last.created_at,productId:c.last.shopify_product_id,adminUrl:shopifyAdminUrl(c.last.shopify_product_id),report:c.last.report}:null,
+    behind:c.last?c.ctx.techPack.version>c.last.version:false,linkedElsewhere:!c.last&&Boolean(c.linked)?c.linked:null};
+});
+app.post('/v1/admin/products/:id/tech-pack/shopify-export',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const c=await shopifyExportContext(req.params.id);if(c.error)return reply.code(c.status).send({error:c.error});
+  const existing=c.last?{id:c.last.shopify_product_id,lastPrices:c.last.last_prices||{}}:null;
+  if(req.body?.preview===true)return {preview:true,summary:planSummary(c.plan,existing),issues:c.plan.issues};
+  if(!shopifyConfigured())return reply.code(503).send({error:'Shopify is not connected'});
+  if(!existing&&c.linked)return reply.code(409).send({error:'This product is already linked to a Shopify product that was made from its brief. Unlink it first, or export from the brief\'s own product.',linkedProductId:c.linked});
+  if(c.plan.errors.length)return reply.code(422).send({error:c.plan.errors[0].text,issues:c.plan.issues});
+  let report;
+  try{report=await exportToShopify({plan:c.plan,exec:shopifyGraphql,existing})}
+  catch(e){await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Shopify export of ${c.ctx.product.title} failed: ${String(e.message).slice(0,200)}`,{techPackId:c.ctx.techPack.id,failed:true}]).catch(()=>{});return reply.code(e.statusCode||502).send({error:e.message,issues:e.issues||undefined})}
+  await pool.query(`insert into shopify_exports(product_id,tech_pack_id,version,mode,shopify_product_id,report,last_prices,exported_by) values($1,$2,$3,$4,$5,$6,$7,$8)`,[c.ctx.product.id,c.ctx.techPack.id,c.ctx.techPack.version,report.mode,report.productId,JSON.stringify({variants:report.variants,files:report.files,note:report.note||'',warnings:c.plan.warnings.map(w=>w.text)}),JSON.stringify(report.lastPrices),req.auth.sub]);
+  if(report.mode==='create')await pool.query(`update products set shopify_product_id=$2,shopify_handle=$3,shopify_status=$4,shopify_synced_at=now(),updated_at=now() where id=$1`,[c.ctx.product.id,report.productId,report.handle,report.status]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[c.ctx.product.client_id,c.ctx.product.id,req.auth.sub,`Tech pack v${c.ctx.techPack.version} ${report.mode==='create'?'created a draft product':'updated the product'} on Shopify (${report.variants.created} new, ${report.variants.updated} updated variants)`,{techPackId:c.ctx.techPack.id,shopifyProductId:report.productId,mode:report.mode}]).catch(()=>{});
+  return reply.code(report.mode==='create'?201:200).send({report:{mode:report.mode,productId:report.productId,adminUrl:shopifyAdminUrl(report.productId),status:report.status,variants:report.variants,files:report.files,note:report.note||''},warnings:c.plan.warnings.map(w=>w.text),version:c.ctx.techPack.version});
 });
 // Staff ask the client for the view the pack lacks (instead of publishing past the gate with a typed reason): a message in the project thread, an email, and a banner
 // in the client's editor with a button that adds the view. The request clears itself the moment the picture is there.

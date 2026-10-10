@@ -838,6 +838,20 @@ export async function migrate() {
     alter table partners add column if not exists created_by uuid references users(id) on delete set null;
     alter table partners add column if not exists updated_at timestamptz not null default now();
     create sequence if not exists style_number_seq;
+    -- each time a published pack is sent to Shopify as a product: what was done, and the prices sent (so a re-export can tell a price the pack moved from one the merchant moved)
+    create table if not exists shopify_exports (
+      id uuid primary key default gen_random_uuid(),
+      product_id uuid not null references products(id) on delete cascade,
+      tech_pack_id uuid not null references tech_packs(id) on delete cascade,
+      version integer not null,
+      mode text not null check (mode in ('create','update')),
+      shopify_product_id text not null,
+      report jsonb not null default '{}'::jsonb,
+      last_prices jsonb not null default '{}'::jsonb,
+      exported_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists shopify_exports_product_idx on shopify_exports(product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
       tech_pack_id uuid not null references tech_packs(id) on delete cascade,
