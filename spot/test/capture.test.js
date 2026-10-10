@@ -130,3 +130,20 @@ test('when the AI is unavailable, typing what you want still works and screensho
   // A key without a workspace names one on every request.
   assert.equal(anthropicClient({ ANTHROPIC_WORKSPACE_ID: 'wrkspc_1' })._options.defaultHeaders['anthropic-workspace-id'], 'wrkspc_1');
 });
+
+test('a store’s bot check is not a product: no fake item, and a clear note to fill it in', async () => {
+  const wall = '<html><head><title>Robot or human?</title></head><body>Activate and hold the button to confirm that you’re human.</body></html>';
+  const d = parseProductHtml(wall, 'https://www.walmart.com/ip/123');
+  assert.equal(d.items.length, 0);
+  assert.equal(d.needs_review, true);
+  assert.match(d.warning, /Walmart doesn’t let Spot read its pages/);
+  for (const t of ['Just a moment...', 'Access Denied', 'Pardon Our Interruption']) {
+    assert.equal(parseProductHtml(`<title>${t}</title>`, 'https://shop.example.com/p').items.length, 0, t);
+  }
+  // A real product called "Security Check Kit" with structured data still works.
+  assert.equal(parseProductHtml(LD_PAGE, 'https://www.aritzia.com/us/en/product/super-puff/123.html').warning, undefined);
+
+  // Redirect chains (affiliate short links) are followed, but not forever.
+  const loop = async (u) => new Response(null, { status: 302, headers: { location: `${new URL(u).origin}/again` } });
+  await assert.rejects(() => captureFromUrl('https://short.example/x', { fetchImpl: loop, allowPrivate: true }), /redirects too many times/);
+});
