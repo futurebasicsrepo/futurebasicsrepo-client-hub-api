@@ -1530,4 +1530,186 @@ const bad = await journey('J98', 'a new version tells the factory what changed, 
   }
 });
 
+await journey('J99', 'a missing view is asked for, not overridden: staff request it, the client is told three ways and gets a button, and it clears when the picture is in', async () => {
+  const m = await room('99'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); ok(d.techPack.viewRequest === null, 'nothing is asked of the client to begin with');
+  const refused = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: {} });
+  ok(refused.status === 409 && Array.isArray(refused.json.missingViews) && refused.json.missingViews.length >= 1, 'the publish refusal names the views that are missing', [refused.status, refused.json.missingViews]);
+  const want = refused.json.missingViews;
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', token: m.token, body: {} })).status === 403, 'only staff can ask');
+  const ask = await adm(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', body: { note: 'Same lighting as the first one please' } });
+  ok(ask.status === 200 && ask.json.requested.join() === want.join(), 'staff ask for exactly those views', [ask.status, ask.json]);
+  d = await draft(); ok(d.techPack.viewRequest && d.techPack.viewRequest.views.join() === want.join(), 'the client\'s editor is told which views', d.techPack.viewRequest);
+  const msgs = sql(`select string_agg(body,' | ') from project_messages where client_id='${m.cid}' and author_role='admin'`); ok(want.every(v => msgs.includes(v)) && /lighting/.test(msgs), 'the project thread has the request, with the staff note', msgs.slice(0, 160));
+  ok(Number(sql(`select count(*) from notifications where client_id='${m.cid}' and title like 'We need the %'`)) === 1, 'and a notification is raised once');
+  const clientEmail = sql(`select contact_email from clients where id='${m.cid}'`), mail = ((await call(`/v1/dev/outbox?to=${encodeURIComponent(clientEmail)}`)).json.emails || []).filter(e => /One more picture/.test(e.subject)); ok(mail.length === 1 && want.every(v => mail[0].text.includes(v)), 'and the client is emailed once', mail.map(e => e.subject));
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="calls"]');
+      await p.waitForSelector('.view-ask [data-act="addview"]', { timeout: 10000 });
+      ok(new RegExp(want[0]).test(await p.innerText('.view-ask')), 'the editor shows the request with an Add button');
+      await p.click(`.view-ask [data-act="addview"][data-view="${want[0]}"]`); await p.waitForSelector('.panel[data-panel="calls"] .stage .pickbtn', { timeout: 5000 });
+      ok(/Add the|mockup/i.test(await p.innerText('.panel[data-panel="calls"] .stage')) && p.errs.length === 0, 'pressing it opens that view, ready for a file or a pick from saved files', p.errs);
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j99-ask.png` }).catch(() => {}); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  // the pictures arrive (here by saving the draft with them): the request clears, and the gate stops naming those views
+  d = await draft(); const data = structuredClone(d.techPack.data);
+  for (const v of want) { const sk = data.sketches.find(k => k.view === v) || (data.sketches.push({ id: 'v' + v, view: v, label: '', image: '', garmentWidthIn: null, callouts: [] }), data.sketches.at(-1)); sk.image = jpeg(); }
+  const sv = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data, etag: d.techPack.etag } }); ok(sv.status === 200, 'the client saves the pictures', [sv.status, sv.json.error]);
+  d = await draft(); ok(d.techPack.viewRequest === null, 'the request clears itself once both pictures are in', d.techPack.viewRequest);
+  const again = await adm(`/v1/admin/products/${m.id}/tech-pack/request-views`, { method: 'POST', body: {} }); ok(again.status === 409, 'and asking again is refused: nothing is missing');
+  const pub = await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: {} }); ok(!/mockups/i.test(JSON.stringify(pub.json.problems || [])), 'the publish gate no longer lists the mockups', pub.json.problems);
+});
+
+await journey('J100', 'commercial facts: price, weight, HS code and a SKU for every size and colour are kept; a factory gets everything but what the client charges', async () => {
+  const m = await room('100'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); const data = structuredClone(d.techPack.data);
+  data.commercial = { retailPrice: '$89', compareAtPrice: '120', weightGrams: '420', hsCode: '611020', currency: 'usd', variants: [] }; data.care.countryOfOrigin = 'Made in Vietnam';
+  const sv = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data, etag: d.techPack.etag } }); ok(sv.status === 200, 'the client saves the commercial facts', [sv.status, sv.json.error]);
+  d = await draft(); const c = d.techPack.data.commercial; ok(c.retailPrice === '89' && c.weightGrams === '420' && c.hsCode === '6110.20' && c.currency === 'USD', 'they are cleaned as they are saved (price as a number, HS code with its dot, currency in capitals)', c);
+  ok(d.completeness.missingRecommended.some(x => /Commercial|SKU|price/i.test(x)), 'and what is still missing for a sale is listed (a SKU on every size and colour)', d.completeness.missingRecommended);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
+      await p.waitForSelector('[data-commercial] [data-act="syncsku"]'); const sizes = d.techPack.data.sizes.length, colours = Math.max(1, d.techPack.data.colorways.length);
+      await p.click('[data-commercial] [data-act="syncsku"]'); await p.waitForFunction(n => document.querySelectorAll('[data-commercial] tbody tr').length === n, sizes * colours, { timeout: 8000 });
+      const first = p.locator('[data-commercial] tbody tr').first().locator('input.t').first(); await first.fill('MY-SKU-1'); await p.click('#tabs button[data-tab="bom"]');
+      ok(/Retail price/i.test(await p.innerText('[data-commercial]')) && /Vietnam \(VN\)/i.test(await p.innerText('[data-commercial]')), 'the Commercial block shows price fields and reads the country of origin as VN');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j100-commercial.png`, fullPage: false }).catch(() => {});
+      for (let i = 0; i < 40; i++) { d = await draft(); if (d.techPack.data.commercial.variants.some(v => v.sku === 'MY-SKU-1')) break; await sleep(300); }
+      ok(d.techPack.data.commercial.variants.length === sizes * colours && d.techPack.data.commercial.variants[0].sku === 'MY-SKU-1' && p.errs.length === 0, 'Generate SKUs makes one row per size and colour, and a typed SKU is saved', [d.techPack.data.commercial.variants.length, p.errs]); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: commercial' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 100' } }), ftok = sh.json.url.split('/tp/')[1];
+  const fv = (await call(`/v1/tp/${ftok}`)).json.techPack.data.commercial, cv = (await call(`/v1/products/${m.id}/tech-pack`, { token: m.token })).json.techPack.data.commercial;
+  ok(fv.retailPrice === '' && fv.compareAtPrice === '' && fv.variants.every(v => v.price === '') && fv.weightGrams === '420' && fv.hsCode === '6110.20' && fv.variants[0].sku === 'MY-SKU-1', 'the factory gets weight, HS code and SKUs, and no price', fv);
+  ok(cv.retailPrice === '89' && cv.variants[0].sku === 'MY-SKU-1', 'the client still sees their own price', cv.retailPrice);
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('[data-commercial]');
+      const txt = await p.innerText('[data-commercial]'); ok(/MY-SKU-1/.test(txt) && /420/.test(txt) && !/Retail price|Compare-at|\b89\b/i.test(txt) && p.errs.length === 0, 'on the factory page the block shows the SKUs and weight and no price field', txt.slice(0, 160)); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
+await journey('J101', 'a question about one callout: the factory asks where the callout is, staff see it open on that callout and answer in place, the client writes to the project thread with the callout named', async () => {
+  const m = await room('101'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: callout questions' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const mk = async label => { const s = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label, email: `${label.replace(/\W/g, '').toLowerCase()}-${stamp}@chaos.test` } }); return s.json.url.split('/tp/')[1]; };
+  const ftok = await mk('Mill 101'), other = await mk('Mill 101b');
+  const fv = (await call(`/v1/tp/${ftok}`)).json, co = fv.techPack.readiness.callouts[0], co2 = fv.techPack.readiness.callouts[1];
+  const ask = (tok, body) => call(`/v1/tp/${tok}/messages`, { method: 'POST', body });
+  ok((await ask(ftok, { body: 'x', key: 'nope:9' })).status === 400, 'a question about a callout that is not in the pack is refused');
+  ok((await ask(ftok, { body: '   ', key: co.key })).status === 400, 'and an empty one');
+  const q = await ask(ftok, { body: 'Is the edge radius measured before or after bonding?', key: co.key });
+  ok(q.status === 201 && q.json.message.calloutKey === co.key && q.json.message.calloutLabel === co.label && q.json.message.rawBody.startsWith('Is the edge') && q.json.message.body.startsWith(`About “${co.label}”`), 'the factory asks about one callout, and the message carries which', q.json);
+  ok((await ask(ftok, { body: 'And the general question: lead time?' })).status === 201, 'a general question still works');
+  const mine = (await call(`/v1/tp/${ftok}/messages`)).json.messages, theirs = (await call(`/v1/tp/${other}/messages`)).json.messages;
+  ok(mine.length === 2 && mine.filter(x => x.calloutKey === co.key).length === 1 && theirs.length === 0, 'it is in that factory\'s thread only, not another factory\'s', [mine.length, theirs.length]);
+  let cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 1 && cq.questions[0].key === co.key && cq.questions[0].shareLabel === 'Mill 101' && !cq.questions[0].answered, 'staff see one open question, on that callout, from that factory', cq);
+  ok(Number(sql(`select count(*) from notifications where client_id='${m.cid}' and title like '%asked about%'`)) === 1, 'and it raised a notification naming the callout');
+  const qq = (await adm('/v1/admin/dashboard')).json.queues, qitem = Object.values(qq).flat().find(x => x.kind === 'factory-message' && x.productId === m.id); ok(qitem && /2 new messages \(1 about a callout\)/.test(qitem.detail) && /Calls tab/.test(qitem.detail), 'a waiting callout question is in the staff queue, saying so', qitem && qitem.detail);
+  const shareId = cq.questions[0].shareId;
+  ok((await adm(`/v1/admin/tech-pack-shares/${shareId}/messages`, { method: 'POST', body: { body: 'x', key: 'nope:9' } })).status === 400, 'a staff reply naming an unknown callout is refused');
+  const rep = await adm(`/v1/admin/tech-pack-shares/${shareId}/messages`, { method: 'POST', body: { body: 'After bonding, edge to edge.', key: co.key } }); ok(rep.status === 201 && rep.json.message.calloutKey === co.key, 'staff answer on the callout');
+  cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 0 && cq.questions[0].answered && cq.questions[0].replies[0].body.startsWith('After bonding'), 'the question is answered', cq);
+  const mail = ((await call(`/v1/dev/outbox?to=${encodeURIComponent('mill101-' + stamp + '@chaos.test')}`)).json.emails || []).filter(e => /Future Basics wrote to you/.test(e.subject)); ok(mail.length === 1 && /After bonding/.test(mail[0].text), 'the factory is emailed the answer', mail.map(e => e.subject));
+  const q2 = (await ask(ftok, { body: 'Is the pod flush or proud?', key: co2.key })).json.message;
+  const res = await adm(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', body: { resolved: true } }); ok(res.status === 200 && res.json.resolved === true, 'staff can mark a question resolved without writing back');
+  cq = (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json; ok(cq.open === 0 && cq.questions.length === 2, 'resolved counts as answered', cq.open);
+  ok((await adm(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', body: { resolved: false } })).json.resolved === false && (await adm(`/v1/admin/products/${m.id}/tech-pack/callout-questions`)).json.open === 1, 'and can be reopened');
+  ok((await call(`/v1/admin/products/${m.id}/tech-pack/callout-questions`, { token: m.token })).status === 403 && (await call(`/v1/admin/tech-pack-messages/${q2.id}/resolve`, { method: 'POST', token: m.token, body: {} })).status === 403, 'the client cannot read or resolve the factory\'s questions');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      // the factory, on a phone
+      const fctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), fp = await fctx.newPage(); fp.errs = []; fp.on('pageerror', e => fp.errs.push(e.message));
+      await fp.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await fp.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await fp.click('#tabs button[data-tab="calls"]');
+      await fp.waitForSelector('.panel[data-panel="calls"] details.qa', { timeout: 10000 });
+      const box = fp.locator('.panel[data-panel="calls"] details.qa').nth(2); await box.locator('summary').click(); await box.locator('textarea').fill('Is this callout the same on the left side?'); await box.locator('[data-act="qask"]').click();
+      await fp.waitForFunction(() => /waiting for Future Basics/i.test(document.querySelector('.panel[data-panel="calls"]').innerText), null, { timeout: 8000 });
+      ok(fp.errs.length === 0, 'the factory page: ask about a callout, and see it waiting for Future Basics', fp.errs); await fp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j101-factory.png` }).catch(() => {}); await fctx.close();
+      // staff, on the pack
+      const actx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await actx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await actx.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/tech-packs/${m.id}?as=work`, { waitUntil: 'domcontentloaded' }); await ap.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await ap.keyboard.press('Escape'); await ap.click('#tabs button[data-tab="calls"]');
+      await ap.waitForSelector('.panel[data-panel="calls"] details.qa.ask', { timeout: 10000 });
+      const openBox = ap.locator('.panel[data-panel="calls"] details.qa.ask').first(); ok(/open question/i.test(await openBox.locator('summary').innerText()) && /pod flush|left side/i.test(await openBox.innerText()), 'the work console shows the open question on its callout');
+      await openBox.locator('textarea').first().fill('Flush to the wall.'); await openBox.locator('[data-act="qreply"]').first().click();
+      await ap.waitForFunction(() => /Flush to the wall/.test(document.querySelector('.panel[data-panel="calls"]').innerText), null, { timeout: 8000 });
+      ok(ap.errs.length === 0, 'and staff reply in place', ap.errs); await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j101-staff.png` }).catch(() => {}); await actx.close();
+      // the client, on the published pack
+      const cctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await cctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const cp = await cctx.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message));
+      await cp.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await cp.waitForSelector('#tabs button[data-tab="calls"]', { timeout: 20000 }); await cp.keyboard.press('Escape'); await cp.click('#tabs button[data-tab="calls"]');
+      await cp.waitForSelector('.panel[data-panel="calls"] details.qa', { timeout: 10000 }); const cb = cp.locator('.panel[data-panel="calls"] details.qa').first(); await cb.locator('summary').click(); await cb.locator('textarea').fill('Can this be a little longer?'); await cb.locator('[data-act="qclient"]').click();
+      for (let i = 0; i < 30 && !sql(`select 1 from project_messages where client_id='${m.cid}' and author_role='client' and body like 'About the callout%'`); i++) await sleep(250);
+      ok(/Can this be a little longer/.test(sql(`select string_agg(body,' | ') from project_messages where client_id='${m.cid}' and author_role='client'`)) && cp.errs.length === 0, 'the client asks on a callout: it lands in their project thread with the callout named', cp.errs); await cctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
+await journey('J102', 'samples and inspection: the usual stages in one press, a written inspection standard, all of it on the factory page and in the pack PDF', async () => {
+  const m = await room('102'); await waitAi(call, m.token, m.id);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (p, o = {}) => call(p, { token: admin, ...o });
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); ok(d.completeness.missingRecommended.some(x => /samples/i.test(x)) && d.completeness.missingRecommended.some(x => /inspected/i.test(x)), 'what is missing about samples and inspection is listed, not required');
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, m.token);
+      const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.keyboard.press('Escape'); await p.click('#tabs button[data-tab="bom"]');
+      await p.waitForSelector('[data-sampling] [data-act="sampstages"]'); await p.click('[data-sampling] [data-act="sampstages"]'); await p.waitForFunction(() => document.querySelectorAll('[data-sampling] tbody tr').length === 4);
+      await p.locator('[data-inspection] textarea').fill('Final inspection to ISO 2859-1, AQL 2.5 major / 4.0 minor.'); await p.locator('[data-inspection] input.t').first().fill('2.5');
+      await p.click('[data-inspection] [data-act="add"]'); await p.locator('[data-inspection] tbody tr').first().locator('input.t').first().fill('Wash fastness');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j102-samples.png` }).catch(() => {});
+      for (let i = 0; i < 40; i++) { d = await draft(); if (d.techPack.data.inspection.tests.some(t => t.name === 'Wash fastness') && d.techPack.data.inspection.aql === '2.5') break; await sleep(300); }
+      ok(d.techPack.data.sampling.length === 4 && d.techPack.data.sampling[0].stage === 'Proto sample' && /ISO 2859/.test(d.techPack.data.inspection.standard) && d.techPack.data.inspection.tests[0].name === 'Wash fastness' && p.errs.length === 0, 'the usual stages, the standard and a test are saved from the page', [d.techPack.data.sampling.length, d.techPack.data.inspection, p.errs]); await ctx.close();
+    } finally { await bw.close(); }
+  }
+  d = await draft(); ok(!d.completeness.missingRecommended.some(x => /samples|inspected/i.test(x)), 'and they are no longer listed as missing', d.completeness.missingRecommended);
+  ok((await adm(`/v1/admin/products/${m.id}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: samples' } })).status === 200, 'staff publish');
+  ok((await call(`/v1/products/${m.id}/tech-pack/approve`, { method: 'POST', token: m.token, body: { name: 'Pat Client' } })).status === 200, 'the client approves');
+  const sh = await adm(`/v1/admin/products/${m.id}/tech-pack/shares`, { method: 'POST', body: { label: 'Mill 102' } }), ftok = sh.json.url.split('/tp/')[1];
+  // the pack's pictures as signed, expiring links (what the Shopify export hands to Shopify)
+  const med = await adm(`/v1/admin/products/${m.id}/tech-pack/media`); ok(med.status === 200 && med.json.media.length >= 1 && med.json.media.every(x => /^image\//.test(x.mime) && x.url.includes('/m/')), 'staff get a link for every picture in the published pack', [med.status, med.json.media && med.json.media.length]);
+  const one = med.json.media[0], path = one.url.replace(/^https?:\/\/[^/]+/, ''), got = await fetch(BASE + path); const gb = Buffer.from(await got.arrayBuffer());
+  ok(got.status === 200 && got.headers.get('content-type') === one.mime && gb.length > 100 && /sandbox/.test(got.headers.get('content-security-policy') || ''), 'the link serves the picture with no sign-in, sandboxed', [got.status, got.headers.get('content-type'), gb.length]);
+  const parts = path.split('/'), tamper = [...parts.slice(0, -1), parts.at(-1).replace(/.$/, c => (c === 'a' ? 'b' : 'a'))].join('/'), swapped = [...parts.slice(0, 3), 'view.nope', ...parts.slice(4)].join('/'), stale = [...parts.slice(0, -2), '1000000000', parts.at(-1)].join('/');
+  ok((await fetch(BASE + tamper)).status === 404 && (await fetch(BASE + swapped)).status === 404 && (await fetch(BASE + stale)).status === 404, 'a link edited to another picture, another expiry or with a bad signature gives nothing');
+  const mine = await call(`/v1/products/${m.id}/tech-pack/media`, { token: m.token }); const stranger = await room('102x');
+  ok(mine.status === 200 && mine.json.media.length === med.json.media.length && (await call(`/v1/products/${m.id}/tech-pack/media`, { token: stranger.token })).status === 404 && (await call(`/v1/admin/products/${m.id}/tech-pack/media`, { token: m.token })).status === 403, 'the client lists their own, nobody else\'s, and the staff route is closed to them');
+  ok((await adm(`/v1/admin/products/${stranger.id}/tech-pack/media`)).status === 404, 'a pack that is not published has no links');
+  const fv = (await call(`/v1/tp/${ftok}`)).json.techPack.data; ok(fv.sampling.length === 4 && fv.inspection.aql === '2.5' && fv.inspection.tests.length === 1, 'the factory gets the sample plan and the inspection standard');
+  let pdfItem = null; for (let i = 0; i < 40 && !pdfItem; i++) { const f = (await call(`/v1/products/${m.id}/files`, { token: m.token })).json; pdfItem = (f.groups || []).flatMap(g => g.items).find(x => /pdf/i.test(x.mime) && /tech.?pack|pack v/i.test(`${x.label} ${x.name} ${x.note || ''}`)); if (!pdfItem) await sleep(500); }
+  const pdfRes = pdfItem ? await fetch(BASE + pdfItem.url, { headers: { Authorization: 'Bearer ' + m.token } }) : null, pdfBuf = pdfRes ? Buffer.from(await pdfRes.arrayBuffer()) : Buffer.alloc(0);
+  ok(pdfRes && pdfRes.status === 200 && pdfBuf.subarray(0, 4).toString() === '%PDF' && pdfBuf.length > 5000, 'the pack PDF is built with the new section', [pdfItem && pdfItem.name, pdfBuf.length])
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const ctx = await bw.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/tp/${ftok}`, { waitUntil: 'domcontentloaded' }); await p.waitForSelector('#tabs button[data-tab="bom"]', { timeout: 20000 }); await p.click('#tabs button[data-tab="bom"]'); await p.waitForSelector('[data-sampling]');
+      const txt = await p.innerText('[data-sampling]') + await p.innerText('[data-inspection]'); ok(/Top of production/i.test(txt) && /Wash fastness/i.test(txt) && /ISO 2859/.test(txt) && await p.locator('[data-sampling] [data-act]').count() === 0 && p.errs.length === 0, 'the factory page shows them read-only', txt.slice(0, 120)); await ctx.close();
+    } finally { await bw.close(); }
+  }
+});
+
 summary(); process.exit(bad ? 1 : 0);

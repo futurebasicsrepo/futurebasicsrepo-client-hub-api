@@ -81,6 +81,21 @@ export function packDiff(before, after) {
   for (const [key, r] of la) if (!lb.has(key)) add('Labels', 'removed', r.item, '', '');
   for (const k of Object.keys(b.packaging)) if ((a.packaging[k] || '') !== (b.packaging[k] || '')) add('Packaging', 'changed', k === 'unitsPerCarton' ? 'Units per carton' : k[0].toUpperCase() + k.slice(1), a.packaging[k], b.packaging[k]);
   for (const k of Object.keys(b.care)) if ((a.care[k] || '') !== (b.care[k] || '')) add('Care and origin', 'changed', { fiber: 'Fibre content', instructions: 'Care instructions', countryOfOrigin: 'Country of origin', compliance: 'Compliance' }[k] || k, a.care[k], b.care[k]);
+  // samples and inspection
+  const sa = new Map(a.sampling.map(r => [r.stage.toLowerCase(), r])), sb = new Map(b.sampling.map(r => [r.stage.toLowerCase(), r])), samp = r => [r.status, r.qty && r.qty + ' pcs', r.due && 'due ' + r.due].filter(Boolean).join(' · ');
+  for (const [key, r] of sb) { const o = sa.get(key); if (!o) add('Samples and inspection', 'added', r.stage, '', samp(r)); else if (samp(o) !== samp(r) || o.notes !== r.notes) add('Samples and inspection', 'changed', r.stage, samp(o), samp(r) + (o.notes !== r.notes ? ' · ' + r.notes : '')); }
+  for (const [key, r] of sa) if (!sb.has(key)) add('Samples and inspection', 'removed', r.stage, samp(r), '');
+  for (const [k, name] of [['aql', 'AQL'], ['level', 'Inspection level'], ['standard', 'Inspection standard']]) if ((a.inspection[k] || '') !== (b.inspection[k] || '')) add('Samples and inspection', 'changed', name, a.inspection[k], b.inspection[k]);
+  const ta = new Map(a.inspection.tests.map(r => [r.name.toLowerCase(), r])), tb = new Map(b.inspection.tests.map(r => [r.name.toLowerCase(), r]));
+  for (const [key, r] of tb) { const o = ta.get(key); if (!o) add('Samples and inspection', 'added', `Test: ${r.name}`, '', r.accept); else if (o.method !== r.method || o.accept !== r.accept) add('Samples and inspection', 'changed', `Test: ${r.name}`, o.accept, r.accept); }
+  for (const [key, r] of ta) if (!tb.has(key)) add('Samples and inspection', 'removed', `Test: ${r.name}`, '', '');
+  // commercial: SKUs, barcodes, weight, packed size, HS code. What the client charges is left out: this list goes to the factory.
+  for (const [k, name, unit] of [['weightGrams', 'Weight of one unit', ' g'], ['lengthCm', 'Packed length', ' cm'], ['widthCm', 'Packed width', ' cm'], ['heightCm', 'Packed height', ' cm'], ['hsCode', 'HS code', ''], ['skuPrefix', 'SKU prefix', '']]) {
+    if ((a.commercial[k] || '') !== (b.commercial[k] || '')) add('Commercial', 'changed', name, a.commercial[k] && a.commercial[k] + unit, b.commercial[k] && b.commercial[k] + unit);
+  }
+  const va = new Map(a.commercial.variants.map(v => [`${v.size}|${v.colour}`.toLowerCase(), v])), vb = new Map(b.commercial.variants.map(v => [`${v.size}|${v.colour}`.toLowerCase(), v]));
+  for (const [key, v] of vb) { const o = va.get(key), name = `${v.colour ? v.colour + ' ' : ''}${v.size}`.trim() || 'Variant'; if (!o) add('Commercial', 'added', name, '', [v.sku, v.barcode].filter(Boolean).join(' · ')); else if (o.sku !== v.sku || o.barcode !== v.barcode) add('Commercial', 'changed', name, [o.sku, o.barcode].filter(Boolean).join(' · '), [v.sku, v.barcode].filter(Boolean).join(' · ')); }
+  for (const [key, v] of va) if (!vb.has(key)) add('Commercial', 'removed', `${v.colour ? v.colour + ' ' : ''}${v.size}`.trim() || 'Variant', v.sku, '');
   if ((a.notes || '') !== (b.notes || '')) add('Notes', 'changed', 'Notes to the factory', a.notes, b.notes);
   if (!same(a.electronics, b.electronics)) add('Electronics', 'changed', 'Electronics specification', '', 'see the Electronics section');
 
@@ -88,7 +103,7 @@ export function packDiff(before, after) {
 }
 
 // "7 changes: 3 measurements, 2 materials, 1 callout, 1 colour" for the email and the banner.
-const NOUN = { Style: ['style detail', 'style details'], Callouts: ['callout', 'callouts'], Measurements: ['measurement', 'measurements'], Materials: ['material', 'materials'], Construction: ['construction note', 'construction notes'], Colours: ['colour', 'colours'], Artwork: ['artwork item', 'artwork items'], Labels: ['label', 'labels'], Packaging: ['packaging detail', 'packaging details'], 'Care and origin': ['care or origin detail', 'care or origin details'], Notes: ['note', 'notes'], Electronics: ['electronics change', 'electronics changes'] };
+const NOUN = { Style: ['style detail', 'style details'], Callouts: ['callout', 'callouts'], Measurements: ['measurement', 'measurements'], Materials: ['material', 'materials'], Construction: ['construction note', 'construction notes'], Colours: ['colour', 'colours'], Artwork: ['artwork item', 'artwork items'], Labels: ['label', 'labels'], Packaging: ['packaging detail', 'packaging details'], 'Care and origin': ['care or origin detail', 'care or origin details'], Notes: ['note', 'notes'], Electronics: ['electronics change', 'electronics changes'], Commercial: ['commercial detail', 'commercial details'], 'Samples and inspection': ['sample or inspection detail', 'sample or inspection details'] };
 export function diffSummary(changes) {
   if (!changes || !changes.length) return 'No changes to the specification.';
   const by = new Map(); for (const c of changes) by.set(c.section, (by.get(c.section) || 0) + 1);

@@ -553,6 +553,7 @@ export async function migrate() {
       unique(tech_pack_id,stage,version)
     );
     alter table tech_packs add column if not exists pay_variant_id text;
+    alter table tech_packs add column if not exists view_request jsonb; -- {views, at, by}: staff asked the client for a view the pack still lacks
     -- Every payment a client has made through the store, one row per order. Tech packs, memberships and anything else the store sold them.
     create table if not exists payments (
       id uuid primary key default gen_random_uuid(),
@@ -805,6 +806,9 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists factory_messages_share_idx on factory_messages(share_id, created_at);
+    alter table factory_messages add column if not exists callout_key text;   -- 'sketchId:n' when the message is about one callout
+    alter table factory_messages add column if not exists callout_label text; -- its name when it was written, so it still reads after the pack changes
+    alter table factory_messages add column if not exists resolved_at timestamptz;
     alter table factory_quotes add column if not exists entered_by uuid references users(id) on delete set null;
     -- Every published version, kept with its signatures: publishing v2 no longer erases what was signed on v1. Factory links serve the
     -- latest version the client approved; quotes and production runs record the version they were based on.

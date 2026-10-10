@@ -4,6 +4,7 @@
 // verification chain (factory acknowledgements + two signatures) that turns the
 // pack from a document into a live sign-off instrument.
 
+import './commercial.js'; // SKUs, price, weight, HS code and origin: attaches FBCommercial (also served to the page at /commercial.js)
 import './elec.js'; // electronic products: attaches FBElec (also served to the page at /elec.js)
 import './categories.js'; // product categories: attaches FBCat (also served to the page at /categories.js)
 const ELEC = globalThis.FBElec, CAT = globalThis.FBCat;
@@ -13,7 +14,7 @@ export const SKETCH_VIEWS = ['front', 'back', 'side', 'lateral', 'medial', 'top'
 export const FOOTWEAR_SIZES = ['7', '8', '9', '10', '11', '12', '13'];
 // Garment packs need front + back; footwear packs need lateral + medial.
 export const mockupsComplete = sketches => { const has = v => sketches.some(s => s.view === v && s.image); return (has('front') && has('back')) || (has('lateral') && has('medial')); };
-const LIMITS = { renderings: 6, parts: 14, sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200, components: 150, certifications: 30, tests: 40, stages: 6 };
+const LIMITS = { samples: 12, tests: 30, variants: 200, renderings: 6, parts: 14, sketches: 12, sizes: 14, pom: 80, bom: 120, construction: 80, colorways: 16, labels: 30, callouts: 40, artwork: 12, pantones: 12, placements: 24, revisions: 200, components: 150, certifications: 30, tests: 40, stages: 6 };
 const MAX_IMAGE_CHARS = 2_600_000;   // ~1.9MB decoded; the editor downsizes before upload
 const MAX_PHOTO_CHARS = 700_000;     // callout detail photos are small crops
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,[a-z0-9+/=]+$/i;
@@ -30,6 +31,7 @@ export const isInlineImage = (value, max = MAX_IMAGE_CHARS) => Boolean(image(val
 const id = value => str(value, 40).replace(/[^a-zA-Z0-9_-]/g, '') || Math.random().toString(36).slice(2, 10);
 export const stripHtml = html => String(html || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
+export const SAMPLE_STAGES = ['Proto sample', 'Fit sample', 'Pre-production sample', 'Top of production'], SAMPLE_STATUS = ['planned', 'requested', 'sent', 'approved', 'revise'];
 export function emptyTechPack() {
   return {
     style: { styleNumber: '', styleName: '', season: '', category: '', designer: '', sampleSize: '', fitBlock: '', fabricSummary: '', description: '' },
@@ -43,6 +45,9 @@ export function emptyTechPack() {
     parts: [],
     artwork: [],
     labels: [],
+    sampling: [],
+    inspection: { aql: '', level: '', standard: '', tests: [] },
+    commercial: globalThis.FBCommercial.empty(),
     packaging: { fold: '', polybag: '', carton: '', unitsPerCarton: '', notes: '' },
     care: { fiber: '', instructions: '', countryOfOrigin: '', compliance: '' },
     electronics: { enabled: false, specs: {}, components: [], certifications: [], tests: [], stages: [] },
@@ -109,6 +114,9 @@ export function normalizeTechPack(input) {
       })).filter(p => p.sketchId && p.x != null && p.y != null)
     })).filter(a => a.image || a.name),
     labels: list(src.labels, LIMITS.labels, r => ({ item: str(r?.item, 120), spec: str(r?.spec, 400), placement: str(r?.placement, 200) })).filter(r => r.item),
+    sampling: list(src.sampling, LIMITS.samples, r => ({ stage: str(r?.stage, 60), qty: str(r?.qty, 12), due: str(r?.due, 20), status: SAMPLE_STATUS.includes(r?.status) ? r.status : 'planned', notes: str(r?.notes, 400) })).filter(r => r.stage),
+    inspection: { aql: str(src.inspection?.aql, 8), level: str(src.inspection?.level, 8), standard: str(src.inspection?.standard, 600), tests: list(src.inspection?.tests, LIMITS.tests, r => ({ name: str(r?.name, 120), method: str(r?.method, 200), accept: str(r?.accept, 200) })).filter(r => r.name) },
+    commercial: globalThis.FBCommercial.normalize(src.commercial, LIMITS.variants),
     packaging: Object.fromEntries(Object.keys(base.packaging).map(k => [k, str(packaging[k], k === 'notes' ? 1500 : 200)])),
     care: Object.fromEntries(Object.keys(base.care).map(k => [k, str(care[k], k === 'instructions' || k === 'compliance' ? 1500 : 300)])),
     electronics: normalizeElectronics(src.electronics),
@@ -280,7 +288,10 @@ export function techPackCompleteness(data) {
     ['construction', 'Construction notes: stitching, seams and finishing', d.construction.length >= 2],
     ['origin', 'Country of origin, for the label', Boolean(d.care.countryOfOrigin)],
     ['fibre', 'Fibre content, for the label', Boolean(d.care.fiber)],
-    ['sourcing', 'Where each material comes from (a supplier or a reference)', d.bom.length > 0 && d.bom.every(r => noPlaceholder(r.supplier) || noPlaceholder(r.ref))]
+    ['sourcing', 'Where each material comes from (a supplier or a reference)', d.bom.length > 0 && d.bom.every(r => noPlaceholder(r.supplier) || noPlaceholder(r.ref))],
+    ['sampling', 'Which samples are needed and by when (proto, fit, pre-production)', d.sampling.length > 0],
+    ['inspection', 'How it will be inspected: AQL or a written standard, and any tests', Boolean(d.inspection.aql || d.inspection.standard || d.inspection.tests.length)],
+    ['commercial', 'To sell it: price, weight, HS code and a SKU for every size and colour (Materials tab, Commercial)', globalThis.FBCommercial.missing(d).length === 0]
   ].map(([key, label, ok]) => ({ key, label, ok }));
   return { checks, missing: checks.filter(c => !c.ok).map(c => c.label), complete: checks.every(c => c.ok), recommended, missingRecommended: recommended.filter(c => !c.ok).map(c => c.label) };
 }
@@ -301,6 +312,13 @@ export function normalizeVerification(input, version) {
   return { version: Number(version) || 0, acks, clientSign: sig(v.clientSign), brandSign: sig(v.brandSign), factorySign: sig(v.factorySign), changes };
 }
 
+const isFootwearPack = d => d.sketches.some(s => ['lateral', 'medial', 'outsole'].includes(s.view)) || isFootwear(`${d.style.category} ${d.style.styleName}`);
+// The two views a factory needs to see (front and back; lateral and medial for footwear) that have no picture yet.
+export function missingViews(data) {
+  const d = normalizeTechPack(data), pair = isFootwearPack(d) ? ['lateral', 'medial'] : ['front', 'back'];
+  return pair.filter(v => !d.sketches.some(s => s.view === v && s.image));
+}
+
 // Readiness of a published version: the sign-off checklist from the reel, computed, never hand-ticked.
 export function techPackReadiness(data, verification) {
   const d = normalizeTechPack(data);
@@ -309,9 +327,9 @@ export function techPackReadiness(data, verification) {
   const pendingCallouts = callouts.filter(c => !v.acks[c.key]);
   const sample = d.style.sampleSize;
   const incompletePom = d.pom.filter(r => !(r.tolerance && (r.values[sample] || Object.values(r.values).some(Boolean))));
-  const footwear = d.sketches.some(s => ['lateral', 'medial', 'outsole'].includes(s.view)) || isFootwear(`${d.style.category} ${d.style.styleName}`);
-  const viewA = footwear ? 'lateral' : 'front', viewB = footwear ? 'medial' : 'back';
-  const front = d.sketches.some(s => s.view === viewA && s.image), back = d.sketches.some(s => s.view === viewB && s.image);
+  const footwear = isFootwearPack(d);
+  const viewA = footwear ? 'lateral' : 'front', viewB = footwear ? 'medial' : 'back', missing = missingViews(d);
+  const front = !missing.includes(viewA), back = !missing.includes(viewB);
   const noArt = !d.artwork.length; // a plain product has no artwork to approve: that is not a gap
   const artworkOk = noArt || d.artwork.every(a => a.image && a.pantones.length);
   const placed = d.artwork.flatMap(a => a.placements.filter(p => p.widthIn));
@@ -334,11 +352,12 @@ export function techPackReadiness(data, verification) {
 // What clients and factories receive: the published snapshot only, never the live draft.
 export function publishedTechPackView(row, extra = {}) {
   const data = normalizeTechPack(row.published_data);
+  if (extra.audience === 'factory') data.commercial = globalThis.FBCommercial.forFactory(data.commercial); // what the client charges is not the factory's business
   const verification = normalizeVerification(row.verification, row.version);
   return {
     audience: extra.audience || 'client',
     shareLabel: extra.shareLabel || null,
-    product: { id: row.product_id, title: row.title, productType: row.product_type, imageUrl: row.shopify_image_url || null, imageAlt: row.shopify_image_alt || null, clientName: row.client_name, projectName: row.project_name || null },
+    product: { id: row.product_id, title: row.title, productType: row.product_type, imageUrl: row.shopify_image_url || null, imageAlt: row.shopify_image_alt || null, clientName: row.client_name, projectName: row.project_name || null, projectId: extra.audience === 'factory' ? null : (row.project_id || null) },
     techPack: {
       version: row.version, publishedAt: row.published_at, lockedAt: row.locked_at || null,
       data,
@@ -383,6 +402,7 @@ export function packStrings(data) {
   d.construction.forEach(r => { add(r.area); add(r.detail); });
   d.colorways.forEach(c => { add(c.name); add(c.notes); });
   d.labels.forEach(r => { add(r.item); add(r.spec); add(r.placement); });
+  d.sampling.forEach(r => { add(r.stage); add(r.notes); }); add(d.inspection.standard); d.inspection.tests.forEach(r => { add(r.name); add(r.method); add(r.accept); });
   Object.values(d.packaging).forEach(add);
   Object.values(d.care).forEach(add);
   if (d.electronics.enabled) {
@@ -436,6 +456,8 @@ export function mergeClientEdits(orig, current, drafted) {
   }
   const keep = (key, by) => { if (!same(c[key], o[key])) { const seen = new Set(c[key].map(by)); out[key] = [...c[key], ...out[key].filter(r => !seen.has(by(r)))].slice(0, LIMITS[key] || 50); } };
   keep('bom', r => r.component.toLowerCase()); keep('construction', r => r.area.toLowerCase()); keep('colorways', r => r.name.toLowerCase()); keep('labels', r => r.item.toLowerCase());
+  out.sampling = c.sampling; out.inspection = c.inspection; // the assistant does not plan samples or write inspection standards: whatever is there is a person's
+  out.commercial = c.commercial; // the assistant never drafts prices, SKUs or weights: whatever is there is the team's or the client's
   for (const k of Object.keys(o.packaging)) if (c.packaging[k] !== o.packaging[k]) out.packaging[k] = c.packaging[k];
   for (const k of Object.keys(o.care)) if (c.care[k] !== o.care[k]) out.care[k] = c.care[k];
   if (!same(c.electronics, o.electronics)) out.electronics = c.electronics; // whatever the client entered under Electronics is theirs

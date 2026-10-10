@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync } from 'node:fs';
 import { unlink, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
@@ -30,7 +30,7 @@ import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QU
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
 import { normalizeOfferSubmission, normalizeOfferAmount, nextOfferMove, offerView } from './offers.js';
-import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
+import { missingViews, normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPackView, normalizeVerification, techPackReadiness, emptyVerification, publishGate, isInlineImage, packStrings, mergeClientEdits, cardFieldsFromPack } from './techpack.js';
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
@@ -87,7 +87,7 @@ await app.register(multipart, {
 app.addHook('onSend', async (_req, reply, payload) => {
   reply
     .header('strict-transport-security', 'max-age=31536000')
-    .header('content-security-policy', "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    .header('content-security-policy', reply.getHeader('content-security-policy') || "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     .header('x-content-type-options', 'nosniff')
     .header('referrer-policy', 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
@@ -628,6 +628,7 @@ app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
+app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));
 app.get('/elec.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./elec.js',import.meta.url),'utf8')));
 app.get('/pantone-c.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./pantone-c.js',import.meta.url),'utf8')));
 app.get('/stl-viewer.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./stl-viewer.js',import.meta.url),'utf8')));
@@ -2278,7 +2279,8 @@ function techPackPayload(row){
   const publishedData=row.published_data?normalizeTechPack(row.published_data):null,verification=normalizeVerification(row.verification,row.version);
   return {id:row.id,productId:row.product_id,version:row.version,status:row.status,initiatedBy:row.initiated_by||'brand',submittedAt:row.submitted_at||null,source:row.source||'hub',followupSentAt:row.followup_sent_at||null,aiStatus:row.ai_status||null,aiReviewedAt:row.ai_reviewed_at||null,aiError:row.ai_error||null,aiAttempts:row.ai_attempts||0,billing:row.billing||null,paidAt:row.paid_at||null,checkoutUrl:row.pay_invoice_url||null,data:normalizeTechPack(row.data),publishedAt:row.published_at,publishedData,
     verification,readiness:publishedData?techPackReadiness(publishedData,verification):null,lockedAt:row.locked_at||null,
-    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row)};
+    revisions:Array.isArray(row.revisions)?row.revisions:[],updatedAt:row.updated_at,createdAt:row.created_at,etag:packEtag(row),
+    viewRequest:(()=>{const r=row.view_request;if(!r||!Array.isArray(r.views))return null;const still=missingViews(row.data).filter(v=>r.views.includes(v));return still.length?{views:still,at:r.at}:null})()};
 }
 // Applies a change to the verification chain of the CURRENT published version only; a concurrent publish makes the write a no-op.
 // The tech pack PDF is filed in the product's folder when a version is published and re-made when its signatures or pictures change.
@@ -2407,6 +2409,57 @@ async function withApprovedHero(packId,data){
     return {...data,renderings:[{id:`hero-${String(h.id).replace(/-/g,"").slice(0,16)}`,name:'Reference picture',note:'The approved picture this pack is built from',image},...rest].slice(0,6)};
   }catch(e){app.log.warn({err:e.message,packId},'approved hero not added to the published copy');return data}
 }
+// ---- Pack pictures as links. The pictures live inside the pack, so anything that needs them as files (the Shopify export most of all: Shopify fetches media from a URL)
+// gets a signed, expiring link to one picture of the PUBLISHED pack. The link is the permission: it names the product, the picture and an expiry, and is signed with the
+// server's secret, so it cannot be edited into another picture or kept forever. A draft is never served this way.
+const mediaSig=(pid,key,exp)=>createHmac('sha256',Buffer.from(secret)).update(`media|${pid}|${key}|${exp}`).digest('base64url').slice(0,32);
+const mediaUrl=(pid,key,ttl=3600)=>{const exp=Math.floor(Date.now()/1000)+ttl;return `${clientHubUrl}/m/${pid}/${encodeURIComponent(key)}/${exp}/${mediaSig(pid,key,exp)}`};
+function packMedia(data){
+  const d=normalizeTechPack(data),out=[];
+  d.sketches.forEach(sk=>{if(sk.image)out.push({key:`view.${sk.id}`,kind:'view',name:`${sk.view}${sk.label?' · '+sk.label:''}`,uri:sk.image});if(sk.hero?.image)out.push({key:`hero.${sk.id}`,kind:'hero',name:`${sk.view} · reference picture`,uri:sk.hero.image})});
+  d.renderings.forEach(r=>{if(r.image)out.push({key:`render.${r.id}`,kind:'rendering',name:r.name||'Rendering',uri:r.image})});
+  d.artwork.forEach(a=>{if(a.image)out.push({key:`art.${a.id}`,kind:'artwork',name:a.name||'Artwork',uri:a.image});if(a.clear)out.push({key:`artclear.${a.id}`,kind:'artwork',name:`${a.name||'Artwork'} · transparent`,uri:a.clear})});
+  return out.map(m=>{const x=/^data:(image\/[a-z+]+);base64,(.+)$/i.exec(m.uri);return x?{...m,mime:x[1].toLowerCase(),b64:x[2]}:null}).filter(Boolean);
+}
+const mediaList=(pid,row)=>packMedia(row.published_data).map(m=>({key:m.key,kind:m.kind,name:m.name,mime:m.mime,bytes:Math.floor(m.b64.length*3/4),url:mediaUrl(pid,m.key)}));
+app.get('/m/:pid/:key/:exp/:sig',async(req,reply)=>{
+  const {pid,key,exp,sig}=req.params;
+  if(!UUID_RE.test(String(pid))||!/^\d{9,11}$/.test(String(exp))||Number(exp)<Date.now()/1000)return reply.code(404).send({error:'This link has expired'});
+  const want=Buffer.from(mediaSig(pid,key,exp)),got=Buffer.from(String(sig||''));
+  if(want.length!==got.length||!timingSafeEqual(want,got))return reply.code(404).send({error:'Not found'});
+  const row=(await pool.query('select published_data from tech_packs where product_id=$1 and published_at is not null',[pid])).rows[0];if(!row)return reply.code(404).send({error:'Not found'});
+  const m=packMedia(row.published_data).find(x=>x.key===key);if(!m)return reply.code(404).send({error:'Not found'});
+  return reply.type(m.mime).header('cache-control','private, max-age=300').header('content-security-policy',"default-src 'none'; style-src 'unsafe-inline'; sandbox").header('x-content-type-options','nosniff').send(Buffer.from(m.b64,'base64'));
+});
+app.get('/v1/admin/products/:id/tech-pack/media',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and published_at is not null',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Publish the tech pack first'});
+  return {version:row.version,media:mediaList(req.params.id,row)};
+});
+app.get('/v1/products/:id/tech-pack/media',{preHandler:authenticate},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Tech pack not found'});
+  const row=(await pool.query('select published_data,version from tech_packs where product_id=$1 and client_id=$2 and published_at is not null',[req.params.id,req.auth.clientId||null])).rows[0];if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  return {version:row.version,media:mediaList(req.params.id,row)};
+});
+// Staff ask the client for the view the pack lacks (instead of publishing past the gate with a typed reason): a message in the project thread, an email, and a banner
+// in the client's editor with a button that adds the view. The request clears itself the moment the picture is there.
+app.post('/v1/admin/products/:id/tech-pack/request-views',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const ctx=await loadAdminTechPack(req.params.id);if(!ctx||!ctx.techPack)return reply.code(404).send({error:'Tech pack not found'});
+  const missing=missingViews(ctx.techPack.data);if(!missing.length)return reply.code(409).send({error:'Both views are already in the pack'});
+  const names=missing.join(' and '),title=ctx.product.title;
+  const note=String(req.body?.note||'').trim().slice(0,400),link=`${clientHubUrl}/tech-packs/${ctx.product.id}`;
+  await pool.query(`update tech_packs set view_request=$2 where id=$1`,[ctx.techPack.id,JSON.stringify({views:missing,at:new Date().toISOString(),by:req.auth.email||'Future Basics'})]);
+  const text=`To finish your tech pack for ${title} we need a picture of the ${names} ${missing.length>1?'views':'view'}: a photo, a sketch or a screenshot of that side. Open the tech pack, go to Callouts and use "Add the ${missing[0]} view" (you can pick one from your saved files).${note?`\n\n${note}`:''}`;
+  if(ctx.product.project_id)await pool.query(`insert into project_messages(project_id,client_id,author_id,author_role,body) values($1,$2,$3,'admin',$4)`,[ctx.product.project_id,ctx.product.client_id,req.auth.sub,text]).catch(()=>{});
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'tech-pack',$2,'product',$3)`,[ctx.product.client_id,`We need the ${names} ${missing.length>1?'views':'view'} for ${title}`,ctx.product.id]);
+  await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[ctx.product.client_id,ctx.product.id,req.auth.sub,`Asked the client for the ${names} ${missing.length>1?'views':'view'} of ${title}`,{techPackId:ctx.techPack.id,views:missing}]).catch(()=>{});
+  let emailed=false;
+  if(ctx.product.client_slug!=='future-basics'&&ctx.product.client_contact_email){
+    const first=String(ctx.product.client_contact_name||'').split(' ')[0]||'there';
+    emailed=await sendHubEmail({to:ctx.product.client_contact_email,subject:`One more picture for your tech pack — ${title}`,html:hubEmailShell('One more picture for your tech pack',`<p>Hi ${emailEscape(first)},</p><p>To finish the tech pack for <strong>${emailEscape(title)}</strong> we need a picture of the <strong>${emailEscape(names)}</strong> ${missing.length>1?'views':'view'}: a photo, a sketch or a screenshot of that side. You can pick one from your saved files or upload it.</p>${note?`<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>`:''}${hubButton(link,'Add the picture')}`)}).catch(()=>false);
+  }
+  return {requested:missing,emailed};
+});
 app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   if(!ctx.techPack)return reply.code(409).send({error:'Save the tech pack before publishing it'});
@@ -2419,7 +2472,7 @@ app.post('/v1/admin/products/:id/tech-pack/publish',{preHandler:[authenticate,ad
   if(!gate.ok&&override.length<5){
     let started=false;
     if(aiEnabled()&&(!lastCheck||(lastCheck.status!=='pending'&&gate.problems.some(p=>/spec check has not run|changed after the last spec check/.test(p))))){const r=await startSpecCheck({...ctx.techPack},{trigger:'publish',actor:req.auth.sub}).catch(()=>null);started=Boolean(r?.id)}
-    return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started});
+    return reply.code(409).send({error:`Not ready to publish: ${gate.problems.join('; ')}${started?'. The spec check has started — try again in a minute.':''}`,problems:gate.problems,needsOverride:true,checkStarted:started,missingViews:missingViews(ctx.techPack.data)});
   }
   if(!gate.ok)note=[note,`Published before every check passed: ${override}`].filter(Boolean).join(' · ');
   let draftNow=ctx.techPack.data;
@@ -2659,7 +2712,7 @@ app.delete('/v1/admin/tech-pack-shares/:id',{preHandler:[authenticate,adminOnly]
 });
 app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=>{
   if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return reply.code(404).send({error:'Tech pack not found'});
-  const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+  const row=(await pool.query(`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name,p.project_id
     from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id
     where tp.product_id=$1 and tp.client_id=$2 and tp.published_at is not null
     and not exists(select 1 from projects ap where ap.id=p.project_id and (ap.archived_at is not null or ap.status in ('archive','archived')))`,[req.params.id,req.auth.clientId])).rows[0];
@@ -4582,7 +4635,7 @@ app.post('/v1/admin/products/:id/tech-pack/reopen',{preHandler:[authenticate,adm
   return {techPack:techPackPayload(row)};
 });
 // Client approval: the brand signs first, from their hub. It releases the pack to Future Basics and then the factory.
-const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name
+const PUBLISHED_VIEW_SQL=`select tp.product_id,tp.version,tp.published_data,tp.published_at,tp.revisions,tp.verification,tp.locked_at,tp.translations,p.title,p.product_type,p.shopify_image_url,p.shopify_image_alt,c.name client_name,pr.name project_name,p.project_id
   from tech_packs tp join products p on p.id=tp.product_id join clients c on c.id=p.client_id left join projects pr on pr.id=p.project_id`;
 app.post('/v1/products/:id/tech-pack/approve',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role!=='client')return reply.code(403).send({error:'Only the client approves their tech pack'});
@@ -4874,7 +4927,9 @@ app.post('/v1/invite/:code',async(req,reply)=>{
 });
 // ---- Messages between Future Basics and a factory about one pack: one thread per factory link, never shown to the client ----
 const cleanMsg=v=>String(v??'').replace(/\r/g,'').trim().slice(0,2000);
-const msgRow=(m,label)=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='admin'?'Future Basics':(m.author_name||label||'Factory'),body:m.body,created_at:m.created_at});
+const msgRow=(m,label)=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='admin'?'Future Basics':(m.author_name||label||'Factory'),body:m.callout_label?`About “${m.callout_label}”: ${m.body}`:m.body,rawBody:m.body,calloutKey:m.callout_key||null,calloutLabel:m.callout_label||null,resolved:Boolean(m.resolved_at),created_at:m.created_at});
+// a callout key checked against the pack the factory is looking at: {key,label} or null when it names nothing in it
+const calloutOf=(published,key)=>{const k=String(key||'').slice(0,60);if(!k)return null;const r=techPackReadiness(normalizeTechPack(published),emptyVerification(0)).callouts.find(c=>c.key===k);return r?{key:k,label:String(r.label||'').slice(0,80)}:null};
 app.get('/v1/tp/:token/messages',async(req,reply)=>{
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const rows=(await pool.query('select * from factory_messages where share_id=$1 order by created_at',[row.share_id])).rows;
@@ -4885,8 +4940,9 @@ app.post('/v1/tp/:token/messages',async(req,reply)=>{
   if(!throttle(`fmsg:${req.params.token}`,{limit:30,windowMs:3600_000}))return reply.code(429).send({error:'Too many messages from this link. Please try again in an hour.'});
   const {row,error}=await loadShareByToken(req.params.token);if(error)return reply.code(error.code).send({error:error.message});
   const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
-  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_name,body,factory_read_at) values($1,$2,'factory',$3,$4,now()) returning *`,[row.share_id,row.id,row.share_label,body])).rows[0];
-  const summary=`${row.share_label} wrote about ${row.title}: ${body.slice(0,140)}`;
+  const about=req.body?.key?calloutOf(row.published_data,req.body.key):null;if(req.body?.key&&!about)return reply.code(400).send({error:'Unknown callout'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_name,body,factory_read_at,callout_key,callout_label) values($1,$2,'factory',$3,$4,now(),$5,$6) returning *`,[row.share_id,row.id,row.share_label,body,about?.key||null,about?.label||null])).rows[0];
+  const summary=`${row.share_label} ${about?`asked about “${about.label}” on`:'wrote about'} ${row.title}: ${body.slice(0,140)}`;
   await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,summary,{techPackId:row.id,shareId:row.share_id,messageId:m.id}]).catch(()=>{});
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'factory-message',$2,'product',$3)`,[row.client_id,summary,row.product_id]).catch(()=>{});
   await notifyStaff(`Factory message: ${row.share_label} · ${row.title}`,`<p><strong>${emailEscape(row.share_label)}</strong> wrote about <strong>${emailEscape(row.title)}</strong>:</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${hubButton(`${workHubUrl}/tech-packs/${row.product_id}`,'Open the tech pack and answer')}`).catch(()=>{});
@@ -4911,7 +4967,8 @@ app.get('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,admi
 app.post('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const sh=await loadShareForStaff(req.params.id);if(!sh)return reply.code(404).send({error:'Link not found'});
   const body=cleanMsg(req.body?.body);if(!body)return reply.code(400).send({error:'Write a message first'});
-  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_id,author_name,body,staff_read_at) values($1,$2,'admin',$3,'Future Basics',$4,now()) returning *`,[sh.share_id,sh.id,req.auth.sub,body])).rows[0];
+  const pub=req.body?.key?(await pool.query('select published_data from tech_packs where id=$1',[sh.id])).rows[0]?.published_data:null,about=req.body?.key?calloutOf(pub,req.body.key):null;if(req.body?.key&&!about)return reply.code(400).send({error:'Unknown callout'});
+  const m=(await pool.query(`insert into factory_messages(share_id,tech_pack_id,author_role,author_id,author_name,body,staff_read_at,callout_key,callout_label) values($1,$2,'admin',$3,'Future Basics',$4,now(),$5,$6) returning *`,[sh.share_id,sh.id,req.auth.sub,body,about?.key||null,about?.label||null])).rows[0];
   await pool.query(`update factory_messages set staff_read_at=now() where share_id=$1 and author_role='factory' and staff_read_at is null`,[sh.share_id]); // answering counts as having read what came before
   // tell the factory: by email when we have one for it, with a link when the link can be worked out again (assigned and referred packs)
   const info=(await pool.query(`select s.email,s.assigned,s.referral,s.supplier_id,su.contact_email,su.page_epoch from tech_pack_shares s left join suppliers su on su.id=s.supplier_id where s.id=$1`,[sh.share_id])).rows[0];
@@ -4921,6 +4978,21 @@ app.post('/v1/admin/tech-pack-shares/:id/messages',{preHandler:[authenticate,adm
     try{emailed=await sendHubEmail({to,replyTo:req.auth.email||intakeNotificationEmail,subject:`Future Basics wrote to you about ${sh.title}`,html:hubEmailShell(`About ${sh.title}`,`<p>Hello ${emailEscape(sh.share_label)},</p><blockquote style="margin:8px 0;padding:8px 12px;border-left:3px solid #ccc">${emailEscape(body).replace(/\n/g,'<br>')}</blockquote>${link?hubButton(link,'Open the tech pack and reply'):'<p>Open your tech pack link and use the <strong>Messages</strong> tab to reply.</p>'}`)})}catch(e){app.log.warn({err:e.message,shareId:sh.share_id},'factory message email not sent')}
   }
   return reply.code(201).send({message:msgRow(m,sh.share_label),emailed:Boolean(emailed)});
+});
+// Staff: the questions factories asked about one callout each, still open or answered, across every link on the pack. A question is answered when staff replied about the
+// same callout after it, or marked it resolved.
+app.get('/v1/admin/products/:id/tech-pack/callout-questions',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const tp=(await pool.query('select id from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!tp)return {questions:[],open:0};
+  const rows=(await pool.query(`select m.*,s.label share_label from factory_messages m join tech_pack_shares s on s.id=m.share_id where m.tech_pack_id=$1 and m.callout_key is not null order by m.created_at`,[tp.id])).rows;
+  const out=rows.filter(m=>m.author_role==='factory').map(q=>{const replies=rows.filter(r=>r.author_role==='admin'&&r.share_id===q.share_id&&r.callout_key===q.callout_key&&new Date(r.created_at)>new Date(q.created_at));
+    return {id:q.id,shareId:q.share_id,shareLabel:q.share_label,key:q.callout_key,label:q.callout_label,body:q.body,at:q.created_at,answered:Boolean(q.resolved_at)||replies.length>0,resolved:Boolean(q.resolved_at),replies:replies.map(r=>({body:r.body,at:r.created_at}))}});
+  return {questions:out,open:out.filter(q=>!q.answered).length};
+});
+app.post('/v1/admin/tech-pack-messages/:id/resolve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
+  const r=(await pool.query(`update factory_messages set resolved_at=case when $2 then now() else null end,staff_read_at=coalesce(staff_read_at,now()) where id=$1 and author_role='factory' and callout_key is not null returning id,resolved_at`,[req.params.id,req.body?.resolved!==false])).rows[0];
+  return r?{id:r.id,resolved:Boolean(r.resolved_at)}:reply.code(404).send({error:'Question not found'});
 });
 // Staff: the links sent for quotation, and what came back, side by side at one quantity.
 app.get('/v1/admin/products/:id/tech-pack/quotes',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
