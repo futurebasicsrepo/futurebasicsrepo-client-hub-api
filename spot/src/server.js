@@ -139,6 +139,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // Card payments are only taken for carts Spot can actually buy. The
   // sandbox has no real stores, so everything is orderable there.
   spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
+  // The store's real total (shipping, tax) before anyone pays (direct.js).
+  spot.quoter = (cart, ship) => spot.direct.quote(cart, ship);
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
   const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });

@@ -272,7 +272,22 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
         throw err;
       }
     }
-    const goods = items.reduce((n, i) => n + (Number(i.price_cents) || 0) * (i.quantity == null ? 1 : Number(i.quantity) || 0), 0) + (Math.round(Number(extras)) || 0);
+    // With an address to ship to, the store's own checkout says what this
+    // really costs (shipping and tax), and the rules and the payment use
+    // that, not a guess. Stores that can't say keep the estimate.
+    const subtotal = items.reduce((n, i) => n + (Number(i.price_cents) || 0) * (i.quantity == null ? 1 : Number(i.quantity) || 0), 0);
+    const shipKnown = b.ship_to || (req.spotUserId ? db.users.byId(req.spotUserId)?.shipping : null);
+    const quoteUrl = merchant?.url || items.find((i) => i?.url)?.url;
+    let quote = null;
+    if (shipKnown && spot.quoter && quoteUrl) {
+      try {
+        quote = await spot.quoter({ merchant: { ...merchant, url: merchant?.url || new URL(quoteUrl).origin }, items }, { ...shipKnown, email: shipKnown.email || 'quote@spotmeplease.com' });
+      } catch {
+        quote = null;
+      }
+      if (quote) extras = Math.max(0, quote.total_cents - subtotal);
+    }
+    const goods = subtotal + (Math.round(Number(extras)) || 0);
     // The store rule covers every link Spot might order from, not just the merchant's.
     const gateUrls = [...new Set([merchant?.url, ...items.map((i) => i?.url)].filter((u) => typeof u === 'string' && u))];
     const g = gate(req, agent, { cents: goods, storeUrl: gateUrls.length ? gateUrls : null, merchant: merchant?.name });
@@ -350,6 +365,11 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
           // Incomplete: they finish it on their page.
         }
       }
+    }
+    // Keep the store's answer with the cart, so paying doesn't ask again.
+    if (quote) {
+      const cur = spot.byId(cart.id);
+      if (cur.requester?.shipping) spot.patch(cart.id, (c) => ({ ...c, quote: { total_cents: quote.total_cents, shipping_cents: quote.shipping_cents, tax_cents: quote.tax_cents, key: spot.quoteKey(c), at: Date.now() } }), 'store_quote');
     }
     note(req, agent, g.route ? 'ask_routed' : 'ask_created', { ask_id: cart.token, item: cart.items[0]?.title, merchant: cart.merchant.name, cents: cart.cart_cents, for: forSelf ? 'self' : 'other', ...(g.route ? { reason: g.reason } : {}) });
     if (g.route) {
