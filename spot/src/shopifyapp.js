@@ -292,7 +292,10 @@ export function registerShopifyApp(app, { db, env, urlFor, cfg, fetchImpl = fetc
       log.info?.({ shop }, 'shopify app installed');
       return t.access_token;
     };
-    let token = (await tokenFor(row)) || (await fresh());
+    // A token from before the store granted read_themes can't read the theme:
+    // trade this session token for one with whatever the store has granted now.
+    const granted = String(row?.scopes || '').split(',').map((x) => x.trim());
+    let token = (row && !granted.includes('read_themes') ? null : await tokenFor(row)) || (await fresh());
     let info;
     try {
       info = await onboard(shop, token, row);
