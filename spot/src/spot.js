@@ -996,6 +996,7 @@ export function publicCart(cart) {
     cart_cents: cart.cart_cents,
     cushion_cents: cart.cushion_cents || 0,
     fee_cents: cart.fee_cents,
+    fee_keep_cents: cart.fee_keep_cents ?? null,
     // Paid on the store's own checkout: can the payer go ahead yet?
     pay_at_store: cart.settle === 'direct' ? { ready: Boolean(cart.requester.shipping), started: Boolean(cart.direct?.checkout_id), store_total_cents: cart.direct?.total_cents ?? null } : null,
     total_cents: cart.total_cents,

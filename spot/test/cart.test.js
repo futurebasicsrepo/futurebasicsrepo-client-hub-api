@@ -15,7 +15,7 @@ const base = () => ({
 
 test('totals: fee is on items + extras; the payer also covers the cushion (unused comes back); zero for handoff', () => {
   const items = [{ price_cents: 2500, quantity: 2 }];
-  assert.deepEqual(computeTotals(items, 500, 'card', cfg), { subtotal_cents: 5000, extras_cents: 500, cart_cents: 5500, cushion_cents: 275, fee_cents: 220, total_cents: 5995 });
+  assert.deepEqual(computeTotals(items, 500, 'card', cfg), { subtotal_cents: 5000, extras_cents: 500, cart_cents: 5500, cushion_cents: 275, fee_cents: 220, fee_keep_cents: 220, total_cents: 5995 });
   assert.equal(computeTotals(items, 500, 'card', cfg, { cushion: false }).total_cents, 5720, 'flights: exact fare, no cushion');
   const h = computeTotals(items, 0, 'handoff', cfg);
   assert.equal(h.fee_cents, 0);
