@@ -372,7 +372,7 @@ export function draftFromDescription(text) {
 
 const LOOKUP_SCHEMA_HINT = `{"found": true|false, "merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00"}`;
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl } = {}) {
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, sizes = '' } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   if (url) return fromUrl(url);
@@ -384,7 +384,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl } 
       role: 'user',
       content: `Someone wants a friend to buy them this: "${text.replace(/"/g, "'")}"
 
-Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave. Reply with ONLY this JSON and nothing else:
+Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${String(sizes).replace(/"/g, "'").slice(0, 300)}) and put it in "variant".` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
 Set "found" to false if you can't find a specific product with a current price.`,
     },
@@ -422,7 +422,26 @@ Set "found" to false if you can't find a specific product with a current price.`
   } catch {
     return draftFromDescription(text);
   }
-  return draftFromLookup(v, text);
+  return withPhoto(draftFromLookup(v, text), fromUrl);
+}
+
+// Search finds the page, not a reliable image URL: read the photo (and the
+// price, if search missed it) off the product page itself. Best effort.
+const PHOTO_WAIT_MS = 6000;
+export async function withPhoto(draft, fromUrl) {
+  const item = draft.items?.[0];
+  if (draft.source !== 'lookup' || !item?.url || item.image_url) return draft;
+  let timer;
+  try {
+    const page = await Promise.race([fromUrl(item.url), new Promise((_, no) => (timer = setTimeout(() => no(new Error('slow')), PHOTO_WAIT_MS)))]);
+    const found = page?.items?.[0];
+    if (!found || page.warning) return draft;
+    return { ...draft, items: [{ ...item, image_url: found.image_url || null, price_cents: item.price_cents || found.price_cents || null }, ...draft.items.slice(1)] };
+  } catch {
+    return draft;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function draftFromLookup(v, text) {

@@ -5,7 +5,7 @@
 //   POST /v1/auth/verify  { email, code }   → session cookie (30 days)
 //   POST /v1/auth/logout
 //   GET  /v1/me                             → profile, Spots, "ready for you", keys
-//   POST /v1/me           { name, shipping, travelers, venmo, cashtag }
+//   POST /v1/me           { name, shipping, travelers, venmo, cashtag, sizes }
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
@@ -198,10 +198,11 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     json(req);
     const user = me(req);
     const b = req.body || {};
-    const next = { phone: user.phone || null, name: user.name || null, shipping: user.shipping || null, travelers: user.travelers || [], venmo: user.venmo || null, cashtag: user.cashtag || null };
+    const next = docOf(user);
     if (b.name !== undefined) next.name = String(b.name || '').trim().slice(0, 60) || null;
     if (b.shipping !== undefined) next.shipping = b.shipping ? validateShipping({ ...b.shipping, email: b.shipping.email || user.email || '' }) : null;
     if (b.travelers !== undefined) next.travelers = cleanTravelers(b.travelers);
+    if (b.sizes !== undefined) next.sizes = cleanSizes(b.sizes);
     // Where Spot sends money for stores it can't buy from (Amazon).
     for (const [k, prefix, what] of [['venmo', '@', 'Venmo handle'], ['cashtag', '$', 'Cash App $cashtag']]) {
       if (b[k] === undefined) continue;
@@ -260,7 +261,7 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
       // One phone per account: the old number stops signing you in.
       for (const i of db.identities.ofUser(user.id)) if (i.provider === 'phone' && i.subject !== to.phone) db.identities.remove('phone', i.subject);
       if (!db.identities.userId('phone', to.phone)) db.identities.add('phone', to.phone, user.id);
-      db.users.save(user.id, { phone: to.phone, name: now.name || null, shipping: now.shipping || null, travelers: now.travelers || [], venmo: now.venmo || null, cashtag: now.cashtag || null });
+      db.users.save(user.id, { ...docOf(now), phone: to.phone });
     }
     return { user: profile(db.users.byId(user.id)), merged };
   });
@@ -379,7 +380,31 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
 }
 
 function profile(u) {
-  return { email: u.email || null, phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [], venmo: u.venmo || null, cashtag: u.cashtag || null };
+  return { email: u.email || null, ...docOf(u) };
+}
+
+// The saved profile, as stored (users.doc).
+function docOf(u) {
+  return { phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [], venmo: u.venmo || null, cashtag: u.cashtag || null, sizes: u.sizes || null };
+}
+
+// Clothing and shoe sizes, so a lookup (or your AI) picks the right one
+// without asking. Free text per kind, e.g. tops "M", shoes "US 10.5".
+export const SIZE_KINDS = { tops: 'Tops', bottoms: 'Pants', shoes: 'Shoes', dresses: 'Dresses', notes: 'Notes' };
+export function cleanSizes(v) {
+  if (!v || typeof v !== 'object') return null;
+  const out = {};
+  for (const k of Object.keys(SIZE_KINDS)) {
+    const t = typeof v[k] === 'string' ? v[k].trim().replace(/\s+/g, ' ').slice(0, k === 'notes' ? 200 : 30) : '';
+    if (t) out[k] = t;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// One line for a prompt or an AI: "tops M, pants 32x30, shoes US 10.5".
+export function sizesLine(sizes) {
+  if (!sizes) return '';
+  return Object.entries(SIZE_KINDS).filter(([k]) => sizes[k]).map(([k, label]) => `${label.toLowerCase()} ${sizes[k]}`).join(', ');
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;

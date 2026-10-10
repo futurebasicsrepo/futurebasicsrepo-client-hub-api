@@ -181,6 +181,12 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     <div class="two"><input name="venmo" placeholder="Venmo @handle" autocapitalize="off" aria-label="Venmo handle"><input name="cashtag" placeholder="Cash App $cashtag" autocapitalize="off" aria-label="Cash App cashtag"></div>
     <div class="btnrow"><button class="btn primary">Save</button><span class="ok-msg" id="payOk"></span></div>
   </form>
+  <form class="box f" id="sizeForm" style="margin-top:12px"><h3 style="font-size:18px;margin:0">Your sizes</h3><p class="sub" style="margin:0">So “What do you want?” and your AI pick the right size without asking. Say it however the store would: M, 32x30, US 10.5.</p>
+    <div class="two"><input name="tops" placeholder="Tops (e.g. M)" maxlength="30" aria-label="Tops size"><input name="bottoms" placeholder="Pants (e.g. 32x30)" maxlength="30" aria-label="Pants size"></div>
+    <div class="two"><input name="shoes" placeholder="Shoes (e.g. US 10.5)" maxlength="30" aria-label="Shoe size"><input name="dresses" placeholder="Dresses (e.g. 6)" maxlength="30" aria-label="Dress size"></div>
+    <input name="notes" placeholder="Anything else (e.g. wide feet, slim fit)" maxlength="200" aria-label="Fit notes">
+    <div class="btnrow"><button class="btn primary">Save sizes</button><span class="ok-msg" id="sizeOk"></span></div>
+  </form>
   <div class="box" style="margin-top:12px"><h3 style="font-size:18px;margin:0 0 6px">Travelers</h3><p class="sub" style="margin:0">Names exactly as on their ID.</p><div id="travs"></div>
     <form class="f" id="travForm" style="margin-top:10px"><div class="two"><input name="given_name" placeholder="First name" required aria-label="First name"><input name="family_name" placeholder="Last name" required aria-label="Last name"></div><div class="two"><label class="fl">Date of birth<input name="born_on" type="date" required></label><label class="fl">Gender on ID<select name="gender" required><option value="">Choose</option><option value="f">Female</option><option value="m">Male</option></select></label></div><div class="btnrow"><button class="btn ghost">Add traveler</button></div></form>
   </div>
@@ -233,7 +239,7 @@ async function load(){
     return '<div class="rcard"><a class="rinfo" href="'+esc(c.manage_url)+'"><b>'+(c.kind==='flight'?'✈️ ':c.kind==='train'?'🚆 ':'🛒 ')+esc(c.items[0]?.title||'Your cart')+'</b><small>'+esc(c.merchant.name)+' · '+usd(c.total_cents)+' · held until '+new Date(c.expires_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small></a>'
       +'<div class="racts"><a class="go" href="'+esc(c.manage_url)+'">Finish →</a>'+(canAsk?'<button type="button" class="go ghost" data-ask="'+esc(c.token)+'" data-url="'+esc(c.manage_url)+'">Ask someone to pay 💸</button>':'')+'</div></div>'}).join('');
   renderCarts();
-  const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';
+  const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';for(const el of $('#sizeForm').elements)if(el.name)el.value=(u.sizes||{})[el.name]||'';
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
   const NAMES={google:'Google',facebook:'Facebook'};
@@ -292,6 +298,8 @@ async function claimLocal(){let mine=[];try{mine=JSON.parse(localStorage.getItem
   if(links.length){try{await post('/v1/me/claim',{links})}catch{}}}
 $('#shipForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));const name=v.name;
   try{await post('/v1/me',{name,shipping:v.line1?{...v}:null});$('#shipOk').textContent='Saved';setTimeout(()=>$('#shipOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
+$('#sizeForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';
+  try{await post('/v1/me',{sizes:Object.fromEntries(new FormData(e.target))});$('#sizeOk').textContent='Saved';setTimeout(()=>$('#sizeOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
 $('#payForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';const v=Object.fromEntries(new FormData(e.target));
   try{await post('/v1/me',{venmo:v.venmo,cashtag:v.cashtag});$('#payOk').textContent='Saved';setTimeout(()=>$('#payOk').textContent='',2000);load()}catch(err){$('#err').textContent=err.message}});
 $('#travForm').addEventListener('submit',async e=>{e.preventDefault();const t=Object.fromEntries(new FormData(e.target));try{await post('/v1/me',{travelers:[...me.user.travelers,t]});e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
