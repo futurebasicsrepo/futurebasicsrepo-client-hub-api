@@ -43,16 +43,15 @@ A pressure test of every way into a tech pack and every hand-off on the way to a
 | Questions went to the pack, not to a callout | **Ask about this** on every callout. A factory's question is attached to the callout (and shows in its Messages thread with the callout named); staff see it open on that callout and answer in place or mark it resolved; the factory is emailed the answer; the client writes to their project thread with the callout named. |
 | New labels were English only | The changes card, acknowledge-all, questions, Commercial, samples and inspection are translated into the five factory languages, including numbered lines and the item-by-item change summary. |
 | No sample plan, no inspection standard | **Samples** (proto, fit, pre-production, top of production, with quantity, date and status) and **Inspection & tests** (AQL, level, written standard, test list) on the pack, in the diff, the PDF and the factory page. |
+| Open questions were invisible to staff outside the pack | A waiting callout question shows in the staff queue ("2 new messages, 1 about a callout") and clears when answered or resolved. The Materials table's Notes column is no longer squeezed. |
 | Pictures only existed inside the pack | **Signed links to every picture of the published pack** (`/m/…`, expiring, tamper-proof, sandboxed; staff and client list routes). This is what Shopify fetches media from. |
 
 ## Still open, in the order they will hurt
 
 1. **Pictures are still stored as base64 inside the pack JSON** (and again inside every published version). The signed links solve the export, not the size: a pack with forty callout photos is still megabytes in the database and in the page payload. The fix is a content-addressed picture store with the pack holding references; it touches the PDF, the check, the studio and the files folder, so it is its own change with its own test pass.
-2. **Open questions are not yet in the staff queues** (Message Center, "Waiting on us"). They show on the callout and in the Calls tab badge; a factory waiting for an answer should also appear where staff look first.
-3. **Staff publish still uses browser `confirm` and `prompt` boxes.** They work; they are not the experience the rest of the console has.
-4. **The Materials table's Notes column is squeezed** to a sliver at desktop width.
-5. **Browser dialogs** (the confirmation on "Acknowledge all") are English only.
-6. **No retail price per variant on the Shopify side yet** until the export is built; the data is ready.
+2. **Staff publish still uses browser `confirm` and `prompt` boxes.** They work; they are not the experience the rest of the console has.
+3. **Browser dialogs** (the confirmation on "Acknowledge all") are English only.
+4. **The Shopify export itself** is the next build; the data and the picture links are ready.
 
 ## Not verified here
 

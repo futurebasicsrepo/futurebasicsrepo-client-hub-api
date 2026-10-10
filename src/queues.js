@@ -55,7 +55,7 @@ export function factoryMessageItems(rows) {
   return rows.map(r => {
     const since = iso(r.first_at);
     return { key: `factory-msg:${r.share_id}`, stream: 'factories', kind: 'factory-message', owner: 'us', severity: age(since) > DAY ? 'urgent' : 'normal', clientId: r.client_id, clientName: r.client_name, productId: r.product_id, productTitle: r.product_title,
-      title: `${clip(r.label, 60)} wrote about this pack`, detail: `${r.n} new message${Number(r.n) === 1 ? '' : 's'}: "${clip(r.last_body, 100)}". Open the Sign tab to read and answer.`, since };
+      title: `${clip(r.label, 60)} wrote about this pack`, detail: `${r.n} new message${Number(r.n) === 1 ? '' : 's'}${Number(r.nq) ? ` (${r.nq} about a callout)` : ''}: "${clip(r.last_body, 100)}". ${Number(r.nq) ? 'Open the Calls tab for the callout questions, the Sign tab for the rest.' : 'Open the Sign tab to read and answer.'}`, since };
   });
 }
 export const AUTO_RETRY_LIMIT = 5;
@@ -77,7 +77,7 @@ export const sortItems = items => [...items].sort((a, b) => (order[a.severity] ?
 
 export async function buildQueues(pool, { learning = null } = {}) {
   const [fmsgs, analysis, packs, failedPacks, approvals, quotes, requests, leads, runs, qc, ships, samples, invoices, risky, ai, strangers, checks] = await Promise.all([
-    pool.query(`select m.share_id,s.label,count(*)::int n,min(m.created_at) first_at,(array_agg(m.body order by m.created_at desc))[1] last_body,p.id product_id,p.title product_title,c.id client_id,c.name client_name
+    pool.query(`select m.share_id,s.label,count(*)::int n,count(*) filter (where m.callout_key is not null)::int nq,min(m.created_at) first_at,(array_agg(m.body order by m.created_at desc))[1] last_body,p.id product_id,p.title product_title,c.id client_id,c.name client_name
       from factory_messages m join tech_pack_shares s on s.id=m.share_id join tech_packs tp on tp.id=m.tech_pack_id join products p on p.id=tp.product_id join clients c on c.id=p.client_id
       where m.author_role='factory' and m.staff_read_at is null and ${LIVE_CLIENT} and ${LIVE_PROJECT('p')} group by m.share_id,s.label,p.id,p.title,c.id,c.name order by min(m.created_at) limit 40`),
     pool.query(`select tp.id tp_id,tp.ai_completed_at,tp.updated_at,p.id product_id,p.title product_title,c.id client_id,c.name client_name,

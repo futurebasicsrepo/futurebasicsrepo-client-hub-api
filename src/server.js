@@ -4991,7 +4991,7 @@ app.get('/v1/admin/products/:id/tech-pack/callout-questions',{preHandler:[authen
 });
 app.post('/v1/admin/tech-pack-messages/:id/resolve',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Not found'});
-  const r=(await pool.query(`update factory_messages set resolved_at=case when $2 then now() else null end where id=$1 and author_role='factory' and callout_key is not null returning id,resolved_at`,[req.params.id,req.body?.resolved!==false])).rows[0];
+  const r=(await pool.query(`update factory_messages set resolved_at=case when $2 then now() else null end,staff_read_at=coalesce(staff_read_at,now()) where id=$1 and author_role='factory' and callout_key is not null returning id,resolved_at`,[req.params.id,req.body?.resolved!==false])).rows[0];
   return r?{id:r.id,resolved:Boolean(r.resolved_at)}:reply.code(404).send({error:'Question not found'});
 });
 // Staff: the links sent for quotation, and what came back, side by side at one quantity.
