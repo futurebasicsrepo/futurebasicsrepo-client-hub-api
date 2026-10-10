@@ -587,3 +587,19 @@ test('every pay page’s script runs (pay at store, Spot buys, handoff, after a 
     scriptsOk(html, label);
   }
 });
+
+test('a store that refuses signed requests gets unsigned ones (Shopify: AuthenticationFailed)', async () => {
+  const { ucpClient } = await import('../src/fulfill/ucp.js');
+  const seen = [];
+  const fetchImpl = async (u, init) => {
+    const signed = Boolean(init.headers.signature);
+    seen.push(signed);
+    const id = JSON.parse(init.body).id;
+    if (signed) return new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32001, message: 'AuthenticationFailed' } }), { status: 401, headers: { 'content-type': 'application/json' } });
+    return Response.json({ jsonrpc: '2.0', id, result: { structuredContent: { ucp: { status: 'success' }, products: [] } } });
+  };
+  const call = ucpClient({ endpoint: 'https://shop-a.example/api/ucp/mcp', transport: 'mcp', profileUrl: 'https://spot.example/.well-known/ucp', fetchImpl, allowPrivate: true, sign: () => ({ signature: 'sig1=:x:', 'signature-input': 'sig1=()', 'signature-agent': '"https://spot.example"' }) });
+  assert.deepEqual((await call('POST', '/catalog/lookup', { ids: [] })).products, []);
+  await call('POST', '/catalog/lookup', { ids: [] });
+  assert.deepEqual(seen, [true, false, false], 'signed once, then unsigned for that store');
+});

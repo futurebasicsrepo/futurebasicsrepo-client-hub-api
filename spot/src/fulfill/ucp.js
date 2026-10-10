@@ -135,8 +135,35 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
 // ─── Client ─────────────────────────────────────────────────────────────────
 // `sign(url)` → extra headers that prove the request is Spot's (HTTP Message
 // Signatures, see signing.js), so stores can tell Spot from other bots.
+// Stores that refuse Spot's signed requests (Shopify answers an agent it
+// hasn't registered with AuthenticationFailed, yet serves unsigned agents):
+// those are sent unsigned from then on.
+const unsignedHosts = new Set();
 export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
-  if (transport === 'mcp') return mcpClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign });
+  const host = (() => {
+    try {
+      return new URL(endpoint).host;
+    } catch {
+      return '';
+    }
+  })();
+  const make = (signer) => (transport === 'mcp' ? mcpClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign: signer }) : restClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign: signer }));
+  const unsigned = make(null);
+  if (!sign) return unsigned;
+  const signed = make(sign);
+  return async function call(method, path, body) {
+    if (unsignedHosts.has(host)) return unsigned(method, path, body);
+    try {
+      return await signed(method, path, body);
+    } catch (err) {
+      if (!(err instanceof UcpError) || (err.httpStatus !== 401 && !/authenticat/i.test(err.message))) throw err;
+      unsignedHosts.add(host);
+      return unsigned(method, path, body);
+    }
+  };
+}
+
+function restClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign }) {
   return async function call(method, path, body) {
     const u = await guard(`${endpoint}${path}`, allowPrivate);
     const headers = { accept: 'application/json', 'ucp-agent': `profile="${profileUrl}"`, 'request-id': randomUUID(), ...(sign ? sign(u) : {}) };

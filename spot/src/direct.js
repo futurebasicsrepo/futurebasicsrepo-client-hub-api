@@ -49,7 +49,18 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
 
     // Builds the store's checkout for this cart: its items, shipped to the
     // requester. The buyer is the payer (the store sends them its receipt).
-    async start(cart, { email = null } = {}) {
+    async start(cart, opts = {}) {
+      try {
+        return await this._start(cart, opts);
+      } catch (err) {
+        if (err instanceof CartError) throw err;
+        // The store's checkout failed: say so plainly (and log why), never "Something went wrong".
+        console.error('direct start failed', cart.token, err?.message);
+        throw new CartError(`${cart.merchant.name}’s checkout didn’t answer just now. Try again in a minute.`, 502);
+      }
+    },
+
+    async _start(cart, { email = null } = {}) {
       const d = await discovery(cart.merchant.url);
       if (!d?.lookup) throw new CartError(`${cart.merchant.name} doesn’t take direct checkout`, 409);
       const ship = cart.requester.shipping;
