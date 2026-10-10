@@ -422,6 +422,28 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists project_files_project_idx on project_files(project_id,created_at desc);
+    -- Files that belong to the room, not to one product: what a client sends outside a product (like a WhatsApp attachment) and what staff
+    -- add for them. A client sees what they sent themselves, and what staff marked client-visible. A factory assigned a pack in a project
+    -- sees the project's files staff marked factory-visible, and nothing else.
+    create table if not exists room_files (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      project_id uuid references projects(id) on delete set null,
+      product_id uuid references products(id) on delete set null,
+      uploader_id uuid references users(id) on delete set null,
+      uploader_role text not null check (uploader_role in ('admin','client')),
+      original_name text not null,
+      storage_name text unique not null,
+      mime_type text,
+      size_bytes bigint not null,
+      note text,
+      client_visible boolean not null default false,
+      factory_visible boolean not null default false,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists room_files_client_idx on room_files(client_id,created_at desc);
+    create index if not exists room_files_project_idx on room_files(project_id) where project_id is not null;
+    alter table project_files add column if not exists factory_visible boolean not null default false;
     alter table invoices add column if not exists project_id uuid references projects(id) on delete set null;
     alter table invoices add column if not exists product_id uuid references products(id) on delete set null;
     alter table invoices add column if not exists quote_id uuid references quotes(id) on delete set null;
