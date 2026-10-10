@@ -112,6 +112,17 @@ export function stripeProvider(env = process.env) {
   const stripe = new Stripe(env.STRIPE_SECRET_KEY);
   const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
   const cardholderId = env.STRIPE_ISSUING_CARDHOLDER || null;
+  // Issuing on Stripe's newer financial accounts needs the account cards
+  // draw from. Set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…), or Spot uses the
+  // account's one open financial account when Stripe asks for it.
+  let financialAccount = env.STRIPE_ISSUING_FINANCIAL_ACCOUNT || null;
+  async function findFinancialAccount() {
+    const res = await stripe.rawRequest('GET', '/v2/money_management/financial_accounts', {});
+    const open = (res?.data || []).filter((a) => !a.status || a.status === 'open');
+    if (open.length !== 1) throw new Error(`Stripe Issuing needs a financial account, and ${open.length ? `${open.length} are open` : 'none is open'}: set STRIPE_ISSUING_FINANCIAL_ACCOUNT (fa_…)`);
+    return open[0].id;
+  }
+  const needsFinancialAccount = (err) => err?.code === 'parameter_missing' && /financial_account/.test(err?.param || err?.message || '');
 
   return {
     name: 'stripe',
@@ -159,20 +170,31 @@ export function stripeProvider(env = process.env) {
       // real-time checks in the issuing_authorization.request webhook: even if
       // our webhook is down, the card can't go over the cart or be used at a
       // cash-like merchant.
-      const card = await stripe.issuing.cards.create(
-        {
-          cardholder: cardholderId,
-          currency: 'usd',
-          type: 'virtual',
-          status: 'active',
-          spending_controls: {
-            spending_limits: [{ amount: authLimitCents(cart.cart_cents), interval: 'all_time' }],
-            blocked_categories: BLOCKED_CATEGORIES,
+      const create = (fa) =>
+        stripe.issuing.cards.create(
+          {
+            cardholder: cardholderId,
+            currency: 'usd',
+            type: 'virtual',
+            status: 'active',
+            ...(fa ? { financial_account_v2: fa } : {}),
+            spending_controls: {
+              spending_limits: [{ amount: authLimitCents(cart.cart_cents), interval: 'all_time' }],
+              blocked_categories: BLOCKED_CATEGORIES,
+            },
+            metadata: { spot_cart_id: cart.id },
           },
-          metadata: { spot_cart_id: cart.id },
-        },
-        { idempotencyKey: `spot-card-${cart.id}` },
-      );
+          // A different body needs its own key; the account never changes for a cart.
+          { idempotencyKey: fa ? `spot-card-${cart.id}-${fa}` : `spot-card-${cart.id}` },
+        );
+      let card;
+      try {
+        card = await create(financialAccount);
+      } catch (err) {
+        if (financialAccount || !needsFinancialAccount(err)) throw err;
+        financialAccount = await findFinancialAccount();
+        card = await create(financialAccount);
+      }
       return { ref: card.id, brand: card.brand, last4: card.last4, exp_month: card.exp_month, exp_year: card.exp_year };
     },
 

@@ -198,3 +198,32 @@ test('a saved Stripe customer from other keys (test mode) is replaced, not a dea
   assert.equal(out.customer, 'cus_new1');
   assert.equal(out.client_secret, 'seti_cus_new1_secret');
 });
+
+test('Stripe Issuing on newer financial accounts: Spot finds the open account and retries', async () => {
+  const { stripeProvider } = await import('../src/providers.js');
+  const p = stripeProvider({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_ISSUING_CARDHOLDER: 'ich_1' });
+  const calls = [];
+  p.stripe.issuing.cards.create = async (body, opts) => {
+    calls.push({ body, opts });
+    if (!body.financial_account_v2) throw Object.assign(new Error('The v2 financial account id must be specified.'), { type: 'StripeInvalidRequestError', code: 'parameter_missing', param: 'financial_account_v2' });
+    return { id: 'ic_1', brand: 'Visa', last4: '4242', exp_month: 1, exp_year: 2030 };
+  };
+  let listed = 0;
+  p.stripe.rawRequest = async (method, path) => (listed++, assert.equal(path, '/v2/money_management/financial_accounts'), { data: [{ id: 'fa_closed', status: 'closed' }, { id: 'fa_live', status: 'open' }] });
+  const card = await p.issueCard({ id: 'cart1', cart_cents: 3499 });
+  assert.equal(card.ref, 'ic_1');
+  assert.equal(calls[1].body.financial_account_v2, 'fa_live');
+  assert.equal(calls[1].opts.idempotencyKey, 'spot-card-cart1-fa_live', 'a new body gets a new idempotency key');
+  await p.issueCard({ id: 'cart2', cart_cents: 1000 });
+  assert.equal(listed, 1, 'found once, then remembered');
+  assert.equal(calls.at(-1).body.financial_account_v2, 'fa_live');
+
+  const q = stripeProvider({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_ISSUING_CARDHOLDER: 'ich_1', STRIPE_ISSUING_FINANCIAL_ACCOUNT: 'fa_set' });
+  q.stripe.issuing.cards.create = async (body) => (assert.equal(body.financial_account_v2, 'fa_set'), { id: 'ic_2' });
+  await q.issueCard({ id: 'cart3', cart_cents: 1000 });
+
+  const r = stripeProvider({ STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_ISSUING_CARDHOLDER: 'ich_1' });
+  r.stripe.issuing.cards.create = p.stripe.issuing.cards.create;
+  r.stripe.rawRequest = async () => ({ data: [{ id: 'fa_a', status: 'open' }, { id: 'fa_b', status: 'open' }] });
+  await assert.rejects(r.issueCard({ id: 'cart4', cart_cents: 1000 }), /2 are open: set STRIPE_ISSUING_FINANCIAL_ACCOUNT/);
+});
