@@ -280,7 +280,9 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       if (v.ok) items = v.items;
       else if (v.reason !== 'no_direct') {
         const err = new CartError(
-          v.reason === 'unavailable'
+          v.reason === 'choose'
+            ? `"${v.item}" comes in more than one ${v.choose.name.toLowerCase()} (${v.choose.values.join(', ')}). Check get_my_sizes or ask your user, then call again with it in variant (e.g. "Black / M").`
+            : v.reason === 'unavailable'
             ? `${merchant.name} doesn’t have "${v.item}" in that size or color right now. Check with your user and call again with another size or color.`
             : `Couldn’t find "${v.item}" on ${merchant.name}. Call again with the product page url for each item (url), and the size or color in variant.`,
           422,

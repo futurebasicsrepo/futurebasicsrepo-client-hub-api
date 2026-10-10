@@ -95,6 +95,15 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (kind === 'approved') return approvals.record(id, extra);
     return events.emit(kind, id, extra);
   };
+  // "Powerblend Hoodie (Black / M)" typed on the check step: the part in
+  // brackets is the size or colour.
+  const splitVariant = (i) => {
+    if (i?.variant || typeof i?.title !== 'string') return i;
+    let title = i.title;
+    const parts = [];
+    for (let m; (m = title.match(/^(.*\S)\s*\(([^()]{1,60})\)\s*$/)); title = m[1]) parts.unshift(m[2].trim());
+    return parts.length ? { ...i, title, variant: parts.join(' / ') } : i;
+  };
   const publicUrl = () => (env.PUBLIC_URL || '').replace(/\/$/, '');
   const urlFor = (req, path) => `${publicUrl() || `${req.protocol}://${req.headers.host}`}${path}`;
   const affiliate = createAffiliate(env);
@@ -387,6 +396,22 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const input = fromStore ? { ...req.body, ...fromStore.input } : req.body;
     if (input?.settle === 'direct' && !(await spot.direct.supports(input?.merchant?.url ?? input?.merchant_url))) {
       throw new CartError('This store doesn’t take direct checkout yet. Use a card link instead.', 409);
+    }
+    // Paid on the store's own checkout: check the store takes this exact
+    // cart (every item found, one size and colour, in stock) before a link exists.
+    if (input?.settle === 'direct' && !fromStore && spot.direct.verify && Array.isArray(input.items)) {
+      input.items = input.items.map(splitVariant);
+      const merchant = { ...(input.merchant || {}), url: input.merchant?.url ?? input.merchant_url };
+      const v = await spot.direct.verify({ merchant, items: input.items });
+      const store = merchant.name || 'The store';
+      if (v.ok) input.items = v.items;
+      else if (v.reason === 'choose') {
+        const was = input.items.find((i) => i.title === v.item)?.variant;
+        const eg = [was, v.choose.values[1] || v.choose.values[0]].filter(Boolean).join(' / ');
+        throw new CartError(`Which ${v.choose.name.toLowerCase()}? ${store} has "${v.item}" in ${v.choose.values.join(', ')}. Add it after the name, like "${v.item} (${eg})".`, 422);
+      }
+      else if (v.reason === 'unavailable') throw new CartError(`${store} doesn’t have "${v.item}" in that size or color right now. Try another one.`, 422);
+      else if (v.reason !== 'no_direct') throw new CartError(`${store} couldn’t find "${v.item}". Paste the product link instead.`, 422);
     }
     let { cart, manageKey } = spot.create(input, { ip: req.ip, userId: accounts.userIdOf(req) });
     if (fromStore) cart = spot.patch(cart.id, (c) => ({ ...c, source: fromStore.source }), 'from_store_button');
