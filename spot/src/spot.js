@@ -325,6 +325,27 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // requester's own order. Same rules as reassign, the other way round.
     // "Not this time" from whoever got the link: the requester hears, and the
     // ask stays open for them to pay it themselves or send it to someone else.
+    // "I don't know this person": whoever got the link reports it. One
+    // report per person (by a hash of where it came from); two from
+    // different people pause the link until Spot looks at it.
+    report(token, { by, reason = 'unknown_sender' } = {}) {
+      const cart = load(token);
+      if (cart.status !== 'open') throw new CartError('This one is already taken care of', 409);
+      if (cart.for === 'self') throw new CartError('This one isn’t waiting on anyone else', 400);
+      if ((cart.reports || []).some((r) => r.by === by)) return cart;
+      const why = ['unknown_sender', 'scam', 'other'].includes(reason) ? reason : 'other';
+      const next = this.patch(cart.id, (c) => ({ ...c, reports: [...(c.reports || []), { by, reason: why, at: Date.now() }].slice(-20) }), 'reported');
+      if (pausedByReports(next) && !pausedByReports(cart)) db.event(cart.id, 'paused_by_reports', { reports: next.reports.length });
+      return next;
+    },
+
+    // Spot looked and it's fine: the link works again.
+    clearReports(id) {
+      const cart = db.byId(id);
+      if (!cart) throw new CartError('Cart not found', 404);
+      return this.patch(cart.id, (c) => ({ ...c, reports: [], reports_cleared_at: Date.now() }), 'reports_cleared');
+    },
+
     decline(token, { name } = {}) {
       const cart = load(token);
       if (cart.status !== 'open') throw new CartError('This one is already taken care of', 409);
@@ -401,6 +422,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // Payer opened the pay page and wants to pay by card / wallet.
     async startPayment(token) {
       const cart = load(token);
+      if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'card') throw new CartError(cart.settle === 'direct' ? 'This one is paid on the store’s own checkout' : 'This one is paid straight to them on Venmo or Cash App', 409);
       if (cart.bundle_id) throw new CartError('This cart is part of a bundle. Pay for the whole bundle from its link.', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : cart.status === 'canceled' ? 'This link was canceled' : 'This cart is already covered', 409);
@@ -515,6 +537,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // minutes) and send them to it. Spot never takes this payment.
     async directStart(token, { email = null, name = null, ip = null } = {}) {
       const cart = load(token);
+      if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'direct') throw new CartError('This cart isn’t paid at the store', 409);
       if (cart.status !== 'open') throw new CartError(cart.status === 'expired' ? 'This cart link has expired' : 'This cart is already taken care of', 409);
       if (!this.direct) throw new CartError('Paying the store directly isn’t available right now', 503);
@@ -1044,6 +1067,10 @@ export function publicBundle(b) {
 
 // What anyone holding the public link may see. No emails, no addresses,
 // no card data.
+// Reported by two different people: nobody can pay it until Spot clears it.
+export const pausedByReports = (cart) => (cart?.reports || []).length >= 2;
+const PAUSED = 'This link is paused while Spot checks it. Nothing was charged.';
+
 export function publicCart(cart) {
   return {
     token: cart.token,
@@ -1077,6 +1104,7 @@ export function publicCart(cart) {
     via_approver: Boolean(cart.approver),
     // The asker signed in with a code to their email or phone.
     requester_verified: Boolean(cart.user_id),
+    paused: pausedByReports(cart),
     // Spot's one-time card for this order can spend at most this, once.
     card_limit_cents: cart.settle === 'card' && cart.kind !== 'flight' ? cart.cart_cents + (cart.cushion_cents || 0) : null,
   };

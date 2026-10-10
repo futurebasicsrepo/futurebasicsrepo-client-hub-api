@@ -80,6 +80,12 @@ export function healthReport({ db, env = process.env, metrics, backups, moneyChe
     if (now - (c.paid_at || c.created_at) < 2 * 3600_000) continue;
     stuck.push({ ...summary(c), why: [`Card issued ${ago(now - (c.paid_at || c.created_at))} ago, not ordered yet${c.fulfillment?.reason ? `: ${c.fulfillment.reason}` : ''}`] });
   }
+  // Links someone said they don't know the sender of (two reports pause it).
+  for (const row of raw.prepare(`SELECT id FROM carts WHERE status = 'open' AND json_array_length(COALESCE(${j('reports')}, '[]')) > 0`).all()) {
+    const c = db.byId(row.id);
+    const n = c.reports.length;
+    stuck.push({ ...summary(c), why: [`${n >= 2 ? 'Paused: ' : ''}reported by ${n} ${n === 1 ? 'person' : 'people'} who got the link. Clear it in /admin if it’s fine.`] });
+  }
   const held = raw.prepare(`SELECT id FROM carts WHERE status = 'paid' AND ${j('hold')} IS NOT NULL`).all().map((r) => summary(db.byId(r.id)));
   const autopayFailed = raw
     .prepare("SELECT agent, detail, at FROM agent_events WHERE kind = 'autopay_failed' AND at >= ? ORDER BY id DESC LIMIT 20")

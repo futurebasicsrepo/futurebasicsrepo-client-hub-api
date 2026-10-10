@@ -18,6 +18,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { sessionUserId } from './accounts.js';
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
 import { CLIENT_ASSERTION, JWT_BEARER, PAP_SCOPES, PapError, createPap, domainOf, isUrlClient } from './pap.js';
+import { normalizeRules } from './rules.js';
 
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const b64sha = (s) => createHash('sha256').update(String(s)).digest('base64url');
@@ -187,7 +188,7 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
     const user = userId && db.users.byId(userId);
     if (!user) return reply.redirect(`/signin?next=${encodeURIComponent(req.url)}`);
     const appInfo = appFor(c.client, c.redirectUri);
-    return page(reply, consentPage({ origin: origin(req), app: appInfo, who: user.email || user.phone || 'your account', params: pick(q) }));
+    return page(reply, consentPage({ origin: origin(req), app: appInfo, who: user.email || user.phone || 'your account', params: pick(q), limits: limitsFor(user, appInfo.name) }));
   });
 
   // Allow or Cancel, from the page above. JSON only, so another site can't
@@ -203,8 +204,18 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
     if (!user) return reply.code(401).send({ error: 'Sign in first' });
     if (b.allow !== true) return { redirect: c.back('access_denied', 'You canceled').redirect };
     if (limited(`grant:${user.id}`, 20, 3600_000)) return reply.code(429).send({ error: 'Too many connections in an hour. Try again later.' });
+    // The spending caps picked on this page (none = no cap, the person's choice).
+    let limits = null;
+    if (b.limits && typeof b.limits === 'object') {
+      try {
+        const r = normalizeRules({ max_order_cents: b.limits.max_order_cents || null, monthly_cents: b.limits.monthly_cents || null });
+        limits = { max_order_cents: r?.max_order_cents || null, monthly_cents: r?.monthly_cents || null };
+      } catch (err) {
+        return reply.code(400).send({ error: err.message });
+      }
+    }
     const code = token('spot_code_');
-    db.state.set(`oauth_code:${sha(code)}`, { client_id: b.params.client_id, redirect_uri: c.redirectUri, challenge: String(b.params.code_challenge), scope: b.params.scope || null, user_id: user.id, app: appFor(c.client, c.redirectUri).name, exp: Date.now() + CODE_TTL });
+    db.state.set(`oauth_code:${sha(code)}`, { client_id: b.params.client_id, redirect_uri: c.redirectUri, challenge: String(b.params.code_challenge), scope: b.params.scope || null, user_id: user.id, app: appFor(c.client, c.redirectUri).name, limits, exp: Date.now() + CODE_TTL });
     const u = new URL(c.redirectUri);
     u.searchParams.set('code', code);
     if (b.params.state) u.searchParams.set('state', String(b.params.state));
@@ -266,14 +277,33 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
   }
 
   // One of the account's AI keys, the same as one made on the account page.
-  function accountKey(user, appName) {
-    const slug = appName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'my-ai';
+  const slugOf = (appName) => appName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20) || 'my-ai';
+  const previousRules = (user, slug, except) => db.users.keys(user.id).find((k) => k.name !== except && k.rules && k.name.startsWith(`${slug}-`))?.rules || null;
+  // What the Allow page starts with: the caps this app had last time, or $100 an order and $500 a month.
+  function limitsFor(user, appName) {
+    const prev = previousRules(user, slugOf(appName));
+    if (prev) return { max_order_cents: prev.max_order_cents || null, monthly_cents: prev.monthly_cents || null };
+    return { ...DEFAULT_LIMITS };
+  }
+
+  function accountKey(user, appName, limits = null) {
+    const slug = slugOf(appName);
     const name = `${slug}-${randomBytes(3).toString('hex')}`;
     db.addKey(sha(token('spot_')), name, user.email || user.phone || 'unknown', user.id);
     db.agentEvents.add(`key:${name}`, user.id, 'connected', { via: appName });
-    // Reconnecting the same app keeps the limits the person set for it.
-    const prev = db.users.keys(user.id).find((k) => k.name !== name && k.rules && k.name.startsWith(`${slug}-`));
-    if (prev) db.keyRules.set(user.id, name, prev.rules);
+    // Reconnecting the same app keeps the rules the person set for it, with
+    // the caps they just picked on the Allow page.
+    const prev = previousRules(user, slug, name);
+    let rules = prev;
+    if (limits) {
+      try {
+        rules = normalizeRules({ ...(prev || {}), max_order_cents: limits.max_order_cents, monthly_cents: limits.monthly_cents });
+      } catch {
+        rules = prev; // e.g. "no cap" with auto-pay on: keep what they had
+      }
+    }
+    if (rules) db.keyRules.set(user.id, name, rules);
+    if (limits && rules && !prev) db.agentEvents.add(`key:${name}`, user.id, 'rules_changed', { rules });
     return name;
   }
 
@@ -350,7 +380,7 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
         id = `pss_${randomBytes(18).toString('base64url')}`;
         s = { client_id: b.client_id, sub: null, created_at: Date.now() };
       }
-      const key = s.user_id ? s.key : accountKey(r.user, r.grant.app);
+      const key = s.user_id ? s.key : accountKey(r.user, r.grant.app, r.grant.limits);
       saveSession(id, { ...s, key, user_id: r.user.id });
       const out = issue(key, r.user.id, b.client_id, { scope: r.grant.scope || scope, sessionId: id });
       return { ...out, refresh_token_expires_in: REFRESH_TTL / 1000, session_id: id, signed_in: true };
@@ -381,7 +411,7 @@ export function registerMcpAuth(app, { db, urlFor, papFetch }) {
     if (b.grant_type === 'authorization_code') {
       const r = redeemCode(b, auth.id);
       if (r.error) return fail(reply, 400, 'invalid_grant', r.error);
-      return issue(accountKey(r.user, r.grant.app), r.user.id, auth.id);
+      return issue(accountKey(r.user, r.grant.app, r.grant.limits), r.user.id, auth.id);
     }
 
     if (b.grant_type === 'refresh_token') {
@@ -435,6 +465,16 @@ function page(reply, body, code = 200) {
   return reply.code(code).type('text/html; charset=utf-8').header('cache-control', 'no-store').header('x-frame-options', 'DENY').header('content-security-policy', "frame-ancestors 'none'").header('referrer-policy', 'no-referrer').header('x-robots-tag', 'noindex').send(body);
 }
 
+// Caps a new AI starts with unless the person picks others on the Allow page.
+const DEFAULT_LIMITS = { max_order_cents: 10000, monthly_cents: 50000 };
+const ORDER_CAPS = [5000, 10000, 25000, 50000];
+const MONTH_CAPS = [20000, 50000, 100000, 200000];
+const dollars = (c) => `$${(c / 100).toLocaleString('en-US')}`;
+function capSelect(name, label, list, value) {
+  const opts = [...new Set([...list, ...(value ? [value] : [])])].sort((a, b) => a - b);
+  return `<label class="cap"><span>${label}</span><select name="${name}">${opts.map((c) => `<option value="${c}"${c === value ? ' selected' : ''}>Up to ${dollars(c)}</option>`).join('')}<option value=""${value ? '' : ' selected'}>No cap</option></select></label>`;
+}
+
 const CSS = `
 .oa{max-width:480px;margin:40px auto 64px;padding:0 16px}
 .oa .card{background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:26px 24px}
@@ -448,9 +488,15 @@ const CSS = `
 .oa .fine{font-size:13px;color:var(--muted);margin:14px 0 0}
 .oa .err{color:#c0362c;min-height:1.2em;margin:10px 0 0}
 .oa .linkbtn{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
+.oa .caps{margin:0 0 18px;padding:14px;border:1.5px solid var(--line);border-radius:16px;background:var(--bg)}
+.oa .caps legend{font-weight:800;padding:0 4px}
+.oa .caps p{margin:0 0 10px;font-size:14px;color:var(--muted)}
+.oa .caprow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.oa .cap{display:grid;gap:4px;font-size:13px;font-weight:700}
+.oa .cap select{font:inherit;font-size:16px;font-weight:600;padding:10px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);width:100%}
 `;
 
-export function consentPage({ origin, app, who, params }) {
+export function consentPage({ origin, app, who, params, limits = DEFAULT_LIMITS }) {
   const n = esc(app.name);
   return `${siteHead({ title: `Connect ${app.name} · Spot`, desc: `Let ${app.name} shop with your Spot account.`, origin, path: '/oauth/authorize', extraCss: CSS })}
 ${siteNav('')}
@@ -464,15 +510,23 @@ ${siteNav('')}
     <li>Follow the rules you set: limits, stores, who approves</li>
     <li class="no">See your card or charge it without your rules</li>
   </ul>
+  <fieldset class="caps" id="caps"><legend>Spending caps for ${n}</legend>
+    <p>Asks over a cap are refused. Every purchase still waits for a yes.</p>
+    <div class="caprow">${capSelect('max_order_cents', 'Per order', ORDER_CAPS, limits?.max_order_cents || null)}${capSelect('monthly_cents', 'Per month', MONTH_CAPS, limits?.monthly_cents || null)}</div>
+  </fieldset>
   <div class="btns"><button class="btn primary" id="allow">Allow</button><button class="btn ghost" id="deny">Cancel</button></div>
   <p class="err" id="err" role="alert"></p>
-  <p class="fine">It shows up under “Your AI” in your account, where you can set rules or disconnect it any time.</p>
+  <p class="fine">It shows up under “AI &amp; card” in your account, where you can change these, pick stores or disconnect it any time.</p>
 </div></main>
 ${siteFooter()}
 <script>(()=>{${SITE_JS}})();</script>
 <script>(()=>{const P=${JSON.stringify(params).replace(/</g, '\\u003c')};
-const go=async(allow)=>{document.querySelectorAll('.btns .btn').forEach(b=>b.disabled=true);
-try{const r=await fetch('/oauth/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({params:P,allow})});const j=await r.json();
+const cap=n=>{const v=document.querySelector('#caps [name='+n+']').value;return v?Number(v):null};
+const go=async(allow)=>{const err=document.getElementById('err');err.textContent='';
+const limits={max_order_cents:cap('max_order_cents'),monthly_cents:cap('monthly_cents')};
+if(allow&&limits.max_order_cents&&limits.monthly_cents&&limits.monthly_cents<limits.max_order_cents){err.textContent='The monthly cap can’t be lower than the per-order cap.';return}
+document.querySelectorAll('.btns .btn').forEach(b=>b.disabled=true);
+try{const r=await fetch('/oauth/authorize',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({params:P,allow,limits})});const j=await r.json();
 if(j.redirect){location.href=j.redirect;return}throw new Error(j.error||'Something went wrong')}catch(e){document.getElementById('err').textContent=e.message;document.querySelectorAll('.btns .btn').forEach(b=>b.disabled=false)}};
 document.getElementById('allow').onclick=()=>go(true);document.getElementById('deny').onclick=()=>go(false);
 document.getElementById('switch').onclick=async()=>{await fetch('/v1/auth/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/signin?next='+encodeURIComponent(location.pathname+location.search)};
