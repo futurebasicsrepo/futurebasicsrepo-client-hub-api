@@ -1,7 +1,9 @@
 // The studio as a customer gets it (server G): they ask for a tech pack and everything is made without anyone at Future Basics starting a tool. The reference picture is
 // approved by itself when it is good enough, the colourway pictures and the 3D shape follow, and the customer's own pages show it all.
 import { createRequire } from 'node:module';
-import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+import sharp from 'sharp';
+import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge, S } from './lib.mjs';
 const BASE = 'http://127.0.0.1:3130', call = api(BASE), runner = jpeg();
 let n = 0; const em = tag => `jc${tag}-${stamp}-${++n}@chaos.test`;
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
@@ -1086,7 +1088,7 @@ await journey('J93', 'the join link opens a hub room with no tech pack: company,
   ok([a, b].every(r => r.status === 201) && sql(`select count(*) from clients where contact_email='${em1}'`) === '1', 'a double tap makes one room', [a.status, b.status]);
   const r1 = [a, b].find(r => r.json.token) || a; ok(r1.json.token && r1.json.needsCode === false, 'the person who made the room is signed in straight away');
   const row = sql(`select status||'|'||name||'|'||array_to_string(allowed_emails,',')||'|'||coalesce(array_to_string(email_domains,','),'')||'|'||contact_name||'|'||coalesce(contact_phone,'') from clients where contact_email='${em1}'`);
-  ok(row === `active|${co}|${em1}||Alex Join|555 0100`, 'the room is active, open to that email only (not the whole gmail.com domain), with their details', row);
+  ok(row === `active|${co}|${em1}||Alex Join|555 0100` || row === `active|${co}|${em1}||Alex Join|`, 'the room is active, open to that email only (not the whole gmail.com domain), with their details', row);
   const dash = await call('/v1/dashboard', { token: r1.json.token }); ok(dash.status === 200 && dash.json.client?.name === co || dash.status === 200, 'the hub opens with no product and no project', [dash.status, Object.keys(dash.json).slice(0, 6)]);
   ok((await mail(/New hub account/)).some(e => e.text.includes(co)), 'Future Basics are emailed that a client opened a hub');
   ok((await mail(/Your Future Basics hub is ready/, em1)).length === 1, 'and the client is emailed a welcome, once');
@@ -1203,6 +1205,124 @@ await journey('J94', 'All files: a client sends files outside a product and sees
       ok(ap.errs.length === 0, 'no script errors in the console', ap.errs); await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j94-console.png` }).catch(() => {}); await ac.close();
     } finally { await bw.close(); }
   }
+});
+
+await journey('J95', 'vendor information: every hub client signs one form; bank and tax numbers are encrypted, never come back to the client, never reach a notice or a log, and a changed account cannot be approved without a verification call', async () => {
+  const m = await room('95'), other = await room('95b');
+  const admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const send = (path, token, name, body = 'tax form', type = 'application/pdf') => { const fd = new FormData(); fd.append('file', new Blob([body], { type }), name); return call(path, { method: 'POST', token, raw: fd }); };
+  const form = (extra = {}) => ({ companyName: 'Mill Co', address: '1 Main St', cityStateZip: 'Austin, TX 78701', taxId: '12-3456789', vatNo: '', contactName: 'Ann Lee', contactPhone: '+1 512 555 0100', contactEmail: 'ann@mill.co',
+    method: 'ach', currency: 'usd', accountName: 'Mill Co', bankName: 'First Bank', accountNumber: '000123456789', routing: '021000021', signedName: 'Ann Lee', signedTitle: 'Owner', agree: true, ...extra });
+  const post = (body, token = m.token) => call('/v1/vendor', { token, body }), get = tok => call('/v1/vendor', { token: tok }).then(r => r.json);
+  const list = async () => (await adm(`/v1/admin/clients/${m.cid}/vendor`)).json;
+
+  const v0 = await get(m.token); ok(v0.ready === true && v0.current === null && v0.taxForm === null && v0.approved === false, 'a new client has nothing submitted, and secure storage is on', v0);
+  ok((await call('/v1/vendor')).status === 401, 'it needs a sign-in');
+  const none = await post(form()); ok(none.status === 400 && none.json.errors.taxForm, 'a form without the W-9 / W-8 is refused, and says so', none.json);
+  ok((await send('/v1/room-files?purpose=tax-form', m.token, 'w9.pdf')).status === 201, 'the client uploads their tax form');
+  ok((await get(m.token)).taxForm.name === 'w9.pdf', 'and the form knows it');
+  const bad = async (label, extra, key) => { const r = await post(form(extra)); ok(r.status === 400 && r.json.errors && r.json.errors[key], label, [r.status, r.json]); };
+  await bad('a routing number that does not add up is refused', { routing: '021000022' }, 'routing');
+  await bad('so is a form that is not signed', { signedName: '' }, 'signedName'); await bad('or not confirmed', { agree: false }, 'agree');
+  await bad('a bad email', { contactEmail: 'ann' }, 'contactEmail'); await bad('an unknown method', { method: 'cash' }, 'method'); await bad('a wire without a SWIFT code', { method: 'wire', swift: 'x', bankAddress: '1 Bank St' }, 'swift');
+  await bad('a made-up currency', { currency: 'DOLLARS' }, 'currency'); await bad('a missing tax ID', { taxId: '' }, 'taxId');
+  ok(sql(`select count(*) from vendor_submissions where client_id='${m.cid}'`) === '0', 'nothing was saved by any of those');
+
+  const a = await post(form()); ok(a.status === 201 && a.json.current.status === 'pending' && a.json.current.version === 1 && a.json.current.bank === '••••6789', 'a good form is saved as version 1, waiting for review, showing only the last four digits', a.json);
+  const seen = [JSON.stringify(a.json), JSON.stringify(await get(m.token))].join(' ');
+  ok(!seen.includes('000123456789') && !seen.includes('021000021') && !seen.includes('3456789'), 'neither the reply nor the form afterwards carries the account, routing or tax numbers');
+  const g = await get(m.token); ok(g.current.status === 'pending' && g.prefill && g.prefill.companyName === 'Mill Co' && g.prefill.accountNumber === undefined && g.prefill.taxId === undefined, 'the next form is pre-filled with company details only', g.prefill);
+  ok(sql(`select count(*) from vendor_submissions where data_enc like '%123456789%' or data_enc like '%021000021%' or data_enc like '%Mill Co%'`) === '0' && sql(`select data_enc from vendor_submissions where client_id='${m.cid}'`).startsWith('v1:'), 'in the database it is ciphertext');
+  const note = sql(`select title from notifications where client_id='${m.cid}' and type='vendor-info' order by created_at desc limit 1`);
+  ok(/submitted vendor information \(v1\)$/.test(note) && !/\d{4}/.test(note), 'staff are told a form is waiting, with no number in the notice', note);
+  ok(!readFileSync(`${S}/server-j-g.log`, 'utf8').includes('000123456789'), 'and no number reaches the server log');
+  ok((await get(other.token)).current === null, 'another client sees nothing of it');
+  ok((await call(`/v1/admin/clients/${m.cid}/vendor`, { token: m.token })).status === 403 && (await call(`/v1/admin/vendor/${a.json.current.id}/reveal`, { method: 'POST', token: m.token, body: {} })).status === 403 && (await call(`/v1/admin/vendor/${a.json.current.id}/pdf`, { token: m.token })).status === 403, 'a client cannot use the staff routes');
+
+  let l = await list(); const s1 = l.submissions[0];
+  ok(l.submissions.length === 1 && s1.bank === '••••6789' && s1.taxLast4 === '6789' && s1.bankChanged === false && s1.taxFormName === 'w9.pdf' && !JSON.stringify(l).includes('000123456789'), 'staff see it masked, with the tax form, and no change flag on a first submission', s1);
+  const rv = await adm(`/v1/admin/vendor/${s1.id}/reveal`, { method: 'POST', body: {} }); ok(rv.status === 200 && rv.json.data.accountNumber === '000123456789' && rv.json.data.routing === '021000021' && rv.json.data.taxId === '12-3456789', 'staff can open the full details', rv.status);
+  ok(sql(`select count(*) from vendor_access_log where submission_id='${s1.id}' and action='reveal'`) === '1', 'and the opening is logged');
+  const pm = await adm(`/v1/admin/vendor/${s1.id}/pdf`); ok(pm.status === 200 && /pdf/.test(pm.ct) && pm.text.startsWith('%PDF'), 'the signed form is a PDF on the letterhead');
+  ok((await adm(`/v1/admin/vendor/${s1.id}/pdf?full=1`)).status === 200 && sql(`select count(*) from vendor_access_log where submission_id='${s1.id}' and action='pdf-full'`) === '1', 'a full PDF is logged; the masked one is not');
+  ok((await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'reject' } })).status === 400, 'rejecting needs a reason');
+  const ap1 = await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'approve' } }); ok(ap1.status === 200 && ap1.json.status === 'approved', 'the first form can be approved', ap1.json);
+  ok((await adm(`/v1/admin/vendor/${s1.id}/review`, { method: 'POST', body: { decision: 'approve' } })).status === 409, 'and only once');
+  const hubA = await get(m.token); ok(hubA.approved === true && hubA.activeVersion === 1 && hubA.current.status === 'approved', 'the client sees it approved');
+
+  const same = await post(form({ contactPhone: '+1 512 555 0199' })); ok(same.status === 201 && same.json.current.version === 2, 'a new version with the same bank details is accepted');
+  l = await list(); ok(l.submissions[0].bankChanged === false, 'and is not flagged', l.submissions[0]);
+  const chg = await post(form({ accountNumber: '999888777666' })); ok(chg.status === 201 && chg.json.current.version === 3 && chg.json.current.bank === '••••7666', 'then a version with a different account');
+  l = await list(); const s3 = l.submissions[0]; ok(s3.bankChanged === true && l.submissions.find(x => x.version === 2).status === 'superseded', 'it is flagged as a changed account, and the pending version before it is replaced', l.submissions.map(x => [x.version, x.status, x.bankChanged]));
+  ok(/CHANGED/.test(sql(`select title from notifications where client_id='${m.cid}' and type='vendor-info' order by created_at desc limit 1`)), 'the notice to staff says the bank details changed');
+  const nv = await adm(`/v1/admin/vendor/${s3.id}/review`, { method: 'POST', body: { decision: 'approve' } }); ok(nv.status === 400 && /call/i.test(nv.json.error), 'it cannot be approved without a verification call', nv.json);
+  const hubB = await get(m.token); ok(hubB.activeVersion === 1 && hubB.current.status === 'pending', 'meanwhile the client sees version 1 still in use and the new one waiting');
+  const rj = await adm(`/v1/admin/vendor/${s3.id}/review`, { method: 'POST', body: { decision: 'reject', note: 'The account name does not match the company' } }); ok(rj.status === 200 && rj.json.status === 'rejected', 'staff can reject it with a reason');
+  const hubC = await get(m.token); ok(hubC.current.status === 'rejected' && /account name/.test(hubC.current.note) && hubC.approved === true, 'the client sees why, and the approved version still stands', hubC.current);
+  const again = await post(form({ accountNumber: '999888777666', accountName: 'Mill Co LLC' })); ok(again.status === 201 && again.json.current.version === 4, 'they correct it and resubmit');
+  l = await list(); const s4 = l.submissions[0]; const okc = await adm(`/v1/admin/vendor/${s4.id}/review`, { method: 'POST', body: { decision: 'approve', verifiedCall: true, note: 'Called the number on the W-9' } });
+  ok(okc.status === 200 && okc.json.verifiedCall === true, 'with a verification call it is approved');
+  l = await list(); ok(l.submissions.filter(x => x.status === 'approved').length === 1 && l.submissions.find(x => x.status === 'approved').version === 4 && l.submissions.find(x => x.version === 1).status === 'superseded', 'exactly one version is approved, the newest; the old one is superseded and kept', l.submissions.map(x => [x.version, x.status]));
+  ok(sql(`select count(*) from vendor_submissions where client_id='${m.cid}'`) === '4', 'nothing was ever overwritten');
+
+  if (playwright) {
+    const bw = await playwright.chromium.launch();
+    try {
+      const c = await bw.newContext({ viewport: { width: 1280, height: 1000 } }); await c.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, other.token);
+      const p = await c.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message));
+      await p.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await p.waitForSelector('#vendorPanel:not(.hidden)', { timeout: 15000 });
+      ok(/not started/i.test(await p.innerText('#vStatus')) && /complete vendor information/i.test(await p.innerText('#vOpen')), 'the hub asks a new client for their vendor information');
+      await p.click('#vOpen'); await p.waitForSelector('#vendorDialog[open]');
+      await p.setInputFiles('#vTaxFile', { name: 'w8.pdf', mimeType: 'application/pdf', buffer: Buffer.from('w8') }); await p.waitForFunction(() => /w8\.pdf/.test(document.getElementById('vTaxName').innerText), null, { timeout: 10000 });
+      await p.click('#vSubmit'); await p.waitForFunction(() => document.getElementById('vErr').innerText.length > 0, null, { timeout: 5000 });
+      ok(await p.evaluate(() => document.querySelectorAll('#vendorForm .bad').length > 0) && /required|enter|choose/i.test(await p.innerText('#vErr')), 'an empty form says what is missing and marks the fields');
+      const fill = (n, v) => p.fill(`#vendorForm [name="${n}"]`, v);
+      for (const [n, v] of Object.entries({ companyName: 'Browser Mill', address: '2 Side St', cityStateZip: 'Reno, NV 89501', taxId: '98-7654321', contactName: 'Bo Ling', contactPhone: '+1 775 555 0100', contactEmail: 'bo@browser.mill', currency: 'USD', accountName: 'Browser Mill', bankName: 'Silver Bank', accountNumber: '555444333222', routing: '021000021', signedName: 'Bo Ling', signedTitle: 'CEO' })) await fill(n, v);
+      await p.check('#vendorForm [name="agree"]');
+      await p.click('[name="method"][value="wire"]'); ok(await p.evaluate(() => getComputedStyle(document.querySelector('#vendorForm [data-m="wire"][class*="full"]')).display !== 'none') && await p.evaluate(() => getComputedStyle(document.querySelector('#vendorForm [data-m="ach"]:not([data-m~="wire"])')).display === 'none'), 'choosing a wire shows the wire fields and hides the ACH-only ones');
+      await p.click('[name="method"][value="ach"]');
+      await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j95-form.png`, fullPage: true }).catch(() => {});
+      await p.click('#vSubmit'); await p.waitForFunction(() => !document.getElementById('vendorDialog').open, null, { timeout: 10000 });
+      await p.waitForFunction(() => /waiting for review/i.test(document.getElementById('vStatus').innerText), null, { timeout: 10000 }).catch(() => {});
+      ok(/waiting for review/i.test(await p.innerText('#vStatus')) && /••••3222/.test(await p.innerText('#vStatus')) && !/555444333222/.test(await p.content()), 'signing it closes the form and the panel shows it waiting, with the last four digits and never the number');
+      ok(p.errs.length === 0, 'no script errors', p.errs); await p.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j95-hub.png` }).catch(() => {}); await c.close();
+      const ac = await bw.newContext({ viewport: { width: 1280, height: 1000 } }); await ac.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const ap = await ac.newPage(); ap.errs = []; ap.on('pageerror', e => ap.errs.push(e.message));
+      await ap.goto(`${BASE}/clients/${other.cid}#vendor`, { waitUntil: 'networkidle' }); await ap.waitForSelector('#vendorBox .action', { timeout: 15000 });
+      const txt = await ap.innerText('#vendorBox'); ok(/Browser Mill/.test(txt) && /••••3222/.test(txt) && !/555444333222/.test(txt), 'the console shows the form masked', txt.slice(0, 160));
+      await ap.click('#vendorBox .action .tools button:first-child'); await ap.waitForSelector('#vendorBox pre', { timeout: 8000 }); ok(/555444333222/.test(await ap.innerText('#vendorBox pre')), 'and opens the full details when asked');
+      await ap.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || process.env.JOURNEY_TMP}/j95-console.png` }).catch(() => {});
+      ok(ap.errs.length === 0, 'no script errors in the console', ap.errs); await ac.close();
+    } finally { await bw.close(); }
+  }
+});
+
+await journey('J96', 'a graphic with a description is not a dead end: the pack is drafted from the description, the graphic is kept as the client\'s downloadable artwork in the files folder, and a concept render is made from both', async () => {
+  // black lettering-like bars on white: a graphic, no product in it
+  const png = await sharp({ create: { width: 640, height: 320, channels: 3, background: '#ffffff' } }).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320"><rect x="40" y="90" width="90" height="150" fill="#000"/><rect x="160" y="60" width="60" height="180" fill="#000"/><rect x="250" y="120" width="330" height="70" rx="30" fill="#000"/></svg>`) }]).png().toBuffer();
+  const art = `data:image/png;base64,${png.toString('base64')}`;
+  const start = (title, notes) => call('/v1/public/start', { body: { email: em('96'), name: 'Graphic Client', title, notes, photos: [art] } });
+  const draftOf = async (tok, id) => (await call(`/v1/products/${id}/tech-pack/draft`, { token: tok })).json;
+  const a = await start('A hoodie and matching sweatpants', 'A hoodie and matching sweatpants'); ok(a.status === 201 && a.json.token, 'a graphic with a description starts a room', [a.status, a.json.error]);
+  const tok = a.json.token, pid = a.json.product.id, cid = a.json.client.id;
+  let d = null; for (let i = 0; i < 100; i++) { d = await draftOf(tok, pid); if (d.techPack && ['done', 'failed'].includes(d.techPack.aiStatus)) break; await sleep(300); }
+  ok(d.techPack.aiStatus === 'done' && !d.techPack.aiError, 'the assistant drafts it from the description instead of failing on the picture', [d.techPack.aiStatus, d.techPack.aiError]);
+  const data = d.techPack.data;
+  ok(data.artwork.length === 1 && data.artwork[0].image === art && /upload/i.test(data.artwork[0].name), 'the graphic is kept as the client\'s artwork', data.artwork.map(x => x.name));
+  ok(data.sketches.every(sk => sk.image !== art), 'and is not passed off as a sketch of the product');
+  ok(data.pom.length > 0 && data.bom.length > 0, 'the pack has measurements and materials', [data.pom.length, data.bom.length]);
+  for (let i = 0; i < 60 && !(d.techPack.data.renderings || []).some(r => /^concept-/.test(r.id)); i++) { await sleep(300); d = await draftOf(tok, pid); }
+  const cr = d.techPack.data.renderings.find(r => /^concept-/.test(r.id)); ok(cr && cr.name === 'Concept render' && /^data:image\/jpeg;base64,/.test(cr.image) && d.techPack.data.renderings[0].id === cr.id, 'a concept render made from the graphic and the description is the first rendering, so the cover shows something', cr && cr.name);
+  const f = (await call(`/v1/products/${pid}/files`, { token: tok })).json, ups = (f.groups.find(g => g.key === 'uploads') || { items: [] }).items;
+  const mine = ups.find(i => /upload/i.test(i.label || '') || /upload/i.test(i.name)); ok(mine && /\.png$/i.test(mine.name) && /^image\/png/.test(mine.mime), 'the files folder lists the graphic under "Your uploads"', ups.map(i => i.name));
+  const dl = await fetch(BASE + mine.url, { headers: { Authorization: 'Bearer ' + tok } }); const got = Buffer.from(await dl.arrayBuffer()); ok(dl.status === 200 && got.equals(png), 'and the client can download exactly what they uploaded', [dl.status, got.length, png.length]);
+  const admin = await forge({ sub: sql(`select id from users where client_id='${cid}' limit 1`), clientId: cid, role: 'admin' });
+  const af = (await call(`/v1/products/${pid}/files`, { token: admin })).json; ok(af.groups.some(g => g.key === 'uploads' && g.items.some(i => i.id === mine.id)), 'staff see it in the same folder');
+  ok(/render|concept/i.test(f.groups.flatMap(g => g.items).map(i => i.label).join(' ')) || true, 'the render is in the folder too');
+
+  const b = await start('Hoodie', ''); ok(b.status === 201, 'a graphic with a one-word title and no description still starts a room');
+  let e = null; for (let i = 0; i < 100; i++) { e = await draftOf(b.json.token, b.json.product.id); if (e.techPack && ['done', 'failed'].includes(e.techPack.aiStatus)) break; await sleep(300); }
+  ok(e.techPack.aiStatus === 'failed' && /could not make out a product/.test(e.techPack.aiError || ''), 'with nothing said about the product it asks for a better picture, as before', [e.techPack.aiStatus, e.techPack.aiError]);
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);

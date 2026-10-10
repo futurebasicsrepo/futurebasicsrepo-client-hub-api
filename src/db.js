@@ -444,6 +444,45 @@ export async function migrate() {
     create index if not exists room_files_client_idx on room_files(client_id,created_at desc);
     create index if not exists room_files_project_idx on room_files(project_id) where project_id is not null;
     alter table project_files add column if not exists factory_visible boolean not null default false;
+    alter table room_files add column if not exists purpose text;
+    -- The vendor information form (src/vendor.js): one row per signed submission, never edited. What was typed is in data_enc, encrypted
+    -- (src/vault.js); the columns beside it hold only what a list needs. A new submission supersedes a pending one; approving it supersedes the approved one.
+    create table if not exists vendor_submissions (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      version integer not null,
+      status text not null default 'pending' check (status in ('pending','approved','rejected','superseded')),
+      company_name text not null,
+      contact_name text,
+      contact_email text,
+      method text not null,
+      currency text not null,
+      bank_mask text,
+      bank_fp text,
+      tax_last4 text,
+      bank_changed boolean not null default false,
+      tax_form_file_id uuid references room_files(id) on delete set null,
+      data_enc text not null,
+      signed_name text not null,
+      signed_title text not null,
+      signed_at timestamptz not null default now(),
+      signed_ip text,
+      submitted_by uuid references users(id) on delete set null,
+      reviewed_by uuid references users(id) on delete set null,
+      reviewed_at timestamptz,
+      review_note text,
+      verified_call boolean not null default false,
+      created_at timestamptz not null default now(),
+      unique(client_id,version)
+    );
+    create index if not exists vendor_submissions_client_idx on vendor_submissions(client_id,version desc);
+    create table if not exists vendor_access_log (
+      id uuid primary key default gen_random_uuid(),
+      submission_id uuid not null references vendor_submissions(id) on delete cascade,
+      user_id uuid references users(id) on delete set null,
+      action text not null,
+      created_at timestamptz not null default now()
+    );
     alter table invoices add column if not exists project_id uuid references projects(id) on delete set null;
     alter table invoices add column if not exists product_id uuid references products(id) on delete set null;
     alter table invoices add column if not exists quote_id uuid references quotes(id) on delete set null;

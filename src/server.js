@@ -32,9 +32,12 @@ import { normalizeTechPack, seedTechPack, techPackCompleteness, publishedTechPac
 import { aiEnabled, vetMeasurements, draftFromPhotos, draftFromBrief, applyDraftToPack, productTypeLabel, AI_MODEL, translateStrings, TRANSLATION_LANGS, LANG_LABELS, locateProduct, cropToBox, draftLooksEmpty, NoProductError, completeMeasurements, locateCallouts, calloutCrop } from './ai.js';
 import { planClientAccess, normalizeEmails, emailDomain } from './access.js';
 import { applyFlow, MILESTONE_STATUSES, OWNERS, OWNER_LABELS } from './flow.js';
-import { invoicePdf, collectionPdf } from './docs-pdf.js';
+import { invoicePdf, collectionPdf, vendorPdf } from './docs-pdf.js';
+import { vaultReady, seal, open as unseal, fingerprint } from './vault.js';
+import { validateVendor, bankParts, maskedBank, last4, clientView as vendorClientView, adminView as vendorAdminView, PUBLIC_KEYS as VENDOR_PUBLIC } from './vendor.js';
 import { listFiles, readItem, buildZip, refreshTechPackPdf, ensureAllPdfs } from './files.js';
 import { listRoomFiles, listFactoryFiles, fileFor } from './room-files.js';
+import { conceptRender } from './concept.js';
 import { nextFreeStep, nextPaidStep, nurtureEmail, marketingFooter, parseCaseStudies, pickCaseStudy, unsubscribeToken, validUnsubscribeToken } from './nurture.js';
 
 const app = Fastify({ logger: true, bodyLimit: 1_000_000, trustProxy: true });
@@ -1873,15 +1876,92 @@ app.get('/v1/project-files/:id/download',{preHandler:authenticate},async(req,rep
   return reply.type(row.mime_type||'application/octet-stream').header('content-disposition',`attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`).send(createReadStream(join(uploadDir,row.storage_name)));
 });
 
+// ---- Vendor information: the signed form every hub client fills in (src/vendor.js, src/vault.js) ----
+// The numbers are encrypted; a client never gets them back, staff open them one submission at a time and every opening is logged.
+const VENDOR_SELECT=`select vs.*,c.name client_name,ru.name reviewer_name,rf.original_name tax_form_name from vendor_submissions vs join clients c on c.id=vs.client_id
+  left join users ru on ru.id=vs.reviewed_by left join room_files rf on rf.id=vs.tax_form_file_id`;
+const taxFormFor=async clientId=>(await pool.query(`select id,original_name name,created_at at from room_files where client_id=$1 and purpose='tax-form' and uploader_role='client' order by created_at desc limit 1`,[clientId])).rows[0]||null;
+app.get('/v1/vendor',{preHandler:authenticate},async(req)=>{
+  const rows=(await pool.query(`${VENDOR_SELECT} where vs.client_id=$1 order by vs.version desc`,[req.auth.clientId])).rows;
+  const current=rows.find(r=>r.status!=='superseded')||null,approved=rows.find(r=>r.status==='approved')||null;
+  let prefill=null;if(rows[0]&&vaultReady()){try{const d=unseal(rows[0].data_enc);prefill=Object.fromEntries(VENDOR_PUBLIC.map(k=>[k,d[k]||'']))}catch{}}
+  return {ready:vaultReady(),current:vendorClientView(current),approved:Boolean(approved),activeVersion:approved?.version||null,prefill,taxForm:await taxFormFor(req.auth.clientId)};
+});
+app.post('/v1/vendor',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role==='admin')return reply.code(403).send({error:'Vendor information is filled in by the client'});
+  if(!vaultReady())return reply.code(503).send({error:'Secure storage for bank details is not switched on yet. Please try again shortly, or message us.'});
+  const {errors,clean}=validateVendor(req.body);const tax=await taxFormFor(req.auth.clientId);
+  if(!tax)errors.taxForm='Upload your W-9 (US companies) or W-8 (international) first';
+  if(Object.keys(errors).length)return reply.code(400).send({error:Object.values(errors)[0],errors});
+  if(!throttle(`vendor:${req.auth.clientId}`,{limit:10,windowMs:3600_000}))return reply.code(429).send({error:'Too many submissions: try again in a while'});
+  const fp=fingerprint(bankParts(clean)),db=await pool.connect();let row;
+  try{
+    await db.query('begin');await db.query('select pg_advisory_xact_lock(hashtext($1))',['vendor:'+req.auth.clientId]);
+    const approved=(await db.query(`select bank_fp from vendor_submissions where client_id=$1 and status='approved' order by version desc limit 1`,[req.auth.clientId])).rows[0];
+    const version=Number((await db.query('select coalesce(max(version),0)+1 v from vendor_submissions where client_id=$1',[req.auth.clientId])).rows[0].v);
+    await db.query(`update vendor_submissions set status='superseded' where client_id=$1 and status='pending'`,[req.auth.clientId]);
+    const {agree,...stored}=clean;void agree;
+    row=(await db.query(`insert into vendor_submissions(client_id,version,company_name,contact_name,contact_email,method,currency,bank_mask,bank_fp,tax_last4,bank_changed,tax_form_file_id,data_enc,signed_name,signed_title,signed_ip,submitted_by)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning *`,[req.auth.clientId,version,clean.companyName,clean.contactName,clean.contactEmail,clean.method,clean.currency,maskedBank(clean),fp,last4(clean.taxId.replace(/[\s-]/g,'')),
+      Boolean(approved&&approved.bank_fp!==fp),tax.id,seal(stored),clean.signedName,clean.signedTitle,req.ip||null,req.auth.sub])).rows[0];
+    await db.query('commit');
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+  const c=(await pool.query('select name from clients where id=$1',[req.auth.clientId])).rows[0];
+  // the notice names no number: it says a form is waiting, and whether the bank details moved
+  await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'vendor-info',$2,'vendor',$3)`,[req.auth.clientId,`${c?.name||'A client'} submitted vendor information (v${row.version})${row.bank_changed?': bank details CHANGED, verify by phone before approving':''}`,row.id]);
+  return reply.code(201).send({current:vendorClientView(row)});
+});
+app.get('/v1/admin/clients/:id/vendor',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Client not found'});
+  const rows=(await pool.query(`${VENDOR_SELECT} where vs.client_id=$1 order by vs.version desc`,[req.params.id])).rows;
+  return {ready:vaultReady(),submissions:rows.map(vendorAdminView),taxForm:await taxFormFor(req.params.id)};
+});
+async function vendorSubmission(req,reply){
+  if(!UUID_RE.test(String(req.params.sid))){reply.code(404).send({error:'Not found'});return null}
+  const row=(await pool.query(`${VENDOR_SELECT} where vs.id=$1`,[req.params.sid])).rows[0];if(!row){reply.code(404).send({error:'Not found'});return null}
+  return row;
+}
+const vendorLog=(row,userId,action)=>pool.query('insert into vendor_access_log(submission_id,user_id,action) values($1,$2,$3)',[row.id,userId,action]);
+app.post('/v1/admin/vendor/:sid/reveal',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await vendorSubmission(req,reply);if(!row)return;
+  let data;try{data=unseal(row.data_enc)}catch{return reply.code(503).send({error:'The stored details cannot be opened: is VENDOR_DATA_KEY the same key they were saved with?'})}
+  await vendorLog(row,req.auth.sub,'reveal');
+  return reply.header('cache-control','no-store').send({data});
+});
+app.post('/v1/admin/vendor/:sid/review',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await vendorSubmission(req,reply);if(!row)return;
+  const decision=req.body?.decision,note=String(req.body?.note||'').trim().slice(0,1000),verified=req.body?.verifiedCall===true;
+  if(row.status!=='pending')return reply.code(409).send({error:`This version is already ${row.status}`});
+  if(!['approve','reject'].includes(decision))return reply.code(400).send({error:'Approve or reject it'});
+  if(decision==='reject'&&note.length<3)return reply.code(400).send({error:'Tell them what to fix'});
+  if(decision==='approve'&&row.bank_changed&&!verified)return reply.code(400).send({error:'The bank details changed. Call the vendor on a number you already hold, then tick "verified by phone" to approve'});
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    if(decision==='approve')await db.query(`update vendor_submissions set status='superseded' where client_id=$1 and status='approved'`,[row.client_id]);
+    await db.query(`update vendor_submissions set status=$2,reviewed_by=$3,reviewed_at=now(),review_note=$4,verified_call=$5 where id=$1`,[row.id,decision==='approve'?'approved':'rejected',req.auth.sub,note||null,verified]);
+    await db.query('commit');
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+  await vendorLog(row,req.auth.sub,decision);
+  return vendorAdminView((await pool.query(`${VENDOR_SELECT} where vs.id=$1`,[row.id])).rows[0]);
+});
+app.get('/v1/admin/vendor/:sid/pdf',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  const row=await vendorSubmission(req,reply);if(!row)return;
+  let data;try{data=unseal(row.data_enc)}catch{return reply.code(503).send({error:'The stored details cannot be opened: is VENDOR_DATA_KEY the same key they were saved with?'})}
+  const full=req.query?.full==='1';if(full)await vendorLog(row,req.auth.sub,'pdf-full');
+  const buf=await vendorPdf({sub:row,data,full});
+  return reply.type('application/pdf').header('cache-control','no-store').header('content-disposition',`attachment; filename="vendor-information-${row.company_name.replace(/[^a-z0-9]+/gi,'-').slice(0,40)}-v${row.version}.pdf"`).send(buf);
+});
+
 // ---- All files: what is sent in a room outside a product (src/room-files.js says who sees what) ----
-async function storeRoomFile(clientId,userId,role,part,{projectId=null,productId=null,note=null,clientVisible=false,factoryVisible=false}={}){
+async function storeRoomFile(clientId,userId,role,part,{projectId=null,productId=null,note=null,clientVisible=false,factoryVisible=false,purpose=null}={}){
   const originalName=cleanName(part.filename);if(!allowedExtensions.has(extname(originalName).toLowerCase()))throw Object.assign(new Error('Allowed: PDF, AI, EPS, PNG, JPG, SVG, ZIP, Word, Excel, PowerPoint, CSV, TXT'),{statusCode:415});
   const storageName=`${randomBytes(18).toString('hex')}-${originalName}`,path=join(uploadDir,storageName);
   try{
     await pipeline(part.file,createWriteStream(path,{flags:'wx'}));
     if(part.file.truncated)throw Object.assign(new Error('That file is too large'),{statusCode:413});
-    return (await pool.query(`insert into room_files(client_id,project_id,product_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes,note,client_visible,factory_visible)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,[clientId,projectId,productId,userId,role,originalName,storageName,part.mimetype,part.file.bytesRead,note,clientVisible,factoryVisible])).rows[0];
+    return (await pool.query(`insert into room_files(client_id,project_id,product_id,uploader_id,uploader_role,original_name,storage_name,mime_type,size_bytes,note,client_visible,factory_visible,purpose)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,[clientId,projectId,productId,userId,role,originalName,storageName,part.mimetype,part.file.bytesRead,note,clientVisible,factoryVisible,purpose])).rows[0];
   }catch(error){await unlink(path).catch(()=>{});throw error}
 }
 // A file belongs to a project and/or a product of this room. A product brings its project with it. null when either is not this client's.
@@ -1899,7 +1979,7 @@ app.post('/v1/room-files',{preHandler:authenticate},async(req,reply)=>{
   if(req.auth.role==='admin')return reply.code(403).send({error:'Staff add files from the work console'});
   const part=await req.file();if(!part)return reply.code(400).send({error:'Choose a file to send'});
   const t=await roomTargets(req.auth.clientId,req.query?.projectId,req.query?.productId);if(!t){part.file.resume();return reply.code(400).send({error:'That project or product is not in your room'})}
-  const file=await storeRoomFile(req.auth.clientId,req.auth.sub,'client',part,{...t,note:String(req.query?.note||'').trim().slice(0,500)||null});
+  const file=await storeRoomFile(req.auth.clientId,req.auth.sub,'client',part,{...t,note:String(req.query?.note||'').trim().slice(0,500)||null,purpose:req.query?.purpose==='tax-form'?'tax-form':null});
   const c=(await pool.query('select name from clients where id=$1',[req.auth.clientId])).rows[0];
   await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'client-room-file',$2,'room-file',$3)`,[req.auth.clientId,`${c?.name||'A client'} sent ${file.original_name}`,file.id]);
   return reply.code(201).send({file:roomFileView((await listRoomFiles(pool,req.auth.clientId)).find(f=>f.id===`rf:${file.id}`))});
@@ -2934,6 +3014,26 @@ async function autoDraftProduct(product,{photos=[],actorId=null,reason='created'
   await startAiRun(pack);
   return {ai:'pending',techPackId:pack.id,from:images.length||hasImage?'photo':'brief'};
 }
+// The client's own upload stays in the pack as downloadable artwork (the files folder lists it under "Your uploads"); it is not a sketch of a product.
+function withClientUpload(pack,image){
+  const p=structuredClone(pack);
+  p.sketches=p.sketches.map(s=>s.image===image?{...s,image:'',label:'Front view — concept render to follow'}:s);
+  if(!p.artwork.some(a=>a.image===image))p.artwork=[{id:`art-${Date.now().toString(36)}`,name:'Your upload',image,pantones:[],placements:[]},...p.artwork].slice(0,12);
+  return normalizeTechPack(p);
+}
+// A concept render made from the client's graphic and their description: the first colour rendering, so the cover and the hub show something at once.
+async function addConceptRender(packId,{artwork,title,category,description}){
+  const image=await conceptRender({artwork,title,category,description});if(!image)return;
+  const db=await pool.connect();
+  try{
+    await db.query('begin');
+    const live=(await db.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!live){await db.query('rollback');return}
+    const pack=normalizeTechPack(live.data);if(pack.renderings.some(r=>/^concept-/.test(r.id)))return await db.query('rollback');
+    pack.renderings=[{id:`concept-${Date.now().toString(36)}`,name:'Concept render',note:'Made from your graphic and your description. A first idea, not a final design.',image,parts:[]},...pack.renderings].slice(0,6);
+    await db.query('update tech_packs set data=$2,updated_at=now() where id=$1',[packId,normalizeTechPack(pack)]);
+    await db.query('commit');
+  }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
+}
 async function enrichPhotoDraft(packId,{force=false}={}){
   const claimed=(await pool.query(`update tech_packs set ai_status='pending',ai_started_at=now(),ai_attempts=ai_attempts+1,ai_error=null
     where id=$1 and (ai_status='pending' or $2) returning *`,[packId,force])).rows[0];
@@ -2942,21 +3042,11 @@ async function enrichPhotoDraft(packId,{force=false}={}){
   if(!row)return;
   try{
     const data=normalizeTechPack(row.data);
-    const original=data.sketches.find(s=>s.image)?.image;
+    let original=data.sketches.find(s=>s.image)?.image,artwork=null;
     const briefText=await productBriefText(row.product_id,row.description_html);
     if(!original&&!briefText)throw new NoProductError('There is no photo or brief on this product yet — add a photo under Callouts or write the brief, then run the assistant again.');
     let photo=original,crop=null,first,draft,seed,research=null,photos=[],product,where=null,cutout=null;
-    if(!original){
-      // no photo: draft from the brief and category norms; callouts stay unpinned until a sketch or photo lands
-      const working=structuredClone(data);if(!working.sketches.length)working.sketches.push({id:`view-${Date.now().toString(36)}`,view:'front',label:'Front view — add a sketch or photo',image:'',garmentWidthIn:null,callouts:[]});
-      const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
-      first=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefText,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
-      product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
-      seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;draft=first.draft;
-      if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){const second=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefText,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});draft=second.draft}
-      if(draftLooksEmpty(draft))throw new NoProductError('The assistant could not draft enough from this brief. Add a photo, or more detail to the brief, and run it again.');
-      draft.pomResearch={skipped:'no photo to research from'};
-    }else{
+    if(original){
       // Only a decoder failure means the file is bad. An API error carries "invalid_request_error" in its text (a low
       // credit balance, a bad key) and must surface as what it is, never as "could not open this image".
       try{where=await locateProduct(original)}catch(e){
@@ -2964,7 +3054,26 @@ async function enrichPhotoDraft(packId,{force=false}={}){
         if(!(e.status>=400)&&/unsupported image|Input buffer|corrupt|premature|Invalid base64|No readable photo/i.test(e.message||''))throw new NoProductError('We could not open this image file. Replace it with a JPG or PNG (Callouts → View settings → Replace image) and try again.');
         if(e.status===400&&/could not process image|image.*(too large|exceeds|dimensions)/i.test(e.message||''))throw new NoProductError('The assistant could not take this image. Replace it with a JPG or PNG under 5 MB (Callouts → View settings → Replace image) and try again.');
         throw e}
-      if(!where.found)throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`);
+      if(!where.found){
+        // A graphic with words about the product is not a dead end: the graphic is the client's artwork, the description says what it goes on,
+        // and the pack is drafted from the description. (Any other picture with no product in it still asks for a better one.)
+        const named=String(row.title||'').trim().split(/\s+/).length>=2;
+        if(where.artwork&&(briefText||named)){artwork=original;original='';app.log.info({packId,artwork:Boolean(where.artwork)},'no product in the photo: drafting from the description, the picture kept as artwork')}
+        else throw new NoProductError(`We could not make out a product in this photo${where.issues?` (${where.issues})`:''}. Upload a screenshot where the product fills most of the frame, then try again.`)
+      }
+    }
+    const briefFor=artwork?`${briefText}\n\nThe customer attached a picture that is a graphic (lettering, a logo or a pattern), not a photo of the product. Treat it as their artwork. Draft the product the title and brief describe. If they name more than one piece (a set, for example a hoodie and matching sweatpants), draft the first piece as the main product and list the other pieces in the description.`:briefText;
+    if(!original){
+      // no photo: draft from the brief and category norms; callouts stay unpinned until a sketch or photo lands
+      const working=structuredClone(data);if(!working.sketches.length)working.sketches.push({id:`view-${Date.now().toString(36)}`,view:'front',label:'Front view — add a sketch or photo',image:'',garmentWidthIn:null,callouts:[]});
+      const sizes=working.sizes,sampleSize=working.style.sampleSize||sizes[Math.floor(sizes.length/2)]||'';
+      first=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefFor,pomTemplate:working.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes,sampleSize});
+      product={title:row.title,product_type:productTypeLabel(first.draft),description_html:row.description_html};
+      seed=normalizeTechPack({...seedTechPack({product}),sketches:working.sketches});seed.style.designer=working.style.designer;draft=first.draft;
+      if(seed.pom.map(r=>r.code).join()!==working.pom.map(r=>r.code).join()){const second=await draftFromBrief({title:row.title,notes:String(row.description_html||'').replace(/<[^>]+>/g,''),brief:briefFor,pomTemplate:seed.pom.map(r=>({code:r.code,name:r.name,how:r.how})),sizes:seed.sizes,sampleSize:seed.style.sampleSize||sampleSize});draft=second.draft}
+      if(draftLooksEmpty(draft))throw new NoProductError('The assistant could not draft enough from this brief. Add a photo, or more detail to the brief, and run it again.');
+      draft.pomResearch={skipped:'no photo to research from'};
+    }else{
       try{crop=await cropToBox(original,where.box);if(crop.coverage<0.92)photo=crop.image;else crop=null}catch(e){app.log.warn({err:e.message,packId},'crop failed, using the full photo')}
       const working=structuredClone(data);
       if(crop){working.sketches[0]={...working.sketches[0],image:photo,label:working.sketches[0].label||'Reference photo'};
@@ -3017,12 +3126,14 @@ async function enrichPhotoDraft(packId,{force=false}={}){
         origForMerge.sketches=origForMerge.sketches.map(sk=>({...sk,image:currentForMerge.sketches.find(x=>x.id===sk.id)?.image||sk.image}));
       }
       merged=mergeClientEdits(origForMerge,currentForMerge,drafted);
+      if(artwork)merged=withClientUpload(merged,artwork);
       await db.query(`update tech_packs set data=$2,ai_status='done',ai_model=$3,ai_completed_at=now(),ai_error=null,ai_draft=$4,ai_draft_at=now() where id=$1`,[packId,merged,first.model,JSON.stringify(draftSnapshot(drafted))]); // the assistant's own output is kept so later edits can be measured against it // updated_at is left alone: it marks the client's own edits (idle follow-ups rely on it)
       await db.query('commit');
     }catch(e){await db.query('rollback').catch(()=>{});throw e}finally{db.release()}
     await pool.query(`update products set product_type=coalesce(nullif($2,''),product_type) where id=$1`,[row.product_id,product.product_type]);
     if(row.initiated_by==='client')await syncCardQuietly(row.product_id,merged);
     await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[row.client_id,row.product_id,`Assistant drafted the tech pack from ${original?'the photo':'the brief'} (${merged.sketches[0]?.callouts.length||0} callouts, ${merged.pom.filter(r=>Object.values(r.values).some(Boolean)).length} measurements${research?.filled?.length?`, ${research.filled.length} cross-referenced online`:''}${crop?', cropped to the product':''})`,{techPackId:packId,model:first.model,confidence:draft.confidence,located:where?.product||null,coverage:crop?.coverage??1,research:research?{identified:research.identified,requested:research.requested,filled:research.filled,stillMissing:research.stillMissing,comparables:research.comparables?.map(c=>c.url).filter(Boolean)}:draft.pomResearch?.error?{error:draft.pomResearch.error}:null}]);
+    if(artwork)addConceptRender(packId,{artwork,title:row.title,category:draft.category,description:String(row.description_html||'').replace(/<[^>]+>/g,' ')}).catch(err=>app.log.warn({err:err.message,packId},'concept render not made'));
     startLoop(packId,{trigger:'build'}).catch(err=>app.log.warn({err:err.message,packId},'exchange not started')); // the developer assistant now tests the draft; the pop-up follows it
   }catch(e){
     const user=aiUserMessage(e),msg=user||String(e.message||e).slice(0,500);

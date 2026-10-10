@@ -2,6 +2,7 @@
 // sign-in, cutout service, storage, the host), configuration sanity checks, and insights about people and packs.
 // Everything here is read-only. No secret is ever returned, only whether it is set.
 import { statfs } from 'node:fs/promises';
+import { vaultReady } from './vault.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { overallStatus } from './telemetry.js';
 
@@ -128,6 +129,7 @@ export function configChecks(d) {
     add(id, label, !v ? 'info' : /localhost|127\.0\.0\.1|^http:/.test(v) ? 'warn' : 'ok', !v ? 'Using the default.' : /localhost|127\.0\.0\.1|^http:/.test(v) ? `${v} is not a public https address.` : v.replace(/^https?:\/\//, ''));
   add('billing', 'Tech pack payment gate', d.billing.effective && !d.shopifyConfigured() ? 'warn' : 'ok', `${d.billing.effective ? 'On' : 'Off'} (${d.billing.mode === 'auto' ? 'automatic' : 'set in the console'})${d.billing.effective && !d.shopifyConfigured() ? '; payments cannot be taken because Shopify is not connected' : ''}.`);
   add('checkoutProduct', 'Tech pack checkout product', d.billing.effective && d.shopifyConfigured() && !d.techPackProduct ? 'warn' : d.techPackProduct ? 'ok' : 'info', d.techPackProduct ? 'Set up in Shopify.' : d.billing.effective ? 'Not created yet: use "Set up tech pack checkout product".' : 'Not needed while the gate is off.');
+  add('vendorvault', 'Vendor bank details: secure storage', vaultReady(env) ? 'ok' : 'warn', vaultReady(env) ? 'Bank and tax details are encrypted with VENDOR_DATA_KEY.' : 'VENDOR_DATA_KEY is not set (32 random bytes as 64 hex characters), so clients cannot submit vendor bank details yet.');
   add('membership', 'Membership link', env.MEMBERSHIP_CHECKOUT_URL ? 'ok' : 'info', env.MEMBERSHIP_CHECKOUT_URL ? 'Set.' : 'Not set: the "or join the studio" option is hidden on locked packs.');
   add('unsub', 'Email unsubscribe secret', env.UNSUBSCRIBE_SECRET ? 'ok' : 'warn', env.UNSUBSCRIBE_SECRET ? 'Set.' : 'UNSUBSCRIBE_SECRET is not set, so unsubscribe links fall back to a weaker key.');
   add('followups', 'Photo follow-up emails', env.FOLLOWUPS_DISABLED === 'true' ? 'info' : 'ok', env.FOLLOWUPS_DISABLED === 'true' ? 'Switched off.' : 'On.');

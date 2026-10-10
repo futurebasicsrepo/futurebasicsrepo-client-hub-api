@@ -23,7 +23,7 @@ export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
 for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
-COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true)
+COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
 #    Its connection pool is deliberately tiny (4): any request that holds a database connection while asking for a second one hangs here.

@@ -13,17 +13,17 @@ const shape = r => ({
   id: `${r.source}:${r.id}`, source: r.source === 'rf' ? 'room' : 'chat', name: r.original_name, mime: r.mime_type || 'application/octet-stream',
   bytes: Number(r.size_bytes) || 0, at: r.created_at, by: r.uploader_role, byName: r.uploader_name || (r.uploader_role === 'admin' ? 'Future Basics' : 'Client'),
   note: r.note || '', clientVisible: r.source === 'pf' ? true : Boolean(r.client_visible), factoryVisible: Boolean(r.factory_visible),
-  projectId: r.project_id || null, projectName: r.project_name || '', productId: r.product_id || null, productTitle: r.product_title || ''
+  purpose: r.purpose || '', projectId: r.project_id || null, projectName: r.project_name || '', productId: r.product_id || null, productTitle: r.product_title || ''
 });
 
 // One client's files, newest first. admin: staff see all of it; otherwise only what the client is entitled to.
 export async function listRoomFiles(pool, clientId, { admin = false } = {}) {
   const room = (await pool.query(`select 'rf' source,rf.id,rf.original_name,rf.mime_type,rf.size_bytes,rf.created_at,rf.uploader_role,rf.note,rf.client_visible,rf.factory_visible,
-      rf.project_id,pr.name project_name,rf.product_id,p.title product_title,coalesce(u.name,u.email) uploader_name
+      rf.project_id,pr.name project_name,rf.product_id,p.title product_title,rf.purpose,coalesce(u.name,u.email) uploader_name
     from room_files rf left join projects pr on pr.id=rf.project_id left join products p on p.id=rf.product_id left join users u on u.id=rf.uploader_id
     where rf.client_id=$1 ${admin ? '' : `and (rf.uploader_role='client' or rf.client_visible)`}`, [clientId])).rows;
   const chat = (await pool.query(`select 'pf' source,pf.id,pf.original_name,pf.mime_type,pf.size_bytes,pf.created_at,pf.uploader_role,null note,true client_visible,pf.factory_visible,
-      pf.project_id,pr.name project_name,null product_id,null product_title,coalesce(u.name,u.email) uploader_name
+      pf.project_id,pr.name project_name,null product_id,null product_title,null purpose,coalesce(u.name,u.email) uploader_name
     from project_files pf join projects pr on pr.id=pf.project_id left join users u on u.id=pf.uploader_id where pf.client_id=$1`, [clientId])).rows;
   return [...room, ...chat].map(shape).sort((a, b) => new Date(b.at) - new Date(a.at));
 }
