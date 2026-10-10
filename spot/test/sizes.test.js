@@ -84,3 +84,19 @@ test('the product photo is read off the page, best effort', async () => {
   await withPhoto(typed, async () => { fetched = true; });
   assert.equal(fetched, false, 'only lookups');
 });
+
+test('the photo is of the colour asked for, when the store lists one per variant', async () => {
+  const draft = { source: 'lookup', merchant: { name: 'Stanley' }, items: [{ title: 'Quencher | 40 OZ', variant: '40 OZ | Rose Quartz 2.0', url: 'https://stanley.example/products/quencher', image_url: null, price_cents: 4500 }] };
+  const page = async () => ({ items: [{ image_url: 'https://stanley.example/purple.png' }] });
+  const product = { title: 'Quencher | 40 OZ', variants: [
+    { option1: 'Purple Dust', title: 'Purple Dust', featured_image: { src: '//cdn.example/purple.png' } },
+    { option1: 'Peach Rose', title: 'Peach Rose', featured_image: { src: '//cdn.example/peach.png' } },
+    { option1: 'Rose Quartz 2.0', title: 'Rose Quartz 2.0', available: false, featured_image: { src: '//cdn.example/rose.png' } },
+  ] };
+  assert.equal((await withPhoto(draft, page, async () => product)).items[0].image_url, 'https://cdn.example/rose.png', 'sold out still has its photo');
+  // Sizes share a colour's photo; no single match falls back to the page's.
+  const hoodie = { title: 'Hoodie', variants: ['S', 'M'].map((z) => ({ option1: 'Black', option2: z, title: `Black / ${z}`, featured_image: { src: 'https://cdn.example/black.png' } })) };
+  assert.equal((await withPhoto({ ...draft, items: [{ ...draft.items[0], variant: 'Black' }] }, page, async () => hoodie)).items[0].image_url, 'https://cdn.example/black.png');
+  assert.equal((await withPhoto({ ...draft, items: [{ ...draft.items[0], variant: 'Green' }] }, page, async () => hoodie)).items[0].image_url, 'https://stanley.example/purple.png');
+  assert.equal((await withPhoto(draft, page, async () => { throw new Error('blocked'); })).items[0].image_url, 'https://stanley.example/purple.png');
+});
