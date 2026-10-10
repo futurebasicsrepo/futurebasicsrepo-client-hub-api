@@ -63,7 +63,7 @@ function ticketTo(cart) {
   return { name: `${riders[0].given_name} ${riders[0].family_name}`, email: contact.email, phone: contact.phone || '', riders };
 }
 
-export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {}, ucp = {} }) {
+export function createFulfiller({ spot, provider, env = process.env, launch, client, log = console, shopify = {}, ucp = {}, metrics = null }) {
   const pending = new Map(); // cartId → { resolve, timer }
   const shots = new Map(); // cartId → png Buffer
   const browsers = new Set();
@@ -251,12 +251,15 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
           billing,
           startUrl: p.start_url,
           client,
+          onUsage: (model, usage) => (metrics?.ok('anthropic'), metrics?.ai(model, usage)),
           progress: (t) => step(cartId, t),
           confirm: (c) => askConfirm(cartId, c),
         });
+        metrics?.ok('checkout_agent');
         finish(cartId, outcome);
       } catch (err) {
         log.error?.({ err, cart: cartId }, 'checkout agent failed');
+        metrics?.fail('checkout_agent', err);
         update(cartId, { state: 'needs_you', reason: 'Automatic ordering hit a problem. Try again' }, 'order_needs_you');
       } finally {
         const w = pending.get(cartId);
