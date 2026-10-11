@@ -385,7 +385,7 @@ ${handoffSection()}
 
 ${beatsSection()}
 
-${storySection()}
+${storySection(spotBuddy("story"))}
 
 <section class="sec" id="ask" data-say="Flights, trains, carts. Ask away ✈️🚆🛒"><div class="wrap">
   <p class="kicker reveal">What you can ask for</p>
@@ -527,7 +527,7 @@ ${chatWallSection()}
   ${standardsStrip()}
 </div></section>
 
-${noteSection(spotBuddy('note', { happy: true }))}
+${noteSection()}
 
 <section class="sec alt" id="faq" data-say="Ask me anything. Well, these."><div class="wrap">
   <p class="kicker reveal" style="text-align:center">FAQ</p>
