@@ -43,6 +43,10 @@ test('gate on: marketing pages show early access; everything people need still w
   const { call } = app(t, { SITE_GATE: 'on' });
   for (const p of ['/', '/new', '/connect', '/integrations', '/standards', '/agent-card', '/?ref=x']) assert.ok(gated(await call('GET', p)), `${p} is gated`);
   assert.match((await call('GET', '/')).headers['cache-control'], /no-store/);
+  assert.match((await call('GET', '/')).body, /og:image" content="[^"]*\/assets\/og-early\.jpg\?v=/, 'its own link preview');
+  const og = await call('GET', '/assets/og-early.jpg');
+  assert.equal(og.status, 200);
+  assert.equal(og.headers['content-type'], 'image/jpeg');
 
   // Pay links, sign-in, legal pages, the SMS opt-in page, health and the API stay open.
   const made = await call('POST', '/v1/carts', { requester: { name: 'Kyle' }, merchant: { name: 'Shop', url: 'https://shop.example' }, items: [{ title: 'Hoodie', price_cents: 6400 }] });
