@@ -698,6 +698,13 @@ await journey('J108', 'the builds showcase: nothing is shown until staff list it
   ok((await vg(`/v1/builds/${sListed}`)).status === 404, 'but not the listed one they were not invited to');
   const go = await vg(`/builds/go/${sOnly}`); ok(go.status === 302 && go.loc === 'https://example.com/' + tag, 'the live link goes through the showcase, which sends them on', [go.status, go.loc]);
   ok((await as('nobody')(`/builds/go/${sOnly}`)).status === 302 && !/example\.com/.test((await as('nobody')(`/builds/go/${sOnly}`)).loc || ''), 'without a sign-in the live link sends them to sign in, not to the build');
+  // extra links on a build: labels only to the viewer, the address stays behind a recorded redirect
+  ok((await call(`/v1/admin/builds/${only.json.id}`, { token: admin, method: 'PUT', body: { links: [{ label: 'Walkthrough', url: 'https://example.com/walk-' + tag }, { label: 'Drawings', url: 'https://example.com/draw-' + tag }] } })).status === 200, 'staff add extra links to a build');
+  ok((await call(`/v1/admin/builds/${only.json.id}`, { token: admin, method: 'PUT', body: { links: [{ label: 'Bad', url: 'javascript:alert(1)' }] } })).status === 422 && Number(sql(`select jsonb_array_length(links) from builds where id='${only.json.id}'`)) === 2, 'a link that is not a web address is refused and the saved ones are left alone');
+  const withLinks = (await vg(`/v1/builds/${sOnly}`)).json.build; ok(withLinks.links?.length === 2 && withLinks.links[0].label === 'Walkthrough' && !JSON.stringify(withLinks).includes('example.com/walk'), 'the viewer gets the labels, not the addresses');
+  const golink = await vg(`/builds/go/${sOnly}/1`); ok(golink.status === 302 && golink.loc === 'https://example.com/draw-' + tag, 'a link goes through the showcase, which sends them on', [golink.status, golink.loc]);
+  ok((await vg(`/builds/go/${sOnly}/9`)).status === 404 && (await vg(`/builds/go/${sOnly}/x`)).status === 404 && (await as('client')(`/builds/go/${sOnly}/0`)).status === 404, 'a link that does not exist, or one on a build they cannot see, is "not found"');
+  ok((await as('nobody')(`/builds/go/${sOnly}/0`)).status === 302 && !/example\.com/.test((await as('nobody')(`/builds/go/${sOnly}/0`)).loc || ''), 'and without a sign-in it sends them to sign in');
   const chk = i => as(i)(`/v1/builds/auth/check?slug=${sOnly}`); ok((await chk('guest')).status === 200 && (await chk('client')).status === 403 && (await chk('nobody')).status === 401, 'the proxy check lets the invited person in, refuses the client, and asks others to sign in');
 
   // recorded for staff
