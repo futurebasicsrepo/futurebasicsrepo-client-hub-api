@@ -1570,5 +1570,27 @@ await journey('J141', 'Factories in a browser: the map and list, filters by what
     await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J143', 'the invoice editor offers the project and the kind of work, and the invoice shows the right payment link button for it', async () => {
+  const r = await room('143', { wait: false }), W = 'http://work.localhost:3123', tag = `pl${stamp}`;
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  sql(`update projects set kind='software' where id='${r.projectId}'`);
+  const mk = async (company, extra = {}) => (await call('/v1/money/invoices', { token: kyle, body: { company, contactEmail: 'ap@x.test', lines: [{ description: 'Work', qty: 1, rate: 500 }], ...extra } })).json.invoice;
+  const prod = await mk(`Prod ${tag}`, { workKind: 'product' }), soft = await mk(`Soft ${tag}`, { workKind: 'software' }), none = await mk(`None ${tag}`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/money`, { waitUntil: 'networkidle' }); await page.waitForSelector('#t-overview .tile', { timeout: 15000 }); await page.click('.tab[data-t=invoices]');
+  const open = async name => { await page.waitForSelector(`#t-invoices tr:has-text("${name}")`, { timeout: 8000 }); await page.locator(`#t-invoices tr:has-text("${name}")`).click(); await page.waitForSelector('#dlg[open] #detail .panel', { timeout: 8000 }); };
+  await open(`Prod ${tag}`); ok(/Make the Shopify payment link/i.test(await page.innerText('#detail')) && await page.inputValue('#dBody [name=workKind]') === 'product', 'a product development invoice offers the Shopify link');
+  await page.click('#dClose'); await open(`Soft ${tag}`); ok(/Make the QuickBooks payment link/i.test(await page.innerText('#detail')), 'a software development invoice offers the QuickBooks link');
+  await page.click('#dClose'); await open(`None ${tag}`); ok(/Choose product or software development/i.test(await page.innerText('#detail')) && !(await page.locator('#detail [data-act=paylink]').count()), 'an invoice with no kind of work says to choose one, and offers no link');
+  // choose a project in the editor: it decides the kind
+  await page.waitForFunction(() => document.querySelectorAll('#dBody [name=projectId] option').length > 1, null, { timeout: 8000 });
+  const opts = await page.locator('#dBody [name=projectId] option').allInnerTexts(); ok(opts.some(o => /software/.test(o) && o.includes(r.name || 'UI Room')) || opts.some(o => /\(software\)/.test(o)), 'the editor lists the projects, marked product or software', opts.slice(0, 4).join(' | '));
+  await page.selectOption('#dBody [name=projectId]', r.projectId); ok(await page.inputValue('#dBody [name=workKind]') === 'software' && await page.locator('#dBody [name=workKind]').isDisabled(), 'choosing a software project sets the kind to software and locks it');
+  await page.click('#dActs [type=submit]'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#dMsg')?.textContent || document.querySelector('#msg').textContent), null, { timeout: 8000 }).catch(() => {});
+  const saved = (await call(`/v1/money/invoices/${none.id}`, { token: kyle })).json.invoice; ok(saved.workKind === 'software' && saved.projectId === r.projectId, 'saving keeps the project and the kind', JSON.stringify([saved.workKind, saved.projectId]));
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

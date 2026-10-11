@@ -77,6 +77,11 @@ export async function qb(ctx, path, { method = 'GET', body, raw = false, query =
   }
   return j;
 }
+// The page where the client pays an invoice by card or bank: only given when online payments are on for the invoice and it has the client's email.
+export async function invoiceLink(ctx, qbId) {
+  const j = await qb(ctx, `/invoice/${encodeURIComponent(qbId)}`, { query: { include: 'invoiceLink' } });
+  return String(j.Invoice?.InvoiceLink || '');
+}
 const esc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 export const query = (ctx, sql) => qb(ctx, '/query', { query: { query: sql } }).then(j => j.QueryResponse || {});
 

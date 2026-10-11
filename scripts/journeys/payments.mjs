@@ -388,4 +388,47 @@ await journey('J131', 'pushing a build to the client\'s own Shopify store: it ne
   await A(`/builds/${bid}`, { method: 'DELETE' });
 });
 
+await journey('J142', 'a product development invoice gets a Shopify payment link that prints on its PDF, and the payment lands on the invoice once the checkout is paid', async () => {
+  const room = await call('/v1/public/start', { body: { email: `j142-${stamp}@chaos.test`, name: 'Link Tester', title: 'Link pack', photos: [runner] } });
+  ok(room.status === 201, 'setup: a client and a product project exist', room.status);
+  const cid = room.json.client.id, pid = room.json.project.id;
+  const staff = async e => forge({ sub: sql(`select id from users where lower(email)='${e}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${e}','${e.split('@')[0]}','admin') returning id`).split('\n')[0], clientId: cid, role: 'admin', email: e });
+  const kyle = await staff('kyle@thefuturebasics.com'), colby = await staff('colby@thefuturebasics.com'), M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o });
+  const mk = async (extra = {}) => (await M('/invoices', { body: { company: `Link Co ${stamp}`, contactEmail: 'ap@linkco.test', lines: [{ description: 'Sample run', qty: 2, rate: 150 }], taxRatePct: 0, credits: [{ label: 'Deposit paid 3/9', amount: 100 }], ...extra } })).json.invoice;
+  const proj = (await M('/projects')).json.projects.find(p => p.id === pid);
+  ok(proj && proj.kind === 'product' && proj.client === room.json.client.name, 'the project list offers the project, as product development', JSON.stringify(proj));
+  ok((await call('/v1/money/projects', { token: colby })).status === 403 && (await call(`/v1/money/invoices/00000000-0000-4000-8000-000000000000/pay-link`, { token: colby, body: {} })).status === 403, 'Colby cannot list projects or make payment links');
+
+  // no kind of work chosen: no link
+  let inv = await mk(); ok(inv.workKind === '' && !inv.payUrl, 'an invoice with no kind of work has no link');
+  let r = await M(`/invoices/${inv.id}/pay-link`, { body: {} }); ok(r.status === 409 && /product development.*Shopify.*software development.*QuickBooks/s.test(r.json.error), 'asking for a link says what to choose first', r.json.error);
+
+  // product development through a project: Shopify, for the amount due now
+  inv = await mk({ projectId: pid }); ok(inv.workKind === 'product' && inv.projectId === pid && inv.projectName, 'choosing the project sets the kind of work (product development)', JSON.stringify([inv.workKind, inv.projectName]));
+  r = await M(`/invoices/${inv.id}/pay-link`, { body: {} }); inv = r.json.invoice;
+  ok(r.status === 201 && inv.payChannel === 'shopify' && /^https:\/\/mock\.myshopify\.com\/invoices\//.test(inv.payUrl) && inv.status === 'sent', 'the Shopify link is made and the invoice is marked sent', JSON.stringify([r.status, inv.payChannel, inv.payUrl, inv.status]));
+  const drafts = (await (await fetch('http://127.0.0.1:3126/__mock/drafts')).json()).drafts, d = drafts.find(x => x.invoiceUrl === inv.payUrl);
+  ok(d && d.amount === 200 && /Invoice /.test(d.title) && d.email === 'ap@linkco.test', 'the Shopify checkout is for the amount due ($300 less the $100 deposit = $200) and has the client\'s email', JSON.stringify(d));
+  const again = await M(`/invoices/${inv.id}/pay-link`, { body: {} }); ok(again.json.made === false && again.json.invoice.payUrl === inv.payUrl, 'asking again keeps the same link');
+  const pdf = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${inv.id}/pdf`, { headers: { Authorization: `Bearer ${kyle}` } }), bytes = Buffer.from(await pdf.arrayBuffer()).toString('latin1');
+  ok(pdf.status === 200 && bytes.includes(inv.payUrl), 'the link is on the PDF (as a link annotation)');
+  const nolink = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${(await mk({ projectId: pid })).id}/pdf`, { headers: { Authorization: `Bearer ${kyle}` } }); ok(!Buffer.from(await nolink.arrayBuffer()).toString('latin1').includes('mock.myshopify.com'), 'an invoice with no link prints none');
+
+  // the checkout is paid: the sweep records it once and settles the invoice
+  await mock('/__mock/draft-paid', { id: d.id }); await sleep(100);
+  const list = (await M('/invoices')).json.invoices; ok(list.find(x => x.id === inv.id).state !== 'paid', 'before the sweep the invoice is still open');
+  // the job runs every 30 minutes; run it by asking the server to sync now
+  const sync = await M('/shopify-links/sync', { body: {} }); ok(sync.status === 200 && sync.json.added === 1, 'the check finds the paid checkout', JSON.stringify(sync.json));
+  inv = (await M(`/invoices/${inv.id}`)).json; ok(inv.invoice.state === 'paid' && inv.payments.length === 1 && inv.payments[0].source === 'shopify' && inv.payments[0].amountCents === 20000, 'the invoice is paid by one Shopify payment of $200', JSON.stringify(inv.payments));
+  const sync2 = await M('/shopify-links/sync', { body: {} }); ok(sync2.json.added === 0 && (await M(`/invoices/${inv.invoice.id}`)).json.payments.length === 1, 'checking again adds nothing');
+  const paidPdf = await fetch(`http://127.0.0.1:3127/v1/money/invoices/${inv.invoice.id}/pdf`, { headers: { Authorization: `Bearer ${kyle}` } }); ok(!Buffer.from(await paidPdf.arrayBuffer()).toString('latin1').includes(inv.invoice.payUrl), 'a paid invoice prints no link');
+
+  // software development: needs QuickBooks, which this server does not have
+  const sw = await mk({ workKind: 'software' }); ok(sw.workKind === 'software', 'software development can be chosen without a project');
+  r = await M(`/invoices/${sw.id}/pay-link`, { body: {} }); ok(r.status === 409 && /QuickBooks/.test(r.json.error), 'without QuickBooks connected the software link says so', r.json.error);
+  // editing a Shopify-linked invoice drops the link (the amount may have changed)
+  const e = await mk({ projectId: pid }); await M(`/invoices/${e.id}/pay-link`, { body: {} }); const ed = await M(`/invoices/${e.id}`, { method: 'PUT', body: { company: e.company, contactEmail: e.contactEmail, projectId: pid, lines: [{ description: 'Sample run', qty: 3, rate: 150 }] } });
+  ok(ed.status === 200 && ed.json.invoice.payUrl === '' && ed.json.invoice.payChannel === '', 'editing the invoice drops its Shopify link, so a stale amount is never sent', JSON.stringify(ed.json.invoice?.payUrl));
+});
+
 summary(); process.exit(bad ? 1 : 0);

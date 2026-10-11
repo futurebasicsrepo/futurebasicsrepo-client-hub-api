@@ -2,7 +2,7 @@
 // to put orders in the "store" and to make it fail. Started by run.sh; the server under test points at it with SHOPIFY_API_ORIGIN.
 import http from 'node:http';
 const port = Number(process.argv[2] || 3126);
-const orders = [], products = new Map(), state = { failing: false, n: 1000 };
+const orders = [], products = new Map(), state = { failing: false, n: 1000 }, drafts = new Map(); // draft orders: the Money payment links
 // Merchant stores (tokens from the authorization-code install) each get their own catalogue; the server's own token keeps the main one.
 const stores = new Map(), revoked = new Set(), hooks = new Map();
 // a token "mock-merchant-x~2" is a reconnect of the same store as "mock-merchant-x": the catalogue is the store's, not the token's
@@ -32,6 +32,8 @@ http.createServer(async (req, res) => {
       attrs: x.productId ? [{ key: 'Product', value: x.productTitle || 'Layer runner' }, { key: 'Tech pack', value: `http://127.0.0.1:${x.hubPort || 3127}/tech-packs/${x.productId}` }] : [] };
     orders.push(o); return send(res, 201, shape(o));
   }
+  if (url === '/__mock/draft-paid' && req.method === 'POST') { const x = JSON.parse(body || '{}'), d = [...drafts.values()].find(y => y.id === x.id || y.name === x.name); if (!d) return send(res, 404, { error: 'no such draft' }); d.paid = x.paid !== false; d.updatedAt = new Date().toISOString(); return send(res, 200, d); }
+  if (url === '/__mock/drafts') return send(res, 200, { drafts: [...drafts.values()] });
   if (url === '/__mock/fail' && req.method === 'POST') { state.failing = JSON.parse(body || '{}').on === true; return send(res, 200, { failing: state.failing }); }
   if (url === '/__mock/state') return send(res, 200, { orders: orders.length, failing: state.failing });
   if (url === '/__mock/products') { const tok = new URL(req.url, 'http://x').searchParams.get('token') || ''; return send(res, 200, { products: [...(tok ? pmap(tok) : products).values()] }); }
@@ -45,6 +47,16 @@ http.createServer(async (req, res) => {
   if (revoked.has(tokenHeader)) return send(res, 401, { errors: 'Invalid API key or access token' });
   if (state.failing) return send(res, 500, { errors: [{ message: 'mock outage' }] });
   const { query = '', variables = {} } = JSON.parse(body || '{}'), name = (query.match(/(?:query|mutation)\s+(\w+)/) || [])[1] || '';
+  if (name === 'CreateClientDraftOrder') {
+    const inp = variables.input || {}, line = (inp.lineItems || [])[0] || {}, n = ++state.n, amt = Number(line.originalUnitPriceWithCurrency?.amount || 0);
+    const d = { id: `gid://shopify/DraftOrder/${n}`, name: `#D${n}`, invoiceUrl: `https://mock.myshopify.com/invoices/${n}abc`, status: 'OPEN', paid: false, updatedAt: new Date().toISOString(), amount: amt, title: line.title, email: inp.email || '', tags: inp.tags || [] };
+    drafts.set(d.id, d); return send(res, 200, { data: { draftOrderCreate: { draftOrder: { id: d.id, name: d.name, invoiceUrl: d.invoiceUrl, status: d.status, totalPriceSet: { shopMoney: { amount: amt.toFixed(2), currencyCode: 'USD' } } }, userErrors: [] } } });
+  }
+  if (name === 'SyncDraftOrderStatus') {
+    const d = drafts.get(variables.id); if (!d) return send(res, 200, { data: { draftOrder: null } });
+    const total = { shopMoney: { amount: d.amount.toFixed(2), currencyCode: 'USD' } };
+    return send(res, 200, { data: { draftOrder: { id: d.id, name: d.name, invoiceUrl: d.invoiceUrl, status: d.paid ? 'COMPLETED' : 'OPEN', updatedAt: d.updatedAt, totalPriceSet: total, order: d.paid ? { id: `gid://shopify/Order/${d.id.split('/').pop()}`, name: `#P${d.id.split('/').pop()}`, displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', totalPriceSet: total } : null } } });
+  }
   if (name === 'PackShopInfo') return send(res, 200, { data: { shop: { name: 'Mock Merchant Store', myshopifyDomain: 'merchant.myshopify.com', currencyCode: 'USD' }, currentAppInstallation: { accessScopes: [{ handle: 'read_products' }, { handle: 'write_products' }] } } });
   if (name === 'PackAppUninstalledWebhook') { hooks.set(tokenHeader, variables.uri); return send(res, 200, { data: { webhookSubscriptionCreate: { webhookSubscription: { id: 'gid://shopify/WebhookSubscription/1' }, userErrors: [] } } }); }
   if (name === 'ClientHubConnection') return send(res, 200, { data: { shop: { name: 'Mock Store', myshopifyDomain: 'mock.myshopify.com' } } });
