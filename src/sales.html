@@ -253,7 +253,7 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const STAGES=['new','contacted','meeting','proposal','won','lost'],LABEL={new:'New',contacted:'Contacted',meeting:'Meeting',proposal:'Proposal',won:'Won',lost:'Lost'};
-const SOURCE={manual:'Added by hand',showcase:'Showcase',website:'Website',referral:'Referral',outbound:'Outbound',event:'Event',hub:'Hub',import:'Imported'};
+const SOURCE={manual:'Added by hand',showcase:'Showcase',website:'Website',referral:'Referral',outbound:'Outbound',event:'Event',hub:'Hub',import:'Imported',intel:'Sales intelligence'};
 const KIND={note:'Note',call:'Call',meeting:'Meeting',email_in:'Email in',email_out:'Email out',chat_in:'Chat in',chat_out:'Chat out',stage:'Deal',showcase_view:'Looked',showcase_demo:'Clicked through',task:'Task',system:'System'};
 const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString();
 const when=v=>v?new Date(v).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—';

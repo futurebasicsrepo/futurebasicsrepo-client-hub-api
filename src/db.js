@@ -1102,6 +1102,82 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists chat_messages_conv_idx on chat_messages(conversation_id, created_at);
+    -- Sales intelligence (see src/intel*.js): what is being said out there that we could help with. A watch is something we listen to, a signal is one public post or story it found,
+    -- events are everything staff then do about it (the record the KPIs are made from), usage is what the AI calls cost.
+    create table if not exists intel_watches (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      kind text not null check (kind in ('reddit','hn','news','web','x','discord')),
+      query text not null default '',
+      service_line text not null default 'any' check (service_line in ('any','ai','apps','product')),
+      enabled boolean not null default true,
+      cursor text not null default '',
+      last_run_at timestamptz,
+      last_status text not null default '',
+      last_error text not null default '',
+      last_found integer not null default 0,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists intel_signals (
+      id uuid primary key default gen_random_uuid(),
+      watch_id uuid references intel_watches(id) on delete set null,
+      source text not null,
+      external_id text not null,
+      url text not null default '',
+      author text not null default '',
+      title text not null default '',
+      body text not null default '',
+      posted_at timestamptz,
+      found_at timestamptz not null default now(),
+      status text not null default 'new' check (status in ('new','reviewing','actioned','replied','meeting','won','lost','dismissed')),
+      owner_id uuid references users(id) on delete set null,
+      claimed_at timestamptz,
+      first_action_at timestamptz,
+      scored_at timestamptz,
+      relevant boolean,
+      service_line text,
+      intent text,
+      fit integer,
+      urgency integer,
+      score integer,
+      summary text not null default '',
+      why_now text not null default '',
+      angle text not null default '',
+      draft text not null default '',
+      draft_channel text not null default '',
+      risks text not null default '',
+      model text not null default '',
+      dismiss_reason text not null default '',
+      contact_id uuid references sales_contacts(id) on delete set null,
+      deal_id uuid references sales_deals(id) on delete set null,
+      unique (source, external_id)
+    );
+    create index if not exists intel_signals_status_idx on intel_signals (status, score desc nulls last, found_at desc);
+    create index if not exists intel_signals_unscored_idx on intel_signals (found_at desc) where scored_at is null;
+    create table if not exists intel_events (
+      id uuid primary key default gen_random_uuid(),
+      signal_id uuid not null references intel_signals(id) on delete cascade,
+      actor_id uuid references users(id) on delete set null,
+      kind text not null,
+      channel text not null default '',
+      note text not null default '',
+      value_cents bigint,
+      at timestamptz not null default now()
+    );
+    create index if not exists intel_events_signal_idx on intel_events (signal_id, at);
+    create index if not exists intel_events_at_idx on intel_events (kind, at desc);
+    create table if not exists intel_usage (
+      id uuid primary key default gen_random_uuid(),
+      at timestamptz not null default now(),
+      provider text not null,
+      model text not null default '',
+      task text not null,
+      input_tokens integer not null default 0,
+      output_tokens integer not null default 0,
+      cost_cents numeric(10,3) not null default 0
+    );
+    create index if not exists intel_usage_at_idx on intel_usage (at desc);
     -- The opportunity finder (see src/sales-opportunities.js): what staff have made a task of, snoozed or hidden, and until when
     create table if not exists sales_opportunity_state (
       key text primary key,

@@ -1383,4 +1383,130 @@ await journey('J123', 'The opportunity finder: who to talk to next and why, from
   ok((await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } })).status === 404 && (await S('/opportunities/act', { body: { key: 'x', action: 'explode' } })).status === 422, 'something that is not there is a not-found, and an action that is not one is refused');
 });
 
+await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news, web search, X and Discord, has Claude, ChatGPT or Grok read what is new, surfaces the posts worth a person\'s time with a draft, never sends anything itself, records what each person does, and turns that into KPIs', async () => {
+  const http = await import('node:http');
+  const mock = { redditAuth: 0, xCalls: 0, log: [] };
+  const verdict = user => { const no = /NOFIT/.test(user), strong = /STRONG/.test(user), urgent = /URGENT/.test(user); return no ? { relevant: false, serviceLine: 'none', intent: 'discussion', fit: 0, urgency: 0, summary: 'Not an opportunity', whyNow: '', angle: '', draft: '', channel: 'none', risks: '' } : { relevant: true, serviceLine: /AI|automate/i.test(user) ? 'ai' : 'apps', intent: 'buying', fit: strong ? 92 : 70, urgency: urgent ? 90 : 50, summary: 'Needs help', whyNow: 'Asked today', angle: 'Answer first', draft: 'MODEL DRAFT', channel: 'public_reply', risks: '' }; };
+  const store = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const u = new URL(req.url, 'http://x'), body = Buffer.concat(chunks).toString(), send = (c, b, type = 'application/json') => { res.writeHead(c, { 'content-type': type }); res.end(typeof b === 'string' ? b : JSON.stringify(b)); };
+      mock.log.push(`${req.method} ${u.pathname}`);
+      if (u.pathname === '/api/v1/access_token') { mock.redditAuth++; return req.headers.authorization === 'Basic ' + Buffer.from('rid:rsec').toString('base64') ? send(200, { access_token: 'RT', expires_in: 3600 }) : send(401, {}); }
+      if (u.pathname.startsWith('/r/') || u.pathname === '/search') { if (req.headers.authorization !== 'Bearer RT') return send(401, {}); return send(200, { data: { children: [
+        { data: { name: 't3_a1', permalink: '/r/mockhub/comments/a1/x/', author: 'redditor1', title: 'Need a developer to build an app for my salon STRONG', selftext: 'Looking for someone, budget is ready. URGENT', created_utc: Math.floor(Date.now() / 1000) - 3600, subreddit: 'mockhub' } },
+        { data: { name: 't3_a2', permalink: '/r/mockhub/comments/a2/x/', author: 'redditor2', title: 'Need help with my app NOFIT', selftext: 'homework question about a developer job', created_utc: Math.floor(Date.now() / 1000) - 7200 } },
+        { data: { name: 't3_a3', permalink: '/r/mockhub/comments/a3/x/', author: 'redditor3', title: 'Pictures of my cat', selftext: 'nothing to see', created_utc: Math.floor(Date.now() / 1000) } }] } }); }
+      if (u.pathname === '/api/v1/search_by_date') return send(200, { hits: [{ objectID: 'hn1', author: 'founder', story_title: 'Ask HN', comment_text: 'We want to hire an AI consultant to automate our support. STRONG', created_at_i: Math.floor(Date.now() / 1000) - 600 }, { objectID: 'hn2', author: 'chatty', story_title: 'Weather', comment_text: 'lovely day', created_at_i: Math.floor(Date.now() / 1000) }] });
+      if (u.pathname === '/rss/search') return send(200, '<rss><channel><item><title>Apparel brand raises seed, needs a manufacturer</title><link>https://news.example/brand</link><guid>news-1</guid><pubDate>' + new Date().toUTCString() + '</pubDate><description>The founders are looking for a factory to make samples.</description><source url="x">Retail Dive</source></item></channel></rss>', 'application/rss+xml');
+      if (u.pathname === '/res/v1/web/search') return req.headers['x-subscription-token'] === 'bk' ? send(200, { web: { results: [{ url: 'https://blog.example/post', title: 'Which agency should build our app?', description: 'We need an agency to build an app for our shop', profile: { name: 'blog.example' } }] } }) : send(401, {});
+      if (u.pathname === '/2/tweets/search/recent') { mock.xCalls++; if (req.headers.authorization !== 'Bearer xt') return send(401, {}); const later = u.searchParams.get('since_id'); return send(200, later ? { data: [{ id: '2002', text: 'need an AI consultant to automate our workflow', author_id: 'u2', created_at: new Date().toISOString() }, { id: '2001', text: 'looking for a developer for my app, hiring now', author_id: 'u3', created_at: new Date().toISOString() }], includes: { users: [{ id: 'u2', username: 'spammer' }, { id: 'u3', username: 'annx' }] } } : { data: [{ id: '1001', text: 'looking for a developer to build our app STRONG URGENT', author_id: 'u1', created_at: new Date().toISOString() }], includes: { users: [{ id: 'u1', username: 'xfounder' }] } }); }
+      if (/^\/api\/v10\/channels\/22222\/messages$/.test(u.pathname)) return req.headers.authorization === 'Bot dbot' ? send(200, [{ id: '3001', content: 'does anyone know an agency to build a web app for us? need a quote', author: { username: 'discordian' }, timestamp: new Date().toISOString() }, { id: '3000', content: 'beep boop', author: { username: 'somebot', bot: true } }]) : send(403, {});
+      if (u.pathname === '/v1/chat/completions') {
+        const key = (req.headers.authorization || '').replace('Bearer ', ''), who = key === 'oa-key' ? 'openai' : key === 'xai-key' ? 'xai' : '', j = JSON.parse(body || '{}'); if (!who) return send(401, { error: { message: 'bad key' } });
+        const user = j.messages?.[1]?.content || '', sys = j.messages?.[0]?.content || '';
+        const content = /single word ok/.test(sys) ? 'ok' : JSON.stringify({ ...verdict(user), draft: `${who.toUpperCase()} DRAFT ${/shorter/i.test(user) ? '(shorter)' : ''}`.trim() });
+        return send(200, { choices: [{ message: { content } }], usage: { prompt_tokens: 1000, completion_tokens: 200 } });
+      }
+      send(404, {});
+    });
+  });
+  await new Promise(r => store.listen(3133, '127.0.0.1', r));
+  try {
+    const room = await newRoom('134', { wait: false }), tag = `i${stamp}`, cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+    const mkStaff = async n => { const email = `staff${n}-${tag}@chaos.test`, id = sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${n === 'a' ? 'Ann' : 'Ben'} Staff ${tag}','admin') returning id`).split('\n')[0]; return { id, token: await forge({ sub: id, clientId: cid, role: 'admin', email }) }; };
+    const A = await mkStaff('a'), B = await mkStaff('b');
+    const I = (path, o = {}) => call('/v1/intel' + path, { token: A.token, ...o }), IB = (path, o = {}) => call('/v1/intel' + path, { token: B.token, ...o });
+
+    // who may use it
+    ok((await call('/v1/intel/overview')).status === 401 && (await call('/v1/intel/overview', { token: room.token })).status === 403 && (await call('/v1/intel/kpis', { token: room.token })).status === 403 && (await call('/v1/intel/run', { token: room.token, body: {} })).status === 403 && (await call('/intel')).status === 200, 'clients and strangers cannot use it; the page is served');
+    const ov0 = (await I('/overview')).json; ok(ov0.providers.length === 3 && ov0.providers.every(p => p.ready) && ov0.sources.every(s => s.missing.length === 0) && ov0.staff.some(s => s.id === A.id), 'all three AI providers and all six sources are connected here', ov0.providers);
+    const seeded = (await I('/watches')).json.watches; ok(seeded.length >= 8 && ['hn', 'news', 'reddit', 'x'].every(k => seeded.some(w => w.kind === k)), 'a first set of watches is there for our three services', seeded.length);
+    for (const w of seeded) await I(`/watches/${w.id}`, { method: 'PUT', body: { name: w.name, kind: w.kind, query: w.query, serviceLine: w.serviceLine, enabled: false } });
+
+    // watches: checked, then made
+    ok((await I('/watches', { body: { name: '', kind: 'hn', query: 'x' } })).status === 422 && (await I('/watches', { body: { name: 'n', kind: 'tiktok', query: 'x' } })).status === 422 && (await I('/watches', { body: { name: 'n', kind: 'hn', query: '' } })).status === 422 && (await I('/watches', { body: { name: 'n', kind: 'hn', query: 'x', serviceLine: 'legal' } })).status === 422, 'a watch needs a name, a source we can hear, a query and one of our services');
+    const mk = async (kind, query, serviceLine = 'any') => (await I('/watches', { body: { name: `${kind} ${tag}`, kind, query, serviceLine } })).json.id;
+    const w = { hn: await mk('hn', 'AI consultant', 'ai'), reddit: await mk('reddit', 'r/mockhub'), news: await mk('news', 'apparel seed', 'product'), web: await mk('web', 'agency build an app', 'apps'), x: await mk('x', 'need a developer'), discord: await mk('discord', '11111/22222', 'apps') };
+    const bad = await mk('reddit', 'not a reddit query'); const badRun = (await I(`/watches/${bad}/run`, { body: {} })).json; ok(badRun.ok === false && /looks like r\/smallbusiness/.test(badRun.error) && (await I('/watches')).json.watches.find(x => x.id === bad).lastStatus === 'error', 'a watch that cannot work says why, on the watch');
+    await I(`/watches/${bad}`, { method: 'DELETE' });
+
+    // listening and reading
+    const run = (await I('/run', { body: { force: true } })).json, results = Object.fromEntries(run.watches.filter(x => Object.values(w).includes(x.id)).map(x => [x.name.split(' ')[0], x]));
+    ok(Object.keys(results).length === 6 && Object.values(results).every(x => x.ok), 'every source answered', run.watches);
+    ok(mock.redditAuth === 1 && mock.log.filter(l => l === 'GET /2/tweets/search/recent').length === 1, 'the Reddit sign-in was made once and X was asked once');
+    ok(results.hn.added === 2 && results.reddit.added === 3 && results.news.added === 1 && results.web.added === 1 && results.x.added === 1 && results.discord.added === 1, 'each source\'s new posts were kept (and the Discord bot\'s own message was not)', Object.entries(results).map(([k, v]) => [k, v.added]));
+    ok(run.scored.read >= 6 && run.scored.skipped >= 2, 'the AI read the ones that could matter and the cheap first look dropped the weather and the cat pictures', run.scored);
+    let ov = (await I('/overview')).json, titles = ov.signals.map(s => s.title + s.body);
+    ok(ov.signals.length >= 6 && !titles.some(t => /Weather|cat/.test(t)) && !ov.signals.some(s => s.relevant === false), 'only posts worth a person\'s time are listed', ov.signals.map(s => [s.source, s.score]));
+    ok(ov.signals.every((s, i, a) => i === 0 || a[i - 1].score >= s.score) && ov.signals[0].score >= 85, 'strongest first');
+    const top = ov.signals.find(s => s.source === 'x'); ok(top.draft && top.summary && top.whyNow && top.serviceLine && /^https:\/\/x\.com\/xfounder\/status\/1001$/.test(top.url) && top.status === 'new', 'each carries a summary, why now, the service it fits, the link to the post and a draft for a person to send', top);
+    const rr = ov.signals.find(s => s.source === 'reddit'); ok(rr.serviceLine === 'apps' && ov.signals.filter(s => s.source === 'reddit').length === 1, 'the reddit post the AI judged not an opportunity is hidden');
+    ok(Number((sql(`select count(*) from intel_usage where task='score'`))) >= 6 && sql(`select count(*) from intel_signals where model='prefilter'`) !== '0', 'what each read cost is recorded, and the first-look drops are marked');
+    const again = (await I('/run', { body: { force: true } })).json.watches.filter(x => Object.values(w).includes(x.id)); ok(again.filter(x => x.name.startsWith('x')).every(x => x.added === 2) && again.filter(x => !x.name.startsWith('x')).every(x => x.added === 0), 'listening again adds only what is new: the same posts are not kept twice, and X carries on from where it stopped', again.map(x => [x.name, x.added]));
+    ok((await I('/settings', { method: 'PUT', body: { ignoreHandles: ['spammer'] } })).status === 200, 'staff add a handle to leave alone');
+    sql(`delete from intel_signals where source='x' and external_id in ('2001','2002')`); await I(`/watches/${w.x}`, { method: 'PUT', body: { name: `x ${tag}`, kind: 'x', query: 'need a developer', serviceLine: 'any', enabled: true } }); // an edit that changes nothing keeps the cursor; clear it by hand
+    sql(`update intel_watches set cursor='1001' where id='${w.x}'`); const ign = (await I(`/watches/${w.x}/run`, { body: {} })).json; ok(ign.added === 1 && ign.ignored === 1 && sql(`select count(*) from intel_signals where author='spammer'`) === '0', 'a post from the ignored handle is not kept', ign);
+
+    // the score and the line it draws
+    ok((await I('/settings', { method: 'PUT', body: { minScore: 101 } })).status === 422 && (await I('/settings', { method: 'PUT', body: { slaHours: 0 } })).status === 422 && (await I('/settings', { method: 'PUT', body: { provider: 'bard' } })).status === 422, 'settings are checked');
+    const scores = ov.signals.map(s => s.score).sort((a, b) => a - b), mid = scores[Math.floor(scores.length / 2)];
+    await I('/settings', { method: 'PUT', body: { minScore: mid } }); const hi = (await I('/overview')).json, lo = (await I('/overview?show=low')).json;
+    ok(hi.signals.every(s => s.score >= mid) && lo.signals.every(s => s.score < mid) && hi.counts.low === lo.signals.length, 'raising the score to surface moves the weaker posts behind "Show lower scores"', [mid, hi.signals.length, lo.signals.length]);
+    await I('/settings', { method: 'PUT', body: { minScore: 40 } });
+
+    // what people do about a signal
+    ov = (await I('/overview')).json; const s1 = ov.signals[0].id, s2 = ov.signals[1].id, s3 = ov.signals[2].id;
+    const act = (tok, id, action, body = {}) => call(`/v1/intel/signals/${id}/${action}`, { token: tok, body });
+    ok((await act(room.token, s1, 'claim')).status === 403, 'a client cannot act on a signal');
+    const cl = await act(A.token, s1, 'claim'); ok(cl.status === 200 && cl.json.status === 'reviewing', 'a team member takes it');
+    let d1 = (await I(`/signals/${s1}`)).json; ok(d1.signal.ownerId === A.id && d1.signal.firstActionAt && d1.events[0].kind === 'claimed', 'it is theirs, and the time to first action is stamped');
+    const clash = await act(B.token, s1, 'claim'); ok(clash.status === 409 && /already on this one/.test(clash.json.error), 'someone else cannot quietly take it');
+    ok((await act(A.token, s1, 'assign', { ownerId: room.clientId || '00000000-0000-0000-0000-000000000000' })).status === 422 && (await act(A.token, s1, 'assign', { ownerId: B.id })).status === 200 && (await I(`/signals/${s1}`)).json.signal.ownerId === B.id, 'it can be handed to a named team member, not to anyone else');
+    ok((await act(B.token, s1, 'outreach', { channel: 'public_reply' })).status === 422 && (await act(B.token, s1, 'outreach', { channel: 'carrier pigeon', note: 'x' })).status === 422, 'logging outreach needs the channel and what was sent');
+    ok((await act(B.token, s1, 'reply')).status === 409, 'a reply cannot be logged before anything was sent');
+    ok((await act(B.token, s1, 'outreach', { channel: 'public_reply', note: 'Happy to help: here is how I would start…' })).json.status === 'actioned', 'what was sent is logged');
+    ok((await act(B.token, s1, 'reply', { note: 'They answered' })).json.status === 'replied' && (await act(B.token, s1, 'meeting', { note: 'Tuesday 3pm' })).json.status === 'meeting', 'their reply and the meeting are logged');
+    ok((await act(B.token, s1, 'won', { valueCents: -5 })).status === 422 && (await act(B.token, s1, 'won', { valueCents: 1250000, note: 'Signed' })).json.status === 'won', 'a win needs a value and is logged');
+    ok((await act(B.token, s1, 'outreach', { channel: 'dm', note: 'again' })).status === 409 && (await act(B.token, s1, 'claim')).status === 409, 'a closed one is not worked on again until it is reopened');
+    d1 = (await I(`/signals/${s1}`)).json; ok(d1.events.map(e => e.kind).join() === 'claimed,assigned,outreach,reply,meeting,won' && Number(d1.events.find(e => e.kind === 'won').value_cents) === 1250000, 'the whole story is on the record, in order', d1.events.map(e => e.kind));
+    ok((await act(A.token, s2, 'dismiss', {})).status === 422 && (await act(A.token, s2, 'dismiss', { reason: 'vendor', note: 'selling their own thing' })).json.status === 'dismissed', 'dismissing needs a reason');
+    ok(!(await I('/overview')).json.signals.some(s => s.id === s2) && (await I('/overview?status=dismissed')).json.signals.some(s => s.id === s2), 'a dismissed post leaves the list and is found under Dismissed');
+    ok((await act(A.token, s2, 'reopen')).json.status === 'new' && (await act(A.token, s3, 'reopen')).status === 409, 'a dismissed one can be reopened; one that was never closed cannot');
+
+    // into the CRM
+    const crm = await act(A.token, s3, 'to-crm', { name: `Lead ${tag}`, email: `lead-${tag}@x.test`, dealTitle: `App for ${tag}`, valueCents: 800000 });
+    ok(crm.status === 200 && crm.json.created && crm.json.contactId && crm.json.dealId, 'a signal becomes a contact, a deal and a follow-up task', crm.json);
+    ok(sql(`select source||'|'||array_to_string(tags,',') from sales_contacts where id='${crm.json.contactId}'`).startsWith('intel|intel,') && sql(`select count(*) from sales_tasks where contact_id='${crm.json.contactId}' and done_at is null`) === '1' && sql(`select source||'|'||value_cents from sales_deals where id='${crm.json.dealId}'`) === 'intel|800000', 'the contact is tagged intel, the deal came from intel with its value, and the task is open');
+    const crm2 = await act(A.token, s3, 'to-crm', { dealTitle: 'ignored second time' }); ok(crm2.json.contactId === crm.json.contactId && crm2.json.created === false && crm2.json.dealId === crm.json.dealId && sql(`select count(*) from sales_deals where contact_id='${crm.json.contactId}'`) === '1', 'adding it again does not make a second contact or deal');
+    ok((await act(A.token, s3, 'to-crm', { email: 'not an email' })).status === 422, 'a bad email is refused');
+
+    // a post a person saw on LinkedIn
+    const manual = await I('/signals', { body: { source: 'linkedin', url: `https://www.linkedin.com/posts/${tag}`, author: 'Dana Founder', text: `We need an AI consultant to automate onboarding. STRONG ${tag}` } });
+    ok(manual.status === 201 && manual.json.read === true, 'a post added by hand is read at once');
+    const m1 = (await I('/overview?source=linkedin')).json.signals[0]; ok(m1 && m1.sourceLabel === 'linkedin' && m1.draft && m1.relevant, 'and listed under LinkedIn with a draft');
+    ok((await I('/signals', { body: { source: 'linkedin', url: `https://www.linkedin.com/posts/${tag}`, text: 'again' } })).status === 409 && (await I('/signals', { body: { text: '' } })).status === 422 && (await I('/signals', { body: { text: 'x', url: 'javascript:alert(1)' } })).status === 422, 'the same post twice, an empty post and a script address are refused');
+    sql(`delete from intel_signals where id='${m1.id}'`);
+
+    // other AIs, and their cost
+    const rd = await act(A.token, s3, 'redraft', { provider: 'openai', instruction: 'shorter' }); ok(rd.status === 200 && /OPENAI DRAFT \(shorter\)/.test(rd.json.draft), 'a person can ask ChatGPT for another draft with an instruction');
+    const rg = await act(A.token, s3, 'redraft', { provider: 'xai' }); ok(rg.status === 200 && /XAI DRAFT/.test(rg.json.draft) && /XAI DRAFT/.test((await I(`/signals/${s3}`)).json.signal.draft) && (await act(A.token, s3, 'redraft', { provider: 'bard' })).status === 200, 'and Grok; the new draft replaces the old one (an unknown provider falls back to the default)');
+    const t1 = await I('/providers/test', { body: { provider: 'openai' } }), t2 = await I('/providers/test', { body: { provider: 'xai' } }), t3 = await I('/providers/test', { body: { provider: 'anthropic' } });
+    ok(t1.status === 200 && t1.json.answer === 'ok' && t2.status === 200 && t3.status === 200 && (await I('/providers/test', { body: { provider: 'bard' } })).status === 422, 'each provider can be tested from Settings');
+    ok(Number(sql(`select count(*) from intel_usage where provider='openai' and cost_cents>0`)) >= 2 && Number(sql(`select count(*) from intel_usage where provider='xai' and cost_cents>0`)) >= 2, 'ChatGPT and Grok calls are priced');
+
+    // the KPIs
+    const k = (await I('/kpis?days=30')).json;
+    ok(k.funnel.found >= 6 && k.funnel.surfaced >= 5 && k.funnel.actioned === 1 && k.funnel.replied === 1 && k.funnel.meetings === 1 && k.funnel.won === 1 && k.funnel.deals === 1 && k.totals.wonCents === 1250000, 'the funnel counts what happened', k.funnel);
+    const ann = k.people.find(p => p.id === A.id), ben = k.people.find(p => p.id === B.id);
+    ok(ann.claimed === 1 && ann.dismissed === 1 && ann.deals === 1 && ben.claimed === 0 && ben.outreach === 1 && ben.replies === 1 && ben.meetings === 1 && ben.won === 1 && ben.wonCents === 1250000, 'each person\'s record is theirs: who took it, sent, got replies, booked meetings, won what (handing a post over is not the same as taking it)', [ann, ben]);
+    ok(k.rates.reply === 100 && k.rates.meeting === 100 && k.response.slaHours === 24 && k.response.overdue >= 0 && k.cost.cents > 0 && k.costByProvider.some(c => c.provider === 'openai'), 'the rates, the response time target and the cost are there');
+    await I('/settings', { method: 'PUT', body: { teams: { [A.id]: 'Growth', [B.id]: 'Growth', 'not-a-user': 'x' } } });
+    const kt = (await I('/kpis?days=7')).json; ok(kt.teams.length === 1 && kt.teams[0].team === 'Growth' && kt.teams[0].people >= 2 && kt.teams[0].wonCents === 1250000 && kt.days === 7, 'by team once people are put in teams, and the period can be changed');
+    ok(k.bySource.some(g => g.key === 'x') && k.byServiceLine.some(g => g.key === 'apps'), 'what works is broken down by source and by service');
+
+    // nothing went anywhere
+    ok(!mock.log.some(l => /^POST \/(api\/v1\/comments|2\/tweets$|api\/v10\/channels)/.test(l)), 'nothing was posted, replied or messaged anywhere: the platform only reads');
+  } finally { await new Promise(r => store.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

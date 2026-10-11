@@ -1164,4 +1164,69 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
 });
 
+await journey('J135', 'the Intelligence page in a browser: signals ranked with a summary, why now and a draft; take it, log what you sent, the reply, a dismissal; filters; add a post you saw on LinkedIn; the KPIs by person; the watches; the settings; and a phone', async () => {
+  const r = await room('135', { wait: false }), tag = `in${stamp}`, W = 'http://work.localhost:3123';
+  const email = `ui-staff-${tag}@chaos.test`, uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${email}','Uma Staff ${tag}','admin') returning id`).split('\n')[0];
+  const admin = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email });
+  const add = (n, o) => sql(`insert into intel_signals(source,external_id,url,author,title,body,posted_at,scored_at,relevant,service_line,intent,fit,urgency,score,summary,why_now,angle,draft,draft_channel,risks,model) values('${o.source}','ui-${tag}-${n}','https://example.com/${tag}/${n}','${o.author}','${o.title}','${o.body}',now() - interval '2 hours',now(),true,'${o.line}','buying',80,70,${o.score},'${o.summary}','${o.why}','Answer first','${o.draft}','public_reply','${o.risks || ''}','fixture') returning id`).split('\n')[0];
+  const a = add(1, { source: 'reddit', author: 'salonowner', title: `Need an app for my salon ${tag}`, body: 'Looking for a developer to build a booking app.', line: 'apps', score: 92, summary: 'A salon owner needs a booking app.', why: 'Asked two hours ago with a budget.', draft: 'Happy to share how we would approach a booking app.', risks: 'Check the subreddit rules on promotion.' });
+  const b = add(2, { source: 'hn', author: 'cto', title: `AI consultant wanted ${tag}`, body: 'We want an AI consultant for support automation.', line: 'ai', score: 71, summary: 'A CTO wants support automation.', why: 'Hiring this week.', draft: 'We have helped teams find where AI pays off first.' });
+  const c = add(3, { source: 'x', author: 'brandfounder', title: '', body: `Looking for a factory for our first sneaker ${tag}`, line: 'product', score: 55, summary: 'A founder needs a sneaker factory.', why: 'Raised a seed round.', draft: 'Congrats on the raise: here is what to line up first.' });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/intel`, { waitUntil: 'networkidle' }); await page.waitForSelector('.sig', { timeout: 15000 });
+  const mine = t => page.locator(`.sig:has-text("${t}")`);
+  ok(/Intelligence/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && /ChatGPT/i.test(await page.innerText('#strip')), 'the left menu marks Intelligence and the strip says which AIs are connected');
+  const texts = await page.locator('.sig').allInnerTexts(), i1 = texts.findIndex(t => t.includes(`booking app`)), i2 = texts.findIndex(t => t.includes('support automation')), i3 = texts.findIndex(t => t.includes('sneaker factory'));
+  ok(i1 >= 0 && i1 < i2 && i2 < i3, 'the strongest is first');
+  const card = mine('Need an app for my salon');
+  ok(/92/.test(await card.locator('.score').innerText()) && /A salon owner needs a booking app/.test(await card.innerText()) && /Asked two hours ago/.test(await card.innerText()) && /Check first: Check the subreddit rules/.test(await card.innerText()) && (await card.locator('textarea[data-draft]').inputValue()).startsWith('Happy to share'), 'a card shows the score, the summary, why now, what to check first and a draft');
+  ok(await card.locator('h3 a').getAttribute('href') === `https://example.com/${tag}/1` && await card.locator('h3 a').getAttribute('target') === '_blank', 'the title opens the original post in a new tab');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j135-signals.png` }).catch(() => {});
+  // filters
+  await page.click('#fLine [data-ln=ai]'); await page.waitForFunction(() => document.querySelectorAll('.sig').length >= 1 && ![...document.querySelectorAll('.sig')].some(e => /booking app/.test(e.innerText)), null, { timeout: 5000 });
+  ok(await mine('support automation').count() === 1 && await mine('booking app').count() === 0, 'the AI filter shows only AI posts'); await page.click('#fLine [data-ln=""]');
+  await page.fill('#fQ', 'sneaker'); await page.waitForFunction(() => document.querySelectorAll('.sig').length === 1, null, { timeout: 5000 }); ok(await mine('sneaker factory').count() === 1, 'search finds a post by its words'); await page.fill('#fQ', ''); await page.waitForFunction(() => document.querySelectorAll('.sig').length >= 3, null, { timeout: 5000 });
+  // working one
+  await card.locator('[data-a=claim]').click(); await page.waitForFunction(t => [...document.querySelectorAll('.sig')].find(e => e.innerText.includes(t))?.innerText.toLowerCase().includes('in progress'), 'Need an app for my salon', { timeout: 5000 });
+  ok(/Uma Staff/.test(await mine('Need an app for my salon').innerText()) && await mine('Need an app for my salon').locator('[data-a=claim]').count() === 0, 'taking it puts their name on it');
+  await mine('Need an app for my salon').locator('[data-a=outreach]').click(); await page.waitForSelector('#dlg[open]'); ok((await page.inputValue('#dlg textarea[name=note]')).startsWith('Happy to share'), 'I sent it opens with the draft, to log exactly what went');
+  await page.selectOption('#dlg select[name=channel]', 'public_reply'); await page.click('#dGo'); await page.waitForFunction(() => !document.querySelector('#dlg').open, null, { timeout: 5000 });
+  await page.click('#fStatus [data-st=actioned]'); await mine('Need an app for my salon').locator('[data-a=reply]').waitFor({ timeout: 5000 }); ok(await mine('Need an app for my salon').count() === 1 && await mine('Need an app for my salon').locator('[data-a=reply]').count() === 1, 'it moves to Sent, where They replied is offered');
+  await mine('Need an app for my salon').locator('[data-a=reply]').click(); await page.waitForSelector('#dlg[open]'); await page.click('#dGo'); await page.waitForFunction(() => !document.querySelector('#dlg').open, null, { timeout: 5000 });
+  await page.click('#fStatus [data-st=replied]'); await mine('Need an app for my salon').locator('[data-a=meeting]').waitFor({ timeout: 5000 }); ok(await mine('Need an app for my salon').locator('[data-a=meeting]').count() === 1, 'then Replied');
+  await page.click('#fStatus [data-st=open]'); await mine('sneaker factory').waitFor({ timeout: 5000 });
+  await mine('sneaker factory').locator('[data-a=dismiss]').click(); await page.waitForSelector('#dlg[open]'); await page.selectOption('#dlg select[name=reason]', 'vendor'); await page.click('#dGo'); await page.waitForFunction(() => !document.querySelector('#dlg').open && ![...document.querySelectorAll('.sig')].some(e => /sneaker/.test(e.innerText)), null, { timeout: 5000 });
+  ok(await mine('sneaker factory').count() === 0, 'a dismissed post leaves the list');
+  ok(sql(`select status||'|'||dismiss_reason from intel_signals where id='${c}'`) === 'dismissed|vendor' && sql(`select string_agg(kind, ',' order by at) from intel_events where signal_id='${a}'`) === 'claimed,outreach,reply', 'and the record says what happened, in order');
+  // a post spotted by hand
+  await page.click('#addPost'); await page.waitForSelector('#dlg[open]'); await page.selectOption('#dlg select[name=source]', 'linkedin'); await page.fill('#dlg input[name=author]', 'Dana Founder'); await page.fill('#dlg textarea[name=text]', `We need an AI consultant to automate onboarding ${tag}`); await page.click('#dGo');
+  await page.waitForFunction(() => /Added and read/.test(document.querySelector('#runMsg').textContent), null, { timeout: 10000 }); ok(await mine(`automate onboarding ${tag}`).count() === 1 && /linkedin/i.test(await mine(`automate onboarding ${tag}`).innerText()), 'a post added by hand is read and appears with its source');
+  // KPIs
+  await page.click('.tab[data-t=kpis]'); await page.waitForSelector('#t-kpis .tiles'); const row = page.locator(`#t-kpis tr:has-text("Uma Staff")`);
+  ok(await row.count() === 1 && /Overdue now/.test(await page.innerText('#t-kpis')) && /Who is doing what/.test(await page.innerText('#t-kpis')), 'the KPIs show the funnel, whether we are on it, and each person');
+  const cells = await row.locator('td').allInnerTexts(); ok(cells[2] === '1' && cells[3] === '1' && cells[4] === '1', 'Uma took one, sent one and got one reply', cells);
+  await page.click('#t-kpis [data-d="7"]'); await page.waitForFunction(() => document.querySelector('#t-kpis .fchip.on')?.innerText.includes('7'), null, { timeout: 5000 }); ok(true, 'the period can be changed');
+  // watches
+  await page.click('.tab[data-t=watches]'); await page.waitForSelector('#t-watches tr[data-w]'); ok(await page.locator('#t-watches tr[data-w]').count() >= 8, 'the watches are listed');
+  await page.click('#newWatch'); await page.waitForSelector('#dlg[open]'); await page.fill('#dlg input[name=name]', `Mine ${tag}`); await page.selectOption('#dlg select[name=kind]', 'hn'); await page.fill('#dlg input[name=query]', 'need a prototype'); await page.click('#dGo');
+  await page.waitForSelector(`#t-watches tr:has-text("Mine ${tag}")`, { timeout: 5000 }); ok(await page.locator(`#t-watches tr:has-text("Mine ${tag}")`).count() === 1, 'a new watch can be added');
+  await page.locator(`#t-watches tr:has-text("Mine ${tag}") [data-en]`).uncheck(); await page.waitForFunction(t => !document.querySelector(`#t-watches tr[data-w] [data-en]`) || true, null); await sleep(500);
+  ok(sql(`select enabled from intel_watches where name='Mine ${tag}'`) === 'f', 'and switched off');
+  // settings
+  await page.click('.tab[data-t=settings]'); await page.waitForSelector('#sSave'); await page.fill('#sSla', '12'); await page.locator(`[data-team]`).first().fill(`Growth ${tag}`); await page.click('#sSave');
+  await page.waitForFunction(() => /Saved/.test(document.querySelector('#sMsg').textContent), null, { timeout: 5000 }); ok(sql(`select value->>'slaHours' from app_settings where key='intel'`) === '12', 'settings save');
+  await page.click('[data-test=openai]'); await page.waitForFunction(() => (t => t.length > 0 && !/Asking/.test(t))(document.querySelector('[data-tr=openai]').textContent), null, { timeout: 10000 });
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  await ctx.close();
+  const { ctx: pc, page: ph } = await phone();
+  try {
+    await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    await ph.goto(`${W}/intel`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.sig');
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j135-phone.png` }).catch(() => {});
+  } finally { await pc.close(); }
+  sql(`update intel_watches set enabled=false`); void b;
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

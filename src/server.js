@@ -33,6 +33,8 @@ import { registerSalesAutomationRoutes, seedAutomations } from './sales-automati
 import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
+import { registerIntelRoutes, seedIntel } from './intel-routes.js';
+import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -620,6 +622,8 @@ app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-stor
 const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
 registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, workUrl: workHubUrl, builds: buildsApi, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
+registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
+app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);
@@ -5612,6 +5616,7 @@ if(!(await getSetting('buildReposFilled'))){await backfillBuildRepos(pool).then(
 await seedSegments(pool).catch(e=>app.log.warn({err:e.message},'starter customer views not added'));
 await seedTemplates(pool).catch(e=>app.log.warn({err:e.message},'starter email templates not added'));
 await seedAutomations(pool).catch(e=>app.log.warn({err:e.message},'starter automations not added'));
+await seedIntel(pool).catch(e=>app.log.warn({err:e.message},'listening watches not added'));
 await seedBuilds(pool).then(n=>{if(n)app.log.info({n},'builds seeded (hidden until reviewed)')}).catch(e=>app.log.warn({err:e.message},'builds not seeded'));
 // One time: the pictures already inside stored packs, published snapshots and version history move out into pack_blobs. New writes go out that way already.
 // Runs in the background and is safe to interrupt (a deploy): the flag is set only after a full pass, and a row with nothing left to move is skipped.
@@ -5623,6 +5628,8 @@ const jobEvery = (name, every, fn, { delay = null } = {}) => { const run = track
 const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
 jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
+// Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
+if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });
 // The showcase follows the apps: hourly, look at each build's repository for merged changes (needs a GitHub token to read private repositories; 'Sync now' on the builds page works without the job)
 if(process.env.BUILDS_GITHUB_TOKEN||process.env.GITHUB_TOKEN)jobEvery('Showcase update sync', 60 * 60 * 1000, async()=>{const r=await syncBuilds(pool,{log:app.log,fetchImpl:(u,o)=>trackedFetch('github',u,o)});return r.queued+r.published}, { delay: 2 * 60 * 1000 });

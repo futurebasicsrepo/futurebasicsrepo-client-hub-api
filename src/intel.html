@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Sales intelligence</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b;--hot:#d8451f;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:16px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.sm{padding:5px 12px;font-size:13px}.btn.danger{border-color:#d8a39c;color:var(--bad)}.btn:disabled{opacity:.5;cursor:default}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff}textarea.t{min-height:90px;resize:vertical}select.t{width:auto}
+.tabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px);margin-bottom:16px}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}.chip.ok{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.bad{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.line{background:var(--ink);border-color:var(--ink);color:#fff}
+.strip{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px}.fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.sig{display:grid;grid-template-columns:64px minmax(0,1fr);gap:6px 16px;padding:16px 0;border-top:1px solid var(--line)}.sig:first-child{border-top:0}
+.score{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:600;border:3px solid var(--line);font-variant-numeric:tabular-nums}.score.hi{border-color:var(--hot);color:var(--hot)}.score.mid{border-color:#e6b800}.score.lo{color:var(--dim)}
+.sig h3 a{text-decoration:none}.sig h3 a:hover{text-decoration:underline}.meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.why{font-weight:600;margin:6px 0 2px}.risk{margin:6px 0;padding:6px 10px;border-radius:10px;background:#fff7d6;border:1px solid #e6d27a;font-size:13px}
+.draft{margin-top:8px}.draft textarea{min-height:110px}.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+details>summary{cursor:pointer;color:var(--dim);font-size:13px}.orig{white-space:pre-wrap;font-size:13px;color:var(--dim);margin:6px 0;max-height:240px;overflow:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;margin-bottom:14px}.tile{border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff}.tile b{display:block;font-size:28px;font-weight:500;line-height:1.15;font-variant-numeric:tabular-nums}.tile .sub{font-size:12px}.tile.bad b{color:var(--hot)}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border-top:0}.scroll{overflow-x:auto}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+dialog{border:0;border-radius:24px;padding:0;width:min(640px,94vw);max-height:92vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}dialog form{padding:clamp(18px,3vw,30px);display:grid;gap:12px}
+.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{font-size:22px;font-weight:500}.f{display:grid;gap:4px}.f>span{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.grid2{grid-template-columns:1fr}.sig{grid-template-columns:48px minmax(0,1fr)}.score{width:44px;height:44px;font-size:16px}}
+.empty{color:var(--dim);padding:14px 0}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/intel" aria-label="Sales intelligence"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Intelligence</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)">Sales</span><h1>Intelligence</h1><p class="note">What people are asking for, complaining about and hiring for out there, read against what we sell. It suggests; a person sends.</p></div>
+      <div class="acts"><button class="btn" id="addPost">+ Add a post</button><button class="btn go" id="listen">Listen now</button></div></div>
+    <div class="strip" id="strip"></div><p class="msg" id="runMsg" role="status"></p>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="signals">Signals</button><button class="tab" data-t="kpis">KPIs</button><button class="tab" data-t="watches">Watches</button><button class="tab" data-t="settings">Settings</button></div>
+
+    <section id="t-signals">
+      <div class="filters" id="fStatus"></div>
+      <div class="filters"><span class="sub">Service</span><span id="fLine"></span><select class="t" id="fSource" aria-label="Source"><option value="">Every source</option></select><select class="t" id="fOwner" aria-label="Owner"><option value="">Anyone</option><option value="me">Mine</option><option value="none">Unassigned</option></select><input class="t" id="fQ" placeholder="Search" style="max-width:220px" aria-label="Search"><label class="sub"><input type="checkbox" id="fLow"> Show lower scores</label></div>
+      <div class="panel" id="list"></div>
+    </section>
+    <section id="t-kpis" class="hidden"></section>
+    <section id="t-watches" class="hidden"></section>
+    <section id="t-settings" class="hidden"></section>
+  </div>
+</main>
+<dialog id="dlg"><form id="dform" autocomplete="off"><div class="dh"><h2 id="dTitle"></h2><button class="btn sm" type="button" id="dClose">Close</button></div><div id="dFields" style="display:grid;gap:10px"></div><p class="msg" id="dMsg" role="status"></p><div style="display:flex;justify-content:flex-end"><button class="btn go" type="submit" id="dGo">Save</button></div></form></dialog>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+const ago=v=>{if(!v)return 'never';const h=(Date.now()-new Date(v))/36e5;return h<1?'just now':h<24?Math.floor(h)+'h ago':Math.floor(h/24)+'d ago'};
+const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString(),cents=c=>c==null?'—':'$'+(Number(c)/100).toFixed(2),pct=v=>v==null?'—':v+'%';
+const LINES={ai:'AI',apps:'Apps',product:'Product'},STATUS=[['open','Open'],['new','New'],['reviewing','In progress'],['actioned','Sent'],['replied','Replied'],['meeting','Meeting'],['won','Won'],['lost','Lost'],['dismissed','Dismissed']];
+const CHAN={public_reply:'A public reply',dm:'A direct message',email:'An email',linkedin:'LinkedIn',x:'X',reddit:'Reddit',discord:'Discord',call:'A call',other:'Somewhere else'};
+let TAB='signals',STATE={status:'open',line:'',source:'',owner:'',q:'',low:false},OV=null,SIGS=[];
+
+// a small form in a dialog: fields [{name,label,type,value,options,full}], send(values)
+function ask(title,fields,send,go='Save'){
+  $('#dTitle').textContent=title;$('#dGo').textContent=go;$('#dMsg').textContent='';$('#dMsg').className='msg';
+  $('#dFields').innerHTML=fields.map(f=>`<label class="f"><span>${esc(f.label)}</span>${f.type==='textarea'?`<textarea class="t" name="${f.name}" ${f.req?'required':''} style="min-height:${f.h||110}px">${esc(f.value)}</textarea>`:f.type==='select'?`<select class="t" name="${f.name}" style="width:100%">${f.options.map(o=>`<option value="${esc(o[0])}" ${String(o[0])===String(f.value)?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input class="t" name="${f.name}" type="${f.type||'text'}" value="${esc(f.value)}" ${f.req?'required':''} ${f.ph?`placeholder="${esc(f.ph)}"`:''}>`}</label>`).join('');
+  $('#dform').onsubmit=async e=>{e.preventDefault();const v={};for(const [k,x] of new FormData($('#dform')))v[k]=x;$('#dGo').disabled=true;try{await send(v);$('#dlg').close()}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}finally{$('#dGo').disabled=false}};
+  $('#dlg').showModal();
+}
+$('#dClose').onclick=()=>$('#dlg').close();
+
+// ---------- signals ----------
+function qs(){const p=new URLSearchParams();p.set('status',STATE.status==='mine'?'open':STATE.status);if(STATE.line)p.set('line',STATE.line);if(STATE.source)p.set('source',STATE.source);if(STATE.owner)p.set('owner',STATE.owner);if(STATE.q)p.set('q',STATE.q);if(STATE.low)p.set('show','low');return p.toString()}
+async function loadSignals(){
+  OV=await api('/v1/intel/overview?'+qs());SIGS=OV.signals;
+  $('#strip').innerHTML=OV.providers.map(p=>`<span class="chip ${p.ready?'ok':''}" title="${p.ready?esc(p.model):'Add '+esc(p.keyName)+' to the service'}">${esc(p.label)} ${p.ready?'ready':'not connected'}</span>`).join('')+`<span class="chip">${OV.counts.fresh} new</span>${OV.counts.overdue?`<span class="chip bad">${OV.counts.overdue} overdue (over ${OV.settings.slaHours}h with no one on it)</span>`:''}${OV.counts.unscored?`<span class="chip">${OV.counts.unscored} waiting to be read</span>`:''}${OV.counts.low?`<span class="chip">${OV.counts.low} lower scores hidden</span>`:''}`;
+  $('#fStatus').innerHTML=STATUS.map(([k,l])=>`<button class="fchip ${STATE.status===k?'on':''}" data-st="${k}">${l}</button>`).join('');
+  $('#fLine').innerHTML=[['','All'],['ai','AI'],['apps','Apps'],['product','Product']].map(([k,l])=>`<button class="fchip ${STATE.line===k?'on':''}" data-ln="${k}">${l}</button>`).join(' ');
+  $('#fSource').innerHTML='<option value="">Every source</option>'+OV.sources.map(s=>`<option value="${s.kind}" ${STATE.source===s.kind?'selected':''}>${esc(s.label)}</option>`).join('')+'<option value="linkedin">LinkedIn (added by hand)</option><option value="meta">Meta (added by hand)</option>';
+  $('#fOwner').innerHTML='<option value="">Anyone</option><option value="me">Mine</option><option value="none">Unassigned</option>'+OV.staff.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');$('#fOwner').value=STATE.owner;
+  $('#list').innerHTML=SIGS.length?SIGS.map(card).join(''):`<p class="empty">${OV.counts.open?'Nothing matches those filters.':'Nothing waiting. Press Listen now, add a post you spotted, or check Watches.'}</p>`;
+}
+function card(s){
+  const cls=s.score>=75?'hi':s.score>=50?'mid':'lo',mine=s.ownerId&&s.ownerId===OV.me,open=['new','reviewing'].includes(s.status),live=!['dismissed','won','lost'].includes(s.status);
+  return `<article class="sig" data-id="${esc(s.id)}"><div><div class="score ${cls}" title="Score ${s.score}">${s.score}</div></div><div>
+   <div class="meta"><span class="chip">${esc(s.sourceLabel)}</span>${s.serviceLine?`<span class="chip line">${esc(LINES[s.serviceLine])}</span>`:''}${s.intent?`<span class="chip">${esc(s.intentLabel)}</span>`:''}<span class="sub">${s.author?esc(s.author)+' · ':''}posted ${esc(ago(s.postedAt||s.foundAt))}</span><span class="chip ${s.status==='won'?'ok':s.status==='dismissed'||s.status==='lost'?'':''}">${esc(s.status==='reviewing'?'in progress':s.status)}</span>${s.ownerName?`<span class="sub">· ${esc(s.ownerName)}</span>`:''}</div>
+   <h3>${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.summary||s.url)} ↗</a>`:esc(s.title||s.summary)}</h3>
+   <div>${esc(s.summary)}</div>${s.whyNow?`<div class="why">${esc(s.whyNow)}</div>`:''}${s.angle?`<div class="sub">Angle: ${esc(s.angle)}</div>`:''}${s.risks?`<div class="risk">Check first: ${esc(s.risks)}</div>`:''}
+   <details><summary>What they wrote</summary><div class="orig">${esc(s.body||s.title||'(nothing kept)')}</div></details>
+   ${s.draft&&live?`<div class="draft"><span class="mono sub">Suggested ${esc((CHAN[s.draftChannel]||'reply').toLowerCase())} (edit before you send it yourself)</span><textarea class="t" data-draft>${esc(s.draft)}</textarea></div>`:''}
+   <div class="bar">${live?`<button class="btn sm" data-a="copy">Copy draft</button><button class="btn sm" data-a="redraft">New draft…</button>`:''}
+     ${open&&!mine?`<button class="btn sm go" data-a="claim">I'll take it</button>`:''}${s.status==='reviewing'&&mine?`<button class="btn sm" data-a="release">Release</button>`:''}${open?`<button class="btn sm" data-a="assign">Assign…</button>`:''}
+     ${live&&['new','reviewing','actioned','replied'].includes(s.status)?`<button class="btn sm ${open?'go':''}" data-a="outreach">I sent it</button>`:''}${['actioned','replied'].includes(s.status)?`<button class="btn sm" data-a="reply">They replied</button>`:''}${['actioned','replied','meeting'].includes(s.status)?`<button class="btn sm" data-a="meeting">Meeting booked</button>`:''}
+     ${['actioned','replied','meeting'].includes(s.status)?`<button class="btn sm" data-a="won">Won</button><button class="btn sm" data-a="lost">Lost</button>`:''}
+     ${live?`<button class="btn sm" data-a="crm">${s.contactId?'In the CRM ✓':'Add to CRM'}</button>`:''}${live&&open?`<button class="btn sm danger" data-a="dismiss">Dismiss</button>`:''}${['dismissed','lost'].includes(s.status)?`<button class="btn sm" data-a="reopen">Reopen</button>`:''}</div>
+  </div></article>`;
+}
+async function act(id,action,body){const r=await api(`/v1/intel/signals/${id}/${action}`,{body:body||{}});await loadSignals();return r}
+$('#list').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const el=b.closest('[data-id]'),id=el.dataset.id,s=SIGS.find(x=>x.id===id),a=b.dataset.a,draft=el.querySelector('[data-draft]')?.value||'';
+  try{
+    if(a==='copy'){try{await navigator.clipboard.writeText(draft);b.textContent='Copied'}catch{el.querySelector('[data-draft]').select();b.textContent='Select and copy'}return}
+    if(a==='claim'||a==='release'||a==='reopen')return void await act(id,a);
+    if(a==='assign')return ask('Assign to',[{name:'ownerId',label:'Who should take this',type:'select',value:OV.me,options:OV.staff.map(p=>[p.id,p.name])}],v=>act(id,'assign',{ownerId:v.ownerId}),'Assign');
+    if(a==='dismiss')return ask('Dismiss',[{name:'reason',label:'Why',type:'select',value:'not_a_fit',options:[['not_a_fit','Not a fit'],['vendor','A vendor, not a buyer'],['too_old','Too old'],['already_handled','Already handled'],['spam','Spam'],['other','Something else']]},{name:'note',label:'A note (optional)'}],v=>act(id,'dismiss',v),'Dismiss');
+    if(a==='outreach')return ask('Log what you sent',[{name:'channel',label:'Where did it go',type:'select',value:s.draftChannel==='dm'?'dm':'public_reply',options:Object.entries(CHAN)},{name:'note',label:'What you sent (paste it, so there is a record)',type:'textarea',value:draft,req:true,h:150}],v=>act(id,'outreach',v),'Log it');
+    if(a==='reply')return ask('They replied',[{name:'note',label:'What they said (optional)',type:'textarea',h:80}],v=>act(id,'reply',v),'Log it');
+    if(a==='meeting')return ask('Meeting booked',[{name:'note',label:'When and who (optional)'}],v=>act(id,'meeting',v),'Log it');
+    if(a==='won')return ask('Won',[{name:'value',label:'What it is worth ($)',type:'number',value:'',req:true},{name:'note',label:'A note (optional)'}],v=>act(id,'won',{valueCents:Math.round(Number(v.value)*100),note:v.note}),'Log the win');
+    if(a==='lost')return ask('Lost',[{name:'note',label:'Why (optional)'}],v=>act(id,'lost',v),'Log it');
+    if(a==='redraft')return;
+    if(a==='crm')return ask(s.contactId?'Already in the CRM':'Add to the CRM',[{name:'name',label:'Their name',value:s.author},{name:'email',label:'Their email, if you have it',type:'email'},{name:'dealTitle',label:'A deal to start (optional)',ph:'New app for their salon'},{name:'value',label:'Deal value ($, optional)',type:'number'}],v=>act(id,'to-crm',{name:v.name,email:v.email,dealTitle:v.dealTitle||undefined,valueCents:Math.round(Number(v.value||0)*100)}),'Add');
+  }catch(x){alert(x.message)}
+});
+$('#list').addEventListener('click',e=>{const b=e.target.closest('[data-a=redraft]');if(!b)return;const id=b.closest('[data-id]').dataset.id;
+  ask('A new draft',[{name:'instruction',label:'What should change? (optional)',ph:'Shorter. Mention we build Shopify apps.'},{name:'provider',label:'Written by',type:'select',value:'',options:[['','Whoever is set in Settings'],...OV.providers.filter(p=>p.ready).map(p=>[p.provider,p.label])]}],async v=>{await act(id,'redraft',{instruction:v.instruction,provider:v.provider||undefined})},'Write it')});
+$('#fStatus').addEventListener('click',e=>{const b=e.target.closest('[data-st]');if(b){STATE.status=b.dataset.st;loadSignals()}});
+$('#fLine').addEventListener('click',e=>{const b=e.target.closest('[data-ln]');if(b){STATE.line=b.dataset.ln;loadSignals()}});
+$('#fSource').onchange=()=>{STATE.source=$('#fSource').value;loadSignals()};$('#fOwner').onchange=()=>{STATE.owner=$('#fOwner').value;loadSignals()};$('#fLow').onchange=()=>{STATE.low=$('#fLow').checked;loadSignals()};
+let qt;$('#fQ').oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{STATE.q=$('#fQ').value;loadSignals()},300)};
+$('#listen').onclick=async()=>{const m=$('#runMsg');m.className='msg';m.textContent='Listening…';$('#listen').disabled=true;try{const r=await api('/v1/intel/run',{body:{force:true}});const added=r.watches.reduce((n,w)=>n+(w.added||0),0),bad=r.watches.filter(w=>!w.ok);m.className='msg '+(bad.length?'bad':'ok');m.textContent=`${r.watches.length} watches heard from, ${added} new post${added===1?'':'s'}, ${r.scored.read} read by the AI${r.scored.stopped?` (stopped: ${r.scored.stopped})`:''}${bad.length?`. ${bad.length} could not listen: ${bad.map(w=>w.name+' — '+w.error).join('; ')}`:''}.`;await loadSignals()}catch(x){m.className='msg bad';m.textContent=x.message}finally{$('#listen').disabled=false}};
+$('#addPost').onclick=()=>ask('Add a post you spotted',[{name:'source',label:'Where was it',type:'select',value:'linkedin',options:[['linkedin','LinkedIn'],['meta','Facebook or Instagram'],['x','X'],['reddit','Reddit'],['discord','Discord'],['hn','Hacker News'],['web','A website'],['email','An email'],['other','Somewhere else']]},{name:'url',label:'Link to it',ph:'https://…'},{name:'author',label:'Who posted it'},{name:'title',label:'A headline (optional)'},{name:'text',label:'What it says',type:'textarea',req:true,h:150}],async v=>{const r=await api('/v1/intel/signals',{body:v});await loadSignals();$('#runMsg').className='msg ok';$('#runMsg').textContent=r.read?'Added and read.':('Added.'+(r.note?' '+r.note:''))},'Add and read');
+
+// ---------- KPIs ----------
+let DAYS=30;
+async function loadKpis(){
+  const k=await api('/v1/intel/kpis?days='+DAYS),f=k.funnel,t=k.totals,r=k.rates,p=k.response;
+  const tile=(l,v,s,bad)=>`<div class="tile ${bad?'bad':''}"><span class="sub">${l}</span><b>${v}</b><span class="sub">${s||''}</span></div>`;
+  $('#t-kpis').innerHTML=`<div class="filters"><span class="sub">Period</span>${[7,30,90].map(d=>`<button class="fchip ${DAYS===d?'on':''}" data-d="${d}">${d} days</button>`).join('')}</div>
+  <div class="panel"><h2>The funnel</h2><div class="tiles" style="margin-top:10px">${tile('Found',f.found,'posts heard')}${tile('Worth a look',f.surfaced,'score ' + k.settings.minScore + '+')}${tile('Sent',f.actioned,'reply or message')}${tile('Replied',f.replied,pct(r.reply)+' of sent')}${tile('Meetings',f.meetings,pct(r.meeting)+' of sent')}${tile('Won',f.won,money(t.wonCents))}</div></div>
+  <div class="panel"><h2>Are we on it?</h2><div class="tiles" style="margin-top:10px">${tile('Time to first action',p.medianHoursToFirstAction==null?'—':p.medianHoursToFirstAction+'h','median; target '+p.slaHours+'h')}${tile('Within '+p.slaHours+'h',pct(r.reviewedWithinSla),p.withinSla+' of '+f.surfaced)}${tile('Overdue now',p.overdue,p.overdue?'oldest '+p.overdueOldestHours+'h with no one on it':'nothing is waiting too long',p.overdue>0)}${tile('Dismissed',pct(r.dismissed),'of those worth a look')}</div></div>
+  <div class="panel"><h2>Who is doing what</h2><p class="sub">Each person's own record. Overdue means worth-a-look posts assigned to them that nobody has acted on.</p><div class="scroll"><table><thead><tr><th>Person</th><th>Team</th><th class="n">Took</th><th class="n">Sent</th><th class="n">Replies</th><th class="n">Meetings</th><th class="n">Won</th><th class="n">Won value</th><th class="n">Median to take</th><th class="n">Within SLA</th><th class="n">Waiting on them</th><th class="n">Overdue</th></tr></thead><tbody>${k.people.map(x=>`<tr data-p="${esc(x.id)}"><td><b>${esc(x.name)}</b></td><td>${esc(x.team)}</td><td class="n">${x.claimed}</td><td class="n">${x.outreach}</td><td class="n">${x.replies}</td><td class="n">${x.meetings}</td><td class="n">${x.won}</td><td class="n">${money(x.wonCents)}</td><td class="n">${x.medianHoursToClaim==null?'—':x.medianHoursToClaim+'h'}</td><td class="n">${pct(x.claimedWithinSlaPct)}</td><td class="n">${x.owned}</td><td class="n" style="${x.overdue?'color:var(--hot);font-weight:600':''}">${x.overdue}</td></tr>`).join('')||'<tr><td colspan="12" class="empty">No one yet.</td></tr>'}</tbody></table></div></div>
+  <div class="panel"><h2>By team</h2><div class="scroll"><table><thead><tr><th>Team</th><th class="n">People</th><th class="n">Took</th><th class="n">Sent</th><th class="n">Replies</th><th class="n">Meetings</th><th class="n">Won value</th><th class="n">Overdue</th></tr></thead><tbody>${k.teams.map(x=>`<tr><td><b>${esc(x.team)}</b></td><td class="n">${x.people}</td><td class="n">${x.claimed}</td><td class="n">${x.outreach}</td><td class="n">${x.replies}</td><td class="n">${x.meetings}</td><td class="n">${money(x.wonCents)}</td><td class="n">${x.overdue}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">Give people a team in Settings.</td></tr>'}</tbody></table></div></div>
+  <div class="panel"><h2>What is working</h2><div class="grid2"><div class="scroll"><table><thead><tr><th>Service</th><th class="n">Found</th><th class="n">Worth a look</th><th class="n">Sent</th><th class="n">Meetings</th><th class="n">Won</th></tr></thead><tbody>${k.byServiceLine.map(g=>`<tr><td>${esc(LINES[g.key]||'Not an opportunity')}</td><td class="n">${g.found}</td><td class="n">${g.surfaced}</td><td class="n">${g.outreach}</td><td class="n">${g.meetings}</td><td class="n">${g.won}</td></tr>`).join('')}</tbody></table></div><div class="scroll"><table><thead><tr><th>Source</th><th class="n">Found</th><th class="n">Worth a look</th><th class="n">Sent</th><th class="n">Meetings</th><th class="n">Won</th></tr></thead><tbody>${k.bySource.map(g=>`<tr><td>${esc(g.key)}</td><td class="n">${g.found}</td><td class="n">${g.surfaced}</td><td class="n">${g.outreach}</td><td class="n">${g.meetings}</td><td class="n">${g.won}</td></tr>`).join('')}</tbody></table></div></div></div>
+  <div class="panel"><h2>What listening costs</h2><div class="tiles" style="margin-top:10px">${tile('AI spend (estimate)',cents(k.cost.cents),k.days+' days')}${tile('Per post worth a look',cents(k.cost.perSurfacedCents))}${tile('Per meeting',cents(k.cost.perMeetingCents))}${tile('Per win',cents(k.cost.perWinCents))}</div><p class="sub">${k.costByProvider.map(c=>`${esc(c.provider)} ${cents(c.cents)}`).join(' · ')||'No AI calls yet.'} These are estimates from token counts, not an invoice.</p></div>`;
+}
+$('#t-kpis').addEventListener('click',e=>{const b=e.target.closest('[data-d]');if(b){DAYS=Number(b.dataset.d);loadKpis()}});
+
+// ---------- watches ----------
+const HINT={reddit:'r/smallbusiness   or   r/startups search:need a developer   or   search:looking for an AI consultant',hn:'words to find in stories and comments, e.g. "AI consultant" OR "automate our"',news:'words to find in the news',web:'words to search the web for (needs a Brave Search key)',x:'an X search query, e.g. ("need an AI consultant" OR "looking for a developer")',discord:'<server id>/<channel id> of a server our bot has been invited to'};
+async function loadWatches(){
+  const {watches,kinds}=await api('/v1/intel/watches');
+  $('#t-watches').innerHTML=`<div class="panel"><div class="top" style="margin:0 0 8px"><div><h2>What we listen to</h2><p class="sub">Each watch is a search on one source. Public posts only, through each platform's own interface. LinkedIn and Meta cannot be listened to; add what you see there with “Add a post”.</p></div><button class="btn go" id="newWatch">+ New watch</button></div>
+  <div class="scroll"><table><thead><tr><th>Watch</th><th>Source</th><th>Listening for</th><th>Last heard</th><th class="n">New</th><th></th></tr></thead><tbody>${watches.map(w=>`<tr data-w="${esc(w.id)}"><td><b>${esc(w.name)}</b><div class="sub">${esc(({any:'Any service',ai:'AI',apps:'Apps',product:'Product'})[w.serviceLine])}</div></td><td>${esc(w.kindLabel)}</td><td style="max-width:360px;overflow-wrap:anywhere">${esc(w.query)}</td><td>${w.missing.length?`<span class="chip bad">needs ${esc(w.missing.join(' + '))}</span>`:w.lastRunAt?`${esc(ago(w.lastRunAt))} ${w.lastStatus==='ok'?'<span class="chip ok">ok</span>':`<span class="chip bad">${esc(w.lastStatus)}</span><div class="sub" style="color:var(--bad)">${esc(w.lastError)}</div>`}`:'<span class="sub">not yet</span>'}</td><td class="n">${w.lastFound}</td><td style="white-space:nowrap"><label class="sub"><input type="checkbox" data-en ${w.enabled?'checked':''}> on</label> <button class="btn sm" data-run>Listen</button> <button class="btn sm" data-edit>Edit</button> <button class="btn sm danger" data-del>Delete</button></td></tr>`).join('')}</tbody></table></div></div>`;
+  const form=(w)=>[{name:'name',label:'Name',value:w?.name,req:true},{name:'kind',label:'Source',type:'select',value:w?.kind||'hn',options:kinds.map(k=>[k.kind,k.label+(k.needs.length?` (needs ${k.needs.join(', ')})`:'')])},{name:'query',label:'What to listen for',value:w?.query,req:true,ph:HINT[w?.kind||'hn']},{name:'serviceLine',label:'Which of our services',type:'select',value:w?.serviceLine||'any',options:[['any','Any'],['ai','AI transformation and implementation'],['apps','Digital apps and tools'],['product','Product development']]}];
+  $('#newWatch').onclick=()=>ask('New watch',form(),async v=>{await api('/v1/intel/watches',{body:v});loadWatches()});
+  $('#t-watches').onclick=async e=>{const tr=e.target.closest('[data-w]');if(!tr)return;const id=tr.dataset.w,w=watches.find(x=>x.id===id);
+    try{
+      if(e.target.closest('[data-del]')){if(confirm(`Delete “${w.name}”? Posts it already found stay.`)){await api('/v1/intel/watches/'+id,{method:'DELETE'});loadWatches()}}
+      else if(e.target.closest('[data-edit]'))ask('Edit watch',form(w),async v=>{await api('/v1/intel/watches/'+id,{method:'PUT',body:{...v,enabled:w.enabled}});loadWatches()});
+      else if(e.target.closest('[data-run]')){const b=e.target.closest('[data-run]');b.disabled=true;b.textContent='Listening…';try{const r=await api(`/v1/intel/watches/${id}/run`,{body:{}});$('#runMsg').className='msg '+(r.ok?'ok':'bad');$('#runMsg').textContent=r.ok?`${w.name}: ${r.found} seen, ${r.added} new.`:`${w.name}: ${r.error}`}catch(x){$('#runMsg').className='msg bad';$('#runMsg').textContent=x.message}loadWatches()}
+    }catch(x){alert(x.message)}};
+  $('#t-watches').onchange=async e=>{const c=e.target.closest('[data-en]');if(!c)return;const tr=c.closest('[data-w]'),w=watches.find(x=>x.id===tr.dataset.w);try{await api('/v1/intel/watches/'+w.id,{method:'PUT',body:{name:w.name,kind:w.kind,query:w.query,serviceLine:w.serviceLine,enabled:c.checked}});loadWatches()}catch(x){alert(x.message)}};
+}
+
+// ---------- settings ----------
+async function loadSettings(){
+  const [{settings:s,staff},{providers,sources}]=await Promise.all([api('/v1/intel/settings'),api('/v1/intel/providers')]);
+  $('#t-settings').innerHTML=`<div class="panel"><h2>The AI that reads and drafts</h2><p class="sub">Keys are set on the service (never here). Pick who reads new posts and writes the first draft; a person can ask any connected AI for another draft on a post.</p>
+   <div class="grid2" style="margin-top:10px">${providers.map(p=>`<label class="tile" style="cursor:pointer;display:block"><input type="radio" name="prov" value="${p.provider}" ${s.provider===p.provider?'checked':''}> <b style="display:inline;font-size:16px">${esc(p.label)}</b><div class="sub">${p.ready?'Connected · model '+esc(p.model):'Not connected: add '+esc(p.keyName)}</div>${p.ready?`<button class="btn sm" data-test="${p.provider}" type="button" style="margin-top:6px">Test it</button> <span class="sub" data-tr="${p.provider}"></span>`:''}</label>`).join('')}</div></div>
+  <div class="panel"><h2>What counts and how fast</h2><div class="grid2" style="margin-top:10px">
+   <label class="f"><span>Score to be worth a look (0-100)</span><input class="t" id="sMin" type="number" value="${s.minScore}"></label><label class="f"><span>First action within (hours)</span><input class="t" id="sSla" type="number" value="${s.slaHours}"></label>
+   <label class="f"><span>Most posts the AI reads in a day</span><input class="t" id="sCap" type="number" value="${s.dailyScoreCap}"></label><label class="f"><span>Listen to each watch every (minutes)</span><input class="t" id="sEvery" type="number" value="${s.runEveryMinutes}"></label>
+   <label class="f"><span>Keep post text for (days)</span><input class="t" id="sKeep" type="number" value="${s.retentionDays}"></label><span></span>
+   <label class="f"><span>Never engage these handles (one per line or commas)</span><textarea class="t" id="sHandles" style="min-height:70px">${esc(s.ignoreHandles.join('\n'))}</textarea></label><label class="f"><span>Ignore posts from these sites</span><textarea class="t" id="sDomains" style="min-height:70px">${esc(s.ignoreDomains.join('\n'))}</textarea></label></div></div>
+  <div class="panel"><h2>Teams</h2><p class="sub">Put people in teams so the KPIs can be read by team.</p><div class="grid2" style="margin-top:10px">${staff.map(p=>`<label class="f"><span>${esc(p.name)}</span><input class="t" data-team="${esc(p.id)}" value="${esc(s.teams[p.id]||'')}" placeholder="No team"></label>`).join('')}</div></div>
+  <div class="panel"><h2>Where we can listen</h2><div class="strip">${sources.map(x=>`<span class="chip ${x.missing.length?'bad':'ok'}">${esc(x.label)} ${x.missing.length?'needs '+esc(x.missing.join(' + ')):'ready'}</span>`).join('')}</div></div>
+  <div class="acts"><button class="btn go" id="sSave">Save settings</button><span class="msg" id="sMsg" role="status"></span></div>`;
+  $('#t-settings').onclick=async e=>{const b=e.target.closest('[data-test]');if(!b)return;const out=$(`[data-tr="${b.dataset.test}"]`);out.textContent='Asking…';try{const r=await api('/v1/intel/providers/test',{body:{provider:b.dataset.test}});out.textContent=`Works (${r.ms} ms)`;out.style.color='var(--ok)'}catch(x){out.textContent=x.message;out.style.color='var(--bad)'}};
+  $('#sSave').onclick=async()=>{const m=$('#sMsg');m.className='msg';try{const teams={};$$('[data-team]').forEach(i=>{if(i.value.trim())teams[i.dataset.team]=i.value.trim()});await api('/v1/intel/settings',{method:'PUT',body:{provider:$('input[name=prov]:checked').value,minScore:$('#sMin').value,slaHours:$('#sSla').value,dailyScoreCap:$('#sCap').value,runEveryMinutes:$('#sEvery').value,retentionDays:$('#sKeep').value,ignoreHandles:$('#sHandles').value,ignoreDomains:$('#sDomains').value,teams}});m.className='msg ok';m.textContent='Saved.'}catch(x){m.className='msg bad';m.textContent=x.message}};
+}
+
+const LOAD={signals:loadSignals,kpis:loadKpis,watches:loadWatches,settings:loadSettings};
+$$('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;if(location.hash.slice(1)!==TAB)history.replaceState(null,'','#'+TAB);$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==TAB);LOAD[TAB]().catch(x=>alert(x.message))});
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await loadSignals();$('#app').classList.remove('hidden')}catch{$('#needSignin').classList.remove('hidden');return}
+  const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&t.dataset.t!=='signals')t.click();
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>
