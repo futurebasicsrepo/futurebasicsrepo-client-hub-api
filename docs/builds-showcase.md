@@ -28,6 +28,11 @@ Each time a signed-in non-staff person opens a build page (`open`) or follows "O
 
 ## Staff page
 
+### The collection page
+`builds.` looks like a store's collection page. Each build is a product card: a window onto the real site, its sector and status, its first three key features (the "highlights" staff write), what it is built with, and when it last changed. The left side filters by sector, status and technology (counts follow the other filters; on a phone they sit behind a Filters button); search covers names, taglines, sectors, technologies and features; sort by featured order, recently updated or A to Z. A build opens as a product page: the picture, status / updated / feature count, the live button and extra links, every feature, what it is built with, what's new, and more builds underneath.
+
+**Pictures.** A card shows the cover staff uploaded; if none, a bundled picture of the real site from `src/builds-previews/<slug>.jpg`; if neither, a placeholder. Refresh the bundled pictures with `node scripts/capture-build-previews.mjs [slug…]`. A store behind Shopify's password page needs its password in the environment for the run (`CAPTURE_PASSWORDS="slug=password"`); passwords are never written to the repo. To add a build to the script, add its address to `SITES` there and run it for that slug.
+
 `/builds/admin` (work console sign-in): add, edit, reorder and hide builds; upload a cover image (shrunk in the browser); manage invites; read activity.
 
 **Also see** (extra links): each build can carry up to eight more links, one per line as `Label — https://address`: a walkthrough, a demo, hardware drawings, a store preview. Visitors see the labels under "Also see" and clicking one goes through the showcase (`/builds/go/<slug>/<n>`), which records the look like the live-build link and then sends them on. The address itself is never sent to the viewer's page. Only web addresses are accepted. A link on an artifact or any page that is shared outside the showcase is not protected by the sign-in; use it for demos with stand-in data. The seed list (below) is created **hidden**, so nothing is public until it has been reviewed there.
