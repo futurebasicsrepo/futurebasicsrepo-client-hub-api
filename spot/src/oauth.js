@@ -12,7 +12,7 @@
 // account when the email matches.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { startSession, userForEmail } from './accounts.js';
-import { proveEmail } from './staff.js';
+import { proveEmail, staffDomain } from './staff.js';
 
 const FLOW_COOKIE = 'spot_oauth';
 const b64 = (buf) => Buffer.from(buf).toString('base64url');
@@ -36,7 +36,8 @@ export function oauthProviders(env = process.env) {
           body: new URLSearchParams({ code, client_id: this.id, client_secret: this.secret, redirect_uri: redirect, grant_type: 'authorization_code', code_verifier: verifier }),
         }));
         const me = await json(fetchImpl('https://openidconnect.googleapis.com/v1/userinfo', { headers: { authorization: `Bearer ${tok.access_token}` } }));
-        return { subject: String(me.sub), email: me.email_verified === true || me.email_verified === 'true' ? me.email : null, name: me.name || null };
+        // hd: the Google Workspace domain that manages the account (absent for personal accounts).
+        return { subject: String(me.sub), email: me.email_verified === true || me.email_verified === 'true' ? me.email : null, name: me.name || null, hd: me.hd ? String(me.hd).toLowerCase() : null };
       },
     };
   }
@@ -109,10 +110,13 @@ export function registerOAuth(app, { db, env, urlFor, fetchImpl = fetch, log = c
     if (!p) return reply.redirect('/signin?error=unavailable');
     const state = b64(randomBytes(24));
     const verifier = p.pkce ? b64(randomBytes(32)) : null;
+    // Company sign-in: ?hd=<staff domain> asks Google for an account that domain's Workspace manages.
+    const domain = staffDomain(env);
+    const hd = req.params.provider === 'google' && domain && String(req.query.hd || '').toLowerCase() === domain ? domain : null;
     const flow = { p: req.params.provider, state, verifier, next: safeNext(req.query.next), exp: Date.now() + 10 * 60_000 };
     const payload = b64(JSON.stringify(flow));
     reply.header('set-cookie', `${FLOW_COOKIE}=${payload}.${sign(payload)}; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=600${secure(req)}`);
-    const q = new URLSearchParams({ client_id: p.id, redirect_uri: redirectUri(req, req.params.provider), response_type: 'code', scope: p.scope, state, ...p.extra });
+    const q = new URLSearchParams({ client_id: p.id, redirect_uri: redirectUri(req, req.params.provider), response_type: 'code', scope: p.scope, state, ...p.extra, ...(hd ? { hd } : {}) });
     if (verifier) {
       q.set('code_challenge', createHash('sha256').update(verifier).digest('base64url'));
       q.set('code_challenge_method', 'S256');
@@ -147,7 +151,13 @@ export function registerOAuth(app, { db, env, urlFor, fetchImpl = fetch, log = c
     const user = db.users.byId(userId);
     if (!user) return fail('failed');
     // Google checked this address; Facebook's email doesn't count for staff access.
-    if (name === 'google' && who.email && user.email === who.email.trim().toLowerCase()) proveEmail(db, userId, user.email);
+    // A company address counts only from an account the company's Google
+    // Workspace manages (its hd claim), not a personal Google account that
+    // happens to use the address.
+    const email = who.email?.trim().toLowerCase();
+    const domain = staffDomain(env);
+    const company = domain && email?.endsWith(`@${domain}`);
+    if (name === 'google' && email && user.email === email && (!company || who.hd === domain)) proveEmail(db, userId, user.email);
     if (!user.name && who.name) {
       const { id, email, created_at, ...doc } = user;
       db.users.save(userId, { ...doc, name: who.name.slice(0, 60) });
