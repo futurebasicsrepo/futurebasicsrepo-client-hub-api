@@ -1845,11 +1845,11 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
     left join projects pr on pr.id=i.project_id left join products p on p.id=i.product_id left join quotes q on q.id=i.quote_id where i.id=$1`,[req.params.id])).rows[0];
   if(!row||(req.auth.role!=='admin'&&row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
   const safeNumber=String(row.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'-');
-  // Every invoice a person downloads, on the work console or the hub, is the Future Basics invoice (the template in use today), not the old generic sheet.
+  // Every invoice a person downloads, on the work console or the hub, is the Future Basics invoice on the brand letterhead (src/money-pdf.js).
   const issued=new Date(row.created_at).toISOString().slice(0,10),due=row.due_date?new Date(row.due_date).toISOString().slice(0,10):issued,days=Math.max(0,Math.round((Date.parse(due)-Date.parse(issued))/86400000));
   const what=row.kind==='deposit'?`Sample deposit${row.product_title?` - ${row.product_title}${row.quote_version?` (quote v${row.quote_version})`:''}`:''}`:row.product_title?`Development and production - ${row.product_title}`:row.project_name?`Project invoice - ${row.project_name}`:'Project invoice';
   const settings={instructions:String(((await getSetting('moneyPayment').catch(()=>null))||{}).instructions||'')};
-  const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status},settings,{state:row.status==='paid'?'paid':row.status});
+  const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status,pay_url:row.external_url||''},settings,{state:row.status==='paid'?'paid':row.status});
   return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(pdf);
 });
 
