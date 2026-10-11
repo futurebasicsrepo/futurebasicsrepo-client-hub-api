@@ -167,7 +167,7 @@ export function registerSalesEmailRoutes(app, d) {
     const text = String(full?.text || (full?.html ? htmlToText(full.html) : '') || '').slice(0, 20000) || (full ? '' : '(The message could not be loaded. Open it in Resend.)');
     let contact = (await pool.query('select id,name from sales_contacts where lower(email)=$1', [from.email])).rows[0], created = false;
     if (!contact) {
-      contact = (await pool.query(`insert into sales_contacts(name,email,source) values($1,$2,'inbound') on conflict (lower(email)) where email is not null do nothing returning id,name`, [from.name, from.email])).rows[0] || (await pool.query('select id,name from sales_contacts where lower(email)=$1', [from.email])).rows[0]; created = true;
+      contact = (await pool.query(`insert into sales_contacts(name,email,source,tags) values($1,$2,'inbound','{inbound}') on conflict (lower(email)) where email is not null do nothing returning id,name`, [from.name, from.email])).rows[0] || (await pool.query('select id,name from sales_contacts where lower(email)=$1', [from.email])).rows[0]; created = true;
     }
     const auto = isAutoReply({ headers: full?.headers, subject }), who = contact.name || from.name || from.email;
     const row = (await pool.query(`insert into sales_emails(contact_id,direction,subject,body_text,from_address,to_address,status,resend_id) values($1,'in',$2,$3,$4,$5,'received',$6) on conflict do nothing returning id`, [contact.id, subject, text, String(data.from?.email || data.from || from.email).slice(0, 300), [].concat(data.to || []).join(', ').slice(0, 300), id])).rows[0];

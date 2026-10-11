@@ -6,7 +6,7 @@
 //   GET|POST /v1/sales/tasks      PUT|DELETE /v1/sales/tasks/:id
 //   POST /v1/sales/import/hub     the hub's clients and leads become contacts
 //   POST /v1/sales/import/csv     a pasted list becomes contacts
-import { STAGES, OPEN_STAGES, STAGE_LABELS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
+import { STAGES, OPEN_STAGES, STAGE_LABELS, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanSegment, cleanTags, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEAT_KINDS = ['showcase_demo', 'showcase_view', 'email_in', 'meeting', 'call'];
@@ -20,10 +20,11 @@ export async function captureLead(pool, { email, name = '', source = 'showcase',
     let contact = (await pool.query('select id from sales_contacts where lower(email)=$1', [addr])).rows[0], created = false;
     if (!contact) {
       const client = (await pool.query(`select id from clients where archived_at is null and (lower(contact_email)=$1 or $1 = any(allowed_emails)) limit 1`, [addr]).catch(() => ({ rows: [] }))).rows[0];
-      const ins = await pool.query(`insert into sales_contacts(name,email,source,client_id) values($1,$2,$3,$4) on conflict (lower(email)) where email is not null do nothing returning id`, [String(name).slice(0, 120), addr, source, client?.id || null]);
+      const ins = await pool.query(`insert into sales_contacts(name,email,source,client_id,tags) values($1,$2,$3,$4,$5) on conflict (lower(email)) where email is not null do nothing returning id`, [String(name).slice(0, 120), addr, source, client?.id || null, source === 'showcase' ? ['showcase'] : []]);
       contact = ins.rows[0] || (await pool.query('select id from sales_contacts where lower(email)=$1', [addr])).rows[0]; created = Boolean(ins.rowCount);
     }
     if (!contact) return null;
+    if (source === 'showcase') await pool.query(`update sales_contacts set tags = tags || '{showcase}'::text[] where id=$1 and not ('showcase' = any(tags))`, [contact.id]);
     let dealId = null;
     if (dealTitle) {
       const open = (await pool.query(`select id from sales_deals where contact_id=$1 and stage = any($2) order by created_at desc limit 1`, [contact.id, OPEN_STAGES])).rows[0];
@@ -38,6 +39,57 @@ export async function captureLead(pool, { email, name = '', source = 'showcase',
     }
     return { contactId: contact.id, dealId, created };
   } catch (e) { console.warn('lead not captured:', e.message); return null; }
+}
+
+// The hub's clients and leads, and the people who sign in for them, are contacts too, so tech pack customers and build customers live in one CRM.
+// Run on a schedule and on demand; safe to repeat. Tags the hub decides (client / lead / tech-pack) are kept right; every other tag is left to staff.
+export async function syncHubContacts(pool, { actor = null } = {}) {
+  const clients = (await pool.query(`select c.id, c.name, c.status, c.contact_name, c.contact_email, c.contact_phone, c.marketing_opt_out_at,
+      exists(select 1 from tech_packs t where t.client_id = c.id) has_tech_pack
+      from clients c where c.archived_at is null order by c.created_at`)).rows;
+  const users = (await pool.query(`select client_id, lower(email) email, name from users where client_id is not null and email is not null and role <> 'admin' and email not like '%@thefuturebasics.com'`)).rows;
+  const byClient = new Map(); for (const u of users) (byClient.get(u.client_id) || byClient.set(u.client_id, []).get(u.client_id)).push(u);
+  const out = { clients: clients.length, people: 0, created: 0, alreadyThere: 0, updated: 0, skipped: 0 };
+  for (const c of clients) {
+    const people = new Map();
+    const lead = cleanEmail(c.contact_email); if (lead) people.set(lead, c.contact_name || '');
+    for (const u of byClient.get(c.id) || []) { const e = cleanEmail(u.email); if (e && !people.has(e)) people.set(e, u.name || ''); }
+    if (!people.size) { out.skipped++; continue; }
+    const want = [c.status === 'lead' ? 'lead' : 'client', ...(c.has_tech_pack ? ['tech-pack'] : [])];
+    for (const [email, name] of people) {
+      out.people++;
+      let co = null; const existing = (await pool.query('select id,name,phone,client_id,tags,email_ok,company_id from sales_contacts where lower(email)=$1', [email])).rows[0];
+      if (!existing) {
+        if (c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
+        const row = (await pool.query(`insert into sales_contacts(name,email,phone,company_id,source,tags,client_id,email_ok) values($1,$2,$3,$4,'hub',$5,$6,$7) returning id`, [name, email, email === lead ? c.contact_phone || '' : '', co, want, c.id, !c.marketing_opt_out_at])).rows[0];
+        await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system',$2,$3)`, [row.id, `Added from the hub (${c.status === 'lead' ? 'website lead' : 'client'}: ${c.name})`, actor]);
+        if (c.marketing_opt_out_at) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [row.id]);
+        out.created++; continue;
+      }
+      out.alreadyThere++;
+      const keep = (existing.tags || []).filter(t => !AUTO_TAGS.includes(t)), next = [...new Set([...keep, ...want])].sort(), cur = [...(existing.tags || [])].sort();
+      const optOut = c.marketing_opt_out_at && existing.email_ok;
+      if (!existing.client_id || next.join() !== cur.join() || (!existing.name && name) || (!existing.company_id && c.name) || optOut) {
+        if (!existing.company_id && c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
+        await pool.query(`update sales_contacts set client_id=coalesce(client_id,$2), tags=$3, name=case when name='' then $4 else name end, company_id=coalesce(company_id,$5), email_ok=case when $6 then false else email_ok end, updated_at=now() where id=$1`, [existing.id, c.id, next, name, co, Boolean(optOut)]);
+        if (optOut) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [existing.id]);
+        out.updated++;
+      }
+    }
+  }
+  return out;
+}
+
+const DEFAULT_SEGMENTS = [
+  { name: 'Tech pack customers', filter: { tags: ['tech-pack'] } },
+  { name: 'Builds customers', filter: { tags: ['builds'] } },
+  { name: 'Leads', filter: { tags: ['lead'] } },
+  { name: 'Showcase interest', filter: { tags: ['showcase'] } }
+];
+export async function seedSegments(pool) {
+  if (Number((await pool.query('select count(*) n from sales_segments')).rows[0].n)) return 0;
+  let pos = 10; for (const sg of DEFAULT_SEGMENTS) await pool.query('insert into sales_segments(name,filter,position) values($1,$2::jsonb,$3)', [sg.name, JSON.stringify({ q: '', tags: [], excludeTags: [], source: '', ...sg.filter }), pos += 10]);
+  return DEFAULT_SEGMENTS.length;
 }
 
 export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = console }) {
@@ -83,13 +135,19 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
   });
 
   // ---------- contacts ----------
-  app.get('/v1/sales/contacts', { preHandler: pre }, async (req) => {
-    const q = String(req.query?.q || '').trim().toLowerCase(), source = String(req.query?.source || ''), limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50)), offset = Math.max(0, Number(req.query?.offset) || 0);
-    const where = [], args = [];
+  // the same filter drives the list, a saved view's count, and the tag counts
+  function contactWhere(f) {
+    const where = [], args = [], q = String(f.q || '').trim().toLowerCase();
     if (q) { args.push(`%${q.replace(/[%_\\]/g, m => '\\' + m)}%`); where.push(`(lower(c.name) like $${args.length} or lower(c.email) like $${args.length} or lower(co.name) like $${args.length} or $${args.length + 1}::text = any(c.tags))`); args.push(q); }
-    if (source) { args.push(source); where.push(`c.source = $${args.length}`); }
-    if (req.query?.tag) { args.push(String(req.query.tag).toLowerCase()); where.push(`$${args.length}::text = any(c.tags)`); }
-    const clause = where.length ? `where ${where.join(' and ')}` : '';
+    if (f.source) { args.push(String(f.source)); where.push(`c.source = $${args.length}`); }
+    const all = cleanTags([...cleanTags(f.tags), ...(f.tag ? [f.tag] : [])]); if (all.length) { args.push(all); where.push(`c.tags @> $${args.length}::text[]`); }
+    const no = cleanTags(f.excludeTags); if (no.length) { args.push(no); where.push(`not (c.tags && $${args.length}::text[])`); }
+    return { clause: where.length ? `where ${where.join(' and ')}` : '', args };
+  }
+  const queryFilter = qy => ({ q: qy?.q, source: qy?.source, tag: qy?.tag, tags: String(qy?.tags || '').split(',').filter(Boolean), excludeTags: String(qy?.exclude || '').split(',').filter(Boolean) });
+  app.get('/v1/sales/contacts', { preHandler: pre }, async (req) => {
+    const limit = Math.min(100, Math.max(1, Number(req.query?.limit) || 50)), offset = Math.max(0, Number(req.query?.offset) || 0);
+    const { clause, args } = contactWhere(queryFilter(req.query));
     const total = Number((await pool.query(`select count(*) n from sales_contacts c left join sales_companies co on co.id=c.company_id ${clause}`, args)).rows[0].n);
     const rows = (await pool.query(`${CONTACT_SELECT} ${clause} order by c.last_activity_at desc limit ${limit} offset ${offset}`, args)).rows;
     const heats = await heatFor(rows.map(r => r.id));
@@ -99,6 +157,25 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     if (req.query?.heat) list = list.filter(c => c.heat.level === req.query.heat);
     return { total, contacts: list };
   });
+
+  // ---------- tags and saved views ----------
+  app.get('/v1/sales/tags', { preHandler: pre }, async () => ({ tags: (await pool.query(`select t tag, count(*)::int n from sales_contacts, unnest(tags) t group by t order by n desc, t limit 300`)).rows, auto: AUTO_TAGS }));
+  app.post('/v1/sales/contacts/bulk-tags', { preHandler: pre }, async (req, reply) => {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => UUID.test(String(x))), add = cleanTags(req.body?.add), remove = cleanTags(req.body?.remove);
+    if (!ids.length) return bad(reply, 'Choose at least one contact'); if (ids.length > 500) return bad(reply, 'Five hundred at a time is the limit');
+    if (!add.length && !remove.length) return bad(reply, 'Name a tag to add or remove');
+    const r = await pool.query(`update sales_contacts set tags = coalesce((select array_agg(distinct t order by t) from unnest(tags || $2::text[]) t where t <> all($3::text[])), '{}'::text[]), updated_at=now() where id = any($1::uuid[])`, [ids, add, remove]);
+    return { ok: true, changed: r.rowCount };
+  });
+  const segmentRows = async () => (await pool.query('select id,name,filter from sales_segments order by position, created_at')).rows;
+  app.get('/v1/sales/segments', { preHandler: pre }, async () => {
+    const rows = await segmentRows(), out = [];
+    for (const sg of rows) { const { clause, args } = contactWhere(sg.filter || {}); out.push({ id: sg.id, name: sg.name, filter: sg.filter, count: Number((await pool.query(`select count(*) n from sales_contacts c left join sales_companies co on co.id=c.company_id ${clause}`, args)).rows[0].n) }); }
+    return { segments: out };
+  });
+  app.post('/v1/sales/segments', { preHandler: pre }, async (req, reply) => { const r = cleanSegment(req.body); if (r.error) return bad(reply, r.error); return reply.code(201).send({ id: (await pool.query('insert into sales_segments(name,filter,position) values($1,$2::jsonb,coalesce((select max(position)+10 from sales_segments),10)) returning id', [r.value.name, JSON.stringify(r.value.filter)])).rows[0].id }); });
+  app.put('/v1/sales/segments/:id', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; const r = cleanSegment(req.body); if (r.error) return bad(reply, r.error); return (await pool.query('update sales_segments set name=$2, filter=$3::jsonb where id=$1', [req.params.id, r.value.name, JSON.stringify(r.value.filter)])).rowCount ? { ok: true } : bad(reply, 'Not found', 404); });
+  app.delete('/v1/sales/segments/:id', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return (await pool.query('delete from sales_segments where id=$1', [req.params.id])).rowCount ? { ok: true } : bad(reply, 'Not found', 404); });
   app.post('/v1/sales/contacts', { preHandler: pre }, async (req, reply) => {
     const r = cleanContact(req.body); if (r.error) return bad(reply, r.error);
     const v = r.value;
@@ -211,16 +288,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     const row = (await pool.query(`insert into sales_contacts(name,email,phone,title,company_id,source,tags,notes,client_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`, [name, email || null, phone, title, cid, source, tags, notes, clientId])).rows[0];
     return { id: row.id, created: true };
   }
-  app.post('/v1/sales/import/hub', { preHandler: pre }, async (req) => {
-    const clients = (await pool.query(`select id,name,status,contact_name,contact_email,contact_phone,allowed_emails from clients where archived_at is null order by created_at`)).rows;
-    let created = 0, linked = 0, skipped = 0;
-    for (const c of clients) {
-      const email = cleanEmail(c.contact_email) || cleanEmail((c.allowed_emails || [])[0]); if (!email) { skipped++; continue; }
-      const r = await upsertPerson({ name: c.contact_name || '', email, phone: c.contact_phone || '', companyName: c.name || '', source: 'hub', tags: [c.status === 'lead' ? 'hub-lead' : 'hub-client'], clientId: c.id });
-      if (r.created) { created++; await logActivity({ contactId: r.id, kind: 'system', text: `Imported from the hub (${c.status})`, actor: actorOf(req) }); } else linked++;
-    }
-    return { clients: clients.length, created, alreadyThere: linked, skipped };
-  });
+  app.post('/v1/sales/import/hub', { preHandler: pre }, async (req) => syncHubContacts(pool, { actor: actorOf(req) }));
   app.post('/v1/sales/import/csv', { preHandler: pre, bodyLimit: 2_000_000 }, async (req, reply) => {
     const rows = parseCsv(req.body?.csv); if (!rows.length) return bad(reply, 'Paste a list with a header row (name, email, phone, company, title, tags) and at least one person');
     if (rows.length > 500) return bad(reply, 'Five hundred at a time is the limit');
