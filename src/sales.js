@@ -14,7 +14,12 @@ const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const clipBlock = (v, n) => String(v ?? '').replace(/\r/g, '').trim().slice(0, n);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const cleanEmail = v => { const e = String(v ?? '').trim().toLowerCase(); return e && e.length <= 254 && EMAIL_RE.test(e) ? e : ''; };
-const tags = v => [...new Set((Array.isArray(v) ? v : String(v ?? '').split(/[,;\n]/)).map(t => clip(t, 30).toLowerCase()).filter(Boolean))].slice(0, 10);
+// a tag is a short lower-case label: "Tech Pack" → "tech-pack"
+export const cleanTag = v => String(v ?? '').trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9:-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+export const cleanTags = v => [...new Set((Array.isArray(v) ? v : String(v ?? '').split(/[,;\n]/)).map(cleanTag).filter(Boolean))].slice(0, 20);
+// kept in step with the hub by the sync; staff add any others by hand
+export const AUTO_TAGS = ['client', 'lead', 'tech-pack'];
+const tags = cleanTags;
 const day = v => { const s = String(v ?? '').trim(); if (!s) return null; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); if (!m) return undefined; const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`); return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== `${m[1]}-${m[2]}-${m[3]}` ? undefined : `${m[1]}-${m[2]}-${m[3]}`; };
 
 // → { value } or { error }. A contact needs a name or an email to be findable.
@@ -31,6 +36,15 @@ export function cleanContact(input = {}, { partial = false } = {}) {
   if (has('notes')) out.notes = clipBlock(i.notes, 4000);
   if (has('emailOk')) out.email_ok = i.emailOk !== false && i.emailOk !== 'false';
   return { value: out };
+}
+
+// A saved view of the contact list. → { value: { name, filter } } or { error }
+export function cleanSegment(input = {}) {
+  const i = input && typeof input === 'object' ? input : {}, f = i.filter && typeof i.filter === 'object' ? i.filter : {};
+  const name = clip(i.name, 60); if (!name) return { error: 'Give the view a name' };
+  const filter = { q: clip(f.q, 80), tags: cleanTags(f.tags), excludeTags: cleanTags(f.excludeTags), source: SOURCES.includes(f.source) ? f.source : '' };
+  if (!filter.q && !filter.tags.length && !filter.excludeTags.length && !filter.source) return { error: 'Choose at least one tag, source or search to save a view' };
+  return { value: { name, filter } };
 }
 
 export function cleanDeal(input = {}, { partial = false } = {}) {
