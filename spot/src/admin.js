@@ -13,7 +13,8 @@
 // browser.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { CartError } from './cart.js';
-import { SITE_JS, siteHead } from './site.js';
+import { SITE_JS, siteHead, siteNav } from './site.js';
+import { GOOGLE_G, SSO_CSS } from './accountpage.js';
 import { sessionUserId } from './accounts.js';
 import { isStaff, staffDomain } from './staff.js';
 import { HEALTH_CSS, healthPage, healthReport } from './health.js';
@@ -53,7 +54,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
 
   app.get('/admin', async (req, reply) => {
     if (!enabled) return reply.code(404).type('text/plain').send('Not found');
-    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req), domain, hasToken: Boolean(token), google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) }));
+    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req), domain, hasToken: Boolean(token), google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), me: Boolean(sessionUserId(db, req)) }));
   });
 
   app.post('/admin/login', async (req, reply) => {
@@ -160,7 +161,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
   app.get('/admin/health', async (req, reply) => {
     if (!enabled) return reply.code(404).type('text/plain').send('Not found');
     if (!authed(req)) return reply.redirect('/admin', 302);
-    const head = siteHead({ title: 'Spot health', desc: 'Spot health', origin: urlFor(req, ''), path: '/admin/health', extraCss: CSS + HEALTH_CSS }).replace('<head>', '<head><meta name="robots" content="noindex">');
+    const head = siteHead({ title: 'Spot health', desc: 'Spot health', origin: urlFor(req, ''), path: '/admin/health', extraCss: CSS + HEALTH_CSS }).replace('<head>', `<head><meta name="robots" content="noindex">${sessionUserId(db, req) ? SIGNED_IN : ''}`);
     return reply.type('text/html').header('cache-control', 'no-store').send(healthPage({ head }));
   });
   app.get('/v1/admin/health', async (req, reply) => {
@@ -245,6 +246,9 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
   });
 }
 
+// Signed in: the site nav shows My Spots instead of Sign in.
+const SIGNED_IN = "<script>try{localStorage.setItem('spot:in','1')}catch{}</script>";
+
 const CSS = `
 body{background:var(--bg)}
 .adm{padding:34px 0 80px}
@@ -260,8 +264,10 @@ body{background:var(--bg)}
 .hcard .why{font-weight:700;color:var(--spot)}
 .hcard .meta{font-size:14px;color:var(--muted)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
-.ab{font:600 14px Bricolage,system-ui,sans-serif;border-radius:999px;padding:8px 14px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-.ab.go{background:var(--ok);border-color:var(--ok);color:#fff}.ab.no{border-color:var(--spot);color:var(--spot)}
+.ab{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 16px;font:800 14px/1 Bricolage,system-ui,sans-serif;border-radius:999px;border:1.5px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;text-decoration:none;white-space:nowrap;transition:transform .15s,background-color .15s,border-color .15s}
+.ab:active{transform:scale(.98)}.ab:focus-visible{outline:3px solid var(--spot);outline-offset:2px}
+.ab.go{background:var(--spot);border-color:var(--spot);color:#fff;box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 8px 20px -10px color-mix(in srgb,var(--spot) 70%,transparent)}
+.ab.no{color:var(--spot);border-color:color-mix(in srgb,var(--spot) 55%,var(--line))}
 .ab:disabled{opacity:.5}
 .tw{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
 table{border-collapse:collapse;width:100%;font-size:14px}
@@ -291,23 +297,30 @@ tr:last-child td{border-bottom:0}
 form.inline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 form.inline input,form.inline select{font:inherit;font-size:16px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);min-width:0;flex:1 1 140px}
 .muted{color:var(--muted)}.err{color:var(--spot);font-weight:600;min-height:1.2em}
-.login{max-width:420px;margin:60px auto;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px}
-.login input{width:100%;font:inherit;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:14px 0}
+.login{max-width:460px;margin:30px auto 60px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:28px}
+.login h1{font-size:38px;margin:0}.login .sub{color:var(--muted);margin:6px 0 18px}
+.login .full{width:100%}.login .lnote{color:var(--muted);font-size:14px;margin:8px 0 0;text-align:center}
+.login input{width:100%;font:inherit;font-size:16px;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:10px 0}
+.login details{margin-top:18px}.login summary{cursor:pointer;font-weight:600;color:var(--muted);font-size:14px}
+${SSO_CSS}
 `;
 
-function adminPage({ origin, signedIn, domain, hasToken = true, google = false }) {
-  const head = siteHead({ title: 'Spot admin', desc: 'Spot operator view', origin, path: '/admin', extraCss: CSS }).replace('<head>', '<head><meta name="robots" content="noindex">');
+function adminPage({ origin, signedIn, domain, hasToken = true, google = false, me = false }) {
+  const head = siteHead({ title: 'Spot admin', desc: 'Spot operator view', origin, path: '/admin', extraCss: CSS }).replace('<head>', `<head><meta name="robots" content="noindex">${me ? SIGNED_IN : ''}`);
   if (!signedIn) {
     return `${head}
-<main class="wrap"><form class="login" id="login"><h1 style="font-size:32px">Spot admin</h1>
-${domain && google ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/auth/google/start?hd=${encodeURIComponent(domain)}&next=/admin">Sign in with Google (@${esc(domain)})</a><p class="muted" style="margin:8px 0 0;font-size:14px">Your company Google account. <a href="/signin?next=/admin">Use an email code instead</a>.</p>` : domain ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/signin?next=/admin">Sign in with your @${esc(domain)} email</a><p class="muted" style="margin:8px 0 0;font-size:14px">Use a sign-in code or Google. Already signed in? Sign out and back in once with your company email.</p>` : ''}
-${hasToken ? `<p class="muted" style="margin:${domain ? '18px' : '6px'} 0 0">${domain ? 'Or paste' : 'Paste'} the admin token from Railway (SPOT_ADMIN_TOKEN).</p>
-<input type="password" name="token" id="token" autocomplete="current-password" required aria-label="Admin token"><button class="ab go" style="width:100%">Sign in</button>` : ''}<p class="err" id="err"></p></form></main>
+${siteNav()}
+<main class="wrap"><div class="login"><h1>Spot admin</h1><p class="sub">For the ${domain ? `@${esc(domain)}` : 'Spot'} team.</p>
+${domain && google ? `<a class="sso-b google" href="/auth/google/start?hd=${encodeURIComponent(domain)}&next=/admin">${GOOGLE_G}Continue with Google</a><p class="lnote">Use your @${esc(domain)} account.</p>
+<div class="or"><span>or</span></div><a class="btn ghost full" href="/signin?next=/admin">Email me a code</a>` : domain ? `<a class="btn primary full" href="/signin?next=/admin">Sign in with your @${esc(domain)} email</a><p class="lnote">With a sign-in code or Google.</p>` : ''}
+${hasToken ? `${domain ? '<details><summary>Use the admin token</summary>' : ''}<form id="login"><p class="muted" style="margin:10px 0 0;font-size:14px">Paste the admin token from Railway (SPOT_ADMIN_TOKEN).</p>
+<input type="password" name="token" id="token" autocomplete="current-password" required aria-label="Admin token"><button class="btn primary full">Sign in</button></form>${domain ? '</details>' : ''}` : ''}<p class="err" id="err"></p></div></main>
 <script>(()=>{${SITE_JS}
-document.getElementById('login').addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value})});if(r.ok)location.reload();else document.getElementById('err').textContent=(await r.json().catch(()=>({}))).error||'Try again'})})();</script>
+document.getElementById('login')?.addEventListener('submit',async e=>{e.preventDefault();const r=await fetch('/admin/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value})});if(r.ok)location.reload();else document.getElementById('err').textContent=(await r.json().catch(()=>({}))).error||'Try again'})})();</script>
 </body></html>`;
   }
   return `${head}
+${siteNav()}
 <main class="adm"><div class="wrap">
   <div class="bar"><h1>Spot admin</h1><div class="row"><a class="ab" href="/admin/health" style="text-decoration:none">Health</a><button class="ab" id="refresh">Refresh</button><button class="ab" id="logout">Sign out</button></div></div>
   <div class="stats" id="stats"></div>
