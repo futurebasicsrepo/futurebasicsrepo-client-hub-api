@@ -81,13 +81,22 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
     return out;
   }
 
-  // the parameters of a query, with big pictures swapped for references (bytes stored first)
-  async function prepareParams(values) {
+  // the parameters of a query, with big pictures swapped for references (bytes stored first). Plain objects are looked at; a string is looked at only when the query itself
+  // casts that placeholder to json/jsonb ($6::jsonb), because that is the one case where it is certain the text is JSON going into a column that is read back through this layer.
+  async function prepareParams(values, text = '') {
     if (!Array.isArray(values)) return values;
-    let blobs = null, out = values;
+    let blobs = null, out = values, casts = null;
+    const jsonCast = i => { if (!casts) casts = new Set([...String(text).matchAll(/\$(\d+)\s*::\s*jsonb?\b/gi)].map(m => Number(m[1]) - 1)); return casts.has(i); };
     for (let i = 0; i < values.length; i++) {
-      const p = values[i]; if (!plain(p) || Array.isArray(p)) continue; // a JS array is a Postgres array literal, not JSON
-      blobs = blobs || new Map(); const n = externalize(p, blobs);
+      const p = values[i]; let n = p;
+      if (typeof p === 'string') {
+        if (p.length < BLOB_MIN_CHARS || !(p[0] === '{' || p[0] === '[') || !p.includes('data:image/') || !jsonCast(i)) continue;
+        let parsed; try { parsed = JSON.parse(p); } catch { continue; }
+        blobs = blobs || new Map(); const e = externalize(parsed, blobs); if (e === parsed) continue; n = JSON.stringify(e);
+      } else {
+        if (!plain(p) || Array.isArray(p)) continue; // a JS array is a Postgres array literal, not JSON
+        blobs = blobs || new Map(); n = externalize(p, blobs);
+      }
       if (n !== p) { if (out === values) out = values.slice(); out[i] = n; }
     }
     if (blobs && blobs.size) await save(blobs);
@@ -114,8 +123,8 @@ export function createBlobLayer(rawQuery, { cacheBytes = 96 * 1024 * 1024, log =
     return async function (...args) {
       if (typeof args[args.length - 1] === 'function') return run(...args); // callback style: not used by this service, left alone
       const first = args[0];
-      if (first && typeof first === 'object' && !Array.isArray(first) && typeof first.text === 'string') args[0] = { ...first, values: await prepareParams(first.values) };
-      else if (args.length > 1) args[1] = await prepareParams(args[1]);
+      if (first && typeof first === 'object' && !Array.isArray(first) && typeof first.text === 'string') args[0] = { ...first, values: await prepareParams(first.values, first.text) };
+      else if (args.length > 1) args[1] = await prepareParams(args[1], typeof first === 'string' ? first : '');
       return hydrate(await run(...args));
     };
   }

@@ -79,6 +79,19 @@ test('only plain-object parameters are looked at: arrays (Postgres arrays), buff
   const cb = () => {}; await layer.wrap(async (...a) => { assert.equal(a[a.length - 1], cb); return {}; })('q', [{ data: A }], cb);
 });
 
+test('a JSON string is looked at only where the query casts it to jsonb', async () => {
+  const db = fakeDb(), layer = createBlobLayer(db.rawQuery), seen = [];
+  const run = layer.wrap(async (text, values) => { seen.push(values); return { rows: [], fields: [] }; });
+  const pack = { sketches: [{ image: A }], note: 'x' }, json = JSON.stringify(pack);
+  await run('update t set published_data=$2::jsonb, note=$3 where id=$1', ['id', json, json]);
+  assert.ok(seen[0][1].length < 500 && !seen[0][1].includes('base64'), 'the cast placeholder is externalized');
+  assert.equal(seen[0][2], json, 'the same string in a text placeholder is left exactly as it is');
+  assert.deepEqual(JSON.parse(seen[0][1]).note, 'x');
+  await run('update t set v=$1 :: JSONB', [json]); assert.ok(!seen[1][0].includes('base64'), 'spacing and case of the cast do not matter');
+  await run('update t set v=$1', [json]); assert.equal(seen[2][0], json, 'no cast, no change');
+  await run('update t set v=$1::jsonb', ['{ not json data:image/' + 'x'.repeat(3000)]); assert.ok(seen[3][0].startsWith('{ not json'), 'text that is not JSON is passed through');
+});
+
 test('a missing picture is reported and its reference kept, never swapped for something wrong', async () => {
   const errors = [], db = fakeDb(), layer = createBlobLayer(db.rawQuery, { log: { error: m => errors.push(m) } });
   const ref = 'fbblob:' + 'a'.repeat(64);
