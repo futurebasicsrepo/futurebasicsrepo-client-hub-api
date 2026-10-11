@@ -634,7 +634,20 @@ registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSett
 registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
-const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
+const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
+  // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
+  shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
+    if (!shopifyConfigured()) throw new Error('Shopify is not connected: product development is paid through a Shopify link');
+    const input = { lineItems: [{ title, quantity: 1, requiresShipping: false, taxable: false, originalUnitPriceWithCurrency: { amount: (Number(amountCents) / 100).toFixed(2), currencyCode: currency || 'USD' } }], email: email || undefined, note, tags: ['future-basics-money', `invoice-${String(number).replace(/[^A-Za-z0-9_-]/g, '-')}`], visibleToCustomer: true };
+    const draft = requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
+    return { url: draft.invoiceUrl, draftId: draft.id, name: draft.name };
+  },
+  shopifyDraftStatus: async id => {
+    if (!shopifyConfigured()) return null;
+    const d = (await shopifyGraphql(DRAFT_ORDER_STATUS, { id })).draftOrder; if (!d) return null;
+    const o = d.order, paid = o?.displayFinancialStatus === 'PAID' || d.status === 'COMPLETED';
+    return { paid, amountCents: Math.round(Number((o || d).totalPriceSet?.shopMoney?.amount || 0) * 100), paidAt: d.updatedAt, orderName: o?.name || d.name };
+  } });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
@@ -1845,11 +1858,11 @@ app.get('/v1/invoices/:id/download',{preHandler:authenticate},async(req,reply)=>
     left join projects pr on pr.id=i.project_id left join products p on p.id=i.product_id left join quotes q on q.id=i.quote_id where i.id=$1`,[req.params.id])).rows[0];
   if(!row||(req.auth.role!=='admin'&&row.client_id!==req.auth.clientId))return reply.code(404).send({error:'Invoice not found'});
   const safeNumber=String(row.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'-');
-  // Every invoice a person downloads, on the work console or the hub, is the Future Basics invoice (the template in use today), not the old generic sheet.
+  // Every invoice a person downloads, on the work console or the hub, is the Future Basics invoice on the brand letterhead (src/money-pdf.js).
   const issued=new Date(row.created_at).toISOString().slice(0,10),due=row.due_date?new Date(row.due_date).toISOString().slice(0,10):issued,days=Math.max(0,Math.round((Date.parse(due)-Date.parse(issued))/86400000));
   const what=row.kind==='deposit'?`Sample deposit${row.product_title?` - ${row.product_title}${row.quote_version?` (quote v${row.quote_version})`:''}`:''}`:row.product_title?`Development and production - ${row.product_title}`:row.project_name?`Project invoice - ${row.project_name}`:'Project invoice';
   const settings={instructions:String(((await getSetting('moneyPayment').catch(()=>null))||{}).instructions||'')};
-  const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status},settings,{state:row.status==='paid'?'paid':row.status});
+  const pdf=await moneyInvoicePdf({number:row.number,company:row.client_name,address:'',contact_name:'',contact_email:'',issued_on:issued,terms:days?`Net ${days}`:'Due on receipt',due_on:due,lines:[{description:what,qty:1,rateCents:Number(row.amount_cents)}],tax_rate:0,tax_cents:0,subtotal_cents:Number(row.amount_cents),total_cents:Number(row.amount_cents),credits:[],due_now_label:'Total due',due_now_cents:null,notes:row.project_name&&row.product_title?`Project: ${row.project_name}`:'',currency:row.currency||'USD',status:row.status,pay_url:row.external_url||''},settings,{state:row.status==='paid'?'paid':row.status});
   return reply.type('application/pdf').header('content-disposition',`attachment; filename="${safeNumber}.pdf"`).send(pdf);
 });
 
@@ -5675,6 +5688,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
 jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
+jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });

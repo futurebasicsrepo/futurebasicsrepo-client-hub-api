@@ -1372,6 +1372,12 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- which kind of work an invoice is for decides its payment link: product development → a Shopify checkout, software development → QuickBooks's own pay page
+    alter table money_invoices add column if not exists project_id uuid references projects(id) on delete set null;
+    alter table money_invoices add column if not exists work_kind text not null default '' check (work_kind in ('','product','software'));
+    alter table money_invoices add column if not exists pay_url text not null default '';
+    alter table money_invoices add column if not exists pay_channel text not null default '';
+    alter table money_invoices add column if not exists shopify_draft_id text not null default '';
     create index if not exists money_invoices_status_idx on money_invoices (status, due_on);
     create index if not exists money_invoices_company_idx on money_invoices (lower(company));
     create table if not exists money_payments (

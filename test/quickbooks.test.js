@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { qbConfig, signState, readState, authUrl, invoicePayload, customerPayload, methodOf, SCOPE } from '../src/quickbooks.js';
+import { qbConfig, signState, readState, authUrl, invoicePayload, customerPayload, methodOf, SCOPE, endpoints, forgetEndpoints, qb } from '../src/quickbooks.js';
 import { quickbooksVerdict, coverageConfig } from '../src/platform-coverage.js';
 
 test('the QuickBooks settings come from the environment: sandbox unless production is said', () => {
@@ -50,4 +50,35 @@ test('the QuickBooks health card says what to do next', () => {
   assert.match(quickbooksVerdict({ configured: true, sealing: true, row: { ...base, mode: 'sandbox' }, now }).summary, /sandbox: test books/);
   const by = e => Object.fromEntries(coverageConfig({ env: e }).map(r => [r.id, r.status]));
   assert.deepEqual([by({}).quickbooks, by({ QUICKBOOKS_CLIENT_ID: 'a' }).quickbooks, by({ QUICKBOOKS_CLIENT_ID: 'a', QUICKBOOKS_CLIENT_SECRET: 'b', QUICKBOOKS_ENV: 'sandbox' }).quickbooks, by({ QUICKBOOKS_CLIENT_ID: 'a', QUICKBOOKS_CLIENT_SECRET: 'b' }).quickbooks], ['info', 'warn', 'ok', 'warn']);
+});
+
+const reply = (status, body, headers = {}) => ({ ok: status < 400, status, headers: { get: k => headers[k] ?? null }, json: async () => body });
+
+test('the sign-in endpoints come from Intuit\'s discovery document, kept for a day, and fall back to the built-in ones', async () => {
+  forgetEndpoints();
+  const cfg = qbConfig({ QUICKBOOKS_CLIENT_ID: 'id', QUICKBOOKS_CLIENT_SECRET: 's', QUICKBOOKS_ENV: 'production' });
+  assert.match(cfg.discoveryUrl, /developer\.api\.intuit\.com\/\.well-known\/openid_configuration$/);
+  assert.match(qbConfig({ QUICKBOOKS_CLIENT_ID: 'id', QUICKBOOKS_CLIENT_SECRET: 's' }).discoveryUrl, /openid_sandbox_configuration$/);
+  assert.equal(qbConfig({ QUICKBOOKS_AUTH_ORIGIN: 'http://127.0.0.1:1' }).discoveryUrl, '', 'a stand-in server has no discovery document');
+  let calls = 0;
+  const good = async () => { calls++; return reply(200, { authorization_endpoint: 'https://appcenter.intuit.com/connect/oauth2', token_endpoint: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', revocation_endpoint: 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke' }); };
+  const a = await endpoints(cfg, good), b = await endpoints(cfg, good);
+  assert.equal(a.from, 'discovery'); assert.equal(calls, 1, 'read once, then kept'); assert.equal(b.token, 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer');
+  assert.equal(new URL(authUrl(cfg, 'S', a)).origin, 'https://appcenter.intuit.com');
+  forgetEndpoints();
+  const down = await endpoints(cfg, async () => { throw new Error('offline'); });
+  assert.equal(down.from, 'built-in'); assert.equal(down.token, 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer');
+  forgetEndpoints();
+  const evil = await endpoints(cfg, async () => reply(200, { authorization_endpoint: 'https://evil.example.com/a', token_endpoint: 'https://evil.example.com/t' }));
+  assert.equal(evil.from, 'built-in', 'an address that is not Intuit\'s is never trusted with the client secret');
+  forgetEndpoints();
+});
+
+test('a failed QuickBooks call is logged with its intuit_tid and keeps the id on the error, without a token', async () => {
+  const cfg = qbConfig({ QUICKBOOKS_CLIENT_ID: 'id', QUICKBOOKS_CLIENT_SECRET: 's' }), logs = [];
+  const ctx = { cfg, conn: { realmId: '123', accessToken: 'AT-SECRET', refreshToken: 'RT-SECRET', accessExpiresAt: new Date(Date.now() + 3600_000) }, log: { warn: (o, m) => logs.push([o, m]) },
+    fetchImpl: async () => reply(400, { Fault: { Error: [{ Message: 'Invalid Reference Id', Detail: 'Invalid Reference Id : Accounts element id 99 is not found', code: '2500' }] } }, { intuit_tid: 'abc-123' }) };
+  await assert.rejects(() => qb(ctx, '/invoice/77', { method: 'POST', body: { x: 1 } }), e => e.tid === 'abc-123' && e.status === 400 && e.code === '2500' && /Invalid Reference Id/.test(e.message));
+  assert.equal(logs.length, 1); assert.equal(logs[0][0].intuit_tid, 'abc-123'); assert.equal(logs[0][0].path, '/invoice/{id}');
+  assert.ok(!JSON.stringify(logs).includes('SECRET'), 'no token in the log');
 });
