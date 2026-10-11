@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
-import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, pageDetails } from './capture.js';
+import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, lookupCache, pageDetails, streamLookup } from './capture.js';
 import { openDb } from './db.js';
 import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
@@ -516,6 +516,36 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return captureShot({ data: String(b.image.data), media_type: String(b.image.media_type || '') });
     }
     throw new CartError('Send a url or an image');
+  });
+
+  // The shelf's search, streamed: one line of JSON per pick as the model
+  // writes it, then store-check updates, then "done" (streamLookup).
+  const recent = lookupCache();
+  app.post('/v1/capture/stream', async (req, reply) => {
+    limits.capture(req);
+    const b = req.body || {};
+    const text = typeof b.text === 'string' ? b.text : '';
+    if (!text.trim()) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
+    const uid = accounts.userIdOf(req);
+    const profile = { sizes: sizesOf(uid), ship_to: shipToOf(uid) };
+    reply.hijack();
+    reply.raw.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+    const write = (e) => reply.raw.destroyed || reply.raw.write(JSON.stringify(e) + '\n');
+    if (uid) write({ type: 'profile', profile });
+    const opts = {
+      sizes: profile.sizes,
+      shipTo: profile.ship_to,
+      more: typeof b.more === 'string' ? b.more : '',
+      avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [],
+      count: Number(b.count) || undefined,
+    };
+    try {
+      await (capture.stream ? capture.stream(text, opts, write) : streamLookup(text, { ...opts, fromUrl: captureUrl, cache: recent, ...aiHooks }, write));
+    } catch (err) {
+      req.log.warn({ err }, 'stream lookup');
+      write({ type: 'done', kind: null, count: 0, not_found: true, warning: err instanceof CaptureError ? err.message : 'Something went wrong. Try again' });
+    }
+    reply.raw.end();
   });
 
   // Photos, stock and prices for product pages Spot's own reader was turned

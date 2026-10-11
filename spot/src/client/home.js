@@ -162,29 +162,40 @@
     btn.textContent = 'reading…';
     say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
+      // Typed: the shelf opens right away and fills as the AI finds things.
+      if (!image && !/https?:\/\//.test(text)) {
+        ask = { text, avoid: [] };
+        made = null;
+        $('#thread').innerHTML = '';
+        turns.length = 0;
+        show('picks'); // visible first, so the shelf can measure itself
+        const T = openTurn(text);
+        let done = null;
+        try {
+          ({ done } = await fill(T, { text }));
+        } catch (err) {
+          if (T.list.length) return;
+          throw err;
+        }
+        if (!T.list.length) {
+          turns.length = 0;
+          $('#thread').innerHTML = '';
+          show('compose');
+          notFound(done?.warning || 'I couldn’t find that one. Try different words, or paste a link', text);
+        }
+        return;
+      }
       const d = await api('/v1/capture', image ? { image } : { text });
       ask = { text: image ? '' : text, avoid: [] };
       made = null;
       if (listOf(d)) {
         $('#thread').innerHTML = '';
         turns.length = 0;
-        show('picks'); // visible first, so the shelf can measure itself
-        shelf(text, d);
+        show('picks');
+        shelfFrom(text, d);
         return;
       }
-      // Nothing found: stay right here, say so, keep what they typed. Never a
-      // cart with no product in it (and never a fee for nothing).
-      if (d.not_found) {
-        $('#capErr').innerHTML = esc(d.warning) + ' <button class="textlink" type="button" id="capRetry">Try again</button> · <button class="textlink" type="button" id="capManual">type it in myself</button>';
-        say('hmm, I came up empty on that one');
-        $('#capRetry').onclick = go;
-        $('#capManual').onclick = () => {
-          draft = toDraft(d);
-          made = null;
-          check('');
-        };
-        return;
-      }
+      if (d.not_found) return notFound(d.warning, text);
       draft = toDraft(d);
       const priced = draft.items.every((i) => i.price_cents > 0);
       // Sure of everything: make the link straight away. Anything the
@@ -213,6 +224,20 @@
       btn.disabled = false;
       btn.textContent = 'Spot it';
     }
+  }
+
+  // Nothing found: stay right here, say so, keep what they typed. Never a
+  // cart with no product in it (and never a fee for nothing).
+  function notFound(warning, text) {
+    show('compose');
+    $('#capErr').innerHTML = esc(warning) + ' <button class="textlink" type="button" id="capRetry">Try again</button> · <button class="textlink" type="button" id="capManual">type it in myself</button>';
+    say('hmm, I came up empty on that one');
+    $('#capRetry').onclick = go;
+    $('#capManual').onclick = () => {
+      draft = toDraft({ source: 'text', items: [{ ...blank(), title: text }] });
+      made = null;
+      check('');
+    };
   }
 
   // ─── Check ────────────────────────────────────────────────────────────────
@@ -280,38 +305,59 @@
       '<div class="pr">' + usd(total(look.items)) + '<small> the look</small></div>' + buttons(k, false) + '</div></article>';
   }
   const skel = '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>';
-  const skeleton = () => '<div class="shelf"><div class="rail">' + skel.repeat(3) + '</div></div>';
   const urlsOf = (entry) => (entry.items ? entry.items : [entry]).map((o) => o.item.url).filter(Boolean);
   const listOf = (d) => (d.outfits?.length ? { kind: 'outfits', list: d.outfits } : d.options?.length ? { kind: 'products', list: d.options } : null);
 
-  function shelf(said, d, el, more = '') {
-    const got = listOf(d);
-    const t = turns.push({ ...got, said, more, page: 1, done: false, loading: false }) - 1;
+  // The search, streamed: one line of JSON per event, as the server has it
+  // (a pick the moment the AI has written it, a store check as it lands).
+  async function streamed(body, on) {
+    const r = await fetch('/v1/capture/stream', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok || !r.body) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j.error || 'Error ' + r.status);
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buf += dec.decode(value, { stream: true });
+      for (let i; (i = buf.indexOf('\n')) >= 0; ) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (line) {
+          try {
+            on(JSON.parse(line));
+          } catch {}
+        }
+      }
+      if (done) break;
+    }
+  }
+
+  // A turn: what they said, Spot's reply, and a shelf that fills as picks arrive.
+  function openTurn(said, more = '', el) {
+    const t = turns.push({ kind: null, list: [], said, more, page: 1, done: false, loading: false, profile: null }) - 1;
     const T = turns[t];
-    for (const e of T.list) for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
     const turn = el || document.createElement('div');
     turn.className = 'turn';
     turn.dataset.t = t;
-    const stores = new Set(T.list.flatMap((e) => (e.items || [e]).map((o) => o.merchant.name))).size;
-    const line = T.kind === 'outfits' ? (T.list.length === 1 ? 'here’s a look I put together' : T.list.length + ' looks, from ' + stores + ' stores. my favorite’s first →') :
-      T.list.length === 1 ? 'here’s the one I’d get' : (t === 0 ? 'found ' + T.list.length + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) : 'ok, ' + T.list.length + ' more') + '. my pick’s first, swipe for more →';
-    const used = d.profile ? [d.profile.sizes && 'In your sizes', d.profile.ship_to && 'ships to ' + d.profile.ship_to].filter(Boolean).join(' · ') : '';
-    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + (used ? '<p class="used" title="' + esc(d.profile.sizes || '') + '">✓ ' + esc(used) + '</p>' : '') + '<div class="shelf' + (T.kind === 'outfits' ? ' looks' : '') + '"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="' + (T.kind === 'outfits' ? 'Outfits' : 'Picks') + '">' +
-      T.list.map((e, i) => (T.kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, i === 0)).join('') + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at"></span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
+    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays('looking around…') + '<p class="used" hidden></p><div class="shelf"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="Picks">' + skel.repeat(2) + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at"></span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
     if (!el) $('#thread').appendChild(turn);
-    const rail = turn.querySelector('.rail');
-    const step = () => rail.firstElementChild.offsetWidth + 12;
-    const sync = () => {
-      const i = Math.min(Math.round(rail.scrollLeft / step()), T.list.length - 1);
-      turn.querySelector('.at').textContent = i + 1 + ' of ' + T.list.length + (T.done ? '' : '+');
+    T.el = turn;
+    const rail = (T.rail = turn.querySelector('.rail'));
+    const step = () => (rail.firstElementChild?.offsetWidth || 280) + 12;
+    T.sync = () => {
+      if (turns[t] !== T) return; // a shelf from before "start over"
+      const n = T.list.length;
+      turn.querySelector('.at').textContent = n ? Math.min(Math.round(rail.scrollLeft / step()), n - 1) + 1 + ' of ' + n + (T.done ? '' : '+') : '';
       turn.querySelector('[data-step="-1"]').disabled = rail.scrollLeft < 4;
       turn.querySelector('[data-step="1"]').disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
       // Near the end: load the next batch, so the shelf never runs out.
-      if (!T.done && !T.loading && rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - step() * 2) loadMore(t, turn);
+      if (n && !T.done && !T.loading && rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - step() * 2) loadMore(t);
     };
-    T.sync = sync;
-    rail.addEventListener('scroll', sync, { passive: true });
-    addEventListener('resize', sync, { passive: true });
+    rail.addEventListener('scroll', T.sync, { passive: true });
+    addEventListener('resize', T.sync, { passive: true });
     turn.querySelector('.railnav').addEventListener('click', (e) => {
       const s = +e.target.dataset.step;
       if (s) rail.scrollBy({ left: s * step(), behavior: 'smooth' });
@@ -319,70 +365,134 @@
     rail.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') rail.scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * step(), behavior: 'smooth' });
     });
-    sync();
-    say(T.list.length > 1 ? 'swipe for more →' : 'here’s what I found');
+    T.sync();
     turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    details(T.list);
+    return T;
   }
-
-  // The next batch, from stores not shown yet, onto the end of the shelf.
-  async function loadMore(t, turn) {
-    const T = turns[t];
-    T.loading = true;
-    const rail = turn.querySelector('.rail');
-    rail.insertAdjacentHTML('beforeend', skel);
-    try {
-      const d = await api('/v1/capture', { text: ask.text, more: T.more || (T.kind === 'outfits' ? 'more looks like these' : 'more like these, from other stores'), avoid: ask.avoid.slice(-60) });
-      const got = listOf(d);
-      const fresh = got && got.kind === T.kind ? got.list : [];
-      rail.querySelector('.sk')?.remove();
-      if (!fresh.length) T.done = true;
-      for (const e of fresh) {
-        for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
-        const i = T.list.push(e) - 1;
-        rail.insertAdjacentHTML('beforeend', (T.kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, false));
+  // Spot's reply, once there's something on the shelf.
+  function headline(T) {
+    const first = turns.indexOf(T) === 0;
+    const stores = new Set(T.list.flatMap((e) => (e.items || [e]).map((o) => o.merchant.name))).size;
+    const n = T.list.length;
+    const line = T.kind === 'outfits' ? (n === 1 ? 'here’s a look I put together' : n + ' looks, from ' + stores + ' stores. my favorite’s first →') :
+      n === 1 ? 'here’s my first pick. more coming →' : (first ? 'found ' + n + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) : 'ok, ' + n + ' more') + '. my pick’s first, swipe for more →';
+    T.el.querySelector('.spotsay span').textContent = line;
+  }
+  function showUsed(T) {
+    const p = T.profile;
+    const used = p ? [p.sizes && 'In your sizes', p.ship_to && 'ships to ' + p.ship_to].filter(Boolean).join(' · ') : '';
+    const el = T.el.querySelector('.used');
+    el.hidden = !used;
+    el.textContent = used ? '✓ ' + used : '';
+    el.title = p?.sizes || '';
+  }
+  function addEntry(T, kind, e) {
+    if (!T.kind) {
+      T.kind = kind;
+      T.el.querySelector('.shelf').classList.toggle('looks', kind === 'outfits');
+      T.rail.setAttribute('aria-label', kind === 'outfits' ? 'Outfits' : 'Picks');
+    }
+    if (kind !== T.kind) return false;
+    for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
+    const t = turns.indexOf(T);
+    const i = T.list.push(e) - 1;
+    const html = (kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, i === 0);
+    const sk = T.rail.querySelector('.sk');
+    if (sk) sk.insertAdjacentHTML('beforebegin', html);
+    else T.rail.insertAdjacentHTML('beforeend', html);
+    if (i === 0) T.rail.scrollLeft = 0; // the first pick in view, not the placeholder it pushed along
+    headline(T);
+    T.sync();
+    return true;
+  }
+  // A store check, or the AI's read of a page Spot couldn't open, came back:
+  // fill in that product wherever it is. `own` = the store's own page photo,
+  // which beats the one search turned up.
+  function applyPage(p, own = false) {
+    const hits = turns.flatMap((T) => T.list.flatMap((e) => e.items || [e])).filter((o) => o.item.url === p.url);
+    if (!hits.length) return;
+    const swap = p.image_url && (own || !hits[0].item.image_url);
+    for (const o of hits) {
+      if (swap) o.item.image_url = p.image_url;
+      if (p.stock && p.stock !== 'unknown') o.stock = p.stock;
+      if (p.price_cents && !o.item.price_cents) o.item.price_cents = p.price_cents;
+    }
+    const o = hits[0];
+    for (const el of document.querySelectorAll('#thread [data-url="' + CSS.escape(p.url) + '"]')) {
+      if (el.classList.contains('stk')) el.innerHTML = stockTag(o);
+      else if (el.tagName === 'LI') el.classList.toggle('gone', o.stock === 'out');
+      else if (swap) {
+        el.querySelector('img')?.remove();
+        el.insertAdjacentHTML('afterbegin', '<img src="' + esc(p.image_url) + '" alt="" referrerpolicy="no-referrer">');
       }
-      details(fresh);
-      if (++T.page >= BATCHES) T.done = true;
-    } catch {
-      rail.querySelector('.sk')?.remove();
-      T.done = true;
+    }
+    if (o.stock === 'out') for (const c of document.querySelectorAll('#thread .pc:not(.look) [data-url="' + CSS.escape(p.url) + '"]')) {
+      const card = c.closest('.pc');
+      card.classList.add('gone');
+      for (const b of card.querySelectorAll('[data-act="pay"],[data-act="ask"]')) b.disabled = true;
+    }
+  }
+  // One batch into a turn, card by card as it streams.
+  async function fill(T, body) {
+    T.loading = true;
+    const added = [];
+    let done = null;
+    try {
+      await streamed(body, (e) => {
+        if (e.type === 'profile') (T.profile = e.profile), showUsed(T);
+        else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…');
+        else if (e.type === 'pick' || e.type === 'outfit') {
+          const entry = e.option || e.outfit;
+          if (addEntry(T, e.type === 'pick' ? 'products' : 'outfits', entry)) added.push(entry);
+          if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →');
+        } else if (e.type === 'update') applyPage(e, true);
+        else if (e.type === 'done') done = e;
+      });
     } finally {
       T.loading = false;
+      for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
+      if (!added.length || ++T.page > BATCHES) T.done = true;
       T.sync();
     }
+    if (T.list.length > 1) say('swipe for more →');
+    details(added);
+    return { added, done };
+  }
+  // The next batch, from stores not shown yet, onto the end of the shelf.
+  async function loadMore(t) {
+    const T = turns[t];
+    if (!T) return;
+    T.rail.insertAdjacentHTML('beforeend', skel);
+    try {
+      await fill(T, { text: ask.text, more: T.more || (T.kind === 'outfits' ? 'more looks like these' : 'more like these, from other stores'), avoid: ask.avoid.slice(-60), count: 8 });
+    } catch {
+      T.done = true;
+      T.sync();
+    }
+  }
+  // A whole answer at once (a link or a screenshot that came back as several).
+  function shelfFrom(said, d) {
+    const got = listOf(d);
+    const T = openTurn(said);
+    T.profile = d.profile || null;
+    showUsed(T);
+    for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
+    for (const e of got.list) addEntry(T, got.kind, e);
+    T.done = true;
+    T.sync();
+    details(T.list);
   }
 
   // Photos and stock for stores that don't let Spot read their pages: asked
   // after the shelf shows, then filled in where they are.
   const asked = new Set();
-  async function details(list) {
+  function details(list) {
     const need = list.flatMap((e) => e.items || [e]).filter((o) => o.item.url && (!o.item.image_url || o.stock === 'unknown') && !asked.has(o.item.url));
     for (let i = 0; i < need.length; i += 8) {
       const chunk = need.slice(i, i + 8);
       for (const o of chunk) asked.add(o.item.url);
       api('/v1/capture/details', { urls: chunk.map((o) => ({ url: o.item.url, variant: o.item.variant || '' })) })
-        .then((r) => {
-          for (const p of r.pages || []) {
-            for (const o of chunk.filter((x) => x.item.url === p.url)) {
-              if (p.image_url && !o.item.image_url) o.item.image_url = p.image_url;
-              if (p.stock !== 'unknown') o.stock = p.stock;
-              if (p.price_cents && !o.item.price_cents) o.item.price_cents = p.price_cents;
-            }
-            const o = chunk.find((x) => x.item.url === p.url);
-            if (!o) continue;
-            for (const ph of document.querySelectorAll('#thread [data-url="' + CSS.escape(p.url) + '"]')) {
-              if (ph.classList.contains('stk')) ph.innerHTML = stockTag(o);
-              else if (ph.tagName === 'LI') ph.classList.toggle('gone', o.stock === 'out');
-              else if (p.image_url && !ph.querySelector('img')) ph.insertAdjacentHTML('afterbegin', '<img src="' + esc(p.image_url) + '" alt="" referrerpolicy="no-referrer">');
-            }
-            if (o.stock === 'out') for (const c of document.querySelectorAll('#thread .pc:not(.look) [data-url="' + CSS.escape(p.url) + '"]')) {
-              const card = c.closest('.pc');
-              card.classList.add('gone');
-              for (const b of card.querySelectorAll('[data-act="pay"],[data-act="ask"]')) b.disabled = true;
-            }
-          }
-        })
+        .then((r) => (r.pages || []).forEach((p) => applyPage(p)))
         .catch(() => {});
     }
   }
@@ -480,22 +590,17 @@
     if (!more) return $('#more2').focus();
     const btn = $('#askGo');
     btn.disabled = true;
-    const turn = document.createElement('div');
-    turn.className = 'turn';
-    turn.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays('looking around…') + skeleton();
-    $('#thread').appendChild(turn);
-    turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
     $('#more2').value = '';
     say('on it, looking around…');
+    const T = openTurn(more, more);
     try {
-      const d = await api('/v1/capture', { text: ask.text, more, avoid: ask.avoid.slice(-60) });
-      if (listOf(d)) shelf(more, d, turn, more);
-      else {
-        turn.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(d.warning || 'I couldn’t find anything new for that. Try saying it another way.');
+      const { done } = await fill(T, { text: ask.text, more, avoid: ask.avoid.slice(-60) });
+      if (!T.list.length) {
+        T.el.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(done?.warning || 'I couldn’t find anything new for that. Try saying it another way.');
         say('hmm, nothing new for that one');
       }
     } catch (err) {
-      turn.innerHTML = '<div class="me">' + esc(more) + '</div><p class="err">' + esc(err.message) + '</p>';
+      if (!T.list.length) T.el.innerHTML = '<div class="me">' + esc(more) + '</div><p class="err">' + esc(err.message) + '</p>';
       say('hmm, that one got away from me');
     } finally {
       btn.disabled = false;

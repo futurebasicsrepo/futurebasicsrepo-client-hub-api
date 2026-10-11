@@ -54,7 +54,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .edit-item [data-f=title]{grid-column:1/-1}
 .found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}
 .turn{margin:6px 0 18px}.me{margin:0 0 10px auto;width:fit-content;max-width:80%;background:var(--spot);color:var(--spot-ink);font-weight:600;padding:9px 14px;border-radius:18px 18px 4px 18px}
-.shelf{position:relative}.rail{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 16px;padding:2px 16px 10px;margin:0 -16px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.rail::-webkit-scrollbar{display:none}
+.shelf{position:relative}.rail{display:flex;gap:12px;overflow-x:auto;overflow-anchor:none;scroll-snap-type:x mandatory;scroll-padding:0 16px;padding:2px 16px 10px;margin:0 -16px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.rail::-webkit-scrollbar{display:none}
 .spotsay{display:flex;align-items:flex-end;gap:8px;margin:0 0 10px}.spotsay i{width:30px;height:30px;border-radius:50%;flex:none;background:var(--spot) 50% 46%/116% no-repeat}.spotsay span{background:var(--card);border:1px solid var(--line);padding:8px 13px;border-radius:18px 18px 18px 4px;font-weight:600;font-size:15px}
 .pc{flex:0 0 74%;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative}
 .pc.top{border:2px solid var(--spot)}.pc .badge{position:absolute;top:10px;left:10px;z-index:1;background:var(--spot);color:var(--spot-ink);font-size:12px;font-weight:800;padding:4px 9px;border-radius:999px}

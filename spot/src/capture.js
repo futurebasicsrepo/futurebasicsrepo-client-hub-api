@@ -480,6 +480,20 @@ const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]} 
 export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
 export const MAX_OUTFITS = 4;
 
+const q = (x) => String(x).replace(/"/g, "'");
+// What the model is asked, for a whole answer (captureFromText) or a batch on
+// the shelf (streamLookup: `count` products, a couple of outfits at a time).
+export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', avoid = [], count = MAX_OPTIONS, outfits = MAX_OUTFITS }) {
+  return `Someone is shopping and typed: "${q(text)}"${more ? `\nThey saw what you found and said: "${q(more)}"` : ''}
+
+Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
+- If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${outfits}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
+- Otherwise reply with up to ${count} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
+${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
+${LOOKUP_SCHEMA_HINT}
+Use an empty list if you can't find specific products with current prices.`;
+}
+
 // Follow-ups: "more" is what they said about the last finds ("in blue",
 // "cheaper"), "avoid" the product links already shown, so a second ask (or
 // the next batch) finds something else instead of the same pages.
@@ -495,21 +509,8 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
   if (url && !followUp) return fromUrl(url);
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
 
-  const q = (x) => String(x).replace(/"/g, "'");
   const anthropic = client ?? anthropicClient();
-  const messages = [
-    {
-      role: 'user',
-      content: `Someone is shopping and typed: "${q(text)}"${more ? `\nThey saw what you found and said: "${q(more)}"` : ''}
-
-Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
-- If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${MAX_OUTFITS}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
-- Otherwise reply with up to ${MAX_OPTIONS} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
-${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
-${LOOKUP_SCHEMA_HINT}
-Use an empty list if you can't find specific products with current prices.`,
-    },
-  ];
+  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid }) }];
   // One page fetch per product, shared by the stock check and the photo.
   const pages = new Map();
   const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
@@ -773,12 +774,230 @@ Use empty or null for anything the page doesn't show or couldn't be opened.`,
   return { pages };
 }
 
+// ─── Streaming lookup ───────────────────────────────────────────────────────
+// The shelf shows each pick the moment the model has written it, not after
+// the whole answer and every store check (≈40s to the first card before).
+// Events, in order:
+//   { type: 'searching' }                          a web search started
+//   { type: 'pick', option } | { type: 'outfit', outfit }   as each is written
+//   { type: 'update', url, stock, image_url, price_cents }  a store check came back
+//   { type: 'done', kind, count, not_found?, warning? }
+export const FIRST_BATCH = 6; // quick to write; the shelf asks for more as they swipe
+const CHECK_WAIT_MS = 8000; // store checks still out after the answer get this long
+
+// Complete JSON objects, as text streams in: each one in the answer's list
+// ({"products": [{…}, {…}]} or a bare [{…}]), the moment its last brace lands.
+export class JsonObjects {
+  constructor() {
+    this.reset();
+  }
+  reset() {
+    this.buf = '';
+    this.stack = [];
+    this.starts = [];
+    this.str = false;
+    this.esc = false;
+  }
+  push(text) {
+    const out = [];
+    for (const c of String(text)) {
+      this.buf += c;
+      if (this.str) {
+        if (this.esc) this.esc = false;
+        else if (c === '\\') this.esc = true;
+        else if (c === '"') this.str = false;
+        continue;
+      }
+      if (c === '"' && this.stack.length) this.str = true;
+      else if (c === '{' || c === '[') {
+        this.stack.push(c);
+        this.starts.push(this.buf.length - 1);
+      } else if ((c === '}' || c === ']') && this.stack.length) {
+        const open = this.stack.pop();
+        const from = this.starts.pop();
+        const top = this.stack.join('');
+        if (open === '{' && c === '}' && (top === '{[' || top === '[')) out.push(this.buf.slice(from));
+        if (!this.stack.length) this.buf = '';
+      }
+    }
+    return out;
+  }
+}
+
+// Recent answers, so asking the same thing again is instant.
+export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {}) {
+  const map = new Map();
+  return {
+    get(key) {
+      const hit = map.get(key);
+      if (!hit || now() - hit.at > ttl) return map.delete(key), null;
+      return hit.events;
+    },
+    set(key, events) {
+      map.set(key, { at: now(), events });
+      while (map.size > max) map.delete(map.keys().next().value);
+    },
+  };
+}
+
+export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
+  const { text } = splitText(raw);
+  if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
+  more = String(more || '').trim().slice(0, 300);
+  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(-60);
+  count = Math.max(1, Math.min(MAX_OPTIONS, count | 0 || FIRST_BATCH));
+  const followUp = Boolean(more || avoid.length);
+  const nothing = () => emit({ type: 'done', kind: null, count: 0, not_found: true, warning: followUp ? 'I couldn’t find anything new for that. Try saying it another way' : 'I couldn’t find that one. Try different words, or paste a link' });
+  if (!client && !process.env.ANTHROPIC_API_KEY) return nothing();
+
+  const key = cache && JSON.stringify([text.toLowerCase(), more.toLowerCase(), avoid, sizes, shipTo, count]);
+  const cached = key && cache.get(key);
+  if (cached) {
+    for (const e of cached) emit(e);
+    return;
+  }
+
+  const anthropic = client ?? anthropicClient();
+  const outfitsWanted = Math.max(1, Math.min(MAX_OUTFITS, Math.ceil(count / 3)));
+  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid, count, outfits: outfitsWanted }) }];
+  const pages = new Map();
+  const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
+  const seen = new Set(avoid);
+  const sent = []; // what went out, kept up to date for the cache
+  const checks = [];
+  let kind = null;
+  const fresh = (d) => {
+    const u = d.items[0].url;
+    if (u && seen.has(u)) return false;
+    if (u) seen.add(u);
+    return true;
+  };
+  // Photo and stock from the store's own page, after the card is already up.
+  const check = (d, opt) =>
+    checks.push(
+      Promise.all([withPhoto(d, page, undefined, null).catch(() => d), stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown')]).then(([withPic, stock]) => {
+        const it = withPic.items[0];
+        const u = { type: 'update', url: it.url, stock, image_url: it.image_url && it.image_url !== opt.item.image_url ? it.image_url : null, price_cents: !opt.item.price_cents && it.price_cents ? it.price_cents : null };
+        opt.stock = stock;
+        if (u.image_url) opt.item.image_url = u.image_url;
+        if (u.price_cents) opt.item.price_cents = u.price_cents;
+        emit(u);
+      }),
+    );
+  const optionOfDraft = (d) => ({ merchant: d.merchant, item: { ...d.items[0], image_url: d.hint_image || null }, stock: 'unknown', why: d.why });
+  const take = (json) => {
+    let o;
+    try {
+      o = JSON.parse(json);
+    } catch {
+      return;
+    }
+    const pieces = first(o, ['items', 'pieces', 'products']);
+    if (Array.isArray(pieces)) {
+      if (kind === 'products') return;
+      const items = pieces.slice(0, 6).map((p) => pick(p, text)).filter(Boolean).filter(fresh);
+      if (items.length < 2) return;
+      kind = 'outfits';
+      const outfit = { name: String(o.name || o.title || 'A look').trim().slice(0, 60), why: String(o.why || o.description || '').trim().slice(0, 120) || null, items: items.map(optionOfDraft) };
+      sent.push({ type: 'outfit', outfit });
+      emit({ type: 'outfit', outfit: structuredClone(outfit) }); // as it is now; the checks update `sent` for the cache
+      items.forEach((d, i) => check(d, outfit.items[i]));
+      return;
+    }
+    if (kind === 'outfits') return;
+    const d = pick(o, text);
+    if (!d || !fresh(d)) return;
+    kind = 'products';
+    const option = optionOfDraft(d);
+    sent.push({ type: 'pick', option });
+    emit({ type: 'pick', option: structuredClone(option) });
+    check(d, option);
+  };
+
+  let model = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5';
+  const big = process.env.SPOT_VISION_MODEL || 'claude-opus-5';
+  const started = now();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const objects = new JsonObjects();
+    let response;
+    try {
+      for (let i = 0; i < 4; i++) {
+        const stream = anthropic.beta.messages.stream({
+          model,
+          max_tokens: 12000,
+          betas: ['server-side-fallback-2026-07-01'],
+          fallbacks: 'default',
+          output_config: { effort: 'low' },
+          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
+          messages,
+        });
+        stream.on('streamEvent', (ev) => {
+          // A search starting means what came before was thinking out loud, not the answer.
+          if (ev.type === 'content_block_start' && ev.content_block?.type === 'server_tool_use') {
+            objects.reset();
+            emit({ type: 'searching' });
+          }
+        });
+        stream.on('text', (delta) => {
+          for (const json of objects.push(delta)) take(json);
+        });
+        response = await stream.finalMessage();
+        onUsage?.(response.model, response.usage);
+        if (response.stop_reason !== 'pause_turn') break;
+        messages.push({ role: 'assistant', content: response.content });
+      }
+    } catch (err) {
+      onError?.(err);
+      // The quicker model isn't on this account: the bigger one, once.
+      if (err instanceof Anthropic.APIError && (err.status === 404 || /model/i.test(err.message)) && model !== big && !sent.length) {
+        console.error('lookup model unavailable, using', big, err.status, err.message);
+        model = big;
+        attempt--;
+        continue;
+      }
+      if (err instanceof Anthropic.APIError) {
+        console.error('stream lookup failed', err.status, err.message);
+        if (!sent.length) return emit({ type: 'done', kind: null, count: 0, not_found: true, warning: 'I couldn’t look that up right now. Try again in a minute, or paste a link' });
+        break;
+      }
+      throw err;
+    }
+    if (sent.length || response?.stop_reason === 'refusal' || attempt === 1 || now() - started > FIND_BUDGET_MS / 2) break;
+    // Nothing usable came back: say what it looked like, then one looser try.
+    const out = (response?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    console.error('lookup answer had no picks', response?.stop_reason, out.slice(0, 400).replace(/\s+/g, ' '));
+    const last = messages.at(-1);
+    if (last.role === 'assistant') last.content = [...last.content, ...(response?.content || [])];
+    else messages.push({ role: 'assistant', content: response?.content || [] });
+    messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best matches that are for sale and in stock now, even if they're not perfect: close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
+  }
+  if (!sent.length) return nothing();
+  // Store checks still out: a few more seconds, so their photos and stock land before "done".
+  let timer;
+  await Promise.race([Promise.all(checks), new Promise((r) => (timer = setTimeout(r, CHECK_WAIT_MS)))]);
+  clearTimeout(timer);
+  const done = { type: 'done', kind, count: sent.length };
+  emit(done);
+  if (key) cache.set(key, [...sent, done]);
+}
+
 // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
-async function search(anthropic, messages, onUsage) {
+async function search(anthropic, messages, onUsage, model = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5') {
+  const big = process.env.SPOT_VISION_MODEL || 'claude-opus-5';
+  try {
+    return await searchWith(anthropic, messages, onUsage, model);
+  } catch (err) {
+    // The quicker model isn't on this account: the bigger one.
+    if (!(err instanceof Anthropic.APIError) || model === big || !(err.status === 404 || /model/i.test(err.message))) throw err;
+    console.error('lookup model unavailable, using', big, err.status, err.message);
+    return searchWith(anthropic, messages, onUsage, big);
+  }
+}
+async function searchWith(anthropic, messages, onUsage, model) {
   let response;
   for (let i = 0; i < 3; i++) {
     response = await anthropic.beta.messages.create({
-      model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+      model,
       max_tokens: 16000, // a dozen products or four outfits, written out
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
