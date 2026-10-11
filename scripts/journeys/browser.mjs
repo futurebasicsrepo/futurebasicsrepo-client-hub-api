@@ -748,7 +748,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
   await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await page.waitForSelector('.fbside nav', { timeout: 5000 });
   const labels = await page.$$eval('.fbside a[data-nav] .lbl', e => e.map(x => x.textContent));
-  ok(['Home', 'Inbox', 'Clients', 'Contacts', 'Pipeline', 'Tasks', 'Waiting on approval', 'Production attention', 'Builds', 'Platform health', 'Connections', 'Payment gate'].every(l => labels.includes(l)), 'the menu has Home, Inbox, Customers, Production, Builds showcase and Settings', labels);
+  ok(['Home', 'Inbox', 'Clients', 'Contacts', 'Pipeline', 'Tasks', 'Factories', 'Waiting on approval', 'Production attention', 'Builds', 'Platform health', 'Connections', 'Payment gate'].every(l => labels.includes(l)), 'the menu has Home, Inbox, Customers, Production, Builds showcase and Settings', labels);
   ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Customers|Production|Builds showcase|Settings', 'grouped under four headings');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
@@ -760,6 +760,8 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   ok(await page.$eval('#clientsHead', e => { const t = e.getBoundingClientRect().top; return t >= 0 && t < 260; }), 'Clients scrolls to the clients list');
   ok(/Clients/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'and Clients is marked');
 
+  await page.click('.fbside a[data-href="/admin#partnersSection"]:not(.gicon)'); await sleep(900);
+  ok(await page.$eval('#partnersSection', e => e.open && e.getBoundingClientRect().top < 300), 'Factories opens its section under Production');
   // Platform health, from the menu, and back
   await page.click('.fbside a[data-nav="platform"]'); await page.waitForSelector('#platformPage:not(.hidden)', { timeout: 15000 });
   ok(/Platform health/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && await page.locator('.fbside').isVisible(), 'Platform health opens inside the console with the menu still there');

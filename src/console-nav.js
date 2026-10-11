@@ -23,6 +23,7 @@
       { label: 'Pipeline', href: '/sales#pipeline' },
       { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
+      { label: 'Factories', href: '/admin#partnersSection' },
       { label: 'Waiting on approval', href: '/admin#approvals' },
       { label: 'Production attention', href: '/admin#production' },
       { label: 'Assistant learning', href: '/admin#assistantLearning' }] },
@@ -132,7 +133,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
       e.preventDefault();
       if (typeof window.closePlatform === 'function' && document.getElementById('platformPage') && !document.getElementById('platformPage').classList.contains('hidden')) window.closePlatform();
       if (typeof window.closeClientPage === 'function' && document.getElementById('clientPage') && !document.getElementById('clientPage').classList.contains('hidden')) window.closeClientPage();
-      const el = t.h && document.getElementById(t.h); el ? el.scrollIntoView({ behavior: 'smooth', block: 'start' }) : scrollTo({ top: 0, behavior: 'smooth' });
+      const el = t.h && document.getElementById(t.h); if (el && el.tagName === 'DETAILS') el.open = true; el ? el.scrollIntoView({ behavior: 'smooth', block: 'start' }) : scrollTo({ top: 0, behavior: 'smooth' });
       activeFromScroll = t.h || ''; try { history.replaceState(history.state, '', location.pathname + location.search); } catch {} paintActive(); return;
     }
     if (t.p === here && t.h) { e.preventDefault(); history.pushState(null, '', '#' + t.h); window.dispatchEvent(new HashChangeEvent('hashchange')); }

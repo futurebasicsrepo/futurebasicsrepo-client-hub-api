@@ -8,7 +8,7 @@ The staff pages (`/admin`, `/sales`, `/builds/admin`) share one left-hand menu, 
 | --- | --- | --- |
 | (top) | Home, Inbox | `/admin`, `/admin#inbox` |
 | Customers | Clients, Sales today, Contacts, Pipeline, Tasks | `/admin#clientsHead`; `/sales#today|contacts|pipeline|tasks` |
-| Production | Waiting on approval, Production attention, Assistant learning | sections of `/admin` |
+| Production | Factories, Waiting on approval, Production attention, Assistant learning | sections of `/admin` |
 | Builds showcase | Builds, What's new, Invites, Who looked | `/builds/admin#builds|updates|invites|activity` |
 | Settings | Platform health, Connections, Payment gate | `/platform`, `/admin#connections`, `/admin#accessPanel` |
 
