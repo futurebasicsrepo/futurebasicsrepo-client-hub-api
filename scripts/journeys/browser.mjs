@@ -1456,4 +1456,61 @@ await journey('J135', 'the Intelligence page in a browser: signals ranked with a
   sql(`update intel_watches set enabled=false`); void b;
 });
 
-await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
+await journey('J138', 'Money in a browser: Colby is turned away and never sees the menu item, Kyle makes an invoice and watches the totals, sends it, takes a payment, imports past invoices, reads the ledger and saves the payment instructions, and a phone fits', async () => {
+  const r = await room('138', { wait: false }), W = 'http://work.localhost:3123', tag = `mb${stamp}`;
+  const mk = async email => forge({ sub: sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email });
+  const kyle = await mk('kyle@thefuturebasics.com'), colby = await mk('colby@thefuturebasics.com');
+  // Colby: an admin, but not one of the two
+  const cc = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await cc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, colby);
+  const cp = await cc.newPage(); cp.errs = []; cp.on('pageerror', e => cp.errs.push(e.message));
+  await cp.goto(`${W}/money`, { waitUntil: 'networkidle' }); await cp.waitForSelector('#noAccess:not(.hidden)', { timeout: 15000 });
+  ok(await cp.isHidden('#app') && /not open to you/.test(await cp.innerText('#noAccess')), 'Colby is told Money is not open to him and sees none of it');
+  await cp.goto(`${W}/home`, { waitUntil: 'networkidle' }); await cp.waitForSelector('.fbside a[data-nav]', { timeout: 10000 }); await sleep(800);
+  ok(await cp.locator('.fbside a[data-gated=money]').count() === 1 && await cp.locator('.fbside a[data-gated=money]').isHidden() && await cp.locator('.fbside a[data-nav="Payment gate"]').isVisible(), 'the menu hides Money from him (the payment gate stays)'); await cc.close();
+  // Kyle
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('.fbside a[data-gated=money]:not([hidden])', { timeout: 10000 }); ok(/Money/.test(await page.locator('.fbside a[data-gated=money]').innerText()), 'the menu shows Money to Kyle');
+  await page.click('.fbside a[data-gated=money]'); await page.waitForURL(/\/money/, { timeout: 8000 }); await page.waitForSelector('#t-overview .tile', { timeout: 15000 });
+  ok(/Money/.test(await page.innerText('#app h1')) && await page.locator('#t-overview .tile').count() === 4, 'Money opens on its overview');
+  // a new invoice: lines, tax, a deposit
+  await page.click('#newInv'); await page.waitForSelector('#dlg[open] [name=company]');
+  await page.fill('#dlg [name=company]', `Acme ${tag}`); await page.fill('#dlg [name=address]', '1 Main St\nBrooklyn, NY'); await page.fill('#dlg [name=contactEmail]', `ap-${tag}@acme.test`);
+  await page.fill('#dlg .lrow [data-l=description]', 'Cytoshift run'); await page.fill('#dlg .lrow [data-l=qty]', '2'); await page.fill('#dlg .lrow [data-l=rate]', '150.00');
+  await page.click('#addLine'); await page.locator('#dlg .lrow').nth(1).locator('[data-l=description]').fill('Setup'); await page.locator('#dlg .lrow').nth(1).locator('[data-l=rate]').fill('50');
+  ok(/\$350\.00/.test(await page.innerText('#tot')), 'the totals follow the lines as they are typed ($350.00)', await page.innerText('#tot'));
+  await page.fill('#dlg [name=taxRatePct]', '10'); await page.check('#dlg [name=chargeTax]'); await page.click('#addCredit'); await page.fill('#dlg .crow [data-c=label]', 'Deposit paid 3/9'); await page.fill('#dlg .crow [data-c=amount]', '100');
+  const tot = await page.innerText('#tot'); ok(/\$35\.00/.test(tot) && /\$385\.00/.test(tot) && /\$285\.00/.test(tot) && /Final payment due/i.test(tot), 'tax, the deposit and the final amount due are shown ($385 total, $285 due)', tot);
+  await page.click('#dActs [type=submit]'); await page.waitForFunction(() => /saved as a draft/.test(document.querySelector('#msg').textContent), null, { timeout: 8000 });
+  await page.click('.tab[data-t=invoices]'); await page.waitForSelector(`#t-invoices tr:has-text("Acme ${tag}")`, { timeout: 8000 });
+  const row = page.locator(`#t-invoices tr:has-text("Acme ${tag}")`); ok(/Draft/i.test(await row.innerText()) && /\$385\.00/.test(await row.innerText()), 'it is listed as a draft at its total');
+  await row.click(); await page.waitForSelector('#dlg[open] #detail [data-act=send]'); await page.click('#detail [data-act=send]'); await page.waitForFunction(() => /Marked as sent/.test(document.querySelector('#msg').textContent) && document.querySelector('#detail')?.innerText.includes('285.00 owed'), null, { timeout: 8000 });
+  ok(/Open|Overdue/i.test(await page.innerText('#detail')), 'sending it shows what is owed ($285.00)', await page.innerText('#detail'));
+  await page.click('#detail [data-act=payment]'); await page.fill('#payAmt', '85'); await page.fill('#payRef', 'WIRE-UI'); await page.click('#payGo'); await page.waitForFunction(() => document.querySelector('#detail')?.innerText.includes('200.00 owed'), null, { timeout: 8000 });
+  await page.click('#detail [data-act=paid]'); await page.click('#payGo'); await page.waitForFunction(() => /Settled/.test(document.querySelector('#detail')?.innerText || ''), null, { timeout: 8000 });
+  ok(/Paid/i.test(await page.innerText('#detail')) && /WIRE-UI/.test(await page.innerText('#detail')), 'a part payment and then the rest settle it, and the payments are listed', await page.innerText('#detail'));
+  const pdfStatus = await page.evaluate(async () => { const r = await fetch(location.origin + '/v1/money/invoices', { headers: { Authorization: 'Bearer ' + localStorage.getItem('fb.admin.token') } }); const j = await r.json(); const id = j.invoices.find(i => i.company.startsWith('Acme')).id; const p = await fetch(`/v1/money/invoices/${id}/pdf`, { headers: { Authorization: 'Bearer ' + localStorage.getItem('fb.admin.token') } }); return [p.status, p.headers.get('content-type')]; });
+  ok(pdfStatus[0] === 200 && /pdf/.test(pdfStatus[1]), 'its PDF opens'); await page.click('#dClose');
+  // past invoices
+  await page.click('#importBtn'); await page.waitForSelector('#dlg[open] #csvText');
+  await page.fill('#csvText', `Invoice,Date,Company,Description,Amount,Terms\n${stamp}8,4/1/2026,Old Co ${tag},Retail Support Services - April,"$23,000.00",Net 30\n`);
+  await page.locator('#dActs button', { hasText: 'Preview' }).click(); await page.waitForFunction(() => /Ready to import: 1 invoice/.test(document.querySelector('#prev')?.innerText || ''), null, { timeout: 8000 });
+  ok(/\$23,000\.00/.test(await page.innerText('#prev')), 'the preview says what would come in');
+  await page.locator('#dActs button', { hasText: 'Import' }).last().click(); await page.waitForFunction(() => /Imported 1 invoices/.test(document.querySelector('#msg').textContent), null, { timeout: 8000 }); await page.click('#dClose');
+  await page.click('.tab[data-t=invoices]'); await page.click('#fInv [data-st=unrecorded]'); await page.waitForSelector(`#t-invoices tr:has-text("Old Co ${tag}")`, { timeout: 8000 });
+  ok(/Payment not recorded/i.test(await page.locator(`#t-invoices tr:has-text("Old Co ${tag}")`).innerText()), 'the imported invoice waits as “payment not recorded”');
+  await page.click('.tab[data-t=overview]'); await page.waitForSelector('#t-overview .panel:has-text("no payment recorded")', { timeout: 8000 }); ok(true, 'and the overview points at it');
+  // ledger and settings
+  await page.click('.tab[data-t=ledger]'); await page.waitForSelector(`#t-ledger tr:has-text("Acme ${tag}")`, { timeout: 8000 }); ok(/WIRE-UI/.test(await page.innerText('#t-ledger')) && /Entered by hand/i.test(await page.innerText('#t-ledger')), 'the ledger lists the payments with where they came from', (await page.innerText('#t-ledger')).slice(0, 400));
+  await page.click('.tab[data-t=settings]'); await page.waitForSelector('#instr'); await page.fill('#instr', 'Account No. 000\nBank: Test Bank'); await page.click('#saveInstr'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#sMsg').textContent), null, { timeout: 5000 });
+  ok(await page.locator('#t-settings a[href="/admin#accessPanel"]').count() === 1, 'the payment instructions save, and the tech pack payment gate is one link away');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  // a phone
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/money`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#t-overview .tile', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen');
+    await ph.click('.tab[data-t=invoices]'); await ph.waitForSelector('#t-invoices .panel', { timeout: 8000 }); ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'the invoice list also fits (the table scrolls inside its box)');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j138-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+});
+
+await browser.close();
+const bad = summary(); process.exit(bad ? 1 : 0);
