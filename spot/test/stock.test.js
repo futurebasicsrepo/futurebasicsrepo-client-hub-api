@@ -168,7 +168,7 @@ test('outfits: whole looks for an occasion, sold-out pieces dropped, thin looks 
     { name: 'Neon night', why: 'For the late sets', items: [piece(5, 'urban'), piece(6, 'urban')] },
   ] }]);
   const d = await captureFromText('outfits for coachella', { client, fromUrl: stockAt(['https://levis.example/p2', 'https://urban.example/p6']), product: noShopify });
-  assert.match(calls[0].messages[0].content, /up to 4 outfits/);
+  assert.match(calls[0].messages[0].content, /outfits \(as many as they ask for, up to 4\)/);
   assert.match(calls[0].messages[0].content, /an occasion or place \("for Coachella"/);
   assert.equal(d.kind, 'outfits');
   assert.deepEqual(d.outfits.map((o) => o.name), ['Desert boho'], 'a look left with one piece is dropped');
@@ -281,4 +281,38 @@ test('the search is told their sizes and city; page reads check the size', async
   const dc = { beta: { messages: { create: async (req) => (seen.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"pages":[]}' }] }) } } };
   await pageDetails([{ url: 'https://nike.example/p1', variant: 'Black / M' }, 'https://x.example/2'], { client: dc });
   assert.match(seen[0].messages[0].content, /1\. https:\/\/nike\.example\/p1 \(size or option: Black \/ M\)\n2\. https:\/\/x\.example\/2\n/);
+});
+
+test('a reply in its own words is still read: name/url/store/price, looks of pieces', async () => {
+  const { client } = model([{ looks: [{ title: 'Hong Kong in spring', description: 'Light layers', pieces: [
+    { name: 'Linen shirt', url: 'https://uniqlo.example/l', store: 'Uniqlo', price: '$39.90' },
+    { name: 'Wide trousers', url: 'https://cos.example/t', store: 'COS', price: '$89' },
+    { name: 'White sneakers', link: 'https://veja.example/s', retailer: 'Veja', price: '$150', size: 'US 10.5' },
+  ] }] }]);
+  const d = await captureFromText('two outfits for china, going to hong kong', { client, fromUrl: stockAt([]), product: noShopify });
+  assert.equal(d.kind, 'outfits');
+  assert.equal(d.outfits[0].name, 'Hong Kong in spring');
+  assert.deepEqual(d.outfits[0].items.map((o) => [o.merchant.name, o.item.title, o.item.price_cents, o.item.variant]), [['Uniqlo', 'Linen shirt', 3990, null], ['COS', 'Wide trousers', 8900, null], ['Veja', 'White sneakers', 15000, 'US 10.5']]);
+});
+
+test('an empty answer gets one more, looser try; still nothing: it says so and is never a cart', async () => {
+  const quiet = console.error;
+  const logged = [];
+  console.error = (...a) => logged.push(a.join(' '));
+  try {
+    const good = { products: [{ merchant_name: 'S', merchant_url: 'https://s.example', product_url: 'https://s.example/1', title: 'Rain jacket', unit_price: '$80' }] };
+    const one = model([{ kind: 'outfits', outfits: [] }, good]);
+    const d = await captureFromText('two outfits for china', { client: one.client, fromUrl: stockAt([]), product: noShopify });
+    assert.equal(one.calls.length, 2, 'asked again');
+    assert.match(one.calls[1].messages.at(-1).content, /close is better than nothing/);
+    assert.equal(d.options[0].item.title, 'Rain jacket');
+    assert.ok(logged.some((l) => /lookup answer had no picks .*outfits/.test(l)), 'what came back is logged');
+
+    const none = model([{ products: [] }]);
+    const n = await captureFromText('two outfits for china', { client: none.client, fromUrl: stockAt([]), product: noShopify });
+    assert.equal(n.not_found, true);
+    assert.match(n.warning, /couldn’t find that one/);
+  } finally {
+    console.error = quiet;
+  }
 });
