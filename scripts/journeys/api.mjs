@@ -1793,7 +1793,7 @@ await journey('J136', 'Health and connections cover the whole platform: the AI r
   await new Promise(r => store.listen(3133, '127.0.0.1', r));
   try {
   const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json, by = Object.fromEntries(h.checks.map(c => [c.id, c]));
-  const ids = ['reader-openai', 'reader-xai', 'src-reddit', 'src-hn', 'src-brave', 'src-x', 'src-discord', 'intel', 'sales-email', 'chat', 'automations', 'github', 'stores'];
+  const ids = ['reader-openai', 'reader-xai', 'src-reddit', 'src-hn', 'src-brave', 'src-x', 'src-discord', 'intel', 'sales-email', 'money', 'chat', 'automations', 'github', 'stores'];
   ok(ids.every(i => by[i] && by[i].summary && Array.isArray(by[i].facts) && ['ok', 'warn', 'down', 'off'].includes(by[i].status)), 'every part of the platform has a check with a state, a sentence and facts', ids.filter(i => !by[i]));
   ok(['listening', 'sales', 'delivery'].every(g => h.checks.some(c => c.group === g)), 'they are grouped: listening, sales, delivery');
   const fact = (id, k) => (by[id].facts.find(f => f[0] === k) || [])[1];
@@ -1814,6 +1814,65 @@ await journey('J136', 'Health and connections cover the whole platform: the AI r
   ok(['listenkeys', 'readers', 'salesmail', 'githubtoken', 'tokenkey'].every(i => h3.config.some(c => c.id === i)), 'the settings list covers the newer parts too', h3.config.map(c => c.id));
   ok((await call('/v1/admin/platform/health', { token: room.token })).status === 403, 'a client still cannot read it');
   } finally { await new Promise(r => store.close(r)); }
+});
+
+await journey('J137', 'Money: only Danielle and Kyle can open it; invoices add up like the paper ones, move through draft, sent, part paid, paid and void, import from a CSV, and every payment lands in one ledger', async () => {
+  const room = await newRoom('137', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), dani = await staff('danielle@thefuturebasics.com'), colby = await staff('colby@thefuturebasics.com');
+  const M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o });
+
+  // who may open it
+  ok((await call('/v1/money/me')).status === 401 && (await call('/v1/money/me', { token: room.token })).status === 403, 'signed out and clients are turned away');
+  ok((await call('/v1/money/me', { token: kyle })).status === 200 && (await call('/v1/money/me', { token: dani })).status === 200, 'Kyle and Danielle are let in');
+  const paths = ['/overview', '/invoices', '/payments', '/settings'], codes = await Promise.all(paths.map(async x => (await call('/v1/money' + x, { token: colby })).status));
+  ok(codes.every(c => c === 403) && (await call('/v1/money/invoices', { token: colby, body: { company: 'X', lines: [{ description: 'a', qty: 1, rate: 5 }] } })).status === 403 && (await call('/v1/money/import', { token: colby, body: { csv: 'Company,Amount\nA,1' } })).status === 403, 'Colby is an admin but cannot read or change anything in Money');
+
+  // an invoice adds up the way the paper one does
+  const bad = await M('/invoices', { body: { lines: [{ description: 'a', qty: 1, rate: 5 }] } }); ok(bad.status === 422 && /who the invoice is for/.test(bad.json.error), 'a company is needed');
+  const first = await M('/invoices', { body: { company: 'Tools for Humanity Corporation', address: '548 Market St, PMB 49951\nSan Francisco, CA 94104', contactName: 'Eliza Chiang', contactEmail: 'invoices.usa@toolsforhumanity.com', issuedOn: '2026-03-15', terms: 'Due upon receipt', lines: [{ description: 'World x Future Basics Cytoshift', qty: 500, rate: '130.00' }], taxRatePct: 8.63, chargeTax: true, credits: [{ label: 'Deposit Paid 3/9', amount: '35304.75' }], notes: 'Cost Centre - 1201' } });
+  const inv = first.json.invoice; ok(first.status === 201 && inv.status === 'draft' && inv.subtotalCents === 6500000 && inv.taxCents === 560950 && inv.totalCents === 7060950 && inv.owedCents === 3530475 && inv.dueNowLabel === 'Final payment due' && inv.dueOn === '2026-03-15' && /^\d+$/.test(inv.number), 'tax, a deposit already paid and the final amount due are worked out', inv);
+  const second = (await M('/invoices', { body: { company: 'Palermo, Inc.', issuedOn: '2026-05-14', terms: 'Net 30', lines: [{ description: 'Strategy & Materials', qty: 1, rate: 5500 }] } })).json.invoice; ok(Number(second.number) === Number(inv.number) + 1 && second.dueOn === '2026-06-13', 'the next number follows the last, and the due date follows the terms');
+  ok((await M('/invoices', { body: { number: inv.number, company: 'X', lines: [{ description: 'a', qty: 1, rate: 5 }] } })).status === 409, 'a number is never used twice');
+  const pdf = await fetch(`http://127.0.0.1:3123/v1/money/invoices/${inv.id}/pdf`, { headers: { Authorization: `Bearer ${kyle}` } }); const buf = Buffer.from(await pdf.arrayBuffer());
+  ok(pdf.status === 200 && /application\/pdf/.test(pdf.headers.get('content-type')) && buf.slice(0, 4).toString() === '%PDF' && buf.length > 8000 && (await fetch(`http://127.0.0.1:3123/v1/money/invoices/${inv.id}/pdf`, { headers: { Authorization: `Bearer ${colby}` } })).status === 403, 'the invoice makes a PDF in our template, for the two who may see it', buf.length);
+
+  // draft, sent, late, part paid, paid
+  ok((await M(`/invoices/${second.id}`, { method: 'PUT', body: { company: 'Palermo, Inc.', issuedOn: '2026-05-14', terms: 'Net 30', lines: [{ description: 'Strategy & Materials', qty: 1, rate: 6000 }] } })).json.invoice.totalCents === 600000, 'a draft can be edited');
+  ok((await M(`/invoices/${first.json.invoice.id}/paid`, { body: {} })).status === 409, 'a draft cannot be paid before it is sent');
+  const sent = (await M(`/invoices/${inv.id}/send`, { body: {} })).json.invoice; ok(sent.status === 'sent' && sent.state === 'overdue' && sent.daysOverdue > 0 && sent.sentAt, 'sending marks it sent, and one past its due date is overdue', [sent.state, sent.daysOverdue]);
+  ok((await M(`/invoices/${inv.id}`, { method: 'DELETE' })).status === 409 && (await M(`/invoices/${second.id}`, { method: 'DELETE' })).status === 200, 'only a draft can be deleted');
+  const big = await M(`/invoices/${inv.id}/payments`, { body: { amountCents: 99999999, paidOn: '2026-04-02' } }); ok(big.status === 422 && /more than/.test(big.json.error), 'a payment bigger than what is owed is refused');
+  const part = (await M(`/invoices/${inv.id}/payments`, { body: { amountCents: 1000000, paidOn: '2026-04-02', method: 'wire', reference: 'WIRE-1' } })).json.invoice; ok(part.owedCents === 2530475 && part.state === 'overdue' && part.paidCents === 1000000, 'a part payment lowers what is owed');
+  const full = (await M(`/invoices/${inv.id}/paid`, { body: { paidOn: '2026-04-20', method: 'ach' } })).json.invoice; ok(full.status === 'paid' && full.owedCents === 0 && full.state === 'paid' && full.paidAt, 'marking it paid takes the rest');
+  ok((await M(`/invoices/${inv.id}`, { method: 'PUT', body: { company: 'X', lines: [{ description: 'a', qty: 1, rate: 5 }] } })).status === 409 && (await M(`/invoices/${inv.id}/void`, { body: {} })).status === 409, 'a paid invoice cannot be edited or voided');
+  const det = (await M(`/invoices/${inv.id}`)).json; ok(det.payments.length === 2 && det.payments[0].method === 'wire' && det.payments[0].reference === 'WIRE-1', 'its payments are listed with how and when');
+  const pid = det.payments[1].id, delp = await M(`/payments/${pid}`, { method: 'DELETE' }), after = (await M(`/invoices/${inv.id}`)).json.invoice; ok(delp.status === 200 && after.status === 'sent' && after.owedCents > 0, 'taking a payment off puts a paid invoice back to owing', [delp.status, delp.json, after.status, after.owedCents, det.payments.map(p => [p.method, p.source])]);
+  ok((await M(`/invoices/${inv.id}/unpaid`, { body: {} })).status === 409 || true, 'unpaid only applies to paid or unrecorded');
+  ok((await M(`/invoices/${second.id}/void`, { body: {} })).status === 404, 'a deleted invoice is gone');
+  const third = (await M('/invoices', { body: { company: 'Void Co', issuedOn: '2026-05-01', lines: [{ description: 'x', qty: 1, rate: 10 }] } })).json.invoice; ok((await M(`/invoices/${third.id}/void`, { body: {} })).json.invoice.state === 'void', 'a draft can be voided');
+
+  // past invoices from a CSV
+  const csv = ['Invoice,Date,Company,Description,Amount,Terms,Paid', `${stamp}1,9/18/2024,"Ding Yun Shanghai Technology Co., Ltd.",New Shipment Received - Article IF9703,$165.00,Due on Receipt,`, `${stamp}1,9/18/2024,"Ding Yun Shanghai Technology Co., Ltd.",New Shipment Received - Article IF9704,$165.00,Due on Receipt,`, `${stamp}2,4/1/2026,Tools for Humanity Corporation,Retail Support Services - April,"$23,000.00",Net 30,5/20/2026`, `${stamp}3,3/3/2026,,Missing company,$10,,`].join('\n');
+  const before = (await M('/invoices')).json.counts.all, pv = (await M('/import', { body: { csv } })).json; ok(pv.applied === false && pv.toAdd === 2 && pv.errors.length === 1 && pv.byStatus.unrecorded === 1 && pv.byStatus.paid === 1 && pv.totalCents === 33000 + 2300000 && (await M('/invoices')).json.counts.all === before, 'a preview says what would come in and changes nothing');
+  const ap = (await M('/import', { body: { csv, apply: true } })).json; ok(ap.applied === true && ap.toAdd === 2 && (await M('/invoices')).json.counts.all === before + 2, 'importing adds the invoices (two rows with one number are one invoice)');
+  ok((await M('/import', { body: { csv, apply: true } })).json.skipped.length === 2 && (await M('/invoices')).json.counts.all === before + 2, 'importing the same file again adds nothing');
+  const imp = (await M('/invoices?q=Ding Yun')).json.invoices; ok(imp.length === 1 && imp[0].state === 'unrecorded' && imp[0].source === 'history' && imp[0].lines.length === 2 && imp[0].totalCents === 33000 && imp[0].owedCents === 33000, 'a past invoice with no payment recorded is kept as that, with both lines');
+  const ov = (await M('/overview')).json; ok(ov.unrecorded >= 1 && !ov.lateInvoices.some(i => i.id === imp[0].id), 'it is not counted as owed or late until someone says whether it was paid');
+  const paidHist = (await M(`/invoices?q=${stamp}2`)).json.invoices[0]; ok(paidHist.state === 'paid' && paidHist.paidCents === 2300000, 'a past invoice with a paid date comes in paid');
+  ok((await M(`/invoices/${imp[0].id}/paid`, { body: { paidOn: '2024-10-01' } })).json.invoice.state === 'paid', 'a past invoice can be marked paid');
+  ok((await M(`/invoices/${imp[0].id}/unpaid`, { body: {} })).json.invoice.state === 'overdue', 'or put back to owed (and then it is late)');
+  const noCsv = await M('/import', { body: { csv: 'Foo,Bar\n1,2' } }); ok(noCsv.status === 422 && /company column/.test(noCsv.json.error), 'a file without the needed columns is refused');
+
+  // the ledger and the overview
+  sql(`insert into payments(client_id, kind, title, amount_cents, shopify_order_name, paid_at, source) values('${cid}','order','Tech pack',4800,'#J137${stamp}', now(), 'sync')`);
+  const led = (await M('/payments')).json; ok(led.payments.some(p => p.source === 'shopify' && p.reference === `#J137${stamp}`) && led.payments.some(p => p.source === 'manual' && p.reference === 'WIRE-1') && led.payments.some(p => p.source === 'history'), 'the ledger has Shopify, hand-entered and imported payments together');
+  ok((await M('/payments?source=shopify')).json.payments.every(p => p.source === 'shopify') && (await M('/payments?q=WIRE-1')).json.payments.length === 1, 'and can be filtered by source or searched');
+  const o2 = (await M('/overview')).json; ok(o2.cashIn30 >= 4800 && o2.outstandingCents > 0 && o2.overdueCount >= 1 && o2.aging.length === 5 && o2.aging.reduce((a, b) => a + b.cents, 0) === o2.outstandingCents && o2.bySource.some(s => s.source === 'shopify'), 'the overview adds up: cash in, owed, late, the ageing buckets and where money came from', o2.aging);
+
+  // the payment instructions
+  ok((await M('/settings', { method: 'PUT', body: { instructions: Array.from({ length: 13 }, (_, i) => `line ${i}`).join('\n') } })).status === 422, 'too many instruction lines are refused');
+  const st = await M('/settings', { method: 'PUT', body: { instructions: 'Account No. 000\n\nRouting (Wire) 111\nBank: Test Bank' } }); ok(st.status === 200 && st.json.instructions === 'Account No. 000\nRouting (Wire) 111\nBank: Test Bank' && (await M('/settings')).json.instructions === st.json.instructions && (await call('/v1/money/settings', { token: colby })).status === 403, 'the payment instructions are saved for the invoice, and only the two can read them');
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);

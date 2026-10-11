@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
+import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
 
 test('an AI reader is off without a key, down when refused, a warning when out of credit', () => {
   const base = { label: 'Grok (xAI)', keyName: 'XAI_API_KEY' };
@@ -82,4 +82,13 @@ test('a key echoed back in an error message never leaves the server', () => {
   assert.equal(out.nested[0][1], 'Bot abcd refused; [hidden]'); // a value under 6 characters is not a real key, and replacing it would mangle ordinary words
   assert.deepEqual([out.n, out.ok, out.other], [3, true, 'abcdef stays']);
   assert.deepEqual(redactSecrets({ a: 'x' }, {}), { a: 'x' });
+});
+
+test('the Money card: instructions, late invoices, past invoices nobody has settled, and who can open it', () => {
+  const c = (o = {}) => ({ total: 4, open: 2, overdue: 0, unrecorded: 0, drafts: 1, ...o }), access = ['kyle@thefuturebasics.com'];
+  assert.equal(moneyVerdict({ hasInstructions: false, c: c({ total: 0 }), access }).status, 'off'); assert.equal(moneyVerdict({ hasInstructions: true, c: c({ total: 0 }), access }).status, 'ok');
+  assert.match(moneyVerdict({ hasInstructions: false, c: c(), access }).summary, /no payment instructions/i);
+  assert.match(moneyVerdict({ hasInstructions: true, c: c({ overdue: 2, unrecorded: 3 }), access }).summary, /2 invoices are overdue; 3 past invoices with no payment recorded/);
+  assert.match(moneyVerdict({ hasInstructions: true, c: c(), access: [] }).summary, /nobody is named/i);
+  assert.equal(moneyVerdict({ hasInstructions: true, c: c(), access }).status, 'ok');
 });

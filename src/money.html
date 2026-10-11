@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Money</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b;--hot:#d8451f}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.sm{padding:5px 12px;font-size:13px}.btn.danger{border-color:#d8a39c;color:var(--bad)}.btn:disabled{opacity:.5;cursor:default}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff}textarea.t{min-height:90px;resize:vertical}select.t{width:auto}
+.tabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px);margin-bottom:16px}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}.chip.ok{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.bad{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.warn{background:#fff7d6;border-color:#e6d27a}.chip.dim{color:var(--dim)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px}.fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:10px;margin-bottom:14px}.tile{border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff}.tile b{display:block;font-size:28px;font-weight:500;line-height:1.15;font-variant-numeric:tabular-nums}.tile .sub{font-size:12px}.tile.bad b{color:var(--hot)}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border-top:0}.scroll{overflow-x:auto}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}tr.click{cursor:pointer}tr.click:hover td{background:var(--fog)}
+.age{display:flex;height:22px;border-radius:8px;overflow:hidden;gap:2px;margin:10px 0 6px}.age i{display:block;min-width:3px}.age .a0{background:#9bd8b5}.age .a1{background:#f2d55a}.age .a2{background:#f0a24a}.age .a3{background:#e2683b}.age .a4{background:#9a2419}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim)}.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+dialog{border:0;border-radius:24px;padding:0;width:min(760px,95vw);max-height:92vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}dialog form{padding:clamp(18px,3vw,30px);display:grid;gap:12px}
+.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{font-size:22px;font-weight:500}.f{display:grid;gap:4px}.f>span{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:640px){.g3,.g2{grid-template-columns:1fr}}
+.lines{display:grid;gap:6px}.lrow{display:grid;grid-template-columns:minmax(0,1fr) 70px 110px 32px;gap:6px;align-items:start}.lrow textarea{min-height:40px}.crow{display:grid;grid-template-columns:minmax(0,1fr) 130px 32px;gap:6px}
+.totals{margin-left:auto;min-width:260px;display:grid;gap:3px;font-variant-numeric:tabular-nums}.totals div{display:flex;justify-content:space-between;gap:20px}.totals .big{font-weight:600;font-size:16px}
+.empty{color:var(--dim);padding:14px 0}.x{border:1px solid var(--line);background:#fff;border-radius:10px;cursor:pointer;height:36px}
+.pay{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/money" aria-label="Money"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Money</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="noAccess" class="panel hidden"><h1>Money is not open to you</h1><p class="note">Only the people named for it can see invoices and payments. Ask Kyle or Danielle if you need something from here.</p><a class="btn" href="/home" style="margin-top:12px">Back to Home</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)">Settings</span><h1>Money</h1><p class="note">What has been paid, what is owed, and every invoice. Kyle and Danielle only.</p></div>
+      <div class="acts"><button class="btn" id="importBtn">Import past invoices</button><button class="btn go" id="newInv">+ New invoice</button></div></div>
+    <p class="msg" id="msg" role="status"></p>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="overview">Overview</button><button class="tab" data-t="invoices">Invoices</button><button class="tab" data-t="ledger">Ledger</button><button class="tab" data-t="settings">Settings</button></div>
+    <section id="t-overview"></section>
+    <section id="t-invoices" class="hidden"></section>
+    <section id="t-ledger" class="hidden"></section>
+    <section id="t-settings" class="hidden"></section>
+  </div>
+</main>
+<dialog id="dlg"><form id="dform" autocomplete="off"><div class="dh"><h2 id="dTitle"></h2><button class="btn sm" type="button" id="dClose">Close</button></div><div id="dBody" style="display:grid;gap:12px"></div><p class="msg" id="dMsg" role="status"></p><div id="dActs" style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"></div></form></dialog>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status,body:j});return j}
+const usd=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(c||0)/100),usd0=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Number(c||0)/100);
+const us=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||'');return m?`${m[2]}/${m[3]}/${m[1]}`:''};
+const STATE={open:['Open',''],'part-paid':['Part paid','warn'],overdue:['Overdue','bad'],paid:['Paid','ok'],draft:['Draft','dim'],void:['Void','dim'],unrecorded:['Payment not recorded','warn']};
+const SRC={manual:'Entered by hand',history:'Past invoices',quickbooks:'QuickBooks',shopify:'Shopify'},METHOD={wire:'Wire',ach:'ACH',card:'Card',check:'Check',shopify:'Shopify',quickbooks:'QuickBooks',cash:'Cash',other:'Other'};
+const chip=s=>{const [l,c]=STATE[s]||[s,''];return `<span class="chip ${c}">${esc(l)}</span>`};
+let TAB='overview',INV=[],NEXT='',F={status:'',q:''},COUNTS={};
+const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t};
+
+// ---------- a dialog ----------
+function dialog(title,body,acts){$('#dBody').oninput=null;$('#dBody').onchange=null;$('#dBody').onclick=null;$('#dTitle').textContent=title;$('#dBody').innerHTML=body;$('#dMsg').textContent='';$('#dMsg').className='msg';$('#dActs').innerHTML=acts.map((a,i)=>`<button type="${a.submit?'submit':'button'}" class="btn ${a.go?'go':''} ${a.danger?'danger':''}" data-i="${i}">${esc(a.label)}</button>`).join('');
+  $('#dActs').onclick=async e=>{const b=e.target.closest('[data-i]');if(!b||b.type==='submit')return;await run(acts[+b.dataset.i],b)};
+  $('#dform').onsubmit=async e=>{e.preventDefault();const a=acts.find(x=>x.submit);if(a)await run(a,$('#dActs [type=submit]'))};
+  if(!$('#dlg').open)$('#dlg').showModal()}
+async function run(a,b){const prev=b.textContent;b.disabled=true;try{await a.fn()}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}finally{b.disabled=false;b.textContent=prev}}
+$('#dClose').onclick=()=>$('#dlg').close();
+const done=async m=>{$('#dlg').close();if(m)say(m);await load()};
+
+// ---------- overview ----------
+async function loadOverview(){
+  const o=await api('/v1/money/overview'),max=Math.max(1,...o.aging.map(b=>b.cents));
+  const total=o.aging.reduce((a,b)=>a+b.cents,0);
+  $('#t-overview').innerHTML=`<div class="tiles"><div class="tile"><span class="sub">Received · 30 days</span><b>${usd0(o.cashIn30)}</b><span class="sub">${usd0(o.cashIn90)} in 90 days</span></div>
+   <div class="tile"><span class="sub">Owed to us</span><b>${usd0(o.outstandingCents)}</b><span class="sub">${o.openCount} open invoice${o.openCount===1?'':'s'}</span></div>
+   <div class="tile ${o.overdueCount?'bad':''}"><span class="sub">Overdue</span><b>${usd0(o.overdueCents)}</b><span class="sub">${o.overdueCount} invoice${o.overdueCount===1?'':'s'}</span></div>
+   <div class="tile"><span class="sub">To sort out</span><b>${o.unrecorded+o.drafts}</b><span class="sub">${o.drafts} draft${o.drafts===1?'':'s'} · ${o.unrecorded} with no payment recorded</span></div></div>
+  ${o.unrecorded?`<div class="panel" style="border-color:#e6d27a;background:#fffbea"><b>${o.unrecorded} past invoice${o.unrecorded===1?'':'s'} ${o.unrecorded===1?'has':'have'} no payment recorded.</b> <span class="sub">They are not counted as owed. Open Invoices → “Payment not recorded” and mark each one paid or unpaid.</span> <button class="btn sm" data-go="unrecorded">Review them</button></div>`:''}
+  <div class="panel"><h2>What is owed, by how late</h2>${total?`<div class="age" role="img" aria-label="${esc(o.aging.map(b=>b.label+' '+usd0(b.cents)).join(', '))}">${o.aging.map((b,i)=>b.cents?`<i class="a${i}" style="flex:${b.cents}" title="${esc(b.label)}: ${usd(b.cents)}"></i>`:'').join('')}</div>
+   <div class="legend">${o.aging.map((b,i)=>`<span style="--c:${['#9bd8b5','#f2d55a','#f0a24a','#e2683b','#9a2419'][i]}">${esc(b.label)} <b style="color:var(--ink)">${usd0(b.cents)}</b> (${b.count})</span>`).join('')}</div>`:'<p class="empty">Nothing is owed.</p>'}</div>
+  <div class="grid2"><div class="panel"><h2>Late invoices</h2>${o.lateInvoices.length?`<div class="scroll"><table><tbody>${o.lateInvoices.map(i=>`<tr class="click" data-open="${i.id}"><td><b>${esc(i.number)}</b><div class="sub">${esc(i.company)}</div></td><td class="n">${usd(i.owedCents)}<div class="sub">${i.daysOverdue} days late</div></td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">Nothing is late.</p>'}</div>
+   <div class="panel"><h2>Received, last 30 days, by where it came from</h2>${o.bySource.length?`<table><tbody>${o.bySource.map(s=>`<tr><td>${esc(SRC[s.source]||s.source)}</td><td class="n">${usd(s.cents)}</td></tr>`).join('')}</tbody></table>`:'<p class="empty">Nothing received in the last 30 days.</p>'}
+   <h3 style="margin-top:14px">Top clients, 90 days</h3>${o.topClients90.length?`<table><tbody>${o.topClients90.map(c=>`<tr><td>${esc(c.company)}</td><td class="n">${usd(c.cents)}</td></tr>`).join('')}</tbody></table>`:'<p class="empty">No payments yet.</p>'}</div></div>
+  <div class="panel"><div class="top" style="margin:0 0 8px"><h2>Latest invoices</h2><button class="btn sm" data-tab="invoices">All invoices</button></div>${invoiceTable(o.recent)}</div>`;
+}
+function invoiceTable(rows){return rows.length?`<div class="scroll"><table><thead><tr><th>No.</th><th>Company</th><th>For</th><th>Date</th><th>Due</th><th class="n">Total</th><th class="n">Owed</th><th>State</th></tr></thead><tbody>${rows.map(i=>`<tr class="click" data-open="${i.id}"><td><b>${esc(i.number)}</b></td><td>${esc(i.company)}</td><td class="sub">${esc((i.lines[0]?.description||'').replace(/\n/g,' ').slice(0,60))}${i.lines.length>1?` +${i.lines.length-1}`:''}</td><td>${us(i.issuedOn)}</td><td>${us(i.dueOn)}</td><td class="n">${usd(i.totalCents)}</td><td class="n">${i.owedCents?usd(i.owedCents):'—'}</td><td>${chip(i.state)}${i.source==='history'?' <span class="chip dim">past</span>':''}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No invoices here.</p>'}
+
+// ---------- invoices ----------
+async function loadInvoices(){
+  const p=new URLSearchParams();if(F.status)p.set('status',F.status);if(F.q)p.set('q',F.q);
+  const r=await api('/v1/money/invoices?'+p);INV=r.invoices;NEXT=r.nextNumber;COUNTS=r.counts;
+  const chips=[['','All',COUNTS.all],['open','Open',COUNTS.open],['overdue','Overdue',COUNTS.overdue],['draft','Draft',COUNTS.draft],['paid','Paid',COUNTS.paid],['unrecorded','Payment not recorded',COUNTS.unrecorded]];
+  $('#t-invoices').innerHTML=`<div class="filters" id="fInv">${chips.map(([k,l,n])=>`<button class="fchip ${F.status===k?'on':''}" data-st="${k}">${l} ${n}</button>`).join('')}<input class="t" id="fQ" placeholder="Search number, company, what it is for" value="${esc(F.q)}" style="max-width:320px" aria-label="Search"></div><div class="panel">${invoiceTable(INV)}</div>`;
+  const q=$('#fQ');let tm;q.oninput=()=>{clearTimeout(tm);tm=setTimeout(async()=>{F.q=q.value;const pos=q.selectionStart;await loadInvoices();const n=$('#fQ');n.focus();n.setSelectionRange(pos,pos)},300)};
+}
+function lineRow(l={}){return `<div class="lrow"><textarea class="t" data-l="description" placeholder="What it is for" rows="1">${esc(l.description||'')}</textarea><input class="t" data-l="qty" type="number" min="0" step="any" value="${esc(l.qty??1)}" aria-label="Quantity"><input class="t" data-l="rate" inputmode="decimal" value="${l.rateCents!=null?(l.rateCents/100).toFixed(2):''}" placeholder="0.00" aria-label="Rate"><button type="button" class="x" data-rm aria-label="Remove line">×</button></div>`}
+function creditRow(c={}){return `<div class="crow"><input class="t" data-c="label" placeholder="Deposit paid 3/9" value="${esc(c.label||'')}"><input class="t" data-c="amount" inputmode="decimal" placeholder="0.00" value="${c.amountCents!=null?(c.amountCents/100).toFixed(2):''}"><button type="button" class="x" data-rm aria-label="Remove">×</button></div>`}
+const num=v=>{const n=Number(String(v||'').replace(/[$,\s]/g,''));return Number.isFinite(n)?n:NaN};
+function formData(){const g=n=>$('#dBody [name='+n+']')?.value??'';
+  return {number:g('number'),company:g('company'),contactName:g('contactName'),contactEmail:g('contactEmail'),address:g('address'),issuedOn:g('issuedOn'),terms:g('terms'),dueOn:g('dueOn'),notes:g('notes'),taxRatePct:g('taxRatePct'),chargeTax:$('#dBody [name=chargeTax]')?.checked===true,dueNowLabel:g('dueNowLabel'),dueNowCents:g('dueNow')===''?null:Math.round(num(g('dueNow'))*100),
+    lines:$$('#dBody .lrow').map(r=>({description:r.querySelector('[data-l=description]').value,qty:Number(r.querySelector('[data-l=qty]').value),rateCents:Math.round(num(r.querySelector('[data-l=rate]').value)*100)})),
+    credits:$$('#dBody .crow').map(r=>({label:r.querySelector('[data-c=label]').value,amountCents:Math.round(num(r.querySelector('[data-c=amount]').value)*100)})).filter(c=>c.label||c.amountCents)}}
+function recalc(){const d=formData(),sub=d.lines.reduce((a,l)=>a+(Number.isFinite(l.rateCents)&&l.qty>0?Math.round(l.qty*l.rateCents):0),0),rate=Number(d.taxRatePct)||0,tax=d.chargeTax?Math.round(sub*rate/100):0,tot=sub+tax,cr=d.credits.reduce((a,c)=>a+(c.amountCents||0),0),bal=Math.max(0,tot-cr);
+  $('#tot').innerHTML=`<div><span>Subtotal</span><span>${usd(sub)}</span></div><div><span>Tax${rate?` (${rate}%)`:''}${rate&&!d.chargeTax?' not charged':''}</span><span>${usd(tax)}</span></div><div><span>Total</span><span>${usd(tot)}</span></div>${cr?`<div><span>Less deposits and credits</span><span>−${usd(cr)}</span></div>`:''}<div class="big"><span>${esc(d.dueNowLabel||(cr?'Final payment due':'Total due'))}</span><span>${usd(d.dueNowCents!=null&&d.dueNowCents>=0?Math.min(d.dueNowCents,bal):bal)}</span></div>`}
+function editor(inv){
+  const i=inv||{lines:[{}],credits:[],terms:'Due on receipt',issuedOn:new Date().toISOString().slice(0,10),taxRatePct:0,chargeTax:false,number:NEXT,dueNowCents:null},isNew=!inv,locked=inv&&['paid','void'].includes(inv.status);
+  const f=(n,l,v,o='')=>`<label class="f"><span>${l}</span><input class="t" name="${n}" value="${esc(v??'')}" ${o}></label>`;
+  const body=`<div class="g3">${f('number','Invoice no.',i.number)}${f('issuedOn','Date',i.issuedOn,'type="date"')}<label class="f"><span>Terms</span><select class="t" name="terms" style="width:100%">${['Due on receipt','Due upon receipt','Net 15','Net 30','Net 45','Net 60'].map(t=>`<option ${t===i.terms?'selected':''}>${t}</option>`).join('')}</select></label></div>
+   <div class="g2">${f('company','Bill to (company)',i.company,'required')}${f('dueOn','Due date (leave to follow the terms)',isNew?'':i.dueOn,'type="date"')}${f('contactName','Contact',i.contactName)}${f('contactEmail','Their email',i.contactEmail,'type="email"')}</div>
+   <label class="f"><span>Address</span><textarea class="t" name="address" style="min-height:64px">${esc(i.address||'')}</textarea></label>
+   <div><span class="mono sub">Services</span><div class="lines" id="lines">${(i.lines.length?i.lines:[{}]).map(lineRow).join('')}</div><button type="button" class="btn sm" id="addLine" style="margin-top:6px">+ Add a line</button></div>
+   <div class="g3"><label class="f"><span>Tax rate (%)</span><input class="t" name="taxRatePct" inputmode="decimal" value="${esc(i.taxRatePct||'')}" placeholder="0"></label><label class="f" style="align-content:end"><span>&nbsp;</span><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="chargeTax" ${i.chargeTax?'checked':''}> Charge this tax</label></label></div>
+   <div><span class="mono sub">Deposits already paid, or credits</span><div class="lines" id="credits">${(i.credits||[]).map(creditRow).join('')}</div><button type="button" class="btn sm" id="addCredit" style="margin-top:6px">+ Add a deposit or credit</button></div>
+   <div class="g2">${f('dueNowLabel','Label for the amount due',i.dueNowLabel||'','placeholder="Total due / Due now / Final payment due"')}${f('dueNow','Amount due now, if only part is due',i.dueNowCents!=null?(i.dueNowCents/100).toFixed(2):'','inputmode="decimal" placeholder="the whole balance"')}</div>
+   <label class="f"><span>Notes</span><textarea class="t" name="notes" style="min-height:64px">${esc(i.notes||'')}</textarea></label><div class="totals" id="tot"></div>`;
+  const acts=[];
+  if(!isNew){acts.push({label:'Download PDF',fn:()=>pdf(i.id)});if(i.status==='draft')acts.push({label:'Delete draft',danger:true,fn:async()=>{if(confirm('Delete this draft?')){await api('/v1/money/invoices/'+i.id,{method:'DELETE'});await done('Draft deleted.')}}});}
+  if(!locked)acts.push({label:isNew?'Save draft':'Save changes',go:isNew,submit:true,fn:async()=>{const d=formData();if(isNew){const r=await api('/v1/money/invoices',{body:d});await done(`Invoice ${r.invoice.number} saved as a draft.`)}else{await api('/v1/money/invoices/'+i.id,{method:'PUT',body:d});await done('Saved.')}}});
+  dialog(isNew?'New invoice':`Invoice ${i.number}`,body+(isNew?'':'<div id="detail"></div>'),acts);
+  $('#dBody').oninput=recalc;$('#dBody').onchange=recalc;$('#dBody').onclick=e=>{if(e.target.id==='addLine'){$('#lines').insertAdjacentHTML('beforeend',lineRow());return}if(e.target.id==='addCredit'){$('#credits').insertAdjacentHTML('beforeend',creditRow());return}const rm=e.target.closest('[data-rm]');if(rm){rm.parentElement.remove();recalc()}};
+  if(locked)$$('#dBody input,#dBody textarea,#dBody select').forEach(x=>x.disabled=true);recalc();if(!isNew)detail(i.id);
+}
+async function detail(id){
+  const r=await api('/v1/money/invoices/'+id),i=r.invoice,d=$('#detail');if(!d)return;
+  const owed=i.owedCents,btn=(a,l,c='')=>`<button type="button" class="btn sm ${c}" data-act="${a}">${l}</button>`;
+  d.innerHTML=`<div class="panel" style="margin:0"><div class="pay" style="margin-bottom:8px">${chip(i.state)}<b>${owed?usd(owed)+' owed':'Settled'}</b><span class="sub">${i.sentAt?'sent '+us(String(i.sentAt)):'not sent yet'}</span>${i.qb?`<span class="chip ok">in QuickBooks ${esc(i.qb.docNumber||'')}</span>`:''}</div>
+   ${r.payments.length?`<table><tbody>${r.payments.map(p=>`<tr><td>${us(p.paidOn)}</td><td>${esc(METHOD[p.method]||p.method)} · ${esc(SRC[p.source]||p.source)}${p.reference?` · ${esc(p.reference)}`:''}</td><td class="n">${usd(p.amountCents)}</td><td>${['manual','history'].includes(p.source)?`<button type="button" class="btn sm danger" data-delpay="${p.id}">Remove</button>`:''}</td></tr>`).join('')}</tbody></table>`:''}
+   <div class="pay" style="margin-top:8px">${['draft','unrecorded'].includes(i.status)?btn('send',i.status==='draft'?'Mark as sent':'Mark as unpaid (owed)','go'):''}${i.status==='unrecorded'?btn('paid','Mark paid'):''}${['sent'].includes(i.status)&&owed?btn('paid','Mark paid in full')+btn('payment','Record a part payment'):''}${['paid'].includes(i.status)?btn('unpaid','Put back to unpaid'):''}${i.status==='sent'&&i.paidCents===0?btn('void','Void','danger'):''}${i.status==='draft'?btn('void','Void','danger'):''}</div><div id="payForm"></div></div>`;
+  d.onclick=async e=>{const del=e.target.closest('[data-delpay]');if(del){if(confirm('Remove this payment?')){await act(()=>api('/v1/money/payments/'+del.dataset.delpay,{method:'DELETE'}),'Payment removed.',id)}return}
+    const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+    if(a==='send')return act(()=>api(`/v1/money/invoices/${id}/send`,{body:{}}),'Marked as sent.',id);
+    if(a==='void'){if(confirm('Void this invoice?'))await act(()=>api(`/v1/money/invoices/${id}/void`,{body:{}}),'Voided.',id);return}
+    if(a==='unpaid')return act(()=>api(`/v1/money/invoices/${id}/unpaid`,{body:{}}),'Put back to unpaid.',id);
+    if(a==='paid'||a==='payment'){const part=a==='payment';$('#payForm').innerHTML=`<div class="g3" style="margin-top:8px">${part?`<label class="f"><span>Amount received</span><input class="t" id="payAmt" inputmode="decimal" placeholder="0.00"></label>`:''}<label class="f"><span>Date received</span><input class="t" id="payOn" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label class="f"><span>How</span><select class="t" id="payHow" style="width:100%">${Object.entries(METHOD).filter(([k])=>!['shopify','quickbooks'].includes(k)).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></label></div><div class="pay" style="margin-top:6px"><input class="t" id="payRef" placeholder="Reference (wire id, check number)" style="max-width:320px"><button type="button" class="btn sm go" id="payGo">${part?'Record payment':'Mark paid'}</button></div>`;
+      $('#payGo').onclick=()=>act(()=>part?api(`/v1/money/invoices/${id}/payments`,{body:{amountCents:Math.round(num($('#payAmt').value)*100),paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}):api(`/v1/money/invoices/${id}/paid`,{body:{paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}),part?'Payment recorded.':'Marked paid.',id)}};
+}
+async function act(fn,m,id){try{await fn();await load();await detail(id);say(m)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message}}
+async function pdf(id){const r=await fetch(`/v1/money/invoices/${id}/pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The PDF could not be made');const u=URL.createObjectURL(await r.blob());window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000)}
+
+// ---------- import ----------
+function importer(){
+  dialog('Import past invoices',`<p class="sub" style="margin:0">A CSV with a header row. It needs a <b>Company</b> and an <b>Amount</b>; it can also have Invoice, Date, Due date, Terms, Description, Contact, Email, Address, Notes and Status (paid / unpaid) or Paid on. Rows with the same invoice number become one invoice with several lines. Nothing is imported until you confirm.</p>
+   <input type="file" id="csvFile" accept=".csv,text/csv"><textarea class="t" id="csvText" placeholder="…or paste it here" style="min-height:120px;font-family:'IBM Plex Mono',monospace;font-size:12px"></textarea><div id="prev"></div>`,
+   [{label:'Preview',fn:()=>preview(false)},{label:'Import',go:true,fn:()=>preview(true)}]);
+  $('#csvFile').onchange=async e=>{const f=e.target.files[0];if(f)$('#csvText').value=await f.text()};
+}
+async function preview(apply){
+  const csv=$('#csvText').value;if(!csv.trim())throw new Error('Choose a file or paste the CSV first');
+  if(apply&&!confirm('Import these invoices now?'))return;
+  let r;try{r=await api('/v1/money/import',{body:{csv,apply}})}catch(x){if(x.body?.errors){$('#prev').innerHTML=`<div class="risk" style="color:var(--bad)">${x.body.errors.map(e=>`Line ${e.line}: ${esc(e.error)}`).join('<br>')}</div>`}throw x}
+  $('#prev').innerHTML=`<div class="panel" style="margin:0"><b>${r.applied?'Imported':'Ready to import'}: ${r.toAdd} invoice${r.toAdd===1?'':'s'}, ${usd(r.totalCents)}</b>
+   <div class="sub">${Object.entries(r.byStatus).map(([k,n])=>`${n} ${({paid:'paid',sent:'unpaid',void:'void',unrecorded:'with no payment recorded'})[k]||k}`).join(' · ')}${r.skipped.length?` · ${r.skipped.length} skipped (already there)`:''}</div>
+   ${r.sample.length?`<table><tbody>${r.sample.map(s=>`<tr><td>${esc(s.number)}</td><td>${esc(s.company)}</td><td>${us(s.issuedOn)}</td><td class="n">${usd(s.totalCents)}</td></tr>`).join('')}</tbody></table>`:''}
+   ${r.errors.length?`<div class="sub" style="color:var(--bad)">${r.errors.map(e=>`Line ${e.line}: ${esc(e.error)}`).join('<br>')}</div>`:''}</div>`;
+  if(r.applied){say(`Imported ${r.toAdd} invoices.`);await load()}
+}
+
+// ---------- ledger and settings ----------
+let L={q:'',source:''};
+async function loadLedger(){
+  const p=new URLSearchParams();if(L.q)p.set('q',L.q);if(L.source)p.set('source',L.source);const r=await api('/v1/money/payments?'+p);
+  $('#t-ledger').innerHTML=`<div class="filters"><select class="t" id="lSrc" aria-label="Source"><option value="">Every source</option>${Object.entries(SRC).map(([k,l])=>`<option value="${k}" ${L.source===k?'selected':''}>${l}</option>`).join('')}</select><input class="t" id="lQ" placeholder="Search" value="${esc(L.q)}" style="max-width:260px" aria-label="Search"><span class="sub">${r.count} payment${r.count===1?'':'s'} · ${usd(r.totalCents)}</span></div>
+   <div class="panel">${r.payments.length?`<div class="scroll"><table><thead><tr><th>Received</th><th>From</th><th>How</th><th>Invoice or order</th><th>Source</th><th class="n">Amount</th></tr></thead><tbody>${r.payments.map(p=>`<tr><td>${us(p.paidOn)}</td><td>${esc(p.company)}</td><td>${esc(METHOD[p.method]||p.method)}</td><td>${esc([p.invoice?'Invoice '+p.invoice:'',p.reference].filter(Boolean).join(' · '))}${p.note?`<div class="sub">${esc(p.note)}</div>`:''}</td><td><span class="chip dim">${esc(SRC[p.source]||p.source)}</span></td><td class="n">${usd(p.amountCents)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No payments yet.</p>'}</div>`;
+  $('#lSrc').onchange=e=>{L.source=e.target.value;loadLedger()};let tm;$('#lQ').oninput=e=>{clearTimeout(tm);tm=setTimeout(async()=>{L.q=e.target.value;await loadLedger();const q=$('#lQ');q.focus();q.setSelectionRange(q.value.length,q.value.length)},300)};
+}
+async function loadSettings(){
+  const s=await api('/v1/money/settings');
+  $('#t-settings').innerHTML=`<div class="panel"><h2>Payment instructions on invoices</h2><p class="sub">Printed under “Payment instructions” on every invoice, one line per row (account number, routing, bank). They are kept here, not in the code, and only people with access to Money can read them.</p>
+   <textarea class="t" id="instr" style="min-height:170px;font-family:'IBM Plex Mono',monospace;font-size:13px" placeholder="Account No. …&#10;Routing (Wire) …&#10;Routing (ACH) …&#10;SWIFT: …&#10;Bank: …">${esc(s.instructions)}</textarea>
+   <div class="acts" style="margin-top:10px"><button class="btn go" id="saveInstr">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>
+  <div class="panel"><h2>Tech pack payments</h2><p class="sub">The payment gate for tech packs (who pays, who is free, switching it on or off) is still in the Clients page.</p><a class="btn" href="/admin#accessPanel">Open the payment gate</a></div>`;
+  $('#saveInstr').onclick=async()=>{const m=$('#sMsg');m.className='msg';try{await api('/v1/money/settings',{method:'PUT',body:{instructions:$('#instr').value}});m.className='msg ok';m.textContent='Saved.'}catch(x){m.className='msg bad';m.textContent=x.message}};
+}
+
+// ---------- wiring ----------
+const LOAD={overview:loadOverview,invoices:loadInvoices,ledger:loadLedger,settings:loadSettings};
+async function load(){await LOAD[TAB]();if(TAB!=='invoices'){try{const r=await api('/v1/money/invoices');NEXT=r.nextNumber}catch{}}}
+function show(tab){TAB=tab;if(location.hash.slice(1)!==tab)history.replaceState(null,'','#'+tab);$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==tab);LOAD[tab]().catch(x=>say(x.message,'bad'))}
+$$('.tab').forEach(t=>t.onclick=()=>show(t.dataset.t));
+document.addEventListener('click',async e=>{
+  const o=e.target.closest('[data-open]');if(o){const r=await api('/v1/money/invoices/'+o.dataset.open);return editor(r.invoice)}
+  const t=e.target.closest('[data-tab]');if(t)return show(t.dataset.tab);
+  const g=e.target.closest('[data-go]');if(g){F.status=g.dataset.go;show('invoices');return}
+  const s=e.target.closest('#fInv [data-st]');if(s){F.status=s.dataset.st;loadInvoices()}
+});
+$('#newInv').onclick=async()=>{try{if(!NEXT){const r=await api('/v1/money/invoices');NEXT=r.nextNumber}editor(null)}catch(x){say(x.message,'bad')}};
+$('#importBtn').onclick=importer;
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await api('/v1/money/me')}catch(x){$(x.status===403?'#noAccess':'#needSignin').classList.remove('hidden');return}
+  $('#app').classList.remove('hidden');const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));show(t?t.dataset.t:'overview');
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>

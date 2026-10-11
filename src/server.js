@@ -19,6 +19,7 @@ import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, hero
 import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTIONS } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
+import { registerMoneyRoutes } from './money-routes.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
@@ -630,6 +631,8 @@ registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSett
 registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
+registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting });
+app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 app.get('/admin', sendAdmin);

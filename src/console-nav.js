@@ -40,6 +40,7 @@
     { id: 'settings', label: 'Settings', icon: 'gear', items: [
       { label: 'Platform health', href: '/platform', key: 'platform' },
       { label: 'Connections', href: '/admin#connections' },
+      { label: 'Money', href: '/money', gated: 'money' },
       { label: 'Payment gate', href: '/admin#accessPanel' }] }
   ];
   const DEFAULT_HASH = { '/sales': 'today', '/builds/admin': 'builds' };
@@ -60,7 +61,7 @@ body.fbnav:has(#auth:not(.hidden))>header,body.fbnav:has(#needSignin:not(.hidden
 body.fbnav:has(#auth:not(.hidden)) .fbside,body.fbnav:has(#needSignin:not(.hidden)) .fbside,body.fbnav:has(#auth:not(.hidden)) .fbburger,body.fbnav:has(#needSignin:not(.hidden)) .fbburger{display:none}
 .fbside nav{padding:14px 10px 8px;display:grid;gap:2px;flex:1;align-content:start}
 .fbside a{display:flex;align-items:center;gap:11px;color:inherit;text-decoration:none;border-radius:10px;padding:8px 10px;position:relative;white-space:nowrap}
-.fbside a:hover{background:#f5f5f2}.fbside a:focus-visible{outline:2px solid #141416;outline-offset:1px}
+.fbside a[hidden]{display:none!important}.fbside a:hover{background:#f5f5f2}.fbside a:focus-visible{outline:2px solid #141416;outline-offset:1px}
 .fbside a.on{background:#141416;color:#fff}
 .fbside a svg{flex:none}
 .fbside .grp{margin-top:14px}.fbside .grp>span{display:block;padding:0 10px 4px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color:#727278}
@@ -93,7 +94,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
 
   function render() {
     const links = [];
-    const item = (it, cls = '') => { links.push(it); return `<a href="${esc(it.href)}" data-nav="${esc(it.key || it.id || it.label)}" data-href="${esc(it.href)}" ${cls ? `class="${cls}"` : ''} title="${esc(it.label)}">${it.icon ? svg(it.icon) : ''}<span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`; };
+    const item = (it, cls = '') => { links.push(it); return `<a href="${esc(it.href)}" data-nav="${esc(it.key || it.id || it.label)}" data-href="${esc(it.href)}" ${cls ? `class="${cls}"` : ''} title="${esc(it.label)}"${it.gated ? ` data-gated="${esc(it.gated)}" hidden` : ''}>${it.icon ? svg(it.icon) : ''}<span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`; };
     return `<nav aria-label="Work console">${NAV.map(n => n.items
       ? `<div class="grp"><span>${esc(n.label)}</span><a class="gicon" href="${esc(n.items[0].href)}" data-href="${esc(n.items[0].href)}" data-group="${n.id}" title="${esc(n.label)}">${svg(n.icon)}</a>${n.items.map(it => item(it)).join('')}</div>`
       : item(n)).join('')}</nav>
@@ -155,6 +156,12 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
   const autoCollapse = () => { if (!chosen()) setCollapsed(location.pathname.startsWith('/clients/'), false); }; // a client's own room has its own rail: give it the width
   function closeDrawer() { document.body.classList.remove('fbopen'); const b = document.querySelector('.fbburger'); if (b) b.setAttribute('aria-expanded', 'false'); }
 
+  // Menu items only some people may see (Money) stay hidden until the service says this person is allowed.
+  function gates() {
+    let t = ''; try { t = localStorage.getItem('fb.admin.token') || ''; } catch {}
+    if (!t) return;
+    document.querySelectorAll('.fbside a[data-gated]').forEach(a => fetch(`/v1/${a.dataset.gated}/me`, { headers: { Authorization: 'Bearer ' + t } }).then(r => { if (r.ok) a.removeAttribute('hidden'); }).catch(() => {}));
+  }
   function mount() {
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     document.body.classList.add('fbnav');
@@ -168,7 +175,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     setCollapsed(collapsed, false); autoCollapse(); paintActive(); badges(); spy();
     for (const m of ['pushState', 'replaceState']) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); window.dispatchEvent(new Event('fb:nav')); return r; }; }
     for (const ev of ['hashchange', 'popstate', 'fb:nav']) window.addEventListener(ev, () => { autoCollapse(); paintActive(); });
-    setInterval(() => { badges(); paintActive(); }, 1500); // the pages draw their own counts and open sub-pages themselves
+    gates(); setInterval(() => { badges(); paintActive(); }, 1500); // the pages draw their own counts and open sub-pages themselves
     // arriving from another page at /admin#inbox: the section only exists once the page has loaded its data, so wait for it
     const want = (location.hash || '').slice(1);
     if (want && pathOf() === '/admin') {

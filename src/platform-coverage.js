@@ -6,6 +6,7 @@ import { KEY_NEEDS, KIND_LABEL } from './intel-sources.js';
 import { loadSettings } from './intel-engine.js';
 import { automationSettings } from './sales-automations-engine.js';
 import { jobHealth } from './platform.js';
+import { moneyAccessList } from './money.js';
 
 const ms = t => Date.now() - t;
 const withTimeout = (p, label, limit = 6000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} did not answer within ${limit / 1000}s`)), limit))]);
@@ -91,6 +92,18 @@ export function automationsVerdict({ paused, a }) {
   if (paused) return { status: 'warn', summary: `Everything is paused: ${plural(a.on_, 'automation')} on, but nothing will run` };
   if (a.stuck) return { status: 'warn', summary: `${plural(a.stuck, 'step')} should have run over two hours ago: the automation job may be stuck` };
   return { status: 'ok', summary: `${plural(a.on_, 'automation')} on · ${plural(a.active, 'person', 'people')} partway through · ${plural(a.done24, 'run')} finished in 24 hours` };
+}
+
+// The Money hub: invoices need payment instructions to be worth sending, and someone has to be able to open it.
+export function moneyVerdict({ hasInstructions, c, access }) {
+  if (!c.total) return { status: hasInstructions ? 'ok' : 'off', summary: hasInstructions ? 'Ready: no invoices yet' : 'Not started: no invoices, and no payment instructions saved yet' };
+  const problems = [];
+  if (!hasInstructions) problems.push('no payment instructions are saved, so invoices print without bank details');
+  if (c.overdue) problems.push(`${plural(c.overdue, 'invoice')} ${c.overdue === 1 ? 'is' : 'are'} overdue`);
+  if (c.unrecorded) problems.push(`${plural(c.unrecorded, 'past invoice')} with no payment recorded`);
+  if (!access.length) problems.push('nobody is named to open Money');
+  if (problems.length) return { status: 'warn', summary: problems.join('; ').replace(/^./, ch => ch.toUpperCase()) };
+  return { status: 'ok', summary: `${plural(c.total, 'invoice')} · ${plural(c.open, 'open invoice')}, none overdue` };
 }
 
 export function githubVerdict({ hasToken, probe, job }) {
@@ -191,6 +204,12 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Switched on', String(a.on_)], ['People partway through', String(a.active)], ['Finished, last 24 hours', String(a.done24)], ['Overdue steps', String(a.stuck)], ['Paused', st.paused ? 'yes' : 'no'], ['Job', j ? (j.lastRunAt ? `last ran ${ago(j.lastRunAt)}` : 'not run yet') : 'not scheduled']] };
   }));
 
+  listing.push(row('money', 'Money (invoices and payments)', 'sales', async () => {
+    const c = await one(`select count(*)::int total, count(*) filter (where status='sent')::int open, count(*) filter (where status='sent' and due_on < current_date and total_cents - coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0) > 0)::int overdue, count(*) filter (where status='unrecorded')::int unrecorded, count(*) filter (where status='draft')::int drafts from money_invoices i`);
+    const stored = (await getSetting('moneyPayment').catch(() => null)) || {}, access = moneyAccessList(env), v = moneyVerdict({ hasInstructions: Boolean(String(stored.instructions || '').trim()), c, access });
+    return { ...v, facts: [['Invoices', String(c.total)], ['Sent and open', String(c.open)], ['Overdue', String(c.overdue)], ['Drafts', String(c.drafts)], ['Past invoices with no payment recorded', String(c.unrecorded)], ['Payment instructions on invoices', String(stored.instructions || '').trim() ? 'saved' : 'not saved'], ['People who can open Money', String(access.length)]] };
+  }));
+
   // Builds, client stores and delivery.
   listing.push(row('github', 'Showcase sync (GitHub)', 'delivery', async () => {
     const token = env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN || '', j = job('Showcase update sync');
@@ -219,6 +238,7 @@ export function coverageConfig({ env = process.env } = {}) {
   add('listenkeys', 'Listening keys', have.length ? 'ok' : 'info', have.length ? `Connected: ${have.join(', ')}. Hacker News and Google News need no key.` : 'No source keys are set, so only Hacker News and Google News are heard. Add Reddit, Brave, X or Discord keys on the service.');
   add('readers', 'AI readers', ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY'].some(k => env[k]) ? 'ok' : 'warn', ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY'].some(k => env[k]) ? `Connected: ${[['ANTHROPIC_API_KEY', 'Claude'], ['OPENAI_API_KEY', 'ChatGPT'], ['XAI_API_KEY', 'Grok']].filter(([k]) => env[k]).map(([, l]) => l).join(', ')}.` : 'No AI key is set, so Intelligence cannot read posts.');
   add('intelauto', 'Automatic listening', env.INTEL_AUTO === 'off' ? 'info' : 'ok', env.INTEL_AUTO === 'off' ? 'Switched off (INTEL_AUTO=off): posts only arrive when someone presses Listen now.' : 'On: watches are listened to on their schedule.');
+  add('moneyaccess', 'Who can open Money', env.MONEY_ACCESS_EMAILS ? 'ok' : 'ok', env.MONEY_ACCESS_EMAILS ? `Only ${moneyAccessList(env).length} named in MONEY_ACCESS_EMAILS.` : 'Danielle and Kyle (the default). Set MONEY_ACCESS_EMAILS to change who.');
   const sendKey = env.SALES_RESEND_API_KEY || env.RESEND_API_KEY;
   add('salesmail', 'Sales email setup', !sendKey ? 'info' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'ok' : 'warn', !sendKey ? 'No key: the Sales page cannot send email.' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'Key, webhook secret and postal address are all set.' : `Missing: ${[!env.RESEND_WEBHOOK_SECRET && 'RESEND_WEBHOOK_SECRET (replies and bounces)', !env.SALES_POSTAL_ADDRESS && 'SALES_POSTAL_ADDRESS (email footer)'].filter(Boolean).join(' and ')}.`);
   add('githubtoken', 'Showcase GitHub token', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'ok' : 'info', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'Set: the showcase can follow app updates.' : 'Not set: the showcase does not follow app updates (BUILDS_GITHUB_TOKEN).');

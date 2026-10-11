@@ -1325,6 +1325,65 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists build_pushes_build_idx on build_pushes(build_id, created_at desc);
+    -- The Money hub (see src/money.js): invoices Future Basics sends (and past ones, imported), and every payment received against them.
+    -- Only the admins named in MONEY_ACCESS_EMAILS can read these. Bank details are never stored here: they live in the Money setting the invoice PDF prints.
+    create table if not exists money_invoices (
+      id uuid primary key default gen_random_uuid(),
+      number text not null unique,
+      company text not null,
+      contact_name text not null default '',
+      contact_email text not null default '',
+      address text not null default '',
+      issued_on date not null,
+      terms text not null default 'Due on receipt',
+      due_on date not null,
+      lines jsonb not null default '[]'::jsonb,
+      tax_rate numeric(6,3) not null default 0,
+      charge_tax boolean not null default false,
+      credits jsonb not null default '[]'::jsonb,
+      due_now_label text not null default 'Total due',
+      due_now_cents bigint,
+      subtotal_cents bigint not null,
+      tax_cents bigint not null default 0,
+      total_cents bigint not null,
+      notes text not null default '',
+      currency text not null default 'USD',
+      status text not null default 'draft' check (status in ('draft','sent','paid','void','unrecorded')),
+      source text not null default 'app' check (source in ('app','history','quickbooks')),
+      client_id uuid references clients(id) on delete set null,
+      contact_id uuid references sales_contacts(id) on delete set null,
+      deal_id uuid references sales_deals(id) on delete set null,
+      qb_id text,
+      qb_doc_number text,
+      qb_sync_token text,
+      qb_link text,
+      qb_synced_at timestamptz,
+      sent_at timestamptz,
+      paid_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists money_invoices_status_idx on money_invoices (status, due_on);
+    create index if not exists money_invoices_company_idx on money_invoices (lower(company));
+    create table if not exists money_payments (
+      id uuid primary key default gen_random_uuid(),
+      invoice_id uuid references money_invoices(id) on delete set null,
+      source text not null default 'manual' check (source in ('manual','history','quickbooks','shopify')),
+      method text not null default 'other',
+      company text not null default '',
+      amount_cents bigint not null check (amount_cents > 0),
+      currency text not null default 'USD',
+      paid_on date not null,
+      reference text not null default '',
+      note text not null default '',
+      qb_id text,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists money_payments_invoice_idx on money_payments (invoice_id);
+    create index if not exists money_payments_paid_idx on money_payments (paid_on desc);
+    create unique index if not exists money_payments_qb_idx on money_payments (qb_id) where qb_id is not null;
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),
