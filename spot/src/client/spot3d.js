@@ -1,7 +1,7 @@
 // Spot, the plush, in real 3D (WebGL, three.js). Minky fabric with a soft
 // sheen at the edges, satin-stitched eye whites with glossy safety-eye
-// pupils, an embroidered mouth, airbrushed cheeks, a satin hanging loop and
-// a sewn-in tag, lit like a studio product shot. He breathes, blinks, looks
+// pupils, an embroidered mouth and airbrushed cheeks, lit like a studio
+// product shot. He breathes, blinks, looks
 // at the pointer, waves, hops with the YES key and grins when it's pressed.
 //
 //   const spot = mountSpot3D(hostElement)   → null when WebGL isn't there
@@ -180,20 +180,12 @@ export function mountSpot3D(host) {
   const thread = new THREE.MeshPhysicalMaterial({ color: '#2b1610', roughness: 0.48, sheen: 1, sheenColor: new THREE.Color('#8a5442'), sheenRoughness: 0.25 });
   const felt = new THREE.MeshPhysicalMaterial({ color: '#3a1810', roughness: 0.95, sheen: 0.6, sheenColor: new THREE.Color('#6a3428') });
   const tongueMat = new THREE.MeshPhysicalMaterial({ color: '#ff8c9a', roughness: 0.9, sheen: 0.8, sheenColor: new THREE.Color('#ffd0d6') });
-  const ribbon = new THREE.MeshPhysicalMaterial({ color: '#f6a640', roughness: 0.78, sheen: 1, sheenColor: new THREE.Color('#ffe7b8'), sheenRoughness: 0.4, normalMap: satinNormal(), normalScale: new THREE.Vector2(0.5, 0.5) });
   const blushTex = canvasTexture(128, 128, (g, w, h) => {
     const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
     r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.55, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = r; g.fillRect(0, 0, w, h);
   });
   const blush = new THREE.MeshBasicMaterial({ color: '#ff5a6e', map: blushTex, transparent: true, opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
-  const tagTex = canvasTexture(256, 144, (g, w, h) => {
-    g.fillStyle = '#fbf5ec'; g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(0,0,0,.05)'; for (let y = 0; y < h; y += 3) g.fillRect(0, y, w, 1);
-    g.fillStyle = '#ff5a36'; g.font = '800 64px Bricolage, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('SPOT', w / 2, h / 2 + 4);
-    g.strokeStyle = 'rgba(0,0,0,.12)'; g.setLineDash([5, 6]); g.lineWidth = 2; g.strokeRect(10, 10, w - 20, h - 20);
-  });
-  const tagMat = new THREE.MeshPhysicalMaterial({ map: tagTex, roughness: 0.85, sheen: 0.5, sheenColor: new THREE.Color('#ffffff') });
 
   // Colour as an airbrush would: Spot orange, a little deeper underneath and
   // toward the seams, and two soft pink cheeks sprayed on.
@@ -328,23 +320,6 @@ export function mountSpot3D(host) {
     return pivot;
   });
 
-  // satin hanging loop and the sewn-in tag
-  const loop = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.042, 18, 64, Math.PI), ribbon);
-  loop.scale.set(1, 1.2, 0.32);
-  loop.position.set(0, 0.9, -0.02);
-  loop.castShadow = true;
-  squish.add(loop);
-  const tag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.17, 0.008), [tagMat, tagMat, tagMat, tagMat, tagMat, tagMat]);
-  {
-    // sewn into the seam low on his right, hanging a little forward
-    const p = bodyPoint(0.98, -0.5, 0.03);
-    tag.position.copy(p);
-    tag.lookAt(p.clone().add(bodyNormal(0.98, -0.5)).add(new THREE.Vector3(0, 0, 0.9)));
-    tag.rotateZ(-0.42);
-    tag.translateX(0.12);
-    tag.castShadow = true;
-  }
-  squish.add(tag);
 
   // face: satin-stitched eye whites, glossy pupils, cheeks, mouth
   const face = new THREE.Group();
