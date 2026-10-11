@@ -96,8 +96,25 @@ A chat button on the **builds showcase** (and on thefuturebasics.com once the sc
 
 Routes (staff only): `GET /v1/sales/press`, `POST|PUT|DELETE /v1/sales/press/items`, `POST /v1/sales/press/draft`, `POST /v1/sales/press/items/:id/preview`, `POST /v1/sales/press/items/:id/pitch`, `GET /v1/sales/press/media`, `GET|POST|DELETE /v1/sales/press/coverage`, `GET|PUT /v1/sales/press/settings`. Rules live in `src/press.js` and `src/press-draft.js`; tables are `press_items`, `press_sends` and `press_coverage`.
 
+## Opportunity finder (phase 5)
+Sales → **Opportunities** (menu: Customers → Opportunities; Today shows the top three as "Worth your time today"). It answers "who should I talk to next, and why", from what the CRM already knows. Each person appears **once**, under their strongest reason, with the others noted; the count on the tab and menu is how many are "Now".
+
+| Reason | What it means | Base priority |
+| --- | --- | --- |
+| Chat waiting | someone is waiting in chat for a person | now |
+| Wrote to us, no reply | a real email in the last 14 days, nothing sent, called or met since | now |
+| Opened a live build | clicked through to a live build in the last 14 days, no follow-up since, no open task | now |
+| Interested, no deal | hot or warm (the same warmth as the Contacts list), no open deal, no open task | this week (hot) / later (warm) |
+| Deal gone quiet | an open deal with nothing for 7+ days; bigger deals and longer silences score higher | this week |
+| New, untouched | arrived in the last 7 days (not an import or hub sync), nobody has done anything | later |
+| More at a customer | a company with a won deal where other people have no deal | later |
+| Tech pack customer, no builds / Build customer, no tech pack | tagged `tech-pack` but not `builds`/`showcase`, or the reverse | later |
+| Was warm, now quiet | warm two weeks ago, cold now, no open deal or task | later |
+
+Each card says why in plain words and offers **Make a task** (with a suggested title, due today), **Open contact**, **Snooze a week**, **Not now** (hidden 30 days). Making a task hides it for 14 days. A reason staff set aside is skipped, so the next reason for that person can show; after the date it comes back if it is still true. People who opted out are never suggested, and people who already have an open task or deal are not nagged about "no deal" or "no follow-up". It only reads the CRM; it never sends anything.
+
 ## Next phases
 
 1. ~~Email~~ and ~~Automations~~ (done, above). Possible next steps for automations: a "move the deal" step, notifying staff in chat/email, and branching on a reply or a click.
 2. ~~Chat with a handoff to a person~~ (done, above). Possible next steps: attachments, notifying staff in the Message Center, a chat that continues over email, chat on the hub for clients.
-3. **Opportunity finder and press comms.**
+3. ~~Opportunity finder~~ (done, above; finding *new* prospects outside the CRM is not built). ~~Press comms~~ (done, above). Possible next steps for press: scheduled sends, a public press page, importing a media list from CSV, tracking opens.

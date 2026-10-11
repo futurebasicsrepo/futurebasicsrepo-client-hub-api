@@ -1137,6 +1137,13 @@ export async function migrate() {
       note text not null default '',
       created_by uuid references users(id) on delete set null,
       created_at timestamptz not null default now()
+    -- The opportunity finder (see src/sales-opportunities.js): what staff have made a task of, snoozed or hidden, and until when
+    create table if not exists sales_opportunity_state (
+      key text primary key,
+      state text not null check (state in ('done','snoozed','dismissed')),
+      until timestamptz not null,
+      actor_id uuid references users(id) on delete set null,
+      at timestamptz not null default now()
     );
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
