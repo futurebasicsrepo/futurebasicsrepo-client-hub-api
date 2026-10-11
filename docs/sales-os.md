@@ -71,8 +71,21 @@ Contacts brought in by an import or the hourly hub sync do not start "new contac
 
 **How it runs:** a job every minute does what is due ("Run what is due now" does the same on demand). It is listed with the other background jobs on Platform health.
 
+## Chat and the handoff to a person (phase 4)
+A chat button on the **builds showcase** (and on thefuturebasics.com once the script is added) opens a small window. A visitor talks to an assistant first; a person takes over when they ask or when the assistant should not answer. Staff work from **Sales → Chats** (menu: Customers → Chats; the count is chats waiting for a person).
+
+**The visitor's side.** The window is a page of its own (`/chat-frame`) inside an iframe, so nothing on the host page can read the conversation and the page's styles cannot break it. The conversation is kept by a private token in the visitor's browser. Inside the showcase the visitor is already signed in, so the chat is tied to their contact from the first message and notes which build they were looking at ("Talk to us about one like it" on a build page opens the chat with that build in mind; the email address stays below it). On the public site they are anonymous until a person is needed; then the window asks where to reach them ("Where can we reach you if you step away?"). They become a CRM contact (source `website` or `showcase`, tag `chat`). A showcase visitor's address is verified (they signed in with a code), so their chat counts on their timeline as "chatted with us": it counts as knowing us for email, stops waiting automations, and starts "a contact writes back" ones. An address typed on the public site is not proof of who they are, so it is marked *not verified* in Chats, their messages are recorded as notes, and none of that happens (staff can still reply in the chat, and the reply is emailed to that address if they have stepped away).
+
+**Add it to thefuturebasics.com:** Chat settings shows the line to paste before the closing body tag of the theme: `<script src="https://hub.thefuturebasics.com/chat-widget.js" defer></script>`. `window.fbChat.open({looking: 'slug'})` opens it from anywhere.
+
+**The assistant** answers only from facts: what Future Basics does, optional extra facts staff add in Chat settings, and the builds *that visitor may see* (nothing specific for someone not signed in to the showcase; it says builds are shown by invite and offers a person). It is short and plain, links only to our own sites, and never asks for secrets. It hands to a person, without asking the model, when someone asks for one or sounds upset; it also hands over for price, quotes, timelines, minimums, contracts or when it is unsure, and after twelve answers in one chat. What visitors type is treated as untrusted: length-limited (1,000 characters), shown as text, and given to the model as a message, never as instructions. Without an `ANTHROPIC_API_KEY` (or with the assistant switched off, or at its daily limit) every chat goes straight to a person. `CHAT_MODEL` picks the model (default Haiku).
+
+**When it hands over,** the chat shows "waiting for a person", staff get an email, a CRM task ("Chat waiting: …") and a count on the Chats tab and menu. Staff can read the thread, **reply**, **take over**, **hand back to the assistant**, **close**, or open the contact. While a person has it the assistant stays quiet. If the visitor has stepped away (no activity for two minutes) and we have their email, a reply is emailed to them too. A reply, like any message from them, stops automations that were waiting to write to that person; their messages also fire the "a contact writes back" automation trigger.
+
+**Limits:** a message is dropped if a hidden field is filled in (robots); each address may send 60 messages an hour and open 8 new chats an hour (and 3,000 messages / 300 new chats an hour in all); a chat takes 120 messages a day; the assistant answers at most 300 times a day (set in Chat settings). Chat can be switched off entirely.
+
 ## Next phases
 
 1. ~~Email~~ and ~~Automations~~ (done, above). Possible next steps for automations: a "move the deal" step, notifying staff in chat/email, and branching on a reply or a click.
-2. **Chat** on the public site and showcase, handing to a person.
+2. ~~Chat with a handoff to a person~~ (done, above). Possible next steps: attachments, notifying staff in the Message Center, a chat that continues over email, chat on the hub for clients.
 3. **Opportunity finder and press comms.**

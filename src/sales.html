@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Sales</title>
 <link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/chat.css">
 <style>
 @import url('/fonts/fonts.css');
 :root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b;--hot:#d8451f;--ease:cubic-bezier(.22,1,.36,1)}
@@ -71,7 +72,16 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 .abar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:14px}.abar .grow{flex:1;min-width:220px}
 .astep{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--fog);margin-bottom:8px}.astep .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.astep .row input.t,.astep .row select.t{width:auto;min-width:0}.astep .row input.num{width:76px}.astep .row input.long{flex:1;min-width:200px}.astep .mv{display:flex;gap:4px;align-items:flex-start}.astep .mv button{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer}
 .plan{list-style:none;margin:0;padding:0}.plan li{padding:9px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px}.plan li:first-child{border-top:0}.plan .when{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding-top:3px}.plan .res.no{color:var(--hot)}
-@media(max-width:860px){.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
+/* chats */
+.chats{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;align-items:start}.chats>*{min-width:0}
+.clist{display:grid;grid-template-columns:minmax(0,1fr);gap:0;max-height:min(70vh,640px);overflow:auto}.citem{display:grid;gap:2px;padding:12px 8px;border-top:1px solid var(--line);cursor:pointer;border-radius:10px}.citem:first-child{border-top:0}.citem:hover,.citem.on{background:var(--fog)}
+.citem .r{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.citem b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.citem .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.citem .dotu{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--hot);margin-right:6px}
+.chip.wait{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.person{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.bot{background:#eef0ff;border-color:#c5caf4;color:#3b46a8}.chip.closed{background:#f0f0ee;color:var(--dim)}
+.cpane .head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px}.cpane .head h2{margin:0}
+.cpane .fbchat-panel{height:min(62vh,560px);border-radius:18px}
+.cback{display:none}
+@media(max-width:860px){.chats{grid-template-columns:minmax(0,1fr)}.chats.open .clistbox{display:none}.chats:not(.open) .cpane{display:none}.cback{display:inline-flex}.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -83,7 +93,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
     <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="automations">Automations</button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
 
     <section id="t-today"></section>
 
@@ -112,6 +122,10 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
     <section id="t-automations" class="hidden">
       <div class="abar"><p class="note grow" id="autoNote" style="margin:0"></p><div class="arow" style="margin:0"><button class="btn sm" id="autoHours">Working hours</button><button class="btn sm" id="autoNow">Run what is due now</button><button class="btn go sm" id="autoNew">+ New automation</button></div></div>
       <div id="autoList"></div>
+    </section>
+    <section id="t-chats" class="hidden">
+      <div class="abar"><p class="note grow" id="chatNote" style="margin:0"></p><div class="arow" style="margin:0"><select class="t" id="chatFilter" aria-label="Which chats" style="width:auto"><option value="open">Open</option><option value="waiting">Waiting for a person</option><option value="closed">Closed</option><option value="all">All</option></select><button class="btn sm" id="chatSettings">Chat settings</button></div></div>
+      <div class="chats" id="chatsBox"><div class="panel clistbox"><div class="clist" id="chatList"></div></div><div class="panel cpane" id="chatPane"><p class="note">Pick a chat to read it.</p></div></div>
     </section>
     <section id="t-tasks" class="hidden">
       <div class="panel">
@@ -199,6 +213,17 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <p class="msg" id="awMsg" role="status"></p><div style="display:flex;justify-content:flex-end"><button class="btn go" id="awSave" type="button">Save</button></div>
 </div></dialog>
 
+<dialog id="cfdlg"><div class="dbody">
+  <div class="dh"><h2>Chat settings</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <label class="check"><input type="checkbox" id="cfOn"><span><b>Chat is on</b><span class="sub" style="display:block">The button shows on the showcase and wherever the script below is added.</span></span></label>
+  <label class="check"><input type="checkbox" id="cfBot"><span><b>The assistant answers first</b><span class="sub" style="display:block" id="cfBotNote">It answers from what Future Basics does and the builds the visitor may see, and hands to a person for price, timelines, anything it is unsure of, or when asked.</span></span></label>
+  <label class="f"><span class="mono">Greeting</span><input class="t" id="cfGreet" maxlength="300"></label>
+  <label class="f"><span class="mono">Extra facts the assistant may use</span><textarea class="t" id="cfAbout" placeholder="Anything else it may say: who you work with, how a project starts, what you do not do."></textarea></label>
+  <label class="f"><span class="mono">Most assistant answers a day</span><input class="t" id="cfCap" type="number" min="0" max="5000"></label>
+  <div><span class="mono" style="color:var(--dim)">Add chat to thefuturebasics.com</span><p class="sub" style="margin:6px 0">Paste this before the closing body tag of the theme (theme.liquid):</p><textarea class="t" id="cfEmbed" readonly rows="2"></textarea></div>
+  <p class="msg" id="cfMsg" role="status"></p><div style="display:flex;justify-content:flex-end"><button class="btn go" id="cfSave" type="button">Save</button></div>
+</div></dialog>
+
 <dialog id="ddlg"><form class="dbody" id="dform" autocomplete="off">
   <div class="dh"><h2 id="dTitle">Deal</h2><button class="btn sm" type="button" data-close>Close</button></div>
   <div class="fields">
@@ -213,13 +238,14 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
 </form></dialog>
 
+<script src="/chat.js"></script>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
 async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const STAGES=['new','contacted','meeting','proposal','won','lost'],LABEL={new:'New',contacted:'Contacted',meeting:'Meeting',proposal:'Proposal',won:'Won',lost:'Lost'};
 const SOURCE={manual:'Added by hand',showcase:'Showcase',website:'Website',referral:'Referral',outbound:'Outbound',event:'Event',hub:'Hub',import:'Imported'};
-const KIND={note:'Note',call:'Call',meeting:'Meeting',email_in:'Email in',email_out:'Email out',stage:'Deal',showcase_view:'Looked',showcase_demo:'Clicked through',task:'Task',system:'System'};
+const KIND={note:'Note',call:'Call',meeting:'Meeting',email_in:'Email in',email_out:'Email out',chat_in:'Chat in',chat_out:'Chat out',stage:'Deal',showcase_view:'Looked',showcase_demo:'Clicked through',task:'Task',system:'System'};
 const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString();
 const when=v=>v?new Date(v).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—';
 const dayOf=v=>v?new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'No date';
@@ -490,8 +516,41 @@ async function loadRuns(id){
   box.innerHTML=runs.length?`<h2 style="margin:18px 0 6px">Automations</h2>${runs.slice(0,6).map(r=>`<div class="item"><span class="main"><b>${esc(r.automation_name)}</b><span class="sub">${r.status==='active'?`Step ${r.step+1} of ${r.steps}, next ${esc(when(r.next_at))}`:r.status==='done'?'Finished':'Stopped: '+esc(r.stop_reason)}</span></span>${r.status==='active'?`<button class="btn sm" data-stoprun="${esc(r.id)}">Stop</button>`:''}</div>`).join('')}`:'';
   box.querySelectorAll('[data-stoprun]').forEach(b=>b.onclick=async()=>{try{await api('/v1/sales/runs/'+b.dataset.stoprun+'/stop',{body:{}});await openContact(id)}catch(x){alert(x.message)}});
 }
-const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations};
-async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge()}
+// ---------- chats ----------
+let CHATS=[],CHAT_ID=null,CHAT_UI=null,CHAT_STATUS='';
+const CSTATUS={bot:['bot','Assistant'],waiting:['wait','Waiting for you'],person:['person','With a person'],closed:['closed','Closed']};
+const sOf=c=>CSTATUS[c.status]||CSTATUS.bot;
+async function loadChats(){
+  const {chats,waiting,open}=await api('/v1/sales/chats?status='+$('#chatFilter').value);CHATS=chats;
+  $('#chatCount').innerHTML=waiting?`<span class="chip late">${waiting}</span>`:'';
+  $('#chatNote').textContent=waiting?`${waiting} ${waiting===1?'chat is':'chats are'} waiting for a person.`:`${open} open chat${open===1?'':'s'}. Visitors chat from the showcase and from any page that has the chat button.`;
+  $('#chatList').innerHTML=chats.length?chats.map(c=>`<div class="citem ${c.id===CHAT_ID?'on':''}" data-chat="${esc(c.id)}"><div class="r"><b>${c.unread_staff?'<span class="dotu" aria-label="Unread"></span>':''}${esc(c.visitor_name||c.visitor_email||'A visitor')}</b><span class="chip ${sOf(c)[0]}">${esc(sOf(c)[1])}</span></div><div class="sub">${esc(c.last_author==='visitor'?'':c.last_author==='staff'?'You: ':c.last_author==='assistant'?'Assistant: ':'')}${esc(c.last_body||'')}</div><div class="sub">${esc(ago(c.last_message_at))}${c.looking_at?' · looking at '+esc(c.looking_at):''}${c.source==='showcase'?' · showcase':''}</div></div>`).join(''):'<p class="note">No chats here yet.</p>';
+}
+const chatThread=ms=>({messages:ms.filter(m=>!m.system).map(m=>({id:m.id,author_role:m.author_role,author_name:m.author_role==='assistant'?'Assistant':m.author_name,body:m.body,created_at:m.created_at})),events:ms.filter(m=>m.system).map(m=>({id:m.id,title:m.body,createdAt:m.created_at}))});
+async function openChat(id){
+  CHAT_ID=id;const {chat:c,messages}=await api('/v1/sales/chats/'+id);CHAT_STATUS=c.status;$('#chatsBox').classList.add('open');
+  const st=CSTATUS[c.status]||CSTATUS.bot;
+  $('#chatPane').innerHTML=`<div class="head"><div><button class="btn sm cback" id="chatBack" type="button">← All chats</button><h2>${esc(c.name||c.email||'A visitor')}</h2><div class="sub">${esc(c.email||'No email yet')}${c.email&&!c.verified?' (not verified: they typed it)':''}${c.looking?' · looking at '+esc(c.looking):''}${c.source==='showcase'?' · from the showcase':''}${c.reason?' · handed over: '+esc(c.reason):''}</div></div><div class="arow" style="margin:0"><span class="chip ${st[0]}">${esc(st[1])}</span>${c.contactId?`<button class="btn sm" data-contact="${esc(c.contactId)}">Open contact</button>`:''}${c.status==='bot'||c.status==='waiting'?'<button class="btn sm" data-cs="person">Take over</button>':''}${c.status==='person'?'<button class="btn sm" data-cs="bot">Hand back to the assistant</button>':''}${c.status!=='closed'?'<button class="btn sm" data-cs="closed">Close</button>':''}</div></div><div id="chatThread" class="fbchat-panel"></div>`;
+  CHAT_UI=FBChat.mount($('#chatThread'),{id:'sc',viewer:'admin',canCompose:c.status!=='closed',attach:false,replies:false,placeholder:'Reply to '+(c.name||'them'),emptyTitle:'No messages',emptyText:'',poll:true,
+    send:async({body})=>{const r=await api(`/v1/sales/chats/${id}/messages`,{body:{body}});await loadChats();if(CHAT_STATUS!=='person'){await openChat(id)}else await openChatQuiet(id);if(r.emailed)$('#chatNote').textContent='They had stepped away, so your reply was emailed too.'},
+    refresh:async()=>{const r=await api('/v1/sales/chats/'+id);return chatThread(r.messages)}});
+  CHAT_UI.update(chatThread(messages),{toBottom:true});loadChats().catch(()=>{});
+}
+async function openChatQuiet(id){const r=await api('/v1/sales/chats/'+id);CHAT_UI&&CHAT_UI.update(chatThread(r.messages),{toBottom:true})}
+$('#chatList').addEventListener('click',e=>{const i=e.target.closest('[data-chat]');if(i)openChat(i.dataset.chat).catch(x=>alert(x.message))});
+$('#chatPane').addEventListener('click',async e=>{
+  if(e.target.closest('#chatBack')){$('#chatsBox').classList.remove('open');return}
+  const b=e.target.closest('[data-cs]');if(!b)return;
+  if(b.dataset.cs==='closed'&&!confirm('Close this chat? They can start another by writing again.'))return;
+  try{await api('/v1/sales/chats/'+CHAT_ID,{method:'PUT',body:{status:b.dataset.cs}});await openChat(CHAT_ID)}catch(x){alert(x.message)}
+});
+$('#chatFilter').onchange=()=>loadChats().catch(x=>alert(x.message));
+$('#chatSettings').onclick=async()=>{const {settings:s,assistantReady}=await api('/v1/sales/chats/settings');$('#cfOn').checked=s.enabled;$('#cfBot').checked=s.assistantOn;$('#cfGreet').value=s.greeting;$('#cfAbout').value=s.about;$('#cfCap').value=s.dailyBotCap;$('#cfEmbed').value=`<script src="${location.protocol}//${location.host.replace(/^work\./,'hub.')}/chat-widget.js" defer><\/script>`;$('#cfBotNote').textContent=assistantReady?'It answers from what Future Basics does and the builds the visitor may see, and hands to a person for price, timelines, anything it is unsure of, or when asked.':'The assistant is not connected yet (the service needs ANTHROPIC_API_KEY). Until then every chat goes straight to a person.';$('#cfMsg').textContent='';$('#cfdlg').showModal()};
+$('#cfSave').onclick=async()=>{const m=$('#cfMsg');m.className='msg';try{await api('/v1/sales/chats/settings',{method:'PUT',body:{enabled:$('#cfOn').checked,assistantOn:$('#cfBot').checked,greeting:$('#cfGreet').value,about:$('#cfAbout').value,dailyBotCap:$('#cfCap').value}});$('#cfdlg').close()}catch(x){m.className='msg bad';m.textContent=x.message}};
+async function loadChatBadge(){try{const {waiting}=await api('/v1/sales/chats?status=waiting');$('#chatCount').innerHTML=waiting?`<span class="chip late">${waiting}</span>`:''}catch{}}
+const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations,chats:loadChats};
+async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge();if(TAB!=='chats')loadChatBadge()}
+setInterval(()=>{if(TAB==='chats'&&!document.hidden)loadChats().catch(()=>{})},10000);
 const refreshQuiet=()=>refresh().catch(()=>{});
 async function loadTaskBadge(){try{const open=(await api('/v1/sales/tasks?scope=today')).tasks.length;$('#taskCount').innerHTML=open?`<span class="chip late">${open}</span>`:''}catch{}}
 $$('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;if(location.hash.slice(1)!==TAB)history.replaceState(null,'','#'+TAB);$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of Object.keys(LOADERS))$('#t-'+k).classList.toggle('hidden',k!==TAB);refresh().catch(x=>alert(x.message))});

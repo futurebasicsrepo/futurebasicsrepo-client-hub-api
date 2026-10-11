@@ -108,7 +108,7 @@ main{max-width:1360px;margin:0 auto;padding:clamp(22px,4vw,44px) clamp(18px,4vw,
 .facts div{background:#fff;padding:11px 12px}.facts span{display:block;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}.facts b{display:block;font-weight:500;margin-top:2px;overflow-wrap:anywhere}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 4px}
 .actions .go{width:auto}
-.ghost{display:inline-flex;align-items:center;border:1px solid var(--ink);color:var(--ink);background:transparent;border-radius:999px;padding:15px 22px;text-decoration:none;font-weight:500}.ghost:hover{background:var(--ink);color:#fff}
+.ghost{display:inline-flex;align-items:center;cursor:pointer;font:inherit;font-weight:500;border:1px solid var(--ink);color:var(--ink);background:transparent;border-radius:999px;padding:15px 22px;text-decoration:none;font-weight:500}.ghost:hover{background:var(--ink);color:#fff}
 .fine{color:var(--dim);font-size:13px;margin-top:8px}
 .more{display:flex;flex-direction:column;gap:2px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}.more a{color:var(--ink);text-decoration:none;padding:9px 0;border-bottom:1px solid var(--line);font-weight:500}.more a:hover,.more a:focus-visible{text-decoration:underline;text-underline-offset:3px}
 .sec{margin-top:clamp(34px,5vw,64px)}.sec>h2{font-size:clamp(22px,3vw,32px);font-weight:500;letter-spacing:-.02em;margin:0 0 6px}.sec>.sum{font-size:17px;color:#2b2b30;white-space:pre-wrap;max-width:70ch;margin:0 0 20px}
@@ -200,7 +200,7 @@ function gallery(){
     <div class="bar"><input class="t" id="q" type="search" placeholder="Search by name, sector or technology" aria-label="Search builds" value="${esc(F.q)}"><select id="sort" aria-label="Sort"><option value="featured">Featured</option><option value="updated">Recently updated</option><option value="name">Name, A to Z</option></select><button class="fbtn" id="fbtn" type="button" aria-expanded="false">Filters</button><span class="count mono" id="count"></span></div>
     <div class="shelf"><aside class="facets" id="facets" aria-label="Filters"></aside><div><div class="active" id="active"></div><div class="grid" id="grid"></div></div></div>`;
   $('#sort').value=F.sort;paint();
-  document.title='Future Basics Builds';
+  document.title='Future Basics Builds';window.fbChat&&fbChat.context({looking:''});
 }
 $('#app').addEventListener('input',e=>{if(e.target.id==='q'){F.q=e.target.value;paint()}});
 $('#app').addEventListener('change',e=>{
@@ -215,16 +215,16 @@ async function one(slug){
     $('#app').innerHTML=`<div class="crumb mono"><button class="lnk" type="button" id="back">Builds</button><span aria-hidden="true">/</span>${b.sector?`<span>${esc(b.sector)}</span><span aria-hidden="true">/</span>`:''}<b>${esc(b.name)}</b></div>
       <div class="prod"><div>${shot(b)}</div><div class="buy"><span class="mono" style="color:var(--dim)">${esc(b.sector||'Build')}</span><h1>${esc(b.name)}</h1>${b.tagline?`<p class="lead">${esc(b.tagline)}</p>`:''}
         <div class="facts"><div><span>Status</span><b>${esc(b.statusLabel)}</b></div><div><span>${b.updatedAt?'Updated':'Hosted on'}</span><b>${b.updatedAt?esc(day(b.updatedAt)):esc(b.hosting==='other'?'Custom':b.hosting)}</b></div><div><span>Features</span><b>${b.featureCount||'—'}</b></div></div>
-        <div class="actions">${b.hasLive?`<a class="go" href="/builds/go/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Open the live build ↗</a>`:''}<a class="ghost" href="mailto:kyle@thefuturebasics.com?subject=${encodeURIComponent('About '+b.name)}">Talk to us about one like it</a></div>
-        <p class="fine">Opens in a new tab. We note that you looked, so we can follow up.</p>${(b.links||[]).length?`<div class="more"><span class="mono" style="color:var(--dim)">Also see</span>${b.links.map((l,i)=>`<a href="/builds/go/${encodeURIComponent(b.slug)}/${i}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</div>`:''}</div></div>
+        <div class="actions">${b.hasLive?`<a class="go" href="/builds/go/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Open the live build ↗</a>`:''}<button class="ghost" type="button" data-chat="${esc(b.slug)}">Talk to us about one like it</button></div>
+        <p class="fine">Opens in a new tab. We note that you looked, so we can follow up. Prefer email? <a href="mailto:kyle@thefuturebasics.com?subject=${encodeURIComponent('About '+b.name)}">kyle@thefuturebasics.com</a></p>${(b.links||[]).length?`<div class="more"><span class="mono" style="color:var(--dim)">Also see</span>${b.links.map((l,i)=>`<a href="/builds/go/${encodeURIComponent(b.slug)}/${i}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</div>`:''}</div></div>
       ${b.summary||b.highlights.length?`<section class="sec"><h2>What it does</h2>${b.summary?`<p class="sum">${esc(b.summary)}</p>`:''}${b.highlights.length?`<div class="fgrid">${b.highlights.map(h=>`<div><b>${esc(h.title)}</b>${h.text?`<span>${esc(h.text)}</span>`:''}</div>`).join('')}</div>`:''}</section>`:''}
       ${b.stack.length?`<section class="sec"><h2>Built with</h2><div class="meta">${b.stack.map(s=>`<span class="tagchip">${esc(s)}</span>`).join('')}</div></section>`:''}
       ${(b.news||[]).length?`<section class="sec news"><h2>What’s new</h2><ul>${b.news.map(n=>`<li><span class="nd">${esc(day(n.at))}</span>${esc(n.text)}</li>`).join('')}</ul></section>`:(b.updatedAt?`<p class="upd">Updated ${esc(day(b.updatedAt))}</p>`:'')}
       ${also.length?`<section class="sec"><h2>More builds</h2><div class="grid">${also.map(card).join('')}</div></section>`:''}`;
-    document.title=b.name+' · Future Basics Builds';scrollTo(0,0);
+    document.title=b.name+' · Future Basics Builds';scrollTo(0,0);window.fbChat&&fbChat.context({looking:b.slug});
   }catch(x){history.replaceState(null,'',location.pathname);gallery()}
 }
-$('#app').addEventListener('click',e=>{const b=e.target.closest('[data-slug]'),rm=e.target.closest('[data-rm]');
+$('#app').addEventListener('click',e=>{const chat=e.target.closest('[data-chat]');if(chat){window.fbChat&&fbChat.open({looking:chat.dataset.chat});return}const b=e.target.closest('[data-slug]'),rm=e.target.closest('[data-rm]');
   if(e.target.closest('#fbtn')){const o=$('#facets').classList.toggle('open');$('#fbtn').setAttribute('aria-expanded',o)}
   else if(rm){for(const k of ['sector','status','tech'])F[k].delete(rm.dataset.rm);paint()}
   else if(e.target.closest('#clearAll')){for(const k of ['sector','status','tech'])F[k].clear();paint()}
@@ -241,5 +241,6 @@ async function boot(){
 }
 boot();
 </script>
+<script src="/chat-widget.js" data-source="showcase" defer></script>
 </body>
 </html>

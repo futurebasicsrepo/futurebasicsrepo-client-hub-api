@@ -1226,4 +1226,100 @@ await journey('J119', 'Sales automations: a trigger starts them for the right pe
   } finally { await new Promise(r => resend.close(r)); }
 });
 
+await journey('J121', 'Chat: a visitor talks to the assistant, is handed to a person when they ask or the assistant should not answer, leaves an email so we can reach them, a person takes over and replies, the showcase knows who they are, and nothing gets past the limits', async () => {
+  const room = await newRoom('121', { wait: false }), tag = `c${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  let ipn = 20; const newIp = () => `203.0.113.${++ipn}`;
+  // a visitor: their own address (so limits are per person), their own private token
+  const visitor = (ip = newIp()) => { const v = { token: '', ip }; v.call = (path, o = {}) => call(path, { ...o, headers: { 'x-forwarded-for': ip, ...(v.token ? { 'x-chat-token': v.token } : {}), ...(o.headers || {}) } }); v.say = async (body, extra = {}) => { const r = await v.call('/v1/chat/messages', { body: { body, source: 'site', page: '/', ...extra } }); if (r.json.token) v.token = r.json.token; return r; }; return v; };
+  const chatsList = async (status = 'all') => (await S(`/chats?status=${status}`)).json;
+  const latest = () => sql(`select id from chat_conversations order by created_at desc limit 1`);
+  const text = m => (m || []).map(x => `${x.author}:${x.body}`).join(' | ');
+  await S('/chats/settings', { method: 'PUT', body: { enabled: true, assistantOn: true } });
+
+  // the page, the script, and who may see the conversations
+  const fr = await call('/chat-frame'); ok(fr.status === 200 && /FBChat|chat\.js/.test(fr.text), 'the chat window is a page of its own');
+  const wj = await call('/chat-widget.js'); ok(wj.status === 200 && /fbChat/.test(wj.text), 'and the embed script is served');
+  const hdr = await fetch(BASE + '/chat-frame'); ok(/frame-ancestors[^;]*thefuturebasics\.com/.test(hdr.headers.get('content-security-policy') || ''), 'the window may be framed by the public site and the showcase, and by no one else');
+  ok((await call('/v1/sales/chats', { token: room.token })).status === 403 && (await call('/v1/sales/chats')).status === 401, 'clients and strangers cannot read the conversations');
+  const st0 = await call('/v1/chat/state'); ok(st0.json.enabled === true && /assistant/i.test(st0.json.greeting) && st0.json.conversation === null, 'a first visit has a greeting and no conversation yet');
+
+  // a visitor and the assistant
+  const A = visitor(); const r1 = await A.say('What do you do?');
+  ok(r1.status === 201 && r1.json.token && r1.json.conversation.status === 'bot' && r1.json.messages.length === 2 && /Fixture answer/.test(r1.json.messages[1].body) && r1.json.messages[1].author === 'assistant', 'the first message starts a conversation and the assistant answers', text(r1.json.messages));
+  ok(r1.json.conversation.needsEmail === true && Number(sql(`select count(*) from sales_contacts where email like '%-${tag}@chat.test'`)) === 0, 'nobody is added to the CRM until they leave an address');
+  const g = await A.call('/v1/chat/messages'); ok(g.status === 200 && g.json.messages.length === 2, 'the thread can be read back with their private token');
+  ok((await call('/v1/chat/messages', { headers: { 'x-chat-token': 'nope' } })).status === 404 && (await call('/v1/chat/messages')).status === 404, 'with no token, or a wrong one, there is nothing to read');
+  ok((await A.say('   ')).status === 422, 'an empty message is refused');
+  const long = await A.say('x'.repeat(5000)); ok(Number(sql(`select max(length(body)) from chat_messages where author='visitor' and conversation_id='${latest()}'`)) === 1000, 'a very long message is cut to a thousand characters');
+  const before = Number(sql(`select count(*) from chat_messages`)); const hp = await A.say('buy pills', { website: 'http://spam.example' }); ok(hp.status === 200 && Number(sql(`select count(*) from chat_messages`)) === before, 'a message with the hidden robot field filled in is dropped without a trace');
+  await A.say('<b>hi</b> <script>alert(1)</script>'); ok(Number(sql(`select count(*) from chat_messages where body like '%<script>alert(1)</script>%' and author='visitor'`)) === 1, 'markup in a message is kept as plain text (the window shows it escaped)');
+
+  // being handed over
+  const B = visitor(); await B.say('Hello'); const rp = await B.say('Can I talk to a person please?');
+  ok(rp.json.conversation.status === 'waiting' && /Leave your email/.test(text(rp.json.messages)), 'asking for a person hands the chat over, and asks where to reach them');
+  ok(!/Fixture answer to: Can I talk/.test(text(rp.json.messages)), 'without bothering the model');
+  let waiting = await chatsList('waiting'); ok(waiting.waiting >= 1 && waiting.chats.some(c => c.status === 'waiting' && c.handoff_reason === 'asked for a person'), 'staff see it waiting, and why');
+  const bad = await B.call('/v1/chat/contact', { body: { email: 'not an email' } }); ok(bad.status === 422, 'a bad address is refused');
+  const email = `visitor-${tag}@chat.test`; const lc = await B.call('/v1/chat/contact', { body: { email, name: 'Vera Visitor' } }); ok(lc.status === 200 && lc.json.conversation.email === email && lc.json.conversation.needsEmail === false, 'leaving an address is accepted');
+  const crm = (await S(`/contacts?q=${encodeURIComponent(email)}`)).json.contacts.find(c => c.email === email); ok(crm && crm.source === 'website' && (await S(`/contacts/${crm.id}`)).json.contact.tags.includes('chat'), 'they become a CRM contact from the website, tagged chat');
+  const cd = (await S(`/contacts/${crm.id}`)).json; ok(cd.activities.some(a => a.kind === 'note' && /not verified/.test(a.text)) && !cd.activities.some(a => a.kind === 'chat_in') && cd.tasks.some(t => /Chat waiting: Vera Visitor/.test(t.title)), 'their record has the chat as a note marked not verified, and staff have a task to answer it', cd.activities.map(a => a.kind + ':' + a.text));
+  const ec = (await S(`/contacts/${crm.id}/email-check`)).json; ok(ec.relationship?.ok === false && ec.needsConfirmation === true, 'an address someone typed does not count as knowing us, for email: a person has to confirm it');
+  ok((await B.call('/v1/chat/contact', { body: { email: `other-${tag}@chat.test` } })).json.conversation.email === email, 'an address cannot be swapped afterwards from the page');
+
+  // a person takes over
+  const cid = latest(), dt = await S(`/chats/${cid}`); ok(dt.status === 200 && dt.json.chat.verified === false && dt.json.chat.email === email && dt.json.messages.some(m => m.author_role === 'client') && dt.json.messages.some(m => m.system), 'staff open the thread, shaped for the shared chat');
+  ok(sql(`select unread_staff from chat_conversations where id='${cid}'`) === '0', 'opening it clears the unread count');
+  const rep = await S(`/chats/${cid}/messages`, { body: { body: 'Hi Vera, this is Kyle. Happy to help.' } }); ok(rep.status === 201, 'a person replies');
+  let seenByV = (await B.call('/v1/chat/messages')).json; ok(seenByV.conversation.status === 'person' && /staff:Hi Vera/.test(text(seenByV.messages)), 'the visitor sees it in their thread, and the chat is now with a person');
+  ok((await S(`/contacts/${crm.id}`)).json.activities.some(a => a.kind === 'chat_out' && /Hi Vera/.test(a.text)), 'and it is on their record');
+  const n0 = Number(sql(`select count(*) from chat_messages where conversation_id='${cid}'`)); const more = await B.say('Great, thanks! Tuesday works.');
+  ok(Number(sql(`select count(*) from chat_messages where conversation_id='${cid}'`)) === n0 + 1 && more.json.conversation.status === 'person', 'while a person has it, the assistant stays quiet');
+  ok(Number(sql(`select unread_staff from chat_conversations where id='${cid}'`)) >= 1, 'and staff see it as unread');
+  ok((await S(`/chats/${cid}`, { method: 'PUT', body: { status: 'bot' } })).status === 200 && /assistant/i.test(text((await B.call('/v1/chat/messages')).json.messages)), 'a person can hand it back to the assistant');
+  ok(/Fixture answer to: And what about/.test(text((await B.say('And what about sites?')).json.messages)), 'which answers again');
+  ok((await S(`/chats/${cid}`, { method: 'PUT', body: { status: 'closed' } })).status === 200 && (await B.call('/v1/chat/messages')).json.conversation.status === 'closed', 'a chat can be closed');
+  ok((await B.say('One more thing')).json.conversation.status === 'bot', 'and writing again starts it afresh');
+  ok((await S(`/chats/${cid}`, { method: 'PUT', body: { status: 'nonsense' } })).status === 422, 'a status that is not one is refused');
+
+  // what the assistant must not decide alone
+  const C = visitor(); const rc = await C.say('How much does a new site cost?'); ok(rc.json.conversation.status === 'waiting' && /Fixture answer/.test(text(rc.json.messages)) && true, 'a question about price goes to a person even if the assistant would answer');
+  const D = visitor(); ok((await D.say('I am unsure what you mean, are you unsure too?')).json.conversation.status === 'waiting', 'when the assistant says it is not sure, a person is asked');
+  const E = visitor(); const re = await E.say('This is a scam, I want a refund'); ok(re.json.conversation.status === 'waiting' && /sorry/i.test(text(re.json.messages)), 'someone who is upset goes to a person, with an apology');
+
+  // switches
+  await S('/chats/settings', { method: 'PUT', body: { assistantOn: false } }); const F = visitor(); const rf = await F.say('Hello there'); ok(rf.json.conversation.status === 'waiting' && !/assistant:/.test(text(rf.json.messages)), 'with the assistant switched off, every chat goes straight to a person');
+  await S('/chats/settings', { method: 'PUT', body: { assistantOn: true, enabled: false } }); ok((await visitor().say('Hi')).status === 503 && (await call('/v1/chat/state')).json.enabled === false, 'with chat switched off, nothing is accepted');
+  await S('/chats/settings', { method: 'PUT', body: { enabled: true } });
+  ok((await S('/chats/settings', { method: 'PUT', body: { dailyBotCap: 99999 } })).status === 422, 'an absurd daily limit is refused');
+  await S('/chats/settings', { method: 'PUT', body: { dailyBotCap: 0 } }); const G = visitor(); ok((await G.say('What do you build?')).json.conversation.status === 'waiting', 'at the daily limit on answers, people get a person instead');
+  await S('/chats/settings', { method: 'PUT', body: { dailyBotCap: 300 } });
+  await S('/chats/settings', { method: 'PUT', body: { greeting: 'Welcome to Future Basics!', about: 'We never do wholesale.' } }); ok((await call('/v1/chat/state')).json.greeting === 'Welcome to Future Basics!', 'the greeting can be changed');
+  await S('/chats/settings', { method: 'PUT', body: { greeting: '', about: '' } });
+
+  // the showcase knows who they are
+  const gb = (await call('/v1/admin/builds', { token: admin, body: { name: `Chat Build ${tag}`, visibility: 'listed', status: 'live', liveUrl: 'https://example.com/' + tag, summary: 'A build for chat.' } })).json;
+  const hid = (await call('/v1/admin/builds', { token: admin, body: { name: `Hidden Build ${tag}`, visibility: 'hidden', status: 'concept' } })).json;
+  const slugs = (await call('/v1/admin/builds', { token: admin })).json.builds; const slugOf = id => slugs.find(b => b.id === id).slug;
+  const guest = `guest-${tag}@chat.test`, jar = { c: '' };
+  const asV = async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { 'x-forwarded-for': '203.0.113.200', ...(jar.c ? { Cookie: jar.c } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(o.headers || {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const c = r.headers.getSetCookie?.().map(x => x.split(';')[0]).join('; '); if (c) jar.c = c; return { status: r.status, json: await r.json().catch(() => ({})) }; };
+  await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, send: false } });
+  await asV('/v1/builds/auth/code', { body: { email: guest } }); await sleep(150); await asV('/v1/builds/auth/verify', { body: { email: guest, code: codeFrom(LOG, guest) } });
+  const stV = await asV('/v1/chat/state'); ok(stV.json.signedIn === true && stV.json.email === guest, 'inside the showcase the chat knows who is signed in');
+  const rv = await asV('/v1/chat/messages', { body: { body: 'Tell me about this build', source: 'showcase', looking: slugOf(gb.id) } });
+  ok(rv.status === 201 && rv.json.conversation.email === guest && rv.json.conversation.needsEmail === false && rv.json.conversation.looking === `Chat Build ${tag}`, 'a signed-in viewer is not asked for an address, and the build they were looking at is noted');
+  const gc = (await S(`/contacts?q=${encodeURIComponent(guest)}`)).json.contacts.find(c => c.email === guest); ok(gc && (await S(`/contacts/${gc.id}`)).json.contact.tags.includes('chat') && (await S(`/contacts/${gc.id}`)).json.contact.tags.includes('showcase'), 'their contact is tagged showcase and chat');
+  const gcd = (await S(`/contacts/${gc.id}`)).json; ok(gcd.activities.some(a => a.kind === 'chat_in') && (await S(`/chats/${sql(`select id from chat_conversations where visitor_email='${guest}'`)}`)).json.chat.verified === true, 'a showcase visitor\'s address is verified, so their chat counts as chat_in on their record');
+  const rv2 = await asV('/v1/chat/messages', { body: { body: 'And this one?', source: 'showcase', looking: slugOf(hid.id), token: rv.json.token } });
+  ok(rv2.json.conversation.looking === `Chat Build ${tag}`, 'a build they may not see is never recorded');
+  const anonLook = visitor(); const al = await anonLook.say('hello', { looking: slugOf(gb.id) }); ok(al.json.conversation.looking === '', 'a visitor who is not signed in cannot name a build either');
+  await call(`/v1/admin/builds/${gb.id}`, { token: admin, method: 'DELETE' }); await call(`/v1/admin/builds/${hid.id}`, { token: admin, method: 'DELETE' });
+
+  // limits
+  const flood = visitor('198.51.100.7'); let blocked = 0; for (let n = 0; n < 70; n++) { const r = await flood.say(`message ${n}`); if (r.status === 429) { blocked++; break; } }
+  ok(blocked === 1, 'someone sending message after message is slowed down');
+  const spam = []; for (let n = 0; n < 10; n++) spam.push((await visitor('198.51.100.8').say('hi')).status); ok(spam.includes(429) && spam[0] === 201, 'so is one address opening conversation after conversation');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

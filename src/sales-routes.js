@@ -10,7 +10,7 @@ import { fireTrigger, fireTagsAdded, stopRuns } from './sales-automations-engine
 import { STAGES, OPEN_STAGES, STAGE_LABELS, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanSegment, cleanTags, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const HEAT_KINDS = ['showcase_demo', 'showcase_view', 'email_in', 'meeting', 'call'];
+const HEAT_KINDS = ['showcase_demo', 'showcase_view', 'email_in', 'chat_in', 'meeting', 'call'];
 const actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
 
 // A person (by email) showed up: find or create their contact, log what they did, and make sure there is a deal to work and, after a click-through, a follow-up.

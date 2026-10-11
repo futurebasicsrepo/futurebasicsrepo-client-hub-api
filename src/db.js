@@ -1065,6 +1065,43 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       unique (run_id, step)
     );
+    -- Chat (see src/chat-routes.js): a visitor's conversation with the assistant and then a person, linked to the CRM contact once we know who they are
+    alter table sales_activities drop constraint if exists sales_activities_kind_check;
+    alter table sales_activities add constraint sales_activities_kind_check check (kind in ('note','call','meeting','email_in','email_out','chat_in','chat_out','stage','showcase_view','showcase_demo','task','system'));
+    create table if not exists chat_conversations (
+      id uuid primary key default gen_random_uuid(),
+      token_hash text not null unique,
+      contact_id uuid references sales_contacts(id) on delete set null,
+      visitor_name text not null default '',
+      visitor_email text not null default '',
+      email_verified boolean not null default false,
+      source text not null default 'site',
+      page text not null default '',
+      looking_at text not null default '',
+      status text not null default 'bot' check (status in ('bot','waiting','person','closed')),
+      handoff_reason text not null default '',
+      assigned_to uuid references users(id) on delete set null,
+      bot_replies integer not null default 0,
+      unread_staff integer not null default 0,
+      visitor_seen_at timestamptz,
+      last_message_at timestamptz not null default now(),
+      ip_hash text not null default '',
+      created_at timestamptz not null default now(),
+      closed_at timestamptz
+    );
+    alter table chat_conversations add column if not exists email_verified boolean not null default false;
+    create index if not exists chat_conversations_status_idx on chat_conversations(status, last_message_at desc);
+    create index if not exists chat_conversations_contact_idx on chat_conversations(contact_id);
+    create table if not exists chat_messages (
+      id uuid primary key default gen_random_uuid(),
+      conversation_id uuid not null references chat_conversations(id) on delete cascade,
+      author text not null check (author in ('visitor','assistant','staff','system')),
+      author_name text not null default '',
+      staff_id uuid references users(id) on delete set null,
+      body text not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists chat_messages_conv_idx on chat_messages(conversation_id, created_at);
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,

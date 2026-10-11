@@ -233,6 +233,7 @@ export function registerBuildRoutes(app, d) {
   });
   app.delete('/v1/admin/builds/invites/:id', { preHandler: pre }, async (req, reply) => (await pool.query('update build_invites set revoked_at=now() where id=$1 and revoked_at is null', [req.params.id])).rowCount ? { ok: true } : reply.code(404).send({ error: 'Invite not found' }));
   app.get('/v1/admin/builds/activity', { preHandler: pre }, async () => ({ events: (await pool.query(`select v.email,b.name build_name,b.slug,v.kind,v.created_at from build_views v join builds b on b.id=v.build_id order by v.created_at desc limit 100`)).rows }));
+  return { sessionOf, allBuilds };
 }
 
 // Seeded once, hidden until someone has read them in the console and made them visible.
