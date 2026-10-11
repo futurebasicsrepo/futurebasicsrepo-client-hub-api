@@ -2089,6 +2089,76 @@ await journey('J144', 'Site prototypes: paste a tired site, get a score and a pi
   } finally { await new Promise(r => site.close(r)); }
 });
 
+await journey('J148', 'The studio: ask for a change and it becomes a new version, every version can be looked at, going back is a version too, and the live link only moves when a version is published', async () => {
+  const room = await newRoom('148', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  const http = (await import('node:http')).default;
+  const BAD = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">JOE'S PLUMBING</font></center><table><tr><td><a href="/services.html">Services</a></td></tr></table><p>Call us at 215-555-0142 for all your plumbing needs: leaks, drains, water heaters and sewer repair in Norristown PA 19401.</p><ul><li>Drain cleaning</li><li>Water heaters</li><li>Leak repair</li><li>Sewer line repair</li></ul><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2014 Joe's Plumbing</div></body></html>`;
+  const site = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(BAD); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r));
+  const waitFor = async (id, pred, ms = 25000) => { const t0 = Date.now(); for (;;) { const p = (await P(`/${id}`)).json.prototype; if (pred(p)) return p; if (Date.now() - t0 > ms) throw new Error(`timed out: ${p.status} ${p.step}`); await sleep(150); } };
+  const idle = id => waitFor(id, p => p.status === 'ready' || p.status === 'failed');
+  const page = async (path, token = kyle) => { const r = await fetch(`http://127.0.0.1:3123${path}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}); return { status: r.status, text: await r.text() }; };
+  try {
+    const r0 = await P('', { body: { url: 'studio-plumbing.test', city: 'Norristown, PA' } }); const id = r0.json.prototype.id; let p = await idle(id); const slug = p.slug;
+    ok(p.status === 'ready' && p.headVersion === 1 && p.liveVersion === null && p.pendingPublish === false, 'a build is version 1 and nothing is live yet', JSON.stringify([p.status, p.headVersion, p.liveVersion]));
+    let v = (await P(`/${id}/versions`)).json; ok(v.versions.length === 1 && v.versions[0].n === 1 && v.versions[0].source === 'build' && v.versions[0].head && !v.versions[0].live && v.versions[0].qa.pass && v.canEdit === true && v.perDay >= 1, 'the version list has the build, marked current, not live', JSON.stringify(v.versions[0]));
+    ok((await P('/meta')).json.canEdit === true, 'the page is told changes are possible');
+
+    // who may, and what is refused
+    ok((await call(`/v1/admin/prototypes/${id}/versions`)).status === 401 && (await call(`/v1/admin/prototypes/${id}/versions`, { token: room.token })).status === 403 && (await call(`/v1/admin/prototypes/${id}/edit`, { token: room.token, body: { instruction: 'Add a gallery' } })).status === 403 && (await call(`/v1/admin/prototypes/${id}/versions/1/preview`, { token: room.token })).status === 403, 'signed out people and clients cannot see or change anything');
+    ok((await P(`/${id}/edit`, { body: { instruction: '' } })).status === 422 && (await P(`/${id}/edit`, { body: { instruction: 'hi' } })).status === 422 && (await P('/not-an-id/edit', { body: { instruction: 'Add a gallery' } })).status === 404 && (await P(`/${id}/versions/99/preview`)).status === 404 && (await P(`/${id}/versions/99/restore`, { body: {} })).status === 404 && (await P(`/${id}/versions/1/restore`, { body: {} })).status === 409, 'no instruction, a bad id, a missing version and restoring the current version are refused');
+
+    // a change becomes version 2; while it runs, nothing else may start
+    let e = await P(`/${id}/edit`, { body: { instruction: 'Add a gallery of past work' } }); ok(e.status === 202 && e.json.prototype.status === 'editing', 'a change is accepted and runs in the background', e.status);
+    ok((await P(`/${id}/edit`, { body: { instruction: 'Add something else' } })).status === 409 && (await P(`/${id}/rebuild`, { body: {} })).status === 409 && (await P(`/${id}/versions/1/restore`, { body: {} })).status === 409 && (await P('', { body: { url: 'studio-plumbing.test' } })).status === 409, 'while it runs, another change, a rebuild, a restore and a new build for the same site are refused');
+    p = await idle(id); v = (await P(`/${id}/versions`)).json;
+    ok(p.status === 'ready' && p.headVersion === 2 && p.editError === '' && v.versions.length === 2 && v.versions[0].n === 2 && v.versions[0].source === 'edit' && v.versions[0].instruction === 'Add a gallery of past work' && v.versions[0].changes.added.includes('Add a gallery of past work') && v.versions[0].qa.pass && v.today >= 1, 'it becomes version 2, with what was asked and what it added', JSON.stringify(v.versions[0]));
+    const v1 = await page(`/v1/admin/prototypes/${id}/versions/1/preview`), v2 = await page(`/v1/admin/prototypes/${id}/versions/2/preview`), head = await page(`/v1/admin/prototypes/${id}/preview`);
+    ok(v1.status === 200 && !v1.text.includes('past work') && v2.text.includes('Add a gallery of past work') && head.text.includes('Add a gallery of past work') && v2.text.includes('fb-proto-ribbon'), 'version 1 is as it was, version 2 and the current page have the change');
+    ok((await call(`/p/${slug}`)).status === 404, 'the public link still shows nothing: a change is not published');
+
+    // publish: the link serves the version published, later changes wait
+    let pub = await P(`/${id}/publish`, { body: {} }); ok(pub.json.prototype.liveVersion === 2 && pub.json.prototype.pendingPublish === false, 'publishing makes version 2 live');
+    ok((await page(`/p/${slug}`, null)).text.includes('Add a gallery of past work'), 'the link shows version 2');
+    e = await P(`/${id}/edit`, { body: { instruction: 'Add a 24/7 emergency banner' } }); p = await idle(id);
+    ok(p.headVersion === 3 && p.liveVersion === 2 && p.pendingPublish === true, 'a change after publishing is version 3 and waits', JSON.stringify([p.headVersion, p.liveVersion, p.pendingPublish]));
+    let live = (await page(`/p/${slug}`, null)).text; ok(live.includes('Add a gallery of past work') && !live.includes('emergency banner'), 'the live link still shows version 2');
+    v = (await P(`/${id}/versions`)).json; ok(v.versions.find(x => x.n === 2).live && !v.versions.find(x => x.n === 3).live && v.versions.find(x => x.n === 3).head, 'the list says which version is live and which is current');
+    pub = await P(`/${id}/publish`, { body: {} }); ok(pub.json.prototype.liveVersion === 3 && !pub.json.prototype.pendingPublish, 'publishing again moves the link to version 3'); ok((await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'and the link shows it');
+
+    // going back is a version too, and it does not touch the live link
+    const rs = await P(`/${id}/versions/1/restore`, { body: {} }); p = rs.json.prototype;
+    ok(rs.status === 200 && rs.json.version === 4 && p.headVersion === 4 && p.liveVersion === 3 && p.pendingPublish === true, 'going back to version 1 makes version 4, current but not live', JSON.stringify([rs.status, rs.json.version, p.headVersion, p.liveVersion]));
+    v = (await P(`/${id}/versions`)).json; ok(v.versions[0].source === 'restore' && /version 1/.test(v.versions[0].instruction) && v.versions.length === 4, 'the list says it went back to version 1');
+    ok(!(await page(`/v1/admin/prototypes/${id}/preview`)).text.includes('past work') && (await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'the current page is version 1 again; the link still shows version 3');
+    ok((await page(`/v1/admin/prototypes/${id}/versions/3/preview`)).text.includes('emergency banner'), 'version 3 is still there to look at, and to go back to');
+    await P(`/${id}/publish`, { body: {} }); ok(!(await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'publishing puts the link back to the earlier page');
+
+    // a change that cannot be made leaves everything as it was, and says why
+    const before = (await P(`/${id}/versions`)).json.versions.length;
+    e = await P(`/${id}/edit`, { body: { instruction: 'FAIL this one on purpose' } }); p = await idle(id);
+    ok(p.status === 'ready' && /break the quality check/.test(p.editError) && (await P(`/${id}/versions`)).json.versions.length === before && p.headVersion === 4, 'a change that would break the page is not applied, and the reason is shown', p.editError);
+    e = await P(`/${id}/edit`, { body: { instruction: 'Add a reviews strip' } }); p = await idle(id); ok(p.headVersion === 5 && p.editError === '', 'the next change works and the reason is cleared');
+
+    // a rebuild is a version too; the live link waits
+    await P(`/${id}/rebuild`, { body: {} }); p = await idle(id); v = (await P(`/${id}/versions`)).json;
+    ok(p.headVersion === 6 && v.versions[0].source === 'rebuild' && p.liveVersion === 4 && p.pendingPublish === true, 'a rebuild is a new version and does not touch the live link', JSON.stringify([p.headVersion, v.versions[0].source, p.liveVersion]));
+    ok(sql(`select count(*) from prototype_versions where prototype_id='${id}'`) === '6' && Number(sql(`select cost_cents from prototypes where id='${id}'`)) > 0, 'every version is kept, and the cost of the changes adds up on the prototype', sql(`select count(*) from prototype_versions where prototype_id='${id}'`) + ' / ' + sql(`select cost_cents from prototypes where id='${id}'`));
+
+    // the daily limit
+    const used = Number(sql(`select count(*) from prototype_versions where source='edit' and created_at > now() - interval '24 hours'`)), cap = (await P(`/${id}/versions`)).json.perDay;
+    sql(`insert into prototype_versions(prototype_id,n,source,html) select '${id}', 1000+g, 'edit', 'x' from generate_series(1,${Math.max(0, cap - used)}) g`);
+    e = await P(`/${id}/edit`, { body: { instruction: 'One change too many' } }); ok(e.status === 429 && /changes a day/.test(e.json.error), 'the daily limit of changes is enforced with a plain message', JSON.stringify(e.json));
+    sql(`delete from prototype_versions where prototype_id='${id}' and n >= 1000`);
+    ok((await P(`/${id}/edit`, { body: { instruction: 'Back under the limit' } })).status === 202, 'and it works again under the limit'); await idle(id);
+
+    // delete takes the versions with it
+    ok((await P(`/${id}`, { method: 'DELETE' })).json.ok === true && sql(`select count(*) from prototype_versions where prototype_id='${id}'`) === '0' && (await call(`/p/${slug}`)).status === 404, 'deleting a prototype removes its versions and its link');
+  } finally { await new Promise(r => site.close(r)); }
+});
+
 await journey('J146', 'Finding leads: search a trade and a town, skip the directories and the ones we know, rank the tired sites first, send a lead into the CRM, build for it, and watch the deal follow', async () => {
   const room = await newRoom('146', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
   const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };

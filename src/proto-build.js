@@ -236,3 +236,68 @@ export async function buildPrototype(brief, { env = process.env, client = null, 
   onStep('Building from the template (Claude is not connected)');
   html = autofix(templateSite(brief), brief); return { html, qa: qaCheck(html, brief), usage, model, note: 'Claude is not connected, so this uses the standard template.' };
 }
+
+// ---------- the studio: change a page that already exists, one instruction at a time ----------
+export const EDIT_RULES = `You are revising a prototype website that already exists, for a Future Basics teammate who is shaping it step by step. Return the COMPLETE updated HTML document (<!doctype html> to </html>) and nothing else: no explanation, no code fence.
+
+Make the change that was asked for and only that. Keep every other section, sentence, class, script and style exactly as it is, so the page does not drift from one version to the next. The standard above still holds for the whole page after your change: keep the tap-to-call links and the sticky call bar, the reduced-motion handling, the structured data, the skip link and the "Prototype by Future Basics" footer line. Facts come only from the brief; anything new that the brief does not give you (sample reviews, prices, counts, areas, hours) is marked data-illustrative with a visible "Sample" tag.
+
+If the request would break the standard (removing the phone number or the footer credit, adding an outside script, a form that sends data somewhere, text that cannot be read), do the closest version that keeps the standard. If the request is about a part of the page that does not exist, add it where it belongs.`;
+
+export function editPrompt(html, instruction, brief, history = []) {
+  const b = { ...brief }; delete b.problems;
+  const past = history.length ? `\n\nEarlier changes already made in this session (for context, do not redo them):\n${history.map(h => `- ${clip(h.instruction, 200)}`).join('\n')}` : '';
+  return `BRIEF (JSON), the only source of facts:\n${JSON.stringify(b, null, 1)}${past}\n\nTHE CURRENT PAGE:\n${html}\n\nTHE CHANGE TO MAKE:\n${clip(instruction, 1200)}\n\nReturn the complete updated page.`;
+}
+
+// → { html, usage, model, stop }. Same streaming as the first build, with the current page in the prompt.
+export async function editWithClaude(html, instruction, brief, { env = process.env, client = null, history = [], extra = '', effort = 'medium', maxTokens = 48000 } = {}) {
+  if (!env.ANTHROPIC_API_KEY && !client) throw new Error('Claude is not connected (the service needs ANTHROPIC_API_KEY)');
+  const c = client || new Anthropic(), model = PROTO_MODEL(env);
+  const stream = c.messages.stream({ model, max_tokens: maxTokens, system: `${STANDARD}\n\n${EDIT_RULES}`, output_config: { effort }, messages: [{ role: 'user', content: editPrompt(html, instruction, brief, history) + (extra ? `\n\n${extra}` : '') }] });
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to make this change');
+  if (msg.stop_reason === 'max_tokens') throw new Error('The page is too long to change in one go: ask for something smaller');
+  const text = msg.content.filter(x => x.type === 'text').map(x => x.text).join('');
+  const out = extractHtml(text); if (!out) throw new Error('Claude did not send back a web page');
+  return { html: out, usage: { input: msg.usage?.input_tokens || 0, output: msg.usage?.output_tokens || 0 }, model, stop: msg.stop_reason };
+}
+
+// What a change did, in words a person can scan: headings added and removed, and the size.
+export function changeSummary(before, after) {
+  const heads = h => [...String(h || '').matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)].map(m => clip(m[1].replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"'), 70)).filter(Boolean);
+  const a = heads(before), b = heads(after), count = (arr, x) => arr.filter(y => y === x).length;
+  const added = [...new Set(b.filter(x => count(b, x) > count(a, x)))].slice(0, 8), removed = [...new Set(a.filter(x => count(a, x) > count(b, x)))].slice(0, 8);
+  const kb = t => Math.round(Buffer.byteLength(String(t || '')) / 102.4) / 10;
+  return { added, removed, sizeKB: kb(after), deltaKB: Math.round((kb(after) - kb(before)) * 10) / 10, same: String(before || '') === String(after || '') };
+}
+
+// Ask Claude for the change, fix what is always safe to fix, check it against the standard; one repair pass. A change that makes the page worse than it was is not applied.
+export async function editPrototype(html, instruction, brief = {}, { env = process.env, client = null, onStep = () => {}, generate = editWithClaude, history = [] } = {}) {
+  if (!protoAiReady(env) && !client) throw new Error('Changing a page needs Claude connected (the service needs ANTHROPIC_API_KEY)');
+  const base = qaCheck(html, brief);
+  onStep('Making the change with Claude');
+  const r = await generate(html, instruction, brief, { env, client, history }); let usage = { ...r.usage }, out = autofix(r.html, brief), qa = qaCheck(out, brief);
+  const worseOf = q => q.failed.filter(c => !base.failed.some(b => b.id === c.id));
+  if (worseOf(qa).length) {
+    onStep('Fixing what the quality check found');
+    const list = worseOf(qa).map(c => `- ${c.label}${c.detail ? ` (${c.detail})` : ''}`).join('\n');
+    try {
+      const r2 = await generate(html, instruction, brief, { env, client, history, extra: `Your previous attempt at this change failed these required checks:\n${list}\nMake the same change again so that every one passes.` });
+      usage = { input: usage.input + r2.usage.input, output: usage.output + r2.usage.output }; const fixed = autofix(r2.html, brief), q2 = qaCheck(fixed, brief); if (worseOf(q2).length <= worseOf(qa).length) { out = fixed; qa = q2; }
+    } catch { /* keep the first attempt and judge it below */ }
+  }
+  if (out.length < html.length * 0.4) throw new Error('Claude sent back a much shorter page than the one it was given, so nothing was changed. Try asking for it differently.');
+  const worse = worseOf(qa);
+  if (worse.length) throw new Error(`The change would break the quality check (${worse.slice(0, 3).map(c => c.label).join('; ')}), so nothing was changed. Try wording it differently.`);
+  return { html: out, qa, usage, model: r.model, note: '' };
+}
+
+// Journeys only (PROTOTYPE_TEST_EDIT): a change that adds the instruction as a section, so the studio can be exercised without Claude.
+export async function stubEdit(html, instruction, brief = {}, { onStep = () => {} } = {}) {
+  onStep('Making the change (test)');
+  await new Promise(r => setTimeout(r, Number(process.env.PROTOTYPE_TEST_EDIT_MS || 0)));
+  if (/^FAIL/i.test(instruction)) throw new Error('The change would break the quality check (test), so nothing was changed.');
+  const out = autofix(html.replace(/<\/main>/i, `<section data-edit="1"><h2>${esc(clip(instruction, 160))}</h2><p>Added in the studio.</p></section></main>`), brief);
+  return { html: out, qa: qaCheck(out, brief), usage: { input: 10, output: 20 }, model: 'test', note: '' };
+}

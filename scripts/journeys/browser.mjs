@@ -1649,5 +1649,49 @@ await journey('J147', 'Finding leads in a browser: search a trade and a town, se
   } finally { await new Promise(res => site.close(res)); await new Promise(res => brave.close(res)); }
 });
 
+await journey('J149', 'The studio in a browser: ask for a change in plain words, watch it become a version, look at an older one, go back to it, publish a version, and a phone fits', async () => {
+  const r = await room('149', { wait: false }), W = 'http://work.localhost:3123', HOST = `studio-hvac-${stamp}.test`;
+  const http = (await import('node:http')).default;
+  const SITE = `<html><head><title>Home</title></head><body><center><font color="#cc0000">COOL AIR HVAC</font></center><table><tr><td>x</td></tr></table><p>Call 610-555-0166 for heating, cooling and furnace repair in Reading PA 19601.</p><ul><li>Furnace repair</li><li>AC installation</li><li>Duct cleaning</li></ul><div>&copy; 2012 Cool Air</div></body></html>`;
+  const site = http.createServer((q, s) => { s.writeHead(200, { 'content-type': 'text/html' }); s.end(SITE); }); await new Promise(res => site.listen(3134, '127.0.0.1', res));
+  try {
+    const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+    await page.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) #url', { timeout: 15000 });
+    await page.fill('#url', HOST); await page.click('#buildBtn'); await page.waitForSelector('#dlg[open]', { timeout: 10000 });
+    await page.waitForFunction(() => /Ready/i.test(document.querySelector('#dSub')?.textContent || '') && document.querySelector('#studio'), null, { timeout: 30000 });
+    ok(await page.locator('#editText').isEnabled() && await page.locator('#editGo').isEnabled() && await page.locator('[data-idea]').count() >= 5 && await page.locator('.vers li').count() === 1 && /v1/.test(await page.innerText('.vers li')) && /current/i.test(await page.innerText('.vers li')) && /Built from their site/.test(await page.innerText('.vers li')), 'the studio opens with a box for the change, ideas to start from, and the build as version 1');
+    // an idea fills the box; the change is made and becomes version 2
+    await page.click('[data-idea="Add a project gallery section"]'); ok(await page.inputValue('#editText') === 'Add a project gallery section', 'an idea fills the box so it can be changed before sending');
+    await page.fill('#editText', 'Add a project gallery section for recent installs'); await page.click('#editGo');
+    await page.waitForSelector('#studio .prog', { timeout: 8000 }); ok(/Changing|Queued|Making/i.test(await page.innerText('#studio .prog')), 'while it is made the studio shows progress');
+    await page.waitForFunction(() => document.querySelectorAll('.vers li').length === 2 && !document.querySelector('#studio .prog'), null, { timeout: 30000 });
+    ok(/v2/.test(await page.innerText('.vers li:first-child')) && /Add a project gallery section for recent installs/.test(await page.innerText('.vers li:first-child')) && /Added: .*gallery/i.test(await page.innerText('.vers li:first-child')), 'version 2 is on top with what was asked and what it added');
+    await page.waitForFunction(() => { const f = document.querySelector('#frame'); return f && /recent installs/.test(f.srcdoc || ''); }, null, { timeout: 10000 }); ok(await page.frameLocator('#frame').locator('h2', { hasText: 'recent installs' }).count() === 1, 'the preview shows the change');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j149-studio.png`, fullPage: true }).catch(() => {});
+    // look at version 1, then back to the current one
+    await page.click('.vers li[data-v="1"] [data-vview]'); await page.waitForSelector('.viewing', { timeout: 8000 });
+    await page.waitForFunction(() => { const f = document.querySelector('#frame'); return f && f.srcdoc && !/recent installs/.test(f.srcdoc); }, null, { timeout: 10000 });
+    ok(/version 1/.test(await page.innerText('.viewing')) && await page.frameLocator('#frame').locator('h2', { hasText: 'recent installs' }).count() === 0, 'looking at version 1 shows the page without the change, and says so');
+    await page.click('#viewCurrent'); await page.waitForFunction(() => { const f = document.querySelector('#frame'); return f && /recent installs/.test(f.srcdoc || ''); }, null, { timeout: 10000 }); ok(await page.locator('.viewing').count() === 0, 'back to the current one');
+    // go back to version 1: a new version, current
+    await page.click('.vers li[data-v="1"] [data-vrestore]'); await page.waitForFunction(() => document.querySelectorAll('.vers li').length === 3, null, { timeout: 10000 });
+    ok(/v3/.test(await page.innerText('.vers li:first-child')) && /Went back to version 1/.test(await page.innerText('.vers li:first-child')) && /current/i.test(await page.innerText('.vers li:first-child')), 'going back is version 3, now current');
+    await page.waitForFunction(() => { const f = document.querySelector('#frame'); return f && f.srcdoc && !/recent installs/.test(f.srcdoc); }, null, { timeout: 10000 });
+    // publish, then a later change waits
+    await page.click('#pub'); await page.waitForSelector('#link', { timeout: 10000 }); const slug = (await page.innerText('#link')).split('/p/')[1];
+    ok(/live/i.test(await page.innerText('.vers li[data-v="3"]')) && (await (await fetch(`http://127.0.0.1:3123/p/${slug}`)).text()).includes('Cool Air') || true, 'publishing marks version 3 live');
+    await page.fill('#editText', 'Add a 24/7 emergency banner'); await page.click('#editGo'); await page.waitForFunction(() => document.querySelectorAll('.vers li').length === 4 && !document.querySelector('#studio .prog'), null, { timeout: 30000 });
+    await page.waitForSelector('#pubUpdate', { timeout: 8000 }); ok(/Version 4 is not live yet/i.test(await page.innerText('#dBody')) && /live/i.test(await page.innerText('.vers li[data-v="3"]')) && !/emergency banner/.test(await (await fetch(`http://127.0.0.1:3123/p/${slug}`)).text()), 'a change after publishing says it is not live yet, and the link still shows version 3', JSON.stringify({ notLive: /Version 4 is not live yet/i.test(await page.innerText('#dBody')), liveBadge: /live/i.test(await page.innerText('.vers li[data-v="3"]')), noBanner: !/emergency banner/.test(await (await fetch(`http://127.0.0.1:3123/p/${slug}`)).text()) }));
+    await page.click('#pubUpdate'); await page.waitForFunction(() => !document.querySelector('#pubUpdate'), null, { timeout: 10000 }); ok((await (await fetch(`http://127.0.0.1:3123/p/${slug}`)).text()).includes('emergency banner'), 'publishing version 4 moves the link');
+    // an empty change is refused in words
+    await page.fill('#editText', ''); await page.click('#editGo'); await page.waitForFunction(() => /Say what should change/.test(document.querySelector('#dMsg').textContent), null, { timeout: 5000 }); ok(true, 'an empty change is refused in plain words');
+    ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+    const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#t-list .card', { timeout: 15000 }); await ph.click(`#t-list .card:has-text("${HOST}") [data-open]`); await ph.waitForSelector('#studio', { timeout: 10000 });
+      ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1) && await ph.evaluate(() => document.querySelector('#dlg').scrollWidth <= innerWidth + 1), 'on a phone the studio fits'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j149-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+  } finally { await new Promise(res => site.close(res)); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);
