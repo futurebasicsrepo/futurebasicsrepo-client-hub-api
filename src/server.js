@@ -20,6 +20,7 @@ import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTI
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
+import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
@@ -632,7 +633,7 @@ registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSett
 registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
-registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting });
+const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
@@ -5671,6 +5672,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
 jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
+if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });
 // The showcase follows the apps: hourly, look at each build's repository for merged changes (needs a GitHub token to read private repositories; 'Sync now' on the builds page works without the job)
