@@ -123,3 +123,27 @@ test('Google exchange failure and the sign-in page order', async (t) => {
   assert.ok(page.indexOf('id="emailForm"') < page.indexOf('Continue with Google'), 'email (passwordless) comes first');
   assert.ok(page.indexOf('Continue with Google') < page.indexOf('Continue with Facebook'));
 });
+
+test('company Google sign-in: hd asks Google for a Future Basics account, and only a Workspace-managed one opens /admin', async (t) => {
+  // A Future Basics Workspace account: Google returns hd.
+  const ws = app(t, { google: { me: { sub: 'g-fb', email: 'kyle@thefuturebasics.com', hd: 'thefuturebasics.com' } } });
+  const login = await ws.get('/admin');
+  assert.match(login.body, /href="\/auth\/google\/start\?hd=thefuturebasics\.com&amp;next=\/admin"|href="\/auth\/google\/start\?hd=thefuturebasics\.com&next=\/admin"/, 'the admin offers company Google sign-in');
+  const start = await ws.get('/auth/google/start?hd=thefuturebasics.com&next=/admin');
+  assert.equal(new URL(start.headers.location).searchParams.get('hd'), 'thefuturebasics.com', 'Google shows only company accounts');
+  const flow = ws.cookies(start).find((c) => c.startsWith('spot_oauth='));
+  const cb = await ws.get(`/auth/google/callback?code=c&state=${new URL(start.headers.location).searchParams.get('state')}`, flow);
+  assert.equal(cb.headers.location, '/admin');
+  const session = ws.cookies(cb).find((c) => /^spot_session=.+/.test(c));
+  assert.equal((await ws.get('/v1/admin/health', session)).statusCode, 200, 'staff');
+
+  // Any other hd is ignored, so the parameter can't be used to steer people elsewhere.
+  const other = await ws.get('/auth/google/start?hd=evil.example&next=/admin');
+  assert.equal(new URL(other.headers.location).searchParams.get('hd'), null);
+
+  // A personal Google account that uses the company address (no hd) signs in but isn't staff.
+  const personal = app(t, { google: { me: { sub: 'g-personal', email: 'kyle@thefuturebasics.com' } } });
+  const p = await personal.signIn('google', { next: '/admin' });
+  assert.ok(p.session);
+  assert.equal((await personal.get('/v1/admin/health', p.session)).statusCode, 401);
+});
