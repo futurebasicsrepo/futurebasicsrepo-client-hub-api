@@ -22,6 +22,7 @@ import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPaym
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerFactoryRoutes } from './factories-routes.js'
 import { registerProtoRoutes } from './proto-routes.js'
+import { stubEdit } from './proto-build.js';
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
@@ -636,7 +637,8 @@ registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 // PROTOTYPE_TEST_ORIGIN is only set by the journeys: every site is then read from that stand-in server instead of the internet
 registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle, env: process.env, log: app.log, publicUrl: process.env.BUILDS_PUBLIC_URL || 'https://builds.thefuturebasics.com',
-  crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {} });
+  crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {},
+  edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));

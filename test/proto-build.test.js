@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractFacts, auditSite } from '../src/proto-crawl.js';
-import { buildBrief, templateSite, qaCheck, autofix, extractHtml, generateWithClaude, buildPrototype, protoCostCents, STANDARD, userPrompt } from '../src/proto-build.js';
+import { buildBrief, templateSite, qaCheck, autofix, extractHtml, generateWithClaude, buildPrototype, protoCostCents, STANDARD, userPrompt, editPrompt, editWithClaude, editPrototype, changeSummary, stubEdit } from '../src/proto-build.js';
 
 const SITE = `<html><head><title>Joe's Plumbing and Drain | Norristown PA</title><style>.a{color:#c1272d}.b{background:#1f2a44}</style></head><body><h1>Joe's Plumbing</h1>
 <p>Family plumbers serving Norristown PA 19401. Call 215-555-0142. Licensed and insured. Free estimates.</p><ul><li>Drain cleaning</li><li>Water heaters</li><li>Sewer line repair</li><li>Leak detection</li></ul>
@@ -73,4 +73,53 @@ test('the whole step: a good answer, a repaired one, a failed one, and no Claude
   assert.equal(r.model, 'template'); assert.ok(r.qa.pass); assert.match(r.note, /standard template/);
   r = await buildPrototype(b, { env: {}, onStep }); assert.equal(r.model, 'template'); assert.match(r.note, /not connected/); assert.ok(r.qa.pass);
   assert.equal(protoCostCents({ input: 1_000_000, output: 100_000 }, {}), 750); assert.equal(protoCostCents({ input: 1000, output: 8000 }, { PROTOTYPE_PRICE: '3,15' }), 12.3);
+});
+
+// ---------- the studio ----------
+const good = () => { const b = brief(); return { b, html: autofix(templateSite(b), b) }; };
+const reply = html => ({ html, usage: { input: 100, output: 200 }, model: 'm' });
+
+test('what a change did is told in headings and size', () => {
+  const a = '<main><h1>Joe</h1><h2>Services</h2><h2>Reviews</h2></main>', b = '<main><h1>Joe</h1><h2>Services</h2><h2>Our <em>work</em> &amp; gallery</h2></main>';
+  const c = changeSummary(a, b); assert.deepEqual(c.added, ['Our work & gallery']); assert.deepEqual(c.removed, ['Reviews']); assert.equal(c.same, false); assert.ok(c.sizeKB >= 0);
+  assert.equal(changeSummary(a, a).same, true); assert.deepEqual(changeSummary('', a).added, ['Joe', 'Services', 'Reviews']);
+});
+
+test('the change prompt carries the whole page, the instruction, the facts and the earlier changes', () => {
+  const { b, html } = good(), p = editPrompt(html, 'Make the hero bolder', b, [{ instruction: 'Add a gallery' }]);
+  assert.ok(p.includes(html) && p.includes('Make the hero bolder') && p.includes('Add a gallery') && p.includes('Sewer line repair') && !p.includes('"problems"'));
+});
+
+test('asking Claude for a change: streamed, the standard and the editing rules as the system prompt', async () => {
+  const { b, html } = good(); let seen;
+  const client = { messages: { stream: o => { seen = o; return { finalMessage: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Here you go:\n```html\n' + html + '\n```' }], usage: { input_tokens: 5, output_tokens: 7 } }) }; } } };
+  const r = await editWithClaude(html, 'Bolder hero', b, { client, env: {} });
+  assert.equal(r.html, html); assert.deepEqual(r.usage, { input: 5, output: 7 }); assert.ok(seen.system.includes('THE STANDARD') && seen.system.includes('revising a prototype')); assert.ok(seen.messages[0].content.includes('Bolder hero'));
+  const cut = { messages: { stream: () => ({ finalMessage: async () => ({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '<!doctype html><html>' }], usage: {} }) }) } };
+  await assert.rejects(() => editWithClaude(html, 'x', b, { client: cut, env: {} }), /too long/);
+  await assert.rejects(() => editWithClaude(html, 'x', b, { env: {} }), /not connected/);
+});
+
+test('a change: applied when it holds up, repaired once, refused when it makes the page worse or throws the page away', async () => {
+  const { b, html } = good(), env = { ANTHROPIC_API_KEY: 'k' }, steps = [];
+  const ok = html.replace('</main>', '<section><h2>Our work</h2><p>Gallery</p></section></main>');
+  let r = await editPrototype(html, 'Add a gallery', b, { env, onStep: t => steps.push(t), generate: async () => reply(ok) });
+  assert.ok(r.qa.pass && r.html.includes('Our work') && r.usage.input === 100);
+  // a first attempt that loses the phone link is repaired by the second
+  const broken = ok.replace(/href="tel:[^"]*"/g, 'href="#"'); let calls = 0, extra;
+  r = await editPrototype(html, 'Add a gallery', b, { env, onStep: t => steps.push(t), generate: async (h, i, br, o) => { calls++; extra = o.extra; return reply(calls === 1 ? broken : ok); } });
+  assert.equal(calls, 2); assert.match(extra, /failed these required checks/); assert.ok(r.qa.pass && r.usage.input === 200 && steps.includes('Fixing what the quality check found'));
+  // both attempts worse than the page it was given: nothing is changed, with the reason
+  await assert.rejects(() => editPrototype(html, 'Remove the phone', b, { env, generate: async () => reply(broken) }), /break the quality check/);
+  // a page that is mostly gone
+  await assert.rejects(() => editPrototype(html, 'x', b, { env, generate: async () => reply('<!doctype html><html lang="en"><head><title>x</title></head><body>hi</body></html>') }), /much shorter|break the quality check/);
+  // no Claude: said plainly, and a page that already failed a check is not blamed for it
+  await assert.rejects(() => editPrototype(html, 'x', b, { env: {} }), /needs Claude connected/);
+  const weak = html.replace(/<meta[^>]+name="description"[^>]*>/i, ''); assert.ok(!qaCheck(weak, b).pass);
+  r = await editPrototype(weak, 'Add a gallery', b, { env, generate: async () => reply(weak.replace('</main>', '<section><h2>Work</h2></section></main>')) }); assert.ok(r.html.includes('Work'), 'an old failure does not block a change that adds none');
+});
+
+test('the test stand-in adds the instruction as a section and can be told to fail', async () => {
+  const { b, html } = good(), r = await stubEdit(html, 'Add a <gallery>', b); assert.ok(r.qa.pass && r.html.includes('data-edit') && r.html.includes('&lt;gallery&gt;'));
+  await assert.rejects(() => stubEdit(html, 'FAIL please', b), /break the quality check/);
 });

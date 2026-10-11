@@ -9,7 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import { crawlSite, auditSite, cleanSiteUrl } from './proto-crawl.js';
 import { INDUSTRIES, industryByKey, detectIndustry } from './proto-industry.js';
-import { buildBrief, buildPrototype, protoCostCents, protoAiReady, PROTO_MODEL } from './proto-build.js';
+import { buildBrief, buildPrototype, editPrototype, changeSummary, protoCostCents, protoAiReady, PROTO_MODEL } from './proto-build.js';
 import { slugify } from './builds.js';
 import { findLeads, SEARCH_TERMS } from './proto-leads.js';
 
@@ -23,8 +23,9 @@ const RIBBON = `<style>#fb-proto-ribbon{position:fixed;left:12px;bottom:12px;z-i
 export const withRibbon = html => /<\/body>/i.test(html) ? html.replace(/<\/body>/i, RIBBON + '</body>') : html + RIBBON;
 
 export function registerProtoRoutes(app, d) {
-  const { pool, authenticate, adminOnly, throttle = () => true, env = process.env, log = console, publicUrl = 'https://builds.thefuturebasics.com', client = null, crawl = crawlSite, build = buildPrototype } = d;
-  const pre = [authenticate, adminOnly], perDay = () => Math.max(1, Number(env.PROTOTYPES_PER_DAY || 25));
+  const { pool, authenticate, adminOnly, throttle = () => true, env = process.env, log = console, publicUrl = 'https://builds.thefuturebasics.com', client = null, crawl = crawlSite, build = buildPrototype, edit = null } = d;
+  const pre = [authenticate, adminOnly], perDay = () => Math.max(1, Number(env.PROTOTYPES_PER_DAY || 25)), editsPerDay = () => Math.max(1, Number(env.PROTOTYPE_EDITS_PER_DAY || 80));
+  const canEdit = () => Boolean(edit) || protoAiReady(env), BUSY = ['queued', 'reading', 'building', 'editing'];
   const urlOf = r => `${String(publicUrl).replace(/\/$/, '')}/p/${r.slug}`;
 
   const view = (r, full = false) => {
@@ -36,15 +37,41 @@ export function registerProtoRoutes(app, d) {
       qa: q ? { pass: q.pass, score: q.score, sizeKB: q.sizeKB, failed: (q.failed || []).map(c => c.label), advisory: (q.advisory || []).length, illustrative: q.illustrative || [], usesTheirImages: q.usesTheirImages, ...(full ? { checks: q.checks } : {}) } : null,
       site: full && r.facts ? { title: r.facts.title, description: r.facts.description, phones: r.facts.phones, emails: r.facts.emails, address: r.facts.address, services: (r.facts.services || []).slice(0, 12), colors: r.facts.colors, pages: (r.facts.pages || []).length, generator: r.facts.generator } : undefined,
       buildId: r.build_id, contactId: r.contact_id, dealId: r.deal_id, published: Boolean(r.published_at), publishedAt: r.published_at, shareUrl: r.published_at ? urlOf(r) : '', hasHtml: Boolean(r.has_html ?? r.html),
+      headVersion: r.head_version, liveVersion: r.live_version, pendingPublish: Boolean(r.published_at && r.head_version && r.live_version !== r.head_version), editError: r.status === 'ready' ? r.error : '',
       views: r.views, lastViewedAt: r.last_viewed_at, createdAt: r.created_at, updatedAt: r.updated_at
     };
   };
-  const COLS = `id,slug,url,host,company,industry,industry_from,city,notes,status,step,steps,facts,audit,qa,model,input_tokens,output_tokens,cost_cents,note,error,build_id,contact_id,deal_id,views,last_viewed_at,created_at,updated_at,published_at,(html is not null) has_html`;
+  const COLS = `id,slug,url,host,company,industry,industry_from,city,notes,status,step,steps,facts,audit,qa,model,input_tokens,output_tokens,cost_cents,note,error,build_id,contact_id,deal_id,views,last_viewed_at,created_at,updated_at,published_at,head_version,live_version,(html is not null) has_html`;
   const get = async id => (await pool.query(`select ${COLS} from prototypes where id=$1`, [id])).rows[0];
 
   // ---------- the pipeline: read → audit → brief → build → check, one at a time per slot, with progress on the row ----------
   const queue = []; let running = 0; const SLOTS = Math.max(1, Number(env.PROTOTYPE_CONCURRENCY || 2));
   const step = async (id, text, status = null) => pool.query(`update prototypes set step=$2, steps=steps || $3::jsonb, status=coalesce($4,status), updated_at=now() where id=$1`, [id, text, JSON.stringify([{ at: new Date().toISOString(), text }]), status]).catch(() => {});
+  // Every build, change and restore is a saved version; the newest is the page on the row. Older ones past 40 are dropped unless they are live.
+  async function addVersion(id, { html, qa, source, instruction = '', model = '', usage = { input: 0, output: 0 }, cost = 0, note = '', by = null, before = '' }) {
+    const ch = changeSummary(before, html);
+    const n = (await pool.query(`with p as (update prototypes set head_version=head_version+1, updated_at=now() where id=$1 returning head_version)
+      insert into prototype_versions(prototype_id,n,source,instruction,html,qa,changes,model,input_tokens,output_tokens,cost_cents,note,created_by) select $1, head_version, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12 from p returning n`,
+      [id, source, clip(instruction, 1200), html, JSON.stringify(qa || null), JSON.stringify(ch), model, usage.input || 0, usage.output || 0, cost, clip(note, 300), by])).rows[0].n;
+    await pool.query(`delete from prototype_versions where prototype_id=$1 and n < $2 and n is distinct from (select live_version from prototypes where id=$1)`, [id, n - 39]).catch(() => {});
+    return n;
+  }
+  // a change to the newest page: ask, check, and save it as a new version (or leave the page as it was and say why)
+  async function runEdit(id, job) {
+    const r = (await pool.query('select * from prototypes where id=$1', [id])).rows[0]; if (!r) return;
+    try {
+      await step(id, `Changing: ${clip(job.instruction, 90)}`, 'editing');
+      const history = (await pool.query(`select n, instruction from prototype_versions where prototype_id=$1 and source='edit' order by n desc limit 6`, [id])).rows.reverse();
+      const out = await (edit || editPrototype)(r.html, job.instruction, r.brief || {}, { env, client, history, onStep: t => step(id, t) });
+      const cost = protoCostCents(out.usage, env);
+      const n = await addVersion(id, { html: out.html, qa: out.qa, source: 'edit', instruction: job.instruction, model: out.model, usage: out.usage, cost, note: out.note, by: job.by, before: r.html });
+      await pool.query(`update prototypes set html=$2, qa=$3::jsonb, status='ready', step='Ready', error='', note='', input_tokens=input_tokens+$4, output_tokens=output_tokens+$5, cost_cents=cost_cents+$6, steps=steps || $7::jsonb, updated_at=now() where id=$1`,
+        [id, out.html, JSON.stringify(out.qa), out.usage.input, out.usage.output, cost, JSON.stringify([{ at: new Date().toISOString(), text: `Version ${n} is ready${out.qa.pass ? '' : ' (it does not pass the quality check)'}` }])]);
+    } catch (e) {
+      log.warn?.({ err: e.message, prototypeId: id }, 'prototype change failed');
+      await pool.query(`update prototypes set status='ready', step='Ready', error=$2, steps=steps || $3::jsonb, updated_at=now() where id=$1`, [id, clip(e.message, 300), JSON.stringify([{ at: new Date().toISOString(), text: `Not changed: ${clip(e.message, 160)}` }])]).catch(() => {});
+    }
+  }
   async function run(id) {
     const r = (await pool.query('select * from prototypes where id=$1', [id])).rows[0]; if (!r) return;
     try {
@@ -58,7 +85,8 @@ export function registerProtoRoutes(app, d) {
       await pool.query('update prototypes set brief=$2::jsonb where id=$1', [id, JSON.stringify(brief)]);
       const out = await build(brief, { env, client, onStep: t => step(id, t) });
       const cost = protoCostCents(out.usage, env);
-      await pool.query(`update prototypes set html=$2, qa=$3::jsonb, model=$4, input_tokens=$5, output_tokens=$6, cost_cents=$7, note=$8, status='ready', step='Ready', steps=steps || $9::jsonb, error='', company=case when company='' then $10 else company end, updated_at=now() where id=$1`,
+      await addVersion(id, { html: out.html, qa: out.qa, source: r.head_version ? 'rebuild' : 'build', model: out.model, usage: out.usage, cost, note: out.note, by: r.created_by, before: r.html });
+      await pool.query(`update prototypes set html=$2, qa=$3::jsonb, model=$4, input_tokens=input_tokens+$5, output_tokens=output_tokens+$6, cost_cents=cost_cents+$7, note=$8, status='ready', step='Ready', steps=steps || $9::jsonb, error='', company=case when company='' then $10 else company end, updated_at=now() where id=$1`,
         [id, out.html, JSON.stringify(out.qa), out.model, out.usage.input, out.usage.output, cost, out.note || '', JSON.stringify([{ at: new Date().toISOString(), text: out.qa.pass ? `Ready: passes the quality check (${out.qa.score}%)` : 'Built, but it does not pass the quality check' }]), brief.name]);
       // a published prototype that was rebuilt keeps its address and its build
       const done = await get(id); if (done.published_at && done.build_id) await syncBuild(done).catch(() => {});
@@ -68,10 +96,11 @@ export function registerProtoRoutes(app, d) {
       await pool.query(`update prototypes set status='failed', error=$2, step='Failed', steps=steps || $3::jsonb, updated_at=now() where id=$1`, [id, clip(e.message, 300), JSON.stringify([{ at: new Date().toISOString(), text: `Failed: ${clip(e.message, 200)}` }])]).catch(() => {});
     }
   }
-  const pump = () => { while (running < SLOTS && queue.length) { const id = queue.shift(); running++; run(id).finally(() => { running--; pump(); }); } };
-  const enqueue = id => { queue.push(id); setImmediate(pump); };
+  const pump = () => { while (running < SLOTS && queue.length) { const { id, job } = queue.shift(); running++; (job ? runEdit(id, job) : run(id)).finally(() => { running--; pump(); }); } };
+  const enqueue = (id, job = null) => { queue.push({ id, job }); setImmediate(pump); };
   // a restart drops what was running: say so instead of showing it as working forever
   pool.query(`update prototypes set status='failed', error='Interrupted by a restart: build it again', step='Failed', updated_at=now() where status in ('queued','reading','building')`).catch(() => {});
+  pool.query(`update prototypes set status='ready', error='A change was interrupted by a restart: ask for it again', step='Ready', updated_at=now() where status='editing'`).catch(() => {});
 
   const usedToday = async () => Number((await pool.query(`select count(*)::int n from prototypes where created_at > now() - interval '24 hours'`)).rows[0].n);
   const newSlug = () => randomBytes(9).toString('base64url').replace(/[-_]/g, 'x').toLowerCase();
@@ -90,12 +119,12 @@ export function registerProtoRoutes(app, d) {
   async function publish(r) {
     if (r.status !== 'ready' || !r.has_html) { const e = new Error('Build the prototype first'); e.code = 409; throw e; }
     if (r.qa && r.qa.pass === false) { const e = new Error(`It does not pass the quality check yet (${(r.qa.failed || []).map(c => c.label).slice(0, 3).join('; ')}). Rebuild it first.`); e.code = 409; throw e; }
-    await pool.query('update prototypes set published_at=coalesce(published_at, now()), updated_at=now() where id=$1', [r.id]);
+    await pool.query('update prototypes set published_at=coalesce(published_at, now()), live_version=head_version, updated_at=now() where id=$1', [r.id]);
     const fresh = await get(r.id); await syncBuild(fresh); return get(r.id);
   }
 
   // ---------- staff API ----------
-  app.get('/v1/admin/prototypes/meta', { preHandler: pre }, async () => ({ industries: INDUSTRIES.map(i => ({ key: i.key, label: i.label })), ai: protoAiReady(env), model: protoAiReady(env) ? PROTO_MODEL(env) : 'template', today: await usedToday(), perDay: perDay(), publicUrl }));
+  app.get('/v1/admin/prototypes/meta', { preHandler: pre }, async () => ({ industries: INDUSTRIES.map(i => ({ key: i.key, label: i.label })), ai: protoAiReady(env), model: protoAiReady(env) ? PROTO_MODEL(env) : 'template', today: await usedToday(), perDay: perDay(), publicUrl, canEdit: canEdit(), editsPerDay: editsPerDay() }));
   app.post('/v1/admin/prototypes/audit', { preHandler: pre }, async (req, reply) => {
     if (!throttle(`protoaudit:${req.auth.sub}`, { limit: 60, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of audits this hour: try again in a while' });
     const c = cleanSiteUrl(req.body?.url); if (c.error) return reply.code(422).send({ error: c.error });
@@ -108,7 +137,7 @@ export function registerProtoRoutes(app, d) {
     const b = req.body || {}, c = cleanSiteUrl(b.url); if (c.error) return reply.code(422).send({ error: c.error });
     if (b.industry && !INDUSTRIES.some(i => i.key === b.industry)) return reply.code(422).send({ error: 'Pick one of the trades in the list' });
     if (!throttle(`protobuild:${req.auth.sub}`, { limit: 40, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of builds this hour: try again in a while' });
-    const active = (await pool.query(`select id from prototypes where host=$1 and status in ('queued','reading','building') limit 1`, [c.host])).rows[0]; if (active) return reply.code(409).send({ error: `${c.host} is already being built`, id: active.id });
+    const active = (await pool.query(`select id from prototypes where host=$1 and status in ('queued','reading','building','editing') limit 1`, [c.host])).rows[0]; if (active) return reply.code(409).send({ error: `${c.host} is already being built`, id: active.id });
     if ((await usedToday()) >= perDay()) return reply.code(429).send({ error: `The limit of ${perDay()} prototypes a day is reached. It resets as the day goes on.` });
     const contactId = UUID.test(String(b.contactId || '')) && (await pool.query('select 1 from sales_contacts where id=$1', [b.contactId])).rowCount ? b.contactId : null, dealId = UUID.test(String(b.dealId || '')) && (await pool.query('select 1 from sales_deals where id=$1', [b.dealId])).rowCount ? b.dealId : null;
     const row = (await pool.query(`insert into prototypes(slug,url,host,company,industry,industry_from,city,notes,created_by,step,steps,contact_id,deal_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'Queued',$10::jsonb,$11,$12) returning id`,
@@ -117,7 +146,7 @@ export function registerProtoRoutes(app, d) {
   });
   app.post('/v1/admin/prototypes/:id/rebuild', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
-    if (['queued', 'reading', 'building'].includes(r.status)) return reply.code(409).send({ error: 'It is already being built' });
+    if (BUSY.includes(r.status)) return reply.code(409).send({ error: r.status === 'editing' ? 'A change is being made right now' : 'It is already being built' });
     const b = req.body || {}; if (b.industry && !INDUSTRIES.some(i => i.key === b.industry)) return reply.code(422).send({ error: 'Pick one of the trades in the list' });
     if ((await usedToday()) >= perDay() + 10) return reply.code(429).send({ error: `The daily limit is reached` });
     await pool.query(`update prototypes set html_prev=coalesce(html, html_prev), status='queued', step='Queued', steps='[]'::jsonb, error='', note='', industry=case when $2<>'' then $2 else industry end, industry_from=case when $2<>'' then 'chosen' else industry_from end, company=coalesce($3, company), city=coalesce($4, city), notes=coalesce($5, notes), updated_at=now() where id=$1`,
@@ -141,6 +170,43 @@ export function registerProtoRoutes(app, d) {
     await pool.query('update prototypes set published_at=null, updated_at=now() where id=$1', [r.id]); if (r.build_id) await pool.query(`update builds set visibility='hidden', updated_at=now() where id=$1`, [r.build_id]);
     return { prototype: view(await get(r.id)) };
   });
+  // ---------- the studio: ask for a change, see every version, go back, publish the one you want ----------
+  const versionView = (v, r) => ({ n: v.n, source: v.source, instruction: v.instruction, note: v.note, model: v.model, costCents: Number(v.cost_cents || 0), changes: v.changes || null, createdAt: v.created_at, live: Boolean(r.published_at) && v.n === r.live_version, head: v.n === r.head_version,
+    qa: v.qa ? { pass: v.qa.pass, score: v.qa.score, sizeKB: v.qa.sizeKB, failed: (v.qa.failed || []).map(c => c.label) } : null });
+  app.get('/v1/admin/prototypes/:id/versions', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    const rows = (await pool.query(`select n,source,instruction,note,model,cost_cents,changes,created_at,qa from prototype_versions where prototype_id=$1 order by n desc`, [r.id])).rows;
+    return { versions: rows.map(v => versionView(v, r)), canEdit: canEdit(), today: Number((await pool.query(`select count(*)::int n from prototype_versions where source='edit' and created_at > now() - interval '24 hours'`)).rows[0].n), perDay: editsPerDay() };
+  });
+  app.get('/v1/admin/prototypes/:id/versions/:n/preview', { preHandler: pre }, async (req, reply) => {
+    const n = Number(req.params.n); if (!UUID.test(req.params.id) || !Number.isInteger(n)) return reply.code(404).send({ error: 'Not found' });
+    const v = (await pool.query('select html from prototype_versions where prototype_id=$1 and n=$2', [req.params.id, n])).rows[0]; if (!v) return reply.code(404).send({ error: 'That version is not there any more' });
+    return reply.header('cache-control', 'no-store').type('text/html; charset=utf-8').send(withRibbon(v.html));
+  });
+  app.post('/v1/admin/prototypes/:id/edit', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    const instruction = clip(req.body?.instruction, 1200); if (instruction.length < 4) return reply.code(422).send({ error: 'Say what should change: a sentence is enough' });
+    if (!canEdit()) return reply.code(409).send({ error: 'Changing a page needs Claude connected (the service needs ANTHROPIC_API_KEY). You can still rebuild it or restore an earlier version.' });
+    if (BUSY.includes(r.status)) return reply.code(409).send({ error: r.status === 'editing' ? 'A change is being made right now: wait for it to finish' : 'It is being built right now: wait for it to finish' });
+    if (r.status !== 'ready' || !r.has_html) return reply.code(409).send({ error: 'Build the prototype first' });
+    if (!throttle(`protoedit:${req.auth.sub}`, { limit: 40, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of changes this hour: try again in a while' });
+    const used = Number((await pool.query(`select count(*)::int n from prototype_versions where source='edit' and created_at > now() - interval '24 hours'`)).rows[0].n);
+    if (used >= editsPerDay()) return reply.code(429).send({ error: `The limit of ${editsPerDay()} changes a day is reached. It resets as the day goes on.` });
+    await pool.query(`update prototypes set status='editing', step='Queued', error='', steps=steps || $2::jsonb, updated_at=now() where id=$1`, [r.id, JSON.stringify([{ at: new Date().toISOString(), text: `Change asked for: ${clip(instruction, 120)}` }])]);
+    enqueue(r.id, { instruction, by: req.auth.sub }); return reply.code(202).send({ prototype: view(await get(r.id)) });
+  });
+  // Going back is a new version too (so nothing is ever lost and "undo the undo" works). It does not go live until it is published.
+  app.post('/v1/admin/prototypes/:id/versions/:n/restore', { preHandler: pre }, async (req, reply) => {
+    const n = Number(req.params.n); if (!UUID.test(req.params.id) || !Number.isInteger(n)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (BUSY.includes(r.status)) return reply.code(409).send({ error: 'Wait for the build or change in progress to finish' });
+    const v = (await pool.query('select html, qa from prototype_versions where prototype_id=$1 and n=$2', [r.id, n])).rows[0]; if (!v) return reply.code(404).send({ error: 'That version is not there any more' });
+    if (n === r.head_version) return reply.code(409).send({ error: 'That is already the current version' });
+    const before = (await pool.query('select html from prototypes where id=$1', [r.id])).rows[0].html;
+    const m = await addVersion(r.id, { html: v.html, qa: v.qa, source: 'restore', instruction: `Went back to version ${n}`, model: '', by: req.auth.sub, before });
+    await pool.query(`update prototypes set html=$2, qa=$3::jsonb, status='ready', error='', updated_at=now() where id=$1`, [r.id, v.html, JSON.stringify(v.qa)]);
+    return { prototype: view(await get(r.id)), version: m };
+  });
+
   // Share: publish if needed, show the build to invited emails (the showcase emails them a sign-in code), or hand back the link.
   app.post('/v1/admin/prototypes/:id/share', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); let r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
@@ -214,7 +280,7 @@ export function registerProtoRoutes(app, d) {
   // ---------- the published page ----------
   const serve = async (req, reply) => {
     const slug = String(req.params.slug || '').toLowerCase(); if (!/^[a-z0-9]{6,40}$/.test(slug)) return reply.code(404).type('text/plain').send('Not found');
-    const r = (await pool.query('select id, html, published_at from prototypes where slug=$1', [slug])).rows[0];
+    const r = (await pool.query('select p.id, coalesce(v.html, p.html) html, p.published_at from prototypes p left join prototype_versions v on v.prototype_id=p.id and v.n=p.live_version where p.slug=$1', [slug])).rows[0];
     if (!r || !r.published_at || !r.html) return reply.code(404).type('text/plain').send('This prototype is not available');
     pool.query('update prototypes set views=views+1, last_viewed_at=now() where id=$1', [r.id]).catch(() => {});
     return reply.header('content-security-policy', CSP).header('x-robots-tag', 'noindex, nofollow, noarchive').header('referrer-policy', 'no-referrer').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').type('text/html; charset=utf-8').send(withRibbon(r.html));

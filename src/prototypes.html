@@ -44,6 +44,8 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
 .checks{display:grid;gap:4px;margin:8px 0;padding:0;list-style:none;font-size:13px}.checks li:before{content:"✓";color:var(--ok);font-weight:700;margin-right:8px}.checks li.no:before{content:"✕";color:var(--bad)}.checks li.adv:before{content:"•";color:var(--warn)}
 .sec{display:grid;gap:6px;margin-bottom:12px}.sec>h3{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .empty{color:var(--dim);padding:14px 0}.pitch{background:var(--fog);border-radius:12px;padding:10px 12px;font-size:13px;white-space:pre-wrap}
+.vers{display:grid;gap:8px;margin:0;padding:0;list-style:none}.vers li{border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:grid;gap:5px}.vers li.on{border-color:var(--ink)}.vers .vl{font-size:13px;overflow-wrap:anywhere}
+.viewing{border:1px dashed var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:13px}
 </style>
 </head>
 <body>
@@ -86,9 +88,9 @@ const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t},d
 const ago=d=>{const s=(Date.now()-new Date(d))/1000;return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
 const money=c=>'$'+(Number(c||0)/100).toFixed(2);
 let META=null,LIST=[],OPEN=null,POLL=null,DEV='desktop';
-const STATE={queued:['Queued','run'],reading:['Reading the site','run'],building:['Building','run'],ready:['Ready','ok'],failed:['Failed','bad']};
+const STATE={queued:['Queued','run'],reading:['Reading the site','run'],building:['Building','run'],editing:['Changing','run'],ready:['Ready','ok'],failed:['Failed','bad']};
 const gradeTone=g=>g==='good'?'ok':g==='tired'?'warn':'bad',scoreColor=s=>s>=80?'#23784b':s>=60?'#c98a00':'#c23a14';
-const running=p=>['queued','reading','building'].includes(p.status);
+const running=p=>['queued','reading','building','editing'].includes(p.status);
 
 // ---------- audit ----------
 function auditHtml(a,site,ind,host){
@@ -116,41 +118,73 @@ function card(p){
 function renderList(){$('#t-list').innerHTML=LIST.length?`<div class="cards">${LIST.map(card).join('')}</div>`:`<p class="empty">No prototypes yet. Paste a site above to build the first one.</p>`;
   clearTimeout(POLL);if(LIST.some(running)||(OPEN&&OPEN.p&&running(OPEN.p)))POLL=setTimeout(refresh,2500)}
 async function load(){LIST=(await api('/v1/admin/prototypes')).prototypes;renderList()}
-async function refresh(){try{await load();if(OPEN&&$('#dlg').open)await open(OPEN.id,true)}catch{}}
+async function refresh(){try{await load();if(OPEN&&$('#dlg').open&&running(OPEN.p))await open(OPEN.id,true)}catch{}}
 
 // ---------- one prototype ----------
 async function open(id,quiet){
-  const {prototype:p}=await api('/v1/admin/prototypes/'+id);const prev=OPEN&&OPEN.id===id?OPEN:null;OPEN={id,p,html:prev?prev.html:null};draw();if(!$('#dlg').open)$('#dlg').showModal();
-  if(p.hasHtml&&(!OPEN.html||OPEN.ver!==p.updatedAt)){try{const r=await fetch(`/v1/admin/prototypes/${id}/preview`,{headers:{Authorization:'Bearer '+TOKEN()}});OPEN.html=r.ok?await r.text():'';OPEN.ver=p.updatedAt;const f=$('#frame');if(f)f.srcdoc=OPEN.html}catch{}}
+  const {prototype:p}=await api('/v1/admin/prototypes/'+id);const prev=OPEN&&OPEN.id===id?OPEN:{};
+  OPEN={id,p,html:prev.html||null,ver:prev.ver,viewN:prev.viewN||null,draft:prev.draft||'',vers:prev.vers||null};
+  if(p.hasHtml){try{OPEN.vers=await api(`/v1/admin/prototypes/${id}/versions`)}catch{}}
+  if(OPEN.viewN&&!(OPEN.vers&&OPEN.vers.versions.some(v=>v.n===OPEN.viewN&&!v.head)))OPEN.viewN=null;
+  draw();if(!$('#dlg').open)$('#dlg').showModal();await loadFrame();
   clearTimeout(POLL);if(running(p)||LIST.some(running))POLL=setTimeout(refresh,2500);
 }
+// the page in the frame: the newest version, or an older one while it is being looked at
+async function loadFrame(){const p=OPEN.p;if(!p.hasHtml)return;const key=OPEN.viewN?'v'+OPEN.viewN:p.updatedAt+':'+p.headVersion;if(OPEN.html&&OPEN.ver===key)return;
+  try{const url=OPEN.viewN?`/v1/admin/prototypes/${OPEN.id}/versions/${OPEN.viewN}/preview`:`/v1/admin/prototypes/${OPEN.id}/preview`;const r=await fetch(url,{headers:{Authorization:'Bearer '+TOKEN()}});OPEN.html=r.ok?await r.text():'';OPEN.ver=key;const f=$('#frame');if(f)f.srcdoc=OPEN.html}catch{}}
+// ---------- the studio ----------
+const IDEAS=['Make the hero bolder and more premium','Add a project gallery section','Add a service area section for our town','Add a 24/7 emergency banner under the header','Make the copy shorter and friendlier','Try a darker, more confident colour scheme'];
+const SRC={build:'Built from their site',rebuild:'Rebuilt from their site'};
+function verRow(v){const ch=(v.source==='edit'||v.source==='restore'?v.changes:null)||{},add=(ch.added||[]).slice(0,4),rem=(ch.removed||[]).slice(0,4),cur=OPEN.viewN?OPEN.viewN===v.n:v.head;
+  return `<li class="${cur?'on':''}" data-v="${v.n}"><div><b>v${v.n}</b> <span class="sub">${ago(v.createdAt)}</span> ${v.head?'<span class="chip dim">current</span>':''}${v.live?'<span class="chip ok">live</span>':''}${v.qa&&!v.qa.pass?'<span class="chip bad">fails the check</span>':''}</div><div class="vl">${esc(v.source==='edit'||v.source==='restore'?v.instruction:SRC[v.source]||v.source)}</div>${add.length||rem.length?`<div class="sub">${add.length?'Added: '+add.map(esc).join(', ')+'. ':''}${rem.length?'Removed: '+rem.map(esc).join(', ')+'.':''}</div>`:''}
+  <div class="acts"><button class="btn sm" type="button" data-vview="${v.n}" ${cur?'disabled':''}>View</button>${v.head?'':`<button class="btn sm" type="button" data-vrestore="${v.n}">Go back to this</button>`}</div></li>`}
+function studio(p){
+  if(!OPEN.vers||!p.hasHtml)return '';const V=OPEN.vers,editing=p.status==='editing',can=V.canEdit;
+  return `<div class="sec" id="studio"><h3>Studio</h3>${editing?`<div class="prog"><div class="bar"><i></i></div><b>${esc(p.step)}</b><span class="sub">Usually a minute or two. You can leave this page.</span></div>`:`
+  <label class="f"><span>What should change?</span><textarea class="t" id="editText" rows="3" maxlength="1200" placeholder="e.g. Make the hero bolder and add a gallery of past work" ${can?'':'disabled'}></textarea></label>
+  <div class="mini">${IDEAS.map(i=>`<button class="btn sm" type="button" data-idea="${esc(i)}" ${can?'':'disabled'}>${esc(i)}</button>`).join('')}</div>
+  <div class="acts"><button class="btn sm go" type="button" id="editGo" ${can&&p.status==='ready'?'':'disabled'}>Make the change</button></div>
+  <p class="sub">${can?`Every change is saved as a new version and nothing goes live until you publish it. ${V.today} of ${V.perDay} changes used today.`:'Changing a page needs Claude connected here. You can still go back to an earlier version.'}</p>`}
+  ${p.editError?`<p class="sub" style="color:var(--bad)">${esc(p.editError)}</p>`:''}
+  <h3 style="margin-top:12px">Versions</h3><ul class="vers">${V.versions.map(verRow).join('')}</ul></div>`}
+
 function draw(){
   const p=OPEN.p,[sl,st]=STATE[p.status]||[p.status,''];$('#dTitle').textContent=p.company||p.host;$('#dSub').innerHTML=`<span class="chip ${st}">${esc(sl)}</span> ${esc(p.host)}${p.industryLabel?' · '+esc(p.industryLabel):''}`;
   const stage=p.hasHtml?`<div class="stage ${DEV==='phone'?'phone':''}" id="stage"><iframe id="frame" title="Preview of the new site" sandbox="allow-scripts allow-popups" ${OPEN.html?'':''}></iframe></div>`:running(p)?`<div class="stage" style="align-items:center;flex-direction:column;gap:10px"><div class="bar" style="width:240px"><i></i></div><b>${esc(p.step)}</b><span class="sub">Usually a minute or two.</span></div>`:`<div class="stage" style="align-items:center"><span class="sub">${esc(p.error||'Nothing built yet')}</span></div>`;
   const a=p.audit,q=p.qa;
   const side=`
+  ${studio(p)}
   <div class="sec"><h3>Progress</h3><div class="prog">${(p.steps||[]).slice(-6).map(s=>`<span>${esc(s.text)}</span>`).join('')||'<span>Nothing yet</span>'}</div>${p.note?`<p class="sub">${esc(p.note)}</p>`:''}${p.status==='failed'?`<p class="sub" style="color:var(--bad)">${esc(p.error)}</p>`:''}</div>
   ${a?`<div class="sec"><h3>Their current site: ${a.score}/100</h3><ul class="issues">${(a.issues||a.top).slice(0,6).map(i=>`<li><b>${esc(i.title)}</b><span class="sub">${esc(i.pitch||'')}</span></li>`).join('')}</ul></div>`:''}
   ${q?`<div class="sec"><h3>Quality check: ${q.score}%</h3><ul class="checks">${(q.checks||[]).map(c=>`<li class="${c.ok?'':c.required?'no':'adv'}">${esc(c.label)}${!c.ok&&c.detail?` <span class="sub">(${esc(c.detail)})</span>`:''}</li>`).join('')}</ul>${q.illustrative.length?`<h3>Marked Sample: confirm with the owner</h3><div class="sub">${q.illustrative.map(esc).join(' · ')}</div>`:''}${q.usesTheirImages?'<p class="sub">Uses their own pictures from their current site: replace with their own files before launch.</p>':''}</div>`:''}
-  ${p.status==='ready'?`<div class="sec"><h3>Share</h3>${p.published?`<div class="pitch" id="link">${esc(p.shareUrl)}</div><div class="acts"><button class="btn sm" data-copy="${esc(p.shareUrl)}">Copy link</button><a class="btn sm" href="${esc(p.shareUrl)}" target="_blank" rel="noopener">Open</a><button class="btn sm" id="unpub">Take it down</button></div>`:`<p class="sub">Publishing puts it on the Builds showcase (hidden until you share it) and gives it a private link.</p><div class="acts"><button class="btn sm go" id="pub" ${q&&!q.pass?'disabled':''}>Publish</button></div>`}
+  ${p.status==='ready'?`<div class="sec"><h3>Share</h3>${p.published?`${p.pendingPublish?`<div class="acts"><span class="chip warn">Version ${p.headVersion} is not live yet</span><button class="btn sm go" id="pubUpdate" ${q&&!q.pass?'disabled':''}>Publish version ${p.headVersion}</button></div>`:''}<div class="pitch" id="link">${esc(p.shareUrl)}</div><div class="acts"><button class="btn sm" data-copy="${esc(p.shareUrl)}">Copy link</button><a class="btn sm" href="${esc(p.shareUrl)}" target="_blank" rel="noopener">Open</a><button class="btn sm" id="unpub">Take it down</button></div>`:`<p class="sub">Publishing puts it on the Builds showcase (hidden until you share it) and gives it a private link.</p><div class="acts"><button class="btn sm go" id="pub" ${q&&!q.pass?'disabled':''}>Publish</button></div>`}
    <label class="f"><span>Invite the owner by email</span><input class="t" id="inv" type="email" placeholder="owner@joesplumbing.com"></label><label class="f"><span>A line for the email (optional)</span><input class="t" id="invNote" placeholder="Here is what your site could look like."></label><div class="acts"><button class="btn sm go" id="share" ${q&&!q.pass?'disabled':''}>Publish and invite</button></div></div>`:''}
   <div class="sec"><h3>More</h3><div class="acts">${p.status!=='ready'&&!running(p)?'':''}${!running(p)?`<button class="btn sm" id="rebuild">Rebuild</button>`:''}${p.hasHtml?`<a class="btn sm" id="dl" href="#">Download the page</a>`:''}<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">Their current site</a><button class="btn sm danger" id="del">Delete</button></div></div>`;
-  $('#dBody').innerHTML=`<div class="split"><div>${p.hasHtml?`<div class="acts" style="justify-content:space-between;margin-bottom:8px"><div class="dev"><button data-dev="desktop" class="${DEV==='desktop'?'on':''}">Desktop</button><button data-dev="phone" class="${DEV==='phone'?'on':''}">Phone</button></div><span class="sub">${p.model==='template'?'Standard template':'Built by Claude'} · ${p.qa?p.qa.sizeKB+' KB':''}${p.costCents?' · '+money(p.costCents):''}</span></div>`:''}${stage}</div><div>${side}</div></div>`;
+  $('#dBody').innerHTML=`<div class="split"><div>${p.hasHtml?`<div class="acts" style="justify-content:space-between;margin-bottom:8px"><div class="dev"><button data-dev="desktop" class="${DEV==='desktop'?'on':''}">Desktop</button><button data-dev="phone" class="${DEV==='phone'?'on':''}">Phone</button></div><span class="sub">${p.model==='template'?'Standard template':'Built by Claude'} · ${p.qa?p.qa.sizeKB+' KB':''}${p.costCents?' · '+money(p.costCents):''}</span></div>`:''}${OPEN.viewN?`<div class="viewing"><span>Looking at version ${OPEN.viewN}, not the current one.</span><span class="acts"><button class="btn sm" type="button" data-vrestore="${OPEN.viewN}">Go back to this</button><button class="btn sm" type="button" id="viewCurrent">Back to the current one</button></span></div>`:''}${stage}</div><div>${side}</div></div>`;
+  const et=$('#editText');if(et&&OPEN.draft)et.value=OPEN.draft;
   const f=$('#frame');if(f&&OPEN.html)f.srcdoc=OPEN.html;
 }
 
 // ---------- events ----------
+document.addEventListener('input',e=>{if(e.target&&e.target.id==='editText'&&OPEN)OPEN.draft=e.target.value});
 document.addEventListener('click',async e=>{
   const t=e.target;
   const cp=t.closest('[data-copy]');if(cp){try{await navigator.clipboard.writeText(cp.dataset.copy);(cp.closest('dialog')?dsay:say)('Copied')}catch{prompt('Copy this',cp.dataset.copy)}return}
   const op=t.closest('[data-open]');if(op){try{await open(op.dataset.open)}catch(err){say(err.message,'bad')}return}
   const rb=t.closest('[data-rebuild]');if(rb){try{await api(`/v1/admin/prototypes/${rb.dataset.rebuild}/rebuild`,{body:{}});await load()}catch(err){say(err.message,'bad')}return}
   const dv=t.closest('[data-dev]');if(dv){DEV=dv.dataset.dev;const s=$('#stage');if(s)s.classList.toggle('phone',DEV==='phone');document.querySelectorAll('[data-dev]').forEach(b=>b.classList.toggle('on',b.dataset.dev===DEV));return}
+  const idea=t.closest('[data-idea]');if(idea){const et=$('#editText');if(et){et.value=idea.dataset.idea;OPEN.draft=et.value;et.focus()}return}
+  const vv=t.closest('[data-vview]');if(vv&&OPEN){const n=+vv.dataset.vview,h=OPEN.vers&&OPEN.vers.versions.find(v=>v.n===n);OPEN.viewN=h&&h.head?null:n;OPEN.html=null;draw();await loadFrame();return}
+  if(t.closest('#viewCurrent')&&OPEN){OPEN.viewN=null;OPEN.html=null;draw();await loadFrame();return}
   if(t.closest('#dClose')){$('#dlg').close();OPEN=null;return}
   if(t.closest('#buildFromAudit')){await start();return}
   if(!OPEN)return;const id=OPEN.id;
   try{
-    if(t.closest('#pub')){await api(`/v1/admin/prototypes/${id}/publish`,{body:{}});dsay('Published. It is on the Builds showcase, hidden until you invite someone.');await load();await open(id)}
+    const vr=t.closest('[data-vrestore]');
+    if(vr){if(!confirm(`Make version ${vr.dataset.vrestore} the current one? Nothing is lost: it becomes a new version, and nothing goes live until you publish.`))return;OPEN.viewN=null;OPEN.html=null;await api(`/v1/admin/prototypes/${id}/versions/${vr.dataset.vrestore}/restore`,{body:{}});dsay('Done: it is the current version now.');await load();await open(id)}
+    else if(t.closest('#editGo')){const text=($('#editText').value||'').trim();if(text.length<4)return dsay('Say what should change: a sentence is enough','bad');OPEN.viewN=null;await api(`/v1/admin/prototypes/${id}/edit`,{body:{instruction:text}});OPEN.draft='';dsay('On it: the change is being made and will show up as a new version.');await load();await open(id)}
+    else if(t.closest('#pubUpdate')){await api(`/v1/admin/prototypes/${id}/publish`,{body:{}});dsay('Published: the link now shows the current version.');await load();await open(id)}
+    else if(t.closest('#pub')){await api(`/v1/admin/prototypes/${id}/publish`,{body:{}});dsay('Published. It is on the Builds showcase, hidden until you invite someone.');await load();await open(id)}
     else if(t.closest('#unpub')){await api(`/v1/admin/prototypes/${id}/unpublish`,{body:{}});dsay('Taken down.');await load();await open(id)}
     else if(t.closest('#share')){const email=$('#inv').value.trim();const r=await api(`/v1/admin/prototypes/${id}/share`,{body:{emails:email,note:$('#invNote').value}});dsay(email?`Published and ${email} is invited: they get a sign-in code by email.`:'Published. Copy the link to send it.');await load();await open(id)}
     else if(t.closest('#rebuild')){if(!confirm('Build this prototype again? The page is replaced.'))return;await api(`/v1/admin/prototypes/${id}/rebuild`,{body:{}});dsay('Building again…');await load();await open(id)}
