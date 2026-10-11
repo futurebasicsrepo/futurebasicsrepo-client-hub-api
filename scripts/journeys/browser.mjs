@@ -1570,5 +1570,44 @@ await journey('J141', 'Factories in a browser: the map and list, filters by what
     await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J145', 'Site prototypes in a browser: audit a tired site, build the prototype and watch it work, preview it on desktop and phone, see the quality check, publish it and take it down, and a phone fits', async () => {
+  const r = await room('145', { wait: false }), W = 'http://work.localhost:3123';
+  const http = (await import('node:http')).default;
+  const SITE = `<html><head><title>Home</title></head><body><center><font color="#cc0000">ACE ELECTRIC</font></center><table><tr><td>x</td></tr></table><p>Call 610-555-0177 for electrical repair, panel upgrades and wiring in Reading PA 19601.</p><ul><li>Panel upgrades</li><li>EV chargers</li><li>Rewiring</li></ul><div>&copy; 2013 Ace Electric</div></body></html>`;
+  const site = http.createServer((q, s) => { setTimeout(() => { s.writeHead(200, { 'content-type': 'text/html' }); s.end(SITE); }, 500); }); await new Promise(res => site.listen(3134, '127.0.0.1', res));
+  try {
+    const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+    await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('.fbside a[data-nav="Site prototypes"]', { timeout: 10000 });
+    await page.click('.fbside a[data-nav="Site prototypes"]'); await page.waitForURL(/\/prototypes/, { timeout: 8000 }); await page.waitForSelector('#app:not(.hidden) #url', { timeout: 15000 });
+    ok(/SW and site prototyping/.test(await page.innerText('#app h1')) && /Claude not connected/i.test(await page.innerText('#aiChip')) && await page.locator('#industry option').count() >= 10, 'the page opens from the menu, says Claude is not connected here, and lists the trades');
+    // audit
+    await page.fill('#url', `ace-electric-${stamp}.test`); await page.click('#auditBtn'); await page.waitForSelector('#auditOut .score', { timeout: 15000 });
+    const au = await page.innerText('#auditOut'); ok(/bad site/i.test(au) && /quick turn/i.test(au) && /electrician/i.test(au) && /phone/i.test(au) && /Copy the pitch/.test(au), 'the audit shows the score, a bad site, a quick turn, the trade and the pitch', au.slice(0, 160));
+    // build
+    await page.click('#buildFromAudit'); await page.waitForSelector('#dlg[open]', { timeout: 10000 });
+    await page.waitForFunction(() => /Ready/i.test(document.querySelector('#dSub')?.textContent || ''), null, { timeout: 30000 });
+    ok(await page.locator('#frame').count() === 1 && /Quality check/i.test(await page.innerText('#dBody')) && await page.locator('#dBody .checks li').count() >= 20, 'it builds while the page is open, then shows the preview and the quality check');
+    await page.waitForFunction(() => { const f = document.querySelector('#frame'); return f && f.srcdoc && f.srcdoc.length > 1000; }, null, { timeout: 10000 });
+    const fr = page.frameLocator('#frame'); ok(await fr.locator('h1').count() === 1 && /Ace Electric/i.test(await fr.locator('h1').innerText()) && await fr.locator('a[href^="tel:"]').count() >= 2, 'the preview is the new site, with a heading and tap-to-call', await fr.locator('h1').innerText().catch(() => ''));
+    ok(await page.evaluate(() => document.querySelector('#frame').getAttribute('sandbox') === 'allow-scripts allow-popups'), 'the preview runs sandboxed');
+    await page.click('[data-dev=phone]'); await page.waitForTimeout(600); ok(await page.locator('#stage.phone').count() === 1 && (await page.locator('#frame').boundingBox()).width <= 392, 'the phone view narrows the preview');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j145-preview.png` }).catch(() => {});
+    // publish
+    await page.click('#pub'); await page.waitForSelector('#link', { timeout: 10000 }); const link = await page.innerText('#link'); ok(/\/p\/[a-z0-9]+$/.test(link), 'publishing shows the private link', link);
+    const slug = link.split('/p/')[1]; const pub = await fetch(`http://127.0.0.1:3123/p/${slug}`); ok(pub.status === 200 && /Ace Electric/.test(await pub.text()), 'the link opens the site for anyone');
+    await page.click('#unpub'); await page.waitForSelector('#pub', { timeout: 10000 }); ok((await fetch(`http://127.0.0.1:3123/p/${slug}`)).status === 404, 'taking it down ends the link');
+    await page.click('#dClose'); await page.waitForSelector(`#t-list .card:has-text("ace-electric-${stamp}.test")`); ok(/their site \d+\/100/i.test(await page.innerText('#t-list')) && /passes the check/i.test(await page.innerText('#t-list')), 'the list shows it with the score of their site and that it passes the check');
+    await page.click(`#t-list .card:has-text("ace-electric-${stamp}.test") [data-open]`); await page.waitForSelector('#del'); await page.click('#del'); await page.waitForFunction(() => !document.querySelector('#dlg').open, null, { timeout: 8000 });
+    await page.waitForFunction(h => ![...document.querySelectorAll('#t-list .card')].some(c => c.textContent.includes(h)), `ace-electric-${stamp}.test`, { timeout: 8000 }).catch(() => {}); ok(await page.locator(`#t-list .card:has-text("ace-electric-${stamp}.test")`).count() === 0, 'a prototype can be deleted');
+    // a site that cannot be read
+    await page.fill('#url', 'http://127.0.0.1/'); await page.click('#auditBtn'); await page.waitForFunction(() => /not a public website/i.test(document.querySelector('#msg').textContent), null, { timeout: 8000 }); ok(true, 'a local address is refused with a plain reason');
+    ok(page.errs.length === 0, 'no script errors', page.errs); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j145-page.png`, fullPage: true }).catch(() => {}); await ctx.close();
+    const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#url', { timeout: 15000 });
+      ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j145-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+  } finally { await new Promise(res => site.close(res)); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

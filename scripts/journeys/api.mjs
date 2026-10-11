@@ -2018,4 +2018,75 @@ await journey('J140', 'Factories: each factory has what it makes, its skills and
   l = (await F('')).json; ok(l.factories.filter(f => f.partnerId === pt.id).length === 1, 'it is listed once after that');
 });
 
+await journey('J144', 'Site prototypes: paste a tired site, get a score and a pitch, build a new one for its trade, check it against the standard, publish it sandboxed onto Builds, share it, and take it down', async () => {
+  const room = await newRoom('144', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  // the stand-in "internet": a plumber's tired site, with switches for slow, down and blocked
+  const http = (await import('node:http')).default, sw = { delay: 0, mode: 'ok', hits: 0 };
+  const BAD = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">JOE'S PLUMBING</font></center><table><tr><td><a href="/services.html">Services</a></td></tr></table><p>Call us at 215-555-0142 for all your plumbing needs: leaks, drains, water heaters and sewer repair in Norristown PA 19401.</p><ul><li>Drain cleaning</li><li>Water heaters</li><li>Leak repair</li><li>Sewer line repair</li></ul><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2014 Joe's Plumbing</div></body></html>`;
+  const site = http.createServer((req, res) => { sw.hits++; setTimeout(() => { if (sw.mode === 'blocked') { res.writeHead(403); return res.end('no'); } if (sw.mode === 'down') { res.writeHead(500); return res.end('boom'); } if (req.url.startsWith('/services')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html><head><title>Services</title></head><body><ul><li>Trenchless sewer repair</li></ul></body></html>'); } res.writeHead(200, { 'content-type': 'text/html' }); res.end(BAD); }, sw.delay); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r));
+  const waitFor = async (id, pred, ms = 25000) => { const t0 = Date.now(); for (;;) { const p = (await P(`/${id}`)).json.prototype; if (pred(p)) return p; if (Date.now() - t0 > ms) throw new Error(`timed out: ${p.status} ${p.step}`); await sleep(150); } };
+  try {
+    // who may
+    ok((await call('/v1/admin/prototypes')).status === 401 && (await call('/v1/admin/prototypes', { token: room.token })).status === 403 && (await call('/v1/admin/prototypes', { token: room.token, body: { url: 'joes.test' } })).status === 403 && (await call('/p/nope')).status === 404, 'signed out people and clients cannot use it, and a made-up link finds nothing');
+    const meta = (await P('/meta')).json; ok(meta.industries.length >= 9 && meta.industries.some(i => i.key === 'home-health') && meta.ai === false && meta.model === 'template' && meta.perDay >= 1, 'the trades are listed, and with no Claude connected it says it will use the template');
+
+    // the audit: a score, what is wrong, in words for the rep
+    let a = await P('/audit', { body: { url: 'joes-plumbing.test' } }); const ad = a.json;
+    ok(a.status === 200 && ad.audit.score < 40 && ad.audit.grade === 'bad' && ad.industry.key === 'plumbing' && ad.audit.quickTurn === true && ad.audit.top.length === 4 && ad.audit.top[0].pitch.length > 30 && ad.site.phones[0] === '(215) 555-0142' && ad.site.services.includes('Sewer line repair'), 'an audit scores the site, names the trade, says it is a quick turn and gives the pitch', JSON.stringify([ad.audit?.score, ad.industry, ad.audit?.quickTurn]));
+    ok((await P('/audit', { body: { url: '' } })).status === 422 && (await P('/audit', { body: { url: 'http://127.0.0.1/' } })).status === 422 && (await P('/audit', { body: { url: 'http://169.254.169.254/latest' } })).status === 422 && (await P('/audit', { body: { url: 'ftp://joes.test' } })).status === 422, 'blank, local and metadata addresses are refused');
+    sw.mode = 'blocked'; a = await P('/audit', { body: { url: 'joes-plumbing.test' } }); ok(a.status === 502 && /403/.test(a.json.error) && /block/.test(a.json.error), 'a site that blocks us says so', a.json.error); sw.mode = 'ok';
+
+    // build
+    let r = await P('', { body: { url: 'joes-plumbing.test', city: 'Norristown, PA', notes: 'Family owned since 1988' } }); ok(r.status === 202 && r.json.prototype.status === 'queued' && r.json.prototype.host === 'joes-plumbing.test' && !r.json.prototype.published, 'a build is accepted and queued', r.status);
+    const id = r.json.prototype.id; const ready = await waitFor(id, p => ['ready', 'failed'].includes(p.status));
+    ok(ready.status === 'ready' && ready.model === 'template' && ready.industry === 'plumbing' && ready.industryFrom === 'words' && ready.qa.pass === true && ready.qa.checks.length >= 25 && ready.audit.score < 40 && /Joe/.test(ready.company) && ready.city === 'Norristown, PA' && ready.hasHtml && ready.steps.length >= 4 && ready.note, 'it reads, works out the trade, builds, checks and is ready, saying it used the template', JSON.stringify([ready.status, ready.error, ready.model, ready.qa?.failed]));
+    ok(ready.site.services.includes('Sewer line repair') && ready.site.services.includes('Trenchless sewer repair') && ready.site.pages >= 2, 'it read the other pages too');
+    const pv = await fetch(`http://127.0.0.1:3123/v1/admin/prototypes/${id}/preview`, { headers: { Authorization: `Bearer ${kyle}` } }), html = await pv.text();
+    ok(pv.status === 200 && /^<!doctype html>/i.test(html) && html.includes('href="tel:2155550142"') && html.includes('Sewer line repair') && /prefers-reduced-motion/.test(html) && !/<script[^>]+src=/i.test(html), 'the preview is the page: tap to call, their services, reduced motion, no outside scripts');
+    ok((await call(`/v1/admin/prototypes/${id}/preview`, { token: room.token })).status === 403 && (await call(`/v1/admin/prototypes/${id}/preview`)).status === 401, 'the preview is staff only');
+    const dl = await fetch(`http://127.0.0.1:3123/v1/admin/prototypes/${id}/download`, { headers: { Authorization: `Bearer ${kyle}` } }); ok(dl.status === 200 && /attachment; filename="joes-plumbing\.test-prototype\.html"/.test(dl.headers.get('content-disposition')), 'the page can be downloaded');
+    const slug = (await P(`/${id}`)).json.prototype.slug; ok((await call(`/p/${slug}`)).status === 404, 'before it is published the link finds nothing');
+    const list = (await P('')).json.prototypes; ok(list.some(p => p.id === id && p.status === 'ready' && p.qa.pass && !('html' in p)), 'it is in the list, without the page itself');
+
+    // publish: onto Builds, served sandboxed
+    const pub = await P(`/${id}/publish`, { body: {} }); const pp = pub.json.prototype;
+    ok(pub.status === 200 && pp.published && pp.buildId && pp.shareUrl.endsWith(`/p/${slug}`), 'publishing gives it a private link and a build');
+    const builds = (await call('/v1/admin/builds', { token: kyle })).json, b = (builds.builds || builds).find(x => x.id === pp.buildId);
+    ok(b && b.visibility === 'hidden' && b.status === 'concept' && b.live_url === pp.shareUrl && /Joe/.test(b.name) && /Plumbing/i.test(b.sector), 'the build is on the showcase, hidden until it is shared, pointing at the prototype', JSON.stringify(b && [b.visibility, b.live_url, b.name]));
+    const pg = await call(`/p/${slug}`); const raw = await fetch(`http://127.0.0.1:3123/p/${slug}`);
+    ok(pg.status === 200 && /sandbox allow-scripts/.test(raw.headers.get('content-security-policy')) && /connect-src 'none'/.test(raw.headers.get('content-security-policy')) && /form-action 'none'/.test(raw.headers.get('content-security-policy')) && /noindex/.test(raw.headers.get('x-robots-tag')) && raw.headers.get('referrer-policy') === 'no-referrer', 'the public page is sandboxed, cannot call out or submit anywhere, and is never indexed');
+    const body = await raw.text(); ok(body.includes('fb-proto-ribbon') && body.includes('Prototype by'), 'it carries the Future Basics ribbon');
+    await sleep(300); ok(Number(sql(`select views from prototypes where id='${id}'`)) >= 2, 'views are counted');
+
+    // share with the owner
+    const sh = await P(`/${id}/share`, { body: { emails: 'owner@joes-plumbing.test', note: 'Here is what your site could look like.', send: false } }); ok(sh.status === 200 && sh.json.link.endsWith(`/p/${slug}`), 'sharing answers with the link', JSON.stringify(sh.json).slice(0, 200));
+    const b2 = (await call('/v1/admin/builds', { token: kyle })).json, bb = (b2.builds || b2).find(x => x.id === pp.buildId); ok(bb.visibility === 'invite', 'inviting someone moves the build from hidden to invite only');
+    const inv = (await call('/v1/admin/builds/invites', { token: kyle })).json.invites; ok(inv.some(x => x.email === 'owner@joes-plumbing.test' && x.build_id === pp.buildId), 'the owner is invited to that build', JSON.stringify(inv.slice(0, 2)));
+    ok((await P(`/${id}/share`, { body: { emails: 'not-an-email' } })).status === 422, 'a bad email is refused');
+
+    // rebuild keeps the address and the build; a build in progress is not started twice
+    sw.delay = 700; r = await P(`/${id}/rebuild`, { body: { industry: 'electrician', notes: 'They also do panel upgrades' } }); ok(r.status === 202 && r.json.prototype.status === 'queued', 'a rebuild is accepted');
+    ok((await P(`/${id}/rebuild`, { body: {} })).status === 409 && (await P('', { body: { url: 'joes-plumbing.test' } })).status === 409, 'a build already in progress is not started again');
+    await waitFor(id, p => p.status === 'reading' || p.status === 'building', 5000); sw.delay = 0;
+    const again = await waitFor(id, p => ['ready', 'failed'].includes(p.status)); ok(again.status === 'ready' && again.industry === 'electrician' && again.industryFrom === 'chosen' && again.slug === slug && again.published && again.buildId === pp.buildId, 'the rebuild uses the trade chosen, and keeps its address, its build and its published state', JSON.stringify([again.status, again.industry, again.published]));
+    ok(sql(`select (html_prev is not null)::text from prototypes where id='${id}'`) === 'true', 'the page it replaced is kept');
+    ok((await P(`/${id}/rebuild`, { body: { industry: 'astronaut' } })).status === 422, 'an unknown trade is refused');
+
+    // a site that is down: it fails with a reason, and works when the site is back
+    sw.mode = 'down'; r = await P('', { body: { url: 'downsite.test' } }); const f = await waitFor(r.json.prototype.id, p => ['ready', 'failed'].includes(p.status)); ok(f.status === 'failed' && /500/.test(f.error) && f.steps.some(s => /Failed/.test(s.text)), 'a site that is down fails with the reason', f.error);
+    sw.mode = 'ok'; ok((await P(`/${f.id}/publish`, { body: {} })).status === 409, 'a failed build cannot be published'); r = await P(`/${f.id}/rebuild`, { body: {} }); const f2 = await waitFor(f.id, p => ['ready', 'failed'].includes(p.status)); ok(f2.status === 'ready', 'and it builds once the site is back');
+    ok(sql(`select count(*) from prototypes where status in ('queued','reading','building')`) === '0', 'nothing is left running');
+
+    // take it down, then delete
+    const un = await P(`/${id}/unpublish`, { body: {} }); ok(un.json.prototype.published === false && (await call(`/p/${slug}`)).status === 404, 'taking it down ends the link at once');
+    const b3 = (await call('/v1/admin/builds', { token: kyle })).json, bc = (b3.builds || b3).find(x => x.id === pp.buildId); ok(bc.visibility === 'hidden', 'and hides the build');
+    ok((await P(`/${id}`, { method: 'DELETE' })).json.ok === true && (await P(`/${id}`)).status === 404, 'a prototype can be deleted');
+    ok((await call('/v1/admin/builds', { token: kyle })).json && sql(`select status from builds where id='${pp.buildId}'`) === 'archived', 'and its build is archived');
+    ok((await P('/not-an-id')).status === 404 && (await P('/not-an-id/rebuild', { body: {} })).status === 404, 'bad ids are not found');
+  } finally { await new Promise(r => site.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

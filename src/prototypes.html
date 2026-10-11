@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Site prototypes</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#c98a00;--bad:#c23a14;--ok:#23784b}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2a2a2e}.btn.sm{padding:5px 12px;font-size:13px}.btn[disabled]{opacity:.5;cursor:default}.btn.danger{color:var(--bad);border-color:var(--bad)}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff}textarea.t{min-height:70px;resize:vertical}select.t{width:auto}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px);margin-bottom:16px}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}
+.chip.ok{background:#e5f6ec;border-color:#a9dcb9;color:#17562f}.chip.warn{background:#fff4cf;border-color:#ecd27a;color:#6d4f00}.chip.bad{background:#fde6df;border-color:#f0b4a3;color:#8c2a10}.chip.dim{color:var(--dim)}.chip.run{background:#e8f0ff;border-color:#b6cdf7;color:#1c3f8f}
+.form{display:grid;grid-template-columns:2fr 1.2fr 1.2fr 1fr;gap:10px;align-items:end}@media(max-width:900px){.form{grid-template-columns:1fr 1fr}}@media(max-width:560px){.form{grid-template-columns:1fr}}
+.f{display:grid;gap:4px}.f>span{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.tabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.audit{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:start}@media(max-width:640px){.audit{grid-template-columns:1fr}}
+.score{display:grid;place-items:center;width:132px;height:132px;border-radius:50%;font-size:44px;font-weight:600;letter-spacing:-.03em;position:relative;background:conic-gradient(var(--c) calc(var(--p)*1%),#ececea 0)}.score:before{content:"";position:absolute;inset:10px;border-radius:50%;background:#fff}.score span{position:relative}
+.issues{display:grid;gap:8px;margin:10px 0 0;padding:0;list-style:none}.issues li{border:1px solid var(--line);border-radius:12px;padding:9px 12px}.issues b{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 16px;display:grid;gap:8px;align-content:start}.card .hd{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.card h3{font-size:16px;overflow-wrap:anywhere}
+.mini{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.prog{display:grid;gap:3px;font-size:12px;color:var(--dim)}.prog b{color:var(--ink);font-weight:600}
+.bar{height:5px;border-radius:99px;background:#ececea;overflow:hidden}.bar i{display:block;height:100%;width:40%;background:var(--ink);border-radius:99px;animation:slide 1.4s ease-in-out infinite}@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}@media(prefers-reduced-motion:reduce){.bar i{animation:none;width:100%;opacity:.5}}
+dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:94vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}
+.dwrap{padding:clamp(14px,2.4vw,24px);display:grid;gap:12px}.dh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.dh h2{font-size:22px;font-weight:500}
+.split{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px}@media(max-width:980px){.split{grid-template-columns:1fr}}
+.stage{background:#e9e9e4;border-radius:16px;padding:12px;display:flex;justify-content:center;min-height:480px}.stage iframe{border:0;background:#fff;border-radius:10px;width:100%;height:68vh;min-height:460px;transition:width .3s}.stage.phone iframe{width:390px;max-width:100%}
+.dev{display:flex;gap:6px}.dev button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}.dev button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.checks{display:grid;gap:4px;margin:8px 0;padding:0;list-style:none;font-size:13px}.checks li:before{content:"✓";color:var(--ok);font-weight:700;margin-right:8px}.checks li.no:before{content:"✕";color:var(--bad)}.checks li.adv:before{content:"•";color:var(--warn)}
+.sec{display:grid;gap:6px;margin-bottom:12px}.sec>h3{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.empty{color:var(--dim);padding:14px 0}.pitch{background:var(--fog);border-radius:12px;padding:10px 12px;font-size:13px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/prototypes" aria-label="Site prototypes"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Prototypes</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the console</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)">Sales</span><h1>SW and site prototyping</h1><p class="note">Paste a site that needs help. We read it, score it, and build a better one for their trade in minutes, ready to share.</p></div><div class="acts"><span class="chip" id="aiChip"></span></div></div>
+    <section class="panel" aria-label="Rebuild a site">
+      <form class="form" id="newForm" autocomplete="off">
+        <label class="f"><span>Their website</span><input class="t" id="url" placeholder="joesplumbing.com" required inputmode="url" autocapitalize="off" spellcheck="false"></label>
+        <label class="f"><span>Trade</span><select class="t" id="industry" style="width:100%"><option value="">Work it out from the site</option></select></label>
+        <label class="f"><span>Business name (optional)</span><input class="t" id="company"></label>
+        <label class="f"><span>Town (optional)</span><input class="t" id="city" placeholder="Norristown, PA"></label>
+      </form>
+      <label class="f" style="margin-top:10px"><span>Notes for the build (optional): what you heard from the owner</span><textarea class="t" id="notes" placeholder="e.g. Family owned since 1988, wants more emergency calls, their brand colours are red and navy."></textarea></label>
+      <div class="acts" style="margin-top:12px"><button class="btn" id="auditBtn" type="button">Audit it first</button><button class="btn go" id="buildBtn" type="button">Build the prototype</button><span class="msg" id="msg" role="status"></span></div>
+      <div id="auditOut" class="hidden" style="margin-top:16px"></div>
+    </section>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="list">Prototypes</button></div>
+    <section id="t-list"></section>
+  </div>
+</main>
+<dialog id="dlg"><div class="dwrap"><div class="dh"><div><h2 id="dTitle"></h2><div class="sub" id="dSub"></div></div><button class="btn sm" id="dClose" type="button">Close</button></div><div id="dBody"></div><p class="msg" id="dMsg" role="status"></p></div></dialog>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.error||('Something went wrong ('+r.status+')'));e.status=r.status;e.body=j;throw e}return j}
+const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t},dsay=(t,k='ok')=>{const m=$('#dMsg');m.className='msg '+k;m.textContent=t};
+const ago=d=>{const s=(Date.now()-new Date(d))/1000;return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
+const money=c=>'$'+(Number(c||0)/100).toFixed(2);
+let META=null,LIST=[],OPEN=null,POLL=null,DEV='desktop';
+const STATE={queued:['Queued','run'],reading:['Reading the site','run'],building:['Building','run'],ready:['Ready','ok'],failed:['Failed','bad']};
+const gradeTone=g=>g==='good'?'ok':g==='tired'?'warn':'bad',scoreColor=s=>s>=80?'#23784b':s>=60?'#c98a00':'#c23a14';
+const running=p=>['queued','reading','building'].includes(p.status);
+
+// ---------- audit ----------
+function auditHtml(a,site,ind,host){
+  const pitch=`${host}: ${a.score}/100.\n`+a.top.map(t=>'• '+t.pitch).join('\n');
+  return `<div class="audit"><div><div class="score" style="--p:${a.score};--c:${scoreColor(a.score)}"><span>${a.score}</span></div><div class="mini" style="justify-content:center;margin-top:8px"><span class="chip ${gradeTone(a.grade)}">${esc(a.grade)} site</span>${a.quickTurn?'<span class="chip ok">quick turn</span>':'<span class="chip warn">bigger job</span>'}</div></div>
+  <div><h3>${esc(host)}${ind?` · looks like ${esc(ind.label.toLowerCase())}`:''}</h3><p class="sub">${a.issues.length} things to fix. The worst, in words to say to the owner:</p><ul class="issues">${a.top.map(t=>`<li><b>${esc(t.title)}</b><span class="sub">${esc(t.pitch)}</span></li>`).join('')}</ul>
+  <div class="acts" style="margin-top:10px"><button class="btn sm" type="button" data-copy="${esc(pitch)}">Copy the pitch</button><button class="btn sm go" type="button" id="buildFromAudit">Build the prototype</button></div></div></div>`;
+}
+$('#auditBtn').onclick=async()=>{const url=$('#url').value.trim();if(!url)return say('Paste their website first','bad');const b=$('#auditBtn');b.disabled=true;say('Reading the site…','ok');$('#auditOut').classList.add('hidden');
+  try{const r=await api('/v1/admin/prototypes/audit',{body:{url}});$('#auditOut').innerHTML=auditHtml(r.audit,r.site,r.industry,r.host);$('#auditOut').classList.remove('hidden');say('');if(!$('#industry').value&&r.industry.confidence>=.6)$('#industry').dataset.guess=r.industry.key}catch(e){say(e.message,'bad')}b.disabled=false};
+$('#buildBtn').onclick=start;
+async function start(){const url=$('#url').value.trim();if(!url)return say('Paste their website first','bad');const b=$('#buildBtn');b.disabled=true;
+  try{const r=await api('/v1/admin/prototypes',{body:{url,industry:$('#industry').value,company:$('#company').value,city:$('#city').value,notes:$('#notes').value}});say('Started: you can leave this page, it keeps building.');$('#auditOut').classList.add('hidden');await load();open(r.prototype.id)}catch(e){say(e.message,'bad')}b.disabled=false}
+
+// ---------- the list ----------
+function card(p){
+  const [sl,st]=STATE[p.status]||[p.status,''];const last=(p.steps||[]).slice(-1)[0];
+  return `<article class="card" data-id="${p.id}"><div class="hd"><div><h3>${esc(p.company||p.host)}</h3><div class="sub">${esc(p.host)}${p.city?' · '+esc(p.city):''}${p.industryLabel?' · '+esc(p.industryLabel):''}</div></div><span class="chip ${st}">${esc(sl)}</span></div>
+  ${running(p)?`<div class="prog"><div class="bar"><i></i></div><b>${esc(p.step||'')}</b></div>`:''}
+  ${p.audit?`<div class="mini"><span class="chip ${gradeTone(p.audit.grade)}">their site ${p.audit.score}/100</span>${p.audit.quickTurn?'<span class="chip ok">quick turn</span>':''}${p.qa?`<span class="chip ${p.qa.pass?'ok':'bad'}">${p.qa.pass?'passes the check '+p.qa.score+'%':'fails the check'}</span>`:''}${p.published?`<span class="chip ok">published · ${p.views} view${p.views===1?'':'s'}</span>`:''}</div>`:''}
+  ${p.status==='failed'?`<div class="sub" style="color:var(--bad)">${esc(p.error)}</div>`:''}
+  <div class="sub">${ago(p.createdAt)}${p.model&&p.status==='ready'?' · '+(p.model==='template'?'template':'Claude')+(p.costCents?' · '+money(p.costCents):''):''}</div>
+  <div class="acts"><button class="btn sm go" data-open="${p.id}">${p.status==='ready'?'Open':'Details'}</button>${p.status==='failed'?`<button class="btn sm" data-rebuild="${p.id}">Try again</button>`:''}</div></article>`;
+}
+function renderList(){$('#t-list').innerHTML=LIST.length?`<div class="cards">${LIST.map(card).join('')}</div>`:`<p class="empty">No prototypes yet. Paste a site above to build the first one.</p>`;
+  clearTimeout(POLL);if(LIST.some(running)||(OPEN&&OPEN.p&&running(OPEN.p)))POLL=setTimeout(refresh,2500)}
+async function load(){LIST=(await api('/v1/admin/prototypes')).prototypes;renderList()}
+async function refresh(){try{await load();if(OPEN&&$('#dlg').open)await open(OPEN.id,true)}catch{}}
+
+// ---------- one prototype ----------
+async function open(id,quiet){
+  const {prototype:p}=await api('/v1/admin/prototypes/'+id);const prev=OPEN&&OPEN.id===id?OPEN:null;OPEN={id,p,html:prev?prev.html:null};draw();if(!$('#dlg').open)$('#dlg').showModal();
+  if(p.hasHtml&&(!OPEN.html||OPEN.ver!==p.updatedAt)){try{const r=await fetch(`/v1/admin/prototypes/${id}/preview`,{headers:{Authorization:'Bearer '+TOKEN()}});OPEN.html=r.ok?await r.text():'';OPEN.ver=p.updatedAt;const f=$('#frame');if(f)f.srcdoc=OPEN.html}catch{}}
+  clearTimeout(POLL);if(running(p)||LIST.some(running))POLL=setTimeout(refresh,2500);
+}
+function draw(){
+  const p=OPEN.p,[sl,st]=STATE[p.status]||[p.status,''];$('#dTitle').textContent=p.company||p.host;$('#dSub').innerHTML=`<span class="chip ${st}">${esc(sl)}</span> ${esc(p.host)}${p.industryLabel?' · '+esc(p.industryLabel):''}`;
+  const stage=p.hasHtml?`<div class="stage ${DEV==='phone'?'phone':''}" id="stage"><iframe id="frame" title="Preview of the new site" sandbox="allow-scripts allow-popups" ${OPEN.html?'':''}></iframe></div>`:running(p)?`<div class="stage" style="align-items:center;flex-direction:column;gap:10px"><div class="bar" style="width:240px"><i></i></div><b>${esc(p.step)}</b><span class="sub">Usually a minute or two.</span></div>`:`<div class="stage" style="align-items:center"><span class="sub">${esc(p.error||'Nothing built yet')}</span></div>`;
+  const a=p.audit,q=p.qa;
+  const side=`
+  <div class="sec"><h3>Progress</h3><div class="prog">${(p.steps||[]).slice(-6).map(s=>`<span>${esc(s.text)}</span>`).join('')||'<span>Nothing yet</span>'}</div>${p.note?`<p class="sub">${esc(p.note)}</p>`:''}${p.status==='failed'?`<p class="sub" style="color:var(--bad)">${esc(p.error)}</p>`:''}</div>
+  ${a?`<div class="sec"><h3>Their current site: ${a.score}/100</h3><ul class="issues">${(a.issues||a.top).slice(0,6).map(i=>`<li><b>${esc(i.title)}</b><span class="sub">${esc(i.pitch||'')}</span></li>`).join('')}</ul></div>`:''}
+  ${q?`<div class="sec"><h3>Quality check: ${q.score}%</h3><ul class="checks">${(q.checks||[]).map(c=>`<li class="${c.ok?'':c.required?'no':'adv'}">${esc(c.label)}${!c.ok&&c.detail?` <span class="sub">(${esc(c.detail)})</span>`:''}</li>`).join('')}</ul>${q.illustrative.length?`<h3>Marked Sample: confirm with the owner</h3><div class="sub">${q.illustrative.map(esc).join(' · ')}</div>`:''}${q.usesTheirImages?'<p class="sub">Uses their own pictures from their current site: replace with their own files before launch.</p>':''}</div>`:''}
+  ${p.status==='ready'?`<div class="sec"><h3>Share</h3>${p.published?`<div class="pitch" id="link">${esc(p.shareUrl)}</div><div class="acts"><button class="btn sm" data-copy="${esc(p.shareUrl)}">Copy link</button><a class="btn sm" href="${esc(p.shareUrl)}" target="_blank" rel="noopener">Open</a><button class="btn sm" id="unpub">Take it down</button></div>`:`<p class="sub">Publishing puts it on the Builds showcase (hidden until you share it) and gives it a private link.</p><div class="acts"><button class="btn sm go" id="pub" ${q&&!q.pass?'disabled':''}>Publish</button></div>`}
+   <label class="f"><span>Invite the owner by email</span><input class="t" id="inv" type="email" placeholder="owner@joesplumbing.com"></label><label class="f"><span>A line for the email (optional)</span><input class="t" id="invNote" placeholder="Here is what your site could look like."></label><div class="acts"><button class="btn sm go" id="share" ${q&&!q.pass?'disabled':''}>Publish and invite</button></div></div>`:''}
+  <div class="sec"><h3>More</h3><div class="acts">${p.status!=='ready'&&!running(p)?'':''}${!running(p)?`<button class="btn sm" id="rebuild">Rebuild</button>`:''}${p.hasHtml?`<a class="btn sm" id="dl" href="#">Download the page</a>`:''}<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">Their current site</a><button class="btn sm danger" id="del">Delete</button></div></div>`;
+  $('#dBody').innerHTML=`<div class="split"><div>${p.hasHtml?`<div class="acts" style="justify-content:space-between;margin-bottom:8px"><div class="dev"><button data-dev="desktop" class="${DEV==='desktop'?'on':''}">Desktop</button><button data-dev="phone" class="${DEV==='phone'?'on':''}">Phone</button></div><span class="sub">${p.model==='template'?'Standard template':'Built by Claude'} · ${p.qa?p.qa.sizeKB+' KB':''}${p.costCents?' · '+money(p.costCents):''}</span></div>`:''}${stage}</div><div>${side}</div></div>`;
+  const f=$('#frame');if(f&&OPEN.html)f.srcdoc=OPEN.html;
+}
+
+// ---------- events ----------
+document.addEventListener('click',async e=>{
+  const t=e.target;
+  const cp=t.closest('[data-copy]');if(cp){try{await navigator.clipboard.writeText(cp.dataset.copy);(cp.closest('dialog')?dsay:say)('Copied')}catch{prompt('Copy this',cp.dataset.copy)}return}
+  const op=t.closest('[data-open]');if(op){try{await open(op.dataset.open)}catch(err){say(err.message,'bad')}return}
+  const rb=t.closest('[data-rebuild]');if(rb){try{await api(`/v1/admin/prototypes/${rb.dataset.rebuild}/rebuild`,{body:{}});await load()}catch(err){say(err.message,'bad')}return}
+  const dv=t.closest('[data-dev]');if(dv){DEV=dv.dataset.dev;const s=$('#stage');if(s)s.classList.toggle('phone',DEV==='phone');document.querySelectorAll('[data-dev]').forEach(b=>b.classList.toggle('on',b.dataset.dev===DEV));return}
+  if(t.closest('#dClose')){$('#dlg').close();OPEN=null;return}
+  if(t.closest('#buildFromAudit')){await start();return}
+  if(!OPEN)return;const id=OPEN.id;
+  try{
+    if(t.closest('#pub')){await api(`/v1/admin/prototypes/${id}/publish`,{body:{}});dsay('Published. It is on the Builds showcase, hidden until you invite someone.');await load();await open(id)}
+    else if(t.closest('#unpub')){await api(`/v1/admin/prototypes/${id}/unpublish`,{body:{}});dsay('Taken down.');await load();await open(id)}
+    else if(t.closest('#share')){const email=$('#inv').value.trim();const r=await api(`/v1/admin/prototypes/${id}/share`,{body:{emails:email,note:$('#invNote').value}});dsay(email?`Published and ${email} is invited: they get a sign-in code by email.`:'Published. Copy the link to send it.');await load();await open(id)}
+    else if(t.closest('#rebuild')){if(!confirm('Build this prototype again? The page is replaced.'))return;await api(`/v1/admin/prototypes/${id}/rebuild`,{body:{}});dsay('Building again…');await load();await open(id)}
+    else if(t.closest('#del')){if(!confirm('Delete this prototype? Its link stops working and its build is archived.'))return;await api('/v1/admin/prototypes/'+id,{method:'DELETE'});$('#dlg').close();OPEN=null;await load()}
+    else if(t.closest('#dl')){e.preventDefault();const r=await fetch(`/v1/admin/prototypes/${id}/download`,{headers:{Authorization:'Bearer '+TOKEN()}});const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`${OPEN.p.host}-prototype.html`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
+  }catch(err){dsay(err.message,'bad')}
+});
+
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{
+    META=await api('/v1/admin/prototypes/meta');$('#industry').insertAdjacentHTML('beforeend',META.industries.map(i=>`<option value="${esc(i.key)}">${esc(i.label)}</option>`).join(''));
+    $('#aiChip').className='chip '+(META.ai?'ok':'warn');$('#aiChip').textContent=META.ai?'Claude connected':'Claude not connected: uses the template';
+    await load();$('#app').classList.remove('hidden');
+    const want=new URLSearchParams(location.search);if(want.get('open'))open(want.get('open')).catch(()=>{});if(want.get('url')){$('#url').value=want.get('url')}
+  }catch(err){if(err.status===401||err.status===403)$('#needSignin').classList.remove('hidden');else{$('#app').classList.remove('hidden');say(err.message,'bad')}}
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>

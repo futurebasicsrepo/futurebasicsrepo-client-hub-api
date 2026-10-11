@@ -21,6 +21,7 @@ import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } fr
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerFactoryRoutes } from './factories-routes.js'
+import { registerProtoRoutes } from './proto-routes.js'
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
@@ -111,7 +112,7 @@ app.addHook('onSend', async (_req, reply, payload) => {
     .header('strict-transport-security', 'max-age=31536000')
     .header('content-security-policy', reply.getHeader('content-security-policy') || "upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https:; connect-src 'self' https://thefuturebasics.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
     .header('x-content-type-options', 'nosniff')
-    .header('referrer-policy', 'strict-origin-when-cross-origin')
+    .header('referrer-policy', reply.getHeader('referrer-policy') || 'strict-origin-when-cross-origin')
     .header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
   // The pages and the pack data are text (a tech pack page is ~300 KB, a published pack with pictures several MB of JSON): compress what the browser can take, so a
   // factory on a phone connection waits for a fifth of it. Streams, PDFs and images are left as they are; nothing here changes what is sent, only how.
@@ -633,10 +634,14 @@ const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secr
 registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, workUrl: workHubUrl, builds: buildsApi, aiEnabled, log: app.log });
 registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
+// PROTOTYPE_TEST_ORIGIN is only set by the journeys: every site is then read from that stand-in server instead of the internet
+registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle, env: process.env, log: app.log, publicUrl: process.env.BUILDS_PUBLIC_URL || 'https://builds.thefuturebasics.com',
+  crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, o); } } : {} });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
+app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./prototypes.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 app.get('/admin', sendAdmin);
