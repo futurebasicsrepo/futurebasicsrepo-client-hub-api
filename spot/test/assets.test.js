@@ -26,6 +26,21 @@ test('Spot in 3D and his stills: served with a content hash, gzipped JS, cached 
   assert.ok(home.includes(assetUrl('spot3d.js')) && home.includes(assetUrl('spot-hi.webp')));
 });
 
+test('Spot\'s face is the logo, and the guide has his other moods', async (t) => {
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), logger: false, env: { SPOT_AGENT: 'off' } });
+  t.after(() => a.close());
+  for (const name of ['spot-face.webp', 'spot-face-blink.webp', 'spot-oh.webp', 'spot-sleep.webp']) {
+    assert.ok(ASSETS[name], `${name} is shipped`);
+    assert.equal((await a.inject({ method: 'GET', url: assetUrl(name) })).statusCode, 200);
+  }
+  const home = (await a.inject({ method: 'GET', url: '/' })).body;
+  assert.ok(home.includes(assetUrl('spot-face.webp')) && home.includes(assetUrl('spot-face-blink.webp')), 'the nav logo is his face');
+  assert.ok(home.includes(assetUrl('spot-oh.webp')) && home.includes(assetUrl('spot-sleep.webp')), 'the guide can look surprised and fall asleep');
+  assert.match(home, /id="hsay"/, 'the hero Spot has a speech bubble');
+  const signin = (await a.inject({ method: 'GET', url: '/signin' })).body;
+  assert.ok(signin.includes(assetUrl('spot-face.webp')), 'app pages use the same face');
+});
+
 test('the production image ships the assets (the Dockerfile copies them next to src)', () => {
   const docker = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
   assert.match(docker, /^COPY src \.\/src$/m);

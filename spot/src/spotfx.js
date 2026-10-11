@@ -6,11 +6,13 @@
 
 // The character: Spot the plush, rendered in 3D (src/client/spot3d.js).
 // Everywhere but the hero he's a still from that same model (normal and
-// happy); the hero swaps the still for the live plush once it loads.
+// happy, plus surprised and asleep for the guide); the hero swaps the still
+// for the live plush once it loads, and gives him a speech bubble.
 import { assetUrl } from './assets.js';
 
-export function spotBuddy(id = 'b', { happy = false } = {}) {
-  return `<span class="spotb spotimg${happy ? ' happy' : ''}" data-spot="${id}"><img class="hi" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async"><img class="yay" src="${assetUrl('spot-yay.webp')}" alt="" width="320" height="358" decoding="async" loading="lazy"></span>`;
+export function spotBuddy(id = 'b', { happy = false, moods = false } = {}) {
+  const img = (cls, name) => `<img class="${cls}" src="${assetUrl(name)}" alt="" width="320" height="358" decoding="async" loading="lazy">`;
+  return `<span class="spotb spotimg${happy ? ' happy' : ''}" data-spot="${id}"><img class="hi" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async">${img('yay', 'spot-yay.webp')}${moods ? img('oh', 'spot-oh.webp') + img('zzz', 'spot-sleep.webp') : ''}</span>`;
 }
 
 // Hero: the YES button with Spot standing on it, and the order around them:
@@ -27,7 +29,7 @@ export function yesStage() {
   <div class="layer" data-depth="16"><div class="chip chip-ask fb" id="askChip"><span class="ico">${icon.ok}</span><span><b class="st-wait">Approve $119.60?</b><b class="st-done">Approved ✓ signed</b><small>Nike · your Visa •4242 pays</small></span></div></div>
   <div class="layer" data-depth="8"><div class="vcard fc" id="vcard"><div class="vtop"><span class="vbrand"><i></i>Spot</span><span class="vkind">one order</span></div><div class="vchip"></div><div class="vnum">•••• 0417</div><div class="vrows"><span>Cap</span><b>$119.60</b><span>Only at</span><b>nike.com</b></div><div class="vstamp">used · closed</div></div></div>
   <div class="yesgroup">
-    <div class="herospot" id="heroSpot">${spotBuddy('hero')}<span class="spothit" aria-hidden="true"></span></div>
+    <div class="herospot" id="heroSpot">${spotBuddy('hero')}<span class="spothit" aria-hidden="true"></span><div class="hsay" id="hsay" aria-hidden="true"></div></div>
     <button class="yesbtn" id="yesBtn" type="button" aria-label="Press yes, like approving an order"><span class="ring"></span><span class="cap">YES</span></button>
     <div class="yescount" id="yesCount" aria-live="polite">go on, press it</div>
   </div>
@@ -55,19 +57,26 @@ export function beatsSection() {
 
 // The little Spot that rides along the page.
 export function guideSpot() {
-  return `<div class="guide" id="guide" aria-hidden="true"><div class="gsay" id="gsay"></div><button class="gspot" id="gspot" type="button" tabindex="-1">${spotBuddy('guide')}</button></div>`;
+  return `<div class="guide" id="guide" aria-hidden="true"><div class="gsay" id="gsay"></div><button class="gspot" id="gspot" type="button" tabindex="-1">${spotBuddy('guide', { moods: true })}</button></div>`;
 }
 
 export const SPOTFX_CSS = `
 /* ── Spot the character ── */
 .spotb{width:100%;height:auto;display:block;position:relative}
 .spotimg img{display:block;width:100%;height:auto;transition:opacity .12s}
-.spotimg .yay{position:absolute;inset:0;opacity:0}.spotb.happy .yay{opacity:1}.spotb.happy .hi{opacity:0}
+.spotimg .yay,.spotimg .oh,.spotimg .zzz{position:absolute;inset:0;opacity:0}.spotb.happy .yay{opacity:1}.spotb.happy .hi{opacity:0}
+.spotb.oh .oh,.spotb.sleep .zzz{opacity:1}.spotb.oh .hi,.spotb.sleep .hi,.spotb.oh .yay{opacity:0}
 /* the live plush replaces the still in the hero */
 .herospot .spot3d{display:block;width:100%;height:auto}
 /* only Spot himself is clickable: the canvas's empty corners overlap the YES key */
 .herospot .spothit{position:absolute;left:20%;right:20%;top:14%;bottom:24%;pointer-events:auto;cursor:pointer;border-radius:50%}
 .herospot.has3d .spotimg{display:none}.herospot.has3d{animation:none}
+/* what he says when something happens to him */
+.hsay{position:absolute;right:58%;top:12%;z-index:3;width:max-content;max-width:180px;background:var(--ink);color:var(--bg);font-weight:700;font-size:13.5px;line-height:1.3;border-radius:16px 16px 4px 16px;padding:8px 12px;opacity:0;transform:translateY(6px) scale(.85);transform-origin:100% 100%;transition:opacity .2s,transform .32s cubic-bezier(.2,1.5,.4,1);pointer-events:none}
+.hsay.show{opacity:1;transform:none}
+.zz{position:absolute;left:60%;top:20%;font-weight:800;font-size:18px;color:var(--muted);pointer-events:none;animation:zz 2.6s ease-out forwards}
+@keyframes zz{0%{opacity:0;transform:none}20%{opacity:.9}100%{opacity:0;transform:translate(28px,-60px) scale(1.3) rotate(12deg)}}
+.guide .zz{left:auto;right:6px;top:-6px}
 
 /* ── Hero ── */
 .hero2{padding:64px 0 48px;position:relative;overflow:hidden;isolation:isolate}
@@ -151,6 +160,7 @@ export const SPOTFX_CSS = `
   .yesgroup{left:62%}.herospot{width:220px;margin-bottom:-30px}.halo{left:62%}
 }
 @media (max-width:600px){
+  .hsay{right:56%;top:10%;max-width:150px;font-size:12.5px}
   .yesstage{height:392px;margin-top:8px}
   .chip{padding:10px 14px 10px 10px}.chip .ico{width:32px;height:32px}.chip b{font-size:14px}.chip small{font-size:12.5px}
   .chip-ai{left:0;top:0}.chip-ask{right:0;top:70px}
@@ -217,6 +227,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;opa
 
 // Client side. Expects `reduce` and `spotConfetti` from SITE_JS / FX_JS.
 export const SPOTFX_JS = `
+  // a floating "z" over a sleeping Spot
+  const zz=(el)=>{if(reduce||!el)return;const z=document.createElement('span');z.className='zz';z.textContent='z';el.appendChild(z);setTimeout(()=>z.remove(),2700)};
   // Every Spot blinks now and then, and looks at the pointer.
   const spots=[...document.querySelectorAll('.spotb')];
   const blink=()=>{spots.forEach(s=>{if(s.classList.contains('happy'))return;s.classList.add('blink');setTimeout(()=>s.classList.remove('blink'),130)});setTimeout(blink,2600+Math.random()*2600)};
@@ -236,9 +248,16 @@ export const SPOTFX_JS = `
       addEventListener('scroll',ask,{passive:true});
       addEventListener('deviceorientation',e=>{if(e.gamma==null)return;px=Math.max(-.5,Math.min(.5,e.gamma/40));py=Math.max(-.5,Math.min(.5,(e.beta-45)/50));ask()},{passive:true})}
     const btn=document.getElementById('yesBtn'),hs=document.getElementById('heroSpot'),hsvg=hs&&hs.querySelector('.spotb'),count=document.getElementById('yesCount');let n=0,busy=0;
-    // The live 3D plush takes over from the still once it's loaded (not on Save-Data).
-    let s3=null;
-    if(hs&&!(navigator.connection&&navigator.connection.saveData))import(${JSON.stringify(assetUrl('spot3d.js'))}).then(m=>{s3=m.mountSpot3D(hs);if(s3)hs.classList.add('has3d')}).catch(()=>{});
+    // The live 3D plush takes over from the still once it's loaded (not on
+    // Save-Data). He tells us what he's up to (cues) and gets a line for it.
+    let s3=null,sayT=0,eagerAt=-1e9;const hsay=document.getElementById('hsay'),said={};
+    const LINES={hello:['hi! I’m Spot 👋'],poke:['boop!','hehe, that tickles','eep!','again? ok 😆','hey, I’m working here 😄'],dizzy:['whoa… everything’s spinning 💫'],shy:['oh! hi… 🙈','you’re staring 😳','…can I help you? 🙈'],eager:['go on, press it 👀','ooh, do it!','yes? yes? 👀'],yawn:['*yaaawn* 🥱','is it nap time?'],sleep:['zzz…'],wake:['oh! I’m up, I’m up 👀','wasn’t sleeping! 😳'],back:['you’re back! 👋','missed you 🧡']};
+    const line=k=>{const a=LINES[k]||[];said[k]=(said[k]??-1)+1;return a[said[k]%a.length]||''};
+    const hSay=(t,ms=2300)=>{if(!hsay||!t)return;hsay.textContent=t;hsay.classList.remove('show');void hsay.offsetWidth;hsay.classList.add('show');clearTimeout(sayT);sayT=setTimeout(()=>hsay.classList.remove('show'),ms)};
+    const onCue=c=>{if(c==='snore')return zz(hs);if(c==='sleep'){zz(hs);return hSay(line('sleep'),1800)}if(c==='eager'){if(Date.now()-eagerAt<20000)return;eagerAt=Date.now()}hSay(line(c),c==='dizzy'?2800:2300)};
+    if(hs&&!(navigator.connection&&navigator.connection.saveData))import(${JSON.stringify(assetUrl('spot3d.js'))}).then(m=>{s3=m.mountSpot3D(hs,{onCue});if(!s3)return;hs.classList.add('has3d');
+      let met=null;try{met=sessionStorage.getItem('spot-met');sessionStorage.setItem('spot-met','1')}catch{}
+      if(!met)setTimeout(()=>{s3.play('wave');hSay(line('hello'),2600)},900)}).catch(()=>{});
     const heroCheer=(ms)=>{if(!s3)return cheer(hs,hsvg,ms);s3.hop();s3.happy(true);clearTimeout(hs._h);hs._h=setTimeout(()=>s3.happy(false),ms)};
     const lines=['approved. signed. sent ✍️','another yes! 🧡','the store got the order 📦','card used, then closed 🔒','you’re good at this','ok now ask your AI for real →'];
     const yes=()=>{n++;btn.classList.add('down');setTimeout(()=>btn.classList.remove('down'),150);btn.classList.remove('ringing');void btn.offsetWidth;btn.classList.add('ringing');try{navigator.vibrate&&navigator.vibrate(8)}catch{}
@@ -247,7 +266,16 @@ export const SPOTFX_JS = `
       busy=setTimeout(()=>st.classList.remove('approved','used'),3600);
       count.textContent=(n>1?'yes ×'+n+' · ':'')+lines[(n-1)%lines.length]};
     btn&&btn.addEventListener('click',yes);
-    hs&&hs.addEventListener('click',()=>{heroCheer(1100);spotConfetti(hs,'50%','45%',24)});
+    // He leans in when you hover YES, crouches while you hold it.
+    if(btn){const ant=on=>s3&&s3.anticipate(on),crouch=on=>s3&&s3.crouch(on);
+      btn.addEventListener('pointerenter',()=>ant(true));btn.addEventListener('pointerleave',()=>{ant(false);crouch(false)});
+      btn.addEventListener('focus',()=>ant(true));btn.addEventListener('blur',()=>{ant(false);crouch(false)});
+      btn.addEventListener('pointerdown',()=>crouch(true));addEventListener('pointerup',()=>crouch(false));addEventListener('pointercancel',()=>crouch(false));
+      btn.addEventListener('keydown',e=>{if(e.key===' '||e.key==='Enter')crouch(true)});btn.addEventListener('keyup',()=>crouch(false))}
+    // Poke him: he giggles (and gets dizzy if you keep going). Hover: he goes shy.
+    const hit=hs&&hs.querySelector('.spothit');
+    if(hit){hit.addEventListener('click',e=>{if(!s3){cheer(hs,hsvg,1100);return hSay(line('poke'))}const r=hit.getBoundingClientRect();s3.poke((e.clientX-(r.left+r.width/2))/(r.width/2))});
+      hit.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse'&&s3)s3.hover(true)});hit.addEventListener('pointerleave',()=>s3&&s3.hover(false))}
     place();
   }
 
@@ -265,8 +293,18 @@ export const SPOTFX_JS = `
     const seen=new Set();
     const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting&&guide.classList.contains('on')&&!seen.has(e.target)){seen.add(e.target);say(e.target.dataset.say)}}),{threshold:.45});
     document.querySelectorAll('[data-say]').forEach(s=>io.observe(s));
-    const quips=['boing!','that tickles 😆','I only buy what you said yes to','hi again 👋','one card per order. always.','tap tap tap'];let q=0;
-    gspot.addEventListener('click',()=>{cheer(gspot,gsvg,1000);say(quips[q++%quips.length],2600);spotConfetti(guide,'80%','30%',18)});
+    const quips=['boing!','that tickles 😆','I only buy what you said yes to','hi again 👋','one card per order. always.','tap tap tap'];let q=0,idleAt=Date.now(),asleep=false;
+    const mood=(m,ms)=>{gsvg.classList.remove('oh','sleep');if(m)gsvg.classList.add(m);if(ms)setTimeout(()=>gsvg.classList.remove(m),ms)};
+    gspot.addEventListener('click',()=>{const wasAsleep=asleep;asleep=false;idleAt=Date.now();
+      if(wasAsleep){mood('oh',900);return say('oh! I’m up, I’m up 👀',2400)}
+      if(q%3===2){mood('oh',900);say(['eep!','whoa, easy 😳'][q++%2],2200);return}
+      mood(null);cheer(gspot,gsvg,1000);say(quips[q++%quips.length],2600);spotConfetti(guide,'80%','30%',18)});
+    // Leave him be for a while and he nods off; he wakes with a start when you're back.
+    const stir=()=>{idleAt=Date.now();if(asleep){asleep=false;mood('oh',800)}};
+    ['pointermove','scroll','keydown','touchstart'].forEach(ev=>addEventListener(ev,stir,{passive:true}));
+    if(!reduce)setInterval(()=>{if(!guide.classList.contains('on')||document.hidden)return;
+      if(!asleep&&Date.now()-idleAt>45000){asleep=true;mood('sleep');say('zzz…',2200)}
+      if(asleep)zz(guide)},3400);
   }
 `;
 
