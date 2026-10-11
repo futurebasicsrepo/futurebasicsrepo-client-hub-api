@@ -167,7 +167,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:50;opa
 
 /* hero mascot: blink, wave, say hi */
 .hero .buddy{cursor:pointer}
-.hero .buddy .open{transform-origin:100px 90px;animation:blink 4.6s infinite}
+.hero .buddy .sb-eyes{transform-origin:120px 124px;transform-box:view-box;animation:blink 4.6s infinite}
 @keyframes blink{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
 .hi{position:absolute;right:calc(max(2vw,8px) + 90px);top:26px;background:var(--ink);color:var(--bg);font-weight:800;font-size:15px;border-radius:14px 14px 4px 14px;padding:7px 12px;opacity:0;animation:pop .4s .9s forwards}
 .hi span{display:inline-block;transform-origin:70% 80%;animation:wave 1.6s 1.2s 2}

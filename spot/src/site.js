@@ -16,9 +16,12 @@ export const SITE_CSS = `
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-600.woff2) format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:Bricolage;src:url(/fonts/bricolage-800.woff2) format('woff2');font-weight:800;font-display:swap}
 :root{--bg:#fbf7f1;--bg2:#f4ece1;--card:#fff;--ink:#1b1712;--muted:#6f675c;--line:#e8e0d4;--spot:#ff5a36;--spot2:#ffb347;--ok:#1d8a52;--night:#16130f;--night2:#221d18;
+  /* the one cool accent: your AI's side of things (Spot's side is warm) */
+  --ai:#5b5bd6;
+  --ease-soft:cubic-bezier(.45,0,.25,1);--ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1);
   --radius:20px;--r-md:14px;--r-sm:10px;--wrap:1200px;--gutter:20px;--sec:clamp(72px,9vw,112px);
   --sh-1:0 1px 2px rgba(27,23,18,.05),0 4px 14px -8px rgba(27,23,18,.16);--sh-2:0 1px 2px rgba(27,23,18,.04),0 16px 36px -20px rgba(27,23,18,.28);--sh-3:0 2px 4px rgba(27,23,18,.04),0 28px 56px -28px rgba(27,23,18,.34)}
-@media (prefers-color-scheme:dark){:root{--bg:#141210;--bg2:#1b1814;--card:#1f1b17;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47;--night:#0e0c0a;--night2:#1a1612;
+@media (prefers-color-scheme:dark){:root{--bg:#141210;--bg2:#1b1814;--card:#1f1b17;--ink:#f4efe8;--muted:#a79e92;--line:#322d27;--spot:#ff6a47;--night:#0e0c0a;--night2:#1a1612;--ai:#9a98ff;
   --sh-1:0 1px 2px rgba(0,0,0,.3),0 4px 14px -8px rgba(0,0,0,.5);--sh-2:0 1px 2px rgba(0,0,0,.25),0 16px 36px -20px rgba(0,0,0,.6);--sh-3:0 2px 4px rgba(0,0,0,.25),0 28px 56px -28px rgba(0,0,0,.7)}}
 *{box-sizing:border-box}html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 Bricolage,ui-sans-serif,-apple-system,system-ui,sans-serif;overflow-x:hidden;padding-top:env(safe-area-inset-top,0px)}
@@ -35,7 +38,9 @@ p{margin:0}.muted{color:var(--muted)}
 .btn.primary:hover{background:color-mix(in srgb,var(--spot) 90%,#000)}
 .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
 .btn.ghost:hover{border-color:color-mix(in srgb,var(--ink) 30%,var(--line))}
-.btn:focus-visible,nav a:focus-visible,nav summary:focus-visible{outline:2px solid var(--spot);outline-offset:3px}
+/* focus rings are stitched, like Spot's seams */
+:where(a,button,summary,input,select,textarea,[tabindex]):focus-visible{outline:2px dashed var(--spot);outline-offset:3px}
+::selection{background:color-mix(in srgb,var(--spot) 24%,transparent)}
 .pill{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:6px 12px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
 .pill i{width:7px;height:7px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 3px color-mix(in srgb,var(--spot) 20%,transparent)}
 .sec{padding:var(--sec) 0}.sec.alt{background:var(--bg2)}
@@ -48,6 +53,8 @@ nav.scrolled{border-bottom-color:var(--line)}
 nav>.wrap{max-width:var(--wrap);display:flex;align-items:center;gap:8px;height:68px;white-space:nowrap}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none;flex:none}
 .logo span{width:20px;height:20px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 20%,transparent)}
+/* the logo is Spot's face: two eyes on the dot */
+nav .logo span{background:radial-gradient(circle at 37% 46%,#1b1712 0 1.3px,#fff 1.5px 2.9px,transparent 3.1px),radial-gradient(circle at 63% 46%,#1b1712 0 1.3px,#fff 1.5px 2.9px,transparent 3.1px),var(--spot)}
 nav .links{display:flex;align-items:center;gap:2px;margin-left:auto;font-weight:600;font-size:15px}
 nav .links>a,nav .navmore summary{display:flex;align-items:center;gap:4px;height:40px;padding:0 12px;border-radius:var(--r-sm);text-decoration:none;color:var(--muted);transition:color .15s,background-color .15s;cursor:pointer}
 nav .links>a:hover,nav .navmore summary:hover,nav .navmore[open] summary{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
@@ -297,7 +304,7 @@ export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><meta name="theme-color" content="#ff5a36">${HOME_SCREEN_TAGS}
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23ff5a36'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16.5' r='13' fill='%23ff5a36'/%3E%3Cellipse cx='12' cy='14.5' rx='2.9' ry='3.4' fill='%23fff'/%3E%3Cellipse cx='20' cy='14.5' rx='2.9' ry='3.4' fill='%23fff'/%3E%3Ccircle cx='12.3' cy='15.3' r='1.7' fill='%231b1712'/%3E%3Ccircle cx='20.3' cy='15.3' r='1.7' fill='%231b1712'/%3E%3Cpath d='M13.4 20.2q2.6 2 5.2 0' stroke='%231b1712' stroke-width='1.3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="/fonts/bricolage-800.woff2" as="font" type="font/woff2" crossorigin>
 <style>${SITE_CSS}${FX_CSS}${extraCss}</style></head><body>`;
 }
