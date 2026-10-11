@@ -23,6 +23,7 @@
       { label: 'Pipeline', href: '/sales#pipeline' },
       { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' },
       { label: 'Chats', href: '/sales#chats', badge: '#chatCount' },
+      { label: 'Press', href: '/sales#press' },
       { label: 'Automations', href: '/sales#automations' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
       { label: 'Factories', href: '/admin#partnersSection' },

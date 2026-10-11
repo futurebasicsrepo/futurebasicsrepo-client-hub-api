@@ -84,6 +84,18 @@ A chat button on the **builds showcase** (and on thefuturebasics.com once the sc
 
 **Limits:** a message is dropped if a hidden field is filled in (robots); each address may send 60 messages an hour and open 8 new chats an hour (and 3,000 messages / 300 new chats an hour in all); a chat takes 120 messages a day; the assistant answers at most 300 times a day (set in Chat settings). Chat can be switched off entirely.
 
+## Press comms (phase 5)
+
+**Sales → Press** is for getting the builds written about. It is for staff only and sends nothing by itself.
+
+- **Releases and pitches.** Write a pitch (sent one person at a time), a press release or an announcement. "Draft it with the assistant" writes a first version from a build's details (what it is, key features, what it is built with) and the angle you give it. It uses only those facts and leaves a `[BRACKET]` wherever it was not told a quote, date, place or contact. It needs `ANTHROPIC_API_KEY`; without it you write the text yourself (model: `PRESS_MODEL`, default `claude-sonnet-5-5`).
+- **Draft, then ready.** Only an item marked *ready* can be sent, and a ready item still containing a `[BRACKET]` is refused with the names of the blanks to fill. A pitch may use `{{first_name|there}}`, `{{name}}`, `{{company|your outlet}}` and `{{sender}}`, filled in for each person.
+- **The media list** is everyone in Contacts tagged `press` (the Press saved view shows them). Tags like `beat-retail` say what they cover.
+- **Sending.** Pick people from the media list, read the preview as one of them, tick the confirmation ("I have checked these people cover this and would want to hear about it"), and send. Each goes out as its own one-to-one email through the same email system as the rest of the CRM (our mailing address, the unsubscribe link, the daily email limit), and lands on the person's timeline. Skipped, each with its reason: people not tagged `press`, with no address, who unsubscribed or bounced or marked us as spam, or who were already sent that item. A batch is at most 25 people and a separate pitch limit (default 25 a day, 1 to 100 under *Daily limit*) caps how many pitches go out in a day. A send is recorded before it is attempted, so a double click cannot send twice, and a failed one is released so it can be retried.
+- **Coverage.** Log the outlet, headline, link and date of anything that runs, against the pitch and the journalist; it also appears on their timeline.
+
+Routes (staff only): `GET /v1/sales/press`, `POST|PUT|DELETE /v1/sales/press/items`, `POST /v1/sales/press/draft`, `POST /v1/sales/press/items/:id/preview`, `POST /v1/sales/press/items/:id/pitch`, `GET /v1/sales/press/media`, `GET|POST|DELETE /v1/sales/press/coverage`, `GET|PUT /v1/sales/press/settings`. Rules live in `src/press.js` and `src/press-draft.js`; tables are `press_items`, `press_sends` and `press_coverage`.
+
 ## Next phases
 
 1. ~~Email~~ and ~~Automations~~ (done, above). Possible next steps for automations: a "move the deal" step, notifying staff in chat/email, and branching on a reply or a click.

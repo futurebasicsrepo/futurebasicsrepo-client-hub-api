@@ -1127,4 +1127,74 @@ await journey('J122', 'chat in browsers: the button on the showcase opens the wi
   await vctx.close(); await sctx.close(); await pc.close(); await call(`/v1/admin/builds/${build.id}`, { token: admin, method: 'DELETE' });
 });
 
+await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pitch is drafted by the assistant with brackets to fill, cannot be sent as a draft, goes to the people ticked after the confirmation is ticked, shows who was skipped and why, the media list and the coverage log work, and a phone fits', async () => {
+  const http = await import('node:http');
+  const mock = { sent: [], n: 0 };
+  const resend = http.createServer((req, res) => { const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => { const body = JSON.parse(Buffer.concat(chunks).toString() || '{}'); const id = `re_pressb_${stamp}_${++mock.n}`; if (req.method === 'POST' && req.url === '/emails') mock.sent.push({ id, body }); res.writeHead(req.method === 'POST' ? 200 : 404, { 'content-type': 'application/json' }); res.end(JSON.stringify({ id })); }); });
+  await new Promise(r => resend.listen(3133, '127.0.0.1', r));
+  try {
+    const r = await room('126', { wait: false }), tag = `pr${stamp}`;
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const W = 'http://work.localhost:3123', S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+    await S('/email/settings', { method: 'PUT', body: { dailyCap: 100 } }); await S('/press/settings', { method: 'PUT', body: { dailyCap: 50 } });
+    const mk = async (name, email, tags = ['press', 'beat-retail']) => (await S('/contacts', { body: { name, email, tags, companyName: `Outlet ${name}`, source: 'manual' } })).json.id;
+    const ana = await mk(`Ana ${tag}`, `ana-${tag}@press.test`), ben = await mk(`Ben ${tag}`, `ben-${tag}@press.test`), gone = await mk(`Gus ${tag}`, `gus-${tag}@press.test`);
+    await S(`/contacts/${gone}/unsubscribe`, { method: 'PUT', body: { unsubscribed: true } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept(d.type() === 'prompt' ? (d.message().startsWith('Which outlet') ? 'Retail Dive' : d.message().startsWith('Link') ? 'https://example.com/rd' : d.message().startsWith('Its headline') ? 'Salons, rebuilt' : d.message().startsWith('Date') ? '2026-10-14' : d.defaultValue()) : undefined));
+    await page.goto(`${W}/sales#press`, { waitUntil: 'networkidle' }); await page.waitForSelector('#t-press:not(.hidden) #prNew', { timeout: 10000 });
+    ok(/Press/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && /allowed/.test(await page.innerText('#pressNote')), 'the address opens the Press tab, the left menu marks Press, and it says how many pitches are allowed today');
+
+    // write one with the assistant
+    await page.click('#prNew'); await page.waitForSelector('#prdlg[open]');
+    await page.fill('#prName', `Salon pitch ${tag}`); await page.fill('#prAngle', 'Small salons can have their own booking site');
+    await page.click('#prDraft'); await page.waitForFunction(() => document.querySelector('#prSubject').value.length > 0, null, { timeout: 15000 });
+    ok(/Fixture pitch/.test(await page.inputValue('#prSubject')) && /\[QUOTE FROM KYLE\]/.test(await page.inputValue('#prBody')) && /BRACKET/.test(await page.innerText('#prDraftMsg')), 'the assistant fills the subject and message, and tells staff to fill in the brackets');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j126-editor.png` }).catch(() => {});
+    await page.selectOption('#prStatus', 'ready'); await page.click('#prform button[type=submit]');
+    await page.waitForSelector('#prdlg:not([open])', { state: 'attached', timeout: 5000 }).catch(async e => { throw new Error(`editor did not close: ${await page.innerText('#prMsg')} / ${page.errs.join(';')}`); });
+    ok(await page.locator('#prdlg[open]').count() === 0 && await page.locator('[data-pid]').count() === 1, 'it saves (the editor does not stop a draft with brackets from being saved)');
+    ok(await page.locator('[data-pid] [data-psend]').isDisabled() === false, 'it is marked ready, so Send is offered');
+    // the brackets stop it going
+    await page.click('[data-psend]'); await page.waitForSelector('#ppdlg[open]');
+    await page.locator('#ppRows tr', { hasText: `Ana ${tag}` }).locator('[data-pick]').check(); await page.check('#ppConfirm');
+    ok(await page.locator('#ppSend').isEnabled(), 'with someone ticked and the confirmation ticked, Send is enabled');
+    await page.click('#ppSend'); await page.waitForFunction(() => /Fill in/.test(document.querySelector('#ppMsg').textContent), null, { timeout: 8000 });
+    ok(/QUOTE FROM KYLE/.test(await page.innerText('#ppMsg')) && mock.sent.length === 0, 'with a [QUOTE FROM KYLE] left in it, nothing is sent and it says what to fill in');
+    await page.click('#ppdlg [data-close]');
+
+    // fill it in and send
+    await page.click('[data-pedit]'); await page.waitForSelector('#prdlg[open]');
+    await page.fill('#prBody', (await page.inputValue('#prBody')).replace('[QUOTE FROM KYLE]', 'We built it in two weeks.')); await page.click('#prform button[type=submit]');
+    await page.waitForSelector('#prdlg:not([open])', { state: 'attached' }); await page.click('[data-psend]'); await page.waitForSelector('#ppdlg[open]');
+    ok(await page.locator('#ppRows tr', { hasText: `Gus ${tag}` }).locator('[data-pick]').isDisabled() && /Unsubscribed|not to be emailed/i.test(await page.locator('#ppRows tr', { hasText: `Gus ${tag}` }).innerText()), 'someone who unsubscribed cannot be ticked, and the row says why');
+    ok(await page.locator('#ppSend').isDisabled(), 'Send stays off until someone is ticked and the confirmation is ticked');
+    await page.selectOption('#ppWho', ana); await page.click('#ppPrev'); await page.waitForSelector('#ppPreview .prev');
+    ok(/Hi Ana/.test(await page.innerText('#ppPreview')) && !/still to fill/.test(await page.innerText('#ppPreview')), 'the preview shows the message as Ana gets it');
+    await page.locator('#ppRows tr', { hasText: `Ana ${tag}` }).locator('[data-pick]').check(); await page.locator('#ppRows tr', { hasText: `Ben ${tag}` }).locator('[data-pick]').check();
+    ok(!await page.locator('#ppSend').isEnabled(), 'two people ticked is not enough without the confirmation');
+    await page.check('#ppConfirm'); ok(/Send to 2 people/.test(await page.innerText('#ppSend')), 'the button says how many'); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j126-send.png` }).catch(() => {});
+    await page.click('#ppSend'); await page.waitForFunction(() => /2 sent/.test(document.querySelector('#ppMsg').textContent), null, { timeout: 10000 });
+    ok(mock.sent.length === 2 && mock.sent.every(m => m.body.text.includes('Unsubscribe here: ')) && await page.locator('#ppResults li.sent').count() === 2, 'two emails went, each with the unsubscribe link, and the results list them');
+    await page.click('#ppdlg [data-close]'); await page.waitForFunction(() => /sent to 2/.test(document.querySelector('[data-pid]').innerText), null, { timeout: 5000 });
+    ok(/sent to 2/.test(await page.innerText('[data-pid]')), 'the card now says it was sent to 2');
+
+    // media list and coverage
+    await page.click('[data-pv=media]'); await page.waitForSelector('[data-mid]');
+    ok(await page.locator('[data-mid]').count() >= 3 && /retail/.test(await page.innerText('#pressBody')), 'the media list shows the tagged people with what they cover');
+    await page.click('[data-pv=coverage]'); await page.waitForSelector('#cvNew'); await page.click('#cvNew'); await page.waitForSelector('[data-cid]');
+    ok(/Retail Dive/.test(await page.innerText('#pressBody')) && await page.locator('[data-cid] a[href="https://example.com/rd"]').count() === 1, 'coverage can be logged and links to the piece');
+    await page.click('[data-cdel]'); await page.waitForFunction(() => !document.querySelector('[data-cid]'), null, { timeout: 5000 });
+    ok(await page.locator('[data-cid]').count() === 0, 'and removed');
+    ok(page.errs.length === 0, 'no script errors on the page', page.errs);
+
+    // a phone
+    const pctx = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const ph = await pctx.newPage(); await ph.goto(`${W}/sales#press`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#t-press:not(.hidden) #prNew');
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone the Press tab does not scroll sideways');
+    await ph.click('[data-psend]'); await ph.waitForSelector('#ppdlg[open]'); ok(await ph.evaluate(() => { const d = document.querySelector('#ppdlg').getBoundingClientRect(); return d.left >= -1 && d.right <= innerWidth + 1; }), 'and the send window fits the screen');
+    await pctx.close(); await ctx.close();
+  } finally { await new Promise(r => resend.close(r)); }
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

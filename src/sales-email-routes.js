@@ -86,7 +86,7 @@ export function registerSalesEmailRoutes(app, d) {
 
   // ---------- sending ----------
   // One place that sends a contact an email, for the staff page and for automations. → { ok, id, remaining } or { ok: false, status, error, extra }
-  async function sendToContact(contactId, { subject, body, confirmed = false, actorId = null, sender = null, via = null }) {
+  async function sendToContact(contactId, { subject, body, confirmed = false, actorId = null, sender = null, via = null, confirmText = 'Emailed after staff confirmed they know us' }) {
     const fail = (status, error, extra = {}) => ({ ok: false, status, error, extra });
     const f = await facts(contactId); if (!f) return fail(404, 'Not found');
     const s = await settings(), from = sender || firstNameOf(s.fromName) || 'Kyle';
@@ -107,10 +107,16 @@ export function registerSalesEmailRoutes(app, d) {
       log.warn?.({ err: e.message }, 'sales email not sent');
       return fail(502, `The email did not go: ${e.message}`);
     }
-    if (!f.rel.ok && confirmed) await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system','Emailed after staff confirmed they know us',$2)`, [f.c.id, actorId]);
+    if (!f.rel.ok && confirmed) await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system',$3,$2)`, [f.c.id, actorId, confirmText]);
     await pool.query(`insert into sales_activities(contact_id,kind,text,meta,actor_id) values($1,'email_out',$2,$3::jsonb,$4)`, [f.c.id, msg.subject, JSON.stringify({ emailId: row.id, ...(via ? { automation: via } : {}) }), actorId]);
     await pool.query(`update sales_contacts set last_activity_at=now() where id=$1`, [f.c.id]);
     return { ok: true, id: row.id, remaining: Math.max(0, s.dailyCap - n - 1), subject: msg.subject };
+  }
+  // the message as one contact would get it (merge fields filled), for a preview before anything is sent
+  async function previewFor(contactId, subject, body, sender = null) {
+    const f = await facts(contactId); if (!f) return null;
+    const s = await settings(), r = render(String(subject || ''), String(body || ''), varsFor(f, sender || firstNameOf(s.fromName) || 'Kyle'));
+    return { subject: r.subject, body: r.body, missing: r.missing, unknown: r.unknown };
   }
   // what an automation needs to know before it sends: would this go, and why not
   async function checkContact(contactId) {
@@ -216,5 +222,5 @@ export function registerSalesEmailRoutes(app, d) {
     } catch (e) { log.error?.({ err: e.message, type }, 'resend webhook not handled'); return bad(reply, 'Could not handle that', 500); }
     return { ok: true };
   });
-  return { sendToContact, checkContact };
+  return { sendToContact, checkContact, previewFor, settings };
 }
