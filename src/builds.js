@@ -67,11 +67,13 @@ export const linksToText = list => (list || []).map(l => `${l.label} — ${l.url
 
 const active = (inv, now) => !inv.revoked_at && new Date(inv.expires_at).getTime() > now;
 
-// The viewer: { staff, client, invites: [{ build_id, expires_at, revoked_at }] }
+// The viewer: { staff, client, projectBuildIds: [builds the client's own projects are built on], invites: [{ build_id, expires_at, revoked_at }] }
 export function canSee(build, viewer, now = Date.now()) {
   if (!build || !viewer) return false;
   if (viewer.staff) return true;
-  if (build.visibility === 'hidden' || build.status === 'archived') return false;
+  if (build.status === 'archived') return false;
+  if ((viewer.projectBuildIds || []).includes(build.id)) return true; // the client's own project is built on it
+  if (build.visibility === 'hidden') return false;
   const mine = (viewer.invites || []).filter(inv => active(inv, now));
   if (mine.some(inv => inv.build_id === build.id)) return true;
   if (build.visibility === 'listed') return Boolean(viewer.client) || mine.some(inv => !inv.build_id);

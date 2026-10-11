@@ -14,7 +14,7 @@
   };
   // Grouped by what the work is for, not by which page it lives on. Nothing is merged that does different jobs.
   const NAV = [
-    { id: 'home', label: 'Home', href: '/admin', icon: 'home' },
+    { id: 'home', label: 'Home', href: '/home', icon: 'home' },
     { id: 'inbox', label: 'Inbox', href: '/admin#inbox', icon: 'chat', badge: '#mcCount' },
     { id: 'customers', label: 'Customers', icon: 'users', items: [
       { label: 'Clients', href: '/admin#clientsHead' },
@@ -45,7 +45,7 @@
   const DEFAULT_HASH = { '/sales': 'today', '/builds/admin': 'builds' };
   const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const svg = n => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
-  const pathOf = () => { const p = location.pathname.replace(/\/$/, '') || '/'; return p === '/' || p.startsWith('/clients/') ? '/admin' : p; };
+  const pathOf = () => { const p = location.pathname.replace(/\/$/, '') || '/'; return p === '/' || p === '/home' ? '/home' : p.startsWith('/clients/') ? '/admin' : p; };
   const split = href => { const [p, h = ''] = href.split('#'); return { p, h }; };
   let collapsed = false; try { const v = localStorage.getItem(KEY); collapsed = v === '1'; } catch {}
   const chosen = () => { try { return localStorage.getItem(KEY) !== null; } catch { return false; } };
@@ -102,7 +102,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
 
   let activeFromScroll = '';
   function paintActive() {
-    const p = pathOf(), h = (location.hash || '').slice(1) || DEFAULT_HASH[p] || activeFromScroll;
+    const p = pathOf(), h = (location.hash || '').slice(1) || DEFAULT_HASH[p] || activeFromScroll || (p === '/admin' ? 'clientsHead' : ''); // the old home is now the clients and production page: its top is Clients
     let any = false;
     document.querySelectorAll('.fbside a[data-href]').forEach(a => {
       const t = split(a.dataset.href), tp = t.p === '/platform' ? '/platform' : t.p;

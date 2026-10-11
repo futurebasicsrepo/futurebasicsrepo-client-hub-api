@@ -662,9 +662,9 @@ await journey('J109', 'the builds showcase in a browser: sign-in gate, the galle
 
   const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
   const sp = await sctx.newPage(); sp.errs = []; sp.on('pageerror', e => sp.errs.push(e.message));
-  await sp.goto('http://work.localhost:3123/builds/admin', { waitUntil: 'networkidle' }); await sp.waitForSelector('.row', { timeout: 10000 });
-  ok(await sp.locator(`.row:has-text("Gallery ${tag}")`).count() === 1 && await sp.locator('.row:has-text("Spot")').count() >= 1, 'staff see every build, the seeded ones too');
-  await sp.click(`.row:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
+  await sp.goto('http://work.localhost:3123/builds/admin', { waitUntil: 'networkidle' }); await sp.waitForSelector('.bcard', { timeout: 10000 });
+  ok(await sp.locator(`.bcard:has-text("Gallery ${tag}")`).count() === 1 && await sp.locator('.bcard:has-text("Spot")').count() >= 1, 'staff see every build, the seeded ones too');
+  await sp.click(`.bcard:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
   ok(await sp.inputValue('#fName') === `Gallery ${tag}` && await sp.inputValue('#fVis') === 'listed', 'a build opens in the editor with its values');
   ok(/A walkthrough — https:\/\/example\.com\/w-/.test(await sp.inputValue('#fLinks')), 'its extra links show as lines in the editor');
   await sp.fill('#fLinks', `A walkthrough — https://example.com/w-${tag}\nDrawings | https://example.com/d-${tag}`);
@@ -673,7 +673,7 @@ await journey('J109', 'the builds showcase in a browser: sign-in gate, the galle
   ok(sql(`select jsonb_array_length(links) from builds where slug like 'gallery-${tag}%'`) === '2', 'and so does adding a link');
   await sp.click('.tab[data-t="updates"]'); await sp.waitForSelector('#updList', { state: 'visible', timeout: 5000 });
   ok(await sp.locator('#syncNow').isVisible() && /Nothing is waiting|from/.test(await sp.innerText('#updList')) && await sp.locator('#manBuild option').count() >= 1, 'the What’s new tab has the check button, the queue and a way to add a line by hand');
-  await sp.click(`.tab[data-t="builds"]`); await sp.click(`.row:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
+  await sp.click(`.tab[data-t="builds"]`); await sp.click(`.bcard:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
   await sp.fill('#fPath', 'sites/demo'); await sp.check('#fAuto'); await sp.click('#fSave'); await sp.waitForFunction(() => !document.getElementById('dlg').open, null, { timeout: 8000 });
   ok(sql(`select repo_path || '|' || auto_publish from builds where slug like 'gallery-${tag}%'`) === 'sites/demo|true', 'the folder and the publish-by-itself switch save from the editor');
   await sp.click('.tab[data-t="invites"]'); await sp.fill('#invEmails', `ui-guest-${tag}@chaos.test`); await sp.fill('#invDays', '3'); await sp.click('#invGo');
@@ -752,7 +752,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Customers|Production|Builds showcase|Settings', 'grouped under four headings');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
-  ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Home/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'Home is marked as where you are');
+  ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-home.png` }).catch(() => {});
 
   // a section on this page
@@ -1127,6 +1127,93 @@ await journey('J122', 'chat in browsers: the button on the showcase opens the wi
   await vctx.close(); await sctx.close(); await pc.close(); await call(`/v1/admin/builds/${build.id}`, { token: admin, method: 'DELETE' });
 });
 
+await journey('J128', 'the Builds admin card shows the real site, the live address, what it is built with and its key features, with its picture loaded, on a desktop and on a phone', async () => {
+  const r = await room('128', { wait: false }), tag = `bc${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const made = await call('/v1/admin/builds', { token: admin, body: { name: `Card ${tag}`, tagline: 'Booking for salons', sector: 'Beauty', visibility: 'hidden', status: 'in-progress', hosting: 'railway', liveUrl: `https://card-${tag}.example.com/shop`, summary: 'A booking site.', highlights: [{ title: 'Online booking', text: 'Pick a time' }, { title: 'Deposits', text: '' }, { title: 'Reminders', text: '' }, { title: 'Fourth thing', text: '' }], stack: ['Node.js', 'Postgres', 'Shopify'] } });
+  const W = 'http://work.localhost:3123';
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/builds/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('.bcard', { timeout: 10000 });
+  const card = page.locator(`.bcard:has-text("Card ${tag}")`);
+  ok(await card.count() === 1, 'the build has a card', made.status);
+  const link = card.locator('.live a'); ok(await link.count() === 1 && /card-.*\.example\.com/.test(await link.innerText()) && (await link.getAttribute('href')) === `https://card-${tag}.example.com/shop` && await link.getAttribute('target') === '_blank', 'it shows the live site and the link opens it in a new tab');
+  ok((await card.locator('.stack span').allInnerTexts()).join() === 'Node.js,Postgres,Shopify', 'it shows what it is built with');
+  ok((await card.locator('.feat li').allInnerTexts()).join() === 'Online booking,Deposits,Reminders', 'it shows the first three key features');
+  const spot = page.locator('.bcard:has-text("Spot")').first(); await spot.locator('.shot img').waitFor({ timeout: 8000 });
+  const loaded = await page.waitForFunction(() => { const i = document.querySelector('.bcard:nth-of-type(n) .shot img'); return [...document.querySelectorAll('.bcard')].find(c => /Spot/.test(c.innerText))?.querySelector('.shot img')?.naturalWidth > 0; }, null, { timeout: 8000 }).then(() => true, () => false);
+  ok(loaded, 'a build with no uploaded picture still shows the picture of its real site');
+  ok(await page.locator('.bcard:has-text("Card ' + tag + '") .none').count() === 1, 'one with no picture says so instead of a black box');
+  ok(await card.locator('.sttag').innerText().then(t => /in progress/i.test(t)), 'its status is on the picture');
+  await card.locator('[data-edit]').click(); await page.waitForSelector('#dlg[open]'); ok((await page.inputValue('#fName')) === `Card ${tag}`, 'Edit still opens the build'); await page.click('#dClose');
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  const pctx = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true }); await pctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pctx.newPage(); await ph.goto(`${W}/builds/admin`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.bcard');
+  ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone the cards do not scroll sideways');
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j128-phone.png` }).catch(() => {});
+  await pctx.close(); await ctx.close(); await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'DELETE' });
+});
+
+await journey('J130', 'software projects in browsers: a staff member makes one with a build, sees its stage and build card, moves the stage, sets where the client sells and pushes the build to their store from the push window; the client sees the stage and build on their hub, on a phone', async () => {
+  const http = await import('node:http'), made = [];
+  const store = http.createServer((req, res) => { const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => { const b = (() => { try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { return {}; } })(); res.writeHead(200, { 'content-type': 'application/json' }); if (req.url === '/v2/catalog/batch-upsert') { const objs = b.batches?.[0]?.objects || []; made.push(...objs.map(o => o.item_data.name)); return res.end(JSON.stringify({ id_mappings: objs.map((o, n) => ({ client_object_id: o.id, object_id: `SQB_${made.length}_${n}` })) })); } res.end('{}'); }); });
+  await new Promise(r => store.listen(3133, '127.0.0.1', r));
+  try {
+    const r = await room('130', { wait: false }), tag = `ui${stamp}`, W = 'http://work.localhost:3123';
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+    await page.goto(`${W}/clients/${r.clientId}`, { waitUntil: 'networkidle' }); await page.locator('button.primary[onclick^="addProject("]').first().waitFor({ timeout: 15000 }).catch(async e => { await page.screenshot({ path: '/tmp/claude-0/j130-fail.png' }).catch(() => {}); throw new Error(`no "+ project" button (${String(e.message).slice(0, 160)}); page errors: ${page.errs.join(' | ')}; text: ${(await page.innerText("body").catch(() => "")).replace(/\s+/g, " ").slice(0, 700)} url: ${page.url()}`); });
+
+    // make a software project from the console
+    await page.locator('button.primary[onclick^="addProject("]').first().click(); await page.waitForSelector('#editorModal[open], dialog[open]', { timeout: 5000 });
+    await page.fill('input[name=name]', `Salon site ${tag}`); await page.selectOption('select[name=kind]', 'software'); await page.selectOption('select[name=buildId]', '__new'); await page.selectOption('select[name=stage]', 'prototype');
+    await page.click('#editorForm button[type=submit]'); await page.waitForSelector('#editorModal:not([open])', { state: 'attached', timeout: 15000 });
+    const pid = sql(`select id from projects where client_id='${r.clientId}' and name='Salon site ${tag}'`), bid = sql(`select build_id from projects where id='${pid}'`);
+    ok(pid && bid && sql(`select kind||'/'||stage from projects where id='${pid}'`) === 'software/prototype', 'the new-project window makes a software project with a new build, at the stage chosen');
+    // give the build something to show
+    ok((await A(`/builds/${bid}`, { method: 'PUT', body: { name: `Salon site ${tag}`, tagline: 'Booking for salons', sector: 'Beauty', status: 'in-progress', visibility: 'hidden', hosting: 'railway', liveUrl: `https://salon-${tag}.example.com`, summary: 'A booking site.', stack: ['Node.js', 'Postgres'], highlights: [{ title: 'Online booking', text: '' }, { title: 'Deposits', text: '' }] } })).status === 200, 'setup: the build is filled in');
+    await page.goto(`${W}/clients/${r.clientId}#project=${pid}`, { waitUntil: 'networkidle' }); await page.reload({ waitUntil: 'networkidle' }); const card = page.locator('.project-card.sw');
+    await card.waitFor({ timeout: 10000 });
+    ok((await card.locator('.sw-rail li').allInnerTexts()).length === 7 && /Prototype/.test(await card.locator('.sw-rail li.now').innerText()) && await card.locator('.sw-rail li.done').count() === 1, 'the project card shows the stage rail with Prototype current');
+    ok(/Salon site/.test(await card.locator('.sw-build h4').innerText()) && (await card.locator('.sw-build a[target=_blank]').getAttribute('href')) === `https://salon-${tag}.example.com` && (await card.locator('.sw-stack span').allInnerTexts()).join() === 'Node.js,Postgres' && /Online booking/.test(await card.locator('.sw-feat').innerText()), 'and the build card: the live site, what it is built with and its features');
+    ok(await card.locator('button:has-text("+ product")').count() === 0, 'a software project has no "+ product" button');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j130-room.png` }).catch(() => {});
+    await card.locator('.sw-stagepick select').selectOption('build'); await page.waitForFunction(() => /Build/.test(document.querySelector('.project-card.sw .sw-rail li.now')?.innerText || ''), null, { timeout: 8000 });
+    ok(sql(`select stage from projects where id='${pid}'`) === 'build' && await page.locator('.project-card.sw .sw-rail li.done').count() === 2, 'moving the stage saves it and the rail follows');
+    await page.locator('.project-card.sw .sw-where select').selectOption('square'); await page.waitForFunction(() => /Push to Square/.test(document.querySelector('.project-card.sw .sw-actions')?.innerText || ''), null, { timeout: 8000 });
+    ok(sql(`select commerce_platform from clients where id='${r.clientId}'`) === 'square', 'choosing where the client sells saves it, and the push button names that store');
+
+    // the push window
+    ok((await A(`/clients/${r.clientId}/commerce/connection`, { method: 'PUT', body: { platform: 'square', token: 'sq-ui-token-1234', currency: 'USD', label: 'Salon Square' } })).status === 200, 'setup: Square is connected for the client');
+    await page.locator('.project-card.sw a:has-text("Push to Square")').click(); await page.waitForURL(/\/builds\/admin/, { timeout: 8000 }); await page.waitForSelector('#pdlg[open]', { timeout: 10000 });
+    ok(!page.url().includes('push=') && /Salon site/.test(await page.innerText('#pTitle')) && await page.inputValue('#pPlat') === 'square' && /Square is connected/.test(await page.innerText('#pConn')), 'the link opens the push window for that build and client, with Square connected');
+    await page.fill('#pCat', 'Siphon mug | 12 | MUG-1 | https://example.com/mug.jpg | Glass\nFlat white beans | 18.50 | FW-1'); await page.click('#pPrev');
+    await page.waitForSelector('#pOut .panel'); ok(/Siphon mug/.test(await page.innerText('#pOut')) && /Flat white/.test(await page.innerText('#pOut')) && made.length === 0, 'seeing what will be made lists both products and sends nothing');
+    await page.click('#pGo'); await page.waitForFunction(() => /made/.test(document.querySelector('#pMsg').textContent), null, { timeout: 10000 }).catch(async () => { throw new Error(`push did not finish: "${await page.innerText('#pMsg')}"`); });
+    ok(/2 made, 0 failed, 0 left alone/.test(await page.innerText('#pMsg')) && made.join() === 'Siphon mug,Flat white beans', 'pushing sends both products and says so');
+    await page.click('#pGo'); await page.waitForFunction(() => /already there|nothing was changed/i.test(document.querySelector('#pMsg').textContent), null, { timeout: 10000 });
+    ok(made.length === 2 && /Earlier pushes/.test(await page.innerText('#pHist')), 'pushing again changes nothing and the earlier push is listed');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j130-push.png` }).catch(() => {});
+    ok(page.errs.length === 0, 'no script errors on the console pages', page.errs);
+
+    // the client's hub, on a phone
+    const { ctx: pc, page: ph } = await phone();
+    try {
+      await ph.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+      await ph.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.sw-photo', { timeout: 15000 });
+      ok(/software/i.test(await ph.locator('.sw-photo').innerText()) && /Build/.test(await ph.locator('.card:has(.sw-photo) .metrics').innerText()), 'on the hub the software project is a card with its stage, not a product photo');
+      await ph.goto(`${BASE}/projects/${pid}`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.journey-steps.sw', { timeout: 15000 });
+      ok(await ph.locator('.journey-steps.sw li').count() === 7 && /Build/.test(await ph.locator('.journey-steps.sw li.now').innerText()), 'the project page shows the stage rail');
+      ok(/Salon site/.test(await ph.innerText('main')) && (await ph.locator('a:has-text("Open the live site")').getAttribute('href')) === `https://salon-${tag}.example.com` && /Node\.js/.test(await ph.innerText('main')) && /Online booking/.test(await ph.innerText('main')), 'and the build: live link, what it is built with, what it does');
+      ok(/\/#\/salon-site/.test(await ph.locator('a:has-text("showcase")').getAttribute('href')), 'with a link to see it in the showcase');
+      ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'nothing is wider than the phone');
+      await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j130-hub.png` }).catch(() => {});
+    } finally { await pc.close(); }
+    await ctx.close(); await A(`/builds/${bid}`, { method: 'DELETE' });
+  } finally { await new Promise(r => store.close(r)); }
+});
 await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pitch is drafted by the assistant with brackets to fill, cannot be sent as a draft, goes to the people ticked after the confirmation is ticked, shows who was skipped and why, the media list and the coverage log work, and a phone fits', async () => {
   const http = await import('node:http');
   const mock = { sent: [], n: 0 };
@@ -1231,6 +1318,51 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
+});
+
+await journey('J133', 'the work home in a browser: the week at a glance, who to reach out to, the prototypes and who has looked, the projects in flight with filters, every link goes where it says, and it fits a phone', async () => {
+  const r = await room('133', { wait: false }), tag = `wh${stamp}`, W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o }), S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  const lead = (await S('/contacts', { body: { name: `Lena ${tag}`, email: `lena-${tag}@lead.test`, source: 'website', tags: [] } })).json.id;
+  const build = (await A('/builds', { body: { name: `Proto ${tag}`, status: 'in-progress', visibility: 'invite', hosting: 'railway', stack: ['Node', 'Postgres'], liveUrl: `https://proto-${tag}.example.com` } })).json.id;
+  sql(`insert into build_views(email,build_id,kind) values('prospect-${tag}@x.test','${build}','open')`);
+  const sw = (await A(`/clients/${r.clientId}/projects`, { body: { name: `Site ${tag}`, kind: 'software', buildId: build, stage: 'prototype' } })).json, pr = (await A(`/clients/${r.clientId}/projects`, { body: { name: `Hoodie ${tag}` } })).json;
+  await call(`/v1/projects/${pr.id}/messages`, { token: r.token, body: { body: 'Any news?' } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) .tile', { timeout: 15000 });
+  ok(await page.locator('#funnel .tile').count() === 4 && /Good (morning|afternoon|evening)/.test(await page.innerText('#hello')), 'the home greets and shows four numbers for the week');
+  ok(/Home/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks Home');
+  ok(await page.locator('#aLead').getAttribute('href') === '/sales#contacts' && /builds\/admin\?new=1/.test(await page.locator('#aProto').getAttribute('href')), 'the three quick actions are there: add a lead, new prototype, new project');
+  const row = page.locator(`#reachList .row:has-text("Lena ${tag}")`); ok(await row.count() === 1 && /No reply yet/i.test(await row.innerText()), 'a lead nobody has answered is in "Reach out today"');
+  const card = page.locator(`#protoList .proto:has-text("Proto ${tag}")`); ok(await card.count() === 1 && await card.evaluate(e => e.classList.contains('warm')) && /1 person looked/.test(await card.innerText()) && /Node/.test(await card.innerText()) && /for UI Room/.test(await card.innerText()) && /say hello/i.test(await card.innerText()), 'the prototype shows that someone looked, what it is built with and which client it is for');
+  ok(await card.locator('a:has-text("Push to a store")').getAttribute('href') === `/builds/admin?push=${build}` && await card.locator('a:has-text("Open site")').getAttribute('href') === `https://proto-${tag}.example.com`, 'with a way to push it to a store and to open the site');
+  const rows = page.locator('#projList .proj'); ok(await rows.count() >= 2 && /Waiting on us/i.test(await page.locator(`#projList .proj:has-text("Hoodie ${tag}")`).innerText()) && (await rows.allInnerTexts()).findIndex(t => /Hoodie/.test(t)) <= (await rows.allInnerTexts()).findIndex(t => !/Waiting on us/i.test(t)), 'projects in flight list the ones waiting on us before the rest');
+  ok(/Software/i.test(await page.locator(`#projList .proj:has-text("Site ${tag}")`).innerText()) && await page.locator(`#projList .proj:has-text("Site ${tag}") .mini i`).count() === 7 && /Prototype/i.test(await page.locator(`#projList .proj:has-text("Site ${tag}")`).innerText()), 'a software project shows its stage and a seven-step rail');
+  await page.click('#projFilters [data-f=software]'); ok(await page.locator('#projList .proj[data-kind=product]').count() === 0 && await page.locator('#projList .proj[data-kind=software]').count() >= 1, 'the Software filter shows only software projects');
+  await page.click('#projFilters [data-f=waiting]'); ok(await page.locator('#projList .proj').count() >= 1 && (await page.locator('#projList .proj').allInnerTexts()).every(t => /Waiting on us/i.test(t)), 'Waiting on us shows only those');
+  await page.click('#projFilters [data-f=all]');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j133-home.png`, fullPage: true }).catch(() => {});
+  // links go where they say
+  await page.locator(`#projList .proj:has-text("Site ${tag}")`).click(); await page.waitForSelector('.project-card.sw', { timeout: 15000 });
+  ok(page.url().endsWith(`/clients/${r.clientId}#project=${sw.id}`) && /Site/.test(await page.locator('.project-card.sw h3').innerText()), 'a project opens in its client room');
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#reachList .row:has-text("Lena ${tag}")`);
+  await page.locator(`#reachList .row:has-text("Lena ${tag}")`).click(); await page.waitForURL(/\/sales/, { timeout: 8000 }); await page.waitForSelector('#cbody', { timeout: 10000 });
+  await page.waitForFunction(n => new RegExp(n).test(document.querySelector('#cbody')?.innerText || ''), `Lena ${tag}`, { timeout: 10000 });
+  ok(!page.url().includes('contact='), 'a lead opens that person\'s card in Sales (and the address is tidied)');
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.locator(`#protoList .proto:has-text("Proto ${tag}") a:has-text("Push to a store")`).click(); await page.waitForSelector('#pdlg[open]', { timeout: 10000 });
+  ok(/Proto/.test(await page.innerText('#pTitle')), 'Push to a store opens the push window for that prototype');
+  await ctx.close();
+  const { ctx: pc, page: ph } = await phone();
+  try {
+    await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#funnel .tile');
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j133-phone.png` }).catch(() => {});
+  } finally { await pc.close(); }
+  await A(`/projects/${sw.id}/archive`, { method: 'POST', body: {} }); await A(`/projects/${pr.id}/archive`, { method: 'POST', body: {} }); await A(`/builds/${build}`, { method: 'DELETE' });
 });
 
 await journey('J135', 'the Intelligence page in a browser: signals ranked with a summary, why now and a draft; take it, log what you sent, the reply, a dismissal; filters; add a post you saw on LinkedIn; the KPIs by person; the watches; the settings; and a phone', async () => {

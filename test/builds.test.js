@@ -72,3 +72,10 @@ test('the seed list is complete and valid: every build clean, addresses unique, 
   for (const b of SEED_BUILDS) { const r = cleanBuild(b); assert.ok(!r.error, b.name + ': ' + r.error); assert.ok(STATUSES.includes(r.value.status)); assert.ok(!slugs.has(r.value.slug), 'duplicate ' + r.value.slug); slugs.add(r.value.slug); assert.ok(!b.visibility || b.visibility === 'hidden', b.name + ' must not seed as visible'); }
   for (const want of ['spot', 'bennys-beans', 'modish-nail-spa', 'nursepartners', 'common-ground', 'cuesea']) assert.ok(slugs.has(want), want);
 });
+
+test('a build tied to a client\'s own project is theirs to see, even hidden, but never when archived', async () => {
+  const { canSee } = await import('../src/builds.js');
+  const b = { id: 'b1', visibility: 'hidden', status: 'in-progress' }, mine = { client: true, invites: [], projectBuildIds: ['b1'] }, other = { client: true, invites: [], projectBuildIds: ['b2'] };
+  assert.equal(canSee(b, mine), true); assert.equal(canSee(b, other), false); assert.equal(canSee({ ...b, status: 'archived' }, mine), false);
+  assert.equal(canSee({ ...b, visibility: 'invite' }, mine), true); assert.equal(canSee(b, { client: true, invites: [] }), false);
+});
