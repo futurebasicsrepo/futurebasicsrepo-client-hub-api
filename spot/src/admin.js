@@ -17,7 +17,6 @@ import { SITE_JS, siteHead, siteNav } from './site.js';
 import { GOOGLE_G, SSO_CSS } from './accountpage.js';
 import { sessionUserId } from './accounts.js';
 import { isStaff, provenEmail, staffDomain } from './staff.js';
-import { assetUrl } from './assets.js';
 import { normEmail, validEmail } from './invites.js';
 import { HEALTH_CSS, healthPage, healthReport } from './health.js';
 
@@ -160,7 +159,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       if (had && !had.revoked_at && !resend) { results.push({ email, status: 'already_invited' }); continue; }
       const token = invites.create(email, by);
       const link = `${base}/invite/${token}`;
-      const status = notifier ? await notifier.sendInvite(email, { link, base, hero: `${base}${assetUrl('email-spot.png')}` }) : 'not_configured';
+      const status = notifier ? await notifier.sendInvite(email, { link, base }) : 'not_configured';
       invites.sent(email, status);
       results.push({ email, status, link });
     }
