@@ -118,7 +118,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       if (c.dispute) why.push(`Payer disputed the payment${c.dispute.reason ? ` (${c.dispute.reason})` : ''}`);
       if (c.alert?.kind === 'charged_after_refund') why.push(`Store charged ${(c.alert.amount_cents / 100).toFixed(2)} after the payer was refunded`);
       // Only while it can still be ordered: once refunded, the retry is moot.
-      if (c.fulfillment?.state === 'needs_you' && ['paid', 'card_issued'].includes(c.status)) why.push(`Order needs a retry: ${c.fulfillment.reason || 'stopped'}`);
+      if (c.fulfillment?.state === 'needs_you' && ['paid', 'card_issued'].includes(c.status)) why.push(`Order needs a retry: ${c.fulfillment.detail || c.fulfillment.reason || 'stopped'}`);
       if ((c.refunds || []).some((r) => r.state === 'failed')) why.push('A partial refund failed: retrying');
       if (captured > goods) why.push(`Store charged ${(captured / 100).toFixed(2)}, more than the ${(goods / 100).toFixed(2)} paid for the goods`);
       if ((c.refunded_cents || 0) > c.total_cents) why.push('Refunded more than was paid');

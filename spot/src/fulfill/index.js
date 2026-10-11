@@ -27,6 +27,25 @@ const CONFIRM_TIMEOUT_MS = 10 * 60_000;
 
 // SPOT_CARD_BILLING: "line1|city|state|zip", or with a suite or unit,
 // "line1|line2|city|state|zip". Null unless every part is there.
+// Why an order stopped, said for the person waiting on it. The checkout
+// assistant and stores write for Spot ("exceeds the one-time card's $36.74
+// limit. Need guidance before paying."); people get what it means for them.
+const PLAIN = [
+  [/checkout assistant/i, (s) => `Spot couldn’t finish ${s}’s checkout on its own. Spot’s team has been told.`],
+  [/card.{0,20}limit|limit of|above the (card|limit)|exceeds?|over the (card )?limit|more than (the )?(card|expected)/i, (s) => `${s}’s total came in higher than expected (shipping or tax). Spot’s team has been told and will sort it out.`],
+  [/out of stock|sold out|unavailable|no longer available|not available|isn'?t available|inventory/i, (s) => `${s} says it’s out of stock right now.`],
+  [/address|zip|postal|(doesn'?t|does not|can'?t|cannot|won'?t) ship|shipping (isn'?t|is not) available|no shipping/i, (s) => `${s} didn’t accept the shipping address. Check it below and try again.`],
+  [/captcha|robot|\bbot\b|verify (you|that)|human|access denied|security check|blocked/i, (s) => `${s}’s checkout asked for a human check. Spot’s team will finish it.`],
+  [/sign ?in|log ?in|account (is )?required|create an account/i, (s) => `${s} wants an account to check out. Spot’s team will finish it.`],
+  [/declin|payment (failed|didn'?t)|paying didn'?t go through|card (was )?(rejected|refused)|can'?t take spot'?s card/i, (s) => `${s} didn’t take the payment. Spot’s team is looking into it.`],
+  [/took too long|too many steps|stopped without|timed? ?out|didn'?t answer|try again/i, (s) => `Spot couldn’t finish ${s}’s checkout just now. Try again below.`],
+];
+export function plainReason(raw, store = 'The store') {
+  const text = String(raw || '');
+  for (const [re, say] of PLAIN) if (re.test(text)) return say(store);
+  return `Spot couldn’t finish ${store}’s checkout on its own. Spot’s team has been told.`;
+}
+
 export function parseBilling(value) {
   const parts = String(value || '').split('|').map((x) => x.trim());
   const [line1, line2, city, state, postal_code] = parts.length >= 5 ? parts : [parts[0], '', parts[1], parts[2], parts[3]];
@@ -138,7 +157,9 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       spot.emit?.('ordered', cartId);
     } else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
     else {
-      update(cartId, { state: 'needs_you', reason: outcome.reason, ...(outcome.manual_url ? { manual_url: outcome.manual_url } : {}) }, 'order_needs_you');
+      // People see a plain sentence; the checkout's own words stay for staff.
+      const store = spot.byId(cartId)?.merchant?.name || 'The store';
+      update(cartId, { state: 'needs_you', reason: plainReason(outcome.reason, store), detail: outcome.reason ? String(outcome.reason).slice(0, 300) : null, ...(outcome.manual_url ? { manual_url: outcome.manual_url } : {}) }, 'order_needs_you');
       spot.emit?.('needs_you', cartId);
     }
   }
@@ -181,7 +202,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       if (!train) spot.patch(cart.id, (c) => ({ ...c, requester: { ...c.requester, shipping: ship } }));
       const store = train ? null : await ucpStore(cart);
       if (store) {
-        const started = update(cart.id, { state: 'working', method: 'ucp', manual_url: null, reason: null, steps: [{ text: `${cart.merchant.name} supports agent checkout (UCP)`, at: Date.now() }], started_at: Date.now() }, 'order_started');
+        const started = update(cart.id, { state: 'working', method: 'ucp', manual_url: null, reason: null, detail: null, steps: [{ text: `${cart.merchant.name} supports agent checkout (UCP)`, at: Date.now() }], started_at: Date.now() }, 'order_started');
         running++;
         this._runUcp(cart.id, store, ship).finally(() => running--);
         return started;
@@ -196,7 +217,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
         return update(cart.id, { state: 'needs_you', method: p.method, reason: 'Spot is busy. Try again in a minute', manual_url: p.manual_url, steps: [] }, 'order_needs_you');
       }
 
-      const started = update(cart.id, { state: 'working', method: p.method, manual_url: p.manual_url, reason: p.note, steps: [{ text: p.method === 'shopify' ? 'Built your cart at the store' : train ? `Opening ${cart.merchant.name}` : 'Opening the store', at: Date.now() }], started_at: Date.now() }, 'order_started');
+      const started = update(cart.id, { state: 'working', method: p.method, manual_url: p.manual_url, reason: p.note, detail: null, steps: [{ text: p.method === 'shopify' ? 'Built your cart at the store' : train ? `Opening ${cart.merchant.name}` : 'Opening the store', at: Date.now() }], started_at: Date.now() }, 'order_started');
       running++;
       this._run(cart.id, p, ship).finally(() => running--);
       return started;

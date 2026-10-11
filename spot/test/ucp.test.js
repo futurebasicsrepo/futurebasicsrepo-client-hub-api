@@ -252,7 +252,7 @@ test('UCP store with no handler Spot can pay: needs a retry (no card is handed o
   assert.equal(f.state, 'needs_you');
   assert.equal(f.method, 'ucp');
   assert.equal(f.manual_url, `${store.origin}/checkout/chk_1`);
-  assert.match(f.reason, /can't take Spot's card automatically/);
+  assert.match(f.reason, /didn’t take the payment/);
 });
 
 test('UCP links are web links only', async (t) => {
