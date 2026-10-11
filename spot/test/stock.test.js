@@ -66,7 +66,7 @@ test('a sold-out find is swapped for one in stock, and never shown', async () =>
   assert.equal(d.in_stock, true);
   assert.equal(d.sold_out, undefined);
   assert.equal(d.items[0].image_url, 'https://shop.example/p2.jpg');
-  assert.match(calls[0].messages[0].content, /must be in stock right now/);
+  assert.match(calls[0].messages[0].content, /Skip anything you saw marked sold out/, 'sold out is skipped; stock is checked by Spot, not demanded of the model');
   const retry = calls[1].messages.at(-1);
   assert.equal(retry.role, 'user');
   assert.match(retry.content, /that one is sold out \(Tee 1 \(2T\) at https:\/\/shop\.example\/p1\)/);
