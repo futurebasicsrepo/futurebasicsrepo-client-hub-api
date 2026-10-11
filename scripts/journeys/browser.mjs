@@ -1150,7 +1150,7 @@ await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pi
     await page.fill('#prName', `Salon pitch ${tag}`); await page.fill('#prAngle', 'Small salons can have their own booking site');
     await page.click('#prDraft'); await page.waitForFunction(() => document.querySelector('#prSubject').value.length > 0, null, { timeout: 15000 });
     ok(/Fixture pitch/.test(await page.inputValue('#prSubject')) && /\[QUOTE FROM KYLE\]/.test(await page.inputValue('#prBody')) && /BRACKET/.test(await page.innerText('#prDraftMsg')), 'the assistant fills the subject and message, and tells staff to fill in the brackets');
-    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j126-editor.png` }).catch(() => {});
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j126-editor.png` }).catch(() => {});
     await page.selectOption('#prStatus', 'ready'); await page.click('#prform button[type=submit]');
     await page.waitForSelector('#prdlg:not([open])', { state: 'attached', timeout: 5000 }).catch(async e => { throw new Error(`editor did not close: ${await page.innerText('#prMsg')} / ${page.errs.join(';')}`); });
     ok(await page.locator('#prdlg[open]').count() === 0 && await page.locator('[data-pid]').count() === 1, 'it saves (the editor does not stop a draft with brackets from being saved)');
@@ -1173,7 +1173,7 @@ await journey('J126', 'the Press tab in a browser: the menu entry opens it, a pi
     ok(/Hi Ana/.test(await page.innerText('#ppPreview')) && !/still to fill/.test(await page.innerText('#ppPreview')), 'the preview shows the message as Ana gets it');
     await page.locator('#ppRows tr', { hasText: `Ana ${tag}` }).locator('[data-pick]').check(); await page.locator('#ppRows tr', { hasText: `Ben ${tag}` }).locator('[data-pick]').check();
     ok(!await page.locator('#ppSend').isEnabled(), 'two people ticked is not enough without the confirmation');
-    await page.check('#ppConfirm'); ok(/Send to 2 people/.test(await page.innerText('#ppSend')), 'the button says how many'); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j126-send.png` }).catch(() => {});
+    await page.check('#ppConfirm'); ok(/Send to 2 people/.test(await page.innerText('#ppSend')), 'the button says how many'); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j126-send.png` }).catch(() => {});
     await page.click('#ppSend'); await page.waitForFunction(() => /2 sent/.test(document.querySelector('#ppMsg').textContent), null, { timeout: 10000 });
     ok(mock.sent.length === 2 && mock.sent.every(m => m.body.text.includes('Unsubscribe here: ')) && await page.locator('#ppResults li.sent').count() === 2, 'two emails went, each with the unsubscribe link, and the results list them');
     await page.click('#ppdlg [data-close]'); await page.waitForFunction(() => /sent to 2/.test(document.querySelector('[data-pid]').innerText), null, { timeout: 5000 });
