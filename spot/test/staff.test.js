@@ -170,3 +170,13 @@ test('health records every service a purchase touches, and a card that failed to
   // Same-millisecond fail and retry are possible here; the dashboard reads a tie as working.
   assert.ok(s.issuing.ok_at >= s.issuing.fail_at, 'Issuing reads as working again');
 });
+
+test('phones: health cards wrap long ids, and pages stay clear of the iPhone status bar', async (t) => {
+  const { call, signIn } = app(t);
+  const page = (await call('GET', '/admin/health', undefined, await signIn('kyle@thefuturebasics.com'))).body;
+  assert.match(page, /grid-template-columns:auto minmax\(0,1fr\) auto/, 'the text column can shrink');
+  assert.match(page, /\.row small,\.row b\{overflow-wrap:anywhere\}|overflow-wrap:anywhere/);
+  assert.match(page, /padding-top:env\(safe-area-inset-top,0px\)/);
+  const home = (await call('GET', '/')).body;
+  assert.match(home, /nav\{position:sticky;top:env\(safe-area-inset-top,0px\)/, 'the sticky header sits below the status bar');
+});
