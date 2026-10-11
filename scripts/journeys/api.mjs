@@ -737,4 +737,75 @@ await journey('J108', 'the builds showcase: nothing is shown until staff list it
   ok(/Future Basics/.test((await call('/builds')).text) && (await call('/builds/admin')).status === 200, 'the viewer and staff pages are served');
 });
 
+
+await journey('J111', 'the Sales OS: a person who looks at a build becomes a contact with a deal and a follow-up, contacts/deals/tasks do what they say, nothing is lost or duplicated, and only staff can see any of it', async () => {
+  const room = await newRoom('111', { wait: false });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const tag = `c${stamp}`, S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  ok((await call('/v1/sales/overview')).status === 401 && (await call('/v1/sales/overview', { token: room.token })).status === 403, 'nothing is open to the public or to clients');
+
+  // a showcase look becomes a lead
+  const build = await call('/v1/admin/builds', { token: admin, body: { name: `Lead bait ${tag}`, visibility: 'listed', status: 'live', liveUrl: 'https://example.com/' + tag } });
+  const guest = `guest-${tag}@chaos.test`; const jar = {};
+  const as = async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { ...(jar.c ? { Cookie: jar.c } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) jar.c = sc.split(';')[0]; const t = await r.text(); let json = {}; try { json = JSON.parse(t); } catch {} return { status: r.status, json, text: t }; };
+  ok((await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, note: 'Saw you at the salon expo', send: false } })).status === 201, 'staff invite someone to the showcase');
+  const slug = sql(`select slug from builds where id='${build.json.id}'`);
+  await as('/v1/builds/auth/code', { body: { email: guest } }); await sleep(150); await as('/v1/builds/auth/verify', { body: { email: guest, code: codeFrom(LOG, guest) } });
+  let found = (await S(`/contacts?q=${encodeURIComponent(guest)}`)).json; ok(found.total === 1 && found.contacts[0].source === 'showcase', 'the invite already put them in the CRM', found.contacts?.[0]);
+  const cid = found.contacts[0].id;
+  await as(`/v1/builds/${slug}`); await as(`/v1/builds/${slug}`); const go = await as(`/builds/go/${slug}`); ok(go.status === 302, 'they look twice and click through to the live build');
+  const detail = (await S(`/contacts/${cid}`)).json; const texts = detail.activities.map(a => a.text).join(' | ');
+  ok(/Invited to the showcase: Saw you at the salon expo/.test(texts) && /Looked at Lead bait/.test(texts) && /Opened the live build: Lead bait/.test(texts), 'the timeline says what happened, in order', texts);
+  ok(detail.activities.filter(a => a.kind === 'showcase_view').length === 1, 'looking twice in a row is one look, not two');
+  ok(detail.deals.length === 1 && detail.deals[0].title === `Showcase interest: Lead bait ${tag}` && detail.deals[0].stage === 'new', 'one deal to work, however many times they look', detail.deals);
+  const follow = detail.tasks.find(t => /Follow up/.test(t.title)); const due = follow && new Date(follow.due_at);
+  ok(follow && due > new Date() && ![0, 6].includes(due.getUTCDay()) && due.getUTCHours() === 9, 'a click-through leaves a follow-up for the next working day', follow);
+  ok(['hot', 'warm'].includes(detail.contact.heat.level), 'and they are warm', detail.contact.heat);
+  const ov = (await S('/overview')).json; ok(ov.hot.some(c => c.id === cid) && ov.recent.some(a => a.contact_id === cid) && ov.newLeads >= 1, 'Today shows them among the warm contacts and in the latest activity');
+
+  // contacts by hand
+  const dup = `dana-${tag}@salon.test`;
+  const made = await S('/contacts', { body: { name: 'Dana Reyes', email: dup.toUpperCase(), companyName: `Salon ${tag}`, tags: 'VIP, salon', source: 'referral' } }); ok(made.status === 201 && !made.json.existing, 'a contact is added');
+  const again = await S('/contacts', { body: { name: 'Someone else', email: dup } }); ok(again.status === 200 && again.json.existing && again.json.id === made.json.id, 'the same email address again finds the same person (case does not matter)');
+  ok((await S('/contacts', { body: { email: 'nope' } })).status === 422 && (await S('/contacts', { body: {} })).status === 422, 'a bad email, or nothing to go on, is refused');
+  const d1 = (await S(`/contacts/${made.json.id}`)).json.contact; ok(d1.company === `Salon ${tag}` && d1.tags.join() === 'vip,salon' && d1.email === dup, 'cleaned: lower-case email and tags, the company created', d1);
+  ok((await S(`/contacts/${made.json.id}`, { method: 'PUT', body: { email: guest } })).status === 409, 'changing an email to one that is taken is refused');
+  ok((await S(`/contacts/${made.json.id}`, { method: 'PUT', body: { phone: '555-0100', companyName: `Salon ${tag} Group` } })).status === 200 && (await S(`/contacts/${made.json.id}`)).json.contact.company === `Salon ${tag} Group`, 'an update changes only what it sends');
+  ok((await S(`/contacts?tag=vip&q=${tag}`)).json.contacts.some(c => c.id === made.json.id) && (await S(`/contacts?source=referral&q=${tag}`)).json.total >= 1, 'search, tag and source find them');
+  ok((await S(`/contacts/${made.json.id}/unsubscribe`, { method: 'PUT', body: { unsubscribed: true } })).status === 200 && (await S(`/contacts/${made.json.id}`)).json.contact.unsubscribed === true, 'someone can be marked not to be emailed, and it is on their record');
+  ok((await S(`/contacts/${made.json.id}/activities`, { body: { kind: 'call', text: 'Loved the spa concept' } })).status === 201 && (await S(`/contacts/${made.json.id}/activities`, { body: { kind: 'call', text: '  ' } })).status === 422, 'a call is logged on the timeline; an empty one is refused');
+
+  // deals
+  const before = (await S('/overview')).json.pipeline.openValueCents;
+  const deal = await S('/deals', { body: { title: `Salon site ${tag}`, contactId: made.json.id, value: '$12,500', expectedClose: '2026-12-01', source: 'referral' } }); ok(deal.status === 201, 'a deal is started on the contact');
+  const after = (await S('/overview')).json.pipeline; ok(after.openValueCents - before === 1250000, 'its value ($12,500) joins the open pipeline', [before, after.openValueCents]);
+  ok((await S('/deals', { body: { title: 'x', value: 'lots' } })).status === 422 && (await S('/deals', { body: { title: 'x', expectedClose: '2026-02-31' } })).status === 422, 'a value that is not money, or a date that does not exist, is refused');
+  ok((await S(`/deals/${deal.json.id}`, { method: 'PUT', body: { stage: 'meeting' } })).status === 200, 'it moves to Meeting');
+  ok(/Salon site.*New → Meeting/.test((await S(`/contacts/${made.json.id}`)).json.activities.map(a => a.text).join('|')), 'and the move is on the contact’s timeline');
+  ok((await S(`/deals/${deal.json.id}`, { method: 'PUT', body: { stage: 'lost' } })).status === 422, 'losing a deal needs a reason');
+  ok((await S(`/deals/${deal.json.id}`, { method: 'PUT', body: { stage: 'lost', lostReason: 'Went with their nephew' } })).status === 200 && sql(`select (closed_at is not null)::text from sales_deals where id='${deal.json.id}'`) === 'true', 'with one it closes, and the close is dated');
+  ok((await S(`/deals/${deal.json.id}`, { method: 'PUT', body: { stage: 'proposal' } })).status === 200 && sql(`select (closed_at is null)::text from sales_deals where id='${deal.json.id}'`) === 'true', 'reopening clears the close date');
+  ok((await S('/deals?stage=proposal')).json.deals.some(d => d.id === deal.json.id), 'the pipeline lists it under Proposal');
+
+  // tasks
+  const t1 = await S('/tasks', { body: { contactId: made.json.id, title: 'Send the proposal', dueAt: '2020-01-01' } }); ok(t1.status === 201, 'a task is added to a contact');
+  ok((await S('/tasks', { body: { title: 'floating' } })).status === 422, 'a task must belong to a contact or a deal');
+  ok((await S('/tasks?scope=overdue')).json.tasks.some(t => t.id === t1.json.id), 'a task due in the past is overdue');
+  ok((await S(`/tasks/${t1.json.id}`, { method: 'PUT', body: { done: true } })).status === 200 && !(await S('/tasks?scope=open')).json.tasks.some(t => t.id === t1.json.id) && (await S('/tasks?scope=done')).json.tasks.some(t => t.id === t1.json.id), 'ticking it off moves it to done');
+  ok(/Done: Send the proposal/.test((await S(`/contacts/${made.json.id}`)).json.activities.map(a => a.text).join('|')), 'and says so on the timeline');
+
+  // bringing people in
+  const csv = `Name,E-mail,Company,Tags\r\n"Reyes, Sam",sam-${tag}@roaster.test,"Roaster ${tag}",coffee\r\nDup,${dup},,\r\nBroken,not-an-email,,\r\n`;
+  const imp = await S('/import/csv', { body: { csv } }); ok(imp.json.created === 1 && imp.json.alreadyThere === 1 && imp.json.invalid === 1 && /Row 4/.test(imp.json.errors[0]), 'a pasted list adds the new, recognises the known, and says which row is wrong', imp.json);
+  ok((await S('/import/csv', { body: { csv: 'name,email' } })).status === 422, 'a list with no people is refused');
+  const hub1 = await S('/import/hub', { body: {} }); ok(hub1.json.created >= 1, 'the hub’s clients and leads become contacts', hub1.json);
+  const hub2 = await S('/import/hub', { body: {} }); ok(hub2.json.created === 0 && hub2.json.alreadyThere === hub1.json.created + hub1.json.alreadyThere, 'and doing it again adds nobody', hub2.json);
+  ok(sql(`select count(*) from sales_contacts where lower(email)='${room.email}' and client_id is not null`) === '1', 'a hub client is linked to its contact');
+
+  // clean up
+  ok((await S(`/contacts/${made.json.id}`, { method: 'DELETE' })).status === 200 && sql(`select count(*) from sales_activities where contact_id='${made.json.id}'`) === '0' && sql(`select count(*) from sales_tasks where contact_id='${made.json.id}'`) === '0', 'deleting a contact takes their history and tasks with them');
+  ok((await S(`/contacts/00000000-0000-0000-0000-000000000000`)).status === 404 && (await S('/contacts/not-an-id')).status === 404, 'an address that is not there says so');
+  await call(`/v1/admin/builds/${build.json.id}`, { token: admin, method: 'DELETE' });
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

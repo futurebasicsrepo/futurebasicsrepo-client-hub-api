@@ -895,6 +895,73 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     alter table builds add column if not exists links jsonb not null default '[]'::jsonb; -- extra things to see on a build: walkthroughs, demos, drawings
+    -- the Sales OS: who we are talking to, what we might sell them, what happened, and what to do next (see src/sales.js)
+    create table if not exists sales_companies (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      website text not null default '',
+      notes text not null default '',
+      created_at timestamptz not null default now()
+    );
+    create unique index if not exists sales_companies_name_idx on sales_companies (lower(name));
+    create table if not exists sales_contacts (
+      id uuid primary key default gen_random_uuid(),
+      name text not null default '',
+      email text,
+      phone text not null default '',
+      title text not null default '',
+      company_id uuid references sales_companies(id) on delete set null,
+      source text not null default 'manual',
+      tags text[] not null default '{}',
+      notes text not null default '',
+      email_ok boolean not null default true,
+      unsubscribed_at timestamptz,
+      client_id uuid references clients(id) on delete set null,
+      last_activity_at timestamptz not null default now(),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create unique index if not exists sales_contacts_email_idx on sales_contacts (lower(email)) where email is not null;
+    create table if not exists sales_deals (
+      id uuid primary key default gen_random_uuid(),
+      contact_id uuid references sales_contacts(id) on delete set null,
+      company_id uuid references sales_companies(id) on delete set null,
+      title text not null,
+      stage text not null default 'new' check (stage in ('new','contacted','meeting','proposal','won','lost')),
+      value_cents bigint not null default 0,
+      expected_close date,
+      source text not null default 'manual',
+      lost_reason text not null default '',
+      last_activity_at timestamptz not null default now(),
+      closed_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists sales_deals_stage_idx on sales_deals (stage, updated_at desc);
+    create index if not exists sales_deals_contact_idx on sales_deals (contact_id);
+    create table if not exists sales_activities (
+      id uuid primary key default gen_random_uuid(),
+      contact_id uuid not null references sales_contacts(id) on delete cascade,
+      deal_id uuid references sales_deals(id) on delete set null,
+      kind text not null check (kind in ('note','call','meeting','email_in','email_out','stage','showcase_view','showcase_demo','task','system')),
+      text text not null default '',
+      meta jsonb not null default '{}'::jsonb,
+      actor_id uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists sales_activities_contact_idx on sales_activities (contact_id, created_at desc);
+    create index if not exists sales_activities_recent_idx on sales_activities (created_at desc);
+    create table if not exists sales_tasks (
+      id uuid primary key default gen_random_uuid(),
+      contact_id uuid references sales_contacts(id) on delete cascade,
+      deal_id uuid references sales_deals(id) on delete cascade,
+      title text not null,
+      due_at timestamptz,
+      done_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists sales_tasks_open_idx on sales_tasks (due_at) where done_at is null;
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,
