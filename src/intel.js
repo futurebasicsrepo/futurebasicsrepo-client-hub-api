@@ -49,6 +49,25 @@ export function prefilter(text) {
   return { pass: lines.length > 0 && ASK_WORDS.test(t), lines };
 }
 
+// Why a post was left unread by the cheap first look, in words a person can act on ('' when it would pass).
+export function firstLookReason(text) {
+  const t = String(text || ''), lines = LINE_KEYS.filter(k => LINE_WORDS[k].test(t));
+  if (!lines.length) return 'It does not mention AI, apps or software, or product development, so the AI was not asked about it.';
+  if (!ASK_WORDS.test(t)) return `It mentions ${lines.map(k => ({ ai: 'AI', apps: 'apps or software', product: 'product development' })[k]).join(' and ')} but does not sound like someone asking for help, hiring or looking for a quote.`;
+  return '';
+}
+
+// What Future Basics should do next with a signal, from where it stands. A suggestion: a person does it.
+export function nextStep({ status, intent, draftChannel, contactId } = {}) {
+  if (['dismissed', 'won', 'lost'].includes(status)) return '';
+  if (status === 'actioned') return 'Watch for a reply. If there is none in three days, follow up once, briefly.';
+  if (status === 'replied') return 'Answer them and offer a call, then log “Meeting booked”.';
+  if (status === 'meeting') return 'Prepare for the call. When it is decided, log Won or Lost.';
+  const how = { public_reply: 'Reply in the thread with the draft below (read the community’s rules on promotion first)', dm: 'Send the draft as a direct message', email: 'Email them the draft' }[draftChannel] || 'Reach out with the draft below';
+  const lead = { buying: 'They look ready to buy, so do this today. ', hiring: 'They are hiring for this, so offer us as the faster alternative to a hire. ', pain: 'They are unhappy with what they have, so lead with the problem, not with us. ', asking: 'They want advice, so be useful first and do not pitch. ' }[intent] || '';
+  return `${lead}${how}, then log it with “I sent it”.${contactId ? '' : ' Add them to the CRM so the follow-up is tracked.'}`;
+}
+
 // 100 for something posted in the last 6 hours, falling to 0 at a week
 export function freshness(postedAt, now = Date.now()) {
   const t = new Date(postedAt).getTime(); if (!Number.isFinite(t)) return 40;

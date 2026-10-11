@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prefilter, freshness, computeScore, cleanVerdict, cleanSettings, cleanWatch, ignored, nextStatus, fixtureVerdict, DEFAULT_SETTINGS } from '../src/intel.js';
+import { prefilter, freshness, computeScore, cleanVerdict, cleanSettings, cleanWatch, ignored, nextStatus, fixtureVerdict, DEFAULT_SETTINGS, firstLookReason, nextStep } from '../src/intel.js';
 import { buildKpis } from '../src/intel-kpis.js';
 import { fetchSignals, redditPath, parseRss, missingKeys, resetRedditToken, KINDS } from '../src/intel-sources.js';
 import { ask, parseJson, costCents, modelFor, providerReady, providerStatus } from '../src/intel-llm.js';
@@ -103,4 +103,19 @@ test('the AI layer speaks to Claude, ChatGPT and Grok, parses JSON however it is
   await assert.rejects(ask({ provider: 'xai', env: { XAI_API_KEY: 'k' }, fetchImpl: async () => json(404, { error: { message: 'model not found' } }) }), /answered 404: model not found/);
   assert.equal(costCents('openai', 1_000_000, 1_000_000, {}), 225); assert.equal(costCents('openai', 1000, 0, { INTEL_PRICES: '{"openai":[1,1]}' }), 0.1); assert.equal(modelFor('xai', { INTEL_XAI_MODEL: 'grok-x' }), 'grok-x'); assert.equal(modelFor('openai', {}), 'gpt-5-mini');
   assert.equal(providerReady('xai', {}), false); assert.equal(providerReady('anthropic', { AI_FIXTURE: 'f' }), true); assert.equal(providerStatus({ OPENAI_API_KEY: 'k' }).find(p => p.provider === 'openai').ready, true);
+});
+
+test('a post the first look left unread says why, and agrees with the filter', () => {
+  const cat = 'Pictures of my cat nothing to see', quiet = 'we should look at automation sometime', real = 'Looking for an AI consultant to automate our support inbox';
+  assert.equal(prefilter(cat).pass, false); assert.match(firstLookReason(cat), /does not mention AI, apps or software, or product development/);
+  assert.equal(prefilter(quiet).pass, false); assert.match(firstLookReason(quiet), /mentions AI but does not sound like someone asking/);
+  assert.equal(prefilter(real).pass, true); assert.equal(firstLookReason(real), '');
+});
+
+test('what Future Basics should do next follows where the post stands', () => {
+  assert.match(nextStep({ status: 'new', intent: 'buying', draftChannel: 'public_reply' }), /ready to buy.*Reply in the thread.*rules on promotion.*“I sent it”.*CRM/);
+  assert.match(nextStep({ status: 'reviewing', intent: 'hiring', draftChannel: 'dm', contactId: 'c1' }), /faster alternative to a hire.*direct message.*“I sent it”\.$/);
+  assert.match(nextStep({ status: 'new', intent: 'asking', draftChannel: 'email' }), /do not pitch.*Email them the draft/);
+  assert.match(nextStep({ status: 'actioned' }), /follow up once/); assert.match(nextStep({ status: 'replied' }), /Meeting booked/); assert.match(nextStep({ status: 'meeting' }), /Won or Lost/);
+  for (const status of ['won', 'lost', 'dismissed']) assert.equal(nextStep({ status }), '');
 });
