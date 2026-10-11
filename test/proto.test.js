@@ -93,7 +93,7 @@ test('every playbook is complete and its features exist', () => {
 });
 
 // ---- lead finder ----
-import { isDirectory, braveSearch, quickAudit, findLeads, SEARCH_TERMS } from '../src/proto-leads.js';
+import { isDirectory, braveSearch, quickAudit, findLeads, SEARCH_TERMS, isGenericName, guessName, isListicle, decodeEntities, isLead } from '../src/proto-leads.js';
 const brave = results => async url => ({ ok: true, status: 200, json: async () => ({ web: { results } }), _url: url });
 
 test('directories and listings are not leads', () => {
@@ -120,14 +120,44 @@ test('leads: directories dropped, repeats merged, worst quick-turn first, sites 
   const f = brave([{ title: 'Yelp: best plumbers', url: 'https://www.yelp.com/search?q=plumber' }, { title: 'Spark Electric', url: 'https://spark-electric.test/about', description: 'Electricians' }, { title: "Joe's Plumbing", url: 'https://www.tired-plumbing.test/contact' }, { title: 'Joe again', url: 'https://tired-plumbing.test/' }, { title: 'Down', url: 'https://down-site.test/' }, { title: 'Known', url: 'https://known-shop.test/' }, { title: 'bad', url: 'ftp://x.test' }]);
   const out = await findLeads({ trade: 'plumbing', place: 'Norristown, PA', env: { BRAVE_API_KEY: 'k' }, fetchImpl: f, crawlOpts, exclude: new Set(['known-shop.test']) });
   assert.deepEqual(out.queries, ['plumber Norristown, PA', 'plumbing company Norristown, PA']);
-  assert.deepEqual(out.items.map(i => i.host), ['tired-plumbing.test', 'spark-electric.test', 'down-site.test']);
+  assert.deepEqual(out.items.map(i => i.host), ['tired-plumbing.test', 'down-site.test', 'spark-electric.test'], 'worth a call first, then the site that could not be read, then the one that already looks good');
   assert.ok(out.items[0].score < 40 && out.items[0].quickTurn && out.items[0].phone === '(215) 555-0142' && out.items[0].top.length === 3);
-  assert.ok(out.items[1].score >= 80 && out.items[1].industry === 'electrician' && out.items[1].name.startsWith('Spark Electric'));
-  assert.equal(out.items[2].reachable, false); assert.match(out.items[2].error, /500/); assert.equal(out.items[2].score, null);
+  assert.ok(out.items[0].lead === true && out.items[0].fit === 'match' && out.items[0].reason === '');
+  assert.equal(out.items[1].reachable, false); assert.match(out.items[1].error, /500/); assert.equal(out.items[1].score, null); assert.equal(out.items[1].lead, true); assert.equal(out.items[1].name, 'down-site.test');
+  assert.ok(out.items[2].score >= 80 && out.items[2].industry === 'electrician' && out.items[2].name.startsWith('Spark Electric') && out.items[2].lead === false && /Already a good site \(\d+\)/.test(out.items[2].reason), 'a good site is not a lead, and says why');
   assert.equal(out.skipped.directories, 2, 'yelp, in both searches'); assert.ok(out.skipped.duplicates >= 1 && out.skipped.known === 1 && out.skipped.invalid === 2);
   // a pasted list is audited as it is: directories are not filtered out, and nothing is searched
   const l = await findLeads({ urls: ['tired-plumbing.test', 'spark-electric.test'], env: {}, crawlOpts }); assert.deepEqual(l.queries, []); assert.equal(l.items.length, 2);
   assert.deepEqual((await quickAudit('https://spark-electric.test/', { crawlOpts })).reachable, true);
   assert.equal((await quickAudit('https://nowhere.test/', { crawlOpts })).reachable, false);
   assert.equal((await quickAudit('https://spark-electric.test/', { crawlOpts: { ...crawlOpts, fetchImpl: async () => res(200, '%PDF', { 'content-type': 'application/pdf' }) } })).error, 'Not a web page');
+});
+
+test('leads: business names, not search phrases', () => {
+  const ctx = { place: 'Philadelphia, PA', city: '' };
+  for (const t of ['Plumber in Philadelphia', 'Philadelphia plumber', 'Expert Plumbing Services In Philadelphia, PA', 'Your Philadelphia Plumbing, Heating & AC Company', 'My Plumber']) assert.equal(isGenericName(t, ctx), true, t);
+  for (const t of ["Joseph's Affordable Plumbing", 'Root 24 Inc', 'Gaceta Plumbing Company', 'Mr. Rooter Plumbing']) assert.equal(isGenericName(t, ctx), false, t);
+  assert.equal(isGenericName('Philadelphia plumber', { place: '', city: 'Philadelphia, PA' }), true, 'the town the site names counts as well');
+  assert.equal(guessName({ title: "Plumber in Philadelphia | Joseph's Affordable Plumbing", h1: [] }, { title: 'x', host: 'josephsaffordable.com' }, ctx), "Joseph's Affordable Plumbing");
+  assert.equal(guessName({ title: 'Plumber in Philadelphia', h1: ["Welcome to Joseph's Affordable Plumbing"] }, { title: '', host: 'j.com' }, ctx), "Joseph's Affordable Plumbing");
+  assert.equal(guessName({ title: 'Philadelphia plumber', ldName: 'Acme Drain &amp; Sewer LLC' }, { title: '', host: 'acme.com' }, ctx), 'Acme Drain & Sewer LLC', 'structured data wins, entities decoded');
+  assert.equal(guessName({ title: 'Philadelphia plumber', siteName: 'Quaker City Rooter' }, { title: '', host: 'qc.com' }, ctx), 'Quaker City Rooter');
+  assert.equal(guessName({ title: 'Philadelphia plumber', h1: [] }, { title: 'Plumber in Philadelphia', host: 'myplumberpa.com' }, ctx), 'myplumberpa.com', 'nothing but search phrases: the address itself');
+});
+
+test('leads: rankings and lists are not businesses, and entities are decoded', () => {
+  for (const t of ['Top 10 plumbers in Philadelphia', 'Best Plumbers in Philadelphia', '10 Best Electricians', 'Best electricians near me', 'Philadelphia plumber reviews']) assert.equal(isListicle(t), true, t);
+  for (const t of ["Joe's Plumbing", 'Best Plumbing Co', "Joe's Plumbing and Best Drain"]) assert.equal(isListicle(t), false, t);
+  assert.equal(isDirectory('www.phillymag.com'), true); assert.equal(isDirectory('bestpickreports.com'), true); assert.equal(isDirectory('joesplumbing.com'), false);
+  assert.equal(decodeEntities('Jersey&#x27;s &amp; more &#39;x&#39; &quot;y&quot; &nbsp;end &hellip;'), 'Jersey\'s & more \'x\' "y"  end …'); assert.equal(decodeEntities('&bogus; &#99999999999;'), '&bogus; &#99999999999;');
+});
+
+test('leads: only sites worth a call count, and the other trades and the good sites go to the back', async () => {
+  const MEH = n => `<html><head><title>${n}</title></head><body><center><font>${n}</font></center><table><tr><td>x</td></tr></table><p>Call 215-555-0100 ${n === 'Wire Pros' ? 'electrician electrical wiring panel upgrades EV charger outlets' : 'plumbing drains water heater sewer leak repair'} Reading PA 19601</p><div>&copy; 2012</div></body></html>`;
+  const pages = { 'wire-pros.test': MEH('Wire Pros'), 'old-pipes.test': MEH('Old Pipes') };
+  const crawlOpts = { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: async u => { const h = new URL(u).hostname.replace(/^www\./, ''); return pages[h] ? res(200, pages[h], { 'content-type': 'text/html' }) : res(404, ''); } };
+  const out = await findLeads({ trade: 'plumbing', place: 'Reading, PA', urls: ['wire-pros.test', 'old-pipes.test'], env: {}, crawlOpts });
+  assert.deepEqual(out.items.map(i => i.host), ['old-pipes.test', 'wire-pros.test']);
+  assert.equal(out.items[0].lead, true); assert.equal(out.items[1].fit, 'other'); assert.equal(out.items[1].lead, false); assert.match(out.items[1].reason, /electrician work, not plumbing/);
+  assert.equal(isLead(out.items[0]), true); assert.equal(isLead(out.items[1]), false); assert.equal(isLead({ reachable: false }), true, 'a site that is down is a lead'); assert.equal(isLead({ reachable: true, score: 90 }), false, 'older searches: the score decides'); assert.equal(isLead({ reachable: true, score: 40 }), true);
 });

@@ -41,7 +41,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const [prod] = await q(`select count(*)::int n from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
       where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date < current_date and pr.status not in ('complete','delivered'))) and c.archived_at is null and c.status not in ('archive','archived')`);
     // saved lead searches that found quick-turn sites nobody has opened yet
-    const leadSearches = await q(`select id, trade, place, created_at, (select count(*) from jsonb_array_elements(results) r where (r->>'reachable')::boolean and (r->>'quickTurn')::boolean)::int quick
+    const leadSearches = await q(`select id, trade, place, created_at, (select count(*) from jsonb_array_elements(results) r where (r->>'reachable')::boolean and (r->>'quickTurn')::boolean and coalesce((r->>'lead')::boolean, (r->>'score')::int < 80))::int quick
       from prototype_searches where schedule_id is not null and status='done' and seen_at is null and created_at > now() - interval '14 days' order by created_at desc limit 20`).then(r => r.filter(x => x.quick > 0).slice(0, 3)).catch(() => []);
     return {
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),

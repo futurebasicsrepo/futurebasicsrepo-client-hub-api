@@ -2196,10 +2196,10 @@ await journey('J146', 'Finding leads: search a trade and a town, skip the direct
     let r = await P('/leads/search', { body: { trade: 'plumbing', place: 'Norristown, PA' } }); ok(r.status === 202 && r.json.search.status === 'running', 'a search is accepted and runs in the background', r.status);
     const s = await waitSearch(r.json.search.id), hosts = s.results.map(x => x.host);
     ok(s.status === 'done' && JSON.stringify(queries.slice(0, 2)) === JSON.stringify(['plumber Norristown, PA', 'plumbing company Norristown, PA']), 'it asked the search for the trade and the town', JSON.stringify(queries));
-    ok(JSON.stringify(hosts) === JSON.stringify(['tiredplumbing.test', 'sparkelectric.test', 'offline-shop.test']), 'the directory is dropped, the repeat is merged and the tired site comes first', JSON.stringify(hosts));
-    const [tired, fine, down] = s.results;
+    ok(JSON.stringify(hosts) === JSON.stringify(['tiredplumbing.test', 'offline-shop.test', 'sparkelectric.test']), 'the directory is dropped, the repeat is merged, the tired site comes first and the site that already looks fine goes last', JSON.stringify(hosts));
+    const [tired, down, fine] = s.results;
     ok(tired.reachable && tired.quickTurn && tired.score < 40 && tired.phone === '(484) 555-0199' && tired.top.length >= 2 && tired.url === 'https://www.tiredplumbing.test/' && /Tired Plumbing/i.test(tired.name) && /Norristown, PA/.test(tired.city), 'the tired site: low score, quick turn, phone, city and what is wrong', JSON.stringify(tired).slice(0, 300));
-    ok(fine.score >= 70 && fine.industry === 'electrician' && down.reachable === false && /500/.test(down.error) && s.skipped.directories >= 1 && s.skipped.invalid >= 1, 'the decent site ranks lower and is read as an electrician; the site that is down is last with a reason', JSON.stringify(s.skipped));
+    ok(fine.score >= 70 && fine.industry === 'electrician' && fine.lead === false && fine.fit === 'other' && /electrician work, not plumbing/.test(fine.reason) && down.reachable === false && down.lead === true && down.name === 'offline-shop.test' && /500/.test(down.error) && tired.lead === true && s.skipped.directories >= 1 && s.skipped.invalid >= 1, 'the other-trade site is not a lead and says why; the site that is down is a lead with a reason', JSON.stringify([fine.fit, fine.reason, s.skipped]));
     ok((await P('/leads/searches')).json.searches[0].id === s.id && (await P('/leads/searches/not-an-id')).status === 404, 'recent searches are listed');
 
     // a pasted list skips the search
