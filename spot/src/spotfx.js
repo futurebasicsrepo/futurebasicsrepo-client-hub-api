@@ -4,30 +4,12 @@
 // says something about each section. Everything is decorative (aria-hidden
 // where it repeats the copy) and calms down under prefers-reduced-motion.
 
-// The character, with depth: a lit body, arms that wave, feet, eyes that
-// follow the pointer and blink. `id` keeps gradient ids unique per copy.
+// The character: Spot the plush (plush.js), with arms that wave and eyes
+// that follow the pointer and blink. `id` keeps gradient ids unique per copy.
+import { plushSpot } from './plush.js';
+
 export function spotBuddy(id = 'b') {
-  return `<svg class="spotb" viewBox="0 0 240 262" aria-hidden="true">
-<defs>
-<radialGradient id="sb-body-${id}" cx="38%" cy="30%" r="75%"><stop offset="0" stop-color="#ff9a6e"/><stop offset=".55" stop-color="#ff5a36"/><stop offset="1" stop-color="#d93d1b"/></radialGradient>
-<radialGradient id="sb-shine-${id}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-</defs>
-<ellipse class="sb-shadow" cx="120" cy="250" rx="62" ry="9" fill="#1b1712" opacity=".14"/>
-<g class="sb-all">
-<g class="sb-feet"><ellipse cx="94" cy="232" rx="20" ry="11" fill="#c8361a"/><ellipse cx="146" cy="232" rx="20" ry="11" fill="#c8361a"/></g>
-<g class="sb-arm sb-arm-l"><path d="M42 150 C26 160 18 176 20 194" stroke="#e5492a" stroke-width="18" stroke-linecap="round" fill="none"/><circle cx="20" cy="196" r="11" fill="#e5492a"/></g>
-<g class="sb-arm sb-arm-r"><path d="M198 150 C214 160 222 176 220 194" stroke="#e5492a" stroke-width="18" stroke-linecap="round" fill="none"/><circle cx="220" cy="196" r="11" fill="#e5492a"/></g>
-<circle cx="120" cy="134" r="88" fill="url(#sb-body-${id})"/>
-<ellipse cx="88" cy="90" rx="30" ry="20" fill="url(#sb-shine-${id})" transform="rotate(-25 88 90)"/>
-<path d="M50 176 A88 88 0 0 0 190 176" stroke="#b8301a" stroke-opacity=".25" stroke-width="6" fill="none"/>
-<g class="sb-face">
-<g class="sb-eyes"><ellipse cx="96" cy="124" rx="16" ry="19" fill="#fff"/><ellipse cx="144" cy="124" rx="16" ry="19" fill="#fff"/>
-<g class="sb-pupils"><circle cx="96" cy="127" r="9" fill="#1b1712"/><circle cx="144" cy="127" r="9" fill="#1b1712"/><circle cx="99.5" cy="123" r="3" fill="#fff"/><circle cx="147.5" cy="123" r="3" fill="#fff"/></g></g>
-<g class="sb-joy"><path d="M82 126 q14 -16 28 0M130 126 q14 -16 28 0" stroke="#1b1712" stroke-width="7" fill="none" stroke-linecap="round"/></g>
-<path class="sb-smile" d="M106 158 q14 11 28 0" stroke="#1b1712" stroke-width="6" fill="none" stroke-linecap="round"/>
-<path class="sb-grin" d="M100 154 q20 30 40 0 z" fill="#1b1712"/><path class="sb-grin" d="M110 166 q10 6 20 0" fill="#ff8fa0"/>
-<circle cx="74" cy="152" r="11" fill="#ff9a7e" opacity=".9"/><circle cx="166" cy="152" r="11" fill="#ff9a7e" opacity=".9"/>
-</g></g></svg>`;
+  return plushSpot({ id });
 }
 
 // Hero: the YES button with Spot standing on it, and the order around them:
@@ -45,7 +27,7 @@ export function yesStage() {
   <div class="layer" data-depth="8"><div class="vcard fc" id="vcard"><div class="vtop"><span class="vbrand"><i></i>Spot</span><span class="vkind">one order</span></div><div class="vchip"></div><div class="vnum">•••• 0417</div><div class="vrows"><span>Cap</span><b>$119.60</b><span>Only at</span><b>nike.com</b></div><div class="vstamp">used · closed</div></div></div>
   <div class="yesgroup">
     <div class="herospot" id="heroSpot">${spotBuddy('hero')}</div>
-    <button class="yesbtn" id="yesBtn" type="button" aria-label="Press yes, like approving an order"><span class="cap">YES</span></button>
+    <button class="yesbtn" id="yesBtn" type="button" aria-label="Press yes, like approving an order"><span class="ring"></span><span class="cap">YES</span></button>
     <div class="yescount" id="yesCount" aria-live="polite">go on, press it</div>
   </div>
 </div>`;
@@ -80,15 +62,15 @@ export const SPOTFX_CSS = `
 .spotb{width:100%;height:auto;display:block;overflow:visible}
 .spotb .sb-all{transform-origin:120px 240px;transform-box:view-box}
 .spotb .sb-arm{transform-box:view-box}
-.spotb .sb-arm-l{transform-origin:42px 150px}.spotb .sb-arm-r{transform-origin:198px 150px}
+.spotb .sb-arm-l{transform-origin:40px 154px}.spotb .sb-arm-r{transform-origin:200px 154px}
 .spotb .sb-eyes{transform-origin:120px 124px;transform-box:view-box;transition:transform .08s}
 .spotb .sb-joy,.spotb .sb-grin{display:none}
 .spotb.happy .sb-eyes,.spotb.happy .sb-smile{display:none}.spotb.happy .sb-joy,.spotb.happy .sb-grin{display:inline}
 .spotb.blink .sb-eyes{transform:scaleY(.08)}
-.spotb .sb-arm-r{animation:wave 2.6s ease-in-out infinite}
-@keyframes wave{0%,50%,100%{transform:rotate(0)}58%{transform:rotate(-125deg)}65%{transform:rotate(-95deg)}72%{transform:rotate(-128deg)}79%{transform:rotate(-98deg)}88%{transform:rotate(-10deg)}}
-.spotb.happy .sb-arm-l{animation:cheerL .5s ease-in-out infinite alternate}.spotb.happy .sb-arm-r{animation:cheerR .5s ease-in-out infinite alternate}
-@keyframes cheerL{from{transform:rotate(115deg)}to{transform:rotate(150deg)}}@keyframes cheerR{from{transform:rotate(-115deg)}to{transform:rotate(-150deg)}}
+.spotb .sb-arm-r{animation:wave 5.2s var(--ease-soft) infinite}
+@keyframes wave{0%,58%,100%{transform:rotate(0)}66%{transform:rotate(-104deg)}72%{transform:rotate(-84deg)}78%{transform:rotate(-104deg)}88%{transform:rotate(-4deg)}}
+.spotb.happy .sb-arm-l{animation:cheerL .42s var(--ease-soft) infinite alternate}.spotb.happy .sb-arm-r{animation:cheerR .42s var(--ease-soft) infinite alternate}
+@keyframes cheerL{from{transform:rotate(96deg)}to{transform:rotate(124deg)}}@keyframes cheerR{from{transform:rotate(-96deg)}to{transform:rotate(-124deg)}}
 
 /* ── Hero ── */
 .hero2{padding:64px 0 48px;position:relative;overflow:hidden;isolation:isolate}
@@ -115,7 +97,7 @@ export const SPOTFX_CSS = `
 .chip .ico{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--spot) 12%,transparent);color:var(--spot);flex:none}
 .chip .ico svg{width:20px;height:20px}
 .chip b{display:block;font-size:15px;font-weight:800;letter-spacing:-.01em}.chip small{display:block;color:var(--muted);font-size:13px;margin-top:1px}
-.chip-ai{left:0;top:28px}.chip-ask{right:0;top:118px}
+.chip-ai{left:0;top:28px}.chip-ai .ico{background:color-mix(in srgb,var(--ai) 12%,transparent);color:var(--ai)}.chip-ask{right:0;top:118px}
 .chip-ask .st-done{display:none;color:var(--ok)}.yesstage.approved .chip-ask .st-wait{display:none}.yesstage.approved .chip-ask .st-done{display:block}
 .yesstage.approved .chip-ask{border-color:color-mix(in srgb,var(--ok) 50%,var(--line))}
 .yesstage.approved .chip-ask .ico{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
@@ -135,19 +117,35 @@ export const SPOTFX_CSS = `
 .yesstage.used .vcard .vstamp{opacity:1;transform:rotate(-14deg) scale(1)}
 
 .yesgroup{position:absolute;left:58%;bottom:0;width:230px;translate:-50% 0;display:flex;flex-direction:column;align-items:center}
-.herospot{position:relative;width:196px;margin-bottom:-14px;z-index:1;cursor:pointer;transform-origin:50% 100%;animation:bob 4s ease-in-out infinite}
-.herospot .spotb{filter:drop-shadow(0 16px 18px rgba(217,61,27,.22))}
-.herospot.jump{animation:jump .9s cubic-bezier(.3,1.4,.5,1)}
+.herospot{position:relative;width:196px;margin-bottom:-16px;z-index:1;cursor:pointer;transform-origin:50% 92%;animation:breathe 4.4s var(--ease-soft) infinite}
+.herospot .spotb{filter:drop-shadow(0 14px 16px rgba(170,52,20,.2))}
+.herospot.jump{animation:hop .86s linear}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-@keyframes jump{0%{transform:translateY(0) scale(1,1)}15%{transform:translateY(6px) scale(1.12,.86)}45%{transform:translateY(-92px) scale(.94,1.08) rotate(-6deg)}70%{transform:translateY(0) scale(1.1,.9)}85%{transform:translateY(-10px) scale(1)}100%{transform:translateY(0)}}
+@keyframes breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.014,.986)}}
+/* down with the button, up, land soft, settle */
+@keyframes hop{0%{transform:none;animation-timing-function:cubic-bezier(.4,0,.6,1)}
+  12%{transform:translateY(9px) scale(1.07,.92);animation-timing-function:cubic-bezier(.2,.7,.3,1)}
+  42%{transform:translateY(-62px) scale(.96,1.05) rotate(-3deg);animation-timing-function:cubic-bezier(.6,0,.8,.4)}
+  64%{transform:translateY(0) scale(1.08,.93);animation-timing-function:cubic-bezier(.3,0,.3,1)}
+  78%{transform:translateY(-7px) scale(.99,1.01)}100%{transform:none}}
+@keyframes jump{0%{transform:translateY(0) scale(1,1)}15%{transform:translateY(6px) scale(1.1,.88)}45%{transform:translateY(-70px) scale(.95,1.06)}70%{transform:translateY(0) scale(1.07,.93)}85%{transform:translateY(-6px) scale(1)}100%{transform:translateY(0)}}
 
-.yesbtn{position:relative;width:220px;height:78px;border:0;padding:0;background:none;cursor:pointer;border-radius:999px;-webkit-tap-highlight-color:transparent;flex:none}
-.yesbtn::before{content:'';position:absolute;inset:14px 0 0;border-radius:999px;background:linear-gradient(#b8331a,#8f2410);box-shadow:0 14px 24px -14px rgba(143,36,16,.7)}
-.yesbtn .cap{position:absolute;left:0;right:0;top:0;height:64px;border-radius:999px;display:grid;place-items:center;font:800 28px/1 Bricolage,system-ui,sans-serif;letter-spacing:.06em;color:#fff;
-  background:radial-gradient(120% 140% at 30% 15%,#ff8a62,#ff5a36 55%,#e8441f);box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 -6px 14px rgba(0,0,0,.1) inset;transition:transform .09s ease-out}
-.yesbtn:hover .cap{transform:translateY(-2px)}
-.yesbtn:active .cap,.yesbtn.down .cap{transform:translateY(12px)}
-.yesbtn:focus-visible{outline:3px solid var(--spot2);outline-offset:6px}
+/* the YES key: a clean cap on a solid base, a soft floor shadow, a quick
+   press and a springy release, and one ring that rings out */
+.yesbtn{position:relative;width:220px;height:76px;border:0;padding:0;background:none;cursor:pointer;border-radius:999px;-webkit-tap-highlight-color:transparent;flex:none;touch-action:manipulation}
+.yesbtn::after{content:'';position:absolute;left:8%;right:8%;bottom:-10px;height:18px;border-radius:50%;background:radial-gradient(closest-side,rgba(110,30,8,.32),transparent);filter:blur(2px);transition:transform .26s var(--ease-spring),opacity .26s}
+.yesbtn::before{content:'';position:absolute;inset:12px 0 0;border-radius:999px;background:linear-gradient(#d84b26,#a9361a);box-shadow:0 1px 0 rgba(255,255,255,.18) inset,0 -2px 0 rgba(0,0,0,.12) inset}
+.yesbtn .cap{position:absolute;left:0;right:0;top:0;height:62px;border-radius:999px;display:grid;place-items:center;font:800 26px/1 Bricolage,system-ui,sans-serif;letter-spacing:.1em;color:#fff;text-shadow:0 1px 0 rgba(140,30,8,.35);
+  background:linear-gradient(180deg,#ff7c52 0%,#ff5f3a 58%,#f5512d 100%);box-shadow:inset 0 1.5px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.07);
+  transition:transform .26s var(--ease-spring)}
+.yesbtn .cap::before{content:'';position:absolute;inset:0;border-radius:inherit;background:radial-gradient(90% 60% at 50% 0%,rgba(255,255,255,.24),rgba(255,255,255,0) 70%);pointer-events:none}
+.yesbtn .ring{position:absolute;left:0;right:0;top:0;height:62px;border-radius:999px;border:2px solid var(--spot);opacity:0;pointer-events:none}
+.yesbtn.ringing .ring{animation:ring .6s var(--ease-out)}
+@keyframes ring{0%{opacity:.55;transform:scale(1)}100%{opacity:0;transform:scale(1.22,1.5)}}
+.yesbtn:hover .cap{transform:translateY(-1.5px)}
+.yesbtn:active .cap,.yesbtn.down .cap{transform:translateY(10px);transition-duration:.07s;transition-timing-function:ease-in}
+.yesbtn:active::after,.yesbtn.down::after{transform:scale(.86,.7);opacity:.75;transition-duration:.07s}
+.yesbtn:focus-visible{outline:2px dashed var(--spot);outline-offset:8px}
 .yescount{margin-top:12px;min-height:20px;text-align:center;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
 
 /* tablet and phone: same three cards, re-laid for a narrower stage */
@@ -193,7 +191,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;opa
 .beat h3{font-size:22px;margin-bottom:8px}.beat p{color:var(--muted)}
 .bvis{margin-top:auto;padding-top:20px;transform:translateZ(30px)}
 .chatvis{display:grid;gap:7px}.chatvis .cb{font-size:13.5px;padding:8px 12px;border-radius:16px;max-width:88%}
-.chatvis .me{justify-self:end;background:#0a84ff;color:#fff;border-bottom-right-radius:5px}.chatvis .ai{background:var(--bg2);border-bottom-left-radius:5px}
+.chatvis .me{justify-self:end;background:var(--ai);color:#fff;border-bottom-right-radius:5px}.chatvis .ai{background:var(--bg2);border-bottom-left-radius:5px}
 .yesvis{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.yesvis .mini-yes{background:var(--spot);color:#fff;font-weight:800;border-radius:99px;padding:10px 16px;box-shadow:0 3px 0 #b8331a;font-size:14px}
 .yesvis .or{color:var(--muted);font-size:13px}.yesvis .mini-mom{border:1.5px dashed var(--line);border-radius:99px;padding:8px 14px;font-weight:600;font-size:14px}
 .cardvis .mcard{position:relative;border-radius:14px;padding:12px 14px;color:#eef0f7;background:linear-gradient(150deg,#1f2a4a,#0d1428);font:600 12px/1.5 ui-monospace,Menlo,monospace;display:grid;grid-template-columns:1fr auto;gap:2px 10px;box-shadow:0 18px 30px -16px rgba(13,20,40,.6)}
@@ -214,6 +212,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;opa
 @media (max-width:600px){.gspot{width:52px}.gsay{display:none}.guide{right:10px;bottom:10px}}
 
 @media (prefers-reduced-motion:reduce){
+.yesbtn .ring{display:none}
   .fa,.fb,.fc,.fd,.fe,.herospot,.gspot,.vcard::after,.blobby::before,.blobby::after,.hero2::before,.hero2::after,.spotb .sb-arm-r,.spotb.happy .sb-arm-l,.spotb.happy .sb-arm-r{animation:none}
   .beat.reveal{opacity:1;transform:none}.guide{transition:none}
 }
@@ -241,7 +240,7 @@ export const SPOTFX_JS = `
       addEventListener('deviceorientation',e=>{if(e.gamma==null)return;px=Math.max(-.5,Math.min(.5,e.gamma/40));py=Math.max(-.5,Math.min(.5,(e.beta-45)/50));ask()},{passive:true})}
     const btn=document.getElementById('yesBtn'),hs=document.getElementById('heroSpot'),hsvg=hs&&hs.querySelector('.spotb'),count=document.getElementById('yesCount');let n=0,busy=0;
     const lines=['approved. signed. sent ✍️','another yes! 🧡','the store got the order 📦','card used, then closed 🔒','you’re good at this','ok now ask your AI for real →'];
-    const yes=()=>{n++;btn.classList.add('down');setTimeout(()=>btn.classList.remove('down'),140);
+    const yes=()=>{n++;btn.classList.add('down');setTimeout(()=>btn.classList.remove('down'),150);btn.classList.remove('ringing');void btn.offsetWidth;btn.classList.add('ringing');try{navigator.vibrate&&navigator.vibrate(8)}catch{}
       cheer(hs,hsvg);spotConfetti(st,'50%','62%',46);
       st.classList.add('approved');clearTimeout(busy);setTimeout(()=>st.classList.add('used'),700);
       busy=setTimeout(()=>st.classList.remove('approved','used'),3600);

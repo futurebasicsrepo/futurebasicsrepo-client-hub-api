@@ -3,6 +3,7 @@
 // goes through esc(), and data handed to scripts goes through json().
 import { HOME_SCREEN_TAGS } from './appicon.js';
 import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, cssSafe, usd } from './cart.js';
+import { plushSpot } from './plush.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -246,17 +247,7 @@ details .sum{font-size:14px}
 // Inline, animatable version of the mascot: pupils follow the pointer
 // (desktop) or glance at the button (phone); swaps to a happy face on pay.
 export function buddySvg(happy) {
-  return `<svg viewBox="0 0 200 200" aria-hidden="true" id="buddy" class="${happy ? 'happy' : ''}">
-<ellipse cx="100" cy="188" rx="50" ry="7" fill="currentColor" opacity=".08"/>
-<circle cx="100" cy="100" r="78" fill="var(--spot)"/><circle cx="72" cy="68" r="20" fill="#fff" opacity=".18"/>
-<g class="open" ${happy ? 'style="display:none"' : ''}>
-<ellipse cx="78" cy="90" rx="15" ry="17" fill="#fff"/><ellipse cx="122" cy="90" rx="15" ry="17" fill="#fff"/>
-<g class="pupils"><circle cx="78" cy="92" r="8" fill="#1b1712"/><circle cx="122" cy="92" r="8" fill="#1b1712"/><circle cx="81" cy="89" r="2.6" fill="#fff"/><circle cx="125" cy="89" r="2.6" fill="#fff"/></g>
-<path d="M88 122 q12 9 24 0" stroke="#1b1712" stroke-width="5" fill="none" stroke-linecap="round"/></g>
-<g class="joy" ${happy ? '' : 'style="display:none"'}>
-<path d="M67 92 q11 -13 22 0M111 92 q11 -13 22 0" stroke="#1b1712" stroke-width="6" fill="none" stroke-linecap="round"/>
-<path d="M82 118 q18 24 36 0" fill="#1b1712"/></g>
-<circle cx="60" cy="116" r="9" fill="#ff9a7e"/><circle cx="140" cy="116" r="9" fill="#ff9a7e"/></svg>`;
+  return plushSpot({ id: 'buddy', cls: '', attrs: ' id="buddy"', happy, legacy: true });
 }
 
 export function payPage({ cart, links, provider, pageUrl, commission = false }) {
