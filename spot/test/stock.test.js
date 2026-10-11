@@ -69,7 +69,7 @@ test('a sold-out find is swapped for one in stock, and never shown', async () =>
   assert.match(calls[0].messages[0].content, /must be in stock right now/);
   const retry = calls[1].messages.at(-1);
   assert.equal(retry.role, 'user');
-  assert.match(retry.content, /Tee 1 \(2T\) is sold out at https:\/\/shop\.example\/p1/);
+  assert.match(retry.content, /that one is sold out \(Tee 1 \(2T\) at https:\/\/shop\.example\/p1\)/);
   assert.equal(calls[1].messages.at(-2).role, 'assistant', 'the model sees its own answer before the correction');
 });
 
@@ -81,7 +81,7 @@ test('if everything is sold out, it says so and shows what it tried', async () =
   assert.equal(d.sold_out, true);
   assert.equal(d.needs_review, true);
   assert.deepEqual(d.tried, all);
-  assert.match(d.warning, /Everything I found is sold out \(3 tries\)/);
+  assert.match(d.warning, /Everything I found is sold out \(3 checked\)/);
 });
 
 test('stock the store doesn’t publish: shown, with a nudge to check', async () => {
@@ -129,4 +129,34 @@ test('the composer sends follow-ups through, and an AI can’t make an ask for a
   const ask = await call('POST', '/v1/agent/asks', { requester: { name: 'Riley' }, text: 'toddler eagles shirt' }, { authorization: `Bearer ${key.api_key}` });
   assert.equal(ask.status, 422);
   assert.match(ask.body.error, /Tee is sold out at Eagles Shop/);
+});
+
+test('several picks across stores: sold-out ones dropped, the recommendation first', async () => {
+  const pick = (n, store) => ({ merchant_name: store, merchant_url: `https://${store}.example`, product_url: `https://${store}.example/p${n}`, title: `Tee ${n}`, variant: '3T', unit_price: `$2${n}.00`, why: `reason ${n}` });
+  const { client, calls } = model([{ products: [pick(1, 'eagles'), pick(2, 'fanatics'), pick(3, 'nike'), pick(4, 'target'), { found: false }] }]);
+  const d = await captureFromText('toddler eagles shirt', { client, fromUrl: stockAt(['https://fanatics.example/p2']), product: noShopify });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].messages[0].content, /up to 6 products/);
+  assert.deepEqual(d.options.map((o) => o.item.title), ['Tee 1', 'Tee 3', 'Tee 4'], 'sold out at Fanatics: not shown');
+  assert.deepEqual(d.options.map((o) => o.merchant.name), ['eagles', 'nike', 'target']);
+  assert.equal(d.options[0].why, 'reason 1');
+  assert.equal(d.options[0].stock, 'in');
+  assert.equal(d.options[1].item.image_url, 'https://nike.example/p3.jpg', 'each has its photo');
+  assert.equal(d.items[0].title, 'Tee 1', 'the draft is the recommendation');
+  assert.deepEqual(d.tried, ['https://fanatics.example/p2']);
+});
+
+test('a follow-up never repeats a product already shown', async () => {
+  const pick = (n) => ({ merchant_name: 'S', merchant_url: 'https://s.example', product_url: `https://s.example/p${n}`, title: `Tee ${n}`, unit_price: '$20' });
+  const { client } = model([{ products: [pick(1), pick(2), pick(3)] }]);
+  const d = await captureFromText('toddler eagles shirt', { client, fromUrl: stockAt([]), product: noShopify, more: 'cheaper', avoid: ['https://s.example/p1'] });
+  assert.deepEqual(d.options.map((o) => o.item.url), ['https://s.example/p2', 'https://s.example/p3']);
+});
+
+test('the composer page has the picks shelf and its follow-up box', async (t) => {
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg: { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 }, logger: false, env: { SPOT_AGENT: 'off' } });
+  t.after(() => a.close());
+  const html = (await a.inject({ method: 'GET', url: '/new' })).body;
+  for (const id of ['picks', 'thread', 'askMore', 'more2', 'backPicks']) assert.match(html, new RegExp(`id="${id}"`), id);
+  assert.match(html, /data-face="[^"]*\/assets\/spot-face\.webp\?v=/);
 });

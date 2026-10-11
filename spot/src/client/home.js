@@ -65,7 +65,7 @@
   });
 
   const show = (id) => {
-    for (const s of ['compose', 'check', 'ready']) $('#' + s).hidden = s !== id;
+    for (const s of ['compose', 'picks', 'check', 'ready']) $('#' + s).hidden = s !== id;
     $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -136,8 +136,14 @@
     try {
       const d = await api('/v1/capture', image ? { image } : { text });
       ask = { text: image ? '' : text, avoid: [] };
-      draft = toDraft(d);
       made = null;
+      if (d.options?.length > 1) {
+        $('#thread').innerHTML = '';
+        show('picks'); // visible first, so the shelf can measure itself
+        shelf(text, d.options);
+        return;
+      }
+      draft = toDraft(d);
       const priced = draft.items.every((i) => i.price_cents > 0);
       // Sure of everything: make the link straight away. Anything the
       // server refuses (a gift card, over the cap, a store that doesn't take
@@ -179,6 +185,115 @@
     in_stock: Boolean(d.in_stock),
     tried: d.tried || [],
   });
+
+  // ─── Picks ────────────────────────────────────────────────────────────────
+  // A lookup with several products: a swipeable shelf across stores, Spot's
+  // pick first, like a collection page. Each follow-up ("cheaper", "in green")
+  // adds a new shelf under the last, so the thread reads like a chat.
+  const turns = []; // [[option, …], …]
+  const spotSays = (t) => '<div class="spotsay"><i style="background-image:url(\'' + esc($('#thread').dataset.face || '') + '\')"></i><span>' + esc(t) + '</span></div>';
+  const stockTag = (o) => (o.stock === 'in' ? '<span class="tag in">In stock</span>' : '<span class="tag">Check stock</span>');
+  function card(o, t, i) {
+    const it = o.item;
+    const img = it.image_url ? String(it.image_url).replace(/["'()\\]/g, (c) => '%' + c.charCodeAt(0).toString(16)) : '';
+    return '<article class="pc' + (i === 0 ? ' top' : '') + '" aria-roledescription="slide" aria-label="' + (i + 1) + ' of ' + turns[t].length + '">' +
+      (i === 0 ? '<span class="badge">Spot’s pick</span>' : '') +
+      '<div class="ph"' + (img ? ' style="background-image:url(\'' + esc(img) + '\')"' : '') + '>' + (img ? '' : '🛍️') + '</div>' +
+      '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' ' + stockTag(o) + '</div>' +
+      '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + '</div>' : '') +
+      (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
+      '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' +
+      '<button class="btn small" type="button" data-pick="' + t + ':' + i + '">Spot this one</button>' +
+      (it.url && /^https?:/i.test(it.url) ? '<a class="see" href="' + esc(it.url) + '" target="_blank" rel="noopener">See it at the store ↗</a>' : '') +
+      '</div></article>';
+  }
+  const skeleton = () => '<div class="shelf"><div class="rail">' + '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>'.repeat(3) + '</div></div>';
+  function shelf(said, options, el) {
+    const t = turns.push(options) - 1;
+    for (const o of options) if (o.item.url && !ask.avoid.includes(o.item.url)) ask.avoid.push(o.item.url);
+    const turn = el || document.createElement('div');
+    turn.className = 'turn';
+    const stores = new Set(options.map((o) => o.merchant.name)).size;
+    const line = options.length === 1 ? 'here’s the one I’d get' : t === 0 ? 'found ' + options.length + ' at ' + (stores > 1 ? stores + ' stores' : options[0].merchant.name) + '. my pick’s first, swipe for more →' : 'ok, ' + options.length + ' more. my pick’s first →';
+    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + '<div class="shelf"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="Picks from ' + options.length + ' stores">' +
+      options.map((o, i) => card(o, t, i)).join('') + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at">1 of ' + options.length + '</span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
+    if (!el) $('#thread').appendChild(turn);
+    const rail = turn.querySelector('.rail');
+    const at = () => Math.round(rail.scrollLeft / (rail.firstElementChild.offsetWidth + 12));
+    const sync = () => {
+      const i = Math.min(at(), options.length - 1);
+      turn.querySelector('.at').textContent = i + 1 + ' of ' + options.length;
+      turn.querySelector('[data-step="-1"]').disabled = rail.scrollLeft < 4;
+      turn.querySelector('[data-step="1"]').disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
+    };
+    rail.addEventListener('scroll', sync, { passive: true });
+    addEventListener('resize', sync, { passive: true });
+    turn.querySelector('.railnav').addEventListener('click', (e) => {
+      const step = +e.target.dataset.step;
+      if (step) rail.scrollBy({ left: step * (rail.firstElementChild.offsetWidth + 12), behavior: 'smooth' });
+    });
+    rail.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') rail.scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * (rail.firstElementChild.offsetWidth + 12), behavior: 'smooth' });
+    });
+    sync();
+    say(options.length > 1 ? 'my pick’s first. swipe for more →' : 'here’s what I found');
+    turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('#thread').addEventListener('click', (e) => {
+    const k = e.target.dataset.pick;
+    if (!k) return;
+    const [t, i] = k.split(':').map(Number);
+    const o = turns[t][i];
+    draft = { ...toDraft({ source: 'lookup', merchant: o.merchant, items: [{ ...o.item }], in_stock: o.stock === 'in' }), fromPicks: true };
+    made = null;
+    check(o.stock === 'in' ? '' : 'I couldn’t check stock at ' + (o.merchant.name || 'that store') + '. Tap “See it at the store” to make sure it’s there');
+  });
+  async function askMore(e) {
+    e?.preventDefault();
+    const more = $('#more2').value.trim();
+    if (!more) return $('#more2').focus();
+    const btn = $('#askGo');
+    btn.disabled = true;
+    const turn = document.createElement('div');
+    turn.className = 'turn';
+    turn.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays('looking around…') + skeleton();
+    $('#thread').appendChild(turn);
+    turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('#more2').value = '';
+    say('on it, looking around…');
+    try {
+      const d = await api('/v1/capture', { text: ask.text, more, avoid: ask.avoid.slice(-20) });
+      const options = d.options?.length ? d.options : d.items?.[0] && !d.sold_out && d.source === 'lookup' ? [{ merchant: d.merchant, item: d.items[0], stock: d.in_stock ? 'in' : 'unknown', why: d.why || null }] : [];
+      if (options.length) shelf(more, options, turn);
+      else {
+        turn.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(d.warning || 'I couldn’t find anything new for that. Try saying it another way.');
+        say('hmm, nothing new for that one');
+      }
+    } catch (err) {
+      turn.innerHTML = '<div class="me">' + esc(more) + '</div><p class="err">' + esc(err.message) + '</p>';
+      say('hmm, that one got away from me');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  $('#askMore').addEventListener('submit', askMore);
+  $('#picksOver').onclick = () => {
+    turns.length = 0;
+    $('#thread').innerHTML = '';
+    q.value = '';
+    show('compose');
+    say('what do you want?');
+  };
+  $('#picksManual').onclick = () => {
+    draft = toDraft({ source: 'text', items: [{ ...blank(), title: ask.text }] });
+    made = null;
+    check('');
+  };
+  $('#backPicks').onclick = () => {
+    show('picks');
+    for (const r of document.querySelectorAll('#thread .rail')) r.dispatchEvent(new Event('scroll'));
+    say('my pick’s first. swipe for more →');
+  };
 
   // "Not quite": what they say about this find, and everything shown so far,
   // go back for another look (a sold-out find is never offered again).
@@ -259,7 +374,8 @@
         (top.url && /^https?:/i.test(top.url) ? '<a href="' + esc(top.url) + '" target="_blank" rel="noopener">See it at the store ↗</a>' : '') + '</div>';
     }
     // Something found for them (or sold out): they can ask for another.
-    $('#refine').hidden = Boolean(made) || !(draft.sold_out || draft.source === 'lookup' || draft.source === 'text');
+    $('#backPicks').hidden = Boolean(made) || !draft.fromPicks || !turns.length;
+    $('#refine').hidden = Boolean(made) || Boolean(draft.fromPicks) || !(draft.sold_out || draft.source === 'lookup' || draft.source === 'text');
     $('#refineQ').textContent = draft.sold_out ? 'Sold out. What else would work?' : 'Not quite? Tell me what to change.';
     $('#moreGo').className = draft.sold_out ? 'btn small' : 'btn ghost small';
     $('#note').value = draft.note || '';
@@ -521,6 +637,8 @@
   };
   $('#again').onclick = () => {
     draft = made = image = null;
+    turns.length = 0;
+    $('#thread').innerHTML = '';
     basket = [];
     renderBasket();
     q.value = '';

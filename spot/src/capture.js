@@ -470,19 +470,22 @@ export function draftFromDescription(text) {
   };
 }
 
-const LOOKUP_SCHEMA_HINT = `{"found": true|false, "merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00"}`;
+// Several picks, best first, so the requester can swipe through stores like
+// a collection page instead of reading one AI answer.
+const LOOKUP_SCHEMA_HINT = `{"products": [{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00", "why": "short reason, under 60 characters"}]}`;
+export const MAX_OPTIONS = 6;
 
-// Follow-ups: "more" is what they said about the last find ("in blue",
-// "it's sold out"), "avoid" the product links already shown, so a second
-// ask finds something else instead of the same page.
-const FINDS = 3; // a sold-out find is retried with another, up to this many
+// Follow-ups: "more" is what they said about the last finds ("in blue",
+// "cheaper"), "avoid" the product links already shown, so a second ask
+// finds something else instead of the same pages.
+const FINDS = 3; // a search that turns up only sold-out items is retried, up to this many
 const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with what we have
 
 export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
-  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(0, 10);
+  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(0, 20);
   const followUp = Boolean(more || avoid.length);
   if (url && !followUp) return fromUrl(url);
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
@@ -494,9 +497,9 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
       role: 'user',
       content: `Someone wants a friend to buy them this: "${q(text)}"${more ? `\nThey saw what you found last time and said: "${q(more)}"` : ''}
 
-Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${q(sizes).slice(0, 300)}) and put it in "variant".` : ''} It must be in stock right now in that option: skip anything the page shows as sold out or unavailable.${avoid.length ? ` Don't suggest any of these again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
+Using web search, find up to ${MAX_OPTIONS} products for sale at US online stores that match, from different stores where you can (the brand's own store counts). Put your recommendation first, then the next best. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${q(sizes).slice(0, 300)}) and put it in "variant".` : ''} Each must be in stock right now in that option: skip anything the page shows as sold out or unavailable.${avoid.length ? ` Don't suggest any of these again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
-Set "found" to false if you can't find a specific product with a current price.`,
+Use an empty "products" list if you can't find a specific product with a current price.`,
     },
   ];
   // One page fetch per product, shared by the stock check and the photo.
@@ -505,7 +508,7 @@ Set "found" to false if you can't find a specific product with a current price.`
 
   const started = now();
   const soldOut = [];
-  let draft = null;
+  const seen = new Set(avoid);
   for (let find = 0; find < FINDS; find++) {
     let response;
     try {
@@ -521,31 +524,27 @@ Set "found" to false if you can't find a specific product with a current price.`
       throw err;
     }
     if (response.stop_reason === 'refusal') break;
-    const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-    let v;
-    try {
-      v = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0]);
-    } catch {
-      break;
-    }
-    draft = draftFromLookup(v, text);
-    const item = draft.items[0];
-    if (draft.source !== 'lookup') break;
-    const stock = await stockOf(item, { fromUrl: page, product });
-    if (stock !== 'out') {
-      draft = await withPhoto(draft, page);
-      return stock === 'in' ? { ...draft, in_stock: true } : { ...draft, warning: `I couldn’t check stock at ${draft.merchant.name || 'that store'}. Tap “See it at the store” to make sure it’s there` };
-    }
-    // Sold out at the store: tell the model and look again.
-    soldOut.push(draft);
+    const found = picksOf(response, text).filter((d) => {
+      const u = d.items[0].url;
+      if (u && seen.has(u)) return false;
+      if (u) seen.add(u);
+      return true;
+    });
+    if (!found.length) break;
+    // Every pick is checked against the store at once; sold-out ones never show.
+    const checked = await Promise.all(found.map(async (d) => ({ d, stock: await stockOf(d.items[0], { fromUrl: page, product }) })));
+    const live = checked.filter((c) => c.stock !== 'out');
+    soldOut.push(...checked.filter((c) => c.stock === 'out').map((c) => c.d));
+    if (live.length) return withOptions(await Promise.all(live.map(async ({ d, stock }) => ({ d: await withPhoto(d, page), stock }))), soldOut);
+
+    // All sold out at the store: tell the model and look again.
     if (find === FINDS - 1 || now() - started > FIND_BUDGET_MS) break;
     // (A paused search already left an assistant turn: the answer continues it.)
     const last = messages.at(-1);
     if (last.role === 'assistant') last.content = [...last.content, ...response.content];
     else messages.push({ role: 'assistant', content: response.content });
-    messages.push(
-      { role: 'user', content: `I checked the store: ${item.title}${item.variant ? ` (${item.variant})` : ''} is sold out${item.url ? ` at ${item.url}` : ''}. Find a different one that's in stock right now: the same thing at another store, or the closest match. Reply with ONLY the JSON.` },
-    );
+    const gone = checked.map(({ d }) => `${d.items[0].title}${d.items[0].variant ? ` (${d.items[0].variant})` : ''}${d.items[0].url ? ` at ${d.items[0].url}` : ''}`);
+    messages.push({ role: 'user', content: `I checked the stores: ${gone.length > 1 ? 'all of those are' : 'that one is'} sold out (${gone.join('; ')}). Find different ones that are in stock right now: the same thing at other stores, or the closest matches. Reply with ONLY the JSON.` });
   }
   // Everything found was sold out: show the last one, marked, so they can
   // say what else would do.
@@ -555,10 +554,41 @@ Set "found" to false if you can't find a specific product with a current price.`
       ...last,
       sold_out: true,
       tried: soldOut.map((d) => d.items[0].url).filter(Boolean),
-      warning: soldOut.length > 1 ? `Everything I found is sold out (${soldOut.length} tries). Tell me what else would work below` : `That one’s sold out at ${last.merchant.name || 'the store'}. Tell me what else would work below`,
+      warning: soldOut.length > 1 ? `Everything I found is sold out (${soldOut.length} checked). Tell me what else would work below` : `That one’s sold out at ${last.merchant.name || 'the store'}. Tell me what else would work below`,
     };
   }
-  return draft && draft.source === 'lookup' ? withPhoto(draft, page) : draftFromDescription(text);
+  return draftFromDescription(text);
+}
+
+// The model's answer → drafts, best first. Takes {"products": [...]} or a
+// single product object.
+function picksOf(response, text) {
+  const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  let v;
+  try {
+    v = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0]);
+  } catch {
+    return [];
+  }
+  const list = Array.isArray(v?.products) ? v.products : v ? [v] : [];
+  return list
+    .slice(0, MAX_OPTIONS)
+    .map((p) => ({ p, d: draftFromLookup({ found: true, ...p }, text) }))
+    .filter(({ p, d }) => p?.found !== false && d.source === 'lookup')
+    .map(({ p, d }) => ({ ...d, why: String(p.why || '').trim().slice(0, 80) || null }));
+}
+
+// The recommendation is the draft (so everything that reads one draft keeps
+// working); every in-stock pick, it included, rides along as `options`.
+function withOptions(picks, soldOut) {
+  const [top] = picks;
+  const tried = soldOut.map((d) => d.items[0].url).filter(Boolean);
+  return {
+    ...top.d,
+    ...(top.stock === 'in' ? { in_stock: true } : { warning: `I couldn’t check stock at ${top.d.merchant.name || 'that store'}. Tap “See it at the store” to make sure it’s there` }),
+    options: picks.map(({ d, stock }) => ({ merchant: d.merchant, item: d.items[0], stock, why: d.why })),
+    ...(tried.length ? { tried } : {}),
+  };
 }
 
 // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
@@ -571,7 +601,7 @@ async function search(anthropic, messages, onUsage) {
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: 'low' },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
       messages,
     });
     onUsage?.(response.model, response.usage);
