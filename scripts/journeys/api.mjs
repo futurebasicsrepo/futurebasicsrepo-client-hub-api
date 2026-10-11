@@ -1322,4 +1322,120 @@ await journey('J121', 'Chat: a visitor talks to the assistant, is handed to a pe
   const spam = []; for (let n = 0; n < 10; n++) spam.push((await visitor('198.51.100.8').say('hi')).status); ok(spam.includes(429) && spam[0] === 201, 'so is one address opening conversation after conversation');
 });
 
+await journey('J127', 'Pictures on client tiles: the photo a client started with shows on their tile in the work console and on their hub product, loads as a real image, and a made-up or tampered link does not', async () => {
+  const room = await newRoom('127', { wait: false });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  ok(Number(sql(`select count(*) from pack_blobs`)) > 0, 'setup: the pack pictures are kept as stored files, not inside the pack text');
+  const dash = (await call('/v1/admin/dashboard', { token: admin })).json, tile = (dash.clients || []).find(c => c.id === cid);
+  ok(tile && /\/r\/[0-9a-f-]{36}\/[0-9a-f]{32}\.jpg$/.test(tile.cover_image_url || ''), 'the client tile has a picture address', tile?.cover_image_url);
+  const img = await fetch(tile.cover_image_url.replace(/^https?:\/\/[^/]+/, BASE));
+  const bytes = Buffer.from(await img.arrayBuffer());
+  ok(img.status === 200 && /^image\/(jpeg|png|webp)$/.test(img.headers.get('content-type') || '') && bytes.length > 1000, 'the address returns an image', [img.status, img.headers.get('content-type'), bytes.length]);
+  ok((bytes[0] === 0xff && bytes[1] === 0xd8) || (bytes[0] === 0x89 && bytes[1] === 0x50) || bytes.slice(0, 4).toString() === 'RIFF', 'and it is a real picture, not the text of a reference', bytes.slice(0, 12).toString('latin1'));
+  const hub = (await call('/v1/dashboard', { token: room.token })).json, prod = (hub.products || []).find(p => p.rendering_url);
+  ok(prod && (await fetch(prod.rendering_url.replace(/^https?:\/\/[^/]+/, BASE))).status === 200, 'the same picture shows on the client\'s own hub');
+  const bad = tile.cover_image_url.replace(/[0-9a-f]\.jpg$/, c => (c[0] === '0' ? '1' : '0') + '.jpg').replace(/^https?:\/\/[^/]+/, BASE);
+  ok((await fetch(bad)).status === 404 && (await fetch(BASE + '/r/00000000-0000-0000-0000-000000000000/abc.jpg')).status === 404, 'a tampered or made-up picture link is not found');
+});
+
+await journey('J129', 'Software development in a client room: a software project is tied to a build and moves through stages, the client sees it (and its build, even before it is listed) and nobody else does, and the build can be pushed to the client\'s own Square or Wix once, safely, without secrets leaking, overwriting or deleting anything', async () => {
+  const http = await import('node:http');
+  const mock = { n: 0, made: [], rejectSku: '', wixV1: false, squareToken: 'sq-token-1234', wixKey: 'wix-key-1234' };
+  const store = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+      const body = (() => { try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { return {}; } })(), u = new URL(req.url, 'http://x');
+      if (u.pathname === '/v2/catalog/batch-upsert') {
+        if (req.headers.authorization !== `Bearer ${mock.squareToken}`) return send(401, { errors: [{ code: 'UNAUTHORIZED' }] });
+        const objs = body.batches?.[0]?.objects || [], maps = [];
+        for (const o of objs) { const sku = o.id.slice(1); if (sku === mock.rejectSku) continue; mock.made.push(`square:${sku}`); maps.push({ client_object_id: o.id, object_id: `SQ_${++mock.n}` }); }
+        return send(200, { id_mappings: maps });
+      }
+      if (u.pathname.startsWith('/stores/') || u.pathname.startsWith('/site-media/')) {
+        if (req.headers.authorization !== mock.wixKey) return send(403, { message: 'forbidden' });
+        if (u.pathname === '/stores/v3/provision/version') return send(200, { catalogVersion: mock.wixV1 ? 'V1_CATALOG' : 'V3_CATALOG' });
+        if (u.pathname === '/site-media/v1/files/import') return send(200, { file: { url: 'https://static.wixstatic.com/media/x.jpg', operationStatus: 'PENDING' } });
+        if (u.pathname === '/stores/v3/products') { if (body.product?.name === 'WIXBAD') return send(400, { message: 'name taken' }); mock.made.push(`wix:${body.product.variantsInfo.variants[0].sku}`); return send(200, { product: { id: `WX_${++mock.n}` } }); }
+      }
+      send(404, {});
+    });
+  });
+  await new Promise(r => store.listen(3133, '127.0.0.1', r));
+  try {
+    const room = await newRoom('129', { wait: false }), tag = `sw${stamp}`;
+    const cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o });
+
+    // projects: product by default, software with a build
+    const bad = async (body, re, status = 400) => { const r = await A(`/clients/${cid}/projects`, { body }); ok(r.status === status && re.test(r.json.error || ''), `refused: ${JSON.stringify(body).slice(0, 70)}`, [r.status, r.json.error]); };
+    await bad({ name: '' }, /name/i); await bad({ name: 'X', kind: 'robots' }, /product development or software/); await bad({ name: 'X', kind: 'software', stage: 'warp' }, /stage/); await bad({ name: 'X', kind: 'software', buildId: 'nope' }, /builds/); await bad({ name: 'X', kind: 'software', buildId: '8f14e45f-ceea-467a-9575-6a2b12345678' }, /not there/, 404);
+    const prod = await A(`/clients/${cid}/projects`, { body: { name: `Hoodie ${tag}` } }); ok(prod.status === 201 && prod.json.kind === 'product' && prod.json.build_id === null && prod.json.stage === null, 'a project with no kind is product development, as before');
+    const sw = await A(`/clients/${cid}/projects`, { body: { name: `Salon site ${tag}`, kind: 'software', newBuild: true, stage: 'prototype' } });
+    ok(sw.status === 201 && sw.json.kind === 'software' && sw.json.stage === 'prototype' && sw.json.build_id, 'a software project is made with a new build', sw.json);
+    const brow = sql(`select status||'/'||visibility||'/'||name from builds where id='${sw.json.build_id}'`); ok(brow === `in-progress/hidden/Salon site ${tag}`, 'the new build starts in progress and hidden from everyone but staff', brow);
+    ok((await A(`/projects/${prod.json.id}`, { method: 'PATCH', body: { stage: 'live' } })).status === 400 && (await A(`/projects/${prod.json.id}`, { method: 'PATCH', body: { buildId: sw.json.build_id } })).status === 400, 'a product project has no stage and no build');
+    ok((await A(`/projects/${sw.json.id}`, { method: 'PATCH', body: { stage: 'warp' } })).status === 400, 'a stage that does not exist is refused');
+    ok((await A(`/projects/${sw.json.id}`, { method: 'PATCH', body: { stage: 'review' } })).status === 200, 'staff move it to client review');
+    const room1 = (await A(`/clients/${cid}`)).json, p1 = room1.projects.find(x => x.id === sw.json.id);
+    ok(p1.software.stageLabel === 'Client review' && p1.software.owner === 'client' && p1.software.rail.filter(r => r.state === 'done').length === 3 && p1.software.build.name === `Salon site ${tag}`, 'the work console sees the stage, who has the ball and the build', p1.software);
+    ok(room1.projects.find(x => x.id === prod.json.id).software === undefined, 'a product project carries no software view');
+
+    // the client sees it; a stranger does not
+    const hub = (await call('/v1/dashboard', { token: room.token })).json, hp = hub.projects.find(x => x.id === sw.json.id);
+    ok(hp && hp.software.stageLabel === 'Client review' && hp.software.build.name === `Salon site ${tag}` && !/repo_url|repo_path/.test(JSON.stringify(hp)), 'the client sees the stage and the build on their hub, without anything internal', hp?.software);
+    const jar = {}, as = who => async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { ...(jar[who] ? { Cookie: jar[who] } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) jar[who] = sc.split(';')[0]; return { status: r.status, json: await r.json().catch(() => ({})) }; };
+    const signIn = async (who, email) => { const v = as(who); await v('/v1/builds/auth/code', { body: { email } }); await sleep(150); return v('/v1/builds/auth/verify', { body: { email, code: codeFrom(LOG, email) } }); };
+    const slug = sql(`select slug from builds where id='${sw.json.build_id}'`);
+    ok((await signIn('client', room.email)).status === 200, 'setup: the client signs in to the showcase');
+    const cview = await as('client')(`/v1/builds/${slug}`); ok(cview.status === 200, 'the client can open the build their project is built on, though it is hidden from everyone else', cview.status);
+    const guest = `guest-${tag}@chaos.test`; await A('/builds/invites', { body: { emails: guest, days: 7, send: false } }); ok((await signIn('guest', guest)).status === 200, 'setup: an invited stranger signs in');
+    ok((await as('guest')(`/v1/builds/${slug}`)).status === 404 && !JSON.stringify((await as('guest')('/v1/builds')).json).includes(slug), 'a stranger cannot open it or find it in the list');
+    ok((await A(`/projects/${sw.json.id}`, { method: 'PATCH', body: { buildId: null } })).status === 200 && (await as('client')(`/v1/builds/${slug}`)).status === 404, 'untying the build from the project takes the client\'s access away at once');
+    ok((await A(`/projects/${sw.json.id}`, { method: 'PATCH', body: { buildId: sw.json.build_id } })).status === 200 && (await as('client')(`/v1/builds/${slug}`)).status === 200, 'and tying it back gives it back');
+
+    // commerce: who may, what is needed, what is sent
+    const bid = sw.json.build_id, push = (body, token = admin) => call(`/v1/admin/builds/${bid}/push`, { token, body: { clientId: cid, ...body } });
+    ok((await call(`/v1/admin/builds/${bid}/push`, { token: room.token, body: { clientId: cid } })).status === 403 && (await call(`/v1/admin/builds/${bid}/push`, { body: {} })).status === 401 && (await call(`/v1/admin/builds/${bid}/commerce`, { token: room.token })).status === 403, 'clients and strangers cannot push or read the push window');
+    ok((await push({})).status === 422 && /products this site sells/i.test((await push({})).json.error), 'a push with no products is refused and says what to add');
+    const cat = async text => call(`/v1/admin/builds/${bid}/catalog`, { token: admin, method: 'PUT', body: { text } });
+    ok((await cat('Flat white beans | free')).status === 422 && (await cat('Beans | 5 | A | javascript:alert(1)')).status === 422 && (await cat('Beans | 5 | A\nMug | 6 | A')).status === 422, 'bad products are refused: no price, a script address, a repeated code');
+    const saved = await cat('Flat white beans | 18.50 | FW-1 | https://example.com/beans.jpg | Roasted to order\nSiphon mug | 12 | MUG-1\nREJECT me | 3 | REJ-1'); ok(saved.status === 200 && saved.json.count === 3, 'the products are saved', saved.json);
+    ok((await push({})).status === 422 && /where .* sells/i.test((await push({})).json.error), 'with no platform chosen it asks where the client sells');
+    ok((await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'etsy' } })).status === 422 && (await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'other' } })).status === 200 && (await push({})).status === 422 && /somewhere else/.test((await push({})).json.error), 'a platform we cannot push to says so');
+    ok((await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'shopify' } })).status === 200 && (await push({})).status === 409 && /connected a Shopify store/.test((await push({})).json.error), 'Shopify with no connected store is told to have the client connect one');
+    await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'square' } });
+    const nc = await push({}); ok(nc.status === 409 && /Connect Square/.test(nc.json.error) && mock.made.length === 0, 'Square with no connection is told to connect it, and nothing is sent');
+    const conn = body => A(`/clients/${cid}/commerce/connection`, { method: 'PUT', body });
+    ok((await conn({ platform: 'square', token: 'short' })).status === 422 && (await conn({ platform: 'square', token: 'has a space in it' })).status === 422 && (await conn({ platform: 'square', token: mock.squareToken, currency: 'dollars' })).status === 422 && (await conn({ platform: 'etsy', token: mock.squareToken })).status === 422, 'a bad token, a bad currency or an unknown platform is refused');
+    ok((await conn({ platform: 'square', token: 'wrong-token-9999', currency: 'usd', label: 'Salon Square' })).status === 200, 'the connection is saved');
+    const dead = await push({}); ok(dead.status === 409 && /no longer accepts/.test(dead.json.error) && sql(`select status from client_commerce_connections where client_id='${cid}' and platform='square'`) === 'needs-reconnect', 'a token Square refuses is reported, the connection is marked to be redone, and nothing is made', dead.json);
+    const again = await push({}); ok(again.status === 409 && /Connect Square again/.test(again.json.error), 'and a push stays refused until it is connected again');
+    await conn({ platform: 'square', token: mock.squareToken, currency: 'usd', label: 'Salon Square' });
+    const view = await call(`/v1/admin/builds/${bid}/commerce?clientId=${cid}`, { token: admin }), txt = JSON.stringify(view.json);
+    ok(view.json.client.targets.square.connected && !txt.includes(mock.squareToken) && !sql(`select secret_sealed from client_commerce_connections where client_id='${cid}' and platform='square'`).includes(mock.squareToken), 'the secret is never sent back and is not stored in the clear');
+    const prev = await push({ preview: true }); ok(prev.status === 200 && prev.json.willMake.length === 3 && mock.made.length === 0 && /Look before/.test(prev.json.publishNote), 'a preview says what would be made and sends nothing');
+    mock.rejectSku = 'REJ-1'; const p1r = await push({});
+    ok(p1r.status === 201 && p1r.json.push.status === 'partial' && p1r.json.push.summary.created === 2 && p1r.json.push.summary.failed === 1 && mock.made.join() === 'square:FW-1,square:MUG-1', 'two products are made in Square and the one it would not make is reported', p1r.json.push);
+    mock.rejectSku = ''; const p2 = await push({}); ok(p2.status === 201 && p2.json.push.summary.created === 1 && p2.json.push.summary.skipped === 2 && mock.made.join() === 'square:FW-1,square:MUG-1,square:REJ-1', 'pushing again makes only the one that was missing and leaves the other two alone');
+    const p3 = await push({}); ok(p3.status === 200 && p3.json.nothing === true && mock.made.length === 3, 'a third push changes nothing');
+    const before = mock.made.length; await cat('Flat white beans | 18.50 | FW-1\nSiphon mug | 12 | MUG-1\nREJECT me | 3 | REJ-1\nNew tote | 20 | TOTE-1'); const race = await Promise.all([push({}), push({})]);
+    ok(race.every(r => [200, 201, 409].includes(r.status)) && mock.made.length === before + 1 && mock.made.filter(m => m === 'square:TOTE-1').length === 1, 'two pushes at once make the new product once', race.map(r => r.status));
+    ok((await call(`/v1/admin/builds/${bid}/commerce`, { token: admin })).json.pushes.length >= 3, 'the history of pushes is kept');
+
+    // Wix
+    await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'wix' } }); await cat('Wix tote | 20 | WT-1 | https://example.com/t.jpg\nWIXBAD | 5 | WB-1');
+    ok((await push({})).status === 409, 'Wix with no connection is told to connect it');
+    ok((await conn({ platform: 'wix', apiKey: mock.wixKey, siteId: 'not a site' })).status === 422 && (await conn({ platform: 'wix', apiKey: mock.wixKey, siteId: '1a2b3c4d-1111-2222-3333-444455556666', label: 'Salon Wix' })).status === 200, 'the Wix key and site id are checked, then saved');
+    const w1 = await push({}); ok(w1.status === 201 && w1.json.push.status === 'partial' && w1.json.push.items.find(i => i.sku === 'WB-1').reason === 'name taken' && mock.made.includes('wix:WT-1'), 'Wix: one product made, the one it refused is reported with Wix\'s reason', w1.json.push?.items);
+    mock.wixV1 = true; await cat('Wix tote | 20 | WT-1\nWIXBAD | 5 | WB-1\nOther | 9 | O-1'); const v1 = await push({}); ok(v1.status === 422 && /older Stores catalog/.test(v1.json.error), 'a Wix site on the old catalog is told so, not half-written'); mock.wixV1 = false;
+    ok((await A(`/clients/${cid}/commerce/connection/wix`, { method: 'DELETE' })).status === 200 && (await A(`/clients/${cid}/commerce/connection/wix`, { method: 'DELETE' })).status === 404 && (await push({})).status === 409, 'a connection can be removed, and a push then asks for it again');
+
+    // archiving the project takes the client's access to the build away
+    await A(`/projects/${sw.json.id}/archive`, { method: 'POST', body: {} }); ok((await as('client')(`/v1/builds/${slug}`)).status === 404, 'archiving the project closes the client\'s access to the hidden build');
+    await call(`/v1/admin/builds/${bid}`, { token: admin, method: 'DELETE' });
+  } finally { await new Promise(r => store.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

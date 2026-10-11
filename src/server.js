@@ -32,6 +32,8 @@ import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js
 import { registerSalesAutomationRoutes, seedAutomations } from './sales-automations-routes.js';
 import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
+import { registerCommerceRoutes } from './commerce-routes.js';
+import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS } from './software.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -1058,7 +1060,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
   const payments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.currency,py.shopify_order_id,py.shopify_order_name,py.paid_at,py.source,py.product_id from payments py where py.client_id=$1 order by py.paid_at desc limit 25`,[client.id])).rows;
   const [projects,projectMessages,projectFiles,clientAssetUploads,products,requests,invoices,users,quotes,suppliers,productionRuns,qcInspections,shipments,assets,assetVersions,comments,configurations,priceTiers]=await Promise.all([
     pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,
-      (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
+      (select max(created_at) from project_messages pm where pm.project_id=pr.id) last_message_at,${SW_BUILD_JSON} build
       from projects pr where pr.client_id=$1 order by pr.updated_at desc,pr.name`,[client.id]),
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
@@ -1099,7 +1101,7 @@ app.get('/v1/admin/clients/:id',{preHandler:[authenticate,adminOnly]},async(req,
     pool.query(`select pc.*,s.name supplier_name from product_configurations pc left join suppliers s on s.id=pc.supplier_id
       join products p on p.id=pc.product_id where p.client_id=$1 order by pc.updated_at desc`,[client.id]),
     pool.query(`select pt.* from price_tiers pt join products p on p.id=pt.product_id where p.client_id=$1 order by pt.product_id,pt.min_quantity`,[client.id])
-  ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
+  ]);products.rows=products.rows.map(withRendering);return {client,projects:projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows,{internal:true}),projectMessages:projectMessages.rows,projectFiles:projectFiles.rows,clientAssetUploads:clientAssetUploads.rows,products:products.rows,requests:requests.rows,invoices:invoices.rows,users:users.rows,quotes:quotes.rows,
     suppliers:suppliers.rows,productionRuns:productionRuns.rows,qcInspections:qcInspections.rows,shipments:shipments.rows,
     assets:assets.rows,assetVersions:assetVersions.rows,comments:comments.rows,configurations:configurations.rows,priceTiers:priceTiers.rows,payments};
 });
@@ -1169,19 +1171,38 @@ app.post('/v1/admin/clients/:id/restore',{preHandler:[authenticate,adminOnly]},a
   if(!row)return reply.code(404).send({error:'Client not found'});
   return row;
 });
+// Software projects carry a build (the record the showcase shows) and a stage; a product project is as it always was.
+const SW_BUILD_JSON=`(select json_build_object('id',b.id,'slug',b.slug,'name',b.name,'tagline',b.tagline,'status',b.status,'visibility',b.visibility,'live_url',b.live_url,'stack',b.stack,'highlights',b.highlights,'products',jsonb_array_length(b.catalog)) from builds b where b.id=pr.build_id)`;
+const withSoftware=p=>p&&p.kind==='software'?{...p,software:softwareView(p,p.build)}:p;
+async function newBuildFor(db,name){
+  const base=String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50)||'build';let slug=base;
+  for(let n=2;(await db.query('select 1 from builds where slug=$1',[slug])).rowCount;n++)slug=`${base}-${n}`;
+  return (await db.query(`insert into builds(slug,name,status,visibility,sort_order) values($1,$2,'in-progress','hidden',100) returning id`,[slug,String(name).slice(0,80)])).rows[0].id;
+}
 app.post('/v1/admin/clients/:id/projects',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status='active',milestone,targetDate}=req.body||{};
-  if(!name?.trim())return reply.code(400).send({error:'Project name required'});
-  const row=(await pool.query(`insert into projects(client_id,name,status,milestone,target_date)
-    select id,$1,$2,$3,$4 from clients where id=$5 and archived_at is null and status not in ('archive','archived') returning *`,[name.trim(),status,milestone||null,targetDate||null,req.params.id])).rows[0];
-  if(!row)return reply.code(404).send({error:'Active client room not found'});
+  const {status='active',milestone,targetDate}=req.body||{};
+  const r=cleanProject(req.body);if(r.error)return reply.code(400).send({error:r.error});const v=r.value;
+  if(!(await pool.query(`select 1 from clients where id=$1 and archived_at is null and status not in ('archive','archived')`,[req.params.id])).rowCount)return reply.code(404).send({error:'Active client room not found'});
+  let buildId=v.build_id;
+  if(buildId&&!(await pool.query('select 1 from builds where id=$1',[buildId])).rowCount)return reply.code(404).send({error:'That build is not there'});
+  if(v.kind==='software'&&!buildId&&req.body?.newBuild)buildId=await newBuildFor(pool,v.name);
+  const row=(await pool.query(`insert into projects(client_id,name,status,milestone,target_date,kind,build_id,stage) values($5,$1,$2,$3,$4,$6,$7,$8) returning *`,[v.name,status,milestone||null,targetDate||null,req.params.id,v.kind,buildId,v.stage])).rows[0];
   return reply.code(201).send(row);
 });
 app.patch('/v1/admin/projects/:id',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
-  const {name,status,milestone,targetDate}=req.body||{};
+  const {name,status,milestone,targetDate}=req.body||{},b=req.body||{};
+  const cur=(await pool.query('select kind,stage,build_id from projects where id=$1',[req.params.id])).rows[0];if(!cur)return reply.code(404).send({error:'Project not found'});
+  let stage=cur.stage,buildId=cur.build_id;
+  if(b.stage!==undefined){if(cur.kind!=='software')return reply.code(400).send({error:'Only a software project has stages'});if(!STAGE_KEYS.includes(b.stage))return reply.code(400).send({error:'That is not a stage a software project goes through'});stage=b.stage}
+  if(b.buildId!==undefined){
+    if(cur.kind!=='software')return reply.code(400).send({error:'Only a software project is tied to a build'});
+    if(b.buildId===null||b.buildId==='')buildId=null;
+    else{if(!UUID_RE.test(String(b.buildId))||!(await pool.query('select 1 from builds where id=$1',[b.buildId])).rowCount)return reply.code(404).send({error:'That build is not there'});buildId=b.buildId}
+  }
+  if(cur.kind==='software'&&b.newBuild===true&&!buildId){const nm=name||(await pool.query('select name from projects where id=$1',[req.params.id])).rows[0].name;buildId=await newBuildFor(pool,nm)}
   const row=(await pool.query(`update projects set name=coalesce($1,name),status=coalesce($2,status),milestone=coalesce($3,milestone),
-    target_date=coalesce($4,target_date),updated_at=now() where id=$5 returning *`,[name||null,status||null,milestone||null,targetDate||null,req.params.id])).rows[0];
-  if(!row)return reply.code(404).send({error:'Project not found'});return row;
+    target_date=coalesce($4,target_date),stage=$6,build_id=$7,updated_at=now() where id=$5 returning *`,[name||null,status||null,milestone||null,targetDate||null,req.params.id,stage,buildId])).rows[0];
+  return row;
 });
 app.get('/v1/admin/projects/:id/share',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const project=(await pool.query(`select pr.id,pr.name,pr.status,pr.archived_at,c.id client_id,c.name client_name
@@ -1854,7 +1875,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
   const [requests, invoices, projects, projectMessages, projectFiles, productComments, products, quotes, approvals, activities] = await Promise.all([
     pool.query('select * from requests where client_id=$1 order by created_at desc', [id]),
     pool.query('select * from invoices where client_id=$1 order by due_date desc nulls last', [id]),
-    pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count
+    pool.query(`select pr.*,(select count(*)::int from products p where p.project_id=pr.id) product_count,${SW_BUILD_JSON} build
       from projects pr where client_id=$1 and pr.archived_at is null and pr.status not in ('archive','archived') order by updated_at desc`, [id]),
     pool.query(`select pm.*,coalesce(u.name,u.email,case when pm.author_role='admin' then 'Future Basics' else c.name end) author_name
       from project_messages pm left join users u on u.id=pm.author_id join clients c on c.id=pm.client_id
@@ -1895,7 +1916,7 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
   const waiting=await clientWaiting(id,{products:products.rows,quotes:quotes.rows,approvals:approvals.rows,invoices:invoices.rows});
-  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows,projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
+  return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
     approvals: approvals.rows, activities: activities.rows, waiting,
     actions: [
@@ -2539,6 +2560,7 @@ function shopifyExportRoutes(path,pre,mine){
 }
 shopifyExportRoutes('/v1/admin/products/:id/tech-pack/shopify-export',[authenticate,adminOnly],false);
 shopifyExportRoutes('/v1/products/:id/tech-pack/shopify-export',[authenticate],true);
+registerCommerceRoutes(app,{pool,authenticate,adminOnly,tokenSeal,storeExec,liveStores,storeView:r=>({...storeView(r),status:r.status,shop:r.shop}),env:process.env,log:app.log});
 // ---- A customer connects their own Shopify store. Authorization-code install: the hub asks for a single-use state tied to the customer and the shop, Shopify sends the
 // merchant back with a signed query, and only a callback that proves the signature, the state and the shop trades its code for a token (sealed before it is stored).
 const SHOPIFY_STATE_MINUTES=15;
@@ -2879,8 +2901,9 @@ app.get('/v1/products/:id/tech-pack',{preHandler:authenticate},async(req,reply)=
 app.get('/r/:id/:sig',async(req,reply)=>{
   const id=String(req.params.id),sig=String(req.params.sig).replace(/\.jpe?g$/i,'');
   if(!/^[0-9a-f-]{36}$/i.test(id)||sig!==renderingSig(id))return reply.code(404).send({error:'Not found'});
-  const row=(await pool.query(`select coalesce(coalesce(published_data,data)->'renderings'->0->>'image',coalesce(published_data,data)->'sketches'->0->>'image') image from tech_packs where product_id=$1`,[id])).rows[0];
-  const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(row?.image||'');if(!m)return reply.code(404).send({error:'No rendering'});
+  // The picture is selected inside a json object so the database layer swaps its stored reference ("fbblob:…") back into the data URL; a text column (->>) comes back as the bare reference and is no picture.
+  const row=(await pool.query(`select jsonb_build_object('image',coalesce(coalesce(published_data,data)->'renderings'->0->'image',coalesce(published_data,data)->'sketches'->0->'image')) pic from tech_packs where product_id=$1`,[id])).rows[0];
+  const m=/^data:(image\/(?:png|jpeg|jpg|webp));base64,([a-z0-9+/=]+)$/i.exec(typeof row?.pic?.image==='string'?row.pic.image:'');if(!m)return reply.code(404).send({error:'No rendering'});
   return reply.header('cache-control','public, max-age=300').type(m[1]).send(Buffer.from(m[2],'base64'));
 });
 // Photo-start follow-ups. Someone who uploads a screenshot and then does nothing (no edits, no submit, no message) gets one

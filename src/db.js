@@ -1174,6 +1174,37 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     alter table shopify_exports add column if not exists store_id uuid references client_shopify_stores(id) on delete set null;
+    -- Software development in a client's room (see src/software.js): a project is a product project or a software project, and a software project is tied to a build
+    alter table projects add column if not exists kind text not null default 'product';
+    alter table projects add column if not exists build_id uuid references builds(id) on delete set null;
+    alter table projects add column if not exists stage text;
+    create index if not exists projects_build_idx on projects(build_id) where build_id is not null;
+    -- Where a client sells (see src/commerce.js): their preference, the products a build sells, the Square or Wix connection, and what was pushed
+    alter table clients add column if not exists commerce_platform text not null default '';
+    alter table builds add column if not exists catalog jsonb not null default '[]'::jsonb;
+    create table if not exists client_commerce_connections (
+      id uuid primary key default gen_random_uuid(),
+      client_id uuid not null references clients(id) on delete cascade,
+      platform text not null check (platform in ('square','wix')),
+      secret_sealed text not null,
+      meta jsonb not null default '{}'::jsonb,
+      status text not null default 'connected',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (client_id, platform)
+    );
+    create table if not exists build_pushes (
+      id uuid primary key default gen_random_uuid(),
+      build_id uuid not null references builds(id) on delete cascade,
+      client_id uuid references clients(id) on delete set null,
+      platform text not null,
+      target text not null default '',
+      status text not null default 'done',
+      report jsonb not null default '{}'::jsonb,
+      pushed_by uuid,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists build_pushes_build_idx on build_pushes(build_id, created_at desc);
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),

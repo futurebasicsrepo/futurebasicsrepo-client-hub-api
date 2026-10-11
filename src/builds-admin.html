@@ -37,12 +37,25 @@ select.t:focus,input.t:focus,textarea.t:focus{border-color:var(--ink);background
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.fields .wide{grid-column:1/-1}
 label.f span{display:block;margin:0 0 5px;color:var(--dim)}
 dialog{border:0;border-radius:24px;padding:0;width:min(760px,94vw);max-height:92vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}
-dialog form{padding:clamp(18px,3vw,30px);display:grid;gap:14px}.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{margin:0;font-weight:500;font-size:24px}
+dialog form,dialog .dbody{padding:clamp(18px,3vw,30px);display:grid;gap:14px}.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{margin:0;font-weight:500;font-size:24px}
 .msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
 .note{color:var(--dim);margin:0 0 14px}
 table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:8px 8px 8px 0}td{padding:10px 8px 10px 0;border-top:1px solid var(--line);vertical-align:middle}
 .scroll{overflow-x:auto}
 @media(max-width:860px){.row{grid-template-columns:1fr 1fr}.row .name{grid-column:1/-1}.fields{grid-template-columns:1fr}}
+
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:16px}
+.bcard{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:18px;background:#fff;overflow:hidden}
+.bcard .shot{position:relative;aspect-ratio:16/10;background:var(--ink);overflow:hidden}.bcard .shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}.bcard .shot .none{display:grid;place-items:center;height:100%;color:#9a9aa3;font:500 12px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
+.bcard .shot .st{position:absolute;left:10px;top:10px}
+.bcard .body{display:flex;flex-direction:column;gap:10px;padding:14px 16px 16px;flex:1}.bcard h3{margin:0;font-size:18px}.bcard .tag{color:var(--dim);font-size:14px;margin:0}
+.bcard .live a{font-weight:600;word-break:break-all}.bcard .live .off{color:var(--dim)}
+.stack{display:flex;gap:6px;flex-wrap:wrap}.stack span{border:1px solid var(--line);background:var(--fog);border-radius:999px;padding:2px 9px;font-size:12px}
+.feat{margin:0;padding-left:18px;font-size:13px;color:var(--ink)}.feat li{margin:2px 0}
+.bcard .foot{margin-top:auto;display:grid;gap:10px}.bcard .meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--dim);font-size:13px}
+.bcard .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.bcard .acts select{flex:1;min-width:120px}
+.sttag{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;background:#fff;border:1px solid var(--line)}.sttag.live{background:#e5f6ec;border-color:#a9dcbf;color:#1a7a43}.sttag.in-progress{background:#fff7d6;border-color:#e6d27a}
+@media(max-width:640px){header{gap:8px}.brand-suffix{display:none}.hbtn{white-space:nowrap;padding:8px 12px;font-size:12px;line-height:1.2}.wordmark{min-width:0}.brand-logo{max-width:150px}}
 </style>
 </head>
 <body>
@@ -121,6 +134,20 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
   <div style="display:flex;gap:10px;justify-content:space-between"><button class="btn danger hidden" type="button" id="fDelete">Delete</button><span style="flex:1"></span><button class="btn go" type="submit" id="fSave">Save</button></div>
 </form></dialog>
 
+<dialog id="pdlg"><div class="dbody">
+  <div class="dh"><h2 id="pTitle">Push to a store</h2><button class="btn sm" type="button" id="pClose">Close</button></div>
+  <p class="note">Puts the products this site sells into the client&rsquo;s own store, ready for them to look at. It only adds: anything a push made before is left exactly as the client has it, and nothing is ever deleted.</p>
+  <div class="fields">
+    <label class="f"><span class="mono">For which client</span><select class="t" id="pClient"></select></label>
+    <label class="f"><span class="mono">Where they sell</span><select class="t" id="pPlat"><option value="">Not chosen yet</option><option value="shopify">Shopify</option><option value="square">Square</option><option value="wix">Wix</option><option value="other">Something else</option></select></label>
+  </div>
+  <div id="pConn" class="panel" style="margin:0;padding:14px"></div>
+  <label class="f"><span class="mono">Products this site sells (one per line: Name | price | code | picture address | description)</span><textarea class="t" id="pCat" style="min-height:120px" placeholder="Flat white beans, 12oz | 18.50 | FW-12 | https://example.com/beans.jpg | Roasted to order"></textarea></label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn sm" id="pSaveCat" type="button">Save products</button><button class="btn sm" id="pPrev" type="button">See what will be made</button><button class="btn go sm" id="pGo" type="button">Push now</button><span class="msg" id="pMsg" role="status"></span></div>
+  <div id="pOut"></div>
+  <div id="pHist"></div>
+</div></dialog>
+
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
@@ -137,11 +164,15 @@ const hlTo=l=>(l||[]).map(h=>h.text?`${h.title} — ${h.text}`:h.title).join('\n
 
 async function loadBuilds(){
   const {builds}=await api('/v1/admin/builds');BUILDS=builds;
-  $('#list').innerHTML=builds.length?builds.map(b=>`<div class="row"><div class="name">${b.coverUrl?`<img class="thumb" data-cover="${esc(b.coverUrl)}" alt="">`:'<span class="thumb"></span>'}<div style="min-width:0"><b>${esc(b.name)}</b><div class="sub">${esc(b.tagline||b.live_url||'')}</div>${b.repo_url?(b.sync_error?`<div class="sub" style="color:#b3261e">Sync: ${esc(b.sync_error)}</div>`:`<div class="sub">${b.synced_at?`Checked ${esc(fmt(b.synced_at))}`:'Not checked yet'}${b.last_change_at?` · code changed ${esc(fmt(b.last_change_at))}`:''}${b.new_updates?` · <b>${b.new_updates} waiting</b>`:''}</div>`):''}</div></div>
-    <div><span class="pillv ${esc(b.visibility)}">${esc(VIS[b.visibility])}</span></div>
-    <div><select class="t" data-vis="${esc(b.id)}" aria-label="Who can see ${esc(b.name)}">${Object.entries(VIS).map(([k,v])=>`<option value="${k}" ${k===b.visibility?'selected':''}>${v}</option>`).join('')}</select></div>
-    <div class="sub">${b.invites} invited</div><div class="sub">${b.views} views</div>
-    <div><button class="btn sm" data-edit="${esc(b.id)}">Edit</button></div></div>`).join(''):'<p class="note">No builds yet.</p>';
+  const host=u=>{try{return new URL(u).host.replace(/^www\./,'')}catch{return u}};
+  $('#list').innerHTML=builds.length?'<div class="bgrid">'+builds.map(b=>`<article class="bcard" data-id="${esc(b.id)}"><div class="shot">${b.coverUrl?`<img data-cover="${esc(b.coverUrl)}" alt="${esc(b.name)}">`:'<div class="none">No picture yet</div>'}<span class="st sttag ${esc(b.status)}">${esc(String(b.status).replace('-',' '))}</span></div>
+    <div class="body"><div><h3>${esc(b.name)}</h3><p class="tag">${esc(b.tagline||b.sector||'')}</p></div>
+    <div class="live">${b.live_url?`<a href="${esc(b.live_url)}" target="_blank" rel="noopener">${esc(host(b.live_url))} ↗</a>`:'<span class="off">No live site yet</span>'}</div>
+    ${(b.stack||[]).length?`<div class="stack" aria-label="Built with">${b.stack.map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:'<div class="sub">Tech stack not filled in</div>'}
+    ${(b.highlights||[]).length?`<ul class="feat">${b.highlights.slice(0,3).map(h=>`<li>${esc(h.title)}</li>`).join('')}</ul>`:''}
+    <div class="foot">${b.repo_url?(b.sync_error?`<div class="sub" style="color:#b3261e">Sync: ${esc(b.sync_error)}</div>`:`<div class="sub">${b.synced_at?`Checked ${esc(fmt(b.synced_at))}`:'Not checked yet'}${b.last_change_at?` · code changed ${esc(fmt(b.last_change_at))}`:''}${b.new_updates?` · <b>${b.new_updates} waiting</b>`:''}</div>`):''}
+    <div class="meta"><span class="pillv ${esc(b.visibility)}">${esc(VIS[b.visibility])}</span><span>${b.invites} invited</span><span>${b.views} views</span></div>
+    <div class="acts"><select class="t" data-vis="${esc(b.id)}" aria-label="Who can see ${esc(b.name)}">${Object.entries(VIS).map(([k,v])=>`<option value="${k}" ${k===b.visibility?'selected':''}>${v}</option>`).join('')}</select><button class="btn sm" data-edit="${esc(b.id)}">Edit</button><button class="btn sm" data-push="${esc(b.id)}">Push to a store</button></div></div></div></article>`).join('')+'</div>':'<p class="note">No builds yet.</p>';
   // the picture route wants the work sign-in, which an <img> cannot send, so each thumbnail is fetched with it
   $$('img[data-cover]').forEach(async im=>{try{const r=await fetch(im.dataset.cover,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)im.src=URL.createObjectURL(await r.blob())}catch{}});
   const waiting=builds.reduce((n,b)=>n+(b.new_updates||0),0);$('#newCount').textContent=waiting;$('#newCount').classList.toggle('hidden',!waiting);$('#manBuild').innerHTML=builds.map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
@@ -169,6 +200,50 @@ $('#form').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#
     $('#dlg').close();await loadBuilds();
   }catch(x){m.className='msg bad';m.textContent=x.message}finally{btn.disabled=false}});
 $('#fDelete').onclick=async()=>{if(!EDIT||!confirm(`Delete “${EDIT.name}”? Its invites and view history go with it.`))return;try{await api('/v1/admin/builds/'+EDIT.id,{method:'DELETE'});$('#dlg').close();await loadBuilds()}catch(x){$('#fMsg').className='msg bad';$('#fMsg').textContent=x.message}};
+
+
+// ---------- push to a store ----------
+let PUSH={build:null,clients:[],data:null};
+const PLAT={shopify:'Shopify',square:'Square',wix:'Wix',other:'Something else'};
+async function openPush(b,clientId){
+  PUSH.build=b;$('#pTitle').textContent='Push “'+b.name+'” to a store';$('#pMsg').textContent='';$('#pMsg').className='msg';$('#pOut').innerHTML='';
+  const [{clients},d]=await Promise.all([api('/v1/admin/commerce/clients'),api('/v1/admin/builds/'+b.id+'/commerce'+(clientId?'?clientId='+clientId:''))]);
+  PUSH.clients=clients;PUSH.data=d;const linked=new Set(d.clients.map(c=>c.id));
+  $('#pClient').innerHTML=(d.client?'':'<option value="">Choose a client…</option>')+[...clients].sort((a,z)=>(linked.has(z.id)-linked.has(a.id))||a.name.localeCompare(z.name)).map(c=>`<option value="${esc(c.id)}" ${d.client&&d.client.id===c.id?'selected':''}>${esc(c.name)}${linked.has(c.id)?' (this build is on their project)':''}</option>`).join('');
+  $('#pCat').value=d.catalogText;drawPush();$('#pdlg').showModal();
+}
+function drawPush(){
+  const d=PUSH.data,c=d.client;$('#pPlat').value=c?c.platform:'';$('#pPlat').disabled=!c;
+  let conn='';
+  if(!c)conn='<p class="note" style="margin:0">Choose the client this build is for.</p>';
+  else if(!c.platform)conn='<p class="note" style="margin:0">Choose where '+esc(c.name)+' sells, above. That is the store this build is pushed to.</p>';
+  else if(c.platform==='other')conn='<p class="note" style="margin:0">'+esc(c.name)+' sells somewhere else, so there is nothing to push to automatically.</p>';
+  else if(c.platform==='shopify'){const st=c.targets.shopify;conn=st.length?'<b>Connected:</b> '+st.map(x=>esc(x.shop)+(x.status==='connected'?'':' (needs reconnecting)')).join(', '):'<p class="note" style="margin:0">'+esc(c.name)+' has not connected a Shopify store. They connect it from their hub (Your Shopify store), then it shows here.</p>'}
+  else{const t=c.targets[c.platform],sq=c.platform==='square';conn=(t.connected?`<b>${PLAT[c.platform]} is connected</b>${t.label?' ('+esc(t.label)+')':''}${sq&&t.currency?' · '+esc(t.currency):''}. `:t.status==='needs-reconnect'?`<b style="color:#b3261e">${PLAT[c.platform]} needs connecting again.</b> `:'')+`<details ${t.connected?'':'open'} style="margin-top:8px"><summary>${t.connected?'Replace the saved connection':'Connect '+PLAT[c.platform]}</summary><div class="fields" style="margin-top:8px">${sq?`<label class="f wide"><span class="mono">Square access token</span><input class="t" id="cSecret" type="password" autocomplete="off"></label><label class="f"><span class="mono">Currency</span><input class="t" id="cCur" value="${esc(t.currency||'USD')}" maxlength="3"></label>`:`<label class="f wide"><span class="mono">Wix API key</span><input class="t" id="cSecret" type="password" autocomplete="off"></label><label class="f"><span class="mono">Wix site id (if the key is for the whole account)</span><input class="t" id="cSite" value="${esc(t.siteId||'')}"></label>`}<label class="f"><span class="mono">A name for it</span><input class="t" id="cLabel" value="${esc(t.label||'')}" maxlength="80" placeholder="${esc(c.name)} ${PLAT[c.platform]}"></label><div style="display:flex;align-items:end"><button class="btn sm" id="cSave" type="button">Save connection</button></div></div></details>`}
+  $('#pConn').innerHTML=conn;
+  $('#pHist').innerHTML=d.pushes.length?'<b>Earlier pushes</b><ul class="feat" style="margin-top:6px">'+d.pushes.map(p=>`<li>${esc(fmt(p.at))} · ${esc(p.platformLabel)}${p.target?' ('+esc(p.target)+')':''} · ${esc(p.status)} · ${p.summary.created||0} made, ${p.summary.failed||0} failed, ${p.summary.skipped||0} left alone</li>`).join('')+'</ul>':'';
+}
+$('#list').addEventListener('click',e=>{const b=e.target.closest('[data-push]');if(b)openPush(BUILDS.find(x=>x.id===b.dataset.push)).catch(x=>alert(x.message))});
+$('#pClose').onclick=()=>$('#pdlg').close();
+$('#pClient').onchange=()=>openPush(PUSH.build,$('#pClient').value||undefined).catch(x=>alert(x.message));
+$('#pPlat').onchange=async()=>{const c=PUSH.data.client;if(!c)return;try{await api('/v1/admin/clients/'+c.id+'/commerce',{method:'PUT',body:{platform:$('#pPlat').value}});await openPush(PUSH.build,c.id)}catch(x){alert(x.message)}};
+$('#pConn').addEventListener('click',async e=>{if(!e.target.closest('#cSave'))return;const c=PUSH.data.client,m=$('#pMsg');m.className='msg';
+  try{const body={platform:c.platform,label:$('#cLabel').value,...(c.platform==='square'?{token:$('#cSecret').value,currency:$('#cCur').value}:{apiKey:$('#cSecret').value,siteId:$('#cSite').value})};await api('/v1/admin/clients/'+c.id+'/commerce/connection',{method:'PUT',body});await openPush(PUSH.build,c.id);$('#pMsg').className='msg ok';$('#pMsg').textContent='Connected.'}catch(x){m.className='msg bad';m.textContent=x.message}});
+$('#pSaveCat').onclick=async()=>{const m=$('#pMsg');m.className='msg';try{const r=await api('/v1/admin/builds/'+PUSH.build.id+'/catalog',{method:'PUT',body:{text:$('#pCat').value}});$('#pCat').value=r.text;m.className='msg ok';m.textContent=r.count+' product'+(r.count===1?'':'s')+' saved.'}catch(x){m.className='msg bad';m.textContent=x.message}};
+async function doPush(preview){
+  const m=$('#pMsg'),c=PUSH.data.client;m.className='msg';m.textContent=preview?'Checking…':'Pushing…';$('#pOut').innerHTML='';
+  try{
+    await api('/v1/admin/builds/'+PUSH.build.id+'/catalog',{method:'PUT',body:{text:$('#pCat').value}});
+    const r=await api('/v1/admin/builds/'+PUSH.build.id+'/push',{body:{clientId:c&&c.id,platform:c&&c.platform||undefined,preview}});
+    if(r.preview){m.textContent='';$('#pOut').innerHTML=`<div class="panel" style="margin:0;padding:14px"><b>Going to ${esc(r.platformLabel)}${r.target?' ('+esc(r.target)+')':''}</b><ul class="feat">${r.willMake.map(i=>`<li>${esc(i.name)} · $${esc(i.price)} · ${esc(i.sku)}</li>`).join('')||'<li>Nothing new to make</li>'}</ul>${r.skipped.length?`<p class="sub">${r.skipped.length} already there from an earlier push, left alone.</p>`:''}<p class="sub">${esc(r.publishNote)}</p></div>`;return}
+    if(r.nothing){m.className='msg ok';m.textContent=r.message;return}
+    const p=r.push,cls='msg '+(p.status==='done'?'ok':'bad'),text=`${p.summary.created} made, ${p.summary.failed} failed, ${p.summary.skipped} left alone.`;
+    const out='<ul class="feat">'+p.items.map(i=>`<li><b>${esc(i.name)}</b>: ${esc(i.outcome)}${i.reason?' · '+esc(i.reason):''}${i.note?' · '+esc(i.note):''}</li>`).join('')+'</ul>';
+    await openPush(PUSH.build,c.id);$('#pMsg').className=cls;$('#pMsg').textContent=text;$('#pOut').innerHTML=out; // reloading the window for the history clears the message, so it is put back
+  }catch(x){m.className='msg bad';m.textContent=x.message}
+}
+$('#pPrev').onclick=()=>doPush(true);
+$('#pGo').onclick=()=>{const c=PUSH.data.client;if(!c)return alert('Choose a client first');if(!confirm(`Put these products into ${c.name}’s ${PLAT[c.platform]||'store'} now?`))return;doPush(false)};
 
 // invites
 async function loadInvites(){
@@ -200,6 +275,8 @@ $$('.tab').forEach(t=>t.onclick=()=>{if(location.hash.slice(1)!==t.dataset.t)his
   $('#where').textContent=location.hostname.startsWith('work.')?'builds.thefuturebasics.com':location.origin+'/builds';
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{await loadBuilds();$('#app').classList.remove('hidden')}catch(x){$('#needSignin').classList.remove('hidden');return}
+  // a link from a client's software project opens the push window for that build and client: /builds/admin?push=<build>&client=<client>
+  try{const q=new URLSearchParams(location.search),b=BUILDS.find(x=>x.id===q.get('push'));if(b){history.replaceState(null,'',location.pathname+location.hash);await openPush(b,q.get('client')||undefined)}}catch{}
   const fromHash=()=>{const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&!t.classList.contains('on'))t.click()};
   fromHash();addEventListener('hashchange',fromHash);
 })();

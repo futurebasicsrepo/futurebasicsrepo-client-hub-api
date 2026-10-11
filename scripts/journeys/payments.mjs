@@ -362,4 +362,30 @@ await journey('J107', 'pictures live outside the pack JSON: a pack and its publi
   const dup = await call('/v1/public/start', { body: { email: mail, name: 'Blob Tester', title: 'Blob hoodie', photos: [runner] } }); ok([200, 201].includes(dup.status), 'a second start with the same photo and title is accepted', dup.status);
 });
 
+await journey('J131', 'pushing a build to the client\'s own Shopify store: it needs their connected store, makes DRAFT products there once, and leaves what is already there alone', async () => {
+  const { sealer } = await import('../../src/shopify-merchant.js'), seal = sealer({ SHOPIFY_APP_CLIENT_SECRET: 'journey-app-secret' });
+  const mail = `push-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: mail, name: 'Push Tester', title: 'Mug', photos: [runner] } }); ok(r.status === 201, 'setup: a client exists', r.status);
+  const cid = r.json.client.id, admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' });
+  const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o }), tokenKey = `mock-merchant-push${stamp}`, products = async () => (await (await fetch(`${MOCK}/__mock/products?token=${tokenKey}`)).json()).products;
+  const build = await A('/builds', { body: { name: `Mug shop ${stamp}`, visibility: 'hidden', status: 'in-progress', hosting: 'railway' } }); ok(build.status === 201, 'setup: a build', build.status); const bid = build.json.id, push = body => A(`/builds/${bid}/push`, { body: { clientId: cid, ...body } });
+  ok((await A(`/builds/${bid}/catalog`, { method: 'PUT', body: { text: 'Siphon mug | 12.50 | MUG-1 | | Glass\nTote | 20 | TOTE-1' } })).status === 200 && (await A(`/clients/${cid}/commerce`, { method: 'PUT', body: { platform: 'shopify' } })).status === 200, 'setup: two products and Shopify as the client\'s platform');
+  ok((await push({})).status === 409 && /connected a Shopify store/.test((await push({})).json.error), 'with no connected store it says the client connects one from their hub');
+  const addStore = (shop, status = 'connected') => sql(`insert into client_shopify_stores(client_id,shop,shop_name,token_sealed,status) values('${cid}','${shop}','${shop}','${seal.seal(tokenKey)}','${status}') returning id`).split('\n')[0];
+  const dead = addStore(`dead-${stamp}.myshopify.com`, 'needs-reconnect'); const dd = await push({}); ok(dd.status === 409 && /Reconnect/.test(dd.json.error), 'a store that needs reconnecting is not pushed to');
+  sql(`delete from client_shopify_stores where id='${dead}'`);
+  const st1 = addStore(`push-${stamp}.myshopify.com`), st2 = addStore(`second-${stamp}.myshopify.com`);
+  const amb = await push({}); ok(amb.status === 409 && /Choose which/.test(amb.json.error), 'with two stores it asks which one');
+  ok((await push({ storeId: '00000000-0000-0000-0000-000000000000' })).status === 409, 'a store that is not theirs is refused');
+  const pv = await push({ storeId: st1, preview: true }); ok(pv.status === 200 && pv.json.willMake.length === 2 && /drafts/.test(pv.json.publishNote) && (await products()).length === 0, 'a preview lists both products and makes nothing');
+  const go = await push({ storeId: st1 }); ok(go.status === 201 && go.json.push.status === 'done' && go.json.push.summary.created === 2, 'the push makes both', go.json.push?.items);
+  const ps = await products(), mug = ps.find(p => p.title === 'Siphon mug');
+  ok(ps.length === 2 && mug.status === 'DRAFT' && mug.variants[0].sku === 'MUG-1' && mug.variants[0].price === '12.50' && /Glass/.test(mug.descriptionHtml), 'two DRAFT products with their code, price and description are in the client\'s store', ps.map(p => [p.title, p.status]));
+  const again = await push({ storeId: st1 }); ok(again.status === 200 && again.json.nothing === true && (await products()).length === 2, 'pushing again changes nothing');
+  await A(`/builds/${bid}/catalog`, { method: 'PUT', body: { text: 'Siphon mug | 99 | MUG-1\nTote | 20 | TOTE-1\nNew cap | 15 | CAP-1' } });
+  const more = await push({ storeId: st1 }); ok(more.status === 201 && more.json.push.summary.created === 1 && more.json.push.summary.skipped === 2, 'a new product is added and the two already there are left alone');
+  ok((await products()).find(p => p.title === 'Siphon mug').variants[0].price === '12.50', 'including the price the client already has');
+  ok(/admin\.shopify\.com|push/.test(JSON.stringify((await A(`/builds/${bid}/commerce?clientId=${cid}`)).json.client.targets.shopify)) && !JSON.stringify((await A(`/builds/${bid}/commerce?clientId=${cid}`)).json).includes('mock-merchant'), 'the stores are listed and no token is in what the page is sent');
+  await A(`/builds/${bid}`, { method: 'DELETE' });
+});
+
 summary(); process.exit(bad ? 1 : 0);

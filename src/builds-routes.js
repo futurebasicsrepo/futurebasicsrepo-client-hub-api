@@ -28,7 +28,10 @@ export function registerBuildRoutes(app, d) {
   // everything we know about an address: staff, an existing client, and its invites
   async function viewerFor(email) {
     const invites = (await pool.query('select id,build_id,expires_at,revoked_at from build_invites where lower(email)=$1', [email])).rows;
-    return { email, staff: isStaffEmail(email), client: Boolean(await clientForEmail(email).catch(() => null)), invites };
+    const client = await clientForEmail(email).catch(() => null);
+    // a build tied to one of the client's own projects is theirs to see, even before it is listed for everyone
+    const projectBuildIds = client ? (await pool.query('select build_id from projects where client_id=$1 and build_id is not null and archived_at is null', [client.id])).rows.map(r => r.build_id) : [];
+    return { email, staff: isStaffEmail(email), client: Boolean(client), projectBuildIds, invites };
   }
   async function sessionOf(req) {
     const tok = cookies(req.headers.cookie)[COOKIE]; if (!tok) return null;
@@ -150,7 +153,8 @@ export function registerBuildRoutes(app, d) {
       (select count(*) from build_invites i where i.build_id=builds.id and i.revoked_at is null and i.expires_at>now())::int invites,
       (select count(*) from build_views v where v.build_id=builds.id)::int views,
       (select count(*) from build_updates u where u.build_id=builds.id and u.status='new')::int new_updates from builds order by sort_order,name`)).rows;
-    return { builds: rows.map(b => ({ ...b, coverUrl: b.has_cover ? `/v1/admin/builds/${b.id}/cover?v=${new Date(b.updated_at).getTime()}` : '' })) };
+    // a build with no uploaded cover shows the bundled picture of its real site, the same as the showcase does
+    return { builds: rows.map(b => ({ ...b, coverUrl: b.has_cover || PREVIEWS.has(b.slug) ? `/v1/admin/builds/${b.id}/cover?v=${new Date(b.updated_at).getTime()}` : '' })) };
   });
   app.post('/v1/admin/builds', { preHandler: pre }, async (req, reply) => {
     const r = cleanBuild(req.body); if (r.error) return reply.code(422).send({ error: r.error });
@@ -177,7 +181,8 @@ export function registerBuildRoutes(app, d) {
     return { ok: true };
   });
   app.get('/v1/admin/builds/:id/cover', { preHandler: pre }, async (req, reply) => {
-    const row = (await pool.query('select media from builds where id=$1', [req.params.id])).rows[0];
+    const row = (await pool.query('select slug,media from builds where id=$1', [req.params.id])).rows[0];
+    if (row && !row.media?.cover && PREVIEWS.has(row.slug)) return reply.header('cache-control', 'private, max-age=60').type('image/jpeg').send(readFileSync(new URL(`${row.slug}.jpg`, PREVIEW_DIR)));
     const m = row?.media?.cover && /^data:(image\/[a-z]+);base64,(.+)$/i.exec(row.media.cover); if (!m) return reply.code(404).send({ error: 'No picture' });
     return reply.header('cache-control', 'private, max-age=60').type(m[1]).send(Buffer.from(m[2], 'base64'));
   });
