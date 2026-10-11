@@ -652,4 +652,82 @@ await journey('J58', 'trade fairs: a factory signs up for its own link, buyers i
   ok((await call('/fonts/space-grotesk-latin.woff2')).status === 200 && (await call('/fonts/nope.woff2')).status === 404, 'the fonts are served by the hub');
 });
 
+
+await journey('J108', 'the builds showcase: nothing is shown until staff list it, people get in by invite or as clients, a revoked or expired invite stops working at once, and every look is recorded for staff', async () => {
+  const room = await newRoom('108', { wait: false });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const jar = {}; // one cookie per person, like a browser
+  const as = who => async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { ...(jar[who] ? { Cookie: jar[who] } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) jar[who] = sc.split(';')[0]; const t = await r.text(); let json = {}; try { json = JSON.parse(t); } catch {} return { status: r.status, json, text: t, loc: r.headers.get('location'), setCookie: sc }; };
+  const signIn = async (who, email) => { const v = as(who); const a = await v('/v1/builds/auth/code', { body: { email } }); await sleep(150); const code = codeFrom(LOG, email); if (!code) return { a, code: null }; return { a, code, b: await v('/v1/builds/auth/verify', { body: { email, code } }) }; };
+  const tag = `b${stamp}`;
+
+  // staff make builds: one listed, one invite-only, one hidden
+  const mk = async (name, visibility, extra = {}) => (await call('/v1/admin/builds', { token: admin, body: { name: `${name} ${tag}`, visibility, status: 'live', liveUrl: 'https://example.com/' + tag, summary: 'x', ...extra } }));
+  const listed = await mk('Listed', 'listed'), only = await mk('Invite only', 'invite'), hidden = await mk('Hidden', 'hidden');
+  ok(listed.status === 201 && only.status === 201 && hidden.status === 201, 'staff can add builds', [listed.status, only.status, hidden.status]);
+  ok((await call('/v1/admin/builds', { token: admin, body: { name: `Listed ${tag}` } })).status === 409, 'a second build with the same address is refused');
+  ok((await call('/v1/admin/builds', { token: admin, body: { name: 'Bad link', liveUrl: 'javascript:alert(1)' } })).status === 422, 'a live address that is not a web address is refused');
+  ok((await call('/v1/admin/builds', { token: admin, body: { name: 'Admin', slug: 'admin' } })).status === 422, 'an address the showcase itself uses is refused');
+  ok((await call('/v1/admin/builds', { token: room.token })).status === 403 && (await call('/v1/builds')).status === 401, 'clients cannot use the staff routes, and the viewer routes need a sign-in');
+  const slug = id => sql(`select slug from builds where id='${id}'`);
+  const sListed = slug(listed.json.id), sOnly = slug(only.json.id), sHidden = slug(hidden.json.id);
+  ok(Number(sql(`select count(*) from builds where visibility='hidden' and slug in ('spot','bennys-beans','cuesea','incha-tv')`)) >= 1, 'the builds already made were seeded hidden');
+
+  // an address nobody has heard of gets the same answer and no email
+  const stranger = `stranger-${tag}@chaos.test`, v0 = as('stranger');
+  const before = sql(`select count(*) from login_codes where email='${stranger}'`);
+  const ask = await v0('/v1/builds/auth/code', { body: { email: stranger } });
+  ok(ask.status === 202 && sql(`select count(*) from login_codes where email='${stranger}'`) === before, 'an unknown address is told the same thing as a known one, and no code is made');
+  ok((await v0('/v1/builds/auth/verify', { body: { email: stranger, code: '123456' } })).status === 401, 'and cannot sign in');
+
+  // an existing client sees listed builds only
+  const c = await signIn('client', room.email); ok(c.b?.status === 200 && /HttpOnly/i.test(c.b.setCookie || ''), 'a client signs in with an emailed code and gets an HttpOnly cookie', c.b?.status);
+  const vc = as('client'); const cl = (await vc('/v1/builds')).json.builds || [];
+  ok(cl.some(b => b.slug === sListed) && !cl.some(b => b.slug === sOnly || b.slug === sHidden), 'a client sees the listed build, not the invite-only or hidden ones', cl.map(b => b.slug));
+  ok((await vc(`/v1/builds/${sOnly}`)).status === 404 && (await vc(`/v1/builds/${sHidden}`)).status === 404, 'and asking for those by address gets "not found"');
+  ok((await vc('/v1/admin/builds')).status === 401, 'the showcase cookie opens nothing in the staff console');
+
+  // an invite to one build
+  const guest = `guest-${tag}@chaos.test`;
+  const inv = await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, buildId: only.json.id, days: 7, note: 'For the review' } });
+  ok(inv.status === 201 && inv.json.invited?.length === 1, 'staff invite a person to one build', inv.json);
+  const g = await signIn('guest', guest); ok(g.b?.status === 200, 'the invited person signs in', g.b?.status);
+  const vg = as('guest'); const gl = (await vg('/v1/builds')).json.builds || [];
+  ok(gl.length === 1 && gl[0].slug === sOnly, 'and sees exactly that build', gl.map(b => b.slug));
+  const detail = await vg(`/v1/builds/${sOnly}`); ok(detail.status === 200 && detail.json.build?.summary === 'x', 'its detail opens', detail.status);
+  ok((await vg(`/v1/builds/${sListed}`)).status === 404, 'but not the listed one they were not invited to');
+  const go = await vg(`/builds/go/${sOnly}`); ok(go.status === 302 && go.loc === 'https://example.com/' + tag, 'the live link goes through the showcase, which sends them on', [go.status, go.loc]);
+  ok((await as('nobody')(`/builds/go/${sOnly}`)).status === 302 && !/example\.com/.test((await as('nobody')(`/builds/go/${sOnly}`)).loc || ''), 'without a sign-in the live link sends them to sign in, not to the build');
+  const chk = i => as(i)(`/v1/builds/auth/check?slug=${sOnly}`); ok((await chk('guest')).status === 200 && (await chk('client')).status === 403 && (await chk('nobody')).status === 401, 'the proxy check lets the invited person in, refuses the client, and asks others to sign in');
+
+  // recorded for staff
+  const act = (await call('/v1/admin/builds/activity', { token: admin })).json.events || [];
+  ok(act.some(e => e.email === guest && e.slug === sOnly && e.kind === 'open') && act.some(e => e.email === guest && e.kind === 'demo'), 'staff see that the guest looked and went on to the live build', act.slice(0, 3));
+  await vg(`/v1/builds/${sOnly}`); ok(Number(sql(`select count(*) from build_views where email='${guest}' and kind='open'`)) === 1, 'opening the same page again soon is not counted twice');
+
+  // revoke: the cookie they already hold stops working
+  const invs = (await call('/v1/admin/builds/invites', { token: admin })).json.invites || []; const mine = invs.find(i => i.email === guest);
+  ok(mine && mine.views >= 1 && mine.first_seen_at, 'the invite list shows they have been', mine);
+  ok((await call(`/v1/admin/builds/invites/${mine.id}`, { token: admin, method: 'DELETE' })).status === 200, 'staff revoke the invite');
+  ok((await vg('/v1/builds')).status === 401 && (await chk('guest')).status === 401, 'the cookie they already hold stops working at once');
+  const codesBefore = sql(`select count(*) from login_codes where email='${guest}'`);
+  ok((await as('guest2')('/v1/builds/auth/code', { body: { email: guest } })).status === 202 && sql(`select count(*) from login_codes where email='${guest}'`) === codesBefore, 'asking for a code again looks the same from outside, but no code is made for a revoked address');
+
+  // expiry
+  const late = `late-${tag}@chaos.test`; await call('/v1/admin/builds/invites', { token: admin, body: { emails: late, days: 7 } });
+  const l = await signIn('late', late); ok(l.b?.status === 200, 'an invite for all listed builds works', l.b?.status);
+  ok(((await as('late')('/v1/builds')).json.builds || []).some(b => b.slug === sListed) && !((await as('late')('/v1/builds')).json.builds || []).some(b => b.slug === sOnly), 'it shows the listed builds and nothing else');
+  sql(`update build_invites set expires_at=now()-interval '1 minute' where email='${late}'`);
+  ok((await as('late')('/v1/builds')).status === 401, 'an invite that has expired stops working');
+
+  // staff: withdraw a build, edit, delete
+  ok((await call(`/v1/admin/builds/${listed.json.id}`, { token: admin, method: 'PUT', body: { visibility: 'hidden' } })).status === 200 && !(((await vc('/v1/builds')).json.builds || []).some(b => b.slug === sListed)), 'withdrawing a build removes it from clients at once');
+  const png1 = await png(40, 30);
+  ok((await call(`/v1/admin/builds/${only.json.id}/cover`, { token: admin, method: 'PUT', body: { image: png1 } })).status === 200 && (await call(`/v1/admin/builds/${only.json.id}/cover`, { token: admin })).ct.startsWith('image/'), 'staff can add a cover picture and read it back');
+  ok((await call(`/v1/admin/builds/${only.json.id}/cover`, { token: admin, method: 'PUT', body: { image: 'data:text/html;base64,PGI+' } })).status === 422, 'a cover that is not a picture is refused');
+  for (const id of [listed, only, hidden]) await call(`/v1/admin/builds/${id.json.id}`, { token: admin, method: 'DELETE' });
+  ok(Number(sql(`select count(*) from builds where slug in ('${sListed}','${sOnly}','${sHidden}')`)) === 0, 'staff can delete a build');
+  ok(/Future Basics/.test((await call('/builds')).text) && (await call('/builds/admin')).status === 200, 'the viewer and staff pages are served');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

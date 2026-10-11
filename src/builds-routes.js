@@ -52,7 +52,8 @@ export function registerBuildRoutes(app, d) {
     if (hasAnyAccess(await viewerFor(email))) {
       const code = String(randomInt(100000, 1000000));
       await pool.query(`insert into login_codes(email,code_hash,expires_at) values($1,$2,now()+interval '10 minutes')`, [email, hash(code)]);
-      await sendHubEmail({ to: email, subject: `${code} is your code for the Future Basics builds`, html: hubEmailShell('Your code', `<p>Use this code to open the Future Basics builds:</p><p style="font-size:32px;letter-spacing:.2em;font-weight:700;margin:18px 0">${emailEscape(code)}</p><p style="color:#717177">It works for 10 minutes. If you did not ask for it, ignore this email.</p>`) }).catch(e => log.warn({ err: e.message }, 'builds code email failed'));
+      const delivered = await sendHubEmail({ to: email, subject: `${code} is your code for the Future Basics builds`, html: hubEmailShell('Your code', `<p>Use this code to open the Future Basics builds:</p><p style="font-size:32px;letter-spacing:.2em;font-weight:700;margin:18px 0">${emailEscape(code)}</p><p style="color:#717177">It works for 10 minutes. If you did not ask for it, ignore this email.</p>`) }).catch(e => log.warn({ err: e.message }, 'builds code email failed'));
+      if (!delivered && !process.env.RESEND_API_KEY) log.warn({ email, code }, 'RESEND_API_KEY missing; builds sign-in code logged for setup testing'); // same as the hub's own sign-in, so a stand-alone install can still be tried
     }
     return reply.code(202).send({ ok: true });
   });

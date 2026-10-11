@@ -59,7 +59,7 @@ export function canSee(build, viewer, now = Date.now()) {
 export const visibleBuilds = (builds, viewer, now = Date.now()) => builds.filter(b => canSee(b, viewer, now)).sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
 
 // is this address allowed to ask for a sign-in code at all?
-export const hasAnyAccess = viewer => Boolean(viewer && (viewer.staff || viewer.client || (viewer.invites || []).length));
+export const hasAnyAccess = (viewer, now = Date.now()) => Boolean(viewer && (viewer.staff || viewer.client || (viewer.invites || []).some(inv => active(inv, now))));
 
 // The builds already made, seeded once, hidden until they have been reviewed in the console.
 export const SEED_BUILDS = [

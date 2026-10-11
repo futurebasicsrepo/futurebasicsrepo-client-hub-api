@@ -44,7 +44,7 @@ test('an expired or revoked invite opens nothing', () => {
 });
 
 test('who may ask for a sign-in code at all, and the order builds are shown in', () => {
-  assert.equal(hasAnyAccess({ invites: [] }), false); assert.equal(hasAnyAccess({ invites: [inv({ expires_at: past })] }), true, 'a lapsed invite still lets them in to be told there is nothing to see; the list is empty');
+  assert.equal(hasAnyAccess({ invites: [] }), false); assert.equal(hasAnyAccess({ invites: [inv({ expires_at: past })] }), false, 'a lapsed invite is no access at all'); assert.equal(hasAnyAccess({ invites: [inv({ revoked_at: new Date().toISOString() })] }), false, 'neither is a revoked one'); assert.equal(hasAnyAccess({ invites: [inv({})] }), true);
   assert.equal(hasAnyAccess({ staff: true, invites: [] }), true); assert.equal(hasAnyAccess({ client: true, invites: [] }), true); assert.equal(hasAnyAccess(null), false);
   const list = visibleBuilds([B({ id: 'z', name: 'Zed', sort_order: 5 }), B({ id: 'a', name: 'Alpha', sort_order: 50 }), B({ id: 'b', name: 'Bravo', sort_order: 50 })], { staff: true }, NOW);
   assert.deepEqual(list.map(b => b.name), ['Zed', 'Alpha', 'Bravo']);
