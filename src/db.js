@@ -1335,6 +1335,88 @@ export async function migrate() {
     create index if not exists build_pushes_build_idx on build_pushes(build_id, created_at desc);
     -- The Money hub (see src/money.js): invoices Future Basics sends (and past ones, imported), and every payment received against them.
     -- Only the admins named in MONEY_ACCESS_EMAILS can read these. Bank details are never stored here: they live in the Money setting the invoice PDF prints.
+    -- Site prototypes (src/proto-routes.js): a prospect's existing site is read and audited, a new high-standard site is built from it, and the result is published
+    -- (served at /p/<slug>, sandboxed) and put on the Builds showcase to share. html is one self-contained page.
+    create table if not exists prototypes (
+      id uuid primary key default gen_random_uuid(),
+      slug text unique not null,
+      url text not null,
+      host text not null,
+      company text not null default '',
+      industry text not null default '',
+      industry_from text not null default '',
+      city text not null default '',
+      notes text not null default '',
+      status text not null default 'queued' check (status in ('queued','reading','building','editing','ready','failed')),
+      step text not null default '',
+      steps jsonb not null default '[]'::jsonb,
+      facts jsonb,
+      audit jsonb,
+      brief jsonb,
+      qa jsonb,
+      html text,
+      html_prev text,
+      model text not null default '',
+      input_tokens integer not null default 0,
+      output_tokens integer not null default 0,
+      cost_cents numeric(10,2) not null default 0,
+      note text not null default '',
+      error text not null default '',
+      build_id uuid references builds(id) on delete set null,
+      contact_id uuid references sales_contacts(id) on delete set null,
+      deal_id uuid references sales_deals(id) on delete set null,
+      views integer not null default 0,
+      last_viewed_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      published_at timestamptz
+    );
+    -- The studio: every build, change and restore is a saved version of the page. html on the row is the newest (head); live_version is the one /p/<slug> serves.
+    alter table prototypes add column if not exists head_version integer not null default 0;
+    alter table prototypes add column if not exists live_version integer;
+    alter table prototypes drop constraint if exists prototypes_status_check;
+    alter table prototypes add constraint prototypes_status_check check (status in ('queued','reading','building','editing','ready','failed'));
+    create table if not exists prototype_versions (
+      id uuid primary key default gen_random_uuid(),
+      prototype_id uuid not null references prototypes(id) on delete cascade,
+      n integer not null,
+      source text not null check (source in ('build','rebuild','edit','restore')),
+      instruction text not null default '',
+      html text not null,
+      qa jsonb,
+      changes jsonb,
+      model text not null default '',
+      input_tokens integer not null default 0,
+      output_tokens integer not null default 0,
+      cost_cents numeric(10,2) not null default 0,
+      note text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      unique (prototype_id, n)
+    );
+    -- pages built before the studio become version 1, live if they were published
+    insert into prototype_versions(prototype_id, n, source, html, qa, model, created_by, created_at)
+      select id, 1, 'build', html, qa, model, created_by, updated_at from prototypes p where html is not null and head_version=0 and not exists (select 1 from prototype_versions v where v.prototype_id=p.id);
+    update prototypes set head_version=1, live_version=case when published_at is not null then 1 end where html is not null and head_version=0;
+    create index if not exists prototypes_created_idx on prototypes(created_at desc);
+    create index if not exists prototypes_host_idx on prototypes(host);
+    -- Lead searches (src/proto-leads.js): tired websites of small trades in a town, audited and ranked, so a rep can pick who to build a prototype for.
+    create table if not exists prototype_searches (
+      id uuid primary key default gen_random_uuid(),
+      trade text not null default '',
+      place text not null default '',
+      mode text not null default 'search' check (mode in ('search','list')),
+      status text not null default 'running' check (status in ('running','done','failed')),
+      step text not null default '',
+      queries text[] not null default '{}',
+      results jsonb not null default '[]'::jsonb,
+      skipped jsonb not null default '{}'::jsonb,
+      error text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
     create table if not exists money_invoices (
       id uuid primary key default gen_random_uuid(),
       number text not null unique,

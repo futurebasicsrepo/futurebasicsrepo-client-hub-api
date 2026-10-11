@@ -2029,4 +2029,202 @@ await journey('J140', 'Factories: each factory has what it makes, its skills and
   l = (await F('')).json; ok(l.factories.filter(f => f.partnerId === pt.id).length === 1, 'it is listed once after that');
 });
 
+await journey('J144', 'Site prototypes: paste a tired site, get a score and a pitch, build a new one for its trade, check it against the standard, publish it sandboxed onto Builds, share it, and take it down', async () => {
+  const room = await newRoom('144', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  // the stand-in "internet": a plumber's tired site, with switches for slow, down and blocked
+  const http = (await import('node:http')).default, sw = { delay: 0, mode: 'ok', hits: 0 };
+  const BAD = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">JOE'S PLUMBING</font></center><table><tr><td><a href="/services.html">Services</a></td></tr></table><p>Call us at 215-555-0142 for all your plumbing needs: leaks, drains, water heaters and sewer repair in Norristown PA 19401.</p><ul><li>Drain cleaning</li><li>Water heaters</li><li>Leak repair</li><li>Sewer line repair</li></ul><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2014 Joe's Plumbing</div></body></html>`;
+  const site = http.createServer((req, res) => { sw.hits++; setTimeout(() => { if (sw.mode === 'blocked') { res.writeHead(403); return res.end('no'); } if (sw.mode === 'down') { res.writeHead(500); return res.end('boom'); } if (req.url.startsWith('/services')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html><head><title>Services</title></head><body><ul><li>Trenchless sewer repair</li></ul></body></html>'); } res.writeHead(200, { 'content-type': 'text/html' }); res.end(BAD); }, sw.delay); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r));
+  const waitFor = async (id, pred, ms = 25000) => { const t0 = Date.now(); for (;;) { const p = (await P(`/${id}`)).json.prototype; if (pred(p)) return p; if (Date.now() - t0 > ms) throw new Error(`timed out: ${p.status} ${p.step}`); await sleep(150); } };
+  try {
+    // who may
+    ok((await call('/v1/admin/prototypes')).status === 401 && (await call('/v1/admin/prototypes', { token: room.token })).status === 403 && (await call('/v1/admin/prototypes', { token: room.token, body: { url: 'joes.test' } })).status === 403 && (await call('/p/nope')).status === 404, 'signed out people and clients cannot use it, and a made-up link finds nothing');
+    const meta = (await P('/meta')).json; ok(meta.industries.length >= 9 && meta.industries.some(i => i.key === 'home-health') && meta.ai === false && meta.model === 'template' && meta.perDay >= 1, 'the trades are listed, and with no Claude connected it says it will use the template');
+
+    // the audit: a score, what is wrong, in words for the rep
+    let a = await P('/audit', { body: { url: 'joes-plumbing.test' } }); const ad = a.json;
+    ok(a.status === 200 && ad.audit.score < 40 && ad.audit.grade === 'bad' && ad.industry.key === 'plumbing' && ad.audit.quickTurn === true && ad.audit.top.length === 4 && ad.audit.top[0].pitch.length > 30 && ad.site.phones[0] === '(215) 555-0142' && ad.site.services.includes('Sewer line repair'), 'an audit scores the site, names the trade, says it is a quick turn and gives the pitch', JSON.stringify([ad.audit?.score, ad.industry, ad.audit?.quickTurn]));
+    ok((await P('/audit', { body: { url: '' } })).status === 422 && (await P('/audit', { body: { url: 'http://127.0.0.1/' } })).status === 422 && (await P('/audit', { body: { url: 'http://169.254.169.254/latest' } })).status === 422 && (await P('/audit', { body: { url: 'ftp://joes.test' } })).status === 422, 'blank, local and metadata addresses are refused');
+    sw.mode = 'blocked'; a = await P('/audit', { body: { url: 'joes-plumbing.test' } }); ok(a.status === 502 && /403/.test(a.json.error) && /block/.test(a.json.error), 'a site that blocks us says so', a.json.error); sw.mode = 'ok';
+
+    // build
+    let r = await P('', { body: { url: 'joes-plumbing.test', city: 'Norristown, PA', notes: 'Family owned since 1988' } }); ok(r.status === 202 && r.json.prototype.status === 'queued' && r.json.prototype.host === 'joes-plumbing.test' && !r.json.prototype.published, 'a build is accepted and queued', r.status);
+    const id = r.json.prototype.id; const ready = await waitFor(id, p => ['ready', 'failed'].includes(p.status));
+    ok(ready.status === 'ready' && ready.model === 'template' && ready.industry === 'plumbing' && ready.industryFrom === 'words' && ready.qa.pass === true && ready.qa.checks.length >= 25 && ready.audit.score < 40 && /Joe/.test(ready.company) && ready.city === 'Norristown, PA' && ready.hasHtml && ready.steps.length >= 4 && ready.note, 'it reads, works out the trade, builds, checks and is ready, saying it used the template', JSON.stringify([ready.status, ready.error, ready.model, ready.qa?.failed]));
+    ok(ready.site.services.includes('Sewer line repair') && ready.site.services.includes('Trenchless sewer repair') && ready.site.pages >= 2, 'it read the other pages too');
+    const pv = await fetch(`http://127.0.0.1:3123/v1/admin/prototypes/${id}/preview`, { headers: { Authorization: `Bearer ${kyle}` } }), html = await pv.text();
+    ok(pv.status === 200 && /^<!doctype html>/i.test(html) && html.includes('href="tel:2155550142"') && html.includes('Sewer line repair') && /prefers-reduced-motion/.test(html) && !/<script[^>]+src=/i.test(html), 'the preview is the page: tap to call, their services, reduced motion, no outside scripts');
+    ok((await call(`/v1/admin/prototypes/${id}/preview`, { token: room.token })).status === 403 && (await call(`/v1/admin/prototypes/${id}/preview`)).status === 401, 'the preview is staff only');
+    const dl = await fetch(`http://127.0.0.1:3123/v1/admin/prototypes/${id}/download`, { headers: { Authorization: `Bearer ${kyle}` } }); ok(dl.status === 200 && /attachment; filename="joes-plumbing\.test-prototype\.html"/.test(dl.headers.get('content-disposition')), 'the page can be downloaded');
+    const slug = (await P(`/${id}`)).json.prototype.slug; ok((await call(`/p/${slug}`)).status === 404, 'before it is published the link finds nothing');
+    const list = (await P('')).json.prototypes; ok(list.some(p => p.id === id && p.status === 'ready' && p.qa.pass && !('html' in p)), 'it is in the list, without the page itself');
+
+    // publish: onto Builds, served sandboxed
+    const pub = await P(`/${id}/publish`, { body: {} }); const pp = pub.json.prototype;
+    ok(pub.status === 200 && pp.published && pp.buildId && pp.shareUrl.endsWith(`/p/${slug}`), 'publishing gives it a private link and a build');
+    const builds = (await call('/v1/admin/builds', { token: kyle })).json, b = (builds.builds || builds).find(x => x.id === pp.buildId);
+    ok(b && b.visibility === 'hidden' && b.status === 'concept' && b.live_url === pp.shareUrl && /Joe/.test(b.name) && /Plumbing/i.test(b.sector), 'the build is on the showcase, hidden until it is shared, pointing at the prototype', JSON.stringify(b && [b.visibility, b.live_url, b.name]));
+    const pg = await call(`/p/${slug}`); const raw = await fetch(`http://127.0.0.1:3123/p/${slug}`);
+    ok(pg.status === 200 && /sandbox allow-scripts/.test(raw.headers.get('content-security-policy')) && /connect-src 'none'/.test(raw.headers.get('content-security-policy')) && /form-action 'none'/.test(raw.headers.get('content-security-policy')) && /noindex/.test(raw.headers.get('x-robots-tag')) && raw.headers.get('referrer-policy') === 'no-referrer', 'the public page is sandboxed, cannot call out or submit anywhere, and is never indexed');
+    const body = await raw.text(); ok(body.includes('fb-proto-ribbon') && body.includes('Prototype by'), 'it carries the Future Basics ribbon');
+    await sleep(300); ok(Number(sql(`select views from prototypes where id='${id}'`)) >= 2, 'views are counted');
+
+    // share with the owner
+    const sh = await P(`/${id}/share`, { body: { emails: 'owner@joes-plumbing.test', note: 'Here is what your site could look like.', send: false } }); ok(sh.status === 200 && sh.json.link.endsWith(`/p/${slug}`), 'sharing answers with the link', JSON.stringify(sh.json).slice(0, 200));
+    const b2 = (await call('/v1/admin/builds', { token: kyle })).json, bb = (b2.builds || b2).find(x => x.id === pp.buildId); ok(bb.visibility === 'invite', 'inviting someone moves the build from hidden to invite only');
+    const inv = (await call('/v1/admin/builds/invites', { token: kyle })).json.invites; ok(inv.some(x => x.email === 'owner@joes-plumbing.test' && x.build_id === pp.buildId), 'the owner is invited to that build', JSON.stringify(inv.slice(0, 2)));
+    ok((await P(`/${id}/share`, { body: { emails: 'not-an-email' } })).status === 422, 'a bad email is refused');
+
+    // rebuild keeps the address and the build; a build in progress is not started twice
+    sw.delay = 700; r = await P(`/${id}/rebuild`, { body: { industry: 'electrician', notes: 'They also do panel upgrades' } }); ok(r.status === 202 && r.json.prototype.status === 'queued', 'a rebuild is accepted');
+    ok((await P(`/${id}/rebuild`, { body: {} })).status === 409 && (await P('', { body: { url: 'joes-plumbing.test' } })).status === 409, 'a build already in progress is not started again');
+    await waitFor(id, p => p.status === 'reading' || p.status === 'building', 5000); sw.delay = 0;
+    const again = await waitFor(id, p => ['ready', 'failed'].includes(p.status)); ok(again.status === 'ready' && again.industry === 'electrician' && again.industryFrom === 'chosen' && again.slug === slug && again.published && again.buildId === pp.buildId, 'the rebuild uses the trade chosen, and keeps its address, its build and its published state', JSON.stringify([again.status, again.industry, again.published]));
+    ok(sql(`select (html_prev is not null)::text from prototypes where id='${id}'`) === 'true', 'the page it replaced is kept');
+    ok((await P(`/${id}/rebuild`, { body: { industry: 'astronaut' } })).status === 422, 'an unknown trade is refused');
+
+    // a site that is down: it fails with a reason, and works when the site is back
+    sw.mode = 'down'; r = await P('', { body: { url: 'downsite.test' } }); const f = await waitFor(r.json.prototype.id, p => ['ready', 'failed'].includes(p.status)); ok(f.status === 'failed' && /500/.test(f.error) && f.steps.some(s => /Failed/.test(s.text)), 'a site that is down fails with the reason', f.error);
+    sw.mode = 'ok'; ok((await P(`/${f.id}/publish`, { body: {} })).status === 409, 'a failed build cannot be published'); r = await P(`/${f.id}/rebuild`, { body: {} }); const f2 = await waitFor(f.id, p => ['ready', 'failed'].includes(p.status)); ok(f2.status === 'ready', 'and it builds once the site is back');
+    ok(sql(`select count(*) from prototypes where status in ('queued','reading','building')`) === '0', 'nothing is left running');
+
+    // take it down, then delete
+    const un = await P(`/${id}/unpublish`, { body: {} }); ok(un.json.prototype.published === false && (await call(`/p/${slug}`)).status === 404, 'taking it down ends the link at once');
+    const b3 = (await call('/v1/admin/builds', { token: kyle })).json, bc = (b3.builds || b3).find(x => x.id === pp.buildId); ok(bc.visibility === 'hidden', 'and hides the build');
+    ok((await P(`/${id}`, { method: 'DELETE' })).json.ok === true && (await P(`/${id}`)).status === 404, 'a prototype can be deleted');
+    ok((await call('/v1/admin/builds', { token: kyle })).json && sql(`select status from builds where id='${pp.buildId}'`) === 'archived', 'and its build is archived');
+    ok((await P('/not-an-id')).status === 404 && (await P('/not-an-id/rebuild', { body: {} })).status === 404, 'bad ids are not found');
+  } finally { await new Promise(r => site.close(r)); }
+});
+
+await journey('J148', 'The studio: ask for a change and it becomes a new version, every version can be looked at, going back is a version too, and the live link only moves when a version is published', async () => {
+  const room = await newRoom('148', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  const http = (await import('node:http')).default;
+  const BAD = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">JOE'S PLUMBING</font></center><table><tr><td><a href="/services.html">Services</a></td></tr></table><p>Call us at 215-555-0142 for all your plumbing needs: leaks, drains, water heaters and sewer repair in Norristown PA 19401.</p><ul><li>Drain cleaning</li><li>Water heaters</li><li>Leak repair</li><li>Sewer line repair</li></ul><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2014 Joe's Plumbing</div></body></html>`;
+  const site = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(BAD); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r));
+  const waitFor = async (id, pred, ms = 25000) => { const t0 = Date.now(); for (;;) { const p = (await P(`/${id}`)).json.prototype; if (pred(p)) return p; if (Date.now() - t0 > ms) throw new Error(`timed out: ${p.status} ${p.step}`); await sleep(150); } };
+  const idle = id => waitFor(id, p => p.status === 'ready' || p.status === 'failed');
+  const page = async (path, token = kyle) => { const r = await fetch(`http://127.0.0.1:3123${path}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}); return { status: r.status, text: await r.text() }; };
+  try {
+    const r0 = await P('', { body: { url: 'studio-plumbing.test', city: 'Norristown, PA' } }); const id = r0.json.prototype.id; let p = await idle(id); const slug = p.slug;
+    ok(p.status === 'ready' && p.headVersion === 1 && p.liveVersion === null && p.pendingPublish === false, 'a build is version 1 and nothing is live yet', JSON.stringify([p.status, p.headVersion, p.liveVersion]));
+    let v = (await P(`/${id}/versions`)).json; ok(v.versions.length === 1 && v.versions[0].n === 1 && v.versions[0].source === 'build' && v.versions[0].head && !v.versions[0].live && v.versions[0].qa.pass && v.canEdit === true && v.perDay >= 1, 'the version list has the build, marked current, not live', JSON.stringify(v.versions[0]));
+    ok((await P('/meta')).json.canEdit === true, 'the page is told changes are possible');
+
+    // who may, and what is refused
+    ok((await call(`/v1/admin/prototypes/${id}/versions`)).status === 401 && (await call(`/v1/admin/prototypes/${id}/versions`, { token: room.token })).status === 403 && (await call(`/v1/admin/prototypes/${id}/edit`, { token: room.token, body: { instruction: 'Add a gallery' } })).status === 403 && (await call(`/v1/admin/prototypes/${id}/versions/1/preview`, { token: room.token })).status === 403, 'signed out people and clients cannot see or change anything');
+    ok((await P(`/${id}/edit`, { body: { instruction: '' } })).status === 422 && (await P(`/${id}/edit`, { body: { instruction: 'hi' } })).status === 422 && (await P('/not-an-id/edit', { body: { instruction: 'Add a gallery' } })).status === 404 && (await P(`/${id}/versions/99/preview`)).status === 404 && (await P(`/${id}/versions/99/restore`, { body: {} })).status === 404 && (await P(`/${id}/versions/1/restore`, { body: {} })).status === 409, 'no instruction, a bad id, a missing version and restoring the current version are refused');
+
+    // a change becomes version 2; while it runs, nothing else may start
+    let e = await P(`/${id}/edit`, { body: { instruction: 'Add a gallery of past work' } }); ok(e.status === 202 && e.json.prototype.status === 'editing', 'a change is accepted and runs in the background', e.status);
+    ok((await P(`/${id}/edit`, { body: { instruction: 'Add something else' } })).status === 409 && (await P(`/${id}/rebuild`, { body: {} })).status === 409 && (await P(`/${id}/versions/1/restore`, { body: {} })).status === 409 && (await P('', { body: { url: 'studio-plumbing.test' } })).status === 409, 'while it runs, another change, a rebuild, a restore and a new build for the same site are refused');
+    p = await idle(id); v = (await P(`/${id}/versions`)).json;
+    ok(p.status === 'ready' && p.headVersion === 2 && p.editError === '' && v.versions.length === 2 && v.versions[0].n === 2 && v.versions[0].source === 'edit' && v.versions[0].instruction === 'Add a gallery of past work' && v.versions[0].changes.added.includes('Add a gallery of past work') && v.versions[0].qa.pass && v.today >= 1, 'it becomes version 2, with what was asked and what it added', JSON.stringify(v.versions[0]));
+    const v1 = await page(`/v1/admin/prototypes/${id}/versions/1/preview`), v2 = await page(`/v1/admin/prototypes/${id}/versions/2/preview`), head = await page(`/v1/admin/prototypes/${id}/preview`);
+    ok(v1.status === 200 && !v1.text.includes('past work') && v2.text.includes('Add a gallery of past work') && head.text.includes('Add a gallery of past work') && v2.text.includes('fb-proto-ribbon'), 'version 1 is as it was, version 2 and the current page have the change');
+    ok((await call(`/p/${slug}`)).status === 404, 'the public link still shows nothing: a change is not published');
+
+    // publish: the link serves the version published, later changes wait
+    let pub = await P(`/${id}/publish`, { body: {} }); ok(pub.json.prototype.liveVersion === 2 && pub.json.prototype.pendingPublish === false, 'publishing makes version 2 live');
+    ok((await page(`/p/${slug}`, null)).text.includes('Add a gallery of past work'), 'the link shows version 2');
+    e = await P(`/${id}/edit`, { body: { instruction: 'Add a 24/7 emergency banner' } }); p = await idle(id);
+    ok(p.headVersion === 3 && p.liveVersion === 2 && p.pendingPublish === true, 'a change after publishing is version 3 and waits', JSON.stringify([p.headVersion, p.liveVersion, p.pendingPublish]));
+    let live = (await page(`/p/${slug}`, null)).text; ok(live.includes('Add a gallery of past work') && !live.includes('emergency banner'), 'the live link still shows version 2');
+    v = (await P(`/${id}/versions`)).json; ok(v.versions.find(x => x.n === 2).live && !v.versions.find(x => x.n === 3).live && v.versions.find(x => x.n === 3).head, 'the list says which version is live and which is current');
+    pub = await P(`/${id}/publish`, { body: {} }); ok(pub.json.prototype.liveVersion === 3 && !pub.json.prototype.pendingPublish, 'publishing again moves the link to version 3'); ok((await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'and the link shows it');
+
+    // going back is a version too, and it does not touch the live link
+    const rs = await P(`/${id}/versions/1/restore`, { body: {} }); p = rs.json.prototype;
+    ok(rs.status === 200 && rs.json.version === 4 && p.headVersion === 4 && p.liveVersion === 3 && p.pendingPublish === true, 'going back to version 1 makes version 4, current but not live', JSON.stringify([rs.status, rs.json.version, p.headVersion, p.liveVersion]));
+    v = (await P(`/${id}/versions`)).json; ok(v.versions[0].source === 'restore' && /version 1/.test(v.versions[0].instruction) && v.versions.length === 4, 'the list says it went back to version 1');
+    ok(!(await page(`/v1/admin/prototypes/${id}/preview`)).text.includes('past work') && (await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'the current page is version 1 again; the link still shows version 3');
+    ok((await page(`/v1/admin/prototypes/${id}/versions/3/preview`)).text.includes('emergency banner'), 'version 3 is still there to look at, and to go back to');
+    await P(`/${id}/publish`, { body: {} }); ok(!(await page(`/p/${slug}`, null)).text.includes('emergency banner'), 'publishing puts the link back to the earlier page');
+
+    // a change that cannot be made leaves everything as it was, and says why
+    const before = (await P(`/${id}/versions`)).json.versions.length;
+    e = await P(`/${id}/edit`, { body: { instruction: 'FAIL this one on purpose' } }); p = await idle(id);
+    ok(p.status === 'ready' && /break the quality check/.test(p.editError) && (await P(`/${id}/versions`)).json.versions.length === before && p.headVersion === 4, 'a change that would break the page is not applied, and the reason is shown', p.editError);
+    e = await P(`/${id}/edit`, { body: { instruction: 'Add a reviews strip' } }); p = await idle(id); ok(p.headVersion === 5 && p.editError === '', 'the next change works and the reason is cleared');
+
+    // a rebuild is a version too; the live link waits
+    await P(`/${id}/rebuild`, { body: {} }); p = await idle(id); v = (await P(`/${id}/versions`)).json;
+    ok(p.headVersion === 6 && v.versions[0].source === 'rebuild' && p.liveVersion === 4 && p.pendingPublish === true, 'a rebuild is a new version and does not touch the live link', JSON.stringify([p.headVersion, v.versions[0].source, p.liveVersion]));
+    ok(sql(`select count(*) from prototype_versions where prototype_id='${id}'`) === '6' && Number(sql(`select cost_cents from prototypes where id='${id}'`)) > 0, 'every version is kept, and the cost of the changes adds up on the prototype', sql(`select count(*) from prototype_versions where prototype_id='${id}'`) + ' / ' + sql(`select cost_cents from prototypes where id='${id}'`));
+
+    // the daily limit
+    const used = Number(sql(`select count(*) from prototype_versions where source='edit' and created_at > now() - interval '24 hours'`)), cap = (await P(`/${id}/versions`)).json.perDay;
+    sql(`insert into prototype_versions(prototype_id,n,source,html) select '${id}', 1000+g, 'edit', 'x' from generate_series(1,${Math.max(0, cap - used)}) g`);
+    e = await P(`/${id}/edit`, { body: { instruction: 'One change too many' } }); ok(e.status === 429 && /changes a day/.test(e.json.error), 'the daily limit of changes is enforced with a plain message', JSON.stringify(e.json));
+    sql(`delete from prototype_versions where prototype_id='${id}' and n >= 1000`);
+    ok((await P(`/${id}/edit`, { body: { instruction: 'Back under the limit' } })).status === 202, 'and it works again under the limit'); await idle(id);
+
+    // delete takes the versions with it
+    ok((await P(`/${id}`, { method: 'DELETE' })).json.ok === true && sql(`select count(*) from prototype_versions where prototype_id='${id}'`) === '0' && (await call(`/p/${slug}`)).status === 404, 'deleting a prototype removes its versions and its link');
+  } finally { await new Promise(r => site.close(r)); }
+});
+
+await journey('J146', 'Finding leads: search a trade and a town, skip the directories and the ones we know, rank the tired sites first, send a lead into the CRM, build for it, and watch the deal follow', async () => {
+  const room = await newRoom('146', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  const http = (await import('node:http')).default, seen = [];
+  const TIRED = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">TIRED PLUMBING</font></center><table><tr><td>Services</td></tr></table><p>Call 484-555-0199 for all your plumbing needs in Norristown, PA 19401.</p><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2013 Tired Plumbing</div></body></html>`;
+  const FINE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Spark Electric: electricians in Reading, PA | Licensed and insured</title><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Licensed electricians serving Reading, PA with free estimates and same-day service."><link rel="canonical" href="https://sparkelectric.test/"><meta property="og:title" content="Spark Electric"></head><body><header><nav><a href="/">Home</a> <a href="/services">Services</a> <a href="/contact">Contact</a></nav></header><main><h1>Licensed electricians in Reading, PA</h1><a href="tel:6105550177">Call 610-555-0177</a><p>Free estimates. Licensed and insured. Five star reviews from neighbors across Berks County. Panel upgrades, EV chargers, lighting and rewiring.</p><h2>Services</h2><ul><li>Panel upgrades</li><li>EV chargers</li><li>Rewiring</li></ul><h2>Reviews</h2><p>Great work, on time.</p><footer>Spark Electric, 12 Penn St, Reading, PA 19601</footer></main></body></html>`;
+  const site = http.createServer((req, res) => { const h = String(req.headers['x-original-host'] || ''); seen.push(h); if (h === 'offline-shop.test') { res.writeHead(500); return res.end('boom'); } if (h === 'tiredplumbing.test' || h === 'www.tiredplumbing.test') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(TIRED); } if (h === 'sparkelectric.test') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(FINE); } res.writeHead(404); res.end('no'); });
+  const queries = [], brave = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x'); if (u.pathname !== '/res/v1/web/search') { res.writeHead(404); return res.end('{}'); } queries.push(u.searchParams.get('q'));
+    const results = [{ title: 'Best plumbers near you - Yelp', url: 'https://www.yelp.com/search?find_desc=plumber', description: 'Directory' }, { title: 'Spark Electric', url: 'https://sparkelectric.test/services', description: 'Electricians in Reading' }, { title: 'Tired Plumbing', url: 'https://www.tiredplumbing.test/contact', description: 'Plumber' }, { title: 'Tired Plumbing again', url: 'https://tiredplumbing.test/', description: 'Plumber' }, { title: 'Down', url: 'https://offline-shop.test/', description: '' }, { title: 'Nope', url: 'ftp://nope.test/', description: '' }];
+    res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ web: { results } }));
+  });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r)); await new Promise(r => brave.listen(3133, '127.0.0.1', r));
+  const waitSearch = async id => { const t0 = Date.now(); for (;;) { const s = (await P(`/leads/searches/${id}`)).json.search; if (s.status !== 'running') return s; if (Date.now() - t0 > 25000) throw new Error('search timed out: ' + s.step); await sleep(150); } };
+  try {
+    ok((await call('/v1/admin/prototypes/leads/meta')).status === 401 && (await call('/v1/admin/prototypes/leads/meta', { token: room.token })).status === 403 && (await call('/v1/admin/prototypes/leads/search', { token: room.token, body: { urls: 'a.test' } })).status === 403, 'signed out people and clients cannot find leads');
+    const meta = (await P('/leads/meta')).json; ok(meta.search === true && meta.trades.some(t => t.key === 'plumbing' && t.terms.length === 2) && meta.trades.some(t => t.key === 'home-health') && meta.perDay >= 1, 'the trades to search are listed and search is connected');
+
+    // bad input
+    ok((await P('/leads/search', { body: { trade: 'astronaut', place: 'Reading, PA' } })).status === 422 && (await P('/leads/search', { body: { trade: 'plumbing', place: '' } })).status === 422 && (await P('/leads/search', { body: { urls: 'http://127.0.0.1/' } })).status === 422, 'an unknown trade, no town and an address on our own network are refused');
+
+    // search: directories dropped, repeats merged, the tired site first, the one that is down last
+    let r = await P('/leads/search', { body: { trade: 'plumbing', place: 'Norristown, PA' } }); ok(r.status === 202 && r.json.search.status === 'running', 'a search is accepted and runs in the background', r.status);
+    const s = await waitSearch(r.json.search.id), hosts = s.results.map(x => x.host);
+    ok(s.status === 'done' && JSON.stringify(queries.slice(0, 2)) === JSON.stringify(['plumber Norristown, PA', 'plumbing company Norristown, PA']), 'it asked the search for the trade and the town', JSON.stringify(queries));
+    ok(JSON.stringify(hosts) === JSON.stringify(['tiredplumbing.test', 'sparkelectric.test', 'offline-shop.test']), 'the directory is dropped, the repeat is merged and the tired site comes first', JSON.stringify(hosts));
+    const [tired, fine, down] = s.results;
+    ok(tired.reachable && tired.quickTurn && tired.score < 40 && tired.phone === '(484) 555-0199' && tired.top.length >= 2 && tired.url === 'https://www.tiredplumbing.test/' && /Tired Plumbing/i.test(tired.name) && /Norristown, PA/.test(tired.city), 'the tired site: low score, quick turn, phone, city and what is wrong', JSON.stringify(tired).slice(0, 300));
+    ok(fine.score >= 70 && fine.industry === 'electrician' && down.reachable === false && /500/.test(down.error) && s.skipped.directories >= 1 && s.skipped.invalid >= 1, 'the decent site ranks lower and is read as an electrician; the site that is down is last with a reason', JSON.stringify(s.skipped));
+    ok((await P('/leads/searches')).json.searches[0].id === s.id && (await P('/leads/searches/not-an-id')).status === 404, 'recent searches are listed');
+
+    // a pasted list skips the search
+    const before = queries.length; r = await P('/leads/search', { body: { urls: 'tiredplumbing.test\nsparkelectric.test, https://tiredplumbing.test/about' } }); const l = await waitSearch(r.json.search.id);
+    ok(queries.length === before && l.mode === 'list' && l.results.length === 2 && l.results[0].host === 'tiredplumbing.test', 'a pasted list is audited without searching and repeats are merged', JSON.stringify(l.results.map(x => x.host)));
+
+    // into the CRM
+    const add = async o => P('/leads/add', { body: { url: tired.url, company: 'Tired Plumbing', trade: 'plumbing', phone: tired.phone, city: tired.city, score: tired.score, problems: tired.top.map(t => t.pitch || t.text || t.title || ''), ...o } });
+    ok((await add({ url: 'ftp://x' })).status === 422 && (await add({ email: 'nope' })).status === 422, 'a bad address or email is refused');
+    const a1 = await add({}); ok(a1.status === 201 && a1.json.created && a1.json.madeDeal, 'adding a lead makes the company, a contact and a deal', JSON.stringify(a1.json));
+    const { contactId, dealId, companyId } = a1.json;
+    ok(sql(`select stage||'/'||title from sales_deals where id='${dealId}'`) === 'new/Website rebuild: Tired Plumbing' && sql(`select source||'/'||phone from sales_contacts where id='${contactId}'`) === 'site-prototype/(484) 555-0199' && sql(`select website from sales_companies where id='${companyId}'`) === 'https://www.tiredplumbing.test/', 'the deal starts in New, the contact remembers where it came from, the company has its website');
+    ok(Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text like 'Found by site prospecting%'`)) === 1, 'the timeline says what is wrong with their site');
+    const a2 = await add({}); ok(a2.status === 200 && !a2.json.created && !a2.json.madeDeal && a2.json.dealId === dealId && Number(sql(`select count(*) from sales_deals where contact_id='${contactId}'`)) === 1, 'adding the same lead again changes nothing');
+    const s2 = await P('/leads/search', { body: { trade: 'plumbing', place: 'Norristown, PA' } }); const s2d = await waitSearch(s2.json.search.id);
+    ok(!s2d.results.some(x => x.host === 'tiredplumbing.test') && s2d.skipped.known >= 1, 'a business already in the CRM is not offered again', JSON.stringify(s2d.skipped));
+
+    // build for the lead: the deal follows
+    const b = await P('', { body: { url: tired.url, city: tired.city, contactId, dealId } }); ok(b.status === 202 && b.json.prototype.contactId === contactId && b.json.prototype.dealId === dealId, 'the build is tied to the contact and the deal');
+    const pid = b.json.prototype.id; const t0 = Date.now(); let pr; for (;;) { pr = (await P(`/${pid}`)).json.prototype; if (['ready', 'failed'].includes(pr.status) || Date.now() - t0 > 25000) break; await sleep(150); }
+    ok(pr.status === 'ready' && Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike 'A new site prototype%is built%'`)) >= 1, 'when it is ready the timeline says so', pr.status);
+    await P(`/${pid}/publish`, { body: {} }); ok(Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike '%published%'`)) >= 1, 'publishing is on the timeline');
+    const sh = await P(`/${pid}/share`, { body: { emails: 'owner@tiredplumbing.test', send: false } }); ok(sh.status === 200 && sql(`select stage from sales_deals where id='${dealId}'`) === 'contacted' && Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike '%shared%'`)) >= 1, 'sharing it moves the deal to Contacted and says so on the timeline', sql(`select stage from sales_deals where id='${dealId}'`));
+    ok(sql(`select count(*) from prototypes where status in ('queued','reading','building')`) === '0' && sql(`select count(*) from prototype_searches where status='running'`) === '0', 'nothing is left running');
+  } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
