@@ -128,6 +128,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
     <section id="t-press" class="hidden">
       <div class="abar"><div class="views" id="pressViews" style="margin:0" role="tablist"><button type="button" class="fchip on" data-pv="items">Releases and pitches</button><button type="button" class="fchip" data-pv="media">Media list</button><button type="button" class="fchip" data-pv="coverage">Coverage</button></div><p class="note" id="pressNote" style="margin:0"></p></div>
       <div id="pressBody"></div>
+    </section>
     <section id="t-opportunities" class="hidden">
       <div class="abar"><p class="note grow" id="oppNote" style="margin:0">Who to talk to next, and why. Each person appears once, under their strongest reason.</p></div>
       <div class="views" id="oppTypes" aria-label="Kinds of opportunity"></div>
@@ -686,6 +687,8 @@ $$('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;if(location.hash.slice(1)!=
   // the left-hand menu links straight to a tab (/sales#contacts), and the tabs keep the address in step
   const fromHash=()=>{const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&t.dataset.t!==TAB)t.click()};
   fromHash();addEventListener('hashchange',fromHash);
+  // a link from the work home opens that person: /sales?contact=<id>
+  const want=new URLSearchParams(location.search).get('contact');if(want){history.replaceState(null,'',location.pathname+location.hash);openContact(want).catch(()=>{})}
 })();
 </script>
 <script src="/console-nav.js" defer></script>

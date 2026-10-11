@@ -66,7 +66,7 @@ http.createServer(async (req, res) => {
   // ---- products: the parts the tech pack export uses ----
   const vOut = v => ({ id: v.id, sku: v.sku, selectedOptions: v.selectedOptions });
   const optsOf = vals => (vals || []).map(o => ({ name: o.optionName, value: o.name }));
-  if (name === 'ExportPackProductSet') {
+  if (name === 'ExportPackProductSet' || name === 'PushBuildProduct') {
     const i = variables.input, id = `gid://shopify/Product/${++state.n}`;
     if (!i.title) return send(res, 200, { data: { productSet: { product: null, userErrors: [{ field: ['input', 'title'], message: 'Title can\'t be blank', code: 'BLANK' }] } } });
     const p = { id, handle: String(i.title).toLowerCase().replace(/[^a-z0-9]+/g, '-'), status: i.status || 'DRAFT', title: i.title, descriptionHtml: i.descriptionHtml, vendor: i.vendor, productType: i.productType, tags: i.tags, options: i.productOptions || [], metafields: i.metafields || [], files: i.files || [],

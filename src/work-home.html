@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Work home</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b;--hot:#d8451f;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:16px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2c2c33}.btn.sm{padding:5px 12px;font-size:13px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;margin-bottom:18px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;text-decoration:none}
+.tile b{font-size:clamp(28px,3.2vw,38px);font-weight:500;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}.tile .t{font-size:13px;color:var(--dim)}
+.tile .tr{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.tile .tr.up{color:var(--ok)}.tile .tr.down{color:var(--bad)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start;margin-bottom:16px}
+@media(max-width:960px){.cols{grid-template-columns:minmax(0,1fr)}}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px)}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+.list{display:grid;margin-top:8px}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:11px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}
+.row b{font-weight:600}.row .what{min-width:0}.row .what div{overflow:hidden;text-overflow:ellipsis}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}
+.chip.hot,.chip.us{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.warm{background:#fff7d6;border-color:#e6d27a}.chip.new{background:#eef0ff;border-color:#c5caf4;color:#3b46a8}.chip.task{background:var(--fog)}.chip.client{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.sw{background:var(--ink);border-color:var(--ink);color:#fff}
+.protos{display:grid;gap:12px;margin-top:10px}
+.proto{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);border-radius:16px;padding:10px;background:#fff}
+.proto .shot{width:96px;height:64px;border-radius:10px;background:var(--ink);overflow:hidden}.proto .shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.proto.warm{border-color:#a9dcbf;background:#f6fcf8}.proto .nx{font-weight:600;font-size:13px}.proto .ft{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.stack{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}.stack span{border:1px solid var(--line);background:var(--fog);border-radius:999px;padding:1px 8px;font-size:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px}.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px}.fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.proj{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:12px 0;border-top:1px solid var(--line);text-decoration:none}.proj:first-child{border-top:0}.proj:hover{background:var(--fog)}
+.proj b{font-weight:600}.proj .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini{display:flex;gap:3px;margin-top:6px}.mini i{height:5px;flex:1;border-radius:3px;background:var(--line)}.mini i.done{background:var(--cue)}.mini i.now{background:var(--ink)}
+@media(max-width:700px){.proj{grid-template-columns:minmax(0,1fr) auto}.proj .mid{grid-column:1/-1;order:3}.row{grid-template-columns:minmax(0,1fr) auto}.row .chip.k{grid-column:1/-1}}
+.waitbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}.waitbar a{text-decoration:none}
+.empty{color:var(--dim);padding:12px 0}
+</style>
+</head>
+<body>
+<header>
+  <a class="wordmark" href="/home" aria-label="Work home"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Work</span></a>
+</header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)" id="date"></span><h1 id="hello">Today</h1><p class="note">More leads, more prototypes in front of the right people, and every project in flight one click away.</p></div>
+      <div class="acts" id="actions"><a class="btn" href="/sales#contacts" id="aLead">+ Add a lead</a><a class="btn" href="/builds/admin?new=1" id="aProto">+ New prototype</a><a class="btn go" href="/admin#clientsHead" id="aProj">+ New project</a></div></div>
+
+    <section class="tiles" id="funnel" aria-label="This week"></section>
+
+    <div class="cols">
+      <section class="panel" id="reach"><div class="ph"><h2>Reach out today</h2><a class="sub" href="/sales#today">Everything in Sales ›</a></div><p class="sub" style="margin:0">Who is most likely to become a customer, and who has been waiting for an answer.</p><div class="list" id="reachList"></div></section>
+      <section class="panel" id="protoPanel"><div class="ph"><h2>Prototypes that can close deals</h2><a class="sub" href="/builds/admin#builds">All builds ›</a></div><p class="sub" style="margin:0">Builds in progress and who has looked. Show a prospect something real.</p><div class="protos" id="protoList"></div><div id="showNow"></div></section>
+    </div>
+
+    <section class="panel" id="projPanel"><div class="ph"><h2>Projects in flight</h2><span class="sub" id="projCount"></span></div>
+      <div class="chips" id="projFilters" role="tablist" aria-label="Filter projects"><button class="fchip on" data-f="all">All</button><button class="fchip" data-f="software">Software</button><button class="fchip" data-f="product">Product</button><button class="fchip" data-f="waiting">Waiting on us</button></div>
+      <div id="projList"></div>
+      <div class="waitbar" id="waitbar"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString();
+const ago=v=>{if(!v)return '';const d=(Date.now()-new Date(v))/864e5;return d<1?'today':d<2?'yesterday':Math.floor(d)+' days ago'};
+const SW=['discovery','prototype','build','review','launch','live','maintenance'];
+let HOME=null,FILTER='all';
+
+function greet(){const h=new Date().getHours();return (h<12?'Good morning':h<18?'Good afternoon':'Good evening')}
+function renderFunnel(o,h){
+  const f=h.funnel,p=o.pipeline;
+  $('#funnel').innerHTML=[
+    `<a class="tile" href="/sales#contacts"><span class="mono t">New leads · 7 days</span><b>${f.newLeads7}</b><span class="tr ${f.trend.dir}">${esc(f.trend.text)}</span></a>`,
+    `<a class="tile" href="/builds/admin#activity"><span class="mono t">Looked at a prototype · 7 days</span><b>${f.lookers7}</b><span class="tr">${f.demos7} opened a live build</span></a>`,
+    `<a class="tile" href="/sales#pipeline"><span class="mono t">Deals in play</span><b>${p.openCount}</b><span class="tr">${money(p.openValueCents)} open${p.forecastCents?` · ${money(p.forecastCents)} likely`:''}</span></a>`,
+    `<a class="tile" href="/sales#pipeline"><span class="mono t">Won · 30 days</span><b>${money(f.won30.valueCents)}</b><span class="tr">${f.won30.count} deal${f.won30.count===1?'':'s'}</span></a>`].join('');
+}
+function renderReach(o,h){
+  const rows=[];
+  for(const t of (o.tasks||[]).slice(0,4))rows.push({k:'task',kl:'Task',name:t.title,sub:t.contact_name||t.contact_email||'',when:t.due_at?`due ${ago(t.due_at)==='today'?'today':ago(t.due_at)}`:'',href:t.contact_id?`/sales?contact=${t.contact_id}#contacts`:'/sales#tasks'});
+  for(const c of (o.hot||[]).filter(c=>c.heat&&c.heat.level!=='cold').slice(0,4))rows.push({k:c.heat.level==='hot'?'hot':'warm',kl:c.heat.level,name:c.name||c.email,sub:[c.company,c.source].filter(Boolean).join(' · '),when:'',href:`/sales?contact=${c.id}#contacts`});
+  const seen=new Set(rows.map(r=>r.name));
+  for(const c of h.awaitingReply.slice(0,5))if(!seen.has(c.name))rows.push({k:'new',kl:'No reply yet',name:c.name,sub:[c.company,c.source].filter(Boolean).join(' · '),when:`arrived ${ago(c.createdAt)}`,href:`/sales?contact=${c.id}#contacts`});
+  $('#reachList').innerHTML=rows.length?rows.slice(0,9).map(r=>`<a class="row" href="${esc(r.href)}" style="text-decoration:none" data-k="${esc(r.k)}"><span class="chip k ${esc(r.k)}">${esc(r.kl)}</span><span class="what"><b>${esc(r.name)}</b><div class="sub">${esc(r.sub)}</div></span><span class="sub">${esc(r.when)}</span></a>`).join(''):'<p class="empty">Nobody is waiting. Add a lead, or invite someone to look at a build.</p>';
+}
+function protoCard(b,extra){
+  return `<div class="proto ${b.warm?'warm':''}" data-pid="${esc(b.id)}"><div class="shot">${b.hasCover?`<img data-cover="${esc(b.id)}" alt="">`:''}</div><div><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><h3>${esc(b.name)}</h3><span class="chip">${esc(String(b.status).replace('-',' '))}</span></div>
+    <div class="nx">${esc(extra||b.next)}</div><div class="sub">${b.lookers7?`${b.lookers7} ${b.lookers7===1?'person':'people'} looked this week`:'No looks this week'}${b.invites?` · ${b.invites} invited`:''}${b.lastLookAt?` · last look ${esc(ago(b.lastLookAt))}`:''}${b.clients.length?` · for ${esc(b.clients.join(', '))}`:''}</div>
+    ${b.stack.length?`<div class="stack">${b.stack.slice(0,5).map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:''}
+    <div class="ft"><a class="btn sm go" href="/builds/admin#invites">Invite someone</a><a class="btn sm" href="/builds/admin?push=${esc(b.id)}">Push to a store</a>${b.liveUrl?`<a class="btn sm" href="${esc(b.liveUrl)}" target="_blank" rel="noopener">Open site ↗</a>`:''}</div></div></div>`;
+}
+function renderProtos(h){
+  $('#protoList').innerHTML=h.prototypes.length?h.prototypes.map(b=>protoCard(b)).join(''):'<p class="empty">Nothing in progress. Start a prototype for a prospect: it is the fastest way to a yes.</p>';
+  $('#showNow').innerHTML=h.showNow.length?`<h3 style="margin:16px 0 4px">Best to show right now</h3><p class="sub" style="margin:0 0 6px">Finished builds that people look at most (30 days).</p><div class="protos">${h.showNow.map(b=>protoCard(b,`${b.views30} look${b.views30===1?'':'s'} in 30 days`)).join('')}</div>`:'';
+  // pictures need the work sign-in, which an <img> cannot send, so each is fetched with it
+  $$('img[data-cover]').forEach(async im=>{try{const r=await fetch('/v1/admin/builds/'+im.dataset.cover+'/cover',{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)im.src=URL.createObjectURL(await r.blob())}catch{}});
+}
+function renderProjects(){
+  const all=HOME.projects,list=all.filter(p=>FILTER==='all'||(FILTER==='waiting'?p.waitingOnUs:p.kind===FILTER));
+  $$('#projFilters .fchip').forEach(b=>b.classList.toggle('on',b.dataset.f===FILTER));
+  const sw=all.filter(p=>p.kind==='software').length,pr=all.length-sw,wt=all.filter(p=>p.waitingOnUs).length;
+  $('#projCount').textContent=`${all.length} in flight · ${sw} software · ${pr} product${wt?` · ${wt} waiting on us`:''}`;
+  $('#projList').innerHTML=list.length?list.map(p=>{
+    const at=SW.indexOf(p.stage),mini=p.kind==='software'?`<div class="mini" aria-hidden="true">${SW.map((s,k)=>`<i class="${k<at?'done':k===at?'now':''}"></i>`).join('')}</div>`:'';
+    return `<a class="proj" href="/clients/${esc(p.clientId)}#project=${esc(p.id)}" data-kind="${esc(p.kind)}"><div><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>${esc(p.name)}</b><span class="chip ${p.kind==='software'?'sw':''}">${p.kind==='software'?'Software':'Product'}</span></div><div class="sub">${esc(p.clientName)}${p.kind==='software'&&p.buildName?` · build: ${esc(p.buildName)}`:p.kind==='product'?` · ${p.productCount} product${p.productCount===1?'':'s'}`:''}</div></div>
+      <div class="mid"><div class="sub"><b style="color:var(--ink)">${esc(p.stageLabel||p.status)}</b>${p.quietDays>=7?` · quiet for ${p.quietDays} days`:''}</div>${mini}</div>
+      <span class="chip ${p.waitingOnUs?'us':p.owner==='client'?'client':''}">${p.waitingOnUs?'Waiting on us':p.owner==='client'?'Client has it':'In progress'}</span></a>`}).join(''):`<p class="empty">${all.length?'Nothing matches this filter.':'No projects in flight. Start one from a client room.'}</p>`;
+}
+function renderWait(h){
+  const w=h.waiting,bits=[];
+  if(w.approvals)bits.push(`<a class="chip us" href="/admin#approvals">${w.approvals} approval${w.approvals===1?'':'s'} waiting</a>`);
+  if(w.production)bits.push(`<a class="chip us" href="/admin#production">${w.production} production problem${w.production===1?'':'s'}</a>`);
+  $('#waitbar').innerHTML=bits.length?'<span class="sub">Also waiting:</span>'+bits.join(''):'';
+}
+$('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;FILTER=b.dataset.f;renderProjects()});
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{
+    const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;
+    $('#app').classList.remove('hidden');
+    $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet();
+    renderFunnel(o,h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
+  }catch(x){$('#needSignin').classList.remove('hidden')}
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>
