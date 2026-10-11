@@ -48,7 +48,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
 <body>
 <header>
   <a class="wordmark" href="/builds/admin" aria-label="Builds admin"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Builds admin</span></a>
-  <div style="display:flex;gap:8px"><a class="hbtn" href="/builds" target="_blank" rel="noopener">View as a visitor ↗</a><a class="hbtn" href="/">Work</a></div>
+  <div style="display:flex;gap:8px"><a class="hbtn" href="/builds" target="_blank" rel="noopener">View as a visitor ↗</a></div>
 </header>
 <main>
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
@@ -194,13 +194,16 @@ async function loadActivity(){
   const {events}=await api('/v1/admin/builds/activity');
   $('#actList').innerHTML=events.length?events.map(v=>`<tr><td>${fmt(v.created_at)}</td><td>${esc(v.email)}</td><td>${esc(v.build_name)}</td><td>${v.kind==='demo'?'Clicked through to the live site':'Opened the page'}</td></tr>`).join(''):'<tr><td colspan="4" class="note">Nobody has looked yet.</td></tr>';
 }
-$$('.tab').forEach(t=>t.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of ['builds','invites','updates','activity'])$('#t-'+k).classList.toggle('hidden',k!==t.dataset.t);if(t.dataset.t==='invites')loadInvites();if(t.dataset.t==='updates')loadUpdates();if(t.dataset.t==='activity')loadActivity()});
+$$('.tab').forEach(t=>t.onclick=()=>{if(location.hash.slice(1)!==t.dataset.t)history.replaceState(null,'','#'+t.dataset.t);$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of ['builds','invites','updates','activity'])$('#t-'+k).classList.toggle('hidden',k!==t.dataset.t);if(t.dataset.t==='invites')loadInvites();if(t.dataset.t==='updates')loadUpdates();if(t.dataset.t==='activity')loadActivity()});
 
 (async()=>{
   $('#where').textContent=location.hostname.startsWith('work.')?'builds.thefuturebasics.com':location.origin+'/builds';
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
-  try{await loadBuilds();$('#app').classList.remove('hidden')}catch(x){$('#needSignin').classList.remove('hidden')}
+  try{await loadBuilds();$('#app').classList.remove('hidden')}catch(x){$('#needSignin').classList.remove('hidden');return}
+  const fromHash=()=>{const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&!t.classList.contains('on'))t.click()};
+  fromHash();addEventListener('hashchange',fromHash);
 })();
 </script>
+<script src="/console-nav.js" defer></script>
 </body>
 </html>
