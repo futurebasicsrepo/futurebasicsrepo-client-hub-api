@@ -5,6 +5,8 @@ import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
 import { discover, orderRef, payableHandler, pickVariant, runUcpCheckout } from '../src/fulfill/ucp.js';
+import { linkedVariant, resolveShopifyCart } from '../src/fulfill/shopify.js';
+import { cartShippingCents } from '../src/direct.js';
 
 const cfg = { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 };
 const shipping = { name: 'Kyle Riggle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com', phone: '+15125550100' };
@@ -837,4 +839,38 @@ test('store quote: shipping rates that lag the address are asked for once more',
   assert.ok(q && !q.shipping_from, `priced from agent checkout on the second ask: ${JSON.stringify(q)}`);
   assert.ok(q.shipping_cents > 0);
   assert.ok(!store.log.some((r) => r.url === '/cart/add.js'), 'no need for the cart fallback');
+});
+
+test('a product link to one variant (?variant=) is that variant, unless the item asks for another', async () => {
+  const product = { title: 'Gingerdead Coffee', variants: [{ id: 11, title: 'Whole Bean / 12 oz', option1: 'Whole Bean', option2: '12 oz', available: true, price: 1399 }, { id: 12, title: 'Ground / 12 oz', option1: 'Ground', option2: '12 oz', available: true, price: 1399 }] };
+  const fetchImpl = async (u) => (String(u).endsWith('/products/gingerdead-coffee.js') ? new Response(JSON.stringify(product), { headers: { 'content-type': 'application/json' } }) : new Response('no', { status: 404 }));
+  const cart = (url, variant) => ({ merchant: { name: 'DW', url: 'https://dw.example' }, items: [{ title: 'Gingerdead Coffee', quantity: 1, price_cents: 1399, url, ...(variant ? { variant } : {}) }] });
+  const opts = { fetchImpl, allowPrivate: true };
+  assert.equal((await resolveShopifyCart(cart('https://dw.example/products/gingerdead-coffee?variant=12'), opts)).lines[0].variant_id, 12);
+  assert.equal((await resolveShopifyCart(cart('https://dw.example/products/gingerdead-coffee?variant=12', 'Whole Bean'), opts)).lines[0].variant_id, 11, 'the words win over a link to another variant');
+  assert.deepEqual((await resolveShopifyCart(cart('https://dw.example/products/gingerdead-coffee'), opts)).choose.values, ['Whole Bean', 'Ground'], 'no link, no words: still asks');
+  assert.equal(linkedVariant(product.variants, 'https://dw.example/products/x?variant=99'), null);
+});
+
+test('store cart shipping: follows the store to its main domain, and waits for rates that come in slowly', async () => {
+  const seen = [];
+  let polls = 0;
+  const fetchImpl = async (u, init = {}) => {
+    const url = new URL(String(u));
+    seen.push(`${init.method || 'GET'} ${url.host}${url.pathname}`);
+    if (url.host === 'dw.example') return new Response(null, { status: 301, headers: { location: 'https://www.dw.example/' } });
+    if (url.pathname === '/') return new Response('ok');
+    if (url.pathname === '/cart/add.js') return new Response('{}', { headers: { 'set-cookie': 'cart=abc; path=/' } });
+    if (url.pathname === '/cart/shipping_rates.json') return Response.json({ shipping_rates: [] });
+    if (url.pathname === '/cart/prepare_shipping_rates.json') return new Response(null, { status: 202 });
+    if (url.pathname === '/cart/async_shipping_rates.json') return ++polls < 2 ? new Response('null', { status: 202 }) : Response.json({ shipping_rates: [{ price: '20.55' }, { price: '15.01' }] });
+    if (url.pathname === '/cart/clear.js') return Response.json({});
+    return new Response('no', { status: 404 });
+  };
+  const lines = [{ item: { id: 'gid://shopify/ProductVariant/40064390660151' }, quantity: 1 }];
+  const cents = await cartShippingCents('https://dw.example', lines, { state: 'TX', postal_code: '78701' }, { fetchImpl, allowPrivate: true, waits: [1, 1, 1] });
+  assert.equal(cents, 1501);
+  assert.ok(seen.includes('POST www.dw.example/cart/add.js'), 'the cart is on the main domain');
+  assert.ok(seen.includes('POST www.dw.example/cart/clear.js'), 'and left empty');
+  assert.equal(polls, 2);
 });

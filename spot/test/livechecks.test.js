@@ -105,12 +105,13 @@ test('no financial account set on the service, and a key that can’t look it up
   assert.match(r.issuing.fix, /STRIPE_ISSUING_FINANCIAL_ACCOUNT.*Financial Accounts: Read/);
 });
 
-test('a funded account, all events, an approved campaign: all green; a store that can’t quote is broken', async () => {
+test('a funded account, all events, an approved campaign: all green; a store that can’t quote is worth a look', async () => {
   const live = createLiveChecks({ env, db: openDb(':memory:'), provider: fakeStripe({ faBalance: 20000 }), direct: { ...direct, quote: async () => null }, fetchImpl: fetchFake({ campaign: 'VERIFIED' }) });
   const r = byName(await live.run());
   for (const n of ['stripe', 'stripe_webhook', 'issuing', 'resend', 'twilio']) assert.equal(r[n].state, 'ok', `${n}: ${r[n].detail}`);
   assert.match(r.issuing.detail, /\$200\.00 available/);
-  assert.equal(r.ucp_quote.state, 'fail', 'no quote means carts would be charged an estimate');
+  assert.equal(r.ucp_quote.state, 'warn', 'no quote: orders still go ahead on a safe estimate');
+  assert.match(r.ucp_quote.detail, /charged only what the store takes/);
 });
 
 test('read-only permissions Spot itself doesn’t need never show as broken; the Shopify token is really fetched', async () => {

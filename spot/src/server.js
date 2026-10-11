@@ -142,7 +142,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // sandbox has no real stores, so everything is orderable there.
   spot.canOrder = (cart) => (provider.name === 'sandbox' ? true : fulfiller.canOrder(cart));
   // The store's real total (shipping, tax) before anyone pays (direct.js).
-  spot.quoter = (cart, ship) => spot.direct.quote(cart, ship);
+  // With the payer on the page, Shopify stores price it at Spot's agent-token tier (higher limits).
+  spot.quoter = (cart, ship, opts) => spot.direct.quote(cart, ship, opts);
   // Stores that can price their own checkout must, before a card is touched.
   spot.quotable = (cart) => (cart.merchant?.url ? spot.direct.supports(cart.merchant.url) : false);
   app.addHook('onClose', async () => fulfiller.close());
@@ -427,7 +428,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       paid_at: cart.paid_at || null,
       ordered: cart.fulfillment?.state === 'placed' ? { order_number: cart.fulfillment.order_number || null, at: cart.fulfillment.placed_at || null } : null,
       refunded_cents: cart.refunded_cents || 0,
-      refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
+      refunds: (cart.refunds || []).map(({ key, reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at, ...(key === 'unused_hold' ? { held: true } : {}) })),
       can_cancel: ['paid', 'card_issued'].includes(cart.status) && cart.kind !== 'flight' && !ordering,
       approvals: approvals.summary(cart.id),
       // The requester's thank-you, for the payer's eyes (this link is theirs).
@@ -668,7 +669,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   app.post('/v1/carts/:token/pay', async (req) => {
     limits.pay(req);
-    return spot.startPayment(req.params.token);
+    return spot.startPayment(req.params.token, { ip: req.ip });
   });
   // The pay page, right after Stripe.js confirms: don't wait on the webhook.
   app.post('/v1/carts/:token/paid', async (req) => {

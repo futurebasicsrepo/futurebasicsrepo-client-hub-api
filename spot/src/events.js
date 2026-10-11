@@ -259,6 +259,17 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       case 'refunded_part': {
         const email = cart.payer_contact?.email || (cart.for === 'self' ? requesterContact(cart).email : null);
         if (!email || !extra?.key) return [];
+        // The store charged less than was held: the rest was never charged at all.
+        if (extra.key === 'unused_hold') {
+          const charged = cart.total_cents - extra.amount_cents;
+          return [{
+            key: `refund_${extra.key}`,
+            to: { email },
+            subject: `Charged ${usd(charged)}, not ${usd(cart.total_cents)}`,
+            text: `${store} charged less than the most it could have come to, so your card is charged ${usd(charged)}. The other ${usd(extra.amount_cents)} of the hold was never charged and drops off your card, usually within a few days.`,
+            html: mail({ preheader: `Your card is charged ${usd(charged)}`, title: `Charged ${usd(charged)}, not ${usd(cart.total_cents)}`, lines: [`${esc(store)} charged less than the most it could have come to for <b>${esc(item)}</b>, so your card is charged ${usd(charged)}. The other ${usd(extra.amount_cents)} of the hold was never charged and drops off your card, usually within a few days.`] }),
+          }];
+        }
         const what = extra.reason === 'store_refund' ? `${store} refunded a return` : `${store} charged less than expected`;
         return [{
           key: `refund_${extra.key}`,

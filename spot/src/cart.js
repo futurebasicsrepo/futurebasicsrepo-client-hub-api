@@ -226,6 +226,21 @@ export function authLimitCents(cartCents) {
   return cartCents + cushionCents(cartCents);
 }
 
+// When a store won't price its own checkout, the most shipping and sales
+// tax are likely to come to: generous shipping (15% of the items, $15 to
+// $40) and the highest combined sales tax in the state it ships to. Only
+// what the store really charges is ever taken from the payer; the rest of
+// the hold is let go (see capture in spot.js).
+const NO_SALES_TAX = new Set(['DE', 'MT', 'NH', 'OR']);
+export const SAFE_TAX_BPS = 1100; // 11%: above every state's highest combined rate
+export const SAFE_TAX_BPS_AK = 800; // Alaska: local taxes only
+export function safeExtrasCents(subtotalCents, state) {
+  const shipping = Math.min(Math.max(Math.round(subtotalCents * 0.15), 1500), 4000);
+  const st = String(state || '').toUpperCase();
+  const bps = NO_SALES_TAX.has(st) ? 0 : st === 'AK' ? SAFE_TAX_BPS_AK : SAFE_TAX_BPS;
+  return shipping + Math.ceil(((subtotalCents + shipping) * bps) / 10000);
+}
+
 // What one order's card may spend: the cart and its cushion, plus anything
 // Spot chose to cover itself (staff only, capped), e.g. when the store's
 // shipping came in above the estimate. The payer never pays the covered part.

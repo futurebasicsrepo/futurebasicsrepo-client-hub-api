@@ -309,11 +309,13 @@ test('after the store charges: the card is canceled, unused money and returns go
   await hook(ret);
   await hook(ret);
   const refunds = provider.log.filter((x) => x[0] === 'refund');
-  assert.deepEqual(refunds, [['refund', `pi_${token}`, 27100 + 1355 - 27600, 'unused_iauth_ok'], ['refund', `pi_${token}`, 5000, 'return_ipi_ret']]);
+  // At the authorization ($278) the rest of the hold is let go; the $2 the store
+  // settled under that comes back once it closes.
+  assert.deepEqual(refunds, [['refund', `pi_${token}`, 27100 + 1355 - 27800, 'unused_hold'], ['refund', `pi_${token}`, 200, 'unused_iauth_ok'], ['refund', `pi_${token}`, 5000, 'return_ipi_ret']]);
   const m = await call('GET', `/v1/carts/${token}/manage?k=${a.manage_key}`);
   assert.equal(m.body.cart.status, 'completed');
   assert.equal(m.body.cart.refunded_cents, 855 + 5000);
-  assert.deepEqual(m.body.cart.refunds.map((r) => [r.reason, r.state]), [['unused', 'done'], ['store_refund', 'done']]);
+  assert.deepEqual(m.body.cart.refunds.map((r) => [r.reason, r.state]), [['unused', 'done'], ['unused', 'done'], ['store_refund', 'done']]);
   // A full return can't refund the fee through the partial path.
   await hook({ type: 'issuing_transaction.created', data: { object: { id: 'ipi_ret2', card, type: 'refund', amount: 999999 } } });
   const after = await call('GET', `/v1/carts/${token}/manage?k=${a.manage_key}`);

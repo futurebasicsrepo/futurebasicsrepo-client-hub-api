@@ -119,16 +119,19 @@ export function sandboxProvider() {
       this.activated.push(ref);
       this.limits.set(ref, cents);
     },
-    // A hold not yet captured is released (nothing was ever charged);
-    // anything else is refunded.
+    // A hold not yet captured is released (nothing was ever charged), or,
+    // for part of it, the rest is captured (as Stripe does); anything else
+    // is refunded.
     async refund(cart, amountCents, key) {
       if (!cart.payment_ref) return null;
       const ref = String(cart.payment_ref).split('#')[0];
-      const held = !this.captured.has(ref);
+      const held = !this.captured.has(ref) && !this.released.includes(ref);
       this.refunds.push({ cart: cart.id, amount_cents: amountCents ?? null, key: key || null, ...(held ? { released: true } : {}) });
       this.refunds.splice(0, this.refunds.length - 200);
-      if (held && !amountCents) this.released.push(ref);
-      return held && !amountCents ? 'released' : 'refunded';
+      if (!held) return this.released.includes(ref) ? 'released' : 'refunded';
+      if (amountCents) this.captured.add(ref);
+      else this.released.push(ref);
+      return 'released';
     },
   };
 }

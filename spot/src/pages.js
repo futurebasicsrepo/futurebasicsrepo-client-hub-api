@@ -355,7 +355,7 @@ function costs(cart) {
   const store = esc(cart.merchant.name);
   const card = cart.settle === 'card';
   const rows = [row(cart.items.length > 1 ? `${cart.items.length} items` : 'Item', cart.subtotal_cents)];
-  if (cart.extras_cents) rows.push(row('Shipping + tax', cart.extras_cents, cart.settle === 'direct' ? `${store} shows the exact amount` : cart.quote ? `from ${store}’s checkout` : `${store}’s estimate`));
+  if (cart.extras_cents) rows.push(row('Shipping + tax', cart.extras_cents, cart.settle === 'direct' ? `${store} shows the exact amount` : cart.quote ? `from ${store}’s checkout` : cart.estimate ? `the most it can be: you’re only charged what ${store} charges` : `${store}’s estimate`));
   if (card && cart.cushion_cents) rows.push(row('Room for price changes', cart.cushion_cents, 'unused comes back to you'));
   if (card && cart.fee_cents) {
     const keep = cart.fee_keep_cents;
@@ -447,7 +447,7 @@ ${cart.extras_cents ? `<div class="sum"><span>Shipping + tax (est.)</span><span>
   return `<details><summary>how this works</summary>
 <p>${card ? (cart.kind === 'flight' ? `You're buying this ticket from Spot, and Spot books it with ${esc(cart.merchant.name)}.` : `You're buying this from Spot as a gift for ${esc(cart.requester.name)}. Spot orders exactly these items from ${esc(cart.merchant.name)} and ships them to ${esc(cart.requester.name)}. Nobody gets cash or a card. Changed your mind? Cancel for a full refund until it's ordered, from the link in your receipt.`) : `This goes straight to ${esc(cart.requester.name)}. Spot never touches the money and charges nothing.`}</p>
 <div class="sum"><span>Items</span><span>${usd(cart.subtotal_cents)}</span></div>
-${cart.extras_cents ? `<div class="sum"><span>Shipping + tax${cart.quote ? '' : ' (est.)'}</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
+${cart.extras_cents ? `<div class="sum"><span>Shipping + tax${cart.quote ? '' : cart.estimate ? ' (at most)' : ' (est.)'}</span><span>${usd(cart.extras_cents)}</span></div>` : ''}
 ${cart.cushion_cents ? `<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to ${usd(cart.cushion_cents)}</span></div>` : ''}
 ${cart.fee_cents ? `<div class="sum"><span>Spot fee</span><span>${usd(cart.fee_cents)}</span></div>` : ''}
 <div class="sum"><b>Total</b><b>${usd(card ? cart.total_cents : cart.cart_cents)}</b></div></details>`;
@@ -471,6 +471,8 @@ function payScript(cart, provider, base = '/v1/carts/') {
   }
   return `(async()=>{try{
   const T=${json(cart.token)},B=${json(base)};const c=await api(B+T+'/pay',{});
+  // The store just priced it: show that total (a couple of tries at most).
+  if(c.total_cents&&c.total_cents!==${json(cart.total_cents)}){try{const n=Number(sessionStorage.getItem('spot:re:'+T))||0;if(n<2){sessionStorage.setItem('spot:re:'+T,String(n+1));location.reload();return}}catch{}}
   const stripe=Stripe(c.publishable_key);
   const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
   const settle=async(payer)=>{$('#payErr').textContent='';
@@ -697,7 +699,7 @@ async function draw(){
   }
   if(c.status==='completed'&&!fl&&c.settle==='handoff'){h+='<section class="card"><h2>🎉 All done</h2><p class="muted" style="margin:0">Marked as received.</p></section>'}
   if(c.status==='refunded'&&!fl)h+='<section class="card"><h2>'+(c.released?'Not charged':'Refunded')+'</h2><p class="muted" style="margin:0">'+({payer_canceled:esc(c.payer_name||'The payer')+' canceled before it was ordered.',requester_canceled:'You canceled before it was ordered.',not_ordered:'Spot couldn’t order it in time.',store_reversed:esc(c.merchant.name)+' canceled the charge.',store_released:esc(c.merchant.name)+' didn’t charge for it.',store_never_charged:esc(c.merchant.name)+' never charged for it.',risk:'This payment didn’t pass our checks.'}[c.refund_reason]||'This one was refunded.')+' '+(c.for==='self'?'You were':esc(c.payer_name||'The payer')+' was')+(c.released?' never charged: the '+usd(c.total_cents)+' hold is released.':' refunded '+usd(c.total_cents)+'.')+'</p></section>';
-  if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
+  if(c.refunds&&c.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+c.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':x.held?'Held, never charged':'Unused, sent back')+(x.state==='failed'?' (retrying)':'')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
   if(c.settle==='handoff'&&c.items[0]&&c.items[0].url&&c.status!=='canceled'&&c.status!=='expired')h+='<a class="btn ghost" href="/c/'+TOKEN+'/buy/0'+(K?'?k='+encodeURIComponent(K):'')+'" target="_blank" rel="noopener">Buy it at '+esc(c.merchant.name)+' →</a><p class="small muted" style="text-align:center;margin:6px 0 0">Spot may earn a commission from '+esc(c.merchant.name)+'. Your price is the same.</p>';
   if(c.status==='open'&&c.settle==='handoff')h+='<button class="btn" id="got">I got the money</button>';
   if(c.status==='open')h+='<button class="btn ghost" id="cancel">Cancel this link</button>';
@@ -762,7 +764,7 @@ async function draw(){
     +(r.thanks?'<section class="card thx" id="thx"><h2>💌 '+esc(String(r.thanks.from||'').trim().split(/\\s+/)[0]||'They')+' says thanks</h2><div class="thx-quote">'+(r.thanks.emoji?'<span class="thx-e">'+esc(r.thanks.emoji)+'</span>':'')+'<span>'+esc(r.thanks.message)+'</span></div><p class="thx-from">'+new Date(r.thanks.at).toLocaleDateString('en-US',{month:'short',day:'numeric'})+' · for '+esc(c.items[0]?.title||'your gift')+'</p></section>':'')
     +(c.built_by||r.approvals.length?'<section class="card"><h2>Who did what</h2>'+(c.built_by?'<p class="small" style="margin-top:0">🤖 Put together by <b>'+esc(c.built_by)+'</b> for '+esc(c.requester.name)+'</p>':'')+r.approvals.map(a=>'<p class="small">✅ Approved by '+(a.approved_by==='requester'?esc(c.requester.name):'you')+' · '+new Date(a.at).toLocaleString()+' · <a href="'+esc(a.url)+'">signed approval</a></p>').join('')+'</section>':'');
   if(c.status==='refunded')h+='<section class="card"><h2>Refunded</h2><p class="muted" style="margin:0">'+(WHY[c.refund_reason]||'')+' '+usd(c.total_cents)+' went back to your card. It usually shows in 5–10 business days.</p></section>';
-  if(r.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+r.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':'Unused, sent back')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
+  if(r.refunds.length)h+='<section class="card"><h2>Money sent back</h2>'+r.refunds.map(x=>'<div class="sum"><span>'+(x.reason==='store_refund'?'Return refunded':x.held?'Held, never charged':'Unused, sent back')+'</span><span>'+usd(x.amount_cents)+'</span></div>').join('')+'</section>';
   if(r.can_cancel)h+='<button class="btn ghost" id="cancel">Cancel and get a full refund</button><p class="small muted">Until Spot places the order. The Spot fee is refunded too.</p>';
   $('#app').innerHTML=h;
   const b=$('#cancel');if(b)b.onclick=async()=>{if(!confirm('Cancel this and refund '+usd(c.total_cents)+' to your card?'))return;b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/receipt/cancel',{p:P})}catch(e){alert(e.message)}draw()};
