@@ -53,7 +53,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
 
   app.get('/admin', async (req, reply) => {
     if (!enabled) return reply.code(404).type('text/plain').send('Not found');
-    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req), domain, hasToken: Boolean(token) }));
+    return reply.type('text/html').header('cache-control', 'no-store').send(adminPage({ origin: urlFor(req, ''), signedIn: authed(req), domain, hasToken: Boolean(token), google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) }));
   });
 
   app.post('/admin/login', async (req, reply) => {
@@ -295,12 +295,12 @@ form.inline input,form.inline select{font:inherit;font-size:16px;padding:9px 12p
 .login input{width:100%;font:inherit;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);margin:14px 0}
 `;
 
-function adminPage({ origin, signedIn, domain, hasToken = true }) {
+function adminPage({ origin, signedIn, domain, hasToken = true, google = false }) {
   const head = siteHead({ title: 'Spot admin', desc: 'Spot operator view', origin, path: '/admin', extraCss: CSS }).replace('<head>', '<head><meta name="robots" content="noindex">');
   if (!signedIn) {
     return `${head}
 <main class="wrap"><form class="login" id="login"><h1 style="font-size:32px">Spot admin</h1>
-${domain ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/signin?next=/admin">Sign in with your @${esc(domain)} email</a><p class="muted" style="margin:8px 0 0;font-size:14px">Use a sign-in code or Google. Already signed in? Sign out and back in once with your company email.</p>` : ''}
+${domain && google ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/auth/google/start?hd=${encodeURIComponent(domain)}&next=/admin">Sign in with Google (@${esc(domain)})</a><p class="muted" style="margin:8px 0 0;font-size:14px">Your company Google account. <a href="/signin?next=/admin">Use an email code instead</a>.</p>` : domain ? `<a class="ab go" style="display:block;text-align:center;text-decoration:none;margin-top:14px" href="/signin?next=/admin">Sign in with your @${esc(domain)} email</a><p class="muted" style="margin:8px 0 0;font-size:14px">Use a sign-in code or Google. Already signed in? Sign out and back in once with your company email.</p>` : ''}
 ${hasToken ? `<p class="muted" style="margin:${domain ? '18px' : '6px'} 0 0">${domain ? 'Or paste' : 'Paste'} the admin token from Railway (SPOT_ADMIN_TOKEN).</p>
 <input type="password" name="token" id="token" autocomplete="current-password" required aria-label="Admin token"><button class="ab go" style="width:100%">Sign in</button>` : ''}<p class="err" id="err"></p></form></main>
 <script>(()=>{${SITE_JS}
