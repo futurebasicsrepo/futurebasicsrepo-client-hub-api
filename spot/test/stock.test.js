@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
-import { captureFromText, parseProductHtml, stockFrom, stockOf } from '../src/capture.js';
+import { captureFromText, draftFromDescription, pageDetails, parseProductHtml, readJson, salvage, stockFrom, stockOf } from '../src/capture.js';
 
 const ld = (data) => `<html><head><script type="application/ld+json">${JSON.stringify(data)}</script></head></html>`;
 const SO = 'https://schema.org/';
@@ -99,8 +99,8 @@ test('a follow-up says what to change and skips what was already shown', async (
   const d = await captureFromText('Toddler Eagles Tee from Eagles Shop https://shop.example/p1', { client, fromUrl, product: noShopify, more: 'in green, under $30', avoid: ['https://shop.example/p1', 'javascript:alert(1)'] });
   assert.equal(d.items[0].title, 'Tee 4');
   const prompt = calls[0].messages[0].content;
-  assert.match(prompt, /They saw what you found last time and said: "in green, under \$30"/);
-  assert.match(prompt, /Don't suggest any of these again: https:\/\/shop\.example\/p1/);
+  assert.match(prompt, /They saw what you found and said: "in green, under \$30"/);
+  assert.match(prompt, /don't suggest them again: https:\/\/shop\.example\/p1/);
   assert.doesNotMatch(prompt, /javascript:/);
   assert.deepEqual(fetched, ['https://shop.example/p4'], 'the store page is read once, for stock and photo');
 });
@@ -136,7 +136,7 @@ test('several picks across stores: sold-out ones dropped, the recommendation fir
   const { client, calls } = model([{ products: [pick(1, 'eagles'), pick(2, 'fanatics'), pick(3, 'nike'), pick(4, 'target'), { found: false }] }]);
   const d = await captureFromText('toddler eagles shirt', { client, fromUrl: stockAt(['https://fanatics.example/p2']), product: noShopify });
   assert.equal(calls.length, 1);
-  assert.match(calls[0].messages[0].content, /up to 6 products/);
+  assert.match(calls[0].messages[0].content, /up to 12 products/);
   assert.deepEqual(d.options.map((o) => o.item.title), ['Tee 1', 'Tee 3', 'Tee 4'], 'sold out at Fanatics: not shown');
   assert.deepEqual(d.options.map((o) => o.merchant.name), ['eagles', 'nike', 'target']);
   assert.equal(d.options[0].why, 'reason 1');
@@ -157,6 +157,86 @@ test('the composer page has the picks shelf and its follow-up box', async (t) =>
   const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg: { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 }, logger: false, env: { SPOT_AGENT: 'off' } });
   t.after(() => a.close());
   const html = (await a.inject({ method: 'GET', url: '/new' })).body;
-  for (const id of ['picks', 'thread', 'askMore', 'more2', 'backPicks']) assert.match(html, new RegExp(`id="${id}"`), id);
+  for (const id of ['picks', 'thread', 'askMore', 'more2', 'backPicks', 'nameSheet', 'sheetName']) assert.match(html, new RegExp(`id="${id}"`), id);
   assert.match(html, /data-face="[^"]*\/assets\/spot-face\.webp\?v=/);
+});
+
+test('outfits: whole looks for an occasion, sold-out pieces dropped, thin looks dropped', async () => {
+  const piece = (n, store, extra = {}) => ({ merchant_name: store, merchant_url: `https://${store}.example`, product_url: `https://${store}.example/p${n}`, title: `Piece ${n}`, unit_price: `$${n}0.00`, ...extra });
+  const { client, calls } = model([{ kind: 'outfits', outfits: [
+    { name: 'Desert boho', why: 'Breezy for the heat', items: [piece(1, 'free'), piece(2, 'levis'), piece(3, 'steve'), piece(4, 'fossil')] },
+    { name: 'Neon night', why: 'For the late sets', items: [piece(5, 'urban'), piece(6, 'urban')] },
+  ] }]);
+  const d = await captureFromText('outfits for coachella', { client, fromUrl: stockAt(['https://levis.example/p2', 'https://urban.example/p6']), product: noShopify });
+  assert.match(calls[0].messages[0].content, /up to 4 outfits/);
+  assert.match(calls[0].messages[0].content, /an occasion or place \("for Coachella"/);
+  assert.equal(d.kind, 'outfits');
+  assert.deepEqual(d.outfits.map((o) => o.name), ['Desert boho'], 'a look left with one piece is dropped');
+  assert.deepEqual(d.outfits[0].items.map((o) => o.item.title), ['Piece 1', 'Piece 3', 'Piece 4'], 'the sold-out jeans are gone');
+  assert.deepEqual(d.outfits[0].items.map((o) => o.merchant.name), ['free', 'steve', 'fossil']);
+  assert.equal(d.items[0].title, 'Piece 1', 'the draft is the first piece');
+});
+
+test('an answer that isn\'t clean JSON is still read; a budget is never a price', async () => {
+  assert.deepEqual(readJson('Sure! ```json\n{"products": [{"title": "a",}],}\n```'), { products: [{ title: 'a' }] });
+  // Cut off mid-list: the whole products are kept.
+  const cut = '{"products": [{"title": "Hoodie A", "product_url": "https://a.example/h", "unit_price": "$40"}, {"title": "Hoodie B", "product_url": "https://b.example/h", "unit_pr';
+  assert.deepEqual(salvage(cut).map((p) => p.title), ['Hoodie A']);
+  const { client } = model([]);
+  client.beta.messages.create = async () => ({ stop_reason: 'max_tokens', content: [{ type: 'text', text: cut }] });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const d = await captureFromText('black hoodie under $50', { client, fromUrl: stockAt([]), product: noShopify });
+    assert.deepEqual(d.options.map((o) => o.item.title), ['Hoodie A']);
+  } finally {
+    console.error = quiet;
+  }
+  const typed = draftFromDescription('black hoodie under $50');
+  assert.equal(typed.items[0].price_cents, null, 'under $50 is a budget');
+  assert.equal(typed.items[0].title, 'black hoodie under $50');
+  assert.equal(draftFromDescription('black hoodie $50').items[0].price_cents, 5000);
+});
+
+test('nothing found: it says so instead of pretending what they typed is the item', async () => {
+  const { client } = model([{ products: [] }]);
+  const d = await captureFromText('black hoodie under $50', { client, fromUrl: stockAt([]), product: noShopify });
+  assert.match(d.warning, /couldn’t find that one/);
+  assert.equal(d.items[0].price_cents, null);
+});
+
+test('a photo the search saw is used when the store won\'t let Spot read its page', async () => {
+  const { client } = model([{ products: [{ merchant_name: 'Nike', merchant_url: 'https://nike.example', product_url: 'https://nike.example/p1', title: 'Hoodie', unit_price: '$45', image_url: 'https://static.nike.example/h.jpg' }, { merchant_name: 'Gap', merchant_url: 'https://gap.example', product_url: 'https://gap.example/p2', title: 'Hoodie 2', unit_price: '$40', image_url: 'javascript:alert(1)' }] }]);
+  const d = await captureFromText('black hoodie', { client, fromUrl: async () => { throw new Error('403'); }, product: noShopify });
+  assert.equal(d.options[0].item.image_url, 'https://static.nike.example/h.jpg');
+  assert.equal(d.options[0].stock, 'unknown');
+  assert.equal(d.options[1].item.image_url, null, 'only https photos');
+});
+
+test('page details: the model reads blocked pages for photo, stock and price', async () => {
+  const calls = [];
+  const client = { beta: { messages: { create: async (req) => (calls.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ pages: [
+    { url: 'https://nike.example/p1', image_url: 'https://static.nike.example/p1.jpg', in_stock: true, unit_price: '$45.00' },
+    { url: 'https://dicks.example/p2', image_url: '', in_stock: false, unit_price: '' },
+    { url: 'https://evil.example/not-asked', image_url: 'https://x/y.jpg', in_stock: true },
+  ] }) }] }) } } };
+  const r = await pageDetails(['https://nike.example/p1', 'https://dicks.example/p2', 'nope'], { client });
+  assert.equal(calls[0].tools[0].type, 'web_fetch_20260209');
+  assert.match(calls[0].messages[0].content, /1\. https:\/\/nike\.example\/p1\n2\. https:\/\/dicks\.example\/p2/);
+  assert.deepEqual(r.pages, [
+    { url: 'https://nike.example/p1', image_url: 'https://static.nike.example/p1.jpg', stock: 'in', price_cents: 4500 },
+    { url: 'https://dicks.example/p2', image_url: null, stock: 'out', price_cents: null },
+  ], 'only the pages asked about');
+});
+
+test('the shelf asks for photos and stock of pages Spot couldn\'t read', async (t) => {
+  const seen = [];
+  const details = async (urls) => (seen.push(urls), { pages: [{ url: urls[0], image_url: 'https://cdn.example/a.jpg', stock: 'in', price_cents: null }] });
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg: { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 }, logger: false, env: { SPOT_AGENT: 'off' }, capture: { details } });
+  t.after(() => a.close());
+  const r = await a.inject({ method: 'POST', url: '/v1/capture/details', payload: { urls: ['https://nike.example/p1', 42, ...Array.from({ length: 12 }, (_, i) => `https://x.example/${i}`)] } });
+  assert.equal(r.statusCode, 200);
+  assert.equal(seen[0].length, 8, 'eight at a time, strings only');
+  assert.equal(seen[0][0], 'https://nike.example/p1');
+  assert.equal(r.json().pages[0].image_url, 'https://cdn.example/a.jpg');
 });

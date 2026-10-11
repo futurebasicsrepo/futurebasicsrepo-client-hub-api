@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
-import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
+import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, pageDetails } from './capture.js';
 import { openDb } from './db.js';
 import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
@@ -504,6 +504,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return captureShot({ data: String(b.image.data), media_type: String(b.image.media_type || '') });
     }
     throw new CartError('Send a url or an image');
+  });
+
+  // Photos, stock and prices for product pages Spot's own reader was turned
+  // away from (the shelf asks after it shows the picks).
+  app.post('/v1/capture/details', async (req) => {
+    limits.capture(req);
+    const urls = Array.isArray(req.body?.urls) ? req.body.urls.filter((u) => typeof u === 'string').slice(0, 8) : [];
+    return capture.details ? capture.details(urls) : pageDetails(urls, aiHooks);
   });
 
   // ─── Carts ────────────────────────────────────────────────────────────────
