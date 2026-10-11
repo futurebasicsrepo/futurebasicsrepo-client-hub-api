@@ -25,6 +25,7 @@
       { label: 'Opportunities', href: '/sales#opportunities', badge: '#oppCount' },
       { label: 'Intelligence', href: '/intel' },
       { label: 'Chats', href: '/sales#chats', badge: '#chatCount' },
+      { label: 'Press', href: '/sales#press' },
       { label: 'Automations', href: '/sales#automations' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
       { label: 'Factories', href: '/admin#partnersSection' },

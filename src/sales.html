@@ -68,6 +68,8 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 .sw input:checked+i{background:var(--ok)}.sw input:checked+i:after{transform:translateX(18px)}.sw input:focus-visible+i{outline:2px solid var(--ink);outline-offset:2px}
 .asteps{list-style:none;margin:14px 0 10px;padding:0;display:grid;gap:0}.asteps li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;padding:7px 0;border-top:1px solid var(--line);align-items:baseline}.asteps li:first-child{border-top:0}
 .asteps li b{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}.asteps li.k-email b{color:var(--ok)}.asteps li.k-task b{color:#8a5a00}.asteps li span{overflow-wrap:anywhere}
+.pcard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:start}.pcard h2{margin:0 0 2px}.pcard .pbody{white-space:pre-wrap;color:var(--dim);font-size:13px;max-height:4.6em;overflow:hidden;margin:6px 0 0}.chip.draft{background:#f0f0ee;color:var(--dim)}.chip.ready{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}
+.prev{border:1px solid var(--line);border-radius:14px;background:var(--fog);padding:12px;margin:10px 0;font-size:13px}.prev pre{white-space:pre-wrap;margin:6px 0 0;font:inherit}.res{margin:8px 0;padding:0;list-style:none}.res li{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}.res .sent{color:var(--ok)}.res .failed{color:var(--bad)}
 .arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.astats{margin-top:6px}
 .abar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:14px}.abar .grow{flex:1;min-width:220px}
 .astep{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--fog);margin-bottom:8px}.astep .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.astep .row input.t,.astep .row select.t{width:auto;min-width:0}.astep .row input.num{width:76px}.astep .row input.long{flex:1;min-width:200px}.astep .mv{display:flex;gap:4px;align-items:flex-start}.astep .mv button{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer}
@@ -97,7 +99,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
     <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="press">Press</button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
 
     <section id="t-today"></section>
 
@@ -123,6 +125,9 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
       </div>
     </section>
 
+    <section id="t-press" class="hidden">
+      <div class="abar"><div class="views" id="pressViews" style="margin:0" role="tablist"><button type="button" class="fchip on" data-pv="items">Releases and pitches</button><button type="button" class="fchip" data-pv="media">Media list</button><button type="button" class="fchip" data-pv="coverage">Coverage</button></div><p class="note" id="pressNote" style="margin:0"></p></div>
+      <div id="pressBody"></div>
     <section id="t-opportunities" class="hidden">
       <div class="abar"><p class="note grow" id="oppNote" style="margin:0">Who to talk to next, and why. Each person appears once, under their strongest reason.</p></div>
       <div class="views" id="oppTypes" aria-label="Kinds of opportunity"></div>
@@ -231,6 +236,31 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <label class="f"><span class="mono">Most assistant answers a day</span><input class="t" id="cfCap" type="number" min="0" max="5000"></label>
   <div><span class="mono" style="color:var(--dim)">Add chat to thefuturebasics.com</span><p class="sub" style="margin:6px 0">Paste this before the closing body tag of the theme (theme.liquid):</p><textarea class="t" id="cfEmbed" readonly rows="2"></textarea></div>
   <p class="msg" id="cfMsg" role="status"></p><div style="display:flex;justify-content:flex-end"><button class="btn go" id="cfSave" type="button">Save</button></div>
+</div></dialog>
+
+<dialog id="prdlg"><form class="dbody" id="prform" autocomplete="off">
+  <div class="dh"><h2 id="prTitle">Release or pitch</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <div class="fields"><label class="f"><span class="mono">Title (only you see it)</span><input class="t" id="prName" maxlength="120" required></label><label class="f"><span class="mono">Kind</span><select class="t" id="prKind"><option value="pitch">Pitch (one person at a time)</option><option value="release">Press release</option><option value="announcement">Announcement</option></select></label></div>
+  <div class="fields"><label class="f"><span class="mono">About which build</span><select class="t" id="prBuild"><option value="">None</option></select></label><label class="f"><span class="mono">Who it is for</span><input class="t" id="prAud" maxlength="200" placeholder="Retail and commerce reporters"></label></div>
+  <div class="fields"><label class="f wide"><span class="mono">The angle (for the assistant)</span><textarea class="t" id="prAngle" style="min-height:60px" placeholder="Why now? What is new or surprising about it?"></textarea></label></div>
+  <div><button class="btn sm" id="prDraft" type="button">Draft it with the assistant</button> <span class="msg" id="prDraftMsg" role="status"></span><p class="sub" style="margin:6px 0 0">It writes only from the build&rsquo;s details and leaves [BRACKETS] where it was not told a quote, date or contact. Nothing is sent until those are filled in and you mark it ready.</p></div>
+  <label class="f"><span class="mono">Subject</span><input class="t" id="prSubject" maxlength="200"></label>
+  <label class="f"><span class="mono">Message</span><textarea class="t" id="prBody" style="min-height:240px"></textarea></label>
+  <p class="sub">Blanks for a pitch: <code>{{first_name|there}}</code> <code>{{name}}</code> <code>{{company|your outlet}}</code> (their outlet) <code>{{sender}}</code>. Use a fallback after <code>|</code>, or a person without that detail will not be sent it.</p>
+  <label class="f"><span class="mono">Status</span><select class="t" id="prStatus"><option value="draft">Draft (never sent)</option><option value="ready">Ready to send</option></select></label>
+  <p class="msg" id="prMsg" role="status"></p>
+  <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn go" type="submit">Save</button></div>
+</form></dialog>
+
+<dialog id="ppdlg"><div class="dbody">
+  <div class="dh"><h2 id="ppTitle">Send</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <p class="note" id="ppInfo"></p>
+  <div class="scroll" style="max-height:280px;overflow:auto"><table><thead><tr><th class="pick"></th><th>Who</th><th>Outlet</th><th>Covers</th><th></th></tr></thead><tbody id="ppRows"></tbody></table></div>
+  <div class="toolbar"><select class="t grow" id="ppWho" aria-label="Preview for"></select><button class="btn sm" id="ppPrev" type="button">Preview it for them</button></div>
+  <div id="ppPreview"></div>
+  <label class="check"><input type="checkbox" id="ppConfirm"><span><b>I have checked these people cover this and would want to hear about it.</b><span class="sub" style="display:block">Each one is sent as a one-to-one email with our address and an unsubscribe link. Anyone who unsubscribed, bounced or is marked not to be emailed is skipped, and so is anyone already sent this.</span></span></label>
+  <p class="msg" id="ppMsg" role="status"></p><div id="ppResults"></div>
+  <div style="display:flex;justify-content:flex-end"><button class="btn go" id="ppSend" type="button" disabled>Send</button></div>
 </div></dialog>
 
 <dialog id="ddlg"><form class="dbody" id="dform" autocomplete="off">
@@ -573,7 +603,78 @@ $('#chatFilter').onchange=()=>loadChats().catch(x=>alert(x.message));
 $('#chatSettings').onclick=async()=>{const {settings:s,assistantReady}=await api('/v1/sales/chats/settings');$('#cfOn').checked=s.enabled;$('#cfBot').checked=s.assistantOn;$('#cfGreet').value=s.greeting;$('#cfAbout').value=s.about;$('#cfCap').value=s.dailyBotCap;$('#cfEmbed').value=`<script src="${location.protocol}//${location.host.replace(/^work\./,'hub.')}/chat-widget.js" defer><\/script>`;$('#cfBotNote').textContent=assistantReady?'It answers from what Future Basics does and the builds the visitor may see, and hands to a person for price, timelines, anything it is unsure of, or when asked.':'The assistant is not connected yet (the service needs ANTHROPIC_API_KEY). Until then every chat goes straight to a person.';$('#cfMsg').textContent='';$('#cfdlg').showModal()};
 $('#cfSave').onclick=async()=>{const m=$('#cfMsg');m.className='msg';try{await api('/v1/sales/chats/settings',{method:'PUT',body:{enabled:$('#cfOn').checked,assistantOn:$('#cfBot').checked,greeting:$('#cfGreet').value,about:$('#cfAbout').value,dailyBotCap:$('#cfCap').value}});$('#cfdlg').close()}catch(x){m.className='msg bad';m.textContent=x.message}};
 async function loadChatBadge(){try{const {waiting}=await api('/v1/sales/chats?status=waiting');$('#chatCount').innerHTML=waiting?`<span class="chip late">${waiting}</span>`:''}catch{}}
-const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations,chats:loadChats,opportunities:loadOpportunities};
+// ---------- press ----------
+let PRESS=null,PV='items',PEDIT=null,PITCH=null,MEDIA=[];
+const PKIND={release:'Press release',pitch:'Pitch',announcement:'Announcement'};
+async function loadPress(){
+  PRESS=await api('/v1/sales/press');
+  $('#pressNote').textContent=`${PRESS.sentToday} pitch${PRESS.sentToday===1?'':'es'} sent today of ${PRESS.dailyCap} allowed. One person at a time, only to people tagged press.`;
+  $$('#pressViews [data-pv]').forEach(b=>b.classList.toggle('on',b.dataset.pv===PV));
+  const box=$('#pressBody');
+  if(PV==='items'){
+    box.innerHTML=`<div class="arow" style="margin:0 0 12px"><button class="btn go sm" id="prNew">+ New release or pitch</button><button class="btn sm" id="prLimit">Daily limit</button></div>`+(PRESS.items.length?PRESS.items.map(i=>`<div class="panel pcard" data-pid="${esc(i.id)}"><div><h2>${esc(i.title)}</h2><div class="sub"><span class="chip ${esc(i.status)}">${i.status==='ready'?'ready':'draft'}</span> ${esc(PKIND[i.kind]||i.kind)}${i.buildName?` · ${esc(i.buildName)}`:''} · sent to ${i.sent} · ${i.coverage} piece${i.coverage===1?'':'s'} of coverage</div><div class="sub"><b>${esc(i.subject||'(no subject yet)')}</b></div><p class="pbody">${esc(i.body)}</p></div><div class="arow" style="margin:0"><button class="btn sm" data-pedit>Edit</button>${i.kind==='pitch'?`<button class="btn sm" data-psend ${i.status==='ready'?'':'disabled title="Mark it ready first"'}>Send to people…</button>`:''}</div></div>`).join(''):'<div class="panel"><p class="note">Nothing yet. Start a pitch, a press release or an announcement.</p></div>');
+    $('#prNew').onclick=()=>openPressEditor(null);
+    $('#prLimit').onclick=async()=>{const v=prompt('How many pitches may go out in a day? (1 to 100)',PRESS.dailyCap);if(v===null)return;try{await api('/v1/sales/press/settings',{method:'PUT',body:{dailyCap:v}});loadPress()}catch(x){alert(x.message)}};
+  }else if(PV==='media'){
+    MEDIA=(await api('/v1/sales/press/media')).media;
+    box.innerHTML=`<p class="note">The media list is everyone tagged <b>press</b> in Contacts. Add a tag like <b>beat-retail</b> to note what they cover.</p><div class="panel scroll"><table><thead><tr><th>Who</th><th>Outlet</th><th>Covers</th><th>Pitched</th><th></th></tr></thead><tbody>${MEDIA.length?MEDIA.map(m=>`<tr data-mid="${esc(m.id)}"><td><b>${esc(m.name||m.email)}</b><div class="sub">${esc(m.email)}</div></td><td>${esc(m.outlet)}</td><td>${esc(m.beats.join(', '))}</td><td>${m.pitched}${m.lastPitched?` · ${esc(ago(m.lastPitched))}`:''}</td><td>${m.canEmail?'':`<span class="chip none">${esc(m.blocked)}</span>`}</td></tr>`).join(''):'<tr><td colspan="5" class="note">Nobody is tagged press yet.</td></tr>'}</tbody></table></div>`;
+  }else{
+    const {coverage}=await api('/v1/sales/press/coverage');
+    box.innerHTML=`<div class="arow" style="margin:0 0 12px"><button class="btn go sm" id="cvNew">+ Log coverage</button></div><div class="panel scroll"><table><thead><tr><th>Outlet</th><th>Piece</th><th>From</th><th>Date</th><th></th></tr></thead><tbody>${coverage.length?coverage.map(c=>`<tr data-cid="${esc(c.id)}"><td><b>${esc(c.outlet)}</b></td><td>${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.title||c.url)}</a>`:esc(c.title)}</td><td>${esc(c.item_title||'')}${c.contact_name?` · ${esc(c.contact_name)}`:''}</td><td>${c.published_on?esc(String(c.published_on).slice(0,10)):''}</td><td><button class="btn danger sm" data-cdel>Remove</button></td></tr>`).join(''):'<tr><td colspan="5" class="note">No coverage logged yet.</td></tr>'}</tbody></table></div>`;
+    $('#cvNew').onclick=async()=>{const outlet=prompt('Which outlet ran it?');if(!outlet)return;const url=prompt('Link to the piece (https://…)','')||'';const title=prompt('Its headline','')||'';const day=prompt('Date (2026-10-14)','')||'';try{await api('/v1/sales/press/coverage',{body:{outlet,url,title,publishedOn:day}});loadPress()}catch(x){alert(x.message)}};
+  }
+}
+$('#pressViews').onclick=e=>{const b=e.target.closest('[data-pv]');if(!b)return;PV=b.dataset.pv;loadPress().catch(x=>alert(x.message))};
+$('#pressBody').onclick=async e=>{
+  const card=e.target.closest('[data-pid]'),item=card&&PRESS.items.find(i=>i.id===card.dataset.pid);
+  if(e.target.closest('[data-pedit]'))return openPressEditor(item);
+  if(e.target.closest('[data-psend]'))return openPitch(item);
+  const row=e.target.closest('[data-cid]');
+  if(row&&e.target.closest('[data-cdel]')&&confirm('Remove this coverage?')){try{await api('/v1/sales/press/coverage/'+row.dataset.cid,{method:'DELETE'});loadPress()}catch(x){alert(x.message)}}
+};
+async function openPressEditor(item){
+  PEDIT=item;const m=$('#prMsg');m.textContent='';m.className='msg';$('#prDraftMsg').textContent='';
+  $('#prTitle').textContent=item?'Edit':'New release or pitch';
+  if(!$('#prBuild').dataset.loaded){try{const {builds}=await api('/v1/admin/builds');$('#prBuild').innerHTML='<option value="">None</option>'+(builds||[]).map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');$('#prBuild').dataset.loaded='1'}catch{}}
+  $('#prName').value=item?.title||'';$('#prKind').value=item?.kind||'pitch';$('#prBuild').value=item?.buildId||'';$('#prAud').value=item?.audience||'';$('#prAngle').value='';
+  $('#prSubject').value=item?.subject||'';$('#prBody').value=item?.body||'';$('#prStatus').value=item?.status||'draft';
+  $('#prDraft').disabled=!PRESS.assistantReady;$('#prDraft').title=PRESS.assistantReady?'':'The assistant is not connected yet';
+  $('#prdlg').showModal();
+}
+$('#prDraft').onclick=async()=>{
+  const m=$('#prDraftMsg');m.className='msg';m.textContent='Writing…';$('#prDraft').disabled=true;
+  try{const d=await api('/v1/sales/press/draft',{body:{kind:$('#prKind').value,buildId:$('#prBuild').value||undefined,angle:$('#prAngle').value,audience:$('#prAud').value}});$('#prSubject').value=d.subject;$('#prBody').value=d.body;$('#prStatus').value='draft';m.className='msg ok';m.textContent='Drafted. Read it, fill in every [BRACKET], then mark it ready.'}
+  catch(x){m.className='msg bad';m.textContent=x.message}finally{$('#prDraft').disabled=!PRESS.assistantReady}
+};
+$('#prform').onsubmit=async e=>{
+  e.preventDefault();const m=$('#prMsg');m.className='msg';m.textContent='';
+  const body={title:$('#prName').value,kind:$('#prKind').value,buildId:$('#prBuild').value||undefined,audience:$('#prAud').value,subject:$('#prSubject').value,body:$('#prBody').value,status:$('#prStatus').value};
+  try{await api(PEDIT?'/v1/sales/press/items/'+PEDIT.id:'/v1/sales/press/items',{method:PEDIT?'PUT':'POST',body});$('#prdlg').close();loadPress()}catch(x){m.className='msg bad';m.textContent=x.message}
+};
+async function openPitch(item){
+  PITCH=item;MEDIA=(await api('/v1/sales/press/media')).media;
+  $('#ppTitle').textContent='Send: '+item.title;$('#ppInfo').textContent=`${PRESS.remainingToday} pitch${PRESS.remainingToday===1?'':'es'} left today, at most ${PRESS.batch} at a time. Each goes out as its own email.`;
+  $('#ppRows').innerHTML=MEDIA.length?MEDIA.map(m=>`<tr><td class="pick"><input type="checkbox" data-pick="${esc(m.id)}" ${m.canEmail?'':'disabled'} aria-label="Send to ${esc(m.name||m.email)}"></td><td><b>${esc(m.name||m.email)}</b><div class="sub">${esc(m.email)}</div></td><td>${esc(m.outlet)}</td><td>${esc(m.beats.join(', '))}</td><td>${m.canEmail?(m.pitched?`<span class="sub">${m.pitched} before</span>`:''):`<span class="chip none">${esc(m.blocked)}</span>`}</td></tr>`).join(''):'<tr><td colspan="5" class="note">Nobody is tagged press yet. Tag people in Contacts first.</td></tr>';
+  $('#ppWho').innerHTML=MEDIA.filter(m=>m.canEmail).map(m=>`<option value="${esc(m.id)}">${esc(m.name||m.email)}</option>`).join('');
+  $('#ppPreview').innerHTML='';$('#ppResults').innerHTML='';$('#ppConfirm').checked=false;$('#ppMsg').textContent='';$('#ppMsg').className='msg';syncSend();$('#ppdlg').showModal();
+}
+const picked=()=>$$('#ppRows [data-pick]:checked').map(x=>x.dataset.pick);
+function syncSend(){const n=picked().length;$('#ppSend').disabled=!($('#ppConfirm').checked&&n);$('#ppSend').textContent=n?`Send to ${n} ${n===1?'person':'people'}`:'Send'}
+$('#ppRows').onchange=syncSend;$('#ppConfirm').onchange=syncSend;
+$('#ppPrev').onclick=async()=>{
+  const id=$('#ppWho').value;if(!id)return;
+  try{const p=await api(`/v1/sales/press/items/${PITCH.id}/preview`,{body:{contactId:id}});$('#ppPreview').innerHTML=`<div class="prev"><div class="sub">As ${esc($('#ppWho').selectedOptions[0].textContent)} gets it${p.missing?.length?` · cannot fill: ${esc(p.missing.join(', '))}`:''}${p.placeholders.length?` · <b style="color:var(--bad)">still to fill in: ${esc(p.placeholders.join(', '))}</b>`:''}</div><b>${esc(p.subject)}</b><pre>${esc(p.body)}</pre></div>`}
+  catch(x){$('#ppPreview').innerHTML=`<p class="msg bad">${esc(x.message)}</p>`}
+};
+$('#ppSend').onclick=async()=>{
+  const m=$('#ppMsg');m.className='msg';m.textContent='Sending…';$('#ppSend').disabled=true;
+  try{const r=await api(`/v1/sales/press/items/${PITCH.id}/pitch`,{body:{confirm:$('#ppConfirm').checked,contactIds:picked()}});
+    m.className='msg ok';m.textContent=`${r.sent} sent, ${r.skipped} skipped, ${r.failed} failed. ${r.remainingToday} left today.`;
+    $('#ppResults').innerHTML='<ul class="res">'+r.results.map(x=>`<li class="${esc(x.outcome)}"><b>${esc(x.name||'Someone')}</b>: ${esc(x.outcome)}${x.reason?` · ${esc(x.reason)}`:''}</li>`).join('')+'</ul>';
+    $$('#ppRows [data-pick]').forEach(x=>x.checked=false);$('#ppConfirm').checked=false;loadPress()}
+  catch(x){m.className='msg bad';m.textContent=x.message}finally{syncSend()}
+};
+const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,press:loadPress,automations:loadAutomations,chats:loadChats,opportunities:loadOpportunities};
 async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge();if(TAB!=='chats')loadChatBadge();if(TAB!=='opportunities')loadOppBadge()}
 setInterval(()=>{if(TAB==='chats'&&!document.hidden)loadChats().catch(()=>{})},10000);
 const refreshQuiet=()=>refresh().catch(()=>{});

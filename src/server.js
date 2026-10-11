@@ -32,6 +32,7 @@ import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js
 import { registerSalesAutomationRoutes, seedAutomations } from './sales-automations-routes.js';
 import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
+import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
@@ -621,6 +622,7 @@ registerSalesAutomationRoutes(app, { pool, authenticate, adminOnly, setSetting, 
 app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds-admin.html', import.meta.url), 'utf8')));
 const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
 registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, workUrl: workHubUrl, builds: buildsApi, aiEnabled, log: app.log });
+registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
@@ -5617,6 +5619,7 @@ await seedSegments(pool).catch(e=>app.log.warn({err:e.message},'starter customer
 await seedTemplates(pool).catch(e=>app.log.warn({err:e.message},'starter email templates not added'));
 await seedAutomations(pool).catch(e=>app.log.warn({err:e.message},'starter automations not added'));
 await seedIntel(pool).catch(e=>app.log.warn({err:e.message},'listening watches not added'));
+await seedPress(pool).catch(e=>app.log.warn({err:e.message},'press view not added'));
 await seedBuilds(pool).then(n=>{if(n)app.log.info({n},'builds seeded (hidden until reviewed)')}).catch(e=>app.log.warn({err:e.message},'builds not seeded'));
 // One time: the pictures already inside stored packs, published snapshots and version history move out into pack_blobs. New writes go out that way already.
 // Runs in the background and is safe to interrupt (a deploy): the flag is set only after a full pass, and a row with nothing left to move is skipped.

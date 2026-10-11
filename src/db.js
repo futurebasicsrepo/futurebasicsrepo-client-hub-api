@@ -1178,6 +1178,42 @@ export async function migrate() {
       cost_cents numeric(10,3) not null default 0
     );
     create index if not exists intel_usage_at_idx on intel_usage (at desc);
+    -- Press comms (see src/press.js): releases and pitches, who each was sent to, and the coverage that came of it. The media list is contacts tagged press.
+    create table if not exists press_items (
+      id uuid primary key default gen_random_uuid(),
+      title text not null,
+      kind text not null default 'pitch' check (kind in ('release','pitch','announcement')),
+      build_id uuid references builds(id) on delete set null,
+      subject text not null default '',
+      body text not null default '',
+      audience text not null default '',
+      status text not null default 'draft' check (status in ('draft','ready','archived')),
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists press_sends (
+      id uuid primary key default gen_random_uuid(),
+      item_id uuid not null references press_items(id) on delete cascade,
+      contact_id uuid not null references sales_contacts(id) on delete cascade,
+      email_id uuid references sales_emails(id) on delete set null,
+      sent_by uuid references users(id) on delete set null,
+      sent_at timestamptz not null default now(),
+      unique (item_id, contact_id)
+    );
+    create index if not exists press_sends_sent_idx on press_sends(sent_at);
+    create table if not exists press_coverage (
+      id uuid primary key default gen_random_uuid(),
+      item_id uuid references press_items(id) on delete set null,
+      contact_id uuid references sales_contacts(id) on delete set null,
+      outlet text not null,
+      title text not null default '',
+      url text not null default '',
+      published_on date,
+      note text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
     -- The opportunity finder (see src/sales-opportunities.js): what staff have made a task of, snoozed or hidden, and until when
     create table if not exists sales_opportunity_state (
       key text primary key,
