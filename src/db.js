@@ -839,6 +839,49 @@ export async function migrate() {
     alter table partners add column if not exists updated_at timestamptz not null default now();
     create sequence if not exists style_number_seq;
     -- each time a published pack is sent to Shopify as a product: what was done, and the prices sent (so a re-export can tell a price the pack moved from one the merchant moved)
+    -- the builds showcase: what Future Basics has built, who may see it, and who looked (see src/builds.js)
+    create table if not exists builds (
+      id uuid primary key default gen_random_uuid(),
+      slug text unique not null,
+      name text not null,
+      tagline text not null default '',
+      sector text not null default '',
+      status text not null default 'concept' check (status in ('live','concept','in-progress','archived')),
+      visibility text not null default 'hidden' check (visibility in ('listed','invite','hidden')),
+      hosting text not null default 'other',
+      live_url text not null default '',
+      repo_url text not null default '',
+      stack text[] not null default '{}',
+      summary text not null default '',
+      highlights jsonb not null default '[]'::jsonb,
+      media jsonb not null default '{}'::jsonb,
+      sort_order integer not null default 100,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists build_invites (
+      id uuid primary key default gen_random_uuid(),
+      email text not null,
+      build_id uuid references builds(id) on delete cascade,
+      invited_by uuid references users(id) on delete set null,
+      note text,
+      expires_at timestamptz not null,
+      revoked_at timestamptz,
+      created_at timestamptz not null default now(),
+      first_seen_at timestamptz,
+      last_seen_at timestamptz
+    );
+    create index if not exists build_invites_email_idx on build_invites(lower(email));
+    create table if not exists build_views (
+      id bigserial primary key,
+      email text not null,
+      build_id uuid not null references builds(id) on delete cascade,
+      kind text not null check (kind in ('open','demo')),
+      ua text,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists build_views_build_idx on build_views(build_id, created_at desc);
+    create index if not exists build_views_email_idx on build_views(lower(email), created_at desc);
     create table if not exists shopify_exports (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,

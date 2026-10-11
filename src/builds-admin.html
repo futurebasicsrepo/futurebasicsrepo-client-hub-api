@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Builds Admin</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b;--ease:cubic-bezier(.22,1,.36,1)}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}
+.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+.hbtn{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:999px;padding:8px 14px;text-decoration:none;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.hbtn:hover{background:#fff;color:var(--ink)}
+main{max-width:1180px;margin:0 auto;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}
+.tabs{display:flex;gap:8px;margin:18px 0}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.4vw,26px);margin-bottom:16px}
+.row{display:grid;grid-template-columns:minmax(0,1.6fr) 120px 150px 80px 80px auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.row b{font-weight:600}.row .sub{color:var(--dim);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thumb{width:56px;height:36px;border-radius:8px;object-fit:cover;object-position:top;background:var(--ink);flex:none}
+.name{display:flex;gap:12px;align-items:center;min-width:0}
+.pillv{display:inline-block;border-radius:999px;padding:3px 10px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line)}
+.pillv.listed{background:#e7fff2;border-color:#9fe3bd;color:var(--ok)}.pillv.invite{background:#fff7d6;border-color:#e6d27a}.pillv.hidden{background:#f0f0ee;color:var(--dim)}
+select.t,input.t,textarea.t{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--fog);color:var(--ink);outline:none}
+select.t:focus,input.t:focus,textarea.t:focus{border-color:var(--ink);background:#fff}textarea.t{min-height:84px;resize:vertical}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--ink);background:transparent;color:var(--ink);border-radius:999px;padding:9px 16px;cursor:pointer;font-weight:500}.btn:hover{background:var(--ink);color:#fff}
+.btn.go{background:var(--cue);border-color:var(--cue);font-weight:600}.btn.go:hover{background:var(--ink);border-color:var(--ink);color:#fff}.btn.danger{border-color:var(--bad);color:var(--bad)}.btn.danger:hover{background:var(--bad);color:#fff}.btn[disabled]{opacity:.5;cursor:default}
+.btn.sm{padding:6px 12px;font-size:13px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.fields .wide{grid-column:1/-1}
+label.f span{display:block;margin:0 0 5px;color:var(--dim)}
+dialog{border:0;border-radius:24px;padding:0;width:min(760px,94vw);max-height:92vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}
+dialog form{padding:clamp(18px,3vw,30px);display:grid;gap:14px}.dh{display:flex;justify-content:space-between;align-items:center}.dh h2{margin:0;font-weight:500;font-size:24px}
+.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.note{color:var(--dim);margin:0 0 14px}
+table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:8px 8px 8px 0}td{padding:10px 8px 10px 0;border-top:1px solid var(--line);vertical-align:middle}
+.scroll{overflow-x:auto}
+@media(max-width:860px){.row{grid-template-columns:1fr 1fr}.row .name{grid-column:1/-1}.fields{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <a class="wordmark" href="/builds/admin" aria-label="Builds admin"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Builds admin</span></a>
+  <div style="display:flex;gap:8px"><a class="hbtn" href="/builds" target="_blank" rel="noopener">View as a visitor ↗</a><a class="hbtn" href="/">Work</a></div>
+</header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Builds</h1>
+    <p class="note">What visitors see at <b id="where"></b>. Everything starts hidden: make a build <b>listed</b> (anyone invited to “all listed builds” and every client sees it) or <b>invite only</b> (only people invited to that build by name).</p>
+    <div class="tabs"><button class="tab on" data-t="builds">Builds</button><button class="tab" data-t="invites">Invites</button><button class="tab" data-t="activity">Who looked</button></div>
+
+    <section id="t-builds" class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><b>All builds</b><button class="btn go sm" id="newBuild">+ New build</button></div>
+      <div id="list"></div>
+    </section>
+
+    <section id="t-invites" class="panel hidden">
+      <b>Invite people</b>
+      <p class="note">They sign in with the address you enter (we email a code). Invites expire; revoking one cuts access at once.</p>
+      <form id="inviteForm" class="fields" style="margin-bottom:10px">
+        <label class="f wide"><span class="mono">Email addresses (separate with commas or new lines)</span><textarea class="t" id="invEmails" required placeholder="jane@salon.com, sam@roaster.co"></textarea></label>
+        <label class="f"><span class="mono">They can see</span><select class="t" id="invBuild"><option value="">All listed builds</option></select></label>
+        <label class="f"><span class="mono">Access lasts (days)</span><input class="t" id="invDays" type="number" min="1" max="180" value="30"></label>
+        <label class="f wide"><span class="mono">A note in the email (optional)</span><input class="t" id="invNote" placeholder="Here is the coffee site we talked about"></label>
+        <label class="f"><span class="mono"><input type="checkbox" id="invSend" checked> Email them the invite</span></label>
+        <div style="display:flex;align-items:end;justify-content:flex-end"><button class="btn go" id="invGo" type="submit">Invite</button></div>
+      </form>
+      <p class="msg" id="invMsg" role="status"></p>
+      <div class="scroll"><table><thead><tr><th>Email</th><th>Can see</th><th>Expires</th><th>Last in</th><th>Views</th><th></th></tr></thead><tbody id="invList"></tbody></table></div>
+    </section>
+
+    <section id="t-activity" class="panel hidden">
+      <b>Who looked</b><p class="note">Every time an invited person opens a build or clicks through to the live site. Staff looking is not counted.</p>
+      <div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Build</th><th>What</th></tr></thead><tbody id="actList"></tbody></table></div>
+    </section>
+  </div>
+</main>
+
+<dialog id="dlg"><form id="form" autocomplete="off">
+  <div class="dh"><h2 id="dTitle">Build</h2><button class="btn sm" type="button" id="dClose">Close</button></div>
+  <div class="fields">
+    <label class="f"><span class="mono">Name</span><input class="t" id="fName" required maxlength="80"></label>
+    <label class="f"><span class="mono">Address (builds.thefuturebasics.com/#…)</span><input class="t" id="fSlug" maxlength="60" placeholder="made from the name"></label>
+    <label class="f wide"><span class="mono">One line</span><input class="t" id="fTag" maxlength="140" placeholder="Roasted after you order."></label>
+    <label class="f"><span class="mono">Sector</span><input class="t" id="fSector" maxlength="40" placeholder="Coffee · Retail"></label>
+    <label class="f"><span class="mono">Hosted on</span><select class="t" id="fHost"><option>railway</option><option>vercel</option><option>shopify</option><option>github-pages</option><option>other</option></select></label>
+    <label class="f"><span class="mono">Status</span><select class="t" id="fStatus"><option value="live">Live</option><option value="concept">Concept</option><option value="in-progress">In progress</option><option value="archived">Archived</option></select></label>
+    <label class="f"><span class="mono">Who can see it</span><select class="t" id="fVis"><option value="hidden">Hidden (staff only)</option><option value="listed">Listed (all invited, every client)</option><option value="invite">Invite only (named invites)</option></select></label>
+    <label class="f"><span class="mono">Live address</span><input class="t" id="fLive" placeholder="https://…"></label>
+    <label class="f"><span class="mono">Repository (staff only)</span><input class="t" id="fRepo" placeholder="https://github.com/…"></label>
+    <label class="f wide"><span class="mono">Built with (commas)</span><input class="t" id="fStack" placeholder="Node, Postgres, Railway"></label>
+    <label class="f wide"><span class="mono">What it is and why it matters</span><textarea class="t" id="fSummary" style="min-height:120px"></textarea></label>
+    <label class="f wide"><span class="mono">Highlights (one per line: Title — what it does)</span><textarea class="t" id="fHl"></textarea></label>
+    <label class="f"><span class="mono">Order (low first)</span><input class="t" id="fSort" type="number" min="0" max="9999" value="100"></label>
+    <label class="f"><span class="mono">Cover picture (top of the page works best)</span><input class="t" id="fCover" type="file" accept="image/png,image/jpeg,image/webp"></label>
+  </div>
+  <p class="msg" id="fMsg" role="status"></p>
+  <div style="display:flex;gap:10px;justify-content:space-between"><button class="btn danger hidden" type="button" id="fDelete">Delete</button><span style="flex:1"></span><button class="btn go" type="submit" id="fSave">Save</button></div>
+</form></dialog>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body?'POST':'GET'),headers:{...(o.body?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+const fmt=v=>v?new Date(v).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—';
+const VIS={listed:'Listed',invite:'Invite only',hidden:'Hidden'};
+let BUILDS=[],EDIT=null;
+
+// highlights as lines: "Title — text"
+const hlFrom=t=>String(t||'').split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{const m=/^(.*?)\s+[—–-]\s+(.*)$/.exec(l);return m?{title:m[1],text:m[2]}:{title:l,text:''}});
+const hlTo=l=>(l||[]).map(h=>h.text?`${h.title} — ${h.text}`:h.title).join('\n');
+
+async function loadBuilds(){
+  const {builds}=await api('/v1/admin/builds');BUILDS=builds;
+  $('#list').innerHTML=builds.length?builds.map(b=>`<div class="row"><div class="name">${b.coverUrl?`<img class="thumb" data-cover="${esc(b.coverUrl)}" alt="">`:'<span class="thumb"></span>'}<div style="min-width:0"><b>${esc(b.name)}</b><div class="sub">${esc(b.tagline||b.live_url||'')}</div></div></div>
+    <div><span class="pillv ${esc(b.visibility)}">${esc(VIS[b.visibility])}</span></div>
+    <div><select class="t" data-vis="${esc(b.id)}" aria-label="Who can see ${esc(b.name)}">${Object.entries(VIS).map(([k,v])=>`<option value="${k}" ${k===b.visibility?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="sub">${b.invites} invited</div><div class="sub">${b.views} views</div>
+    <div><button class="btn sm" data-edit="${esc(b.id)}">Edit</button></div></div>`).join(''):'<p class="note">No builds yet.</p>';
+  // the picture route wants the work sign-in, which an <img> cannot send, so each thumbnail is fetched with it
+  $$('img[data-cover]').forEach(async im=>{try{const r=await fetch(im.dataset.cover,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)im.src=URL.createObjectURL(await r.blob())}catch{}});
+  $('#invBuild').innerHTML='<option value="">All listed builds</option>'+builds.map(b=>`<option value="${esc(b.id)}">${esc(b.name)} only</option>`).join('');
+}
+$('#list').addEventListener('change',async e=>{const s=e.target.closest('[data-vis]');if(!s)return;try{await api('/v1/admin/builds/'+s.dataset.vis,{method:'PUT',body:{visibility:s.value}});await loadBuilds()}catch(x){alert(x.message)}});
+$('#list').addEventListener('click',e=>{const b=e.target.closest('[data-edit]');if(b)openForm(BUILDS.find(x=>x.id===b.dataset.edit))});
+$('#newBuild').onclick=()=>openForm(null);
+
+function openForm(b){
+  EDIT=b;$('#dTitle').textContent=b?b.name:'New build';$('#fDelete').classList.toggle('hidden',!b);$('#fMsg').textContent='';$('#fMsg').className='msg';
+  const v=b||{};for(const [id,val] of Object.entries({fName:v.name,fSlug:v.slug,fTag:v.tagline,fSector:v.sector,fLive:v.live_url,fRepo:v.repo_url,fSummary:v.summary,fSort:v.sort_order??100}))$('#'+id).value=val??'';
+  $('#fHost').value=v.hosting||'other';$('#fStatus').value=v.status||'concept';$('#fVis').value=v.visibility||'hidden';$('#fStack').value=(v.stack||[]).join(', ');$('#fHl').value=hlTo(v.highlights);$('#fCover').value='';
+  $('#dlg').showModal();$('#fName').focus();
+}
+$('#dClose').onclick=()=>$('#dlg').close();
+// a cover picture, shrunk in the browser so it stays small
+const shrink=file=>new Promise((res,rej)=>{const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{const w=Math.min(1400,img.naturalWidth),h=Math.round(img.naturalHeight*w/img.naturalWidth),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.82))};img.onerror=()=>rej(new Error('That picture could not be opened'));img.src=u});
+$('#form').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#fSave'),m=$('#fMsg');btn.disabled=true;m.className='msg';m.textContent='Saving…';
+  try{
+    const body={name:$('#fName').value,slug:$('#fSlug').value||undefined,tagline:$('#fTag').value,sector:$('#fSector').value,hosting:$('#fHost').value,status:$('#fStatus').value,visibility:$('#fVis').value,liveUrl:$('#fLive').value,repoUrl:$('#fRepo').value,stack:$('#fStack').value,summary:$('#fSummary').value,highlights:hlFrom($('#fHl').value),sortOrder:Number($('#fSort').value)};
+    if(!body.slug)delete body.slug;
+    let id=EDIT?.id;if(EDIT)await api('/v1/admin/builds/'+id,{method:'PUT',body});else id=(await api('/v1/admin/builds',{method:'POST',body})).id;
+    const f=$('#fCover').files[0];if(f)await api('/v1/admin/builds/'+id+'/cover',{method:'PUT',body:{image:await shrink(f)}});
+    $('#dlg').close();await loadBuilds();
+  }catch(x){m.className='msg bad';m.textContent=x.message}finally{btn.disabled=false}});
+$('#fDelete').onclick=async()=>{if(!EDIT||!confirm(`Delete “${EDIT.name}”? Its invites and view history go with it.`))return;try{await api('/v1/admin/builds/'+EDIT.id,{method:'DELETE'});$('#dlg').close();await loadBuilds()}catch(x){$('#fMsg').className='msg bad';$('#fMsg').textContent=x.message}};
+
+// invites
+async function loadInvites(){
+  const {invites}=await api('/v1/admin/builds/invites'),now=Date.now();
+  $('#invList').innerHTML=invites.length?invites.map(i=>{const dead=i.revoked_at||new Date(i.expires_at)<now;return `<tr style="${dead?'opacity:.5':''}"><td>${esc(i.email)}${i.note?`<div class="sub">${esc(i.note)}</div>`:''}</td><td>${esc(i.build_name||'All listed builds')}</td><td>${i.revoked_at?'Revoked':dead?'Expired':fmt(i.expires_at)}</td><td>${fmt(i.last_seen_at)}</td><td>${i.views}</td><td>${dead?'':`<button class="btn sm danger" data-revoke="${esc(i.id)}">Revoke</button>`}</td></tr>`}).join(''):'<tr><td colspan="6" class="note">No invites yet.</td></tr>';
+}
+$('#invList').addEventListener('click',async e=>{const b=e.target.closest('[data-revoke]');if(!b||!confirm('Cut off this invite now?'))return;try{await api('/v1/admin/builds/invites/'+b.dataset.revoke,{method:'DELETE'});await loadInvites()}catch(x){alert(x.message)}});
+$('#inviteForm').addEventListener('submit',async e=>{e.preventDefault();const b=$('#invGo'),m=$('#invMsg');b.disabled=true;m.className='msg';m.textContent='Inviting…';
+  try{const r=await api('/v1/admin/builds/invites',{body:{emails:$('#invEmails').value,buildId:$('#invBuild').value||null,days:Number($('#invDays').value),note:$('#invNote').value,send:$('#invSend').checked}});
+    const sent=r.invited.filter(x=>x.sent).length;m.className='msg ok';m.textContent=`${r.invited.length} invited${$('#invSend').checked?`, ${sent} emailed`:''}${r.invited.some(x=>x.extended)?' (existing invites were extended)':''}.`;$('#invEmails').value='';await loadInvites();await loadBuilds()}
+  catch(x){m.className='msg bad';m.textContent=x.message}finally{b.disabled=false}});
+
+async function loadActivity(){
+  const {events}=await api('/v1/admin/builds/activity');
+  $('#actList').innerHTML=events.length?events.map(v=>`<tr><td>${fmt(v.created_at)}</td><td>${esc(v.email)}</td><td>${esc(v.build_name)}</td><td>${v.kind==='demo'?'Clicked through to the live site':'Opened the page'}</td></tr>`).join(''):'<tr><td colspan="4" class="note">Nobody has looked yet.</td></tr>';
+}
+$$('.tab').forEach(t=>t.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of ['builds','invites','activity'])$('#t-'+k).classList.toggle('hidden',k!==t.dataset.t);if(t.dataset.t==='invites')loadInvites();if(t.dataset.t==='activity')loadActivity()});
+
+(async()=>{
+  $('#where').textContent=location.hostname.startsWith('work.')?'builds.thefuturebasics.com':location.origin+'/builds';
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await loadBuilds();$('#app').classList.remove('hidden')}catch(x){$('#needSignin').classList.remove('hidden')}
+})();
+</script>
+</body>
+</html>
