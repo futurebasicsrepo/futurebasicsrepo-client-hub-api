@@ -1903,6 +1903,7 @@ await journey('J139', 'QuickBooks: connect through Intuit (a signed sign-in only
           if (/from Payment/.test(q)) return send(200, { QueryResponse: { Payment: /startposition 1 /.test(q) ? qbm.payments : [] } }); return send(200, { QueryResponse: {} }); }
         if (sub === '/customer' && req.method === 'POST') { const b = JSON.parse(raw); const c = { Id: String(55 + qbm.customers.length), DisplayName: b.DisplayName, body: b }; qbm.customers.push(c); return send(200, { Customer: { Id: c.Id } }); }
         if (sub === '/invoice' && req.method === 'POST') { const b = JSON.parse(raw), id = String(9001 + qbm.invoices.length); qbm.invoices.push({ id, body: b }); return send(200, { Invoice: { Id: id, DocNumber: b.DocNumber, SyncToken: '0' } }); }
+        const g = /^\/invoice\/(\d+)$/.exec(sub); if (g && req.method === 'GET') { const iv = qbm.invoices.find(x => x.id === g[1]); if (!iv) return send(404, {}); const on = iv.body.BillEmail && iv.body.AllowOnlineCreditCardPayment; return send(200, { Invoice: { Id: g[1], ...(on && u.searchParams.get('include') === 'invoiceLink' ? { InvoiceLink: `https://connect.intuit.com/portal/mock/${g[1]}` } : {}) } }); }
         const m = /^\/invoice\/(\d+)\/send$/.exec(sub); if (m && req.method === 'POST') { qbm.sent.push([m[1], u.searchParams.get('sendTo'), req.headers['content-type']]); return send(200, { Invoice: { Id: m[1] } }); }
       }
       send(404, {});
@@ -1950,6 +1951,16 @@ await journey('J139', 'QuickBooks: connect through Intuit (a signed sign-in only
     const again = (await M('/quickbooks/sync', { body: {} })).json; ok(again.added === 0, 'reading again adds nothing: each payment is kept once', again);
     ok((await M(`/payments/${inv.payments[0].id}`, { method: 'DELETE' })).status === 409, 'a payment that came from QuickBooks is changed in QuickBooks, not here');
     // disconnect
+    // the payment link for software development: QuickBooks's own page, put on the PDF
+    const sw = await mk({ workKind: 'software' }), swNo = await mk({ workKind: 'software', contactEmail: '' }), nBefore = qbm.invoices.length, sentBefore = qbm.sent.length;
+    ok(sw.workKind === 'software' && !sw.payUrl, 'a software development invoice can be chosen, with no link yet');
+    const noMail = await M(`/invoices/${swNo.id}/pay-link`, { body: {} }); ok(noMail.status === 409 && /email/i.test(noMail.json.error) && qbm.invoices.length === nBefore, 'no link without the client\'s email, and nothing is made in QuickBooks', noMail.json.error);
+    const pl = await M(`/invoices/${sw.id}/pay-link`, { body: {} }); const swInv = pl.json.invoice;
+    ok(pl.status === 201 && swInv.payChannel === 'quickbooks' && /^https:\/\/connect\.intuit\.com\/portal\/mock\/\d+$/.test(swInv.payUrl) && swInv.qb?.id && swInv.status === 'sent' && qbm.invoices.length === nBefore + 1 && qbm.sent.length === sentBefore, 'the QuickBooks pay page is fetched (the invoice is made there first, and not emailed)', JSON.stringify([pl.status, swInv.payChannel, swInv.payUrl]));
+    const swPdf = await fetch(`http://127.0.0.1:3123/v1/money/invoices/${sw.id}/pdf`, { headers: { Authorization: `Bearer ${kyle.token}` } }); ok(Buffer.from(await swPdf.arrayBuffer()).toString('latin1').includes(swInv.payUrl), 'the QuickBooks link is on the PDF');
+    ok((await M(`/invoices/${sw.id}/pay-link`, { body: {} })).json.made === false && qbm.invoices.length === nBefore + 1, 'asking again keeps the link and makes nothing twice');
+    const viaButton = await mk({ workKind: 'software' }), pushed2 = await M(`/invoices/${viaButton.id}/quickbooks`, { body: {} }); ok(pushed2.status === 201 && /connect\.intuit\.com\/portal\/mock/.test(pushed2.json.invoice.payUrl), 'creating a software invoice in QuickBooks brings its link back with it');
+    const prodNoShop = await mk({ workKind: 'product' }), ps = await M(`/invoices/${prodNoShop.id}/pay-link`, { body: {} }); ok(ps.status === 502 && /Shopify/.test(ps.json.error), 'a product invoice on a server with no Shopify says so', ps.json.error);
     ok((await M('/quickbooks/disconnect', { body: {} })).json.ok === true && qbm.revoked === 1 && (await M('/quickbooks/status')).json.connected === false && sql('select count(*) from money_connections') === '0', 'disconnecting tells Intuit to revoke the sign-in and forgets it');
     ok((await M(`/invoices/${c.id}/quickbooks`, { body: {} })).status === 409 && (await M('/quickbooks/test', { body: {} })).status === 409, 'and QuickBooks is not used again until it is connected');
     const hd = (await call('/v1/admin/platform/health?fresh=1', { token: kyle.token })).json.checks.find(x => x.id === 'quickbooks'); ok(hd.status === 'off' && /Press Connect QuickBooks/.test(hd.summary), 'Platform health goes back to "press Connect"', hd.summary);

@@ -75,12 +75,13 @@ export function cleanInvoice(input = {}, { today = iso(new Date()) } = {}) {
     if (!label || !Number.isFinite(amountCents) || amountCents <= 0) return { error: 'A deposit or credit needs a label (“Deposit paid 3/9”) and an amount' };
     credits.push({ label, amountCents });
   }
+  const workKind = ['product', 'software'].includes(i.workKind) ? i.workKind : '', projectId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(i.projectId || '')) ? String(i.projectId) : null;
   const chargeTax = i.chargeTax === true || i.chargeTax === 'true';
   const t = invoiceTotals({ lines, taxRatePct, chargeTax, credits, dueNowCents: i.dueNowCents === undefined || i.dueNowCents === null || i.dueNowCents === '' ? null : Math.round(Number(i.dueNowCents)) });
   if (t.creditsCents > t.totalCents) return { error: 'The deposits and credits are more than the invoice total' };
   if (i.dueNowCents !== undefined && i.dueNowCents !== null && i.dueNowCents !== '' && (!Number.isFinite(Number(i.dueNowCents)) || Number(i.dueNowCents) < 0)) return { error: 'The amount due now is not an amount' };
   return { value: { number: clip(i.number, 40), company, contactName: clip(i.contactName, 120), contactEmail: clip(i.contactEmail, 200).toLowerCase(), address: clipLines(i.address, 400), issuedOn, terms, dueOn,
-    lines, taxRatePct, chargeTax, credits, dueNowLabel: clip(i.dueNowLabel, 40) || (credits.length ? 'Final payment due' : 'Total due'), notes: clipLines(i.notes, 1000), currency: /^[A-Z]{3}$/.test(String(i.currency || 'USD').toUpperCase()) ? String(i.currency || 'USD').toUpperCase() : 'USD', ...t } };
+    lines, taxRatePct, chargeTax, credits, dueNowLabel: clip(i.dueNowLabel, 40) || (credits.length ? 'Final payment due' : 'Total due'), notes: clipLines(i.notes, 1000), currency: /^[A-Z]{3}$/.test(String(i.currency || 'USD').toUpperCase()) ? String(i.currency || 'USD').toUpperCase() : 'USD', workKind, projectId, ...t } };
 }
 
 // 11106 → 11107. Numbers that are not plain integers are ignored; with none, start at 1001.

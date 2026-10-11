@@ -9,7 +9,7 @@
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
-import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, paymentsSince, methodOf } from './quickbooks.js';
+import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,7 +17,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -27,12 +27,13 @@ export function registerMoneyRoutes(app, d) {
   const pre = [authenticate, adminOnly, moneyOnly], actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
 
-  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents from money_invoices i`;
+  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents, (select pr.name from projects pr where pr.id=i.project_id) project_name from money_invoices i`;
   const view = r => {
     const paid = Number(r.paid_cents || 0), st = invoiceState({ ...r, due_on: iso(r.due_on) }, paid, today());
     return { id: r.id, number: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), terms: r.terms, dueOn: iso(r.due_on), lines: r.lines, taxRatePct: Number(r.tax_rate), chargeTax: r.charge_tax,
       credits: r.credits, dueNowLabel: r.due_now_label, dueNowCents: r.due_now_cents == null ? null : Number(r.due_now_cents), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), totalCents: Number(r.total_cents), notes: r.notes, currency: r.currency,
       status: r.status, source: r.source, state: st.state, owedCents: st.owedCents, overdue: st.overdue, daysOverdue: st.daysOverdue, paidCents: paid, sentAt: r.sent_at, paidAt: r.paid_at, createdAt: r.created_at,
+      workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
       qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null };
   };
   // What is still owed by the numbers alone, whatever status the invoice has (a paid invoice reads 0 otherwise).
@@ -44,6 +45,15 @@ export function registerMoneyRoutes(app, d) {
     values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) returning id`;
   const numbers = async () => (await pool.query('select number from money_invoices')).rows.map(r => r.number);
 
+  // The kind of work (product or software development) decides the payment link. A project, when one is chosen, decides the kind and the client.
+  async function setWork(id, v) {
+    let kind = v.workKind || '', clientId = null;
+    if (v.projectId) { const p = (await pool.query('select client_id, kind from projects where id=$1', [v.projectId])).rows[0]; if (p) { kind = p.kind === 'software' ? 'software' : 'product'; clientId = p.client_id; } else v.projectId = null; }
+    const before = (await pool.query('select work_kind, pay_channel, shopify_draft_id from money_invoices where id=$1', [id])).rows[0] || {};
+    // a Shopify link was made for the old amount or kind: it is made again on request
+    const staleShopify = before.pay_channel === 'shopify';
+    await pool.query(`update money_invoices set work_kind=$2, project_id=$3, client_id=coalesce($4, client_id), pay_url=case when $5 then '' else pay_url end, pay_channel=case when $5 then '' else pay_channel end, shopify_draft_id=case when $5 then '' else shopify_draft_id end where id=$1`, [id, kind, v.projectId || null, clientId, staleShopify]);
+  }
   app.get('/v1/money/me', { preHandler: pre }, async req => ({ ok: true, email: req.money.email }));
 
   // ---------- invoices ----------
@@ -55,7 +65,7 @@ export function registerMoneyRoutes(app, d) {
   });
   app.post('/v1/money/invoices', { preHandler: pre }, async (req, reply) => {
     const c = cleanInvoice(req.body); if (c.error) return bad(reply, c.error); const v = c.value, num = v.number || nextInvoiceNumber(await numbers());
-    try { const id = (await pool.query(INSERT, insertParams({ ...v, number: num }, { status: 'draft', source: 'app', by: actorOf(req) }))).rows[0].id; return reply.code(201).send({ invoice: view(await one(id)) }); }
+    try { const id = (await pool.query(INSERT, insertParams({ ...v, number: num }, { status: 'draft', source: 'app', by: actorOf(req) }))).rows[0].id; await setWork(id, v); return reply.code(201).send({ invoice: view(await one(id)) }); }
     catch (e) { if (e.code === '23505') return bad(reply, `Invoice ${num} already exists`, 409); throw e; }
   });
   app.get('/v1/money/invoices/:id', { preHandler: pre }, async (req, reply) => {
@@ -71,7 +81,7 @@ export function registerMoneyRoutes(app, d) {
       await pool.query(`update money_invoices set number=$2, company=$3, contact_name=$4, contact_email=$5, address=$6, issued_on=$7, terms=$8, due_on=$9, lines=$10::jsonb, tax_rate=$11, charge_tax=$12, credits=$13::jsonb, due_now_label=$14, due_now_cents=$15, subtotal_cents=$16, tax_cents=$17, total_cents=$18, notes=$19, currency=$20, updated_at=now() where id=$1`,
         [cur.id, v.number, v.company, v.contactName, v.contactEmail, v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents === v.balanceCents ? null : v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency]);
     } catch (e) { if (e.code === '23505') return bad(reply, `Invoice ${v.number} already exists`, 409); throw e; }
-    await onChange('edited', cur.id); return { invoice: view(await one(cur.id)) };
+    await setWork(cur.id, v); await onChange('edited', cur.id); return { invoice: view(await one(cur.id)) };
   });
   app.delete('/v1/money/invoices/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
@@ -81,7 +91,7 @@ export function registerMoneyRoutes(app, d) {
   app.get('/v1/money/invoices/:id/pdf', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const r = await one(req.params.id); if (!r) return bad(reply, 'Not found', 404);
     const st = invoiceState({ ...r, due_on: iso(r.due_on) }, Number(r.paid_cents), today());
-    const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on) }, { instructions: await instructions() }, st);
+    const buf = await moneyInvoicePdf({ ...r, issued_on: iso(r.issued_on), due_on: iso(r.due_on), pay_url: ['paid', 'void'].includes(r.status) ? '' : r.pay_url }, { instructions: await instructions() }, st);
     return reply.type('application/pdf').header('content-disposition', `inline; filename="TFB Invoice ${String(r.number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf"`).send(buf);
   });
 
@@ -216,9 +226,58 @@ export function registerMoneyRoutes(app, d) {
     try {
       const r = await pushInvoice(ctx, { ...cur, issued_on: iso(cur.issued_on), due_on: iso(cur.due_on) }, { send, onlinePayments: (await getSetting('moneyPayment').catch(() => null))?.onlinePayments !== false });
       await pool.query(`update money_invoices set qb_id=$2, qb_doc_number=$3, qb_sync_token=$4, qb_link=$5, qb_synced_at=now(), status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.id, r.docNumber || cur.number, r.syncToken, `${ctx.cfg.appOrigin}/app/invoice?txnId=${encodeURIComponent(r.id)}`]);
+      if (cur.work_kind === 'software' && !cur.pay_url) { try { const url = await invoiceLink(ctx, r.id); if (url) await pool.query(`update money_invoices set pay_url=$2, pay_channel='quickbooks' where id=$1`, [cur.id, url]); } catch { /* the payment link can be asked for from the invoice */ } }
       await onChange('quickbooks', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), emailed: r.emailed, customerCreated: r.customerCreated });
     } catch (e) { await failed(e); return bad(reply, e.message, 502); }
   });
+  // ---------- the payment link: Shopify for product development, QuickBooks for software development ----------
+  app.get('/v1/money/projects', { preHandler: pre }, async req => {
+    const q = clip(req.query?.q, 60).toLowerCase();
+    const rows = (await pool.query(`select p.id, p.name, p.kind, c.name client_name, c.id client_id from projects p join clients c on c.id=p.client_id where p.archived_at is null and p.status not in ('archive','archived') order by c.name, p.name limit 600`)).rows;
+    return { projects: rows.filter(r => !q || `${r.name} ${r.client_name}`.toLowerCase().includes(q)).map(r => ({ id: r.id, name: r.name, kind: r.kind === 'software' ? 'software' : 'product', client: r.client_name, clientId: r.client_id })).slice(0, 200) };
+  });
+  app.post('/v1/money/invoices/:id/pay-link', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
+    if (['paid', 'void'].includes(cur.status)) return bad(reply, `A ${cur.status} invoice needs no payment link`, 409);
+    if (cur.pay_url && req.body?.refresh !== true) return { invoice: view(cur), made: false };
+    if (!cur.work_kind) return bad(reply, 'Say what kind of work this is first: product development pays through Shopify, software development through QuickBooks', 409);
+    const balance = rawOwed(cur), due = cur.due_now_cents == null ? balance : Math.min(Number(cur.due_now_cents), balance);
+    if (due <= 0) return bad(reply, 'Nothing is owed on this invoice', 409);
+    try {
+      if (cur.work_kind === 'software') {
+        const ctx = await qbContext(); if (!ctx) return bad(reply, 'Software development is paid through QuickBooks, and it is not connected. Connect it in Money → Settings.', 409);
+        if (!cur.contact_email) return bad(reply, 'Add the client\'s email to the invoice first: QuickBooks only gives a payment link to an invoice it can email', 409);
+        let qbId = cur.qb_id;
+        if (!qbId) {
+          const r = await pushInvoice(ctx, { ...cur, issued_on: iso(cur.issued_on), due_on: iso(cur.due_on) }, { send: false, onlinePayments: true });
+          qbId = r.id; await pool.query(`update money_invoices set qb_id=$2, qb_doc_number=$3, qb_sync_token=$4, qb_link=$5, qb_synced_at=now(), status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.id, r.docNumber || cur.number, r.syncToken, `${ctx.cfg.appOrigin}/app/invoice?txnId=${r.id}`]);
+        }
+        const url = await invoiceLink(ctx, qbId);
+        if (!url) return bad(reply, 'QuickBooks gave no payment link. Online payments must be on for the invoice (Money → Settings) and QuickBooks Payments turned on in your books.', 409);
+        await pool.query(`update money_invoices set pay_url=$2, pay_channel='quickbooks', updated_at=now() where id=$1`, [cur.id, url]);
+      } else {
+        if (!shopifyInvoiceLink) return bad(reply, 'Shopify is not set up for payment links', 409);
+        const r = await shopifyInvoiceLink({ title: `Invoice ${cur.number}: ${cur.company}`, amountCents: due, currency: cur.currency, email: cur.contact_email, note: `Future Basics invoice ${cur.number}`, number: cur.number });
+        await pool.query(`update money_invoices set pay_url=$2, pay_channel='shopify', shopify_draft_id=$3, status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.url, r.draftId || '']);
+      }
+    } catch (e) { if (cur.work_kind === 'software') await failed(e); return bad(reply, e.message || 'The payment link could not be made', 502); }
+    await onChange('pay-link', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), made: true });
+  });
+  // A Shopify payment link whose checkout has been paid: record the payment once and settle the invoice.
+  async function syncShopifyLinks() {
+    if (!shopifyDraftStatus) return { checked: 0, added: 0 };
+    const rows = (await pool.query(`${SELECT} where i.pay_channel='shopify' and i.shopify_draft_id<>'' and i.status not in ('paid','void') order by i.created_at limit 50`)).rows; let added = 0;
+    for (const r of rows) {
+      try {
+        const d = await shopifyDraftStatus(r.shopify_draft_id); if (!d?.paid) continue;
+        const ref = `shopify:${r.shopify_draft_id}`; if ((await pool.query('select 1 from money_payments where invoice_id=$1 and reference=$2', [r.id, ref])).rowCount) continue;
+        const owed = rawOwed(r), amount = d.amountCents && d.amountCents > 0 ? Math.min(d.amountCents, owed) : owed;
+        await recordPayment(r, { amountCents: amount, paidOn: iso(d.paidAt) || today(), method: 'shopify', reference: ref, note: `Paid through the Shopify link${d.orderName ? ` (${d.orderName})` : ''}`, source: 'shopify', by: null }); added++;
+      } catch (e) { log.warn?.({ err: e.message, invoiceId: r.id }, 'Shopify payment link not checked'); }
+    }
+    return { checked: rows.length, added };
+  }
+  app.post('/v1/money/shopify-links/sync', { preHandler: pre }, async () => ({ ok: true, ...(await syncShopifyLinks()) }));
   // Read payments QuickBooks has recorded and match them to our invoices (by the QuickBooks invoice id). Safe to run again: each payment is kept once.
   async function syncQuickBooks() {
     const ctx = await qbContext(); if (!ctx) return { skipped: 'not connected', added: 0 };
@@ -275,5 +334,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks };
+  return { syncQuickBooks, syncShopifyLinks };
 }
