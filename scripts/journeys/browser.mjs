@@ -244,7 +244,7 @@ await journey('J40', 'platform health page in the console: opens from the header
   // desktop: from the console home through the header link
   const { ctx, page } = await open({ width: 1280, height: 900 }, admin, '/admin');
   try {
-    await page.waitForSelector('a.platformlink', { timeout: 10000 }); await page.click('a.platformlink'); await page.waitForSelector('.pf-banner', { timeout: 15000 });
+    await page.waitForSelector('.fbside a[data-nav="platform"]', { timeout: 10000 }); await page.click('.fbside a[data-nav="platform"]'); await page.waitForSelector('.pf-banner', { timeout: 15000 });
     ok(page.url().endsWith('/platform') && await page.isVisible('#platformPage') && await page.isHidden('#app'), 'the header link opens the page at /platform');
     const names = await page.$$eval('.pf-card .pf-name', els => els.map(e => e.textContent.trim()));
     for (const n of ['Database', 'Shopify', 'Assistant', 'Email', 'Google', 'Photo cutout', 'File storage', 'Railway']) ok(names.some(x => x.includes(n)), `a card for ${n}`, names);
@@ -738,6 +738,69 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   await ph.click('#cList tr.click >> nth=0'); await ph.waitForSelector('#cdlg[open] #aGo'); ok(await ph.evaluate(() => { const d = document.querySelector('#cdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'a contact card fits the phone');
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email='dana-${tag}@salon.test'`);
+});
+
+await journey('J118', 'the work console menu down the left: grouped, the same on every staff page, links straight to a tab or a section, collapses, becomes a drawer on a phone, and is absent when signed out', async () => {
+  const r = await room('118', { wait: false });
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const W = 'http://work.localhost:3123';
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await page.waitForSelector('.fbside nav', { timeout: 5000 });
+  const labels = await page.$$eval('.fbside a[data-nav] .lbl', e => e.map(x => x.textContent));
+  ok(['Home', 'Inbox', 'Clients', 'Contacts', 'Pipeline', 'Tasks', 'Factories', 'Waiting on approval', 'Production attention', 'Builds', 'Platform health', 'Connections', 'Payment gate'].every(l => labels.includes(l)), 'the menu has Home, Inbox, Customers, Production, Builds showcase and Settings', labels);
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Customers|Production|Builds showcase|Settings', 'grouped under four headings');
+  ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
+  ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
+  ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Home/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'Home is marked as where you are');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-home.png` }).catch(() => {});
+
+  // a section on this page
+  await page.click('.fbside a[data-href="/admin#clientsHead"]:not(.gicon)'); await sleep(900);
+  ok(await page.$eval('#clientsHead', e => { const t = e.getBoundingClientRect().top; return t >= 0 && t < 260; }), 'Clients scrolls to the clients list');
+  ok(/Clients/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'and Clients is marked');
+
+  await page.click('.fbside a[data-href="/admin#partnersSection"]:not(.gicon)'); await sleep(900);
+  ok(await page.$eval('#partnersSection', e => e.open && e.getBoundingClientRect().top < 300), 'Factories opens its section under Production');
+  // Platform health, from the menu, and back
+  await page.click('.fbside a[data-nav="platform"]'); await page.waitForSelector('#platformPage:not(.hidden)', { timeout: 15000 });
+  ok(/Platform health/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && await page.locator('.fbside').isVisible(), 'Platform health opens inside the console with the menu still there');
+  await page.click('.fbside a[data-href="/admin#inbox"]:not(.gicon)'); await sleep(800);
+  ok(await page.isHidden('#platformPage') && await page.isVisible('#app'), 'choosing something on the console home from Platform health closes it');
+
+  // other pages
+  await page.click('.fbside a[data-href="/sales#contacts"]:not(.gicon)'); await page.waitForURL(/\/sales#contacts/, { timeout: 10000 }); await page.waitForSelector('#t-contacts:not(.hidden)', { timeout: 10000 });
+  ok(await page.locator('.fbside').isVisible() && /Contacts/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'Contacts opens the Sales page on its Contacts tab, menu marked');
+  await page.click('.fbside a[data-href="/sales#pipeline"]:not(.gicon)'); await page.waitForSelector('#t-pipeline:not(.hidden)', { timeout: 10000 });
+  ok(/Pipeline/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && page.url().endsWith('#pipeline'), 'Pipeline switches the tab without reloading, and the address follows');
+  await page.click('.tab[data-t="tasks"]'); await sleep(300); ok(/Tasks/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'using the page tabs moves the marker too');
+  await page.click('.fbside a[data-href="/builds/admin#updates"]:not(.gicon)'); await page.waitForURL(/\/builds\/admin#updates/, { timeout: 10000 }); await page.waitForSelector('#t-updates:not(.hidden)', { timeout: 10000 });
+  ok(/What.s new/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'What’s new opens the builds page on that tab');
+  ok(await page.locator('.fbside .grp:has-text("Customers")').count() === 1, 'the same menu is on the builds page');
+  await page.click('.fbside a[data-href="/admin#approvals"]:not(.gicon)'); await page.waitForURL(/\/admin/, { timeout: 10000 }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
+  await sleep(1200); ok(await page.$eval('#approvals', e => { const t = e.getBoundingClientRect().top; return t >= -5 && t < 300; }), 'arriving from another page at a section scrolls to it once the page has loaded');
+
+  // collapse, and it is remembered
+  await page.click('#fbCollapse'); await sleep(350);
+  ok(await page.$eval('.fbside', e => e.getBoundingClientRect().width) < 80 && await page.locator('.fbside a.gicon').first().isVisible(), 'collapsing leaves a narrow rail of icons');
+  await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('.fbside nav'); ok(await page.$eval('.fbside', e => e.getBoundingClientRect().width) < 80, 'and stays collapsed after a reload');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-collapsed.png` }).catch(() => {});
+  ok(page.errs.length === 0, 'no script errors on the desktop pages', page.errs); await ctx.close();
+
+  // signed out: no menu
+  const so = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const sp = await so.newPage(); await sp.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await sleep(500);
+  ok(await sp.locator('.fbside').isHidden(), 'signed out, the sign-in is all there is: no menu'); await so.close();
+
+  // a phone: a drawer
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
+  ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1, 'on a phone the menu is closed behind a button and nothing sticks out', await over());
+  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /customers/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-phone.png` }).catch(() => {});
+  await ph.click('.fbside a[data-href="/sales#contacts"]:not(.gicon)'); await sleep(500);
+  ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await ph.isVisible('#t-contacts'), 'choosing an item closes it and goes there');
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
 });
 
 await journey('J117', 'the builds collection page: cards show the real site, what it is built with and its key features; search, filters and sorting narrow it; the product page; a phone', async () => {

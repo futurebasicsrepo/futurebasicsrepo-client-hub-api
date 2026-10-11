@@ -606,6 +606,8 @@ app.get('/', async (req, reply) => {
 // The builds showcase: the technical builds Future Basics shows to clients and prospects, behind a sign-in (see builds.js). Viewers at builds., staff manage it at /builds/admin.
 const sendBuilds = (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds.html', import.meta.url), 'utf8'));
 app.get('/builds', sendBuilds);
+// the work console's left-hand navigation, shared by the staff pages (it draws itself; see console-nav.js)
+app.get('/console-nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript').send(readFileSync(new URL('./console-nav.js', import.meta.url), 'utf8')));
 app.get('/sales', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sales.html', import.meta.url), 'utf8')));
 registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
