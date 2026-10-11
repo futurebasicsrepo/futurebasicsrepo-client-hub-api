@@ -752,7 +752,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Customers|Production|Builds showcase|Settings', 'grouped under four headings');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
-  ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Home/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'Home is marked as where you are');
+  ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-home.png` }).catch(() => {});
 
   // a section on this page
@@ -1318,6 +1318,51 @@ await journey('J124', 'the Opportunities tab in a browser: what is worth doing a
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-phone.png` }).catch(() => {});
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
+});
+
+await journey('J133', 'the work home in a browser: the week at a glance, who to reach out to, the prototypes and who has looked, the projects in flight with filters, every link goes where it says, and it fits a phone', async () => {
+  const r = await room('133', { wait: false }), tag = `wh${stamp}`, W = 'http://work.localhost:3123';
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o }), S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  const lead = (await S('/contacts', { body: { name: `Lena ${tag}`, email: `lena-${tag}@lead.test`, source: 'website', tags: [] } })).json.id;
+  const build = (await A('/builds', { body: { name: `Proto ${tag}`, status: 'in-progress', visibility: 'invite', hosting: 'railway', stack: ['Node', 'Postgres'], liveUrl: `https://proto-${tag}.example.com` } })).json.id;
+  sql(`insert into build_views(email,build_id,kind) values('prospect-${tag}@x.test','${build}','open')`);
+  const sw = (await A(`/clients/${r.clientId}/projects`, { body: { name: `Site ${tag}`, kind: 'software', buildId: build, stage: 'prototype' } })).json, pr = (await A(`/clients/${r.clientId}/projects`, { body: { name: `Hoodie ${tag}` } })).json;
+  await call(`/v1/projects/${pr.id}/messages`, { token: r.token, body: { body: 'Any news?' } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) .tile', { timeout: 15000 });
+  ok(await page.locator('#funnel .tile').count() === 4 && /Good (morning|afternoon|evening)/.test(await page.innerText('#hello')), 'the home greets and shows four numbers for the week');
+  ok(/Home/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks Home');
+  ok(await page.locator('#aLead').getAttribute('href') === '/sales#contacts' && /builds\/admin\?new=1/.test(await page.locator('#aProto').getAttribute('href')), 'the three quick actions are there: add a lead, new prototype, new project');
+  const row = page.locator(`#reachList .row:has-text("Lena ${tag}")`); ok(await row.count() === 1 && /No reply yet/i.test(await row.innerText()), 'a lead nobody has answered is in "Reach out today"');
+  const card = page.locator(`#protoList .proto:has-text("Proto ${tag}")`); ok(await card.count() === 1 && await card.evaluate(e => e.classList.contains('warm')) && /1 person looked/.test(await card.innerText()) && /Node/.test(await card.innerText()) && /for UI Room/.test(await card.innerText()) && /say hello/i.test(await card.innerText()), 'the prototype shows that someone looked, what it is built with and which client it is for');
+  ok(await card.locator('a:has-text("Push to a store")').getAttribute('href') === `/builds/admin?push=${build}` && await card.locator('a:has-text("Open site")').getAttribute('href') === `https://proto-${tag}.example.com`, 'with a way to push it to a store and to open the site');
+  const rows = page.locator('#projList .proj'); ok(await rows.count() >= 2 && /Waiting on us/i.test(await page.locator(`#projList .proj:has-text("Hoodie ${tag}")`).innerText()) && (await rows.allInnerTexts()).findIndex(t => /Hoodie/.test(t)) <= (await rows.allInnerTexts()).findIndex(t => !/Waiting on us/i.test(t)), 'projects in flight list the ones waiting on us before the rest');
+  ok(/Software/i.test(await page.locator(`#projList .proj:has-text("Site ${tag}")`).innerText()) && await page.locator(`#projList .proj:has-text("Site ${tag}") .mini i`).count() === 7 && /Prototype/i.test(await page.locator(`#projList .proj:has-text("Site ${tag}")`).innerText()), 'a software project shows its stage and a seven-step rail');
+  await page.click('#projFilters [data-f=software]'); ok(await page.locator('#projList .proj[data-kind=product]').count() === 0 && await page.locator('#projList .proj[data-kind=software]').count() >= 1, 'the Software filter shows only software projects');
+  await page.click('#projFilters [data-f=waiting]'); ok(await page.locator('#projList .proj').count() >= 1 && (await page.locator('#projList .proj').allInnerTexts()).every(t => /Waiting on us/i.test(t)), 'Waiting on us shows only those');
+  await page.click('#projFilters [data-f=all]');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j133-home.png`, fullPage: true }).catch(() => {});
+  // links go where they say
+  await page.locator(`#projList .proj:has-text("Site ${tag}")`).click(); await page.waitForSelector('.project-card.sw', { timeout: 15000 });
+  ok(page.url().endsWith(`/clients/${r.clientId}#project=${sw.id}`) && /Site/.test(await page.locator('.project-card.sw h3').innerText()), 'a project opens in its client room');
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector(`#reachList .row:has-text("Lena ${tag}")`);
+  await page.locator(`#reachList .row:has-text("Lena ${tag}")`).click(); await page.waitForURL(/\/sales/, { timeout: 8000 }); await page.waitForSelector('#cbody', { timeout: 10000 });
+  await page.waitForFunction(n => new RegExp(n).test(document.querySelector('#cbody')?.innerText || ''), `Lena ${tag}`, { timeout: 10000 });
+  ok(!page.url().includes('contact='), 'a lead opens that person\'s card in Sales (and the address is tidied)');
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.locator(`#protoList .proto:has-text("Proto ${tag}") a:has-text("Push to a store")`).click(); await page.waitForSelector('#pdlg[open]', { timeout: 10000 });
+  ok(/Proto/.test(await page.innerText('#pTitle')), 'Push to a store opens the push window for that prototype');
+  await ctx.close();
+  const { ctx: pc, page: ph } = await phone();
+  try {
+    await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#funnel .tile');
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j133-phone.png` }).catch(() => {});
+  } finally { await pc.close(); }
+  await A(`/projects/${sw.id}/archive`, { method: 'POST', body: {} }); await A(`/projects/${pr.id}/archive`, { method: 'POST', body: {} }); await A(`/builds/${build}`, { method: 'DELETE' });
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

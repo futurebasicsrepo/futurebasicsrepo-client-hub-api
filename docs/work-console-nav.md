@@ -22,3 +22,5 @@ Grouping follows what the work is for, not which page it lives on. Nothing was m
 - Desktop: "Collapse" shrinks it to an icon rail (remembered; a client's room starts collapsed because it has its own rail). Phone: a button in the header opens it as a drawer.
 
 To add an item, edit `NAV` at the top of `console-nav.js`.
+
+**Update:** Home now goes to `/home` (leads, prototypes, projects in flight; see `work-home.md`). The old home with the client list and production queues is the page `/admin`, reached by **Clients** (its top is marked Clients in the menu).

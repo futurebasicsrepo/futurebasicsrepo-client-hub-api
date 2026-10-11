@@ -1,0 +1,46 @@
+// GET /v1/admin/home: what the work console's home page shows beyond the Sales overview (which it also reads): leads waiting for a first reply, prototypes and
+// how warm they are, projects in flight (software and product), and what is waiting elsewhere. Staff only.
+import { projectRow, orderProjects, prototypeRow, trend, LEAD_SOURCES_EXCLUDED } from './home.js';
+
+export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
+  const pre = [authenticate, adminOnly];
+  app.get('/v1/admin/home', { preHandler: pre }, async () => {
+    const q = async (sql, args = []) => (await pool.query(sql, args)).rows;
+    const ex = LEAD_SOURCES_EXCLUDED;
+    const [cur] = await q(`select count(*)::int n from sales_contacts where created_at > now() - interval '7 days' and not (source = any($1))`, [ex]);
+    const [prev] = await q(`select count(*)::int n from sales_contacts where created_at <= now() - interval '7 days' and created_at > now() - interval '14 days' and not (source = any($1))`, [ex]);
+    const [look] = await q(`select count(distinct email)::int lookers, count(distinct email) filter (where kind='demo')::int demos from build_views where created_at > now() - interval '7 days'`);
+    const [won] = await q(`select count(*)::int n, coalesce(sum(value_cents),0)::bigint v from sales_deals where stage='won' and coalesce(closed_at, updated_at) > now() - interval '30 days'`);
+    const awaiting = await q(`select c.id, c.name, c.email, co.name company, c.source, c.created_at from sales_contacts c left join sales_companies co on co.id=c.company_id
+      where c.created_at > now() - interval '21 days' and c.email is not null and not (c.source = any($1))
+        and not exists (select 1 from sales_activities a where a.contact_id=c.id and a.kind in ('email_out','call','meeting','chat_out'))
+      order by c.created_at desc limit 8`, [ex]);
+    const protos = await q(`select b.id,b.slug,b.name,b.tagline,b.status,b.visibility,b.live_url,b.stack,jsonb_exists(b.media,'cover') has_cover,jsonb_array_length(b.catalog)::int products,
+        (select count(*) from build_views v where v.build_id=b.id and v.created_at > now() - interval '7 days')::int views7,
+        (select count(distinct v.email) from build_views v where v.build_id=b.id and v.created_at > now() - interval '7 days')::int lookers7,
+        (select max(v.created_at) from build_views v where v.build_id=b.id) last_look,
+        (select count(*) from build_invites i where i.build_id=b.id and i.revoked_at is null and i.expires_at > now())::int invites,
+        (select coalesce(json_agg(distinct c.name), '[]'::json) from projects p join clients c on c.id=p.client_id where p.build_id=b.id and p.archived_at is null) clients
+      from builds b where b.status in ('concept','in-progress') order by views7 desc, b.updated_at desc limit 8`);
+    const showNow = await q(`select b.id,b.slug,b.name,b.tagline,b.status,b.visibility,b.live_url,b.stack,jsonb_exists(b.media,'cover') has_cover,0 products,
+        (select count(*) from build_views v where v.build_id=b.id and v.created_at > now() - interval '30 days')::int views7, 0 lookers7, null::timestamptz last_look, 0 invites, '[]'::json clients
+      from builds b where b.status='live' and b.visibility <> 'hidden' order by views7 desc, b.sort_order limit 3`);
+    const projects = await q(`select pr.id,pr.name,pr.kind,pr.status,pr.milestone,pr.stage,pr.target_date,pr.updated_at,pr.build_id,c.id client_id,c.name client_name,b.name build_name,b.live_url,
+        (select count(*) from products p where p.project_id=pr.id)::int product_count,
+        (select pm.author_role from project_messages pm where pm.project_id=pr.id order by pm.created_at desc limit 1) last_author,
+        (select max(pm.created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
+      from projects pr join clients c on c.id=pr.client_id left join builds b on b.id=pr.build_id
+      where pr.archived_at is null and pr.status not in ('archive','archived','complete') and c.archived_at is null and c.status='active' and c.slug <> 'future-basics'
+      order by pr.updated_at desc limit 60`);
+    const [appr] = await q(`select count(*)::int n from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id where a.status='pending' and c.archived_at is null and c.status not in ('archive','archived')`);
+    const [prod] = await q(`select count(*)::int n from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
+      where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date < current_date and pr.status not in ('complete','delivered'))) and c.archived_at is null and c.status not in ('archive','archived')`);
+    return {
+      funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
+      awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
+      prototypes: protos.map(prototypeRow), showNow: showNow.map(r => ({ ...prototypeRow(r), views30: Number(r.views7) || 0 })),
+      projects: orderProjects(projects.map(r => projectRow(r))),
+      waiting: { approvals: appr.n, production: prod.n }
+    };
+  });
+}
