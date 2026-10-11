@@ -1609,5 +1609,45 @@ await journey('J145', 'Site prototypes in a browser: audit a tired site, build t
   } finally { await new Promise(res => site.close(res)); }
 });
 
+await journey('J147', 'Finding leads in a browser: search a trade and a town, see the tired sites first, add one to the CRM, build its prototype from the card, and a phone fits', async () => {
+  const r = await room('147', { wait: false }), W = 'http://work.localhost:3123';
+  const http = (await import('node:http')).default, H = `tired-pipes-${stamp}.test`, G = `bright-wire-${stamp}.test`;
+  const TIRED = `<html><head><title>Home</title></head><body><center><font color="#cc0000">TIRED PIPES</font></center><table><tr><td>x</td></tr></table><p>Call 484-555-0101 for plumbing, drains and water heaters in Norristown PA 19401.</p><ul><li>Drain cleaning</li><li>Water heaters</li></ul><div>&copy; 2012 Tired Pipes</div></body></html>`;
+  const FINE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bright Wire: electricians in Reading, PA | Licensed and insured</title><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Licensed electricians serving Reading, PA with free estimates and same-day service."><link rel="canonical" href="https://${G}/"><meta property="og:title" content="Bright Wire"></head><body><header><nav><a href="/">Home</a> <a href="/services">Services</a> <a href="/contact">Contact</a></nav></header><main><h1>Licensed electricians in Reading, PA</h1><a href="tel:6105550177">Call 610-555-0177</a><p>Free estimates. Licensed and insured. Five star reviews from neighbors across Berks County.</p><h2>Services</h2><ul><li>Panel upgrades</li><li>EV chargers</li></ul><h2>Reviews</h2><p>Great work, on time.</p><footer>Bright Wire, 12 Penn St, Reading, PA 19601</footer></main></body></html>`;
+  const site = http.createServer((q, s) => { const h = String(q.headers['x-original-host'] || ''); s.writeHead(h === H ? 200 : h === G ? 200 : 404, { 'content-type': 'text/html' }); s.end(h === H ? TIRED : h === G ? FINE : 'no'); });
+  const brave = http.createServer((q, s) => { s.writeHead(200, { 'content-type': 'application/json' }); s.end(JSON.stringify({ web: { results: [{ title: 'Plumbers - Yelp', url: 'https://www.yelp.com/search?x=1' }, { title: 'Bright Wire', url: `https://${G}/` }, { title: 'Tired Pipes', url: `https://${H}/contact` }] } })); });
+  await new Promise(res => site.listen(3134, '127.0.0.1', res)); await new Promise(res => brave.listen(3133, '127.0.0.1', res));
+  try {
+    const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+    await page.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) #url', { timeout: 15000 });
+    await page.click('.tab[data-t=leads]'); await page.waitForSelector('#t-leads:not(.hidden) #lTrade option', { state: 'attached', timeout: 10000 });
+    ok(await page.locator('#lTrade option').count() >= 8 && /Plumb/i.test(await page.innerText('#lTrade')) && await page.locator('#lSearch').isEnabled(), 'the Find leads tab lists the trades and search is on');
+    await page.selectOption('#lTrade', 'plumbing'); await page.fill('#lPlace', 'Norristown, PA'); await page.click('#lSearch');
+    await page.waitForSelector('#lOut .card', { timeout: 20000 });
+    const hosts = await page.$$eval('#lOut .card', cs => cs.map(c => c.dataset.host));
+    ok(JSON.stringify(hosts) === JSON.stringify([H, G]), 'the directory is skipped and the tired site is first', JSON.stringify(hosts));
+    const first = await page.innerText(`#lOut .card[data-host="${H}"]`), head = await page.innerText('#lOut .panel h3');
+    ok(/bad site/i.test(first) && /quick turn/i.test(first) && /\(484\) 555-0101/.test(first) && /2 quick turns/i.test(head) && /directory listings/i.test(await page.innerText('#lOut')), 'its card says bad site, quick turn and the phone, and the header counts the quick turns', first.replace(/\s+/g,' ') + ' // ' + head);
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j147-leads.png`, fullPage: true }).catch(() => {});
+    // into the CRM
+    await page.click(`#lOut .card[data-host="${H}"] [data-lead-crm]`); await page.waitForFunction(h => document.querySelector(`#lOut .card[data-host="${h}"]`)?.textContent.includes('in the CRM'), H, { timeout: 8000 });
+    ok(/in the CRM with a deal in New/i.test(await page.innerText('#lMsg')) && Number(sql(`select count(*) from sales_deals d join sales_contacts c on c.id=d.contact_id where d.stage='new' and c.source='site-prototype' and d.title like 'Website rebuild: %' and exists (select 1 from sales_companies co where co.id=d.company_id and co.website like '%${H}%')`)) === 1, 'adding a lead puts it in the CRM with a deal in New');
+    // build from the card: lands on the prototype, tied to the deal
+    await page.click(`#lOut .card[data-host="${H}"] [data-lead-build]`); await page.waitForSelector('#dlg[open]', { timeout: 15000 });
+    await page.waitForFunction(() => /Ready/i.test(document.querySelector('#dSub')?.textContent || ''), null, { timeout: 30000 });
+    ok(/Quality check/i.test(await page.innerText('#dBody')) && Number(sql(`select count(*) from prototypes where host='${H}' and contact_id is not null and deal_id is not null`)) === 1, 'building from the card opens the preview, tied to the contact and the deal');
+    await page.click('#dClose'); await page.click('.tab[data-t=leads]');
+    // recent searches and the pasted list
+    ok(await page.locator('#lRecent [data-search]').count() >= 1, 'the search is kept under recent searches');
+    await page.click('#t-leads summary'); await page.fill('#lList', `${G}\nnot a url at all`); await page.click('#lAudit'); await page.waitForFunction(() => /Enter a|not|address|public/i.test(document.querySelector('#lMsg').textContent), null, { timeout: 8000 }); ok(true, 'a pasted line that is not a website is refused in plain words', await page.innerText('#lMsg'));
+    await page.fill('#lList', G); await page.click('#lAudit'); await page.waitForFunction(() => document.querySelectorAll('#lOut .card').length === 1, null, { timeout: 20000 }).catch(() => {}); ok(await page.locator('#lOut .card').count() === 1 && await page.locator(`#lOut .card[data-host="${G}"]`).count() === 1, 'a pasted address is checked without a search');
+    ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+    const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#url', { timeout: 15000 }); await ph.click('.tab[data-t=leads]'); await ph.click('#t-leads summary'); await ph.fill('#lList', G); await ph.click('#lAudit'); await ph.waitForSelector('#lOut .card', { timeout: 20000 });
+      ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j147-phone.png`, fullPage: true }).catch(() => {}); } finally { await pc.close(); }
+  } finally { await new Promise(res => site.close(res)); await new Promise(res => brave.close(res)); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

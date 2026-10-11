@@ -63,8 +63,18 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
       <div class="acts" style="margin-top:12px"><button class="btn" id="auditBtn" type="button">Audit it first</button><button class="btn go" id="buildBtn" type="button">Build the prototype</button><span class="msg" id="msg" role="status"></span></div>
       <div id="auditOut" class="hidden" style="margin-top:16px"></div>
     </section>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="list">Prototypes</button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="list">Prototypes</button><button class="tab" data-t="leads">Find leads</button></div>
     <section id="t-list"></section>
+    <section id="t-leads" class="hidden">
+      <div class="panel">
+        <h2>Find tired websites</h2><p class="note">Pick a trade and a town: we search, skip the directories, check each site and rank them worst first. Quick turns are the ones to call.</p>
+        <div class="form" style="margin-top:12px;grid-template-columns:1.2fr 1.6fr auto"><label class="f"><span>Trade</span><select class="t" id="lTrade" style="width:100%"></select></label><label class="f"><span>Where</span><input class="t" id="lPlace" placeholder="Norristown, PA"></label><button class="btn go" id="lSearch" type="button">Find leads</button></div>
+        <details style="margin-top:12px"><summary class="sub" style="cursor:pointer">Or paste a list of addresses (one per line, up to 25)</summary><textarea class="t" id="lList" style="margin-top:8px" placeholder="joesplumbing.com&#10;sparkelectric.net"></textarea><div class="acts" style="margin-top:8px"><button class="btn" id="lAudit" type="button">Check these sites</button></div></details>
+        <p class="msg" id="lMsg" role="status"></p>
+      </div>
+      <div id="lOut"></div>
+      <div class="panel" id="lRecent"></div>
+    </section>
   </div>
 </main>
 <dialog id="dlg"><div class="dwrap"><div class="dh"><div><h2 id="dTitle"></h2><div class="sub" id="dSub"></div></div><button class="btn sm" id="dClose" type="button">Close</button></div><div id="dBody"></div><p class="msg" id="dMsg" role="status"></p></div></dialog>
@@ -148,6 +158,38 @@ document.addEventListener('click',async e=>{
     else if(t.closest('#dl')){e.preventDefault();const r=await fetch(`/v1/admin/prototypes/${id}/download`,{headers:{Authorization:'Bearer '+TOKEN()}});const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`${OPEN.p.host}-prototype.html`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
   }catch(err){dsay(err.message,'bad')}
 });
+
+
+// ---------- leads ----------
+let LM=null,LS=null,LPOLL=null,CRM={};
+async function leadMeta(){if(LM)return;LM=await api('/v1/admin/prototypes/leads/meta');$('#lTrade').innerHTML=LM.trades.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+  if(!LM.search){$('#lSearch').disabled=true;$('#lMsg').className='msg';$('#lMsg').textContent='Web search is not connected here (BRAVE_API_KEY), so use the list of addresses.'}await recent()}
+const lsay=(t,k='ok')=>{const m=$('#lMsg');m.className='msg '+k;m.textContent=t};
+async function recent(){const r=await api('/v1/admin/prototypes/leads/searches');$('#lRecent').innerHTML=r.searches.length?`<h3>Recent searches</h3><div class="mini" style="margin-top:8px">${r.searches.map(s=>`<button class="btn sm" data-search="${s.id}">${esc(s.mode==='list'?'Pasted list':(LM.trades.find(t=>t.key===s.trade)||{label:s.trade}).label+' · '+s.place)} · ${s.found} sites · ${ago(s.createdAt)}</button>`).join('')}</div>`:''}
+function leadCard(i,idx){
+  const crm=CRM[i.host];
+  return `<article class="card" data-host="${esc(i.host)}"><div class="hd"><div><h3>${esc(i.name||i.host)}</h3><div class="sub">${esc(i.host)}${i.city?' · '+esc(i.city):''}${i.phone?' · '+esc(i.phone):''}</div></div>${i.reachable?`<span class="score" style="--p:${i.score};--c:${scoreColor(i.score)};width:56px;height:56px;font-size:20px"><span>${i.score}</span></span>`:'<span class="chip bad">site is down</span>'}</div>
+  <div class="mini">${i.reachable?`<span class="chip ${gradeTone(i.grade)}">${esc(i.grade)} site</span>${i.quickTurn?'<span class="chip ok">quick turn</span>':'<span class="chip warn">bigger job</span>'}${i.industryLabel?`<span class="chip dim">${esc(i.industryLabel.split(' (')[0])}</span>`:''}${i.generator?`<span class="chip dim">${esc(i.generator)}</span>`:''}`:`<span class="sub">${esc(i.error||'')}</span>`}</div>
+  ${i.top&&i.top.length?`<ul class="issues">${i.top.slice(0,2).map(t=>`<li><b>${esc(t.title)}</b></li>`).join('')}</ul>`:''}
+  ${i.snippet?`<div class="sub">${esc(i.snippet.slice(0,140))}</div>`:''}
+  <div class="acts"><button class="btn sm go" data-lead-build="${idx}">Build the prototype</button>${crm?'<span class="chip ok">in the CRM</span>':`<button class="btn sm" data-lead-crm="${idx}">Add to the CRM</button>`}<a class="btn sm" href="${esc(i.url)}" target="_blank" rel="noopener">Their site</a></div></article>`}
+function showSearch(s){LS=s;const sk=s.skipped||{};const parts=[sk.directories&&`${sk.directories} directory listings`,sk.duplicates&&`${sk.duplicates} repeats`,sk.known&&`${sk.known} you already have`].filter(Boolean);
+  if(s.status==='running'){$('#lOut').innerHTML=`<div class="panel"><div class="prog"><div class="bar"><i></i></div><b>${esc(s.step)}</b></div></div>`;return}
+  if(s.status==='failed'){$('#lOut').innerHTML=`<div class="panel"><b style="color:var(--bad)">${esc(s.error)}</b></div>`;return}
+  const quick=s.results.filter(i=>i.reachable&&i.quickTurn).length;
+  $('#lOut').innerHTML=`<div class="panel"><h3>${s.results.length} sites checked${quick?`, ${quick} quick turn${quick===1?'':'s'}`:''}</h3><p class="sub">${parts.length?'Skipped '+parts.join(', ')+'. ':''}Worst first.</p><div class="cards" style="margin-top:12px">${s.results.map(leadCard).join('')||'<p class="empty">Nothing found. Try a bigger area, or paste addresses.</p>'}</div></div>`}
+async function pollSearch(id){clearTimeout(LPOLL);const {search:s}=await api('/v1/admin/prototypes/leads/searches/'+id);showSearch(s);if(s.status==='running')LPOLL=setTimeout(()=>pollSearch(id).catch(()=>{}),1500);else recent().catch(()=>{})}
+async function runSearch(body){lsay('');$('#lSearch').disabled=true;$('#lAudit').disabled=true;try{const r=await api('/v1/admin/prototypes/leads/search',{body});showSearch(r.search);await pollSearch(r.search.id)}catch(e){lsay(e.message,'bad')}$('#lSearch').disabled=!LM.search;$('#lAudit').disabled=false}
+$('#lSearch').onclick=()=>runSearch({trade:$('#lTrade').value,place:$('#lPlace').value});
+$('#lAudit').onclick=()=>runSearch({urls:$('#lList').value});
+async function addCrm(i,quiet){const r=await api('/v1/admin/prototypes/leads/add',{body:{url:i.url,company:i.name,phone:i.phone,email:i.email,trade:i.industry,city:i.city,score:i.score,problems:(i.top||[]).map(t=>t.title+'.')}});CRM[i.host]=r;return r}
+document.addEventListener('click',async e=>{
+  const t=e.target,sr=t.closest('[data-search]');if(sr){try{await pollSearch(sr.dataset.search)}catch(err){lsay(err.message,'bad')}return}
+  const ac=t.closest('[data-lead-crm]');if(ac&&LS){const i=LS.results[+ac.dataset.leadCrm];try{await addCrm(i);showSearch(LS);lsay(`${i.name||i.host} is in the CRM with a deal in New.`)}catch(err){lsay(err.message,'bad')}return}
+  const ab=t.closest('[data-lead-build]');if(ab&&LS){const i=LS.results[+ab.dataset.leadBuild];ab.disabled=true;try{const crm=CRM[i.host]||await addCrm(i).catch(()=>null);const r=await api('/v1/admin/prototypes',{body:{url:i.url,industry:i.industry&&i.industry!=='trade'?i.industry:'',company:i.name,city:i.city,contactId:crm&&crm.contactId,dealId:crm&&crm.dealId}});await load();showTab('list');await open(r.prototype.id)}catch(err){lsay(err.message,'bad');ab.disabled=false}return}
+  const tb=t.closest('.tab[data-t]');if(tb){showTab(tb.dataset.t)}
+});
+function showTab(n){document.querySelectorAll('.tab[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===n));$('#t-list').classList.toggle('hidden',n!=='list');$('#t-leads').classList.toggle('hidden',n!=='leads');if(n==='leads')leadMeta().catch(err=>lsay(err.message,'bad'))}
 
 (async()=>{
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}

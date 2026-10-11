@@ -2089,4 +2089,61 @@ await journey('J144', 'Site prototypes: paste a tired site, get a score and a pi
   } finally { await new Promise(r => site.close(r)); }
 });
 
+await journey('J146', 'Finding leads: search a trade and a town, skip the directories and the ones we know, rank the tired sites first, send a lead into the CRM, build for it, and watch the deal follow', async () => {
+  const room = await newRoom('146', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  const http = (await import('node:http')).default, seen = [];
+  const TIRED = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">TIRED PLUMBING</font></center><table><tr><td>Services</td></tr></table><p>Call 484-555-0199 for all your plumbing needs in Norristown, PA 19401.</p><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2013 Tired Plumbing</div></body></html>`;
+  const FINE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Spark Electric: electricians in Reading, PA | Licensed and insured</title><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Licensed electricians serving Reading, PA with free estimates and same-day service."><link rel="canonical" href="https://sparkelectric.test/"><meta property="og:title" content="Spark Electric"></head><body><header><nav><a href="/">Home</a> <a href="/services">Services</a> <a href="/contact">Contact</a></nav></header><main><h1>Licensed electricians in Reading, PA</h1><a href="tel:6105550177">Call 610-555-0177</a><p>Free estimates. Licensed and insured. Five star reviews from neighbors across Berks County. Panel upgrades, EV chargers, lighting and rewiring.</p><h2>Services</h2><ul><li>Panel upgrades</li><li>EV chargers</li><li>Rewiring</li></ul><h2>Reviews</h2><p>Great work, on time.</p><footer>Spark Electric, 12 Penn St, Reading, PA 19601</footer></main></body></html>`;
+  const site = http.createServer((req, res) => { const h = String(req.headers['x-original-host'] || ''); seen.push(h); if (h === 'offline-shop.test') { res.writeHead(500); return res.end('boom'); } if (h === 'tiredplumbing.test' || h === 'www.tiredplumbing.test') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(TIRED); } if (h === 'sparkelectric.test') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(FINE); } res.writeHead(404); res.end('no'); });
+  const queries = [], brave = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x'); if (u.pathname !== '/res/v1/web/search') { res.writeHead(404); return res.end('{}'); } queries.push(u.searchParams.get('q'));
+    const results = [{ title: 'Best plumbers near you - Yelp', url: 'https://www.yelp.com/search?find_desc=plumber', description: 'Directory' }, { title: 'Spark Electric', url: 'https://sparkelectric.test/services', description: 'Electricians in Reading' }, { title: 'Tired Plumbing', url: 'https://www.tiredplumbing.test/contact', description: 'Plumber' }, { title: 'Tired Plumbing again', url: 'https://tiredplumbing.test/', description: 'Plumber' }, { title: 'Down', url: 'https://offline-shop.test/', description: '' }, { title: 'Nope', url: 'ftp://nope.test/', description: '' }];
+    res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ web: { results } }));
+  });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r)); await new Promise(r => brave.listen(3133, '127.0.0.1', r));
+  const waitSearch = async id => { const t0 = Date.now(); for (;;) { const s = (await P(`/leads/searches/${id}`)).json.search; if (s.status !== 'running') return s; if (Date.now() - t0 > 25000) throw new Error('search timed out: ' + s.step); await sleep(150); } };
+  try {
+    ok((await call('/v1/admin/prototypes/leads/meta')).status === 401 && (await call('/v1/admin/prototypes/leads/meta', { token: room.token })).status === 403 && (await call('/v1/admin/prototypes/leads/search', { token: room.token, body: { urls: 'a.test' } })).status === 403, 'signed out people and clients cannot find leads');
+    const meta = (await P('/leads/meta')).json; ok(meta.search === true && meta.trades.some(t => t.key === 'plumbing' && t.terms.length === 2) && meta.trades.some(t => t.key === 'home-health') && meta.perDay >= 1, 'the trades to search are listed and search is connected');
+
+    // bad input
+    ok((await P('/leads/search', { body: { trade: 'astronaut', place: 'Reading, PA' } })).status === 422 && (await P('/leads/search', { body: { trade: 'plumbing', place: '' } })).status === 422 && (await P('/leads/search', { body: { urls: 'http://127.0.0.1/' } })).status === 422, 'an unknown trade, no town and an address on our own network are refused');
+
+    // search: directories dropped, repeats merged, the tired site first, the one that is down last
+    let r = await P('/leads/search', { body: { trade: 'plumbing', place: 'Norristown, PA' } }); ok(r.status === 202 && r.json.search.status === 'running', 'a search is accepted and runs in the background', r.status);
+    const s = await waitSearch(r.json.search.id), hosts = s.results.map(x => x.host);
+    ok(s.status === 'done' && JSON.stringify(queries.slice(0, 2)) === JSON.stringify(['plumber Norristown, PA', 'plumbing company Norristown, PA']), 'it asked the search for the trade and the town', JSON.stringify(queries));
+    ok(JSON.stringify(hosts) === JSON.stringify(['tiredplumbing.test', 'sparkelectric.test', 'offline-shop.test']), 'the directory is dropped, the repeat is merged and the tired site comes first', JSON.stringify(hosts));
+    const [tired, fine, down] = s.results;
+    ok(tired.reachable && tired.quickTurn && tired.score < 40 && tired.phone === '(484) 555-0199' && tired.top.length >= 2 && tired.url === 'https://www.tiredplumbing.test/' && /Tired Plumbing/i.test(tired.name) && /Norristown, PA/.test(tired.city), 'the tired site: low score, quick turn, phone, city and what is wrong', JSON.stringify(tired).slice(0, 300));
+    ok(fine.score >= 70 && fine.industry === 'electrician' && down.reachable === false && /500/.test(down.error) && s.skipped.directories >= 1 && s.skipped.invalid >= 1, 'the decent site ranks lower and is read as an electrician; the site that is down is last with a reason', JSON.stringify(s.skipped));
+    ok((await P('/leads/searches')).json.searches[0].id === s.id && (await P('/leads/searches/not-an-id')).status === 404, 'recent searches are listed');
+
+    // a pasted list skips the search
+    const before = queries.length; r = await P('/leads/search', { body: { urls: 'tiredplumbing.test\nsparkelectric.test, https://tiredplumbing.test/about' } }); const l = await waitSearch(r.json.search.id);
+    ok(queries.length === before && l.mode === 'list' && l.results.length === 2 && l.results[0].host === 'tiredplumbing.test', 'a pasted list is audited without searching and repeats are merged', JSON.stringify(l.results.map(x => x.host)));
+
+    // into the CRM
+    const add = async o => P('/leads/add', { body: { url: tired.url, company: 'Tired Plumbing', trade: 'plumbing', phone: tired.phone, city: tired.city, score: tired.score, problems: tired.top.map(t => t.pitch || t.text || t.title || ''), ...o } });
+    ok((await add({ url: 'ftp://x' })).status === 422 && (await add({ email: 'nope' })).status === 422, 'a bad address or email is refused');
+    const a1 = await add({}); ok(a1.status === 201 && a1.json.created && a1.json.madeDeal, 'adding a lead makes the company, a contact and a deal', JSON.stringify(a1.json));
+    const { contactId, dealId, companyId } = a1.json;
+    ok(sql(`select stage||'/'||title from sales_deals where id='${dealId}'`) === 'new/Website rebuild: Tired Plumbing' && sql(`select source||'/'||phone from sales_contacts where id='${contactId}'`) === 'site-prototype/(484) 555-0199' && sql(`select website from sales_companies where id='${companyId}'`) === 'https://www.tiredplumbing.test/', 'the deal starts in New, the contact remembers where it came from, the company has its website');
+    ok(Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text like 'Found by site prospecting%'`)) === 1, 'the timeline says what is wrong with their site');
+    const a2 = await add({}); ok(a2.status === 200 && !a2.json.created && !a2.json.madeDeal && a2.json.dealId === dealId && Number(sql(`select count(*) from sales_deals where contact_id='${contactId}'`)) === 1, 'adding the same lead again changes nothing');
+    const s2 = await P('/leads/search', { body: { trade: 'plumbing', place: 'Norristown, PA' } }); const s2d = await waitSearch(s2.json.search.id);
+    ok(!s2d.results.some(x => x.host === 'tiredplumbing.test') && s2d.skipped.known >= 1, 'a business already in the CRM is not offered again', JSON.stringify(s2d.skipped));
+
+    // build for the lead: the deal follows
+    const b = await P('', { body: { url: tired.url, city: tired.city, contactId, dealId } }); ok(b.status === 202 && b.json.prototype.contactId === contactId && b.json.prototype.dealId === dealId, 'the build is tied to the contact and the deal');
+    const pid = b.json.prototype.id; const t0 = Date.now(); let pr; for (;;) { pr = (await P(`/${pid}`)).json.prototype; if (['ready', 'failed'].includes(pr.status) || Date.now() - t0 > 25000) break; await sleep(150); }
+    ok(pr.status === 'ready' && Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike 'A new site prototype%is built%'`)) >= 1, 'when it is ready the timeline says so', pr.status);
+    await P(`/${pid}/publish`, { body: {} }); ok(Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike '%published%'`)) >= 1, 'publishing is on the timeline');
+    const sh = await P(`/${pid}/share`, { body: { emails: 'owner@tiredplumbing.test', send: false } }); ok(sh.status === 200 && sql(`select stage from sales_deals where id='${dealId}'`) === 'contacted' && Number(sql(`select count(*) from sales_activities where contact_id='${contactId}' and text ilike '%shared%'`)) >= 1, 'sharing it moves the deal to Contacted and says so on the timeline', sql(`select stage from sales_deals where id='${dealId}'`));
+    ok(sql(`select count(*) from prototypes where status in ('queued','reading','building')`) === '0' && sql(`select count(*) from prototype_searches where status='running'`) === '0', 'nothing is left running');
+  } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -91,3 +91,43 @@ test('every playbook is complete and its features exist', () => {
   for (const i of INDUSTRIES) { assert.ok(!keys.has(i.key)); keys.add(i.key); assert.ok(i.label && i.schema && i.audience && i.tone && i.cta.length === 2 && i.sections.length >= 8 && i.services.length && i.faqs.length >= 4 && i.accent.length === 2, i.key); for (const f of i.features) assert.ok(FEATURES[f], `${i.key}: ${f}`); }
   assert.equal(industryByKey('nope').key, 'trade');
 });
+
+// ---- lead finder ----
+import { isDirectory, braveSearch, quickAudit, findLeads, SEARCH_TERMS } from '../src/proto-leads.js';
+const brave = results => async url => ({ ok: true, status: 200, json: async () => ({ web: { results } }), _url: url });
+
+test('directories and listings are not leads', () => {
+  for (const h of ['yelp.com', 'www.angi.com', 'm.facebook.com', 'homeadvisor.com', 'maps.google.com', 'bbb.org', 'nextdoor.com', 'cityhall.gov', 'college.edu', 'rotorooter.com']) assert.equal(isDirectory(h), true, h);
+  for (const h of ['joesplumbing.com', 'sparkelectric.net', 'norristownroofing.com', 'comfortcareathome.org']) assert.equal(isDirectory(h), false, h);
+  assert.ok(Object.keys(SEARCH_TERMS).every(k => INDUSTRIES.some(i => i.key === k)) && Object.values(SEARCH_TERMS).every(t => t.length === 2));
+});
+
+test('searching Brave', async () => {
+  let seen; const f = async (u, o) => { seen = { u, o }; return { ok: true, status: 200, json: async () => ({ web: { results: [{ title: '<b>Joe</b> Plumbing', url: 'https://joes.test/', description: 'Plumber in <strong>PA</strong>' }, { title: 'no url' }] } }) }; };
+  const r = await braveSearch('plumber Norristown PA', { env: { BRAVE_API_KEY: 'k', BRAVE_API_ORIGIN: 'http://127.0.0.1:9' }, fetchImpl: f });
+  assert.deepEqual(r, [{ title: 'Joe Plumbing', url: 'https://joes.test/', description: 'Plumber in PA' }]); assert.match(seen.u, /^http:\/\/127\.0\.0\.1:9\/res\/v1\/web\/search\?q=plumber\+Norristown\+PA&count=20/); assert.equal(seen.o.headers['X-Subscription-Token'], 'k');
+  await assert.rejects(() => braveSearch('x', { env: {} }), /BRAVE_API_KEY/);
+  await assert.rejects(() => braveSearch('x', { env: { BRAVE_API_KEY: 'k' }, fetchImpl: async () => ({ ok: false, status: 401 }) }), /refused the key/);
+  await assert.rejects(() => braveSearch('x', { env: { BRAVE_API_KEY: 'k' }, fetchImpl: async () => ({ ok: false, status: 429 }) }), /try again later/);
+  await assert.rejects(() => braveSearch('x', { env: { BRAVE_API_KEY: 'k' }, fetchImpl: async () => { throw new Error('net'); } }), /could not be reached/);
+});
+
+test('leads: directories dropped, repeats merged, worst quick-turn first, sites that are down last, known ones skipped', async () => {
+  const TIRED = '<html><head><title>Home</title></head><body><font>JOE</font><table><tr><td>x</td></tr></table><p>Call 215-555-0142 plumbing Norristown PA 19401</p></body></html>';
+  const OKAY = `<!doctype html><html lang="en"><head><title>Spark Electric: electricians in Reading, PA | Licensed and insured</title><meta name="viewport" content="width=device-width"><meta name="description" content="Licensed electricians in Reading."></head><body><nav><a href="/">Home</a></nav><h1>Spark</h1><a href="tel:6105550177">Call</a><p>Free estimates. Licensed and insured. Reviews. Serving Reading. Book online.</p><form></form><footer>&copy; ${new Date().getFullYear()}</footer></body></html>`;
+  const pages = { 'tired-plumbing.test': TIRED, 'spark-electric.test': OKAY };
+  const crawlOpts = { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: async u => { const h = new URL(u).hostname.replace(/^www\./, ''); if (h === 'down-site.test') return res(500, 'x'); return pages[h] ? res(200, pages[h], { 'content-type': 'text/html' }) : res(404, ''); } };
+  const f = brave([{ title: 'Yelp: best plumbers', url: 'https://www.yelp.com/search?q=plumber' }, { title: 'Spark Electric', url: 'https://spark-electric.test/about', description: 'Electricians' }, { title: "Joe's Plumbing", url: 'https://www.tired-plumbing.test/contact' }, { title: 'Joe again', url: 'https://tired-plumbing.test/' }, { title: 'Down', url: 'https://down-site.test/' }, { title: 'Known', url: 'https://known-shop.test/' }, { title: 'bad', url: 'ftp://x.test' }]);
+  const out = await findLeads({ trade: 'plumbing', place: 'Norristown, PA', env: { BRAVE_API_KEY: 'k' }, fetchImpl: f, crawlOpts, exclude: new Set(['known-shop.test']) });
+  assert.deepEqual(out.queries, ['plumber Norristown, PA', 'plumbing company Norristown, PA']);
+  assert.deepEqual(out.items.map(i => i.host), ['tired-plumbing.test', 'spark-electric.test', 'down-site.test']);
+  assert.ok(out.items[0].score < 40 && out.items[0].quickTurn && out.items[0].phone === '(215) 555-0142' && out.items[0].top.length === 3);
+  assert.ok(out.items[1].score >= 80 && out.items[1].industry === 'electrician' && out.items[1].name.startsWith('Spark Electric'));
+  assert.equal(out.items[2].reachable, false); assert.match(out.items[2].error, /500/); assert.equal(out.items[2].score, null);
+  assert.equal(out.skipped.directories, 2, 'yelp, in both searches'); assert.ok(out.skipped.duplicates >= 1 && out.skipped.known === 1 && out.skipped.invalid === 2);
+  // a pasted list is audited as it is: directories are not filtered out, and nothing is searched
+  const l = await findLeads({ urls: ['tired-plumbing.test', 'spark-electric.test'], env: {}, crawlOpts }); assert.deepEqual(l.queries, []); assert.equal(l.items.length, 2);
+  assert.deepEqual((await quickAudit('https://spark-electric.test/', { crawlOpts })).reachable, true);
+  assert.equal((await quickAudit('https://nowhere.test/', { crawlOpts })).reachable, false);
+  assert.equal((await quickAudit('https://spark-electric.test/', { crawlOpts: { ...crawlOpts, fetchImpl: async () => res(200, '%PDF', { 'content-type': 'application/pdf' }) } })).error, 'Not a web page');
+});
