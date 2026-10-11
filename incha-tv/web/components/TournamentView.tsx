@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { api, SITE_URL, type BracketSlot, type Team, type TournamentView as View } from '@/lib/api';
+import { api, SITE_URL, type BracketSlot, type PaymentStatus, type Team, type TournamentEntry, type TournamentView as View } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useNow } from '@/lib/useNow';
 import { StatusPill } from './MatchCard';
@@ -11,6 +11,39 @@ export const cupDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 const DECIDED: Record<string, string> = { penalties: 'pens', walkover: 'w/o', bye: 'bye' };
+
+export const money = (cents: number, currency = 'USD') =>
+  new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100);
+
+const PAY_LABEL: Record<PaymentStatus, string> = { unpaid: 'Fee due', pending: 'Paying…', paid: 'Paid', waived: 'Fee waived', refunded: 'Refunded' };
+const PAY_CLASS: Record<PaymentStatus, string> = { unpaid: ' flare', pending: ' sky', paid: ' paid', waived: '', refunded: '' };
+
+/** Payment state on an entry, with the right next step for whoever is looking. */
+function EntryPayment({ entry, t, busy, pay, record }: {
+  entry: TournamentEntry; t: View['tournament']; busy: boolean;
+  pay: (entry: TournamentEntry) => void; record: (entry: TournamentEntry, status: PaymentStatus) => void;
+}) {
+  const p = entry.payment;
+  if (!p) return null;
+  const owed = p.status === 'unpaid' || p.status === 'pending' || p.status === 'refunded';
+  return (
+    <span className="cup-pay">
+      <span className={`badge${PAY_CLASS[p.status]}`} title={p.note || undefined}>{PAY_LABEL[p.status]}{p.orderName ? ` · ${p.orderName}` : ''}</span>
+      {entry.mine && owed && t.status === 'registration' && entry.status !== 'rejected' && (
+        t.payOnline
+          ? <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => pay(entry)}>{p.status === 'pending' ? 'Finish paying' : `Pay ${money(p.amountCents ?? t.entryFeeCents, t.currency)}`}</button>
+          : !t.isOrganizer && <span className="hint">The organizer will collect the fee.</span>
+      )}
+      {t.isOrganizer && (
+        <span className="cup-pay-admin">
+          {owed && <button className="linkish" disabled={busy} onClick={() => record(entry, 'paid')}>Mark paid</button>}
+          {owed && <button className="linkish" disabled={busy} onClick={() => record(entry, 'waived')}>Waive</button>}
+          {p.status === 'paid' && <button className="linkish" disabled={busy} onClick={() => record(entry, 'refunded')}>Refunded</button>}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** One tie in the bracket: two team rows, the score, and the organizer's call on draws and walkovers. */
 function Tie({ slot, organizer, decide }: { slot: BracketSlot; organizer: boolean; decide: (slot: BracketSlot, side: 'home' | 'away', note?: string) => void }) {
@@ -100,11 +133,13 @@ export default function TournamentView({ id }: { id: string }) {
     api<{ teams: { slug: string; name: string; players: number }[] }>('/v1/me/teams').then(d => setMyTeams(d.teams)).catch(() => {});
   }, [user]);
   // Results arrive from the scorekeepers; keep the bracket fresh while it's being played.
+  // While your own payment is going through, check more often: Shopify confirms it in the background.
+  const paying = Boolean(data?.teams.some(e => e.mine && e.payment?.status === 'pending'));
   useEffect(() => {
-    if (data?.tournament.status !== 'running') return;
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 20_000);
+    if (data?.tournament.status !== 'running' && !paying) return;
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, paying ? 8_000 : 20_000);
     return () => clearInterval(timer);
-  }, [data?.tournament.status, load]);
+  }, [data?.tournament.status, paying, load]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(''), 1800);
@@ -138,18 +173,48 @@ export default function TournamentView({ id }: { id: string }) {
   const open = t.status === 'registration';
   const full = t.counts.approved >= t.capacity;
 
+  const fee = t.entryFeeCents > 0 ? money(t.entryFeeCents, t.currency) : '';
   async function register(event: React.FormEvent) {
     event.preventDefault();
-    if (await act(`${base}/teams`, 'POST', { name: teamName, note }, t.approval === 'auto' ? 'You’re in!' : 'Entered. The organizer will confirm.')) {
+    const done = fee ? `Entered. Pay ${fee} to lock your place.` : t.approval === 'auto' ? 'You’re in!' : 'Entered. The organizer will confirm.';
+    if (await act(`${base}/teams`, 'POST', { name: teamName, note }, done)) {
       setTeamName('');
       setNote('');
       api<{ teams: typeof myTeams }>('/v1/me/teams').then(d => setMyTeams(d.teams)).catch(() => {});
     }
   }
+  // Off to Shopify's checkout; the page picks up the payment when Shopify confirms it.
+  async function pay(entry: TournamentEntry) {
+    setBusy(true);
+    setError('');
+    try {
+      const { url } = await api<{ url: string }>(`${base}/teams/${entry.slug}/checkout`, { method: 'POST' });
+      window.location.href = url;
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+  const record = (entry: TournamentEntry, status: PaymentStatus) => {
+    const ask = { paid: `Record ${entry.name}’s fee as paid (cash, transfer…)?`, waived: `Let ${entry.name} in without paying?`, refunded: `Mark ${entry.name} refunded? Refund the order in Shopify too.` }[status as 'paid' | 'waived' | 'refunded'];
+    if (ask && !window.confirm(ask)) return;
+    act(`${base}/teams/${entry.slug}/payment`, 'POST', { status }, status === 'paid' ? 'Payment recorded' : undefined);
+  };
+
+  const url = `${SITE_URL}/tournaments/${t.id}`;
+  const spots = Math.max(0, t.capacity - t.counts.approved);
+  const invite = [
+    `${t.name}: ${t.status === 'registration' ? 'sign-ups are open' : 'follow the bracket'} on incha.tv.`,
+    `${cupDate(t.startsAt)}${t.venue ? ` at ${t.venue}` : ''}.`,
+    t.status === 'registration' ? `${spots} of ${t.capacity} places left${fee ? `, ${fee} per team` : ''}.` : '',
+    t.status === 'registration' ? `Enter your team: ${url}` : url
+  ].filter(Boolean).join(' ');
   async function share() {
-    const url = `${SITE_URL}/tournaments/${t.id}`;
-    if (typeof navigator.share === 'function') { navigator.share({ title: t.name, text: `${t.name} on incha.tv`, url }).catch(() => {}); return; }
-    try { await navigator.clipboard.writeText(url); setToast('Link copied'); } catch { window.prompt('Copy this link', url); }
+    if (typeof navigator.share === 'function') { navigator.share({ title: t.name, text: invite, url }).catch(() => {}); return; }
+    try { await navigator.clipboard.writeText(invite); setToast('Invite copied'); } catch { window.prompt('Copy this invite', invite); }
+  }
+  async function copy(text: string, done: string) {
+    try { await navigator.clipboard.writeText(text); setToast(done); } catch { window.prompt('Copy', text); }
   }
   const decide = (slot: BracketSlot, side: 'home' | 'away', why?: string) => act(`${base}/slots/${slot.id}/winner`, 'POST', { side, note: why });
 
@@ -160,6 +225,7 @@ export default function TournamentView({ id }: { id: string }) {
           <span className={`badge${t.status === 'running' ? ' flare' : open ? ' sky' : ''}`}>{open ? 'Sign-ups open' : t.status === 'running' ? 'In progress' : 'Finished'}</span>
           {t.youth && <span className="badge sky">Youth · unlisted</span>}
           {!t.youth && t.visibility === 'unlisted' && <span className="badge">Unlisted</span>}
+          {fee && <span className="badge">Entry {fee} / team</span>}
         </div>
         <h1 className="display">{t.name}</h1>
         <p className="cup-meta mono">{cupDate(t.startsAt)}{t.venue ? ` · ${t.venue}` : ''} · {t.halfLength}-min halves · knockout</p>
@@ -208,8 +274,9 @@ export default function TournamentView({ id }: { id: string }) {
                   )}
                   <input className="input" value={teamName} onChange={e => setTeamName(e.target.value)} maxLength={60} placeholder="Team name" aria-label="Team name" required />
                   <input className="input" value={note} onChange={e => setNote(e.target.value)} maxLength={280} placeholder="Note for the organizer (contact, kit colour…)" aria-label="Note for the organizer" />
-                  <span className="hint">A new name creates the team with you as its manager. Add your squad on the team page.</span>
-                  <button className="btn btn-primary" disabled={busy || !teamName.trim()}>{t.approval === 'auto' ? 'Enter team' : 'Request a place'}</button>
+                  <span className="hint">A new name creates the team with you as its manager. Add your squad on the team page.
+                    {fee && (t.payOnline ? ` Entry is ${fee}, paid securely through the incha shop after you enter.` : ` Entry is ${fee}; the organizer will tell you how to pay.`)}</span>
+                  <button className="btn btn-primary" disabled={busy || !teamName.trim()}>{fee ? `Enter team · ${fee}` : t.approval === 'auto' ? 'Enter team' : 'Request a place'}</button>
                 </>
               )}
             </form>
@@ -222,6 +289,7 @@ export default function TournamentView({ id }: { id: string }) {
                 <span className="muted" style={{ fontSize: 13 }}>{e.players ? `${e.players} players` : 'no squad yet'}</span>
                 {e.mine && <span className="badge sky">Yours</span>}
                 <div className="spacer" />
+                <EntryPayment entry={e} t={t} busy={busy} pay={pay} record={record} />
                 {(t.isOrganizer || e.mine) && <button className="linkish" disabled={busy} onClick={() => window.confirm(`Take ${e.name} out of the tournament?`) && act(`${base}/teams/${e.slug}`, 'DELETE')}>{e.mine ? 'Withdraw' : 'Remove'}</button>}
                 {t.isOrganizer && e.note && <p className="cup-note">“{e.note}”</p>}
               </li>
@@ -231,16 +299,17 @@ export default function TournamentView({ id }: { id: string }) {
 
           {pending.length > 0 && (
             <>
-              <h3 className="mono muted" style={{ marginTop: 20 }}>Waiting for approval</h3>
+              <h3 className="mono muted" style={{ marginTop: 20 }}>{fee ? 'Waiting for payment or approval' : 'Waiting for approval'}</h3>
               <ul className="cup-entries">
                 {pending.map(e => (
                   <li key={e.slug}>
                     <Link href={`/t/${e.slug}`}>{e.name}</Link>
                     <span className="muted" style={{ fontSize: 13 }}>{e.players ? `${e.players} players` : 'no squad yet'}</span>
                     <div className="spacer" />
+                    <EntryPayment entry={e} t={t} busy={busy} pay={pay} record={record} />
                     {t.isOrganizer ? (
                       <span className="cup-actions">
-                        <button className="btn btn-sm btn-primary" disabled={busy || full} onClick={() => act(`${base}/teams/${e.slug}`, 'PATCH', { status: 'approved' })}>Approve</button>
+                        <button className="btn btn-sm btn-primary" disabled={busy || full || Boolean(e.payment && !['paid', 'waived'].includes(e.payment.status))} onClick={() => act(`${base}/teams/${e.slug}`, 'PATCH', { status: 'approved' })}>Approve</button>
                         <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`${base}/teams/${e.slug}`, 'PATCH', { status: 'rejected' })}>Decline</button>
                       </span>
                     ) : e.mine && <button className="linkish" disabled={busy} onClick={() => act(`${base}/teams/${e.slug}`, 'DELETE')}>Withdraw</button>}
@@ -263,6 +332,24 @@ export default function TournamentView({ id }: { id: string }) {
                 ))}
               </ul>
             </>
+          )}
+
+          {t.isOrganizer && (
+            <div className="panel stack cup-invite" style={{ gap: 10, marginTop: 20 }}>
+              <strong>Invite teams</strong>
+              {fee && <p className="muted" style={{ margin: 0 }}>
+                {t.payOnline ? `Teams pay ${fee} through the incha shop when they enter.` : `Entry is ${fee}. Online payment isn’t connected yet, so collect it yourself and tap “Mark paid”.`}
+                {t.collectedCents ? ` Collected so far: ${money(t.collectedCents, t.currency)}.` : ''}
+              </p>}
+              <p className="cup-invite-text">{invite}</p>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-sm btn-primary" onClick={() => copy(invite, 'Invite copied')}>Copy invite</button>
+                <a className="btn btn-sm" href={`https://wa.me/?text=${encodeURIComponent(invite)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                <a className="btn btn-sm" href={`sms:?&body=${encodeURIComponent(invite)}`}>Text</a>
+                <a className="btn btn-sm" href={`mailto:?subject=${encodeURIComponent(`Enter ${t.name}`)}&body=${encodeURIComponent(invite)}`}>Email</a>
+                <button className="btn btn-sm btn-ghost" onClick={() => copy(url, 'Link copied')}>Copy link</button>
+              </div>
+            </div>
           )}
 
           {t.isOrganizer && (
