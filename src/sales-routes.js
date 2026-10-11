@@ -132,6 +132,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
   // they asked to stop hearing from us, or they are back
   app.put('/v1/sales/contacts/:id/unsubscribe', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const off = req.body?.unsubscribed !== false;
+    if (!off) { const asked = (await pool.query(`select s.reason from sales_suppressions s join sales_contacts c on lower(c.email)=s.email where c.id=$1`, [req.params.id])).rows[0]; if (asked) return bad(reply, { unsubscribed: 'They unsubscribed themselves, so this cannot be undone from here. If they ask to hear from us again, they can reply and say so.', bounced: 'Mail to this address bounced, so it cannot be turned back on. Fix the address instead.', complained: 'They marked an email as spam, so this cannot be turned back on.', manual: 'They are on the do-not-email list.' }[asked.reason] || 'They are on the do-not-email list.', 409); }
     const r = await pool.query(`update sales_contacts set unsubscribed_at=${off ? 'coalesce(unsubscribed_at, now())' : 'null'}, email_ok=${off ? 'false' : 'true'}, updated_at=now() where id=$1 returning id`, [req.params.id]);
     if (!r.rowCount) return bad(reply, 'Not found', 404);
     await logActivity({ contactId: req.params.id, kind: 'system', text: off ? 'Marked as not to be emailed' : 'Allowed to be emailed again', actor: actorOf(req) });
