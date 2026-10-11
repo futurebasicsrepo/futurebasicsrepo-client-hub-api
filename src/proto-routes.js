@@ -11,7 +11,7 @@ import { crawlSite, auditSite, cleanSiteUrl } from './proto-crawl.js';
 import { INDUSTRIES, industryByKey, detectIndustry } from './proto-industry.js';
 import { buildBrief, buildPrototype, editPrototype, changeSummary, protoCostCents, protoAiReady, PROTO_MODEL } from './proto-build.js';
 import { slugify } from './builds.js';
-import { findLeads, SEARCH_TERMS } from './proto-leads.js';
+import { findLeads, SEARCH_TERMS, isLead } from './proto-leads.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (s, n) => String(s ?? '').replace(/[\u0000-\u001F]+/g, ' ').trim().slice(0, n);
@@ -236,7 +236,7 @@ export function registerProtoRoutes(app, d) {
   const knownHosts = async () => { const s = new Set(); for (const r of (await pool.query('select host from prototypes')).rows) s.add(r.host); for (const r of (await pool.query(`select website from sales_companies where website<>''`)).rows) { const c = cleanSiteUrl(r.website); if (c.host) s.add(c.host); } return s; };
   const searchesToday = async () => Number((await pool.query(`select count(*)::int n from prototype_searches where created_at > now() - interval '24 hours'`)).rows[0].n);
   const searchView = r => ({ id: r.id, trade: r.trade, place: r.place, mode: r.mode, status: r.status, step: r.step, queries: r.queries, results: r.results, skipped: r.skipped, error: r.error, createdAt: r.created_at, found: (r.results || []).length,
-    scheduleId: r.schedule_id || null, seenAt: r.seen_at || null, quick: (r.results || []).filter(i => i.reachable && i.quickTurn).length });
+    scheduleId: r.schedule_id || null, seenAt: r.seen_at || null, quick: (r.results || []).filter(i => i.reachable && i.quickTurn && isLead(i)).length, leads: (r.results || []).filter(isLead).length });
   const searchCap = () => Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30));
   // What a saved search has already shown, so each run brings new sites only.
   const scheduleSeen = async (scheduleId, exceptId) => { const hosts = new Set(); for (const r of (await pool.query(`select results from prototype_searches where schedule_id=$1 and id<>$2 and status='done' order by created_at desc limit 8`, [scheduleId, exceptId])).rows) for (const i of r.results || []) if (i.host) hosts.add(i.host); return hosts; };
@@ -272,7 +272,7 @@ export function registerProtoRoutes(app, d) {
   const scheduleView = async r => {
     const last = (await pool.query('select id,status,error,results,seen_at,created_at from prototype_searches where schedule_id=$1 order by created_at desc limit 1', [r.id])).rows[0] || null;
     return { id: r.id, trade: r.trade, tradeLabel: tradeLabel(r.trade), place: r.place, everyDays: r.every_days, enabled: r.enabled, lastRunAt: r.last_run_at, nextRunAt: r.enabled ? new Date((r.last_run_at ? new Date(r.last_run_at).getTime() : Date.now()) + (r.last_run_at ? r.every_days * DAY_MS : 0)).toISOString() : null,
-      last: last && { id: last.id, status: last.status, error: last.error, found: (last.results || []).length, quick: (last.results || []).filter(i => i.reachable && i.quickTurn).length, seen: Boolean(last.seen_at), at: last.created_at } };
+      last: last && { id: last.id, status: last.status, error: last.error, found: (last.results || []).length, quick: (last.results || []).filter(i => i.reachable && i.quickTurn && isLead(i)).length, seen: Boolean(last.seen_at), at: last.created_at } };
   };
   const getSchedule = async id => UUID.test(String(id)) ? (await pool.query('select * from prototype_search_schedules where id=$1', [id])).rows[0] : null;
   // a search row for a saved search, started now (the caller decides whether to wait for it)

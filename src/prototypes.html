@@ -46,6 +46,12 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
 .empty{color:var(--dim);padding:14px 0}.pitch{background:var(--fog);border-radius:12px;padding:10px 12px;font-size:13px;white-space:pre-wrap}
 .vers{display:grid;gap:8px;margin:0;padding:0;list-style:none}.vers li{border:1px solid var(--line);border-radius:12px;padding:9px 12px;display:grid;gap:5px}.vers li.on{border-color:var(--ink)}.vers .vl{font-size:13px;overflow-wrap:anywhere}
 .viewing{border:1px dashed var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:13px}
+.card.lead{display:flex;flex-direction:column;gap:10px}.card.lead h3{font-size:16px;line-height:1.25}.card.lead .host{font:500 12px 'IBM Plex Mono',monospace;color:var(--dim);overflow-wrap:anywhere;margin-top:2px}
+.score.sm{width:52px;height:52px;font-size:17px;flex:none}.score.sm:before{inset:6px}
+.why{margin:0;padding:0 0 0 18px;display:grid;gap:4px;font-size:13px;line-height:1.35}.card.lead .acts{margin-top:auto;padding-top:2px;align-items:center}.card.lead .acts .btn{padding:7px 13px}
+.lnk{font-size:13px;color:var(--dim);text-decoration:none;white-space:nowrap}.lnk:hover{color:var(--ink);text-decoration:underline}
+.rest{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}.rest summary{cursor:pointer;font-size:13px;color:var(--dim)}.rest .rrow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:13px}.rest .rrow:first-of-type{margin-top:8px}.rest .rrow b{display:block;overflow-wrap:anywhere}
+@media(max-width:700px){#t-leads .form{grid-template-columns:minmax(0,1fr)!important}.rest .rrow{grid-template-columns:minmax(0,1fr) auto}.rest .rrow .why1{grid-column:1/-1;order:3}}
 </style>
 </head>
 <body>
@@ -212,19 +218,27 @@ let SCH=null;
 async function saved(){const r=await api('/v1/admin/prototypes/leads/schedules');SCH=r;const keep={t:$('#sTrade')&&$('#sTrade').value,p:$('#sPlace')&&$('#sPlace').value,e:$('#sEvery')&&$('#sEvery').value};$('#lSaved').innerHTML=savedHtml(r.schedules,r.search);if(keep.p){$('#sTrade').value=keep.t;$('#sPlace').value=keep.p;$('#sEvery').value=keep.e}
   clearTimeout(SPOLL);if(r.search&&!$('#t-leads').classList.contains('hidden')&&r.schedules.some(x=>x.enabled&&(!x.last||x.last.status==='running')))SPOLL=setTimeout(()=>saved().catch(()=>{}),2000)}
 let SPOLL=null;
-async function recent(){const r=await api('/v1/admin/prototypes/leads/searches');$('#lRecent').innerHTML=r.searches.length?`<h3>Recent searches</h3><div class="mini" style="margin-top:8px">${r.searches.map(s=>`<button class="btn sm" data-search="${s.id}">${esc(s.mode==='list'?'Pasted list':(LM.trades.find(t=>t.key===s.trade)||{label:s.trade}).label+' · '+s.place)} · ${s.found} sites · ${ago(s.createdAt)}</button>`).join('')}</div>`:''}
-function leadCard(i,idx){
-  const crm=CRM[i.host];
-  return `<article class="card" data-host="${esc(i.host)}"><div class="hd"><div><h3>${esc(i.name||i.host)}</h3><div class="sub">${esc(i.host)}${i.city?' · '+esc(i.city):''}${i.phone?' · '+esc(i.phone):''}</div></div>${i.reachable?`<span class="score" style="--p:${i.score};--c:${scoreColor(i.score)};width:56px;height:56px;font-size:20px"><span>${i.score}</span></span>`:'<span class="chip bad">site is down</span>'}</div>
-  <div class="mini">${i.reachable?`<span class="chip ${gradeTone(i.grade)}">${esc(i.grade)} site</span>${i.quickTurn?'<span class="chip ok">quick turn</span>':'<span class="chip warn">bigger job</span>'}${i.industryLabel?`<span class="chip dim">${esc(i.industryLabel.split(' (')[0])}</span>`:''}${i.generator?`<span class="chip dim">${esc(i.generator)}</span>`:''}`:`<span class="sub">${esc(i.error||'')}</span>`}</div>
-  ${i.top&&i.top.length?`<ul class="issues">${i.top.slice(0,2).map(t=>`<li><b>${esc(t.title)}</b></li>`).join('')}</ul>`:''}
-  ${i.snippet?`<div class="sub">${esc(i.snippet.slice(0,140))}</div>`:''}
-  <div class="acts"><button class="btn sm go" data-lead-build="${idx}">Build the prototype</button>${crm?'<span class="chip ok">in the CRM</span>':`<button class="btn sm" data-lead-crm="${idx}">Add to the CRM</button>`}<a class="btn sm" href="${esc(i.url)}" target="_blank" rel="noopener">Their site</a></div></article>`}
-function showSearch(s){LS=s;const sk=s.skipped||{};const parts=[sk.directories&&`${sk.directories} directory listings`,sk.duplicates&&`${sk.duplicates} repeats`,sk.known&&`${sk.known} you already have`].filter(Boolean);
+async function recent(){const r=await api('/v1/admin/prototypes/leads/searches');$('#lRecent').innerHTML=r.searches.length?`<h3>Recent searches</h3><div class="mini" style="margin-top:8px">${r.searches.map(s=>`<button class="btn sm" data-search="${s.id}">${esc(s.mode==='list'?'Pasted list':(LM.trades.find(t=>t.key===s.trade)||{label:s.trade}).label+' · '+s.place)} · ${s.found} site${s.found===1?'':'s'} · ${ago(s.createdAt)}</button>`).join('')}</div>`:''}
+// worth a call, for searches saved before the flag existed too
+const isLeadUI=i=>i.lead!==undefined?i.lead:(i.reachable===false||Number(i.score)<80);
+const tradeName=k=>((LM&&LM.trades.find(t=>t.key===k))||{label:k||''}).label.split(' (')[0];
+function leadCard(i,idx,s){
+  const crm=CRM[i.host],name=i.name||i.host,sub=[i.city,i.phone].filter(Boolean).map(esc).join(' · '),why=i.reachable?(i.top||[]).slice(0,2).map(t=>`<li>${esc(t.title)}</li>`).join(''):`<li>${esc(i.error||'The site could not be read')}</li>`;
+  const ring=i.reachable?`<span class="score sm" style="--p:${i.score};--c:${scoreColor(i.score)}"><span>${i.score}</span></span>`:'<span class="chip bad">site is down</span>';
+  const chips=i.reachable?`<span class="chip ${gradeTone(i.grade)}">${esc(i.grade)} site</span>${i.quickTurn?'<span class="chip ok">quick turn</span>':'<span class="chip warn">bigger job</span>'}${s&&i.industry&&i.industry!==s.trade&&s.trade!=='trade'?`<span class="chip dim">${esc(tradeName(i.industry))}</span>`:''}${i.generator?`<span class="chip dim">${esc(i.generator)}</span>`:''}`:'';
+  return `<article class="card lead" data-host="${esc(i.host)}"><div class="hd"><div><h3>${esc(name)}</h3>${name!==i.host?`<div class="host">${esc(i.host)}</div>`:''}${sub?`<div class="sub">${sub}</div>`:''}</div>${ring}</div>
+  ${chips?`<div class="mini">${chips}</div>`:''}<ul class="why">${why}</ul>
+  <div class="acts"><button class="btn sm go" type="button" data-lead-build="${idx}">Build prototype</button>${crm?'<span class="chip ok">in the CRM</span>':`<button class="btn sm" type="button" data-lead-crm="${idx}">Add to CRM</button>`}<a class="lnk" href="${esc(i.url)}" target="_blank" rel="noopener">Visit site ↗</a></div></article>`}
+function restRow(i,idx,s){
+  const name=i.name||i.host,reason=i.reason||(i.grade==='good'?`Already a good site (${i.score})`:'Not a match');
+  return `<div class="rrow" data-host="${esc(i.host)}"><div><b>${esc(name)}</b><span class="sub">${esc(i.host)}</span></div><div class="why1 sub">${esc(reason)}</div><div class="acts"><button class="btn sm" type="button" data-lead-build="${idx}">Build anyway</button><a class="lnk" href="${esc(i.url)}" target="_blank" rel="noopener">Visit ↗</a></div></div>`}
+function showSearch(s){LS=s;const sk=s.skipped||{};const parts=[sk.directories&&`${sk.directories} directory and ranking pages`,sk.duplicates&&`${sk.duplicates} repeats`,sk.known&&`${sk.known} you already have`].filter(Boolean);
   if(s.status==='running'){$('#lOut').innerHTML=`<div class="panel"><div class="prog"><div class="bar"><i></i></div><b>${esc(s.step)}</b></div></div>`;return}
   if(s.status==='failed'){$('#lOut').innerHTML=`<div class="panel"><b style="color:var(--bad)">${esc(s.error)}</b></div>`;return}
-  const quick=s.results.filter(i=>i.reachable&&i.quickTurn).length;
-  $('#lOut').innerHTML=`<div class="panel"><h3>${s.results.length} sites checked${quick?`, ${quick} quick turn${quick===1?'':'s'}`:''}</h3><p class="sub">${parts.length?'Skipped '+parts.join(', ')+'. ':''}Worst first.</p><div class="cards" style="margin-top:12px">${s.results.map(leadCard).join('')||'<p class="empty">Nothing found. Try a bigger area, or paste addresses.</p>'}</div></div>`}
+  const all=s.results.map((i,idx)=>({i,idx})),worth=all.filter(x=>isLeadUI(x.i)),rest=all.filter(x=>!isLeadUI(x.i)),quick=worth.filter(x=>x.i.reachable&&x.i.quickTurn).length;
+  $('#lOut').innerHTML=`<div class="panel"><h3>${all.length} site${all.length===1?'':'s'} checked: ${worth.length} worth a call${quick?`, ${quick} quick turn${quick===1?'':'s'}`:''}</h3><p class="sub">${parts.length?'Skipped '+parts.join(', ')+'. ':''}Worst first.</p>
+  ${worth.length?`<div class="cards" style="margin-top:12px">${worth.map(x=>leadCard(x.i,x.idx,s)).join('')}</div>`:'<p class="empty" style="margin-top:12px">Nothing worth a call this time: every site already looks fine. Try a nearby town, or paste addresses.</p>'}
+  ${rest.length?`<details class="rest"><summary>${rest.length===1?'1 site that already looks fine or is another trade':rest.length+' sites that already look fine or are another trade'}</summary>${rest.map(x=>restRow(x.i,x.idx,s)).join('')}</details>`:''}</div>`}
 async function pollSearch(id){clearTimeout(LPOLL);const {search:s}=await api('/v1/admin/prototypes/leads/searches/'+id);showSearch(s);if(s.status==='running')LPOLL=setTimeout(()=>pollSearch(id).catch(()=>{}),1500);else recent().catch(()=>{})}
 async function runSearch(body){lsay('');$('#lSearch').disabled=true;$('#lAudit').disabled=true;try{const r=await api('/v1/admin/prototypes/leads/search',{body});showSearch(r.search);await pollSearch(r.search.id)}catch(e){lsay(e.message,'bad')}$('#lSearch').disabled=!LM.search;$('#lAudit').disabled=false}
 $('#lSearch').onclick=()=>runSearch({trade:$('#lTrade').value,place:$('#lPlace').value});
