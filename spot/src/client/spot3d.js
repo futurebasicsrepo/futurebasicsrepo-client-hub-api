@@ -732,6 +732,8 @@ export function mountSpot3D(host, { onCue = () => {}, portrait = false } = {}) {
     },
     // one frame now (for tests and stills)
     render() { renderer.render(scene, camera); },
+    // for rendering posed stills (scripts only): his arms, the scene, the camera
+    rig: { arms, scene, camera, contact, spot },
     destroy() {
       cancelAnimationFrame(raf);
       removeEventListener('pointermove', onMove);

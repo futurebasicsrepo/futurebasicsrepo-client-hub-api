@@ -12,7 +12,7 @@ import { assetUrl } from './assets.js';
 
 export function spotBuddy(id = 'b', { happy = false, moods = false } = {}) {
   const img = (cls, name) => `<img class="${cls}" src="${assetUrl(name)}" alt="" width="320" height="358" decoding="async" loading="lazy">`;
-  return `<span class="spotb spotimg${happy ? ' happy' : ''}" data-spot="${id}"><img class="hi" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async">${img('yay', 'spot-yay.webp')}${moods ? img('oh', 'spot-oh.webp') + img('zzz', 'spot-sleep.webp') : ''}</span>`;
+  return `<span class="spotb spotimg${happy ? ' happy' : ''}" data-spot="${id}"><img class="m-hi" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async">${img('m-yay', 'spot-yay.webp')}${moods ? img('m-oh', 'spot-oh.webp') + img('m-zz', 'spot-sleep.webp') : ''}</span>`;
 }
 
 // Hero: the YES button with Spot standing on it, and the order around them:
@@ -64,8 +64,8 @@ export const SPOTFX_CSS = `
 /* ── Spot the character ── */
 .spotb{width:100%;height:auto;display:block;position:relative}
 .spotimg img{display:block;width:100%;height:auto;transition:opacity .12s}
-.spotimg .yay,.spotimg .oh,.spotimg .zzz{position:absolute;inset:0;opacity:0}.spotb.happy .yay{opacity:1}.spotb.happy .hi{opacity:0}
-.spotb.oh .oh,.spotb.sleep .zzz{opacity:1}.spotb.oh .hi,.spotb.sleep .hi,.spotb.oh .yay{opacity:0}
+.spotimg .m-yay,.spotimg .m-oh,.spotimg .m-zz{position:absolute;inset:0;opacity:0}.spotb.happy .m-yay{opacity:1}.spotb.happy .m-hi{opacity:0}
+.spotb.oh .m-oh,.spotb.sleep .m-zz{opacity:1}.spotb.oh .m-hi,.spotb.sleep .m-hi,.spotb.oh .m-yay{opacity:0}
 /* the live plush replaces the still in the hero */
 .herospot .spot3d{display:block;width:100%;height:auto}
 /* only Spot himself is clickable: the canvas's empty corners overlap the YES key */
@@ -311,6 +311,108 @@ export const SPOTFX_JS = `
 // "See it in a chat": the AI chat you already use on one side, your phone on
 // the other. You ask, the AI picks, Spot texts you; then either you finish it
 // or someone else pays. Scenarios loop, alternating who pays.
+// A photoreal iPhone (16 Pro, natural titanium): frame, buttons, Dynamic
+// Island, status bar, lock screen, a Messages notification, then Safari or
+// Messages. Drawn in HTML/CSS so the screen can animate.
+const IC = {
+  signal: '<svg viewBox="0 0 18 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>',
+  wifi: '<svg viewBox="0 0 16 12" aria-hidden="true"><path d="M8 2.3c2.3 0 4.4.9 6 2.4l1.2-1.3A10.4 10.4 0 0 0 8 .6 10.4 10.4 0 0 0 .8 3.4L2 4.7a8.7 8.7 0 0 1 6-2.4zm0 3.4c1.4 0 2.6.5 3.6 1.4l1.2-1.3A6.9 6.9 0 0 0 8 4a6.9 6.9 0 0 0-4.8 1.8l1.2 1.3c1-.9 2.2-1.4 3.6-1.4zM8 9c.5 0 1 .2 1.3.5L8 11.1 6.7 9.5C7 9.2 7.5 9 8 9z"/></svg>',
+  battery: '<svg viewBox="0 0 27 12" aria-hidden="true"><rect x=".5" y=".5" width="23" height="11" rx="3.2" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.8"/><path d="M25 4.2v3.6c.8-.3 1.3-1 1.3-1.8s-.5-1.5-1.3-1.8z" opacity=".45"/></svg>',
+  messages: '<svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="imsg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6cf37a"/><stop offset="1" stop-color="#0bbd2b"/></linearGradient></defs><rect width="40" height="40" rx="9.5" fill="url(#imsg)"/><path d="M20 9.5c-6.6 0-12 4.2-12 9.4 0 3 1.8 5.6 4.5 7.3-.2 1.6-1 3-2.4 4.2 2.5-.1 4.7-1 6.3-2.4 1.2.3 2.4.4 3.6.4 6.6 0 12-4.2 12-9.5S26.6 9.5 20 9.5z" fill="#fff"/></svg>',
+  torch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8v4l-2 4v10h-4V11L8 7z"/><path d="M8 7h8M12 14v2"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8h3.8L9 5.5h6L16.7 8h3.8v11h-17z"/><circle cx="12" cy="13.3" r="3.6"/></svg>',
+  faceid: '<svg viewBox="0 0 52 52" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="face"><path d="M3 15V9a6 6 0 0 1 6-6h6M37 3h6a6 6 0 0 1 6 6v6M49 37v6a6 6 0 0 1-6 6h-6M15 49H9a6 6 0 0 1-6-6v-6"/><path d="M17 18v4M35 18v4M26 18v11h-3M19 36c4.5 3.5 9.5 3.5 14 0"/></g><path class="chk" d="M13 27l9 9 17-19"/></svg>',
+};
+function iphone() {
+  return `<div class="iph" aria-hidden="true" data-img="${assetUrl('spot-yay.webp')}">
+      <i class="iph-key k-act"></i><i class="iph-key k-up"></i><i class="iph-key k-dn"></i><i class="iph-key k-pwr"></i>
+      <div class="iph-glass"><div class="sp-screen" id="spScreen">
+        <div class="iph-bar"><span>9:41</span><span class="iph-icons">${IC.signal}${IC.wifi}${IC.battery}</span></div>
+        <div class="iph-island"></div>
+        <div class="sp-lock"><div class="sp-date">Friday, October 9</div><div class="sp-time">9:41</div></div>
+        <div class="sp-note" id="spNote"><span class="sp-ico">${IC.messages}</span><div class="sp-nt"><div class="sp-nh"><b>Spot</b><small>now</small></div><div class="sp-msg" id="spMsg"></div></div></div>
+        <div class="sp-lockbtns"><span>${IC.torch}</span><span>${IC.camera}</span></div>
+        <div class="sp-page" id="spPage"></div>
+        <div class="sp-fid" id="spFid">${IC.faceid}<span>Face ID</span></div>
+        <div class="sp-done" id="spDone"></div>
+        <div class="iph-home"></div>
+      </div></div>
+    </div>`;
+}
+const IPHONE_CSS = `
+.iph{--r:50px;position:relative;justify-self:center;width:262px;aspect-ratio:71.5/149.6;border-radius:var(--r);padding:3.5px;
+  background:linear-gradient(150deg,#f4f1eb 0%,#b7b2a9 12%,#ebe7e0 26%,#97928a 44%,#dcd8d1 60%,#a19c94 78%,#f0ece6 100%);
+  box-shadow:0 0 0 .6px rgba(0,0,0,.4),inset 0 0 1.5px 1px rgba(255,255,255,.6),inset 0 0 0 2.5px rgba(0,0,0,.12),0 70px 90px -50px rgba(30,18,8,.7),0 30px 44px -30px rgba(30,18,8,.5);
+  transform:perspective(1600px) rotateY(-13deg) rotateX(5deg) rotateZ(1.5deg);transition:transform .7s cubic-bezier(.2,.8,.2,1)}
+.iph:hover{transform:perspective(1600px) rotateY(-4deg) rotateX(2deg)}
+.iph.buzz{animation:buzz .45s}
+@keyframes buzz{20%,60%{translate:-3px 0}40%,80%{translate:3px 0}}
+.iph-key{position:absolute;width:4px;border-radius:2px;background:linear-gradient(90deg,#77726a,#e9e5de 45%,#a8a39b 80%,#6f6a62)}
+.k-act{left:-3px;top:17%;height:5.5%}.k-up{left:-3px;top:25.5%;height:10%}.k-dn{left:-3px;top:37.5%;height:10%}.k-pwr{right:-3px;top:29%;height:15%}
+.iph-glass{position:relative;height:100%;border-radius:calc(var(--r) - 3.5px);background:#030303;padding:8px;box-shadow:inset 0 0 0 1px #222}
+.iph-glass::after{content:'';position:absolute;inset:0;z-index:20;border-radius:inherit;pointer-events:none;background:linear-gradient(120deg,rgba(255,255,255,.17),rgba(255,255,255,.05) 24%,transparent 38%,transparent 80%,rgba(255,255,255,.04))}
+.sp-screen{position:relative;height:100%;border-radius:calc(var(--r) - 11.5px);overflow:hidden;isolation:isolate;color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(110% 60% at 10% 0%,#ffd9b0 0%,transparent 55%),radial-gradient(80% 55% at 100% 100%,#7d1a0a 0%,transparent 65%),radial-gradient(60% 40% at 85% 30%,#ff8a5c 0%,transparent 70%),linear-gradient(168deg,#ffab73 0%,#ff5a36 46%,#b83116 100%)}
+.iph-bar{position:absolute;z-index:12;top:0;left:0;right:0;height:46px;display:flex;align-items:center;justify-content:space-between;padding:3px 22px 0 30px;font-weight:600;font-size:14.5px;letter-spacing:-.01em;transition:color .3s}
+.iph-icons{display:flex;gap:5px;align-items:center}.iph-icons svg{height:11px;width:auto;fill:currentColor}.iph-icons svg:last-child{height:12px}
+.sp-screen.app .iph-bar{color:#0b0b0b}
+.iph-island{position:absolute;z-index:13;top:10px;left:50%;translate:-50% 0;width:33%;height:26px;border-radius:20px;background:#000}
+.iph-island::after{content:'';position:absolute;right:9px;top:8px;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 40% 40%,#2c3a52 0 25%,#0b0f18 60%)}
+.sp-lock{position:absolute;top:56px;left:0;right:0;text-align:center;transition:opacity .35s,transform .5s cubic-bezier(.2,.8,.2,1);text-shadow:0 1px 12px rgba(120,30,10,.25)}
+.sp-date{font-size:15.5px;font-weight:600;opacity:.92}
+.sp-time{font-family:'SF Pro Rounded',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:84px;font-weight:700;letter-spacing:-.035em;line-height:.95;margin-top:2px;opacity:.95}
+.sp-screen.app .sp-lock,.sp-screen.app .sp-lockbtns{opacity:0;transform:scale(.94)}
+.sp-note{position:absolute;z-index:4;left:7px;right:7px;top:190px;display:flex;gap:9px;align-items:flex-start;padding:10px 12px 11px 10px;border-radius:22px;background:rgba(244,240,236,.74);-webkit-backdrop-filter:blur(26px) saturate(1.8);backdrop-filter:blur(26px) saturate(1.8);color:#0b0b0b;box-shadow:0 10px 30px rgba(60,15,5,.16);opacity:0;transform:translateY(-16px) scale(.95);transition:opacity .3s,transform .55s cubic-bezier(.2,1.25,.4,1)}
+.sp-note.show{opacity:1;transform:none}.sp-note.tap{transform:scale(.965);transition-duration:.15s}
+.sp-ico svg{width:36px;height:36px;display:block}
+.sp-nt{flex:1;min-width:0}.sp-nh{display:flex;justify-content:space-between;align-items:baseline}.sp-nh b{font-size:13.5px;font-weight:600}.sp-nh small{font-size:12px;color:rgba(0,0,0,.42)}
+.sp-msg{font-size:13px;line-height:1.32;margin-top:1px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.sp-lockbtns{position:absolute;bottom:28px;left:24px;right:24px;display:flex;justify-content:space-between;transition:opacity .3s,transform .4s}
+.sp-lockbtns span{width:46px;height:46px;border-radius:50%;background:rgba(40,10,0,.24);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);display:grid;place-items:center}.sp-lockbtns svg{width:20px;height:20px}
+.iph-home{position:absolute;z-index:14;bottom:7px;left:50%;translate:-50% 0;width:36%;height:5px;border-radius:3px;background:#fff;transition:background .3s}
+.sp-screen.app .iph-home{background:#0b0b0b}
+.sp-page{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;background:#fbf8f3;color:#1b1712;opacity:0;transform:translateY(24px) scale(.92);border-radius:inherit;transition:opacity .3s,transform .55s cubic-bezier(.2,.9,.25,1)}
+.sp-page.show{opacity:1;transform:none}
+.pg{flex:1;display:flex;flex-direction:column;gap:8px;padding:54px 15px 0;font-size:12.5px;min-height:0}
+.pg-top{display:flex;align-items:center;gap:7px;font-family:Bricolage,system-ui,sans-serif;font-weight:800;font-size:15px;letter-spacing:-.02em}
+.pg-logo{width:24px;height:24px;border-radius:50%;background:url(${assetUrl('spot-face.webp')}) 50% 46%/116% no-repeat,#ff5a36}
+.pg h4{font-family:Bricolage,system-ui,sans-serif;font-size:22px;font-weight:800;letter-spacing:-.035em;line-height:1.05;margin:6px 0 0}
+.pg-sub{margin:0 0 4px;color:#7a7166;font-size:12px}
+.pg-item{display:flex;align-items:center;gap:9px;padding:8px;border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(60,40,20,.06),0 0 0 .5px rgba(60,40,20,.08)}
+.pg-thumb{width:40px;height:40px;flex:none;border-radius:10px;background:#f3ede4;display:grid;place-items:center;font-size:22px}
+.pg-it{flex:1;min-width:0}.pg-it b{display:block;font-size:13px}.pg-it small{display:block;color:#7a7166;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-line{display:flex;justify-content:space-between;color:#5d554b;padding:0 3px}
+.pg-total{display:flex;justify-content:space-between;font-weight:800;font-size:15px;border-top:1px solid #ebe3d7;padding:9px 3px 0}
+.pg-fine{margin:0 3px;color:#958b7e;font-size:10.5px;line-height:1.35}
+.pg-pay{margin-top:auto;margin-bottom:9px;height:44px;border-radius:12px;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:600;font-size:15.5px;letter-spacing:-.01em;transition:transform .12s}
+.pg-pay svg{width:19px;height:19px}.pg-pay .chk{display:none}.pg-pay.press{transform:scale(.96)}
+.sf-bar{margin:0 9px 25px;height:40px;flex:none;border-radius:13px;background:rgba(255,255,255,.92);box-shadow:0 3px 14px rgba(0,0,0,.08),0 0 0 .5px rgba(0,0,0,.1);display:flex;align-items:center;justify-content:space-between;padding:0 13px;font-size:13.5px;color:#0b0b0b}
+.sf-aa{font-size:12px;font-weight:600;color:#3a3a3c}
+.sp-fid{position:absolute;z-index:15;left:50%;top:42%;translate:-50% -50%;width:118px;height:118px;border-radius:26px;background:rgba(228,228,232,.96);box-shadow:0 18px 40px rgba(0,0,0,.18),0 0 0 .5px rgba(0,0,0,.08);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);display:grid;place-items:center;align-content:center;gap:8px;color:#0b0b0b;font-size:12px;font-weight:600;opacity:0;scale:.86;transition:opacity .22s,scale .35s cubic-bezier(.2,1.4,.4,1)}
+.sp-fid.show{opacity:1;scale:1}.sp-fid svg{width:54px;height:54px}.sp-fid .chk{display:none}
+.sp-fid.ok .face{display:none}.sp-fid.ok .chk{display:block;stroke:#1fa64a;stroke-dasharray:44;stroke-dashoffset:44;animation:fidck .35s ease-out forwards}
+@keyframes fidck{to{stroke-dashoffset:0}}
+.sp-done{position:absolute;inset:0;z-index:16;display:grid;place-items:center;align-content:center;gap:5px;text-align:center;background:rgba(251,248,243,.96);font-family:Bricolage,system-ui,sans-serif;font-weight:800;font-size:22px;letter-spacing:-.02em;color:#1b1712;opacity:0;transition:opacity .35s}
+.sp-done.show{opacity:1}.sp-done small{font-family:-apple-system,system-ui,sans-serif;font-weight:500;font-size:12.5px;letter-spacing:0;color:#7a7166}
+.im{flex:1;display:flex;flex-direction:column;background:#fff;min-height:0}
+.im-head{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:48px 0 8px;background:rgba(247,247,247,.96);border-bottom:.5px solid #dedede}
+.im-back{position:absolute;left:12px;bottom:22px;color:#0a84ff;font-size:28px;line-height:1}
+.im-av{width:40px;height:40px;border-radius:50%;background:linear-gradient(#b9bdc6,#8a8f99);color:#fff;display:grid;place-items:center;font-weight:600;font-size:17px}
+.im-head small{font-size:11px;color:#0b0b0b}
+.im-body{flex:1;display:flex;flex-direction:column;gap:5px;padding:10px;justify-content:flex-end;overflow:hidden;min-height:0}
+.im-when{text-align:center;font-size:10.5px;color:#8e8e93;margin-bottom:6px;line-height:1.3}
+.tb{max-width:78%;padding:7px 11px;border-radius:18px;font-size:13px;line-height:1.3;animation:acin .3s both}
+.tme{align-self:flex-end;background:#0a84ff;color:#fff;border-bottom-right-radius:5px}.tthem{align-self:flex-start;background:#e9e9eb;color:#0b0b0b;border-bottom-left-radius:5px}
+.im-link{align-self:flex-end;width:76%;border-radius:18px;overflow:hidden;background:#e9e9eb;font-size:12px;animation:acin .35s both}
+.im-link .img{position:relative;aspect-ratio:1.7;background:radial-gradient(circle at 50% 75%,#fff1e2,#ffc29e 55%,#ff8a62);overflow:hidden}.im-link .img img{position:absolute;left:50%;bottom:-6%;translate:-50% 0;height:118%;width:auto;max-width:none;display:block}
+.im-link .cap{padding:7px 11px 8px;color:#0b0b0b;line-height:1.3}.im-link .cap b{display:block;font-size:13px}.im-link small{display:block;color:#6e6e73;font-size:11px}
+.im-typing{align-self:flex-start;background:#e9e9eb;border-radius:18px;padding:10px 12px;display:flex;gap:4px;animation:acin .25s both}.im-typing i{width:7px;height:7px;border-radius:50%;background:#9b9ba1;animation:think 1s infinite}.im-typing i:nth-child(2){animation-delay:.15s}.im-typing i:nth-child(3){animation-delay:.3s}
+.im-input{margin:6px 10px 27px;border:1px solid #d6d6db;border-radius:18px;padding:7px 13px;font-size:13px;color:#a1a1a6}
+@media (max-width:600px){.iph{width:244px;--r:47px}}
+@media (prefers-reduced-motion:reduce){.iph,.iph:hover{transform:none}}
+`;
+
 export function handoffSection() {
   return `<section class="sec seeit blobby" id="see-it" data-say="Just ask. I’ll text you 📲"><div class="wrap">
   <p class="kicker reveal">See it in a chat</p>
@@ -323,13 +425,7 @@ export function handoffSection() {
       <div class="ac-input"><span id="acType"></span><i class="caret"></i><b>↑</b></div>
     </div>
     <div class="ac-arrow" aria-hidden="true"><span class="ac-dot"></span></div>
-    <div class="sphone" aria-hidden="true">
-      <div class="sp-screen" id="spScreen">
-        <div class="sp-lock"><div class="sp-time">9:41</div><div class="sp-date">Friday, October 9</div></div>
-        <div class="sp-note" id="spNote"><div class="sp-app"><span class="dot"></span>Messages · Spot</div><div class="sp-msg" id="spMsg"></div></div>
-        <div class="sp-page" id="spPage"></div>
-      </div>
-    </div>
+    ${iphone()}
   </div>
   <div class="seeit-paths reveal"><span class="sp-path" data-path="self">You check out</span><span class="sp-path" data-path="other">Someone else pays</span></div>
   <p class="sr-only">Example: you ask your AI for a blue hoodie and to send you a Spot. It picks one, Spot texts you a link, and you pay with Apple Pay. Or you ask it to have Mom spot you: Spot makes a link for Mom, she pays, and it ships to you.</p>
@@ -364,55 +460,39 @@ export const HANDOFF_CSS = `
 .ac-dot{position:absolute;left:0;top:-9px;width:16px;height:16px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent);opacity:0}
 .seeit.fly .ac-dot{animation:fly .9s ease-in-out}
 @keyframes fly{0%{opacity:1;left:0}100%{opacity:1;left:calc(100% - 16px)}}
-.sphone{justify-self:center;width:250px;height:500px;border-radius:44px;padding:11px;background:#16130f;box-shadow:0 2px 0 #3a332b inset,0 40px 70px -30px rgba(27,23,18,.6);transform:rotate(3deg)}
-.sphone.buzz{animation:buzz .5s}
-@keyframes buzz{20%,60%{transform:rotate(3deg) translateX(-4px)}40%,80%{transform:rotate(3deg) translateX(4px)}}
-.sp-screen{position:relative;height:100%;border-radius:34px;overflow:hidden;background:linear-gradient(160deg,#ffb38a,#ff6a47 55%,#c93a1c)}
-.sp-lock{text-align:center;color:#fff;padding-top:48px}.sp-time{font-size:56px;font-weight:600;letter-spacing:-.02em;line-height:1}.sp-date{font-size:13px;opacity:.9;margin-top:4px}
-.sp-note{position:absolute;left:10px;right:10px;top:150px;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-radius:18px;padding:10px 12px;font-size:12.5px;line-height:1.35;color:#1b1712;opacity:0;transform:translateY(-20px) scale(.96);transition:all .4s cubic-bezier(.2,1.3,.4,1)}
-.sp-note.show{opacity:1;transform:none}
-.sp-app{font-size:11px;color:#6f675c;margin-bottom:3px;display:flex;align-items:center;gap:6px}.sp-app .dot{width:14px;height:14px;border-radius:4px;background:#ff5a36}
-.sp-page{position:absolute;inset:0;background:#fbf7f1;color:#1b1712;padding:18px 14px;transform:translateY(100%);transition:transform .45s cubic-bezier(.2,.9,.3,1);display:flex;flex-direction:column;gap:8px;font-size:13px}
-.sp-page.show{transform:none}
-.sp-page h4{margin:8px 0 2px;font-size:19px;letter-spacing:-.02em}.sp-page .sub{color:#6f675c;font-size:12px}
-.sp-line{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #e8e0d4;padding:6px 0}.sp-line.total{font-weight:800;border:0}
-.sp-btn{margin-top:auto;border-radius:99px;padding:12px;text-align:center;font-weight:800;background:#111;color:#fff;transition:transform .12s}
-.sp-btn.spot{background:#ff5a36}.sp-btn.press{transform:scale(.95)}
-.sp-done{position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:rgba(251,247,241,.94);font-weight:800;font-size:20px;opacity:0;transition:opacity .3s}
-.sp-done.show{opacity:1}.sp-done small{display:block;font-weight:600;font-size:12.5px;color:#6f675c;margin-top:4px}
-.sp-thread{display:flex;flex-direction:column;gap:6px;margin-top:6px}.sp-thread .tb{max-width:85%;padding:7px 10px;border-radius:15px;font-size:12.5px}
-.sp-thread .tme{align-self:flex-end;background:#0a84ff;color:#fff}.sp-thread .tthem{background:#e9e4dc}
-.sp-link{align-self:flex-end;width:80%;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #e8e0d4;font-size:12px}
-.sp-link .img{height:62px;background:linear-gradient(135deg,#ffb347,#ff5a36);display:grid;place-items:center;color:#fff;font-weight:800}.sp-link .cap{padding:6px 9px}
+${IPHONE_CSS}
 .seeit-paths{display:flex;gap:10px;justify-content:center;margin-top:26px;flex-wrap:wrap}
 .sp-path{padding:9px 16px;border-radius:99px;border:1px solid var(--line);font-weight:600;font-size:14.5px;background:var(--card);color:var(--muted);transition:all .2s}
 .sp-path.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-@media (prefers-reduced-motion:reduce){.ac-body>*,.ac-item{animation:none}.sphone{transform:none}}
+@media (prefers-reduced-motion:reduce){.ac-body>*,.ac-item{animation:none}}
 `;
 
 export const HANDOFF_JS = `
   const seeit=document.getElementById('see-it');
   if(seeit){
-    const body=document.getElementById('acBody'),typed=document.getElementById('acType'),note=document.getElementById('spNote'),msg=document.getElementById('spMsg'),page=document.getElementById('spPage'),phone=seeit.querySelector('.sphone');
+    const body=document.getElementById('acBody'),typed=document.getElementById('acType'),note=document.getElementById('spNote'),msg=document.getElementById('spMsg'),page=document.getElementById('spPage'),phone=seeit.querySelector('.iph'),scr=document.getElementById('spScreen'),fid=document.getElementById('spFid'),done=document.getElementById('spDone');
     const paths=[...seeit.querySelectorAll('.sp-path')];
     const S=[
-      {path:'self',ask:'find me a blue hoodie, medium, something cozy under $70, and send me a Spot',
+      {path:'self',ask:'find me a blue hoodie, medium, something cozy under $80, and send me a Spot',
        say:'Found a good one: heavyweight, navy, true to size.',items:[['🧥','Heavyweight hoodie','Navy · M · Northwind Co.','$64']],
-       sms:'Spot: Your cart is ready. Heavyweight hoodie from Northwind Co., $69.76. Review and finish here: spotmeplease.com/c/x7Qh Reply STOP to opt out.',
-       lines:[['Heavyweight hoodie · M','$64.00'],['Price changes (unused back)','$3.20'],['Spot fee','$2.56'],['Total','$69.76']],done:['Ordered 📦','Northwind Co. · arrives Tue']},
+       sms:'Spot: Your cart is ready. Heavyweight hoodie from Northwind Co., $78.04. Review and finish here: spotmeplease.com/c/x7Qh Reply STOP to opt out.',
+       pg:{title:'Your cart is ready',sub:'Northwind Co. · ships to you',item:['🧥','Heavyweight hoodie','Navy · M','$64.00'],lines:[['Shipping & tax','$9.48'],['Spot fee','$4.56']],total:'$78.04'},done:['Ordered 📦','Northwind Co. · arrives Tuesday']},
       {path:'other',ask:'put together a beach weekend fit under $150 (linen shirt, shorts, sandals) and ask my mom to spot me',
        say:'Here’s the fit, all from Coastline Supply. I made Mom a Spot 👇',items:[['👕','Linen shirt','Sand · M','$58'],['🩳','Drawstring shorts','Navy · 32','$42'],['🩴','Slide sandals','Size 10','$38']],
        mom:true,done:['Mom spotted you 💸','Coastline Supply · ships to you']},
       {path:'self',ask:'earliest train to NYC saturday morning, send me a Spot',
        say:'Northeast Regional 170 leaves Philly 7:05am, in at 8:31. $53.',items:[['🚆','NE Regional 170','Sat · PHL 7:05 → NYP 8:31','$53']],
-       sms:'Spot: Your train is ready to book. Sat, Oct 10, 7:05 AM–8:31 AM · Coach · 1 passenger, Amtrak, $57.77. Add who\\'s riding and finish here: spotmeplease.com/c/m2Lp Reply STOP to opt out.',
-       lines:[['NE Regional 170 · Coach','$53.00'],['Fare changes (unused back)','$2.65'],['Spot fee','$2.12'],['Total','$57.77']],done:['Booked 🚆','Amtrak emails your e-ticket']}
+       sms:'Spot: Your train is ready to book. Sat, Oct 10, 7:05 AM–8:31 AM · Coach · 1 passenger, Amtrak, $56.95. Add who\\'s riding and finish here: spotmeplease.com/c/m2Lp Reply STOP to opt out.',
+       pg:{title:'Your train is ready',sub:'Amtrak · e-ticket by email',item:['🚆','NE Regional 170','Sat · PHL 7:05 → NYP 8:31','$53.00'],lines:[['Spot fee','$3.95']],total:'$56.95'},done:['Booked 🚆','Amtrak emails your e-ticket']}
     ];
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     const el=(cls,html)=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;return d};
     const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     const item=i=>'<div class="ac-item"><span class="em">'+i[0]+'</span><span><b>'+esc(i[1])+'</b><small>'+esc(i[2])+'</small></span><b style="margin-left:6px">'+i[3]+'</b></div>';
-    const reset=()=>{body.innerHTML='';typed.textContent='';note.classList.remove('show');page.classList.remove('show');page.innerHTML=''};
+    const reset=()=>{body.innerHTML='';typed.textContent='';scr.classList.remove('app');note.classList.remove('show','tap');page.classList.remove('show');page.innerHTML='';done.classList.remove('show');fid.classList.remove('show','ok')};
+    const FACE=${JSON.stringify(IC.faceid)};
+    const buzz=()=>{phone.classList.remove('buzz');void phone.offsetWidth;phone.classList.add('buzz')};
+    const pgHtml=g=>'<div class="pg"><div class="pg-top"><span class="pg-logo"></span>Spot</div><h4>'+esc(g.title)+'</h4><p class="pg-sub">'+esc(g.sub)+'</p><div class="pg-item"><span class="pg-thumb">'+g.item[0]+'</span><span class="pg-it"><b>'+esc(g.item[1])+'</b><small>'+esc(g.item[2])+'</small></span><b>'+g.item[3]+'</b></div>'+g.lines.map(l=>'<div class="pg-line"><span>'+esc(l[0])+'</span><span>'+l[1]+'</span></div>').join('')+'<div class="pg-total"><span>Total</span><b>'+g.total+'</b></div><p class="pg-fine">Anything the store doesn’t charge comes back to you.</p><div class="pg-pay">'+FACE+'Pay '+g.total+'</div></div><div class="sf-bar"><span class="sf-aa">AA</span><span class="sf-url">🔒 spotmeplease.com</span><span class="sf-aa">↻</span></div>';
     const show=(s)=>{ // the end state, for reduced motion
       body.append(el('ac-u',esc(s.ask)),el('ac-a',esc(s.say)),el('ac-items',s.items.map(item).join('')),el('ac-tool ok','→ Spot · '+(s.mom?'create_spot_ask':s.items[0][0]==='🚆'?'create_train_ask':'create_spot_ask')));
       paths.forEach(p=>p.classList.toggle('on',p.dataset.path===s.path))};
@@ -427,15 +507,19 @@ export const HANDOFF_JS = `
       body.append(el('ac-a',s.mom?'Sent Mom the link with a note from you 🧡':'Sent you a Spot. Check your texts 📲'));
       seeit.classList.remove('fly');void seeit.offsetWidth;seeit.classList.add('fly');await wait(900);
       if(s.mom){
-        page.innerHTML='<div class="sub">Messages · Mom</div><div class="sp-thread"><div class="tb tme">ok don’t laugh, beach weekend fit 🙈</div><div class="sp-link"><div class="img">psst… spot me?</div><div class="cap"><b>Coastline Supply · 3 items</b><br>$150.42 · tap to spot</div></div></div><div class="sp-done" id="spDone"></div>';
-        page.classList.add('show');await wait(1300);
-        page.querySelector('.sp-thread').insertAdjacentHTML('beforeend','<div class="tb tthem">omg fine 😂</div>');await wait(900);
+        page.innerHTML='<div class="im"><div class="im-head"><span class="im-back">‹</span><span class="im-av">M</span><small>Mom ›</small></div><div class="im-body" id="imBody"><div class="im-when">iMessage<br>Today 9:41 AM</div><div class="tb tme">ok don’t laugh, beach weekend fit 🙈</div></div><div class="im-input">iMessage</div></div>';
+        scr.classList.add('app');page.classList.add('show');const ib=document.getElementById('imBody');await wait(700);
+        ib.insertAdjacentHTML('beforeend','<div class="im-link"><div class="img"><img src="'+phone.dataset.img+'" alt=""></div><div class="cap"><b>psst… spot me?</b><small>Coastline Supply · 3 items · $150.42</small><small>spotmeplease.com</small></div></div>');await wait(1300);
+        ib.insertAdjacentHTML('beforeend','<div class="im-typing"><i></i><i></i><i></i></div>');await wait(1100);
+        ib.querySelector('.im-typing').remove();ib.insertAdjacentHTML('beforeend','<div class="tb tthem">omg fine 😂</div>');buzz();await wait(1000);
       }else{
-        msg.textContent=s.sms;note.classList.add('show');phone.classList.remove('buzz');void phone.offsetWidth;phone.classList.add('buzz');await wait(1900);
-        page.innerHTML='<div class="sub">spotmeplease.com</div><h4>'+(s.items[0][0]==='🚆'?'Your train is ready 🚆':'Your cart is ready 🛒')+'</h4>'+s.lines.map((l,i)=>'<div class="sp-line'+(i===s.lines.length-1?' total':'')+'"><span>'+esc(l[0])+'</span><span>'+l[1]+'</span></div>').join('')+'<div class="sp-btn" id="spBtn">Pay '+s.lines[s.lines.length-1][1]+'</div><div class="sp-done" id="spDone"></div>';
-        page.classList.add('show');await wait(1400);const b=document.getElementById('spBtn');b.classList.add('press');await wait(160);b.classList.remove('press');await wait(300);
+        msg.textContent=s.sms;note.classList.add('show');buzz();await wait(2000);
+        note.classList.add('tap');await wait(200);note.classList.remove('show','tap');
+        page.innerHTML=pgHtml(s.pg);scr.classList.add('app');page.classList.add('show');await wait(1700);
+        const b=page.querySelector('.pg-pay');b.classList.add('press');await wait(170);b.classList.remove('press');
+        fid.classList.add('show');await wait(950);fid.classList.add('ok');await wait(700);fid.classList.remove('show');await wait(200);
       }
-      const d=document.getElementById('spDone');d.innerHTML=esc(s.done[0])+'<small>'+esc(s.done[1])+'</small>';d.classList.add('show');spotConfetti(phone,'50%','45%',30);
+      done.innerHTML=esc(s.done[0])+'<small>'+esc(s.done[1])+'</small>';done.classList.add('show');spotConfetti(phone,'50%','45%',30);
       await wait(3200);
     };
     if(reduce)show(S[0]);

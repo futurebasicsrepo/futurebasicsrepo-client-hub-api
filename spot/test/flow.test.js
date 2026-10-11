@@ -493,10 +493,12 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   assert.match(home.body, /href="\/new"/);
   assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
   assert.match(home.body, /id="agentlog"/, 'agent demo');
-  assert.match(home.body, /class="story"/, 'scroll story');
-  assert.match(home.body, /id="lane2"/);
+  assert.match(home.body, /class="sec story"/, 'how it works');
+  assert.match(home.body, /id="ln3"/);
+  for (const who of ['Your AI shops', 'Mom spots you', 'Work pays']) assert.ok(home.body.includes(who), who);
   assert.match(home.body, /class="cw-wall"/, 'group chat wall');
-  assert.match(home.body, /the Spot team 🧡/, 'letter');
+  assert.match(home.body, /— the Spot team/, 'letter');
+  assert.match(home.body, /spot-peek\.webp/, 'Spot peeks over the note');
   assert.match(home.body, /class="marquee"/, 'examples strip');
   assert.match(home.body, /href="\/integrations"/);
   for (const f of ['bricolage-400.woff2', 'bricolage-800.woff2', 'caveat-700.woff2']) {
