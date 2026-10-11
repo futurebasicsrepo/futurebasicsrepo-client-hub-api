@@ -49,6 +49,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
 .scroll{overflow-x:auto}
 .timeline{display:grid;gap:0}.ev{display:grid;grid-template-columns:104px 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--line)}.ev:first-child{border-top:0}.ev time{color:var(--dim);font-size:12px}.ev .k{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);display:block}
 .ev p{margin:0;white-space:pre-wrap;word-break:break-word}
+.mailbody{white-space:pre-wrap;word-break:break-word;background:var(--fog);border-radius:12px;padding:10px 12px;margin-top:6px;font-size:13px}.emailbox{margin:0 0 20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--fog)}.emailbox .why{color:var(--bad);margin:0 0 6px}.tpl{padding:12px 0;border-top:1px solid var(--line)}.tpl:first-of-type{border-top:0}
 .check{display:flex;gap:10px;align-items:flex-start}.check input{margin-top:4px;width:18px;height:18px;flex:none}
 .tag{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font:500 11px 'IBM Plex Mono',monospace;border:1px solid var(--line);background:var(--fog);color:var(--ink);white-space:nowrap;cursor:default}
 .tag.auto{background:#e8f4ff;border-color:#b9d8f2}.tag button{border:0;background:none;padding:0 0 0 2px;cursor:pointer;color:var(--dim);font-size:13px;line-height:1}.tag button:hover{color:var(--bad)}
@@ -89,7 +90,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
           <input class="t grow" id="q" type="search" placeholder="Search name, email, company or tag" aria-label="Search contacts">
           <select class="t" id="fSource" aria-label="Source"><option value="">Any source</option></select>
           <select class="t" id="fHeat" aria-label="Warmth"><option value="">Any warmth</option><option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option></select>
-          <button class="btn go sm" id="newContact">+ Add</button><button class="btn sm" id="importBtn">Import</button>
+          <button class="btn go sm" id="newContact">+ Add</button><button class="btn sm" id="importBtn">Import</button><button class="btn sm" id="tplBtn">Templates</button><button class="btn sm" id="setBtn">Email settings</button>
         </div>
         <div class="bulk hidden" id="bulk"><b id="bulkN"></b><input class="t" id="bulkTag" list="tagList" placeholder="tag name" aria-label="Tag to add or remove"><button class="btn sm" id="bulkAdd">Add tag</button><button class="btn sm" id="bulkRemove">Remove tag</button><button class="btn sm" id="bulkClear">Clear</button><span class="msg" id="bulkMsg" style="color:#fff"></span></div>
         <datalist id="tagList"></datalist>
@@ -129,6 +130,25 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div><b>From the hub</b><p class="note">Every active client and website lead in the hub becomes a contact (people already here are linked, not duplicated).</p><button class="btn" id="impHub">Import hub clients and leads</button></div>
   <div><b>From a list</b><p class="note">Paste rows with a header line, for example <code>name,email,company,phone,title,tags</code>. Up to 500 at a time.</p><textarea class="t" id="impCsv" placeholder="name,email,company&#10;Dana Reyes,dana@salon.com,Modish Nail Spa"></textarea><div style="margin-top:8px"><button class="btn" id="impGo">Import the list</button></div></div>
   <p class="msg" id="impMsg" role="status"></p>
+</div></dialog>
+
+<dialog id="tdlg"><div class="dbody">
+  <div class="dh"><h2>Email templates</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <p class="note">Blanks you can use: <code>{{first_name}}</code> <code>{{name}}</code> <code>{{company}}</code> <code>{{build}}</code> (the last build they looked at) <code>{{sender}}</code>. Add a fallback for when we do not know: <code>{{first_name|there}}</code>.</p>
+  <div id="tplList"></div><div><button class="btn go sm" id="tplNew">+ New template</button> <span class="msg" id="tplMsg" role="status"></span></div>
+</div></dialog>
+
+<dialog id="sdlg"><div class="dbody">
+  <div class="dh"><h2>Email settings</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <div id="sStatus" class="sub"></div>
+  <div class="fields">
+    <label class="f"><span class="mono">Name people see</span><input class="t" id="sName" maxlength="80"></label>
+    <label class="f"><span class="mono">Sent from</span><input class="t" id="sFrom" type="email"></label>
+    <label class="f wide"><span class="mono">Business mailing address (every email must carry one)</span><textarea class="t" id="sPostal" placeholder="Future Basics&#10;123 Main Street&#10;Philadelphia, PA 19103"></textarea></label>
+    <label class="f"><span class="mono">Most emails a day</span><input class="t" id="sCap" type="number" min="1" max="500"></label>
+  </div>
+  <p class="msg" id="sMsg" role="status"></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn sm" id="sTest" type="button">Send me a test</button><button class="btn go" id="sSave" type="button">Save</button></div>
 </div></dialog>
 
 <dialog id="ddlg"><form class="dbody" id="dform" autocomplete="off">
@@ -260,6 +280,7 @@ async function openContact(id){
   OPEN_CONTACT=id;const {contact:c,deals,activities,tasks,client}=await api('/v1/sales/contacts/'+id);
   $('#cbody').innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(SOURCE[c.source]||c.source)}${client?` · hub client: ${esc(client.name)}`:''}</span><h2>${esc(c.name||c.email||'Unnamed')}</h2><div class="sub">${esc([c.title,c.company].filter(Boolean).join(' at '))} ${heatChip(c.heat)}${c.unsubscribed?' <span class="chip late">not to be emailed</span>':''}</div></div><button class="btn sm" type="button" data-close>Close</button></div>
   <div class="cols2"><div>
+    <h2>Email</h2><div class="emailbox" id="emailBox"><span class="sub">Checking…</span></div>
     <h2>Log something</h2><div class="fields"><label class="f"><span class="mono">What</span><select class="t" id="aKind"><option value="note">Note</option><option value="call">Call</option><option value="meeting">Meeting</option><option value="email_in">Email we got</option><option value="email_out">Email we sent</option></select></label><label class="f wide"><textarea class="t" id="aText" placeholder="What was said, what was agreed" aria-label="What happened"></textarea></label></div><div style="margin:8px 0 18px"><button class="btn go sm" id="aGo">Add to the timeline</button> <span class="msg" id="aMsg"></span></div>
     <h2>Next step</h2><div class="fields"><label class="f wide"><input class="t" id="tTitle" placeholder="Send the proposal" aria-label="Task"></label><label class="f"><input class="t" id="tDue" type="date" aria-label="Due"></label><div><button class="btn sm" id="tGo">Add task</button></div></div>
     <div id="cTasks" style="margin:10px 0 18px">${tasks.map(t=>`<div class="item"><label class="check"><input type="checkbox" data-done="${esc(t.id)}" ${t.done_at?'checked disabled':''}><span class="main"><b style="${t.done_at?'text-decoration:line-through;color:var(--dim)':''}">${esc(t.title)}</b><span class="sub">${t.done_at?'Done':dayOf(t.due_at)}</span></span></label></div>`).join('')||'<p class="note">No tasks.</p>'}</div>
@@ -268,9 +289,10 @@ async function openContact(id){
   </div><div>
     <h2>Details</h2><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" id="eName" value="${esc(c.name)}"></label><label class="f"><span class="mono">Email</span><input class="t" id="eEmail" type="email" value="${esc(c.email||'')}"></label><label class="f"><span class="mono">Company</span><input class="t" id="eCompany" value="${esc(c.company)}"></label><label class="f"><span class="mono">Title</span><input class="t" id="eTitle" value="${esc(c.title)}"></label><label class="f"><span class="mono">Phone</span><input class="t" id="ePhone" value="${esc(c.phone)}"></label><div class="f wide"><span class="mono" style="display:block;margin-bottom:5px;color:var(--dim)">Tags</span><div class="tagrow" id="eTagRow">${(c.tags||[]).map(t=>tagHtml(t,true)).join('')}<input class="t" id="eTagAdd" list="tagList" placeholder="add a tag" aria-label="Add a tag" style="width:140px;padding:5px 10px;border-radius:999px"></div></div><label class="f wide"><span class="mono">Notes</span><textarea class="t" id="eNotes">${esc(c.notes)}</textarea></label></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px"><button class="btn go sm" id="eSave">Save details</button><button class="btn sm" id="eUnsub">${c.unsubscribed?'Allow emails again':'Do not email'}</button><button class="btn danger sm" id="eDel">Delete</button><span class="msg" id="eMsg"></span></div>
-    <h2 style="margin-top:18px">Timeline</h2><div class="timeline">${activities.map(a=>`<div class="ev"><time>${esc(when(a.created_at))}</time><div><span class="k">${esc(KIND[a.kind]||a.kind)}${a.actor_name?' · '+esc(a.actor_name):''}</span><p>${esc(a.text)}</p></div></div>`).join('')||'<p class="note">Nothing yet.</p>'}</div>
+    <h2 style="margin-top:18px">Timeline</h2><div class="timeline">${activities.map(a=>`<div class="ev"><time>${esc(when(a.created_at))}</time><div><span class="k">${esc(KIND[a.kind]||a.kind)}${a.actor_name?' · '+esc(a.actor_name):''}</span><p>${esc(a.text)}</p>${a.meta&&a.meta.emailId?`<div style="margin-top:4px"><button class="btn sm" data-email="${esc(a.meta.emailId)}">Read</button>${a.kind==='email_in'&&!a.meta.auto?` <button class="btn sm" data-reply="${esc(a.text)}">Reply</button>`:''}</div><div class="mailbody hidden"></div>`:''}</div></div>`).join('')||'<p class="note">Nothing yet.</p>'}</div>
   </div></div>`;
   if(!$('#cdlg').open)$('#cdlg').showModal();
+  loadEmailBox(id);
   $('#aGo').onclick=async()=>{const m=$('#aMsg');try{await api(`/v1/sales/contacts/${id}/activities`,{body:{kind:$('#aKind').value,text:$('#aText').value}});await openContact(id);refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
   $('#tGo').onclick=async()=>{try{await api('/v1/sales/tasks',{body:{contactId:id,title:$('#tTitle').value,dueAt:$('#tDue').value}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
   $('#cDeal').onclick=()=>openDeal(null,id);
@@ -290,6 +312,53 @@ async function loadTasks(){
   const open=(await api('/v1/sales/tasks?scope=today')).tasks.length;$('#taskCount').innerHTML=open?`<span class="chip late">${open}</span>`:'';
 }
 $('#taskScope').onchange=loadTasks;
+
+
+// ---------- email ----------
+async function loadEmailBox(id,prefill){
+  const box=$('#emailBox');if(!box)return;
+  let chk,tpls;try{[chk,tpls]=await Promise.all([api(`/v1/sales/contacts/${id}/email-check`),api('/v1/sales/templates')])}catch(x){box.innerHTML=`<span class="msg bad">${esc(x.message)}</span>`;return}
+  const hard=chk.reasons.filter(r=>!/^Nothing shows they know us/.test(r));
+  if(hard.length){box.innerHTML=hard.map(r=>`<p class="why">${esc(r)}</p>`).join('')+`<p class="sub">${chk.relationship.ok?'They know us: '+esc(chk.relationship.why)+'.':''}</p>`;return}
+  box.innerHTML=`<div class="sub" style="margin-bottom:8px">From ${esc(chk.from)} · to ${esc(chk.to)} · ${chk.remainingToday} left today · ${chk.relationship.ok?'they know us: '+esc(chk.relationship.why):'nothing shows they know us yet'}</div>
+  <div class="fields"><label class="f wide"><select class="t" id="mTpl" aria-label="Start from a template"><option value="">Start from a template…</option>${tpls.templates.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label>
+  <label class="f wide"><input class="t" id="mSubj" placeholder="Subject" maxlength="200" aria-label="Subject"></label>
+  <label class="f wide"><textarea class="t" id="mBody" style="min-height:150px" placeholder="Write the message" aria-label="Message"></textarea></label></div>
+  ${chk.needsConfirmation?`<label class="check" style="margin:8px 0"><input type="checkbox" id="mConfirm"><span>Nothing in the record shows they know us. I have spoken with them, or they asked me to write.</span></label>`:''}
+  <div style="margin-top:8px"><button class="btn go sm" id="mSend">Send email</button> <span class="msg" id="mMsg" role="status"></span></div>
+  <p class="sub" style="margin:8px 0 0">Every email carries your name, your mailing address and an unsubscribe link.</p>`;
+  if(prefill){$('#mSubj').value=prefill.subject||'';$('#mBody').value=prefill.body||'';$('#mBody').focus()}
+  $('#mTpl').onchange=async()=>{const t=tpls.templates.find(x=>x.id===$('#mTpl').value);if(!t)return;const m=$('#mMsg');try{const p=await api(`/v1/sales/contacts/${id}/email-preview`,{body:{subject:t.subject,body:t.body}});$('#mSubj').value=p.subject;$('#mBody').value=p.body;m.className='msg';m.textContent=p.missing.length?`We do not have ${p.missing.join(', ')} for them. Fill the gap before sending.`:''}catch(x){m.className='msg bad';m.textContent=x.message}};
+  $('#mSend').onclick=async()=>{const b=$('#mSend'),m=$('#mMsg');b.disabled=true;m.className='msg';m.textContent='Sending…';
+    try{await api(`/v1/sales/contacts/${id}/email`,{body:{subject:$('#mSubj').value,body:$('#mBody').value,confirmRelationship:Boolean($('#mConfirm')&&$('#mConfirm').checked)}});await openContact(id);refreshQuiet()}
+    catch(x){m.className='msg bad';m.textContent=x.message;b.disabled=false}};
+}
+document.addEventListener('click',async e=>{
+  const rd=e.target.closest('[data-email]');if(rd){const box=rd.closest('.ev').querySelector('.mailbody');if(!box.classList.contains('hidden')){box.classList.add('hidden');rd.textContent='Read';return}
+    rd.disabled=true;try{const {email}=await api('/v1/sales/emails/'+rd.dataset.email);box.textContent=(email.direction==='in'?`From ${email.from_address}\n\n`:`To ${email.to_address} · ${email.status}${email.error?' · '+email.error:''}\n\n`)+email.body_text;box.classList.remove('hidden');rd.textContent='Hide'}catch(x){alert(x.message)}finally{rd.disabled=false}return}
+  const rp=e.target.closest('[data-reply]');if(rp&&OPEN_CONTACT){const s=rp.dataset.reply.replace(/^\(automatic reply\)\s*/,'');await loadEmailBox(OPEN_CONTACT,{subject:/^re:/i.test(s)?s:'Re: '+s,body:''});$('#emailBox').scrollIntoView({block:'center'})}
+});
+
+// templates
+async function loadTemplates(){
+  const {templates}=await api('/v1/sales/templates');
+  $('#tplList').innerHTML=templates.map(t=>`<div class="tpl" data-tpl="${esc(t.id)}"><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" data-f="name" value="${esc(t.name)}" maxlength="80"></label><label class="f"><span class="mono">Subject</span><input class="t" data-f="subject" value="${esc(t.subject)}" maxlength="200"></label><label class="f wide"><span class="mono">Message</span><textarea class="t" data-f="body" style="min-height:120px">${esc(t.body)}</textarea></label></div><div style="margin-top:6px"><button class="btn sm go" data-tsave>Save</button> <button class="btn sm danger" data-tdel>Delete</button></div></div>`).join('')||'<p class="note">No templates yet.</p>';
+}
+$('#tplBtn').onclick=async()=>{$('#tplMsg').textContent='';await loadTemplates();$('#tdlg').showModal()};
+$('#tplNew').onclick=async()=>{try{await api('/v1/sales/templates',{body:{name:'New template',subject:'',body:''}});await loadTemplates()}catch(x){$('#tplMsg').className='msg bad';$('#tplMsg').textContent=x.message}};
+$('#tplList').addEventListener('click',async e=>{const row=e.target.closest('[data-tpl]');if(!row)return;const m=$('#tplMsg');
+  if(e.target.closest('[data-tsave]')){try{await api('/v1/sales/templates/'+row.dataset.tpl,{method:'PUT',body:{name:row.querySelector('[data-f=name]').value,subject:row.querySelector('[data-f=subject]').value,body:row.querySelector('[data-f=body]').value}});m.className='msg ok';m.textContent='Saved'}catch(x){m.className='msg bad';m.textContent=x.message}}
+  if(e.target.closest('[data-tdel]')&&confirm('Delete this template?')){try{await api('/v1/sales/templates/'+row.dataset.tpl,{method:'DELETE'});await loadTemplates()}catch(x){alert(x.message)}}});
+
+// settings
+async function loadSettings(){
+  const r=await api('/v1/sales/email/settings'),s=r.settings;
+  $('#sName').value=s.fromName;$('#sFrom').value=s.fromAddress;$('#sPostal').value=s.postalAddress;$('#sCap').value=s.dailyCap;
+  $('#sStatus').innerHTML=`<p>${r.configured.sending?'<b>Sending is on.</b>':'<b style="color:var(--bad)">Sending is off:</b> the service needs its Resend key.'} ${r.sentToday} sent today, ${r.remaining} left.</p><p>${r.configured.webhook?'Replies, bounces and complaints come back to us.':'<b style="color:var(--bad)">Replies are not coming back yet.</b> In Resend, add a webhook to <code>'+esc(r.webhookUrl)+'</code> for the events delivered, bounced, complained and received, then put its signing secret on the service as <code>RESEND_WEBHOOK_SECRET</code>.'}</p>${s.postalAddress.trim()?'':'<p style="color:var(--bad)">Add your business mailing address. Nothing can be sent without one.</p>'}`;
+}
+$('#setBtn').onclick=async()=>{$('#sMsg').textContent='';try{await loadSettings();$('#sdlg').showModal()}catch(x){alert(x.message)}};
+$('#sSave').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/sales/email/settings',{method:'PUT',body:{fromName:$('#sName').value,fromAddress:$('#sFrom').value,postalAddress:$('#sPostal').value,dailyCap:Number($('#sCap').value)}});m.className='msg ok';m.textContent='Saved';await loadSettings()}catch(x){m.className='msg bad';m.textContent=x.message}};
+$('#sTest').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent='Sending a test…';try{const r=await api('/v1/sales/email/test',{body:{}});m.className='msg ok';m.textContent='Sent to '+r.to}catch(x){m.className='msg bad';m.textContent=x.message}};
 
 // ---------- shared behaviour ----------
 document.addEventListener('click',async e=>{

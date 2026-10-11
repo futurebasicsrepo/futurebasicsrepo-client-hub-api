@@ -992,6 +992,39 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists sales_contacts_tags_idx on sales_contacts using gin (tags);
+    -- Sales email (see src/sales-email.js): every message sent and received, the templates, and who must not be emailed
+    create table if not exists sales_emails (
+      id uuid primary key default gen_random_uuid(),
+      contact_id uuid references sales_contacts(id) on delete cascade,
+      direction text not null check (direction in ('out','in')),
+      subject text not null default '',
+      body_text text not null default '',
+      body_html text not null default '',
+      from_address text not null default '',
+      to_address text not null default '',
+      status text not null default 'sending' check (status in ('sending','sent','delivered','bounced','complained','failed','received')),
+      error text not null default '',
+      resend_id text,
+      sent_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    create unique index if not exists sales_emails_resend_idx on sales_emails (direction, resend_id) where resend_id is not null;
+    create index if not exists sales_emails_contact_idx on sales_emails (contact_id, created_at desc);
+    create index if not exists sales_emails_day_idx on sales_emails (created_at) where direction = 'out';
+    create table if not exists sales_templates (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      subject text not null default '',
+      body text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists sales_suppressions (
+      email text primary key,
+      reason text not null check (reason in ('unsubscribed','bounced','complained','manual')),
+      detail text not null default '',
+      created_at timestamptz not null default now()
+    );
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,

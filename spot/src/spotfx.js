@@ -4,12 +4,13 @@
 // says something about each section. Everything is decorative (aria-hidden
 // where it repeats the copy) and calms down under prefers-reduced-motion.
 
-// The character: Spot the plush (plush.js), with arms that wave and eyes
-// that follow the pointer and blink. `id` keeps gradient ids unique per copy.
-import { plushSpot } from './plush.js';
+// The character: Spot the plush, rendered in 3D (src/client/spot3d.js).
+// Everywhere but the hero he's a still from that same model (normal and
+// happy); the hero swaps the still for the live plush once it loads.
+import { assetUrl } from './assets.js';
 
-export function spotBuddy(id = 'b') {
-  return plushSpot({ id });
+export function spotBuddy(id = 'b', { happy = false } = {}) {
+  return `<span class="spotb spotimg${happy ? ' happy' : ''}" data-spot="${id}"><img class="hi" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async"><img class="yay" src="${assetUrl('spot-yay.webp')}" alt="" width="320" height="358" decoding="async" loading="lazy"></span>`;
 }
 
 // Hero: the YES button with Spot standing on it, and the order around them:
@@ -26,7 +27,7 @@ export function yesStage() {
   <div class="layer" data-depth="16"><div class="chip chip-ask fb" id="askChip"><span class="ico">${icon.ok}</span><span><b class="st-wait">Approve $119.60?</b><b class="st-done">Approved ✓ signed</b><small>Nike · your Visa •4242 pays</small></span></div></div>
   <div class="layer" data-depth="8"><div class="vcard fc" id="vcard"><div class="vtop"><span class="vbrand"><i></i>Spot</span><span class="vkind">one order</span></div><div class="vchip"></div><div class="vnum">•••• 0417</div><div class="vrows"><span>Cap</span><b>$119.60</b><span>Only at</span><b>nike.com</b></div><div class="vstamp">used · closed</div></div></div>
   <div class="yesgroup">
-    <div class="herospot" id="heroSpot">${spotBuddy('hero')}</div>
+    <div class="herospot" id="heroSpot">${spotBuddy('hero')}<span class="spothit" aria-hidden="true"></span></div>
     <button class="yesbtn" id="yesBtn" type="button" aria-label="Press yes, like approving an order"><span class="ring"></span><span class="cap">YES</span></button>
     <div class="yescount" id="yesCount" aria-live="polite">go on, press it</div>
   </div>
@@ -59,18 +60,14 @@ export function guideSpot() {
 
 export const SPOTFX_CSS = `
 /* ── Spot the character ── */
-.spotb{width:100%;height:auto;display:block;overflow:visible}
-.spotb .sb-all{transform-origin:120px 240px;transform-box:view-box}
-.spotb .sb-arm{transform-box:view-box}
-.spotb .sb-arm-l{transform-origin:40px 154px}.spotb .sb-arm-r{transform-origin:200px 154px}
-.spotb .sb-eyes{transform-origin:120px 124px;transform-box:view-box;transition:transform .08s}
-.spotb .sb-joy,.spotb .sb-grin{display:none}
-.spotb.happy .sb-eyes,.spotb.happy .sb-smile{display:none}.spotb.happy .sb-joy,.spotb.happy .sb-grin{display:inline}
-.spotb.blink .sb-eyes{transform:scaleY(.08)}
-.spotb .sb-arm-r{animation:wave 5.2s var(--ease-soft) infinite}
-@keyframes wave{0%,58%,100%{transform:rotate(0)}66%{transform:rotate(-104deg)}72%{transform:rotate(-84deg)}78%{transform:rotate(-104deg)}88%{transform:rotate(-4deg)}}
-.spotb.happy .sb-arm-l{animation:cheerL .42s var(--ease-soft) infinite alternate}.spotb.happy .sb-arm-r{animation:cheerR .42s var(--ease-soft) infinite alternate}
-@keyframes cheerL{from{transform:rotate(96deg)}to{transform:rotate(124deg)}}@keyframes cheerR{from{transform:rotate(-96deg)}to{transform:rotate(-124deg)}}
+.spotb{width:100%;height:auto;display:block;position:relative}
+.spotimg img{display:block;width:100%;height:auto;transition:opacity .12s}
+.spotimg .yay{position:absolute;inset:0;opacity:0}.spotb.happy .yay{opacity:1}.spotb.happy .hi{opacity:0}
+/* the live plush replaces the still in the hero */
+.herospot .spot3d{display:block;width:100%;height:auto}
+/* only Spot himself is clickable: the canvas's empty corners overlap the YES key */
+.herospot .spothit{position:absolute;left:20%;right:20%;top:14%;bottom:24%;pointer-events:auto;cursor:pointer;border-radius:50%}
+.herospot.has3d .spotimg{display:none}.herospot.has3d{animation:none}
 
 /* ── Hero ── */
 .hero2{padding:64px 0 48px;position:relative;overflow:hidden;isolation:isolate}
@@ -117,8 +114,7 @@ export const SPOTFX_CSS = `
 .yesstage.used .vcard .vstamp{opacity:1;transform:rotate(-14deg) scale(1)}
 
 .yesgroup{position:absolute;left:58%;bottom:0;width:230px;translate:-50% 0;display:flex;flex-direction:column;align-items:center}
-.herospot{position:relative;width:196px;margin-bottom:-16px;z-index:1;cursor:pointer;transform-origin:50% 92%;animation:breathe 4.4s var(--ease-soft) infinite}
-.herospot .spotb{filter:drop-shadow(0 14px 16px rgba(170,52,20,.2))}
+.herospot{position:relative;width:268px;margin-bottom:-38px;z-index:1;pointer-events:none;transform-origin:50% 92%;animation:breathe 4.4s var(--ease-soft) infinite}
 .herospot.jump{animation:hop .86s linear}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.014,.986)}}
@@ -152,14 +148,14 @@ export const SPOTFX_CSS = `
 @media (max-width:900px){
   .yesstage{width:min(100%,460px);height:470px}
   .chip-ai{top:0}.chip-ask{top:84px}.vcard{top:214px;width:164px;left:0}
-  .yesgroup{left:62%}.herospot{width:172px}.halo{left:62%}
+  .yesgroup{left:62%}.herospot{width:220px;margin-bottom:-30px}.halo{left:62%}
 }
 @media (max-width:600px){
   .yesstage{height:392px;margin-top:8px}
   .chip{padding:10px 14px 10px 10px}.chip .ico{width:32px;height:32px}.chip b{font-size:14px}.chip small{font-size:12.5px}
   .chip-ai{left:0;top:0}.chip-ask{right:0;top:70px}
   .vcard{display:none}
-  .yesgroup{left:50%}.yesstage .halo{left:50%;top:64%;width:340px;height:340px}.herospot{width:168px}
+  .yesgroup{left:50%}.yesstage .halo{left:50%;top:64%;width:340px;height:340px}.herospot{width:206px;margin-bottom:-28px}
 }
 
 /* gentle floating, on the inner element so the pointer/scroll transform stays separate */
@@ -204,16 +200,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:60;opa
 /* ── the guide ── */
 .guide{position:fixed;right:16px;bottom:14px;z-index:50;display:flex;align-items:flex-end;gap:8px;transform:translateY(140%);transition:transform .5s cubic-bezier(.2,1.4,.4,1);pointer-events:none}
 .guide.on{transform:none}
-.gspot{width:74px;border:0;background:none;padding:0;cursor:pointer;pointer-events:auto;animation:bob 3s ease-in-out infinite;filter:drop-shadow(0 10px 14px rgba(217,61,27,.3))}
+.gspot{width:96px;border:0;background:none;padding:0;cursor:pointer;pointer-events:auto;animation:bob 3s ease-in-out infinite;filter:drop-shadow(0 10px 14px rgba(217,61,27,.3))}
 .gspot.jump{animation:jump .9s cubic-bezier(.3,1.4,.5,1)}
 .gsay{max-width:230px;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px;line-height:1.3;border-radius:16px 16px 4px 16px;padding:9px 13px;margin-bottom:46px;opacity:0;transform:translateY(8px) scale(.9);transform-origin:100% 100%;transition:opacity .25s,transform .3s cubic-bezier(.2,1.5,.4,1)}
 .gsay.show{opacity:1;transform:none}
 /* On phones Spot keeps quiet: a speech bubble there sits on top of the text. Tap him for confetti. */
-@media (max-width:600px){.gspot{width:52px}.gsay{display:none}.guide{right:10px;bottom:10px}}
+.gspot .spotb{margin-bottom:-14px}
+@media (max-width:600px){.gspot{width:68px}.gsay{display:none}.guide{right:10px;bottom:10px}}
 
 @media (prefers-reduced-motion:reduce){
 .yesbtn .ring{display:none}
-  .fa,.fb,.fc,.fd,.fe,.herospot,.gspot,.vcard::after,.blobby::before,.blobby::after,.hero2::before,.hero2::after,.spotb .sb-arm-r,.spotb.happy .sb-arm-l,.spotb.happy .sb-arm-r{animation:none}
+  .fa,.fb,.fc,.fd,.fe,.herospot,.gspot,.vcard::after,.blobby::before,.blobby::after,.hero2::before,.hero2::after{animation:none}
   .beat.reveal{opacity:1;transform:none}.guide{transition:none}
 }
 `;
@@ -239,14 +236,18 @@ export const SPOTFX_JS = `
       addEventListener('scroll',ask,{passive:true});
       addEventListener('deviceorientation',e=>{if(e.gamma==null)return;px=Math.max(-.5,Math.min(.5,e.gamma/40));py=Math.max(-.5,Math.min(.5,(e.beta-45)/50));ask()},{passive:true})}
     const btn=document.getElementById('yesBtn'),hs=document.getElementById('heroSpot'),hsvg=hs&&hs.querySelector('.spotb'),count=document.getElementById('yesCount');let n=0,busy=0;
+    // The live 3D plush takes over from the still once it's loaded (not on Save-Data).
+    let s3=null;
+    if(hs&&!(navigator.connection&&navigator.connection.saveData))import(${JSON.stringify(assetUrl('spot3d.js'))}).then(m=>{s3=m.mountSpot3D(hs);if(s3)hs.classList.add('has3d')}).catch(()=>{});
+    const heroCheer=(ms)=>{if(!s3)return cheer(hs,hsvg,ms);s3.hop();s3.happy(true);clearTimeout(hs._h);hs._h=setTimeout(()=>s3.happy(false),ms)};
     const lines=['approved. signed. sent ✍️','another yes! 🧡','the store got the order 📦','card used, then closed 🔒','you’re good at this','ok now ask your AI for real →'];
     const yes=()=>{n++;btn.classList.add('down');setTimeout(()=>btn.classList.remove('down'),150);btn.classList.remove('ringing');void btn.offsetWidth;btn.classList.add('ringing');try{navigator.vibrate&&navigator.vibrate(8)}catch{}
-      cheer(hs,hsvg);spotConfetti(st,'50%','62%',46);
+      heroCheer(1500);spotConfetti(st,'50%','62%',46);
       st.classList.add('approved');clearTimeout(busy);setTimeout(()=>st.classList.add('used'),700);
       busy=setTimeout(()=>st.classList.remove('approved','used'),3600);
       count.textContent=(n>1?'yes ×'+n+' · ':'')+lines[(n-1)%lines.length]};
     btn&&btn.addEventListener('click',yes);
-    hs&&hs.addEventListener('click',()=>{cheer(hs,hsvg,1100);spotConfetti(hs,'50%','45%',24)});
+    hs&&hs.addEventListener('click',()=>{heroCheer(1100);spotConfetti(hs,'50%','45%',24)});
     place();
   }
 
