@@ -718,7 +718,7 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   const card = page.locator(`#board .card:has-text("Salon ${tag}: new project")`); ok(await card.count() === 1 && await page.locator('.col[data-stage="new"] .card:has-text("new project")').count() >= 1, 'the deal is on the board under New');
   await card.locator('select').selectOption('meeting'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="meeting"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
   ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'meeting', 'moving it with the menu moves it');
-  await page.dragAndDrop(`#board .card:has-text("Salon ${tag}: new project")`, '.col[data-stage="proposal"]'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="proposal"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
+  await page.evaluate(() => scrollTo(0, 0)); await page.dragAndDrop(`#board .card:has-text("Salon ${tag}: new project")`, '.col[data-stage="proposal"]', { targetPosition: { x: 80, y: 50 } }); // top of the column, in view, clear of the sticky header await page.waitForFunction(t => document.querySelector(`.col[data-stage="proposal"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 }).catch(async e => { await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-drag-fail.png`, fullPage: true }).catch(() => {}); throw e; });
   ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'proposal', 'dragging it to another column moves it');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-board.png` }).catch(() => {});
 
@@ -799,6 +799,74 @@ await journey('J117', 'the builds collection page: cards show the real site, wha
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
   sql(`update builds set visibility='${hadSpot || 'hidden'}' where slug='spot'`);
   for (const x of [A, B]) await call(`/v1/admin/builds/${x.json.id}`, { token: admin, method: 'DELETE' });
+});
+
+await journey('J114', 'Sales email in a browser: send from a contact with a template, read it back, a contact who cannot be emailed says why, a reply arrives and is answered, templates, settings, and a phone', async () => {
+  const http = await import('node:http'), { createHmac } = await import('node:crypto');
+  const mock = { sent: [], received: new Map(), n: 0 };
+  const resend = http.createServer((req, res) => { const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => { const send = (c, b) => { res.writeHead(c, { 'content-type': 'application/json' }); res.end(JSON.stringify(b)); }; const u = new URL(req.url, 'http://x');
+    if (req.method === 'POST' && u.pathname === '/emails') { const body = JSON.parse(Buffer.concat(chunks).toString() || '{}'); mock.sent.push(body); return send(200, { id: `re_b${++mock.n}` }); }
+    const m = /^\/emails\/receiving\/(.+)$/.exec(u.pathname); if (m && mock.received.has(m[1])) return send(200, mock.received.get(m[1])); send(404, {}); }); });
+  await new Promise(r => resend.listen(3133, '127.0.0.1', r));
+  const hook = async evt => { const raw = JSON.stringify(evt), id = 'msg_' + Math.random().toString(36).slice(2), ts = String(Math.floor(Date.now() / 1000)); const sig = 'v1,' + createHmac('sha256', Buffer.from('test-secret')).update(`${id}.${ts}.${raw}`).digest('base64'); return (await fetch('http://127.0.0.1:3123/webhooks/resend', { method: 'POST', headers: { 'content-type': 'application/json', 'svix-id': id, 'svix-timestamp': ts, 'svix-signature': sig }, body: raw })).status; };
+  try {
+    const r = await room('114', { wait: false }), tag = `em${stamp}`;
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const W = 'http://work.localhost:3123', guest = `dana-${tag}@salon.test`;
+    await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, send: false } });
+    await call('/v1/sales/contacts/' + sql(`select id from sales_contacts where email='${guest}'`), { token: admin, method: 'PUT', body: { name: 'Dana Reyes', companyName: `Salon ${tag}` } });
+    const gid = sql(`select id from sales_contacts where email='${guest}'`);
+    const stop = await call('/v1/sales/contacts', { token: admin, body: { name: 'Sam Stopped', email: `sam-${tag}@roaster.test` } }); await call(`/v1/sales/contacts/${stop.json.id}/unsubscribe`, { token: admin, method: 'PUT', body: { unsubscribed: true } });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+    await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.click('.tab[data-t="contacts"]'); await page.fill('#q', guest); await page.waitForSelector(`#cList tr.click[data-contact="${gid}"]`, { timeout: 8000 }); await page.click(`#cList tr.click[data-contact="${gid}"]`);
+    await page.waitForSelector('#mSend', { timeout: 8000 });
+    ok(/kyle@mail\.thefuturebasics\.com/.test(await page.innerText('#emailBox')) && /they know us/.test(await page.innerText('#emailBox')) && /left today/.test(await page.innerText('#emailBox')), 'the card shows who it is from, who it goes to, how many are left today and why they may be emailed');
+    await page.selectOption('#mTpl', { index: 1 }); await page.waitForFunction(() => document.getElementById('mSubj').value.length > 0, null, { timeout: 8000 });
+    ok(!/\{\{/.test(await page.inputValue('#mSubj') + await page.inputValue('#mBody')) && /Hi Dana,/.test(await page.inputValue('#mBody')), 'choosing a template fills in the message, with their name');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-compose.png` }).catch(() => {});
+    await page.fill('#mSubj', `Thanks for looking, ${tag}`); await page.click('#mSend');
+    await page.waitForFunction(() => /Thanks for looking/.test(document.querySelector('#cdlg .timeline')?.innerText || ''), null, { timeout: 8000 });
+    ok(mock.sent.length === 1 && mock.sent[0].to[0] === guest && /Unsubscribe here/.test(mock.sent[0].text), 'sending puts the email on its way with the unsubscribe footer');
+    await page.click('#cdlg .ev:has-text("Thanks for looking") [data-email]'); await page.waitForSelector('#cdlg .mailbody:not(.hidden)', { timeout: 5000 });
+    ok(/Hi Dana,/.test(await page.innerText('#cdlg .mailbody')) && /sent/.test(await page.innerText('#cdlg .mailbody')), 'Read shows what was sent and its status');
+    await page.keyboard.press('Escape');
+
+    // a contact who cannot be emailed says why instead of offering a box
+    await page.fill('#q', `sam-${tag}`); await page.waitForFunction(t => document.querySelector('#cList')?.innerText.includes(t), 'Sam Stopped', { timeout: 8000 }); await page.click('#cList tr.click');
+    await page.waitForFunction(() => /Sam Stopped/.test(document.querySelector('#cdlg h2')?.textContent || '') && !/Checking/.test(document.querySelector('#emailBox')?.innerText || 'Checking'), null, { timeout: 8000 });
+    ok(await page.locator('#mSend').count() === 0 && /not to be emailed/.test(await page.innerText('#emailBox')), 'someone marked as not to be emailed shows the reason and no way to send');
+    await page.keyboard.press('Escape');
+
+    // a reply arrives and is answered
+    const rid = 'rcv_b_' + tag; mock.received.set(rid, { subject: 'Re: Thanks for looking', text: 'Tuesday works for me.\n\nOn Mon Kyle wrote:\n> hello' });
+    ok(await hook({ type: 'email.received', data: { email_id: rid, from: `Dana Reyes <${guest}>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Re: Thanks for looking' } }) === 200, 'setup: a reply arrives');
+    await page.fill('#q', guest); await page.waitForSelector(`#cList tr.click[data-contact="${gid}"]`); await page.click(`#cList tr.click[data-contact="${gid}"]`);
+    await page.waitForSelector('#cdlg .ev:has-text("Re: Thanks for looking") [data-reply]', { timeout: 8000 });
+    ok(/hot/i.test(await page.innerText('#cdlg')) && /Reply to/.test(await page.innerText('#cTasks')), 'the reply is on the timeline, they are hot, and there is a task to answer it');
+    await page.click('#cdlg .ev:has-text("Re: Thanks for looking") [data-reply]'); await page.waitForFunction(() => document.getElementById('mSubj')?.value === 'Re: Thanks for looking', null, { timeout: 5000 });
+    await page.fill('#mBody', 'Great, Tuesday at 10 it is.\n\nKyle'); await page.click('#mSend'); await page.waitForFunction(() => document.querySelectorAll('#cdlg .ev [data-email]').length >= 3, null, { timeout: 8000 });
+    ok(mock.sent.length === 2 && mock.sent[1].subject === 'Re: Thanks for looking', 'Reply puts "Re:" on the subject and answers on the same thread');
+    await page.keyboard.press('Escape');
+
+    // templates and settings
+    await page.click('#tplBtn'); await page.waitForSelector('#tplList .tpl'); ok(await page.locator('#tplList .tpl').count() >= 4, 'the template list opens with the starters');
+    await page.click('#tplNew'); await page.waitForFunction(() => document.querySelectorAll('#tplList .tpl').length >= 5, null, { timeout: 5000 });
+    ok(Number(sql(`select count(*) from sales_templates where name='New template'`)) >= 1, 'a template can be added'); sql(`delete from sales_templates where name='New template'`); await page.keyboard.press('Escape');
+    await page.click('#setBtn'); await page.waitForSelector('#sdlg[open]'); ok(/Sending is on/.test(await page.innerText('#sStatus')) && await page.inputValue('#sFrom') === 'kyle@mail.thefuturebasics.com' && /Philadelphia/.test(await page.inputValue('#sPostal')), 'settings show that sending is on, the from address and the mailing address');
+    await page.click('#sTest'); await page.waitForFunction(() => /Sent to/.test(document.getElementById('sMsg').textContent), null, { timeout: 8000 }); ok(mock.sent.at(-1).subject.startsWith('[Test]'), 'the test email goes out');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-settings.png` }).catch(() => {}); await page.keyboard.press('Escape');
+    ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+
+    // a phone
+    const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+    const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+    await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.click('.tab[data-t="contacts"]'); await ph.fill('#q', guest); await ph.waitForSelector(`#cList tr.click[data-contact="${gid}"]`); await ph.click(`#cList tr.click[data-contact="${gid}"]`); await ph.waitForSelector('#mSend');
+    ok(await ph.evaluate(() => { const d = document.querySelector('#cdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1 && document.documentElement.scrollWidth - innerWidth <= 1; }), 'the contact card with the email box fits the phone');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j114-phone.png` }).catch(() => {}); await ph.keyboard.press('Escape');
+    await ph.click('#setBtn'); await ph.waitForSelector('#sdlg[open]'); ok(await ph.evaluate(() => { const d = document.querySelector('#sdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'and so do the settings');
+    ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  } finally { await new Promise(r => resend.close(r)); }
 });
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

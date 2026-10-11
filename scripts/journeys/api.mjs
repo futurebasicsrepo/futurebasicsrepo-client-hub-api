@@ -894,4 +894,140 @@ await journey('J110', 'the showcase follows the apps: a merged change to a build
   } finally { await new Promise(r => server.close(r)); }
 });
 
+
+await journey('J113', 'Sales email: who may be emailed, what goes out (footer, address, one-click unsubscribe), what comes back (deliveries, bounces, spam complaints, replies, opt-outs), and nothing is sent twice or to someone who said stop', async () => {
+  const http = await import('node:http'), { createHmac } = await import('node:crypto');
+  const mock = { sent: [], seenKeys: new Map(), received: new Map(), n: 0, failAddress: 'failme', receivedDown: new Set() };
+  const resend = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+      const u = new URL(req.url, 'http://x'); if (req.headers.authorization !== 'Bearer test-key') return send(401, { message: 'bad key' });
+      if (req.method === 'POST' && u.pathname === '/emails') {
+        const body = JSON.parse(Buffer.concat(chunks).toString() || '{}'), key = req.headers['idempotency-key'];
+        if (String(body.to?.[0] || '').includes(mock.failAddress)) return send(422, { message: 'The recipient address is not valid' });
+        if (key && mock.seenKeys.has(key)) return send(200, { id: mock.seenKeys.get(key) });
+        const id = `re_${++mock.n}`; if (key) mock.seenKeys.set(key, id); mock.sent.push({ id, key, body, headers: req.headers }); return send(200, { id });
+      }
+      const m = /^\/emails\/receiving\/(.+)$/.exec(u.pathname); if (req.method === 'GET' && m) { const id = decodeURIComponent(m[1]); if (mock.receivedDown.has(id)) return send(503, { message: 'try later' }); return mock.received.has(id) ? send(200, mock.received.get(id)) : send(404, { message: 'not found' }); }
+      send(404, {});
+    });
+  });
+  await new Promise(r => resend.listen(3133, '127.0.0.1', r));
+  try {
+    const room = await newRoom('113', { wait: false }), tag = `m${stamp}`;
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+    const secret = 'whsec_' + Buffer.from('test-secret').toString('base64');
+    const hook = async (evt, { sign = true, id = `msg_${Math.random().toString(36).slice(2)}`, ts = String(Math.floor(Date.now() / 1000)) } = {}) => { const raw = JSON.stringify(evt); const sig = 'v1,' + createHmac('sha256', Buffer.from('test-secret')).update(`${id}.${ts}.${raw}`).digest('base64'); const r = await fetch(BASE + '/webhooks/resend', { method: 'POST', headers: { 'content-type': 'application/json', 'svix-id': id, 'svix-timestamp': ts, 'svix-signature': sign ? sig : 'v1,AAAAAAAA' }, body: raw }); return { status: r.status, json: await r.json().catch(() => ({})) }; };
+    const contact = async email => (await S(`/contacts?q=${encodeURIComponent(email)}`)).json.contacts.find(c => c.email === email);
+    const detail = async id => (await S(`/contacts/${id}`)).json;
+    ok((await call('/v1/sales/email/settings', { token: room.token })).status === 403 && (await call('/webhooks/resend', { body: {} })).status === 401, 'clients cannot use the email routes, and the webhook refuses anything unsigned');
+
+    // settings
+    const st = (await S('/email/settings')).json; ok(st.configured.sending && st.configured.webhook && st.settings.fromAddress === 'kyle@mail.thefuturebasics.com' && st.settings.dailyCap === 60 && st.remaining > 0, 'settings: sending is on, from the verified sending domain, with room under the daily limit', st);
+    ok((await S('/email/settings', { method: 'PUT', body: { fromAddress: 'nope' } })).status === 422 && (await S('/email/settings', { method: 'PUT', body: { dailyCap: 5000 } })).status === 422, 'a bad from address or an absurd limit is refused');
+
+    // someone with a relationship: invited to the showcase
+    const guest = `guest-${tag}@chaos.test`; await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, note: 'Met at the salon expo', send: false } });
+    const g = await contact(guest); ok(g, 'setup: an invited person is in the CRM');
+
+    // templates
+    const tpls = (await S('/templates')).json; ok(tpls.templates.length >= 4 && tpls.fields.includes('first_name'), 'four starter templates are there');
+    ok((await S('/templates', { body: { name: 'Bad', subject: 'Hi {{nickname}}', body: 'x' } })).status === 422, 'a template with a field that does not exist is refused, and told what is available');
+    const mine = await S('/templates', { body: { name: `Mine ${tag}`, subject: 'About {{company}}', body: 'Hi {{first_name}}' } }); ok(mine.status === 201 && (await S(`/templates/${mine.json.id}`, { method: 'PUT', body: { name: `Mine ${tag}`, subject: 'Hello', body: 'Hi there' } })).status === 200 && (await S(`/templates/${mine.json.id}`, { method: 'DELETE' })).status === 200, 'templates can be added, changed and deleted');
+
+    // preview
+    const starter = tpls.templates[0], pv = (await S(`/contacts/${g.id}/email-preview`, { body: { subject: starter.subject, body: starter.body } })).json;
+    ok(!/\{\{/.test(pv.subject + pv.body) && /Hi there,/.test(pv.body) && pv.missing.length === 0, 'the preview fills the blanks, with fallbacks where we do not know a name', pv);
+    ok((await S(`/contacts/${g.id}/email-preview`, { body: { subject: 'x', body: 'About {{company}} and {{bogus}}' } })).json.missing.includes('company'), 'and says what is missing');
+
+    // sending
+    const chk = (await S(`/contacts/${g.id}/email-check`)).json; ok(chk.ok && chk.relationship.ok && chk.from.includes('kyle@mail.thefuturebasics.com'), 'an invited person may be emailed', chk);
+    ok((await S(`/contacts/${g.id}/email`, { body: { subject: 'Hi', body: 'Hi {{company}}' } })).status === 422, 'a message with a blank we cannot fill is not sent');
+    const sent = await S(`/contacts/${g.id}/email`, { body: { subject: 'Thanks for looking <b>', body: 'Hi there <b>friend</b>,\n\nSee https://builds.thefuturebasics.com for more.\n\nKyle' } }); ok(sent.status === 201, 'it is sent', sent.json);
+    const out = mock.sent.at(-1);
+    ok(out.body.from === 'Kyle at Future Basics <kyle@mail.thefuturebasics.com>' && out.body.to[0] === guest, 'from the verified sending domain, to the right person');
+    ok(/^<https?:\/\/[^>]+\/u\/[0-9a-f-]{36}\.[\w-]{22}>$/.test(out.body.headers['List-Unsubscribe']) && out.body.headers['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'it carries the one-click unsubscribe headers');
+    ok(out.body.text.includes('1 Test Street, Philadelphia, PA 19103') && out.body.text.includes('Unsubscribe here: ') && out.body.html.includes('Unsubscribe</a>') && !out.body.html.includes('<b>') && out.body.html.includes('&lt;b&gt;'), 'with the mailing address and a way out in both versions, and nothing typed becoming markup');
+    ok(out.key === sent.json.id && sql(`select status from sales_emails where id='${sent.json.id}'`) === 'sent', 'it has an idempotency key (so a retry cannot double-send) and is recorded as sent');
+    const d1 = await detail(g.id); ok(d1.activities.some(a => a.kind === 'email_out' && /Thanks for looking/.test(a.text)) && (await S(`/emails/${sent.json.id}`)).json.email.body_text.includes('See https://builds'), 'it is on the contact’s timeline and can be read back');
+
+    // the daily limit
+    await S('/email/settings', { method: 'PUT', body: { dailyCap: 1 } });
+    const capped = await S(`/contacts/${g.id}/email`, { body: { subject: 'Again', body: 'Hello again' } }); ok(capped.status === 422 && /limit of 1/.test(capped.json.error), 'the daily limit stops a second email', capped.json);
+    await S('/email/settings', { method: 'PUT', body: { dailyCap: 60 } });
+
+    // the mailing address is required
+    await S('/email/settings', { method: 'PUT', body: { postalAddress: '' } });
+    const noAddr = await S(`/contacts/${g.id}/email`, { body: { subject: 'x', body: 'y' } }); ok(noAddr.status === 422 && /mailing address/.test(noAddr.json.error) && (await S('/email/test', { body: {} })).status === 422, 'without a mailing address nothing is sent, not even a test');
+    await S('/email/settings', { method: 'PUT', body: { postalAddress: '1 Test Street, Philadelphia, PA 19103' } });
+    const test = await S('/email/test', { body: {} }); ok(test.status === 200 && mock.sent.at(-1).body.subject.startsWith('[Test]') && /\/u\/test>$/.test(mock.sent.at(-1).body.headers['List-Unsubscribe']), 'the test email goes to you');
+
+    // someone nothing shows we know
+    const cold = `cold-${tag}@stranger.test`; const cc = await S('/contacts', { body: { name: 'Cold Caller', email: cold } });
+    const coldChk = (await S(`/contacts/${cc.json.id}/email-check`)).json; ok(!coldChk.ok && coldChk.needsConfirmation, 'a stranger is flagged: nothing shows they know us');
+    const noConfirm = await S(`/contacts/${cc.json.id}/email`, { body: { subject: 'Hi', body: 'Hello' } }); ok(noConfirm.status === 409 && noConfirm.json.needsConfirmation, 'sending to them asks you to confirm first');
+    const before = mock.sent.length; ok((await S(`/contacts/${cc.json.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } })).status === 201 && mock.sent.length === before + 1 && (await detail(cc.json.id)).activities.some(a => /Emailed after staff confirmed/.test(a.text)), 'confirming a relationship you have sends it, and the record says you did');
+
+    // a send that fails
+    const fail = await S('/contacts', { body: { name: 'Fail', email: `failme-${tag}@x.test` } });
+    const failed = await S(`/contacts/${fail.json.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } });
+    ok(failed.status === 502 && /did not go/.test(failed.json.error) && sql(`select status from sales_emails where contact_id='${fail.json.id}'`) === 'failed' && !(await detail(fail.json.id)).activities.some(a => a.kind === 'email_out'), 'a send Resend refuses is reported, recorded as failed, and not shown as sent');
+
+    // deliveries, bounces, complaints
+    const outId = sql(`select resend_id from sales_emails where id='${sent.json.id}'`);
+    ok((await hook({ type: 'email.delivered', data: { email_id: outId, to: [guest] } }, { sign: false })).status === 401, 'a webhook with a wrong signature is refused');
+    ok((await hook({ type: 'email.delivered', data: { email_id: outId, to: [guest] } }, { ts: String(Math.floor(Date.now() / 1000) - 3600) })).status === 401, 'and so is an old one (replay)');
+    ok((await hook({ type: 'email.delivered', data: { email_id: outId, to: [guest] } })).status === 200 && sql(`select status from sales_emails where id='${sent.json.id}'`) === 'delivered', 'a signed delivery notice marks the email delivered');
+    const hardBounce = await S('/contacts', { body: { name: 'Bounce', email: `bounce-${tag}@x.test` } }); await S(`/contacts/${hardBounce.json.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } });
+    const bId = sql(`select resend_id from sales_emails where contact_id='${hardBounce.json.id}'`);
+    ok((await hook({ type: 'email.bounced', data: { email_id: bId, to: [`bounce-${tag}@x.test`], bounce: { type: 'Permanent', message: 'mailbox does not exist' } } })).status === 200, 'a hard bounce is accepted');
+    const bchk = (await S(`/contacts/${hardBounce.json.id}/email-check?confirmed=true`)).json; ok(!bchk.ok && /bounced/.test(bchk.reasons.join()) && (await S(`/contacts/${hardBounce.json.id}/email`, { body: { subject: 'Again', body: 'Hello', confirmRelationship: true } })).status === 422, 'after it that address cannot be emailed again, even if you confirm');
+    ok((await S(`/contacts/${hardBounce.json.id}/unsubscribe`, { method: 'PUT', body: { unsubscribed: false } })).status === 409, 'and staff cannot switch it back on');
+    const soft = await S('/contacts', { body: { name: 'Soft', email: `soft-${tag}@x.test` } }); await S(`/contacts/${soft.json.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } });
+    await hook({ type: 'email.bounced', data: { email_id: sql(`select resend_id from sales_emails where contact_id='${soft.json.id}'`), to: [`soft-${tag}@x.test`], bounce: { type: 'Transient', message: 'mailbox full' } } });
+    ok((await S(`/contacts/${soft.json.id}/email-check?confirmed=true`)).json.ok, 'a temporary bounce (mailbox full) does not shut the address off');
+    const spam = await S('/contacts', { body: { name: 'Spam', email: `spam-${tag}@x.test` } }); await S(`/contacts/${spam.json.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } });
+    await hook({ type: 'email.complained', data: { email_id: sql(`select resend_id from sales_emails where contact_id='${spam.json.id}'`), to: [`spam-${tag}@x.test`] } });
+    ok(/spam/.test((await S(`/contacts/${spam.json.id}/email-check?confirmed=true`)).json.reasons.join()), 'a spam complaint ends email to that person too');
+
+    // replies
+    const replyId = 'rcv_' + tag; mock.received.set(replyId, { id: replyId, subject: 'Re: Thanks for looking', text: 'Yes, Tuesday works for me.\n\nOn Mon, Oct 12, 2026 at 9:00 AM Kyle <kyle@mail.thefuturebasics.com> wrote:\n> Hi there', headers: {} });
+    const rcv = { type: 'email.received', data: { email_id: replyId, from: `Gina Guest <${guest}>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Re: Thanks for looking' } };
+    ok((await hook(rcv)).status === 200, 'a reply from a contact is accepted');
+    const d2 = await detail(g.id); ok(d2.activities.some(a => a.kind === 'email_in' && /Re: Thanks/.test(a.text)) && ['hot'].includes(d2.contact.heat.level), 'it is on their timeline and they are hot', d2.contact.heat);
+    ok(d2.tasks.some(t => /^Reply to .*Re: Thanks for looking/.test(t.title) && !t.done_at) && sql(`select count(*) from sales_emails where direction='in' and resend_id='${replyId}'`) === '1', 'a task to reply is waiting, and the message is stored');
+    await hook(rcv); ok(sql(`select count(*) from sales_emails where direction='in' and resend_id='${replyId}'`) === '1' && (await detail(g.id)).tasks.filter(t => /^Reply to/.test(t.title)).length === 1, 'the same notice arriving twice makes no second copy or second task');
+    ok((await S(`/emails/${sql(`select id from sales_emails where resend_id='${replyId}'`)}`)).json.email.body_text.startsWith('Yes, Tuesday works'), 'the reply can be read in full');
+
+    const newId = 'rcv_new_' + tag, newer = `newperson-${tag}@elsewhere.test`; mock.received.set(newId, { subject: 'Interested in a site', text: 'Hi, saw your showcase. Can you build one for my bakery?' });
+    await hook({ type: 'email.received', data: { email_id: newId, from: `New Person <${newer}>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Interested in a site' } });
+    const np = await contact(newer); ok(np && np.source === 'inbound' && (await detail(np.id)).deals.some(d => /Inbound email: Interested in a site/.test(d.title)), 'someone new who writes in becomes a contact with a deal');
+    ok((await S(`/contacts/${np.id}/email-check`)).json.relationship.ok, 'and because they wrote to us they may be answered');
+
+    const outId2 = 'rcv_out_' + tag; mock.received.set(outId2, { subject: 'Please unsubscribe me', text: 'Please unsubscribe me from this list.\n\n> original text' });
+    await hook({ type: 'email.received', data: { email_id: outId2, from: `Opt Out <optout-${tag}@elsewhere.test>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Please unsubscribe me' } });
+    const oo = await contact(`optout-${tag}@elsewhere.test`); const ood = await detail(oo.id);
+    ok(oo.unsubscribed && !ood.tasks.some(t => /^Reply to/.test(t.title)) && !(await S(`/contacts/${oo.id}/email-check?confirmed=true`)).json.ok, 'a reply that says stop unsubscribes them, with no reply task, and no more email');
+    const autoId = 'rcv_auto_' + tag; mock.received.set(autoId, { subject: 'Automatic reply: away', text: 'I am away until Monday.', headers: { 'Auto-Submitted': 'auto-replied' } });
+    await hook({ type: 'email.received', data: { email_id: autoId, from: `Away <away-${tag}@elsewhere.test>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Automatic reply: away' } });
+    const aw = await contact(`away-${tag}@elsewhere.test`); ok(aw && !(await detail(aw.id)).tasks.some(t => /^Reply to/.test(t.title)), 'an automatic out-of-office reply is logged but makes no work');
+    await hook({ type: 'email.received', data: { email_id: 'rcv_self_' + tag, from: 'Kyle <kyle@mail.thefuturebasics.com>', to: ['kyle@mail.thefuturebasics.com'], subject: 'loop' } }); ok(!(await contact('kyle@mail.thefuturebasics.com')), 'mail from our own sending address is ignored, so it can never answer itself');
+    const downId = 'rcv_down_' + tag; mock.receivedDown.add(downId); mock.received.set(downId, { subject: 'Late one', text: 'Hello after a hiccup' });
+    const dn = { type: 'email.received', data: { email_id: downId, from: `Late <late-${tag}@elsewhere.test>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Late one' } };
+    ok((await hook(dn)).status === 500 && !(await contact(`late-${tag}@elsewhere.test`)), 'if Resend cannot give us the message yet we answer with an error, so it tries again');
+    mock.receivedDown.delete(downId); ok((await hook(dn)).status === 200 && (await contact(`late-${tag}@elsewhere.test`)), 'and the retry is picked up');
+
+    // the unsubscribe link in the email we sent
+    const link = /<(https?:\/\/[^>]+)>/.exec(out.body.headers['List-Unsubscribe'])[1], path = new URL(link).pathname;
+    const getPage = await fetch(BASE + path); const pageHtml = await getPage.text(); ok(getPage.status === 200 && /<form method="post"/.test(pageHtml) && /\*@chaos\.test/.test(pageHtml) && !pageHtml.includes(guest) && !(await contact(guest)).unsubscribed, 'opening the link only asks (so a mail scanner cannot unsubscribe anyone), and shows a masked address');
+    ok((await fetch(BASE + path.slice(0, -1) + (path.endsWith('a') ? 'b' : 'a'))).status === 404 && (await fetch(BASE + '/u/not-a-token')).status === 404, 'a tampered or made-up link is "not valid"');
+    const one = await fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
+    ok(one.status === 200 && /unsubscribed/i.test(await one.text()) && (await contact(guest)).unsubscribed, 'the one-click POST from a mail app unsubscribes them');
+    const after = (await S(`/contacts/${g.id}/email-check?confirmed=true`)).json; ok(!after.ok && /unsubscribed/.test(after.reasons.join()) && (await S(`/contacts/${g.id}/email`, { body: { subject: 'Hi', body: 'Hello', confirmRelationship: true } })).status === 422, 'after that they cannot be emailed, however much staff confirm');
+    ok((await S(`/contacts/${g.id}/unsubscribe`, { method: 'PUT', body: { unsubscribed: false } })).status === 409 && (await detail(g.id)).activities.some(a => /Unsubscribed/.test(a.text)), 'staff cannot undo someone’s own unsubscribe, and it is on their record');
+    ok((await fetch(BASE + path)).status === 200 && /You are unsubscribed/.test(await (await fetch(BASE + path)).text()), 'opening the link again says it is done');
+  } finally { await new Promise(r => resend.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1"
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1",
+    "build:spot3d": "esbuild src/client/spot3d.js --bundle --format=esm --minify --target=es2020 --legal-comments=none --outfile=assets/spot3d.js"
   },
   "engines": {
     "node": ">=22.13"
@@ -24,5 +25,9 @@
     "satori": "^0.33.5",
     "stripe": "^22.6.2",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.186.1"
   }
 }
