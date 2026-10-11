@@ -60,6 +60,17 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
 .views{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.views .fchip{font-weight:600}
 .bulk{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--ink);color:#fff;border-radius:14px;padding:10px 14px;margin-bottom:12px}.bulk input.t{width:150px;background:#fff}.bulk .btn{border-color:#fff;color:#fff}.bulk .btn:hover{background:#fff;color:var(--ink)}
 td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
+/* automations */
+.ahead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.ahead h2{margin:0 0 2px}
+.sw{display:inline-flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}.sw input{position:absolute;opacity:0;width:0;height:0}
+.sw i{width:42px;height:24px;border-radius:999px;background:#c9c9c4;position:relative;transition:background .2s;flex:none}.sw i:after{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw input:checked+i{background:var(--ok)}.sw input:checked+i:after{transform:translateX(18px)}.sw input:focus-visible+i{outline:2px solid var(--ink);outline-offset:2px}
+.asteps{list-style:none;margin:14px 0 10px;padding:0;display:grid;gap:0}.asteps li{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;padding:7px 0;border-top:1px solid var(--line);align-items:baseline}.asteps li:first-child{border-top:0}
+.asteps li b{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}.asteps li.k-email b{color:var(--ok)}.asteps li.k-task b{color:#8a5a00}.asteps li span{overflow-wrap:anywhere}
+.arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.astats{margin-top:6px}
+.abar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:14px}.abar .grow{flex:1;min-width:220px}
+.astep{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--fog);margin-bottom:8px}.astep .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.astep .row input.t,.astep .row select.t{width:auto;min-width:0}.astep .row input.num{width:76px}.astep .row input.long{flex:1;min-width:200px}.astep .mv{display:flex;gap:4px;align-items:flex-start}.astep .mv button{border:1px solid var(--line);background:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer}
+.plan{list-style:none;margin:0;padding:0}.plan li{padding:9px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px}.plan li:first-child{border-top:0}.plan .when{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding-top:3px}.plan .res.no{color:var(--hot)}
 @media(max-width:860px){.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -72,7 +83,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
     <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="automations">Automations</button></div>
 
     <section id="t-today"></section>
 
@@ -98,6 +109,10 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
       </div>
     </section>
 
+    <section id="t-automations" class="hidden">
+      <div class="abar"><p class="note grow" id="autoNote" style="margin:0"></p><div class="arow" style="margin:0"><button class="btn sm" id="autoHours">Working hours</button><button class="btn sm" id="autoNow">Run what is due now</button><button class="btn go sm" id="autoNew">+ New automation</button></div></div>
+      <div id="autoList"></div>
+    </section>
     <section id="t-tasks" class="hidden">
       <div class="panel">
         <div class="toolbar"><select class="t" id="taskScope" aria-label="Which tasks"><option value="open">Open</option><option value="overdue">Overdue</option><option value="today">Due today or earlier</option><option value="done">Done</option></select></div>
@@ -148,6 +163,40 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   </div>
   <p class="msg" id="sMsg" role="status"></p>
   <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn sm" id="sTest" type="button">Send me a test</button><button class="btn go" id="sSave" type="button">Save</button></div>
+</div></dialog>
+
+<dialog id="adlg"><form class="dbody" id="aform" autocomplete="off">
+  <div class="dh"><h2 id="aTitle">Automation</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <label class="f"><span class="mono">Name</span><input class="t" id="aName" maxlength="80" required placeholder="Follow up after someone looks at a build"></label>
+  <div class="fields"><label class="f"><span class="mono">It starts when</span><select class="t" id="aTrig"></select></label><label class="f" id="aTrigParam"></label></div>
+  <div><span class="mono" style="color:var(--dim)">Then, in order</span><div id="aSteps" style="margin-top:8px"></div>
+    <div class="arow" style="margin-top:0"><button class="btn sm" type="button" data-addstep="task">+ Task</button><button class="btn sm" type="button" data-addstep="email">+ Email</button><button class="btn sm" type="button" data-addstep="wait">+ Wait</button><button class="btn sm" type="button" data-addstep="tag">+ Tag</button></div></div>
+  <label class="check"><input type="checkbox" id="aStop" checked><span><b>Stop if they write back</b><span class="sub" style="display:block">Anything still waiting is cancelled the moment they reply or ask us to stop.</span></span></label>
+  <label class="f"><span class="mono">Someone can go through it</span><select class="t" id="aAgain"><option value="">Once, ever</option><option value="30">Again after 30 days</option><option value="90">Again after 90 days</option><option value="180">Again after 180 days</option></select></label>
+  <p class="sub">Email steps only go to people who already know us, never to anyone who opted out, only in working hours, and within the daily limit. For anyone else the step is skipped and you get a task.</p>
+  <p class="msg" id="aMsg" role="status"></p>
+  <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn go" type="submit">Save</button></div>
+</form></dialog>
+
+<dialog id="atdlg"><div class="dbody">
+  <div class="dh"><h2>Try it on a contact</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <p class="note">Nothing is sent or made. This shows what each step would do for that person right now.</p>
+  <div class="toolbar"><select class="t grow" id="atContact" aria-label="Contact"></select><button class="btn go sm" id="atGo" type="button">Show me</button></div>
+  <p class="msg" id="atMsg" role="status"></p><ol class="plan" id="atPlan"></ol>
+</div></dialog>
+
+<dialog id="ardlg"><div class="dbody">
+  <div class="dh"><h2 id="arTitle">Who is in it</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <div class="scroll"><table><thead><tr><th>Contact</th><th>Where they are</th><th>Started</th></tr></thead><tbody id="arRows"></tbody></table></div>
+</div></dialog>
+
+<dialog id="awdlg"><div class="dbody">
+  <div class="dh"><h2>Working hours</h2><button class="btn sm" type="button" data-close>Close</button></div>
+  <p class="note">Automatic email only goes out inside this window, so nobody is written to at 3am. Times are UTC (9am to 6pm US Eastern is 13 to 22 in summer, 14 to 23 in winter). Tasks and tags are not held back.</p>
+  <div class="fields"><label class="f"><span class="mono">From (hour, UTC)</span><input class="t" id="awStart" type="number" min="0" max="23"></label><label class="f"><span class="mono">Until (hour, UTC)</span><input class="t" id="awEnd" type="number" min="1" max="24"></label></div>
+  <label class="check"><input type="checkbox" id="awWeek"><span>Weekdays only</span></label>
+  <label class="check"><input type="checkbox" id="awPause"><span><b>Pause every automation</b><span class="sub" style="display:block">Nothing new starts and nothing runs until you switch this off. People already part way stay where they are.</span></span></label>
+  <p class="msg" id="awMsg" role="status"></p><div style="display:flex;justify-content:flex-end"><button class="btn go" id="awSave" type="button">Save</button></div>
 </div></dialog>
 
 <dialog id="ddlg"><form class="dbody" id="dform" autocomplete="off">
@@ -285,6 +334,7 @@ async function openContact(id){
     <div id="cTasks" style="margin:10px 0 18px">${tasks.map(t=>`<div class="item"><label class="check"><input type="checkbox" data-done="${esc(t.id)}" ${t.done_at?'checked disabled':''}><span class="main"><b style="${t.done_at?'text-decoration:line-through;color:var(--dim)':''}">${esc(t.title)}</b><span class="sub">${t.done_at?'Done':dayOf(t.due_at)}</span></span></label></div>`).join('')||'<p class="note">No tasks.</p>'}</div>
     <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Deals</h2><button class="btn sm" id="cDeal">+ Deal</button></div>
     <div style="margin:8px 0">${deals.map(d=>`<div class="item click" data-deal="${esc(d.id)}"><span class="main"><b>${esc(d.title)}</b><span class="sub">${esc(LABEL[d.stage])}${d.expected_close?' · close '+esc(dayOf(d.expected_close)):''}</span></span><span>${d.value_cents?money(d.value_cents):''}</span></div>`).join('')||'<p class="note">No deals yet.</p>'}</div>
+    <div id="cRuns"></div>
   </div><div>
     <h2>Details</h2><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" id="eName" value="${esc(c.name)}"></label><label class="f"><span class="mono">Email</span><input class="t" id="eEmail" type="email" value="${esc(c.email||'')}"></label><label class="f"><span class="mono">Company</span><input class="t" id="eCompany" value="${esc(c.company)}"></label><label class="f"><span class="mono">Title</span><input class="t" id="eTitle" value="${esc(c.title)}"></label><label class="f"><span class="mono">Phone</span><input class="t" id="ePhone" value="${esc(c.phone)}"></label><div class="f wide"><span class="mono" style="display:block;margin-bottom:5px;color:var(--dim)">Tags</span><div class="tagrow" id="eTagRow">${(c.tags||[]).map(t=>tagHtml(t,true)).join('')}<input class="t" id="eTagAdd" list="tagList" placeholder="add a tag" aria-label="Add a tag" style="width:140px;padding:5px 10px;border-radius:999px"></div></div><label class="f wide"><span class="mono">Notes</span><textarea class="t" id="eNotes">${esc(c.notes)}</textarea></label></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px"><button class="btn go sm" id="eSave">Save details</button><button class="btn sm" id="eUnsub">${c.unsubscribed?'Allow emails again':'Do not email'}</button><button class="btn danger sm" id="eDel">Delete</button><span class="msg" id="eMsg"></span></div>
@@ -294,7 +344,7 @@ async function openContact(id){
   loadEmailBox(id);
   $('#aGo').onclick=async()=>{const m=$('#aMsg');try{await api(`/v1/sales/contacts/${id}/activities`,{body:{kind:$('#aKind').value,text:$('#aText').value}});await openContact(id);refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
   $('#tGo').onclick=async()=>{try{await api('/v1/sales/tasks',{body:{contactId:id,title:$('#tTitle').value,dueAt:$('#tDue').value}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
-  $('#cDeal').onclick=()=>openDeal(null,id);
+  $('#cDeal').onclick=()=>openDeal(null,id);loadRuns(id).catch(()=>{});
   const setTags=async tags=>{try{await api('/v1/sales/contacts/'+id,{method:'PUT',body:{tags}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
   $('#eTagRow').onclick=e=>{const b=e.target.closest('[data-untag]');if(b)setTags((c.tags||[]).filter(t=>t!==b.dataset.untag))};
   $('#eTagAdd').onkeydown=e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();const v=e.target.value.trim();if(v)setTags([...(c.tags||[]),v])}};
@@ -368,7 +418,79 @@ document.addEventListener('click',async e=>{
   const c=e.target.closest('[data-contact]');if(c&&c.dataset.contact){e.preventDefault();openContact(c.dataset.contact)}
 });
 $$('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d)d.close()}));
-const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks};
+// ---------- automations ----------
+let AUTOS=null,EDIT=null,TEST_AID=null;
+const KIND_LABEL={wait:'Wait',task:'Task',tag:'Tag',email:'Email'};
+const hoursText=s=>s.startHour===0&&s.endHour===24?`at any hour${s.weekdaysOnly?', weekdays':''}`:`${String(s.startHour).padStart(2,'0')}:00 to ${String(s.endHour===24?0:s.endHour).padStart(2,'0')}:00 UTC${s.weekdaysOnly?', weekdays':''}`;
+async function loadAutomations(){
+  AUTOS=await api('/v1/sales/automations');const s=AUTOS.settings;
+  $('#autoNote').innerHTML=s.paused?'<b style="color:var(--bad)">Everything is paused.</b> Nothing starts and nothing runs until you open Working hours and switch the pause off.':`Automatic email goes out ${esc(hoursText(s).startsWith('at')?hoursText(s):'from '+hoursText(s))} ${AUTOS.windowOpen?'(open now)':'(closed now)'}. Automations start switched off: turn one on when you are happy with it.`;
+  $('#autoList').innerHTML=AUTOS.automations.length?AUTOS.automations.map(a=>`<div class="panel" data-aid="${esc(a.id)}"><div class="ahead"><div><h2>${esc(a.name)}</h2><div class="sub">${esc(a.triggerText)}${a.reenterDays?` · can run again after ${a.reenterDays} days`:' · once per person'}${a.stopOnReply?' · stops if they write back':''}</div></div><label class="sw"><input type="checkbox" data-aon ${a.enabled?'checked':''} aria-label="Switch ${esc(a.name)} on or off"><i></i><span class="mono">${a.enabled?'On':'Off'}</span></label></div>
+    ${a.note?`<p class="msg bad">${esc(a.note)}</p>`:''}
+    <ol class="asteps">${a.steps.map((st,i)=>`<li class="k-${esc(st.kind)}"><b>${esc(KIND_LABEL[st.kind])}</b><span>${esc(a.stepText[i])}</span></li>`).join('')}</ol>
+    <div class="sub astats">${a.active} running · ${a.done} finished · ${a.stopped} stopped · ${a.emails} email${a.emails===1?'':'s'} sent</div>
+    <div class="arow"><button class="btn sm" data-aedit>Edit</button><button class="btn sm" data-atest>Try on a contact</button><button class="btn sm" data-aruns>Who is in it</button><button class="btn danger sm" data-adel>Delete</button></div></div>`).join(''):'<div class="panel"><p class="note">No automations yet.</p></div>';
+}
+const blankStep=k=>k==='wait'?{kind:'wait',days:1,hours:0}:k==='task'?{kind:'task',title:'',dueDays:0}:k==='tag'?{kind:'tag',add:'',remove:''}:{kind:'email',templateId:AUTOS?.templates?.[0]?.id||''};
+function trigParam(t){
+  const type=$('#aTrig').value,box=$('#aTrigParam');
+  box.classList.toggle('hidden',!['tag_added','deal_stage','contact_created','deal_quiet'].includes(type));
+  if(type==='tag_added')box.innerHTML=`<span class="mono">Which tag</span><input class="t" id="aTrigVal" list="tagList" value="${esc(t?.tag||'')}" placeholder="spring-launch">`;
+  else if(type==='deal_stage')box.innerHTML=`<span class="mono">Which stage</span><select class="t" id="aTrigVal">${STAGES.map(x=>`<option value="${x}" ${t?.stage===x?'selected':''}>${LABEL[x]}</option>`).join('')}</select>`;
+  else if(type==='contact_created')box.innerHTML=`<span class="mono">Arriving from</span><select class="t" id="aTrigVal"><option value="">Added by hand or from the website</option>${['website','manual','referral','outbound','event','inbound'].map(x=>`<option value="${x}" ${t?.source===x?'selected':''}>${esc(SOURCE[x]||x)}</option>`).join('')}</select>`;
+  else if(type==='deal_quiet')box.innerHTML=`<span class="mono">Quiet for (days)</span><input class="t" id="aTrigVal" type="number" min="2" max="90" value="${esc(t?.days||7)}">`;
+  else box.innerHTML='';
+}
+function renderSteps(){
+  $('#aSteps').innerHTML=EDIT.steps.map((s,i)=>`<div class="astep" data-i="${i}"><div><span class="mono" style="color:var(--dim)">Step ${i+1}</span><div class="row" style="margin-top:6px"><select class="t" data-k aria-label="Kind of step">${Object.keys(KIND_LABEL).map(k=>`<option value="${k}" ${k===s.kind?'selected':''}>${KIND_LABEL[k]}</option>`).join('')}</select>${
+    s.kind==='wait'?`<input class="t num" type="number" min="0" max="60" data-f="days" value="${esc(s.days)}" aria-label="Days"> days <input class="t num" type="number" min="0" max="23" data-f="hours" value="${esc(s.hours)}" aria-label="Hours"> hours`:
+    s.kind==='task'?`<input class="t long" data-f="title" value="${esc(s.title)}" placeholder="Call {{name}} about {{build}}" aria-label="Task"> due in <input class="t num" type="number" min="0" max="30" data-f="dueDays" value="${esc(s.dueDays)}" aria-label="Due in days"> days`:
+    s.kind==='tag'?`add <input class="t" data-f="add" value="${esc(s.add||'')}" list="tagList" placeholder="tag" aria-label="Tag to add" style="width:140px"> remove <input class="t" data-f="remove" value="${esc(s.remove||'')}" list="tagList" placeholder="tag" aria-label="Tag to remove" style="width:140px">`:
+    `<select class="t" data-f="templateId" aria-label="Email template">${AUTOS.templates.map(t=>`<option value="${esc(t.id)}" ${t.id===s.templateId?'selected':''}>${esc(t.name)}</option>`).join('')}</select>`}</div></div>
+    <div class="mv"><button type="button" data-up aria-label="Move up" ${i?'':'disabled'}>↑</button><button type="button" data-down aria-label="Move down" ${i<EDIT.steps.length-1?'':'disabled'}>↓</button><button type="button" data-rm aria-label="Remove step">×</button></div></div>`).join('')||'<p class="note">No steps yet. Add the first one below.</p>';
+}
+function openEditor(a){
+  EDIT={id:a?.id||null,steps:a?JSON.parse(JSON.stringify(a.steps)):[{kind:'task',title:'',dueDays:0}]};
+  $('#aTitle').textContent=a?'Edit automation':'New automation';$('#aName').value=a?.name||'';
+  $('#aTrig').innerHTML=AUTOS.triggers.map(t=>`<option value="${t.type}">${esc(t.label)}</option>`).join('');$('#aTrig').value=a?.trigger.type||'showcase_view';trigParam(a?.trigger);
+  $('#aStop').checked=a?a.stopOnReply:true;$('#aAgain').value=a?.reenterDays?String(a.reenterDays):'';$('#aMsg').textContent='';renderSteps();$('#adlg').showModal();
+}
+$('#aTrig').onchange=()=>trigParam(null);
+$('#adlg').addEventListener('click',e=>{
+  const add=e.target.closest('[data-addstep]');if(add){EDIT.steps.push(blankStep(add.dataset.addstep));renderSteps();return}
+  const row=e.target.closest('.astep');if(!row)return;const i=Number(row.dataset.i);
+  if(e.target.closest('[data-rm]')){EDIT.steps.splice(i,1);renderSteps()}
+  else if(e.target.closest('[data-up]')&&i>0){[EDIT.steps[i-1],EDIT.steps[i]]=[EDIT.steps[i],EDIT.steps[i-1]];renderSteps()}
+  else if(e.target.closest('[data-down]')&&i<EDIT.steps.length-1){[EDIT.steps[i+1],EDIT.steps[i]]=[EDIT.steps[i],EDIT.steps[i+1]];renderSteps()}
+});
+$('#adlg').addEventListener('input',e=>{const f=e.target.closest('[data-f]'),row=e.target.closest('.astep');if(f&&row)EDIT.steps[Number(row.dataset.i)][f.dataset.f]=f.type==='number'?Number(f.value):f.value});
+$('#adlg').addEventListener('change',e=>{const k=e.target.closest('[data-k]'),row=e.target.closest('.astep');if(k&&row){EDIT.steps[Number(row.dataset.i)]=blankStep(k.value);renderSteps()}const f=e.target.closest('[data-f]');if(f&&row&&f.tagName==='SELECT')EDIT.steps[Number(row.dataset.i)][f.dataset.f]=f.value});
+$('#aform').addEventListener('submit',async e=>{e.preventDefault();const m=$('#aMsg');m.className='msg';m.textContent='Saving…';
+  const type=$('#aTrig').value,v=$('#aTrigVal')?.value,trigger={type,...(type==='tag_added'?{tag:v}:type==='deal_stage'?{stage:v}:type==='contact_created'&&v?{source:v}:type==='deal_quiet'?{days:v}:{})};
+  const body={name:$('#aName').value,trigger,steps:EDIT.steps,stopOnReply:$('#aStop').checked,reenterDays:$('#aAgain').value||null};
+  try{if(EDIT.id)await api('/v1/sales/automations/'+EDIT.id,{method:'PUT',body});else await api('/v1/sales/automations',{body});$('#adlg').close();await loadAutomations()}catch(x){m.className='msg bad';m.textContent=x.message}});
+$('#autoNew').onclick=()=>openEditor(null);
+$('#autoNow').onclick=async()=>{const b=$('#autoNow');b.disabled=true;try{const r=await api('/v1/sales/automations/process',{body:{}});b.textContent=r.paused?'Paused':`Ran ${r.steps} step${r.steps===1?'':'s'}`;await loadAutomations()}catch(x){alert(x.message)}finally{b.disabled=false;setTimeout(()=>b.textContent='Run what is due now',2500)}};
+$('#autoHours').onclick=()=>{const s=AUTOS.settings;$('#awStart').value=s.startHour;$('#awEnd').value=s.endHour;$('#awWeek').checked=s.weekdaysOnly;$('#awPause').checked=s.paused;$('#awMsg').textContent='';$('#awdlg').showModal()};
+$('#awSave').onclick=async()=>{const m=$('#awMsg');m.className='msg';try{await api('/v1/sales/automations/settings',{method:'PUT',body:{startHour:$('#awStart').value,endHour:$('#awEnd').value,weekdaysOnly:$('#awWeek').checked,paused:$('#awPause').checked}});$('#awdlg').close();await loadAutomations()}catch(x){m.className='msg bad';m.textContent=x.message}};
+$('#autoList').addEventListener('change',async e=>{const sw=e.target.closest('[data-aon]');if(!sw)return;const id=sw.closest('[data-aid]').dataset.aid;try{await api('/v1/sales/automations/'+id,{method:'PUT',body:{enabled:sw.checked}})}catch(x){alert(x.message)}await loadAutomations()});
+$('#autoList').addEventListener('click',async e=>{
+  const card=e.target.closest('[data-aid]');if(!card)return;const a=AUTOS.automations.find(x=>x.id===card.dataset.aid);
+  if(e.target.closest('[data-aedit]'))openEditor(a);
+  else if(e.target.closest('[data-adel]')){if(!confirm(`Delete “${a.name}”? People part way through it stop where they are. Their records stay.`))return;try{await api('/v1/sales/automations/'+a.id,{method:'DELETE'});await loadAutomations()}catch(x){alert(x.message)}}
+  else if(e.target.closest('[data-atest]')){TEST_AID=a.id;const {contacts}=await api('/v1/sales/contacts?limit=100');$('#atContact').innerHTML=contacts.map(c=>`<option value="${esc(c.id)}">${esc(c.name||c.email)}${c.company?' · '+esc(c.company):''}</option>`).join('');$('#atPlan').innerHTML='';$('#atMsg').textContent='';$('#atdlg').showModal()}
+  else if(e.target.closest('[data-aruns]')){const {runs}=await api(`/v1/sales/automations/${a.id}/runs`);$('#arTitle').textContent=`Who is in “${a.name}”`;
+    $('#arRows').innerHTML=runs.length?runs.map(r=>`<tr class="click" data-contact="${esc(r.contact_id)}"><td><b>${esc(r.contact_name||r.contact_email)}</b></td><td>${r.status==='active'?`Step ${r.step+1} of ${a.steps.length}, next ${esc(when(r.next_at))}`:r.status==='done'?'Finished':'Stopped: '+esc(r.stop_reason)}</td><td class="sub">${esc(ago(r.started_at))}</td></tr>`).join(''):'<tr><td colspan="3" class="note">Nobody has been through it yet.</td></tr>';$('#ardlg').showModal()}
+});
+$('#atGo').onclick=async()=>{const m=$('#atMsg');m.className='msg';m.textContent='Checking…';$('#atPlan').innerHTML='';try{const r=await api(`/v1/sales/automations/${TEST_AID}/dry-run`,{body:{contactId:$('#atContact').value}});m.textContent=`${r.paused?'Everything is paused right now. ':''}For ${r.contact}:`;
+  $('#atPlan').innerHTML=r.plan.map(p=>`<li><span class="when">${p.after?`+${p.after>=24?Math.floor(p.after/24)+'d':p.after+'h'}`:'now'}</span><span><b>${esc(p.text)}</b>${p.result?`<div class="res ${p.ok===false||/held back|not send|Skipped/.test(p.result)?'no':''}">${esc(p.result)}</div>`:''}</span></li>`).join('')}catch(x){m.className='msg bad';m.textContent=x.message}};
+// on a contact's card: what is running for them
+async function loadRuns(id){
+  const box=$('#cRuns');if(!box)return;const {runs}=await api(`/v1/sales/contacts/${id}/runs`);const act=runs.filter(r=>r.status==='active');
+  box.innerHTML=runs.length?`<h2 style="margin:18px 0 6px">Automations</h2>${runs.slice(0,6).map(r=>`<div class="item"><span class="main"><b>${esc(r.automation_name)}</b><span class="sub">${r.status==='active'?`Step ${r.step+1} of ${r.steps}, next ${esc(when(r.next_at))}`:r.status==='done'?'Finished':'Stopped: '+esc(r.stop_reason)}</span></span>${r.status==='active'?`<button class="btn sm" data-stoprun="${esc(r.id)}">Stop</button>`:''}</div>`).join('')}`:'';
+  box.querySelectorAll('[data-stoprun]').forEach(b=>b.onclick=async()=>{try{await api('/v1/sales/runs/'+b.dataset.stoprun+'/stop',{body:{}});await openContact(id)}catch(x){alert(x.message)}});
+}
+const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations};
 async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge()}
 const refreshQuiet=()=>refresh().catch(()=>{});
 async function loadTaskBadge(){try{const open=(await api('/v1/sales/tasks?scope=today')).tasks.length;$('#taskCount').innerHTML=open?`<span class="chip late">${open}</span>`:''}catch{}}

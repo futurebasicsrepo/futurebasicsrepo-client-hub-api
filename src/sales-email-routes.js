@@ -4,6 +4,7 @@
 //           GET /v1/sales/contacts/:id/email-check   POST /v1/sales/contacts/:id/email-preview   POST /v1/sales/contacts/:id/email   GET /v1/sales/emails/:id
 //   public  GET|POST /u/:token  (unsubscribe; the POST is also the one-click List-Unsubscribe target)   POST /webhooks/resend  (signed)
 import { cleanEmail } from './sales.js';
+import { fireTrigger, stopRuns } from './sales-automations-engine.js';
 import { renderTemplate, firstNameOf, buildMessage, unsubscribeToken, readUnsubscribeToken, verifyWebhook, parseAddress, looksLikeOptOut, isAutoReply, stripQuoted, htmlToText, relationship, canEmail, MERGE_FIELDS, STARTER_TEMPLATES } from './sales-email.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,34 +81,48 @@ export function registerSalesEmailRoutes(app, d) {
     await pool.query(`insert into sales_suppressions(email,reason,detail) values($1,$2,$3) on conflict (email) do nothing`, [e, reason, String(detail).slice(0, 300)]);
     const rows = (await pool.query(`update sales_contacts set email_ok=false, unsubscribed_at = case when $2='unsubscribed' then coalesce(unsubscribed_at, now()) else unsubscribed_at end, updated_at=now() where lower(email)=$1 returning id`, [e, reason])).rows;
     for (const r of rows) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system',$2)`, [r.id, { unsubscribed: `Unsubscribed${detail ? ` (${detail})` : ''}. No more email.`, bounced: `Email to this address bounced${detail ? `: ${detail}` : ''}. No more email.`, complained: 'Marked an email as spam. No more email.', manual: 'Marked as not to be emailed' }[reason] || 'Marked as not to be emailed']);
+    for (const r of rows) await stopRuns(pool, { contactId: r.id, reason: { unsubscribed: 'they opted out', bounced: 'their address bounced', complained: 'they marked an email as spam', manual: 'they are marked as not to be emailed' }[reason] || 'they cannot be emailed' }); // nothing waiting may write to them now
   }
 
   // ---------- sending ----------
-  app.post('/v1/sales/contacts/:id/email', { preHandler: pre }, async (req, reply) => {
-    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
-    const f = await facts(req.params.id); if (!f) return bad(reply, 'Not found', 404);
-    const s = await settings(), sender = await senderFirstName(req, s), confirmed = req.body?.confirmRelationship === true;
-    const r = render(String(req.body?.subject || ''), String(req.body?.body || ''), varsFor(f, sender));
-    if (!r.subject.trim()) return bad(reply, 'Add a subject');
-    if (!r.body.trim()) return bad(reply, 'Write the message');
-    if (r.unknown.length) return bad(reply, `Unknown field ${r.unknown.map(x => `{{${x}}}`).join(', ')}. You can use ${MERGE_FIELDS.map(x => `{{${x}}}`).join(', ')}.`);
-    if (r.missing.length) return bad(reply, `We do not have ${r.missing.map(x => ({ first_name: 'their first name', name: 'their name', company: 'their company', build: 'a build they looked at', sender: 'your name' }[x] || x)).join(' or ')} for this contact. Fill it in or remove ${r.missing.map(x => `{{${x}}}`).join(', ')} from the message.`);
+  // One place that sends a contact an email, for the staff page and for automations. → { ok, id, remaining } or { ok: false, status, error, extra }
+  async function sendToContact(contactId, { subject, body, confirmed = false, actorId = null, sender = null, via = null }) {
+    const fail = (status, error, extra = {}) => ({ ok: false, status, error, extra });
+    const f = await facts(contactId); if (!f) return fail(404, 'Not found');
+    const s = await settings(), from = sender || firstNameOf(s.fromName) || 'Kyle';
+    const r = render(String(subject || ''), String(body || ''), varsFor(f, from));
+    if (!r.subject.trim()) return fail(422, 'Add a subject');
+    if (!r.body.trim()) return fail(422, 'Write the message');
+    if (r.unknown.length) return fail(422, `Unknown field ${r.unknown.map(x => `{{${x}}}`).join(', ')}. You can use ${MERGE_FIELDS.map(x => `{{${x}}}`).join(', ')}.`);
+    if (r.missing.length) return fail(422, `We do not have ${r.missing.map(x => ({ first_name: 'their first name', name: 'their name', company: 'their company', build: 'a build they looked at', sender: 'your name' }[x] || x)).join(' or ')} for this contact. Fill it in or remove ${r.missing.map(x => `{{${x}}}`).join(', ')} from the message.`);
     const n = await sentToday(), verdict = canEmail({ contact: f.contact, suppressed: f.suppressed, rel: f.rel, confirmed, settings: s, sentToday: n, configured: Boolean(apiKey()) });
-    if (!verdict.ok) return reply.code(verdict.needsConfirmation && verdict.reasons.length === 1 ? 409 : 422).send({ error: verdict.reasons[0], reasons: verdict.reasons, needsConfirmation: verdict.needsConfirmation });
-    const msg = buildMessage({ subject: r.subject, body: r.body, senderName: sender, postalAddress: s.postalAddress, unsubscribeUrl: `${publicUrl}/u/${unsubscribeToken(f.c.id, secret)}` });
-    const row = (await pool.query(`insert into sales_emails(contact_id,direction,subject,body_text,body_html,from_address,to_address,status,sent_by) values($1,'out',$2,$3,$4,$5,$6,'sending',$7) returning id`, [f.c.id, msg.subject, r.body.trim(), msg.html, fromHeader(s), f.c.email, actorOf(req)])).rows[0];
+    if (!verdict.ok) return fail(verdict.needsConfirmation && verdict.reasons.length === 1 ? 409 : 422, verdict.reasons[0], { reasons: verdict.reasons, needsConfirmation: verdict.needsConfirmation });
+    const msg = buildMessage({ subject: r.subject, body: r.body, senderName: from, postalAddress: s.postalAddress, unsubscribeUrl: `${publicUrl}/u/${unsubscribeToken(f.c.id, secret)}` });
+    const row = (await pool.query(`insert into sales_emails(contact_id,direction,subject,body_text,body_html,from_address,to_address,status,sent_by) values($1,'out',$2,$3,$4,$5,$6,'sending',$7) returning id`, [f.c.id, msg.subject, r.body.trim(), msg.html, fromHeader(s), f.c.email, actorId])).rows[0];
     try {
-      const resendId = await resendSend({ from: fromHeader(s), to: f.c.email, subject: msg.subject, text: msg.text, html: msg.html, headers: msg.headers, idempotencyKey: row.id, tags: [{ name: 'source', value: 'sales-crm' }] });
+      const resendId = await resendSend({ from: fromHeader(s), to: f.c.email, subject: msg.subject, text: msg.text, html: msg.html, headers: msg.headers, idempotencyKey: row.id, tags: [{ name: 'source', value: via ? 'sales-automation' : 'sales-crm' }] });
       await pool.query(`update sales_emails set status='sent', resend_id=$2 where id=$1`, [row.id, resendId]);
     } catch (e) {
       await pool.query(`update sales_emails set status='failed', error=$2 where id=$1`, [row.id, String(e.message).slice(0, 300)]);
       log.warn?.({ err: e.message }, 'sales email not sent');
-      return bad(reply, `The email did not go: ${e.message}`, 502);
+      return fail(502, `The email did not go: ${e.message}`);
     }
-    if (!f.rel.ok && confirmed) await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system','Emailed after staff confirmed they know us',$2)`, [f.c.id, actorOf(req)]);
-    await pool.query(`insert into sales_activities(contact_id,kind,text,meta,actor_id) values($1,'email_out',$2,$3::jsonb,$4)`, [f.c.id, msg.subject, JSON.stringify({ emailId: row.id }), actorOf(req)]);
+    if (!f.rel.ok && confirmed) await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system','Emailed after staff confirmed they know us',$2)`, [f.c.id, actorId]);
+    await pool.query(`insert into sales_activities(contact_id,kind,text,meta,actor_id) values($1,'email_out',$2,$3::jsonb,$4)`, [f.c.id, msg.subject, JSON.stringify({ emailId: row.id, ...(via ? { automation: via } : {}) }), actorId]);
     await pool.query(`update sales_contacts set last_activity_at=now() where id=$1`, [f.c.id]);
-    return reply.code(201).send({ id: row.id, remainingToday: Math.max(0, s.dailyCap - n - 1) });
+    return { ok: true, id: row.id, remaining: Math.max(0, s.dailyCap - n - 1), subject: msg.subject };
+  }
+  // what an automation needs to know before it sends: would this go, and why not
+  async function checkContact(contactId) {
+    const f = await facts(contactId); if (!f) return null;
+    const s = await settings(), n = await sentToday();
+    return { ...canEmail({ contact: f.contact, suppressed: f.suppressed, rel: f.rel, confirmed: false, settings: s, sentToday: n, configured: Boolean(apiKey()) }), relationship: f.rel, capReached: Number(s.dailyCap) > 0 && n >= Number(s.dailyCap), systemBlocked: !apiKey() || !String(s.postalAddress || '').trim() || !String(s.fromAddress || '').trim() };
+  }
+  app.post('/v1/sales/contacts/:id/email', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(req.params.id)) return bad(reply, 'Not found', 404);
+    const s = await settings(), r = await sendToContact(req.params.id, { subject: req.body?.subject, body: req.body?.body, confirmed: req.body?.confirmRelationship === true, actorId: actorOf(req), sender: await senderFirstName(req, s) });
+    if (!r.ok) return reply.code(r.status).send({ error: r.error, ...r.extra });
+    return reply.code(201).send({ id: r.id, remainingToday: r.remaining });
   });
   app.post('/v1/sales/email/test', { preHandler: pre }, async (req, reply) => {
     const u = UUID.test(String(req.auth?.sub || '')) ? (await pool.query('select email from users where id=$1', [req.auth.sub])).rows[0] : null, to = cleanEmail(u?.email || req.auth?.email);
@@ -175,8 +190,11 @@ export function registerSalesEmailRoutes(app, d) {
     await pool.query(`insert into sales_activities(contact_id,kind,text,meta) values($1,'email_in',$2,$3::jsonb)`, [contact.id, (auto ? '(automatic reply) ' : '') + subject, JSON.stringify({ emailId: row.id, auto })]);
     await pool.query(`update sales_contacts set last_activity_at=now() where id=$1`, [contact.id]);
     if (created) await pool.query(`insert into sales_deals(contact_id,title,source) values($1,$2,'website')`, [contact.id, `Inbound email: ${subject}`.slice(0, 140)]);
+    if (created) await fireTrigger(pool, { type: 'contact_created', contactId: contact.id, source: 'inbound' });
     if (looksLikeOptOut(text)) { await suppress(from.email, 'unsubscribed', 'by reply'); return; }
     if (auto) return;
+    await stopRuns(pool, { contactId: contact.id, reason: 'they wrote back', onlyIfStopOnReply: true });
+    await fireTrigger(pool, { type: 'email_in', contactId: contact.id });
     const title = `Reply to ${who}: ${subject}`.slice(0, 200);
     if (!(await pool.query(`select 1 from sales_tasks where contact_id=$1 and done_at is null and title like 'Reply to %'`, [contact.id])).rowCount) await pool.query(`insert into sales_tasks(contact_id,title,due_at) values($1,$2,now())`, [contact.id, title]);
     if (sendHubEmail && notifyTo) await sendHubEmail({ to: notifyTo, subject: `${who} replied: ${subject}`.slice(0, 200), html: hubEmailShell(`${emailEscape(who)} replied`, `<p style="white-space:pre-wrap;border-left:3px solid #4bff9a;padding-left:12px">${emailEscape(stripQuoted(text).slice(0, 1200))}</p><p><a href="${emailEscape(workUrl)}/sales">Open it in Sales</a></p>`) }).catch(() => {});
@@ -198,4 +216,5 @@ export function registerSalesEmailRoutes(app, d) {
     } catch (e) { log.error?.({ err: e.message, type }, 'resend webhook not handled'); return bad(reply, 'Could not handle that', 500); }
     return { ok: true };
   });
+  return { sendToContact, checkContact };
 }

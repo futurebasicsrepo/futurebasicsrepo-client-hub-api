@@ -6,6 +6,7 @@
 //   GET|POST /v1/sales/tasks      PUT|DELETE /v1/sales/tasks/:id
 //   POST /v1/sales/import/hub     the hub's clients and leads become contacts
 //   POST /v1/sales/import/csv     a pasted list becomes contacts
+import { fireTrigger, fireTagsAdded, stopRuns } from './sales-automations-engine.js';
 import { STAGES, OPEN_STAGES, STAGE_LABELS, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanSegment, cleanTags, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,7 +25,7 @@ export async function captureLead(pool, { email, name = '', source = 'showcase',
       contact = ins.rows[0] || (await pool.query('select id from sales_contacts where lower(email)=$1', [addr])).rows[0]; created = Boolean(ins.rowCount);
     }
     if (!contact) return null;
-    if (source === 'showcase') await pool.query(`update sales_contacts set tags = tags || '{showcase}'::text[] where id=$1 and not ('showcase' = any(tags))`, [contact.id]);
+    const tagged = source === 'showcase' ? (await pool.query(`update sales_contacts set tags = tags || '{showcase}'::text[] where id=$1 and not ('showcase' = any(tags))`, [contact.id])).rowCount > 0 : false;
     let dealId = null;
     if (dealTitle) {
       const open = (await pool.query(`select id from sales_deals where contact_id=$1 and stage = any($2) order by created_at desc limit 1`, [contact.id, OPEN_STAGES])).rows[0];
@@ -37,6 +38,10 @@ export async function captureLead(pool, { email, name = '', source = 'showcase',
       const has = (await pool.query(`select 1 from sales_tasks where contact_id=$1 and done_at is null limit 1`, [contact.id])).rowCount;
       if (!has) await pool.query(`insert into sales_tasks(contact_id,deal_id,title,due_at) values($1,$2,$3,$4)`, [contact.id, dealId, String(followUp).slice(0, 200), nextBusinessDay().toISOString()]);
     }
+    // what this means for any automation that is listening
+    if (created) await fireTrigger(pool, { type: 'contact_created', contactId: contact.id, source });
+    if (source === 'showcase' && (created || tagged)) await fireTrigger(pool, { type: 'tag_added', contactId: contact.id, tag: 'showcase' });
+    if (kind === 'showcase_view' || kind === 'showcase_demo') await fireTrigger(pool, { type: kind, contactId: contact.id, dealId });
     return { contactId: contact.id, dealId, created };
   } catch (e) { console.warn('lead not captured:', e.message); return null; }
 }
@@ -64,6 +69,7 @@ export async function syncHubContacts(pool, { actor = null } = {}) {
         const row = (await pool.query(`insert into sales_contacts(name,email,phone,company_id,source,tags,client_id,email_ok) values($1,$2,$3,$4,'hub',$5,$6,$7) returning id`, [name, email, email === lead ? c.contact_phone || '' : '', co, want, c.id, !c.marketing_opt_out_at])).rows[0];
         await pool.query(`insert into sales_activities(contact_id,kind,text,actor_id) values($1,'system',$2,$3)`, [row.id, `Added from the hub (${c.status === 'lead' ? 'website lead' : 'client'}: ${c.name})`, actor]);
         if (c.marketing_opt_out_at) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [row.id]);
+        await fireTagsAdded(pool, row.id, [], want);
         out.created++; continue;
       }
       out.alreadyThere++;
@@ -73,6 +79,7 @@ export async function syncHubContacts(pool, { actor = null } = {}) {
         if (!existing.company_id && c.name) co = (await pool.query(`insert into sales_companies(name) values($1) on conflict (lower(name)) do update set name=sales_companies.name returning id`, [c.name])).rows[0].id;
         await pool.query(`update sales_contacts set client_id=coalesce(client_id,$2), tags=$3, name=case when name='' then $4 else name end, company_id=coalesce(company_id,$5), email_ok=case when $6 then false else email_ok end, updated_at=now() where id=$1`, [existing.id, c.id, next, name, co, Boolean(optOut)]);
         if (optOut) await pool.query(`insert into sales_activities(contact_id,kind,text) values($1,'system','Opted out of marketing email in the hub. Marked as not to be emailed.')`, [existing.id]);
+        await fireTagsAdded(pool, existing.id, existing.tags || [], next);
         out.updated++;
       }
     }
@@ -164,7 +171,9 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(x => UUID.test(String(x))), add = cleanTags(req.body?.add), remove = cleanTags(req.body?.remove);
     if (!ids.length) return bad(reply, 'Choose at least one contact'); if (ids.length > 500) return bad(reply, 'Five hundred at a time is the limit');
     if (!add.length && !remove.length) return bad(reply, 'Name a tag to add or remove');
-    const r = await pool.query(`update sales_contacts set tags = coalesce((select array_agg(distinct t order by t) from unnest(tags || $2::text[]) t where t <> all($3::text[])), '{}'::text[]), updated_at=now() where id = any($1::uuid[])`, [ids, add, remove]);
+    const had = new Map((await pool.query('select id,tags from sales_contacts where id = any($1::uuid[])', [ids])).rows.map(x => [x.id, x.tags || []]));
+    const r = await pool.query(`update sales_contacts set tags = coalesce((select array_agg(distinct t order by t) from unnest(tags || $2::text[]) t where t <> all($3::text[])), '{}'::text[]), updated_at=now() where id = any($1::uuid[]) returning id, tags`, [ids, add, remove]);
+    for (const x of r.rows) await fireTagsAdded(pool, x.id, had.get(x.id) || [], x.tags, { deliberate: true });
     return { ok: true, changed: r.rowCount };
   });
   const segmentRows = async () => (await pool.query('select id,name,filter from sales_segments order by position, created_at')).rows;
@@ -183,6 +192,8 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     const cid = await companyId(v.companyName);
     const row = (await pool.query(`insert into sales_contacts(name,email,phone,title,company_id,source,tags,notes,email_ok) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`, [v.name || '', v.email || null, v.phone || '', v.title || '', cid, v.source || 'manual', v.tags || [], v.notes || '', v.email_ok !== false])).rows[0];
     await logActivity({ contactId: row.id, kind: 'system', text: 'Added to the CRM', actor: actorOf(req) });
+    await fireTrigger(pool, { type: 'contact_created', contactId: row.id, source: v.source || 'manual' });
+    await fireTagsAdded(pool, row.id, [], v.tags || [], { deliberate: true });
     return reply.code(201).send({ id: row.id, existing: false });
   });
   app.get('/v1/sales/contacts/:id', { preHandler: pre }, async (req, reply) => {
@@ -203,7 +214,9 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     if ('companyName' in v) { v.company_id = await companyId(v.companyName); delete v.companyName; }
     if ('email' in v && !v.email) v.email = null;
     const keys = Object.keys(v), sets = keys.map((k, i) => `${k}=$${i + 2}`);
+    const before = 'tags' in v ? (await pool.query('select tags from sales_contacts where id=$1', [req.params.id])).rows[0]?.tags || [] : null;
     const row = await pool.query(`update sales_contacts set ${sets.join(',')}, updated_at=now() where id=$1 returning id`, [req.params.id, ...keys.map(k => v[k])]);
+    if (row.rowCount && before) await fireTagsAdded(pool, req.params.id, before, v.tags, { deliberate: true });
     return row.rowCount ? { ok: true } : bad(reply, 'Not found', 404);
   });
   // they asked to stop hearing from us, or they are back
@@ -213,6 +226,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     const r = await pool.query(`update sales_contacts set unsubscribed_at=${off ? 'coalesce(unsubscribed_at, now())' : 'null'}, email_ok=${off ? 'false' : 'true'}, updated_at=now() where id=$1 returning id`, [req.params.id]);
     if (!r.rowCount) return bad(reply, 'Not found', 404);
     await logActivity({ contactId: req.params.id, kind: 'system', text: off ? 'Marked as not to be emailed' : 'Allowed to be emailed again', actor: actorOf(req) });
+    if (off) await stopRuns(pool, { contactId: req.params.id, reason: 'they are marked as not to be emailed' });
     return { ok: true };
   });
   app.delete('/v1/sales/contacts/:id', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return (await pool.query('delete from sales_contacts where id=$1', [req.params.id])).rowCount ? { ok: true } : bad(reply, 'Not found', 404); });
@@ -250,6 +264,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     if (v.stage && v.stage !== prev.stage) sets.push(['won', 'lost'].includes(v.stage) ? 'closed_at=now()' : 'closed_at=null', 'last_activity_at=now()');
     await pool.query(`update sales_deals set ${sets.join(',')}, updated_at=now() where id=$1`, [req.params.id, ...keys.map(k => v[k])]);
     if (v.stage && v.stage !== prev.stage) await logActivity({ contactId: prev.contact_id, dealId: prev.id, kind: 'stage', text: `${prev.title}: ${STAGE_LABELS[prev.stage]} → ${STAGE_LABELS[v.stage]}${v.stage === 'lost' && v.lost_reason ? ` (${v.lost_reason})` : ''}`, actor: actorOf(req) });
+    if (v.stage && v.stage !== prev.stage && prev.contact_id) await fireTrigger(pool, { type: 'deal_stage', contactId: prev.contact_id, dealId: prev.id, stage: v.stage }, { deliberate: true });
     return { ok: true };
   });
   app.delete('/v1/sales/deals/:id', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return (await pool.query('delete from sales_deals where id=$1', [req.params.id])).rowCount ? { ok: true } : bad(reply, 'Not found', 404); });

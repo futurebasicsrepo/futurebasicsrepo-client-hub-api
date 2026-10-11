@@ -21,7 +21,8 @@
       { label: 'Sales today', href: '/sales#today' },
       { label: 'Contacts', href: '/sales#contacts' },
       { label: 'Pipeline', href: '/sales#pipeline' },
-      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' }] },
+      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' },
+      { label: 'Automations', href: '/sales#automations' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
       { label: 'Factories', href: '/admin#partnersSection' },
       { label: 'Waiting on approval', href: '/admin#approvals' },

@@ -992,4 +992,75 @@ await journey('J114', 'Sales email in a browser: send from a contact with a temp
   } finally { await new Promise(r => resend.close(r)); }
 });
 
+await journey('J120', 'the Automations tab in a browser: starters are listed and off, make one with the editor, switch it on, try it on a contact, watch it start from a tag and stop it from the contact card, pause everything, edit, delete, the menu entry, and a phone', async () => {
+  const r = await room('120', { wait: false }), tag = `au${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const W = 'http://work.localhost:3123', S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  await S('/automations/settings', { method: 'PUT', body: { startHour: 0, endHour: 24, weekdaysOnly: false, paused: false } });
+  const person = (await S('/contacts', { body: { name: `Pat ${tag}`, email: `pat-${tag}@auto.test`, source: 'manual' } })).json.id;
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/sales#automations`, { waitUntil: 'networkidle' }); await page.waitForSelector('#t-automations:not(.hidden) [data-aid]', { timeout: 10000 });
+  ok(await page.locator('#autoList [data-aid]').count() >= 4 && await page.locator('#autoList [data-aon]:checked').count() === 0, 'the address opens the Automations tab; the starter automations are listed and every one is off');
+  ok(/Automatic email goes out/.test(await page.innerText('#autoNote')) && /looks at a build/i.test(await page.innerText('#autoList')) && await page.locator('#autoList .asteps li').count() >= 8, 'each shows when it starts and its steps in plain words', [await page.locator('#autoList .asteps li').count(), (await page.innerText('#autoNote'))]);
+  ok(/Automations/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks Automations');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-list.png` }).catch(() => {});
+
+  // make one
+  await page.click('#autoNew'); await page.waitForSelector('#adlg[open]');
+  await page.fill('#aName', `Welcome ${tag}`); await page.selectOption('#aTrig', 'tag_added'); await page.fill('#aTrigVal', `Hot ${tag}`);
+  await page.fill('.astep[data-i="0"] [data-f="title"]', 'Call {{first_name|them}} today');
+  await page.click('[data-addstep="wait"]'); await page.click('[data-addstep="email"]');
+  ok(await page.locator('.astep').count() === 3, 'the editor adds steps');
+  await page.click('.astep[data-i="2"] [data-up]'); await page.click('.astep[data-i="1"] [data-down]');
+  ok(await page.locator('.astep[data-i="2"] [data-f="templateId"]').count() === 1, 'and moves them up and down (the email is last again)');
+  await page.click('#aform button[type=submit]'); await page.waitForFunction(() => !document.getElementById('adlg').open, null, { timeout: 8000 });
+  await page.waitForSelector(`[data-aid]:has-text("Welcome ${tag}")`);
+  const card = page.locator(`[data-aid]:has-text("Welcome ${tag}")`);
+  ok(/tag “hot-/.test(await card.innerText()) && /Make a task: Call/.test(await card.innerText()) && /Send the email/.test(await card.innerText()) && await card.locator('[data-aon]:checked').count() === 0, 'it is saved, in plain words, and off');
+  await page.click('#autoNew'); await page.fill('#aName', 'Bad'); await page.click('.astep [data-rm]'); await page.click('#aform button[type=submit]');
+  await page.waitForFunction(() => /step/i.test(document.getElementById('aMsg').textContent), null, { timeout: 5000 }); ok(await page.locator('#adlg[open]').count() === 1, 'an automation with no steps is refused in words and the editor stays open', await page.textContent('#aMsg'));
+  await page.keyboard.press('Escape');
+
+  // switch on, try it
+  await card.locator('.sw').click(); await page.waitForFunction(t => document.querySelector(`[data-aid]:has(h2)`) && [...document.querySelectorAll('[data-aid]')].find(x => x.innerText.includes(t))?.querySelector('[data-aon]')?.checked, `Welcome ${tag}`, { timeout: 8000 });
+  ok(sql(`select enabled from sales_automations where name='Welcome ${tag}'`) === 't', 'the switch turns it on');
+  await card.locator('[data-atest]').click(); await page.waitForSelector('#atdlg[open]'); await page.selectOption('#atContact', person); await page.click('#atGo'); await page.waitForSelector('#atPlan li', { timeout: 8000 });
+  ok(/Call Pat/.test(await page.innerText('#atPlan')) && await page.locator('#atPlan li').count() === 3, 'trying it on a contact shows each step in their words', await page.innerText('#atPlan'));
+  ok(Number(sql(`select count(*) from sales_runs where contact_id='${person}'`)) === 0, 'and starts nothing');
+  await page.keyboard.press('Escape');
+
+  // a tag on a contact starts it; the card shows it and can stop it
+  await S(`/contacts/${person}`, { method: 'PUT', body: { tags: [`hot-${tag}`] } });
+  await page.click('#autoNow'); await page.waitForFunction(() => /Ran \d+ step/.test(document.getElementById('autoNow').textContent), null, { timeout: 8000 });
+  ok(Number(sql(`select count(*) from sales_tasks where contact_id='${person}' and title like 'Call Pat%'`)) === 1, '"Run what is due now" makes the first step happen: a task with their name in it');
+  await page.waitForFunction(t => [...document.querySelectorAll('[data-aid]')].find(x => x.innerText.includes(t))?.innerText.includes('1 running'), `Welcome ${tag}`, { timeout: 8000 }); ok(true, 'the card counts who is running');
+  await page.click('.tab[data-t="contacts"]'); await page.fill('#q', `pat-${tag}`); await page.waitForSelector('#cList tr.click'); await page.click('#cList tr.click >> nth=0'); await page.waitForSelector('#cRuns [data-stoprun]', { timeout: 8000 });
+  ok(/Welcome/.test(await page.innerText('#cRuns')) && /Step 3 of 3/.test(await page.innerText('#cRuns')), 'their card shows what is running for them and where they are');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-card.png` }).catch(() => {});
+  await page.click('#cRuns [data-stoprun]'); await page.waitForFunction(() => /Stopped: stopped by staff/.test(document.getElementById('cRuns')?.innerText || ''), null, { timeout: 8000 });
+  ok(sql(`select status from sales_runs where contact_id='${person}'`) === 'stopped', 'Stop ends it partway');
+  await page.keyboard.press('Escape');
+
+  // pause, edit, delete
+  await page.click('.tab[data-t="automations"]'); await page.waitForSelector('[data-aid]'); await page.click('#autoHours'); await page.waitForSelector('#awdlg[open]'); await page.check('#awPause'); await page.click('#awSave');
+  await page.waitForFunction(() => /Everything is paused/.test(document.getElementById('autoNote').textContent), null, { timeout: 8000 }); ok(true, 'pausing everything says so at the top');
+  await page.click('#autoHours'); await page.uncheck('#awPause'); await page.click('#awSave'); await page.waitForFunction(() => /Automatic email goes out/.test(document.getElementById('autoNote').textContent), null, { timeout: 8000 });
+  await card.locator('[data-aedit]').click(); await page.waitForSelector('#adlg[open]'); await page.fill('#aName', `Renamed ${tag}`); await page.selectOption('#aAgain', '30'); await page.click('#aform button[type=submit]'); await page.waitForSelector(`[data-aid]:has-text("Renamed ${tag}")`);
+  ok(sql(`select reenter_days from sales_automations where name='Renamed ${tag}'`) === '30', 'editing renames it and lets people go through again after 30 days');
+  await page.locator(`[data-aid]:has-text("Renamed ${tag}") [data-aruns]`).click(); await page.waitForSelector('#ardlg[open] #arRows tr'); ok(/Pat/.test(await page.innerText('#arRows')) && /Stopped/.test(await page.innerText('#arRows')), '"Who is in it" lists Pat and where they ended up'); await page.keyboard.press('Escape');
+  await page.locator(`[data-aid]:has-text("Renamed ${tag}") [data-adel]`).click(); await page.waitForFunction(t => ![...document.querySelectorAll('[data-aid]')].some(x => x.innerText.includes(t)), `Renamed ${tag}`, { timeout: 8000 });
+  ok(Number(sql(`select count(*) from sales_automations where name='Renamed ${tag}'`)) === 0 && Number(sql(`select count(*) from sales_contacts where id='${person}'`)) === 1, 'deleting it leaves the contact alone');
+  ok(page.errs.length === 0, 'no script errors on the desktop page', page.errs); await ctx.close();
+
+  // a phone
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  await ph.goto(`${W}/sales#automations`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#autoList [data-aid]'); ok(await over() <= 1, 'the list fits a phone', await over());
+  await ph.click('#autoNew'); await ph.waitForSelector('#adlg[open]'); await ph.click('[data-addstep="email"]'); ok(await over() <= 1 && await ph.evaluate(() => { const d = document.querySelector('#adlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'and so does the editor');
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j120-phone.png` }).catch(() => {});
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  sql(`delete from sales_contacts where id='${person}'`);
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
