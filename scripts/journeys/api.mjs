@@ -1437,6 +1437,101 @@ await journey('J129', 'Software development in a client room: a software project
     await call(`/v1/admin/builds/${bid}`, { token: admin, method: 'DELETE' });
   } finally { await new Promise(r => store.close(r)); }
 });
+await journey('J125', 'Press comms: a release or pitch is drafted by the assistant from a build, never sent while it is a draft or has a [PLACEHOLDER] left, goes only to people on the media list who may be emailed and have not had it, only after staff confirm, within a daily limit, with the unsubscribe footer, and the coverage it earns is logged', async () => {
+  const http = await import('node:http');
+  const mock = { sent: [], seenKeys: new Map(), n: 0 };
+  const resend = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+      const u = new URL(req.url, 'http://x'); if (req.headers.authorization !== 'Bearer test-key') return send(401, { message: 'bad key' });
+      if (req.method === 'POST' && u.pathname === '/emails') { const body = JSON.parse(Buffer.concat(chunks).toString() || '{}'), key = req.headers['idempotency-key']; if (String(body.to?.[0] || '').includes('failme')) return send(422, { message: 'The recipient address is not valid' }); if (key && mock.seenKeys.has(key)) return send(200, { id: mock.seenKeys.get(key) }); const id = `re_press_${stamp}_${++mock.n}`; if (key) mock.seenKeys.set(key, id); mock.sent.push({ id, body }); return send(200, { id }); }
+      send(404, {});
+    });
+  });
+  await new Promise(r => resend.listen(3133, '127.0.0.1', r));
+  try {
+    const room = await newRoom('125', { wait: false }), tag = `p${stamp}`;
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+    const P = (path, o = {}) => S('/press' + path, o);
+    await S('/email/settings', { method: 'PUT', body: { dailyCap: 100 } });
+    await P('/settings', { method: 'PUT', body: { dailyCap: 25 } });
+    const person = async (name, email, tags = ['press'], extra = {}) => { const r = await S('/contacts', { body: { name, email, tags, companyName: extra.outlet || '', source: 'manual' } }); return r.json.id; };
+
+    // who may use it
+    ok((await call('/v1/sales/press', { token: room.token })).status === 403 && (await call('/v1/sales/press')).status === 401, 'clients and strangers cannot see press');
+    ok((await P('')).json.items !== undefined && (await P('')).json.assistantReady === true, 'staff see the list, and the assistant is connected here');
+    ok(sql(`select count(*) from sales_segments where name='Press'`) === '1', 'the Press saved view is in Contacts');
+
+    // items
+    ok((await P('/items', { body: { title: '' } })).status === 422 && (await P('/items', { body: { title: 'x', status: 'ready' } })).status === 422, 'an item needs a title, and cannot be ready without a subject and message');
+    const bid = sql(`select id from builds order by created_at limit 1`);
+    const d = await P('/draft', { body: { kind: 'pitch', buildId: bid || undefined, angle: 'Small salons' } });
+    ok(d.status === 200 && /Fixture pitch/.test(d.json.subject) && /\[QUOTE FROM KYLE\]/.test(d.json.body), 'the assistant drafts from a build and an angle, and leaves a bracket where it has no fact', d.json);
+    ok((await P('/draft', { body: { kind: 'pitch' } })).status === 422, 'with neither a build nor an angle it asks for one');
+    const draft = await P('/items', { body: { title: `Pitch ${tag}`, kind: 'pitch', subject: d.json.subject, body: d.json.body, audience: 'Retail trade' } });
+    ok(draft.status === 201, 'the draft is saved', draft.json);
+    const ready = await P('/items', { body: { title: `Ready ${tag}`, kind: 'pitch', subject: 'Salon booking, built in weeks', body: 'Hi {{first_name|there}},\n\nA short note about a build we shipped.\n\n{{sender}}', status: 'ready' } });
+    ok(ready.status === 201, 'a finished pitch can be marked ready');
+    const list = (await P('')).json.items; ok(list.some(i => i.id === draft.json.id && i.status === 'draft' && i.sent === 0) && list.some(i => i.id === ready.json.id && i.status === 'ready'), 'both are listed');
+    ok((await P(`/items/${ready.json.id}`, { method: 'PUT', body: { title: `Ready ${tag}`, kind: 'pitch', subject: 'Salon booking, built in weeks', body: 'Hi {{first_name|there}},\n\nA short note about a build we shipped, in two weeks.\n\n{{sender}}', status: 'ready' } })).status === 200, 'it can be edited');
+    ok((await P('/items/not-an-id', { method: 'PUT', body: { title: 'x' } })).status === 404, 'a made-up id is not found');
+
+    // the media list
+    const a = await person(`Ana ${tag}`, `ana-${tag}@press.test`, ['press', 'beat-retail']), b = await person(`Ben ${tag}`, `ben-${tag}@press.test`), c = await person(`Cy ${tag}`, `cy-${tag}@press.test`);
+    const notMedia = await person(`Not ${tag}`, `notpress-${tag}@press.test`, ['customer']), noMail = await person(`Dee ${tag}`, `dee-${tag}@press.test`), failing = await person(`Fail ${tag}`, `failme-${tag}@press.test`);
+    const media = (await P(`/media?q=${tag}`)).json.media; ok(media.length === 5 && !media.some(m => m.id === notMedia) && media.find(m => m.id === a).beats.includes('retail'), 'the media list is the people tagged press, with their beats');
+    await S(`/contacts/${noMail}/unsubscribe`, { method: 'PUT', body: { unsubscribed: true } });
+    ok((await P(`/media?q=${tag}`)).json.media.find(m => m.id === noMail).canEmail === false, 'someone who unsubscribed shows as not mailable');
+
+    // preview
+    const pv = await P(`/items/${ready.json.id}/preview`, { body: { contactId: a } }); ok(pv.status === 200 && /Hi Ana/.test(pv.json.body) && pv.json.placeholders.length === 0, 'the preview is the message as that person gets it', pv.json);
+    ok((await P(`/items/${draft.json.id}/preview`, { body: { contactId: a } })).json.placeholders.includes('[QUOTE FROM KYLE]'), 'and says which blanks are still to fill');
+
+    // pitch guards
+    const go = (id, body) => P(`/items/${id}/pitch`, { body });
+    const before = mock.sent.length;
+    const g1 = await go(draft.json.id, { confirm: true, contactIds: [a] }); ok(g1.status === 422 && /ready/i.test(g1.json.error), 'a draft is never sent');
+    await P(`/items/${draft.json.id}`, { method: 'PUT', body: { title: `Pitch ${tag}`, kind: 'pitch', subject: d.json.subject, body: d.json.body, status: 'ready' } });
+    const g2 = await go(draft.json.id, { confirm: true, contactIds: [a] }); ok(g2.status === 422 && /QUOTE FROM KYLE/.test(g2.json.error), 'a message with a [PLACEHOLDER] left is never sent, and says which');
+    const g3 = await go(ready.json.id, { contactIds: [a] }); ok(g3.status === 422 && /confirm/i.test(g3.json.error), 'it is not sent without the confirmation');
+    ok((await go(ready.json.id, { confirm: true, contactIds: [] })).status === 422 && (await go(ready.json.id, { confirm: 'yes', contactIds: [a] })).status === 422, 'nor to nobody, nor with a made-up confirmation');
+    ok(mock.sent.length === before, 'nothing went out for any of that');
+
+    // a real send, with the awkward people mixed in
+    const r1 = await go(ready.json.id, { confirm: true, contactIds: [a, notMedia, noMail, failing, b] });
+    const by = Object.fromEntries(r1.json.results.map(x => [x.contactId, x]));
+    ok(r1.status === 200 && by[a].outcome === 'sent' && by[b].outcome === 'sent' && by[notMedia].outcome === 'skipped' && /media list/.test(by[notMedia].reason) && by[noMail].outcome === 'skipped' && by[failing].outcome === 'failed', 'it goes to the people on the list who may be emailed; the others are skipped or failed, each with a reason', r1.json);
+    const out = mock.sent.filter(m => m.body.to[0].includes(tag) && !m.body.to[0].includes('failme')); ok(out.length === 2 && out.every(m => /List-Unsubscribe/.test(Object.keys(m.body.headers || {}).join()) && m.body.text.includes('1 Test Street') && m.body.text.includes('Unsubscribe here: ')), 'each message is its own email with the mailing address and the unsubscribe link');
+    ok(/Hi Ana,/.test(out.find(m => m.body.to[0] === `ana-${tag}@press.test`).body.text), 'and uses that person\'s own name');
+    ok(sql(`select count(*) from press_sends where item_id='${ready.json.id}'`) === '2' && sql(`select count(*) from press_sends where contact_id='${failing}'`) === '0', 'it is recorded for the two sent, and the failed one can be tried again');
+    const r2 = await go(ready.json.id, { confirm: true, contactIds: [a, b, c] }); const by2 = Object.fromEntries(r2.json.results.map(x => [x.contactId, x]));
+    ok(by2[a].outcome === 'skipped' && /already/.test(by2[a].reason) && by2[c].outcome === 'sent' && r2.json.sent === 1, 'sending again skips those who already have it, and sends to the new person');
+    const dbl = await Promise.all([go(ready.json.id, { confirm: true, contactIds: [c] }), go(ready.json.id, { confirm: true, contactIds: [c] })]);
+    ok(mock.sent.filter(m => m.body.to[0] === `cy-${tag}@press.test`).length === 1 && dbl.every(x => x.status === 200), 'a double click cannot send the same person twice');
+    const list2 = (await P('')).json; ok(list2.items.find(i => i.id === ready.json.id).sent === 3 && list2.sentToday >= 3, 'the list shows how many it went to, and how many pitches went today');
+    ok((await S(`/contacts/${a}`)).json.activities.some(x => x.kind === 'email_out' && /Salon booking/.test(x.text)) && (await P(`/media?q=ana-${tag}`)).json.media[0].pitched === 1, 'it is on the person\'s timeline and in the media list');
+
+    // limits
+    ok((await P('/settings', { method: 'PUT', body: { dailyCap: 0 } })).status === 422 && (await P('/settings', { method: 'PUT', body: { dailyCap: 500 } })).status === 422, 'the daily limit must be 1 to 100');
+    const todayN = (await P('')).json.sentToday; await P('/settings', { method: 'PUT', body: { dailyCap: Math.max(1, todayN) } });
+    const d1 = await person(`Dan ${tag}`, `dan-${tag}@press.test`); const lim = await go(ready.json.id, { confirm: true, contactIds: [d1] });
+    ok(lim.json.sent === 0 && /limit/i.test(lim.json.results[0].reason) && lim.json.remainingToday === 0, 'at the daily limit nobody more is pitched, and it says so');
+    await P('/settings', { method: 'PUT', body: { dailyCap: 25 } });
+    const arch = await P(`/items/${ready.json.id}`, { method: 'PUT', body: { title: `Ready ${tag}`, kind: 'pitch', subject: 'Salon booking, built in weeks', body: 'Hi', status: 'archived' } }); ok(arch.status === 200 && !(await P('')).json.items.some(i => i.id === ready.json.id), 'an archived item drops off the list');
+
+    // coverage
+    ok((await P('/coverage', { body: { outlet: '' } })).status === 422 && (await P('/coverage', { body: { outlet: 'X', url: 'javascript:alert(1)' } })).status === 422 && (await P('/coverage', { body: { outlet: 'X', publishedOn: '2026-13-40' } })).status === 422, 'coverage needs an outlet, a web address and a real date');
+    const cov = await P('/coverage', { body: { outlet: 'Retail Dive', title: 'Salon software, rebuilt', url: 'https://example.com/retail-dive', publishedOn: '2026-10-14', itemId: ready.json.id, contactId: a } });
+    ok(cov.status === 201 && (await P('/coverage')).json.coverage.some(x => x.id === cov.json.id && x.outlet === 'Retail Dive' && x.contact_name === `Ana ${tag}`), 'coverage is logged against the pitch and the journalist');
+    ok((await S(`/contacts/${a}`)).json.activities.some(x => x.kind === 'note' && /Coverage in Retail Dive/.test(x.text)), 'and appears on their timeline');
+    ok((await P(`/coverage/${cov.json.id}`, { method: 'DELETE' })).status === 200 && (await P(`/coverage/${cov.json.id}`, { method: 'DELETE' })).status === 404, 'it can be removed');
+
+    // announcements and releases strip merge fields, and an item can be removed
+    const rel = await P('/draft', { body: { kind: 'release', angle: 'Launch' } }); ok(rel.status === 200 && !/\{\{/.test(rel.json.body) && /\[CITY, DATE\]/.test(rel.json.body), 'a release draft has a dateline to fill and no merge fields');
+    ok((await P(`/items/${draft.json.id}`, { method: 'DELETE' })).status === 200 && (await P(`/items/${draft.json.id}`, { method: 'DELETE' })).status === 404, 'an item can be deleted');
+  } finally { await new Promise(r => resend.close(r)); }
+});
 await journey('J123', 'The opportunity finder: who to talk to next and why, from what the CRM already knows (chats waiting, unanswered mail, live builds opened, quiet deals, warm people, customers who could use more), strongest first, one line per person, nothing for people who opted out, and what staff set aside stays away', async () => {
   const room = await newRoom('123', { wait: false }), tag = `o${stamp}`;
   const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
