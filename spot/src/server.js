@@ -929,13 +929,28 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await restoreOnBoot({ dbFile: process.env.SPOT_DB || './data/spot.db' }).catch((err) => {
     console.error(`Restore failed, starting with the current database: ${err.message}`);
   });
-  const app = buildApp();
+  const db = openDb();
+  const app = buildApp({ db });
   app.backups.start();
   const port = Number(process.env.PORT || 3000);
   app.listen({ port, host: '0.0.0.0' }).catch((err) => {
     app.log.error(err);
     process.exit(1);
   });
+  // Railway sends SIGTERM on every redeploy. Without a handler Node exits non-zero and
+  // Railway reports a crash. Finish the requests in flight, close the database, exit 0.
+  let stopping = false;
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, async () => {
+      if (stopping) return;
+      stopping = true;
+      const force = setTimeout(() => process.exit(0), 8000); // a request that never ends must not hold a deploy
+      force.unref();
+      try { await app.close(); } catch (err) { app.log.error({ err }, 'shutdown: server close failed'); }
+      try { db.close(); } catch (err) { app.log.error({ err }, 'shutdown: database close failed'); }
+      process.exit(0);
+    });
+  }
 }
 
 // Record success and failure of a service's calls for /admin/health, without
