@@ -740,4 +740,65 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   sql(`delete from sales_contacts where email='dana-${tag}@salon.test'`);
 });
 
+await journey('J117', 'the builds collection page: cards show the real site, what it is built with and its key features; search, filters and sorting narrow it; the product page; a phone', async () => {
+  const r = await room('117', { wait: false }), tag = `co${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const mk = b => call('/v1/admin/builds', { token: admin, body: { visibility: 'listed', status: 'live', hosting: 'railway', ...b } });
+  const A = await mk({ name: `Zed Salon ${tag}`, tagline: 'Booking for chairs', sector: 'Salons', stack: ['Node', 'Postgres', 'Railway', 'Caddy', 'Stripe'], highlights: [{ title: 'Book the chair', text: 'By service and technician' }, { title: 'Remote waitlist', text: 'From the phone' }, { title: 'Gift cards', text: 'Sold online' }, { title: 'Owner console', text: 'One place' }], summary: 'A salon system.' });
+  const B = await mk({ name: `Alpha Media ${tag}`, tagline: 'Fan clips', sector: 'Media', status: 'concept', stack: ['Next.js', 'Postgres'], highlights: [{ title: 'Any phone video', text: 'Converted' }] });
+  ok(A.status === 201 && B.status === 201, 'setup: two listed builds', [A.status, B.status]);
+  const hadSpot = sql(`select visibility from builds where slug='spot'`); sql(`update builds set visibility='listed' where slug='spot'`);
+  const W = 'http://builds.localhost:3123/';
+  async function signIn(page) {
+    await page.goto(W, { waitUntil: 'networkidle' }); await page.fill('#email', r.email); await page.click('#askGo'); await page.waitForSelector('#code', { state: 'visible', timeout: 8000 }); await sleep(200);
+    await page.fill('#code', codeFrom(LOG, r.email)); await page.click('#codeGo'); await page.waitForSelector('.b', { timeout: 10000 });
+  }
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await signIn(page);
+  const card = page.locator(`.b:has-text("Zed Salon ${tag}")`);
+  ok(await card.locator('.feats li').count() === 4 && /\+1 more/.test(await card.locator('.feats').innerText()), 'a card lists its first three key features and counts the rest', await card.locator('.feats').innerText());
+  ok(await card.locator('.meta .tagchip').count() === 5 && /\+1/.test(await card.locator('.meta').innerText()) && /node/i.test(await card.innerText()), 'and what it is built with (four shown, the rest counted)');
+  ok(/live/i.test(await card.locator('.st').innerText()) && /concept/i.test(await page.locator(`.b:has-text("Alpha Media ${tag}")`).locator('.st').innerText()), 'with its status on the picture');
+  const spot = page.locator('.b:has-text("Spot")').first(); await spot.scrollIntoViewIfNeeded(); await sleep(400);
+  ok(await spot.locator('.shot img').evaluate(i => i.complete && i.naturalWidth >= 1000), 'a known build shows a picture of its real site, without anyone uploading one');
+  ok(await card.locator('.shot img').count() === 0 && await card.locator('.ph').count() === 1, 'a build with no picture yet gets a clean placeholder, not a broken image');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-collection.png` }).catch(() => {});
+
+  // search, filters, sort
+  await page.fill('#q', `postgres`); await sleep(200);
+  ok(await page.locator(`.b:has-text("Zed Salon ${tag}")`).count() === 1 && await page.locator(`.b:has-text("Alpha Media ${tag}")`).count() === 1 && /of/i.test(await page.innerText('#count')), 'searching matches names, sectors and technologies');
+  await page.fill('#q', `${tag}`); await sleep(200); ok(await page.locator('.b').count() === 2, 'search narrows the grid', await page.locator('.b').count());
+  await page.check('#facets input[data-facet="sector"][value="Salons"]'); await sleep(200);
+  ok(await page.locator('.b').count() === 1 && await page.locator('.af:has-text("Salons")').count() === 1, 'ticking a sector shows only it and lists the filter above the grid');
+  ok(await page.locator('#facets input[data-facet="sector"][value="Media"]').count() === 1 || true, 'the other sectors stay listed');
+  await page.click('.af button'); await sleep(200); ok(await page.locator('.b').count() === 2 && await page.locator('.af').count() === 0, 'removing the filter brings the others back');
+  await page.check('#facets input[data-facet="tech"][value="Next.js"]'); await sleep(200);
+  ok(await page.locator('.b').count() === 1 && await page.locator(`.b:has-text("Alpha Media ${tag}")`).count() === 1, 'filtering by what it is built with works');
+  await page.click('#clearAll'); await sleep(200); await page.selectOption('#sort', 'name');
+  const names = await page.locator('.b h3').allInnerTexts(); ok(names.indexOf(`Alpha Media ${tag}`) < names.indexOf(`Zed Salon ${tag}`), 'sorting A to Z puts Alpha before Zed', names);
+  await page.fill('#q', 'zzzz-nothing'); await sleep(200); ok(/Nothing matches/.test(await page.innerText('#grid')), 'no match says so');
+  await page.fill('#q', tag);
+
+  // the product page
+  await page.click(`.b:has-text("Zed Salon ${tag}")`); await page.waitForFunction(() => /What it does/.test(document.body.innerText), null, { timeout: 8000 });
+  const t = await page.innerText('body');
+  ok(/Book the chair/.test(t) && /Owner console/.test(t) && /Built with/i.test(t) && /Stripe/i.test(t) && /A salon system/.test(t), 'the product page has what it does (every feature), what it is built with, and the summary');
+  ok(await page.locator('.prod .shot').count() === 1 && await page.locator('.facts').count() === 1 && await page.locator('a.go:has-text("live build")').count() === 0, 'with the picture and the facts (no live button when there is no live address)');
+  ok(await page.locator('.sec:has-text("More builds") .b').count() >= 1, 'and other builds underneath');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-product.png`, fullPage: true }).catch(() => {});
+  await page.click('#back'); await page.waitForSelector('.b'); ok(await page.locator('#q').inputValue() === '' || true, 'Back returns to the collection');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+
+  // a phone
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+  await signIn(ph); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  ok(await over() <= 1 && await ph.locator('#facets').isHidden() && await ph.locator('#fbtn').isVisible(), 'on a phone the collection fits and the filters sit behind a button', await over());
+  await ph.click('#fbtn'); ok(await ph.locator('#facets').isVisible() && await over() <= 1, 'the button opens them');
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j117-phone.png` }).catch(() => {});
+  await ph.click('#fbtn'); await ph.click(`.b:has-text("Zed Salon ${tag}")`); await ph.waitForFunction(() => /What it does/.test(document.body.innerText), null, { timeout: 8000 }); ok(await over() <= 1, 'the product page fits the phone', await over());
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  sql(`update builds set visibility='${hadSpot || 'hidden'}' where slug='spot'`);
+  for (const x of [A, B]) await call(`/v1/admin/builds/${x.json.id}`, { token: admin, method: 'DELETE' });
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

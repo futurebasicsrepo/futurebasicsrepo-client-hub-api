@@ -4,8 +4,14 @@
 //   staff     /v1/admin/builds*  builds, invites, activity (the work console's own sign-in)
 //   housed    /v1/builds/auth/check?slug=…  200 or 401, for a reverse proxy in front of a build we host (Caddy forward_auth), so a private build is private
 import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, STATUS_LABELS } from './builds.js';
+import { readdirSync, readFileSync } from 'node:fs';
 import { captureLead } from './sales-routes.js';
 import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
+
+// A picture of each known build's real site, taken by scripts/capture-build-previews.mjs. It is the card's picture until staff upload their own.
+const PREVIEW_DIR = new URL('./builds-previews/', import.meta.url);
+const previewSlugs = () => { try { return new Set(readdirSync(PREVIEW_DIR).filter(f => /^[a-z0-9-]+\.jpg$/.test(f)).map(f => f.slice(0, -4))); } catch { return new Set(); } };
+const PREVIEWS = previewSlugs();
 
 const COOKIE = 'fb_builds', SESSION_DAYS = 14;
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i, MAX_COVER_CHARS = 4_000_000;
@@ -36,7 +42,9 @@ export function registerBuildRoutes(app, d) {
   const shape = (b, withDetail = false) => ({
     id: b.id, slug: b.slug, name: b.name, tagline: b.tagline, sector: b.sector, status: b.status, statusLabel: STATUS_LABELS[b.status] || b.status, hosting: b.hosting, stack: b.stack || [],
     updatedAt: b.repo_url && b.last_change_at ? b.last_change_at : null,
-    coverUrl: b.has_cover ? `/v1/builds/${b.slug}/cover?v=${new Date(b.updated_at).getTime()}` : '',
+    coverUrl: b.has_cover || PREVIEWS.has(b.slug) ? `/v1/builds/${b.slug}/cover?v=${new Date(b.updated_at).getTime()}` : '',
+    hasOwnCover: Boolean(b.has_cover),
+    features: (b.highlights || []).map(h => h.title).filter(Boolean).slice(0, 4), featureCount: (b.highlights || []).length,
     ...(withDetail ? { summary: b.summary, highlights: b.highlights || [], hasRepo: Boolean(b.repo_url), hasLive: Boolean(b.live_url), links: (b.links || []).map(l => ({ label: l.label })) } : {})
   });
   const allBuilds = async () => (await pool.query(`select ${BUILD_COLUMNS} from builds order by sort_order, name`)).rows;
@@ -110,7 +118,9 @@ export function registerBuildRoutes(app, d) {
   app.get('/v1/builds/:slug/cover', async (req, reply) => {
     const v = await needViewer(req, reply); if (!v) return;
     const row = (await pool.query('select id,visibility,status,media from builds where slug=$1', [req.params.slug])).rows[0];
-    if (!row || !canSee(row, v) || !row.media?.cover) return reply.code(404).send({ error: 'No picture' });
+    if (!row || !canSee(row, v)) return reply.code(404).send({ error: 'No picture' });
+    if (!row.media?.cover && PREVIEWS.has(req.params.slug)) return reply.header('cache-control', 'private, max-age=3600').type('image/jpeg').send(readFileSync(new URL(`${req.params.slug}.jpg`, PREVIEW_DIR)));
+    if (!row.media?.cover) return reply.code(404).send({ error: 'No picture' });
     const m = /^data:(image\/[a-z]+);base64,(.+)$/i.exec(row.media.cover); if (!m) return reply.code(404).send({ error: 'No picture' });
     return reply.header('cache-control', 'private, max-age=300').type(m[1]).send(Buffer.from(m[2], 'base64'));
   });
