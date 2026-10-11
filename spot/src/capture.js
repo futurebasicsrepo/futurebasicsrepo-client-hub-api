@@ -475,7 +475,7 @@ export function draftFromDescription(text) {
 // Several picks, best first, so the requester can swipe through stores like
 // a collection page instead of reading one AI answer. Asks for a look ("outfits
 // for Coachella") come back as outfits: whole looks, pieces from any store.
-const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
+const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://… the product's own page, not a search or category page", "title": "", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
 const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]}  or  {"kind": "outfits", "outfits": [{"name": "short look name", "why": "one line", "items": [${PRODUCT_HINT}]}]}`;
 export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
 export const MAX_OUTFITS = 4;
@@ -792,6 +792,7 @@ export class JsonObjects {
     this.reset();
   }
   reset() {
+    this.emitted = 0; // objects out since the last reset
     this.buf = '';
     this.stack = [];
     this.starts = [];
@@ -816,7 +817,7 @@ export class JsonObjects {
         const open = this.stack.pop();
         const from = this.starts.pop();
         const top = this.stack.join('');
-        if (open === '{' && c === '}' && (top === '{[' || top === '[')) out.push(this.buf.slice(from));
+        if (open === '{' && c === '}' && (top === '{[' || top === '[')) out.push(this.buf.slice(from)), this.emitted++;
         if (!this.stack.length) this.buf = '';
       }
     }
@@ -865,11 +866,15 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   const seen = new Set(avoid);
   const sent = []; // what went out, kept up to date for the cache
   const checks = [];
+  const stats = { searches: 0, objects: 0, unusable: 0, repeats: 0 };
   let kind = null;
+  // Pages they've already seen are out; in this answer, the same page and
+  // title twice is a repeat (one listing page can hold several products).
   const fresh = (d) => {
     const u = d.items[0].url;
-    if (u && seen.has(u)) return false;
-    if (u) seen.add(u);
+    const k = `${u}|${String(d.items[0].title).toLowerCase()}`;
+    if ((u && avoid.includes(u)) || seen.has(k)) return stats.repeats++, false;
+    seen.add(k);
     return true;
   };
   // Photo and stock from the store's own page, after the card is already up.
@@ -887,16 +892,17 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   const optionOfDraft = (d) => ({ merchant: d.merchant, item: { ...d.items[0], image_url: d.hint_image || null }, stock: 'unknown', why: d.why });
   const take = (json) => {
     let o;
+    stats.objects++;
     try {
       o = JSON.parse(json);
     } catch {
-      return;
+      return stats.unusable++;
     }
     const pieces = first(o, ['items', 'pieces', 'products']);
     if (Array.isArray(pieces)) {
       if (kind === 'products') return;
       const items = pieces.slice(0, 6).map((p) => pick(p, text)).filter(Boolean).filter(fresh);
-      if (items.length < 2) return;
+      if (items.length < 2) return stats.unusable++;
       kind = 'outfits';
       const outfit = { name: String(o.name || o.title || 'A look').trim().slice(0, 60), why: String(o.why || o.description || '').trim().slice(0, 120) || null, items: items.map(optionOfDraft) };
       sent.push({ type: 'outfit', outfit });
@@ -906,7 +912,8 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     }
     if (kind === 'outfits') return;
     const d = pick(o, text);
-    if (!d || !fresh(d)) return;
+    if (!d) return stats.unusable++;
+    if (!fresh(d)) return;
     kind = 'products';
     const option = optionOfDraft(d);
     sent.push({ type: 'pick', option });
@@ -917,6 +924,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   let model = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5';
   const big = process.env.SPOT_VISION_MODEL || 'claude-opus-5';
   const started = now();
+  let said = ''; // the last reply's text, for the log
   for (let attempt = 0; attempt < 2; attempt++) {
     const objects = new JsonObjects();
     let response;
@@ -932,9 +940,12 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
           messages,
         });
         stream.on('streamEvent', (ev) => {
-          // A search starting means what came before was thinking out loud, not the answer.
+          // A search starting before any product means what came before was
+          // thinking out loud. After one, the answer is being written as it's
+          // found: keep its place so the products after the search still parse.
           if (ev.type === 'content_block_start' && ev.content_block?.type === 'server_tool_use') {
-            objects.reset();
+            if (!objects.emitted) objects.reset();
+            stats.searches++;
             emit({ type: 'searching' });
           }
         });
@@ -943,6 +954,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
         });
         response = await stream.finalMessage();
         onUsage?.(response.model, response.usage);
+        said = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
         if (response.stop_reason !== 'pause_turn') break;
         messages.push({ role: 'assistant', content: response.content });
       }
@@ -971,6 +983,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     else messages.push({ role: 'assistant', content: response?.content || [] });
     messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best matches that are for sale and in stock now, even if they're not perfect: close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
   }
+  console.log('stream lookup', `${now() - started}ms`, model, JSON.stringify({ ...stats, sent: sent.length, asked: count }), sent.length < Math.min(count, 3) ? said.slice(-500).replace(/\s+/g, ' ') : '');
   if (!sent.length) return nothing();
   // Store checks still out: a few more seconds, so their photos and stock land before "done".
   let timer;

@@ -36,9 +36,14 @@ function streamer(answers, { fail = null } = {}) {
       },
       async finalMessage() {
         if (fail && fail(n, params)) throw fail(n, params);
-        const text = typeof answers[n - 1] === 'string' ? answers[n - 1] : JSON.stringify(answers[n - 1] ?? { products: [] });
-        for (const cb of handlers.streamEvent || []) cb({ type: 'content_block_start', content_block: { type: 'server_tool_use' } });
-        for (const chunk of text.match(/.{1,9}/gs) || []) for (const cb of handlers.text || []) cb(chunk);
+        // { parts: [...] }: a search before each part, the answer written as it's found.
+        const a = answers[n - 1];
+        const parts = a?.parts || [typeof a === 'string' ? a : JSON.stringify(a ?? { products: [] })];
+        const text = parts.join('');
+        for (const part of parts) {
+          for (const cb of handlers.streamEvent || []) cb({ type: 'content_block_start', content_block: { type: 'server_tool_use' } });
+          for (const chunk of part.match(/.{1,9}/gs) || []) for (const cb of handlers.text || []) cb(chunk);
+        }
         return { stop_reason: 'end_turn', model: params.model, usage: {}, content: [{ type: 'text', text }] };
       },
     };
@@ -69,6 +74,23 @@ test('picks go out before their store checks; checks follow as updates; then don
   assert.equal(calls[0].model, 'claude-sonnet-5-5', 'the quicker model by default');
   assert.match(calls[0].messages[0].content, /up to 6 products/, 'a small first batch');
   assert.match(calls[0].messages[0].content, /their sizes are tops M\./);
+});
+
+test('products written between searches all reach the shelf; one listing page can hold several', async () => {
+  const same = { ...P(2, 'footlocker'), product_url: 'https://footlocker.example/hoodies-under-50' };
+  const answer = { parts: [`I'll look. {"kind": "products", "products": [${JSON.stringify({ ...same, title: 'Adidas hoodie' })}`, `, ${JSON.stringify({ ...same, title: 'Nike hoodie' })}, ${JSON.stringify(P(3, 'gap'))}`, `, ${JSON.stringify({ ...same, title: 'Adidas hoodie' })}]}`] };
+  const { client } = streamer([answer]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('black hoodie under $50', { client, fromUrl: slowPage(1), product: noShopify }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  assert.deepEqual(events.filter((e) => e.type === 'pick').map((e) => e.option.item.title), ['Adidas hoodie', 'Nike hoodie', 'Tee 3'], 'a search mid-answer loses nothing; the true repeat is dropped');
+  assert.equal(events.filter((e) => e.type === 'searching').length, 3);
+  assert.deepEqual(events.at(-1), { type: 'done', kind: 'products', count: 3 });
 });
 
 test('the quicker model missing on the account: the bigger one, without a fuss', async () => {
