@@ -134,13 +134,15 @@ function editor(inv){
 async function detail(id){
   const r=await api('/v1/money/invoices/'+id),i=r.invoice,d=$('#detail');if(!d)return;
   const owed=i.owedCents,btn=(a,l,c='')=>`<button type="button" class="btn sm ${c}" data-act="${a}">${l}</button>`;
-  d.innerHTML=`<div class="panel" style="margin:0"><div class="pay" style="margin-bottom:8px">${chip(i.state)}<b>${owed?usd(owed)+' owed':'Settled'}</b><span class="sub">${i.sentAt?'sent '+us(String(i.sentAt)):'not sent yet'}</span>${i.qb?`<span class="chip ok">in QuickBooks ${esc(i.qb.docNumber||'')}</span>`:''}</div>
+  d.innerHTML=`<div class="panel" style="margin:0"><div class="pay" style="margin-bottom:8px">${chip(i.state)}<b>${owed?usd(owed)+' owed':'Settled'}</b><span class="sub">${i.sentAt?'sent '+us(String(i.sentAt)):'not sent yet'}</span>${i.qb?`<a class="chip ok" href="${esc(i.qb.link||'#')}" target="_blank" rel="noopener">in QuickBooks ${esc(i.qb.docNumber||'')} ↗</a>`:''}</div>
    ${r.payments.length?`<table><tbody>${r.payments.map(p=>`<tr><td>${us(p.paidOn)}</td><td>${esc(METHOD[p.method]||p.method)} · ${esc(SRC[p.source]||p.source)}${p.reference?` · ${esc(p.reference)}`:''}</td><td class="n">${usd(p.amountCents)}</td><td>${['manual','history'].includes(p.source)?`<button type="button" class="btn sm danger" data-delpay="${p.id}">Remove</button>`:''}</td></tr>`).join('')}</tbody></table>`:''}
-   <div class="pay" style="margin-top:8px">${['draft','unrecorded'].includes(i.status)?btn('send',i.status==='draft'?'Mark as sent':'Mark as unpaid (owed)','go'):''}${i.status==='unrecorded'?btn('paid','Mark paid'):''}${['sent'].includes(i.status)&&owed?btn('paid','Mark paid in full')+btn('payment','Record a part payment'):''}${['paid'].includes(i.status)?btn('unpaid','Put back to unpaid'):''}${i.status==='sent'&&i.paidCents===0?btn('void','Void','danger'):''}${i.status==='draft'?btn('void','Void','danger'):''}</div><div id="payForm"></div></div>`;
+   <div class="pay" style="margin-top:8px">${['draft','unrecorded'].includes(i.status)?btn('send',i.status==='draft'?'Mark as sent':'Mark as unpaid (owed)','go'):''}${i.status==='unrecorded'?btn('paid','Mark paid'):''}${['sent'].includes(i.status)&&owed?btn('paid','Mark paid in full')+btn('payment','Record a part payment'):''}${['paid'].includes(i.status)?btn('unpaid','Put back to unpaid'):''}${i.status==='sent'&&i.paidCents===0?btn('void','Void','danger'):''}${i.status==='draft'?btn('void','Void','danger'):''}${!i.qb&&['draft','sent','unrecorded'].includes(i.status)?btn('qb','Create in QuickBooks')+(i.contactEmail?btn('qbsend','Create and email from QuickBooks'):''):''}</div><div id="payForm"></div></div>`;
   d.onclick=async e=>{const del=e.target.closest('[data-delpay]');if(del){if(confirm('Remove this payment?')){await act(()=>api('/v1/money/payments/'+del.dataset.delpay,{method:'DELETE'}),'Payment removed.',id)}return}
     const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
     if(a==='send')return act(()=>api(`/v1/money/invoices/${id}/send`,{body:{}}),'Marked as sent.',id);
     if(a==='void'){if(confirm('Void this invoice?'))await act(()=>api(`/v1/money/invoices/${id}/void`,{body:{}}),'Voided.',id);return}
+    if(a==='qb')return act(()=>api(`/v1/money/invoices/${id}/quickbooks`,{body:{send:false}}),'Created in QuickBooks.',id);
+    if(a==='qbsend'){if(confirm(`QuickBooks will email this invoice to ${i.contactEmail}. Go ahead?`))await act(()=>api(`/v1/money/invoices/${id}/quickbooks`,{body:{send:true}}),`Created in QuickBooks and emailed to ${i.contactEmail}.`,id);return}
     if(a==='unpaid')return act(()=>api(`/v1/money/invoices/${id}/unpaid`,{body:{}}),'Put back to unpaid.',id);
     if(a==='paid'||a==='payment'){const part=a==='payment';$('#payForm').innerHTML=`<div class="g3" style="margin-top:8px">${part?`<label class="f"><span>Amount received</span><input class="t" id="payAmt" inputmode="decimal" placeholder="0.00"></label>`:''}<label class="f"><span>Date received</span><input class="t" id="payOn" type="date" value="${new Date().toISOString().slice(0,10)}"></label><label class="f"><span>How</span><select class="t" id="payHow" style="width:100%">${Object.entries(METHOD).filter(([k])=>!['shopify','quickbooks'].includes(k)).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select></label></div><div class="pay" style="margin-top:6px"><input class="t" id="payRef" placeholder="Reference (wire id, check number)" style="max-width:320px"><button type="button" class="btn sm go" id="payGo">${part?'Record payment':'Mark paid'}</button></div>`;
       $('#payGo').onclick=()=>act(()=>part?api(`/v1/money/invoices/${id}/payments`,{body:{amountCents:Math.round(num($('#payAmt').value)*100),paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}):api(`/v1/money/invoices/${id}/paid`,{body:{paidOn:$('#payOn').value,method:$('#payHow').value,reference:$('#payRef').value}}),part?'Payment recorded.':'Marked paid.',id)}};
@@ -176,11 +178,33 @@ async function loadLedger(){
 }
 async function loadSettings(){
   const s=await api('/v1/money/settings');
-  $('#t-settings').innerHTML=`<div class="panel"><h2>Payment instructions on invoices</h2><p class="sub">Printed under “Payment instructions” on every invoice, one line per row (account number, routing, bank). They are kept here, not in the code, and only people with access to Money can read them.</p>
+  const q=await api('/v1/money/quickbooks/status');
+  $('#t-settings').innerHTML=`<div class="panel" id="qbPanel"><h2>QuickBooks Online</h2>${qbBody(q)}<p class="msg" id="qbMsg" role="status"></p></div>
+  <div class="panel"><h2>Payment instructions on invoices</h2><p class="sub">Printed under “Payment instructions” on every invoice, one line per row (account number, routing, bank). They are kept here, not in the code, and only people with access to Money can read them.</p>
    <textarea class="t" id="instr" style="min-height:170px;font-family:'IBM Plex Mono',monospace;font-size:13px" placeholder="Account No. …&#10;Routing (Wire) …&#10;Routing (ACH) …&#10;SWIFT: …&#10;Bank: …">${esc(s.instructions)}</textarea>
    <div class="acts" style="margin-top:10px"><button class="btn go" id="saveInstr">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>
   <div class="panel"><h2>Tech pack payments</h2><p class="sub">The payment gate for tech packs (who pays, who is free, switching it on or off) is still in the Clients page.</p><a class="btn" href="/admin#accessPanel">Open the payment gate</a></div>`;
+  wireQb(q);
   $('#saveInstr').onclick=async()=>{const m=$('#sMsg');m.className='msg';try{await api('/v1/money/settings',{method:'PUT',body:{instructions:$('#instr').value}});m.className='msg ok';m.textContent='Saved.'}catch(x){m.className='msg bad';m.textContent=x.message}};
+}
+
+// ---------- QuickBooks ----------
+function qbBody(q){
+  const reg=`<p class="sub">Register this address as a redirect URI on the Intuit app: <code style="user-select:all">${esc(q.redirectUri)}</code></p>`;
+  if(!q.configured)return `<p>Not set up. Add <b>QUICKBOOKS_CLIENT_ID</b>, <b>QUICKBOOKS_CLIENT_SECRET</b> and <b>QUICKBOOKS_ENV</b> (sandbox or production) to the service in Railway, then come back.</p>${reg}`;
+  if(!q.sealing)return `<p>The keys are set, but saved sign-ins cannot be kept safely yet: set <b>SHOPIFY_TOKEN_KEY</b> on the service.</p>`;
+  if(q.connected)return `<p><b>Connected to ${esc(q.company||'your company')}</b> <span class="chip ${q.mode==='production'?'ok':'warn'}">${q.mode==='production'?'live books':'sandbox: test books'}</span></p><p class="sub">${q.lastSyncAt?`Payments last read ${us(String(q.lastSyncAt))}. `:'Payments have not been read yet. '}Invoices made here can be created and emailed from QuickBooks; payments QuickBooks records come back automatically every 30 minutes.${q.lastError?` <span style="color:var(--bad)">Last problem: ${esc(q.lastError)}</span>`:''}</p>
+   <div class="acts"><button class="btn go" id="qbTest">Test connection</button><button class="btn" id="qbSync">Read payments now</button><button class="btn danger" id="qbOff">Disconnect</button></div>`;
+  return `<p>${q.needsReconnect?'The connection stopped working and needs to be made again. ':'Not connected yet. '}Connecting opens Intuit's own sign-in; we never see your QuickBooks password.${q.lastError?` <span style="color:var(--bad)">${esc(q.lastError)}</span>`:''}</p>${reg}<div class="acts"><button class="btn go" id="qbOn">Connect QuickBooks</button></div>`;
+}
+function wireQb(q){
+  const m=(t,k)=>{const e=$('#qbMsg');if(e){e.className='msg '+(k||'');e.textContent=t}};
+  const on=(id,fn)=>{const b=$(id);if(b)b.onclick=async()=>{b.disabled=true;try{await fn()}catch(x){m(x.message,'bad')}finally{b.disabled=false}}};
+  on('#qbOn',async()=>{const r=await api('/v1/money/quickbooks/connect',{body:{}});location.href=r.url});
+  on('#qbTest',async()=>{m('Asking QuickBooks…');const r=await api('/v1/money/quickbooks/test',{body:{}});m(`Works: ${r.company||'your company'} (${r.mode==='production'?'live books':'sandbox'}), answered in ${r.ms} ms.`,'ok')});
+  on('#qbSync',async()=>{m('Reading payments…');const r=await api('/v1/money/quickbooks/sync',{body:{}});m(r.added?`${r.added} new payment${r.added===1?'':'s'} read.`:'Up to date: no new payments.','ok');await loadOverview?.()});
+  on('#qbOff',async()=>{if(confirm('Disconnect QuickBooks? Invoices already created there stay in QuickBooks.')){await api('/v1/money/quickbooks/disconnect',{body:{}});await loadSettings()}});
+  const u=new URLSearchParams(location.search),k=u.get('qb');if(k){m(k==='connected'?'QuickBooks is connected.':(u.get('why')||'QuickBooks did not connect.'),k==='connected'?'ok':'bad');history.replaceState(null,'','/money#settings')}
 }
 
 // ---------- wiring ----------

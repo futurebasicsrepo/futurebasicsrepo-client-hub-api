@@ -1793,7 +1793,7 @@ await journey('J136', 'Health and connections cover the whole platform: the AI r
   await new Promise(r => store.listen(3133, '127.0.0.1', r));
   try {
   const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json, by = Object.fromEntries(h.checks.map(c => [c.id, c]));
-  const ids = ['reader-openai', 'reader-xai', 'src-reddit', 'src-hn', 'src-brave', 'src-x', 'src-discord', 'intel', 'sales-email', 'money', 'chat', 'automations', 'github', 'stores'];
+  const ids = ['reader-openai', 'reader-xai', 'src-reddit', 'src-hn', 'src-brave', 'src-x', 'src-discord', 'intel', 'sales-email', 'money', 'quickbooks', 'chat', 'automations', 'github', 'stores'];
   ok(ids.every(i => by[i] && by[i].summary && Array.isArray(by[i].facts) && ['ok', 'warn', 'down', 'off'].includes(by[i].status)), 'every part of the platform has a check with a state, a sentence and facts', ids.filter(i => !by[i]));
   ok(['listening', 'sales', 'delivery'].every(g => h.checks.some(c => c.group === g)), 'they are grouped: listening, sales, delivery');
   const fact = (id, k) => (by[id].facts.find(f => f[0] === k) || [])[1];
@@ -1873,6 +1873,88 @@ await journey('J137', 'Money: only Danielle and Kyle can open it; invoices add u
   // the payment instructions
   ok((await M('/settings', { method: 'PUT', body: { instructions: Array.from({ length: 13 }, (_, i) => `line ${i}`).join('\n') } })).status === 422, 'too many instruction lines are refused');
   const st = await M('/settings', { method: 'PUT', body: { instructions: 'Account No. 000\n\nRouting (Wire) 111\nBank: Test Bank' } }); ok(st.status === 200 && st.json.instructions === 'Account No. 000\nRouting (Wire) 111\nBank: Test Bank' && (await M('/settings')).json.instructions === st.json.instructions && (await call('/v1/money/settings', { token: colby })).status === 403, 'the payment instructions are saved for the invoice, and only the two can read them');
+});
+
+await journey('J139', 'QuickBooks: connect through Intuit (a signed sign-in only we can finish), tokens kept sealed, test the connection, create and email an invoice there, read payments back once each, and disconnect', async () => {
+  const { signState } = await import('../../src/quickbooks.js');
+  const room = await newRoom('139', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return { id, token: await forge({ sub: id, clientId: cid, role: 'admin', email }) }; };
+  const kyle = await staff('kyle@thefuturebasics.com'), colby = await staff('colby@thefuturebasics.com'), M = (path, o = {}) => call('/v1/money' + path, { token: kyle.token, ...o });
+  const http = await import('node:http'), today = new Date().toISOString().slice(0, 10);
+  const qbm = { refreshes: 0, revoked: 0, invoices: [], customers: [], sent: [], payments: [] };
+  const store = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const u = new URL(req.url, 'http://x'), raw = Buffer.concat(chunks).toString(), auth = req.headers.authorization || '', send = (c, b) => { res.writeHead(c, { 'content-type': 'application/json' }); res.end(JSON.stringify(b)); };
+      if (u.pathname === '/oauth2/v1/tokens/bearer') {
+        if (auth !== 'Basic ' + Buffer.from('qbid:qbsec').toString('base64')) return send(401, {}); const f = new URLSearchParams(raw);
+        if (f.get('grant_type') === 'authorization_code') return f.get('code') === 'GOOD-CODE' && /\/v1\/money\/quickbooks\/callback$/.test(f.get('redirect_uri')) ? send(200, { access_token: 'AT1', refresh_token: 'RT1', expires_in: 3600, x_refresh_token_expires_in: 8640000 }) : send(400, { error: 'invalid_grant' });
+        if (f.get('grant_type') === 'refresh_token' && ['RT1', 'RT2'].includes(f.get('refresh_token'))) { qbm.refreshes++; return send(200, { access_token: `AT${qbm.refreshes + 1}`, refresh_token: `RT${qbm.refreshes + 1}`, expires_in: 3600, x_refresh_token_expires_in: 8640000 }); }
+        return send(400, { error: 'invalid_grant' });
+      }
+      if (u.pathname === '/v2/oauth2/tokens/revoke') { qbm.revoked++; return send(200, {}); }
+      if (u.pathname.startsWith('/v3/company/123/')) {
+        if (!/^Bearer AT\d$/.test(auth)) return send(401, { Fault: { Error: [{ Message: 'AuthenticationFailed' }] } });
+        if (u.searchParams.get('minorversion') !== '75') return send(400, { Fault: { Error: [{ Message: 'minorversion' }] } });
+        const sub = u.pathname.replace('/v3/company/123', '');
+        if (sub === '/companyinfo/123') return send(200, { CompanyInfo: { CompanyName: 'Sandbox Company_US_1', LegalName: 'Sandbox Company', Country: 'US' } });
+        if (sub === '/query') { const q = u.searchParams.get('query') || '';
+          if (/from Customer/.test(q)) return send(200, { QueryResponse: { Customer: qbm.customers.filter(c => q.includes(`'${c.DisplayName.replace(/'/g, "\\'")}'`)) } });
+          if (/from Item/.test(q)) return send(200, { QueryResponse: { Item: [{ Id: '7', Name: 'Services' }] } });
+          if (/from Payment/.test(q)) return send(200, { QueryResponse: { Payment: /startposition 1 /.test(q) ? qbm.payments : [] } }); return send(200, { QueryResponse: {} }); }
+        if (sub === '/customer' && req.method === 'POST') { const b = JSON.parse(raw); const c = { Id: String(55 + qbm.customers.length), DisplayName: b.DisplayName, body: b }; qbm.customers.push(c); return send(200, { Customer: { Id: c.Id } }); }
+        if (sub === '/invoice' && req.method === 'POST') { const b = JSON.parse(raw), id = String(9001 + qbm.invoices.length); qbm.invoices.push({ id, body: b }); return send(200, { Invoice: { Id: id, DocNumber: b.DocNumber, SyncToken: '0' } }); }
+        const m = /^\/invoice\/(\d+)\/send$/.exec(sub); if (m && req.method === 'POST') { qbm.sent.push([m[1], u.searchParams.get('sendTo'), req.headers['content-type']]); return send(200, { Invoice: { Id: m[1] } }); }
+      }
+      send(404, {});
+    });
+  });
+  await new Promise(r => store.listen(3133, '127.0.0.1', r));
+  const cb = async q => { const r = await fetch(`http://127.0.0.1:3123/v1/money/quickbooks/callback?${q}`, { redirect: 'manual' }); return { status: r.status, loc: r.headers.get('location') || '' }; };
+  try {
+    // who may, and what is set up
+    ok((await call('/v1/money/quickbooks/status', { token: colby.token })).status === 403 && (await call('/v1/money/quickbooks/connect', { token: colby.token, body: {} })).status === 403 && (await call('/v1/money/quickbooks/test', { token: colby.token, body: {} })).status === 403 && (await call('/v1/money/quickbooks/sync', { token: colby.token, body: {} })).status === 403, 'Colby cannot see, connect, test or sync QuickBooks');
+    const s0 = (await M('/quickbooks/status')).json; ok(s0.configured === true && s0.sealing === true && s0.connected === false && s0.mode === 'sandbox' && /\/v1\/money\/quickbooks\/callback$/.test(s0.redirectUri), 'before connecting: keys are set, nothing is connected, and the address to register is shown', s0);
+    ok((await M('/quickbooks/test', { body: {} })).status === 409 && (await M('/quickbooks/sync', { body: {} })).status === 409, 'testing or syncing before connecting says to connect first');
+    // the sign-in
+    const con = (await M('/quickbooks/connect', { body: {} })).json, cu = new URL(con.url); ok(cu.origin === 'http://127.0.0.1:3133' && cu.pathname === '/connect/oauth2' && cu.searchParams.get('client_id') === 'qbid' && cu.searchParams.get('scope') === 'com.intuit.quickbooks.accounting' && cu.searchParams.get('response_type') === 'code' && cu.searchParams.get('state'), 'Connect sends the person to Intuit with our app, the accounting scope and a signed state', con.url);
+    const state = cu.searchParams.get('state');
+    ok((await cb('code=GOOD-CODE&realmId=123')).loc.includes('qb=error') && (await cb('code=GOOD-CODE&realmId=123&state=forged')).loc.includes('qb=error'), 'a sign-in without our state, or with a forged one, is turned away');
+    ok((await cb(`code=GOOD-CODE&realmId=123&state=${encodeURIComponent(signState('smoke-secret', colby.id))}`)).loc.includes('qb=error') && (await M('/quickbooks/status')).json.connected === false, 'a sign-in begun for someone who may not open Money is turned away too');
+    ok((await cb(`error=access_denied&state=${encodeURIComponent(state)}`)).loc.includes('cancelled') && (await cb(`code=BAD&realmId=123&state=${encodeURIComponent(state)}`)).loc.includes('refused'), 'cancelling at Intuit, or a code Intuit refuses, ends with a plain message and nothing connected');
+    const ok1 = await cb(`code=GOOD-CODE&realmId=123&state=${encodeURIComponent(state)}`); ok(ok1.status === 302 && /\/money\?qb=connected#settings$/.test(ok1.loc), 'a good sign-in comes back to Money → Settings, connected', ok1.loc);
+    const s1 = (await M('/quickbooks/status')).json; ok(s1.connected && s1.company === 'Sandbox Company_US_1' && s1.realmId === '123' && !JSON.stringify(s1).includes('AT1') && !JSON.stringify(s1).includes('RT1'), 'the company is read and shown, and no token is ever returned');
+    const sealed = sql(`select access_sealed||'|'||refresh_sealed from money_connections`); ok(sealed.startsWith('v1.') && !sealed.includes('AT1') && !sealed.includes('RT1'), 'the tokens are stored sealed');
+    const hc = (await call('/v1/admin/platform/health?fresh=1', { token: kyle.token })).json.checks.find(c => c.id === 'quickbooks'); ok(hc.status === 'ok' && /Connected to Sandbox Company_US_1 \(sandbox: test books\)/.test(hc.summary), 'Platform health shows QuickBooks connected', hc.summary);
+    // test the connection, and a refresh when the access token has run out
+    const t1 = (await M('/quickbooks/test', { body: {} })).json; ok(t1.ok && t1.company === 'Sandbox Company_US_1' && t1.mode === 'sandbox' && t1.realmId === '123' && qbm.refreshes === 0, 'Test connection reads the company name and says which books these are', t1);
+    const before = sql(`select refresh_sealed from money_connections`); sql(`update money_connections set access_expires_at = now() - interval '5 minutes'`);
+    const t2 = (await M('/quickbooks/test', { body: {} })).json; ok(t2.ok && qbm.refreshes === 1 && sql(`select refresh_sealed from money_connections`) !== before, 'an expired access token is renewed first, and the rotated refresh token is saved', [t2, qbm.refreshes]);
+    // an invoice into QuickBooks
+    const mk = async o => (await M('/invoices', { body: { company: 'Acme QB', contactName: 'Pat Lee', contactEmail: 'ap@acme.test', address: '1 Main St\nBrooklyn, NY 11201', issuedOn: today, terms: 'Net 30', lines: [{ description: 'Cytoshift run', qty: 2, rate: 150 }], taxRatePct: 10, chargeTax: true, credits: [{ label: 'Deposit paid', amount: 100 }], notes: 'PO 123', ...o } })).json.invoice;
+    const a = await mk({}), pushed = await M(`/invoices/${a.id}/quickbooks`, { body: { send: false } });
+    ok(pushed.status === 201 && pushed.json.invoice.qb?.id === '9001' && pushed.json.invoice.qb.docNumber === a.number && /\/app\/invoice\?txnId=9001$/.test(pushed.json.invoice.qb.link) && pushed.json.invoice.status === 'sent' && pushed.json.emailed === false && pushed.json.customerCreated === true, 'Create in QuickBooks makes the invoice and the customer, and marks ours sent with a link to it', pushed.json);
+    const sentBody = qbm.invoices[0].body; ok(sentBody.DocNumber === a.number && sentBody.Line.length === 2 && sentBody.Line[0].Amount === 300 && sentBody.Line[0].SalesItemLineDetail.Qty === 2 && sentBody.Line[0].SalesItemLineDetail.UnitPrice === 150 && sentBody.Line[1].Description === 'Sales tax (10%)' && sentBody.Line[1].Amount === 30 && sentBody.Deposit === 100 && sentBody.BillEmail.Address === 'ap@acme.test' && sentBody.CustomerMemo.value === 'PO 123' && sentBody.AllowOnlineCreditCardPayment === true && sentBody.AllowOnlineACHPayment === true && sentBody.CustomerRef.value === '55' && qbm.sent.length === 0, 'what QuickBooks received: the lines, tax as its own line, the deposit, the email, the memo and online payments on', sentBody);
+    ok(qbm.customers[0].body.BillAddr.City === 'Brooklyn' && qbm.customers[0].body.BillAddr.CountrySubDivisionCode === 'NY' && qbm.customers[0].body.BillAddr.PostalCode === '11201', 'the customer got its address in parts');
+    ok((await M(`/invoices/${a.id}/quickbooks`, { body: {} })).status === 409, 'an invoice already in QuickBooks is not made twice');
+    const b = await mk({ issuedOn: today }), sentRes = await M(`/invoices/${b.id}/quickbooks`, { body: { send: true } }); ok(sentRes.status === 201 && sentRes.json.emailed === true && sentRes.json.customerCreated === false && qbm.customers.length === 1 && qbm.sent.length === 1 && qbm.sent[0][1] === 'ap@acme.test' && qbm.sent[0][0] === '9002', 'Create and email asks QuickBooks to email it, and the same customer is reused', [sentRes.json, qbm.sent]);
+    const c = await mk({ contactEmail: '' }); ok((await M(`/invoices/${c.id}/quickbooks`, { body: { send: true } })).status === 422 && qbm.invoices.length === 2, 'emailing from QuickBooks needs an email on the invoice (and nothing was made)');
+    // payments back
+    qbm.payments = [
+      { Id: '31', TxnDate: today, TotalAmt: 285, UnappliedAmt: 0, CustomerRef: { name: 'Acme QB' }, PaymentMethodRef: { name: 'ACH' }, PaymentRefNum: 'ACH-77', Line: [{ Amount: 285, LinkedTxn: [{ TxnId: '9001', TxnType: 'Invoice' }] }] },
+      { Id: '32', TxnDate: today, TotalAmt: 120, CustomerRef: { name: 'Other Customer' }, PaymentMethodRef: { name: 'Visa' }, Line: [{ Amount: 120, LinkedTxn: [{ TxnId: '777', TxnType: 'Invoice' }] }] },
+      { Id: '33', TxnDate: '2020-01-01', TotalAmt: 50, CustomerRef: { name: 'Long Ago' }, PaymentMethodRef: { name: 'Check' }, Line: [{ Amount: 50, LinkedTxn: [{ TxnId: '888', TxnType: 'Invoice' }] }] },
+      { Id: '34', TxnDate: today, TotalAmt: 10, CustomerRef: { name: 'Credit' }, Line: [{ Amount: 10, LinkedTxn: [{ TxnId: '5', TxnType: 'CreditMemo' }] }] }];
+    const sy = (await M('/quickbooks/sync', { body: {} })).json; ok(sy.ok && sy.added === 2 && sy.seen === 4, 'reading payments keeps the one for our invoice and the new one for another, and leaves out old history and credit memos', sy);
+    const inv = (await M(`/invoices/${a.id}`)).json; ok(inv.invoice.status === 'paid' && inv.invoice.owedCents === 0 && inv.payments.length === 1 && inv.payments[0].source === 'quickbooks' && inv.payments[0].method === 'ach' && inv.payments[0].reference === 'ACH-77' && inv.payments[0].amountCents === 28500, 'the payment settles our invoice, with how and the reference QuickBooks had', inv);
+    const led = (await M('/payments?source=quickbooks')).json; ok(led.count === 2 && led.payments.some(p => p.company === 'Other Customer' && p.amountCents === 12000 && /QuickBooks invoice 777/.test(p.note)) && !led.payments.some(p => p.company === 'Long Ago'), 'it is in the ledger, with the other customer\'s payment too', led.payments);
+    const again = (await M('/quickbooks/sync', { body: {} })).json; ok(again.added === 0, 'reading again adds nothing: each payment is kept once', again);
+    ok((await M(`/payments/${inv.payments[0].id}`, { method: 'DELETE' })).status === 409, 'a payment that came from QuickBooks is changed in QuickBooks, not here');
+    // disconnect
+    ok((await M('/quickbooks/disconnect', { body: {} })).json.ok === true && qbm.revoked === 1 && (await M('/quickbooks/status')).json.connected === false && sql('select count(*) from money_connections') === '0', 'disconnecting tells Intuit to revoke the sign-in and forgets it');
+    ok((await M(`/invoices/${c.id}/quickbooks`, { body: {} })).status === 409 && (await M('/quickbooks/test', { body: {} })).status === 409, 'and QuickBooks is not used again until it is connected');
+    const hd = (await call('/v1/admin/platform/health?fresh=1', { token: kyle.token })).json.checks.find(x => x.id === 'quickbooks'); ok(hd.status === 'off' && /Press Connect QuickBooks/.test(hd.summary), 'Platform health goes back to "press Connect"', hd.summary);
+    const body = JSON.stringify((await call('/v1/admin/platform/health?fresh=1', { token: kyle.token })).json); ok(!/qbsec|AT\d|RT\d/.test(body.replace(/"[A-Za-z]*(AT|RT)\d?[a-z]*"/g, '')) || !['qbsec', '"AT1"', '"RT1"'].some(x => body.includes(x)), 'no QuickBooks secret or token appears in the health answer');
+  } finally { await new Promise(r => store.close(r)); }
 });
 
 const bad = summary(); process.exit(bad ? 1 : 0);
