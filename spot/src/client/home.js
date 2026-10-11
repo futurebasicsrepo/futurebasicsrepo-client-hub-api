@@ -37,6 +37,34 @@
   };
 
   let me = load('spot:me', {});
+  // Signed in: their account's name, email, sizes and where things ship.
+  // Every search uses the sizes and ship-to (the server reads them from the
+  // account); the page shows which, so it's never a guess.
+  let account = null; // { sizes: { tops: 'M', … }, ship_to: 'Austin, TX' }
+  const SIZE_LABEL = { tops: 'Tops', bottoms: 'Pants', shoes: 'Shoes', dresses: 'Dresses' };
+  const sizeLine = (z) => Object.entries(SIZE_LABEL).filter(([k]) => z?.[k]).map(([k, l]) => l + ' ' + z[k]).join(' · ');
+  function renderProfile() {
+    const el = $('#profileChip');
+    if (!account) {
+      el.innerHTML = '<a href="/signin?next=/new">Sign in</a> so Spot shops in your sizes and ships to you';
+      return;
+    }
+    const z = sizeLine(account.sizes);
+    el.innerHTML = (z ? '✓ <b>Your sizes</b> ' + esc(z) : '<a href="/account#details">Add your sizes</a> so Spot picks the right ones') +
+      (account.ship_to ? ' · ships to ' + esc(account.ship_to) : '') + (z ? ' · <a href="/account#details">edit</a>' : '');
+  }
+  fetch('/v1/me', { headers: { accept: 'application/json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      if (!j?.user) return renderProfile();
+      const u = j.user;
+      account = { sizes: u.sizes || {}, ship_to: u.shipping?.city ? [u.shipping.city, u.shipping.state].filter(Boolean).join(', ') : '' };
+      // Their name goes on links without asking again.
+      if (!me.name && u.name) me = { ...me, name: u.name };
+      if (!me.email && u.email) me = { ...me, email: u.email };
+      renderProfile();
+    })
+    .catch(() => renderProfile());
   let contacts = load('spot:contacts', []);
   let draft = null; // { merchant, items, extras_cents, note, source, sold_out, in_stock }
   // What they asked for, and the product links already shown, so "find
@@ -137,10 +165,11 @@
       const d = await api('/v1/capture', image ? { image } : { text });
       ask = { text: image ? '' : text, avoid: [] };
       made = null;
-      if (d.options?.length > 1) {
+      if (listOf(d)) {
         $('#thread').innerHTML = '';
+        turns.length = 0;
         show('picks'); // visible first, so the shelf can measure itself
-        shelf(text, d.options);
+        shelf(text, d);
         return;
       }
       draft = toDraft(d);
@@ -187,66 +216,250 @@
   });
 
   // ─── Picks ────────────────────────────────────────────────────────────────
-  // A lookup with several products: a swipeable shelf across stores, Spot's
-  // pick first, like a collection page. Each follow-up ("cheaper", "in green")
-  // adds a new shelf under the last, so the thread reads like a chat.
-  const turns = []; // [[option, …], …]
+  // A lookup: a swipeable shelf across stores, Spot's pick first, like a
+  // collection page; asks for a look ("outfits for Coachella") get whole
+  // outfits. More load as they swipe. Every card pays in one tap: Pay with
+  // Spot (Apple Pay / Google Pay), or Let someone else pay (a link to send).
+  // Each follow-up ("cheaper", "in green") adds a shelf, so it reads like a chat.
+  const turns = []; // [{ kind: 'products' | 'outfits', list: [...], said, more, page, done, loading }]
+  const BATCHES = 8; // up to ~100 products a shelf; then "ask for something else"
+  const isApple = /iP(hone|ad|od)|Mac/.test(navigator.userAgent);
+  const wallet = isApple ? ' Pay' : /Android/.test(navigator.userAgent) ? 'Google Pay' : 'Apple Pay · Google Pay';
   const spotSays = (t) => '<div class="spotsay"><i style="background-image:url(\'' + esc($('#thread').dataset.face || '') + '\')"></i><span>' + esc(t) + '</span></div>';
-  const stockTag = (o) => (o.stock === 'in' ? '<span class="tag in">In stock</span>' : '<span class="tag">Check stock</span>');
-  function card(o, t, i) {
+  const stockTag = (o) => (o.stock === 'in' ? '<span class="tag in">In stock</span>' : o.stock === 'out' ? '<span class="tag out">Sold out</span>' : '<span class="tag">Check stock</span>');
+  const cssUrl = (u) => String(u).replace(/["'()\\\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+  // No photo (yet): the store's own tile, not a broken-looking placeholder.
+  const hue = (name) => [...String(name || 'spot')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  const initials = (name) => String(name || '?').replace(/^the\s+/i, '').split(/[\s&’'.-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const tile = (o) => '<span class="stile" style="--h:' + hue(o.merchant.name) + '"><b>' + esc(initials(o.merchant.name)) + '</b><small>' + esc(o.merchant.name || '') + '</small></span>';
+  const photo = (o, cls) => '<div class="' + cls + '" data-url="' + esc(o.item.url || '') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + '</div>';
+  const buttons = (k, sold) =>
+    '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
+    '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
+  const total = (items) => items.reduce((n, o) => n + (o.item.price_cents || 0), 0);
+  // The size picked is one of theirs ("M" in "Black / M", "10.5" in "US 10.5").
+  const yours = (variant) => {
+    const words = new Set(String(variant).toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean));
+    return Object.values(account?.sizes || {}).some((v) => {
+      const w = String(v).toLowerCase().split(/[^a-z0-9.]+/).filter((x) => x && x !== 'us');
+      return w.length > 0 && w.every((x) => words.has(x));
+    });
+  };
+
+  function productCard(o, k, top) {
     const it = o.item;
-    const img = it.image_url ? String(it.image_url).replace(/["'()\\]/g, (c) => '%' + c.charCodeAt(0).toString(16)) : '';
-    return '<article class="pc' + (i === 0 ? ' top' : '') + '" aria-roledescription="slide" aria-label="' + (i + 1) + ' of ' + turns[t].length + '">' +
-      (i === 0 ? '<span class="badge">Spot’s pick</span>' : '') +
-      '<div class="ph"' + (img ? ' style="background-image:url(\'' + esc(img) + '\')"' : '') + '>' + (img ? '' : '🛍️') + '</div>' +
-      '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' ' + stockTag(o) + '</div>' +
-      '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + '</div>' : '') +
+    return '<article class="pc' + (top ? ' top' : '') + (o.stock === 'out' ? ' gone' : '') + '" data-card="' + k + '">' +
+      (top ? '<span class="badge">Spot’s pick</span>' : '') + photo(o, 'ph') +
+      '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
+      '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
-      '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' +
-      '<button class="btn small" type="button" data-pick="' + t + ':' + i + '">Spot this one</button>' +
-      (it.url && /^https?:/i.test(it.url) ? '<a class="see" href="' + esc(it.url) + '" target="_blank" rel="noopener">See it at the store ↗</a>' : '') +
-      '</div></article>';
+      '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' + buttons(k, o.stock === 'out') +
+      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' +
+      (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
-  const skeleton = () => '<div class="shelf"><div class="rail">' + '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>'.repeat(3) + '</div></div>';
-  function shelf(said, options, el) {
-    const t = turns.push(options) - 1;
-    for (const o of options) if (o.item.url && !ask.avoid.includes(o.item.url)) ask.avoid.push(o.item.url);
+  function outfitCard(look, k, top) {
+    const stores = new Set(look.items.map((o) => o.merchant.name)).size;
+    return '<article class="pc look' + (top ? ' top' : '') + '" data-card="' + k + '">' + (top ? '<span class="badge">Spot’s pick</span>' : '') +
+      '<div class="collage n' + Math.min(look.items.length, 4) + '">' + look.items.slice(0, 4).map((o) => photo(o, 'cell')).join('') + '</div>' +
+      '<div class="pb"><div class="st">' + look.items.length + ' pieces · ' + stores + (stores > 1 ? ' stores' : ' store') + '</div><div class="t">' + esc(look.name) + '</div>' +
+      (look.why ? '<div class="why">' + esc(look.why) + '</div>' : '') +
+      '<ul class="pieces">' + look.items.map((o) => '<li data-url="' + esc(o.item.url || '') + '"><a href="' + esc(o.item.url || '#') + '" target="_blank" rel="noopener">' + esc(o.item.title) + (o.item.variant ? ' <i>' + esc(o.item.variant) + '</i>' : '') + '</a><span>' + esc(o.merchant.name || '') + ' · ' + (o.item.price_cents ? usd(o.item.price_cents) : '—') + '</span></li>').join('') + '</ul>' +
+      '<div class="pr">' + usd(total(look.items)) + '<small> the look</small></div>' + buttons(k, false) + '</div></article>';
+  }
+  const skel = '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>';
+  const skeleton = () => '<div class="shelf"><div class="rail">' + skel.repeat(3) + '</div></div>';
+  const urlsOf = (entry) => (entry.items ? entry.items : [entry]).map((o) => o.item.url).filter(Boolean);
+  const listOf = (d) => (d.outfits?.length ? { kind: 'outfits', list: d.outfits } : d.options?.length ? { kind: 'products', list: d.options } : null);
+
+  function shelf(said, d, el, more = '') {
+    const got = listOf(d);
+    const t = turns.push({ ...got, said, more, page: 1, done: false, loading: false }) - 1;
+    const T = turns[t];
+    for (const e of T.list) for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
     const turn = el || document.createElement('div');
     turn.className = 'turn';
-    const stores = new Set(options.map((o) => o.merchant.name)).size;
-    const line = options.length === 1 ? 'here’s the one I’d get' : t === 0 ? 'found ' + options.length + ' at ' + (stores > 1 ? stores + ' stores' : options[0].merchant.name) + '. my pick’s first, swipe for more →' : 'ok, ' + options.length + ' more. my pick’s first →';
-    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + '<div class="shelf"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="Picks from ' + options.length + ' stores">' +
-      options.map((o, i) => card(o, t, i)).join('') + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at">1 of ' + options.length + '</span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
+    turn.dataset.t = t;
+    const stores = new Set(T.list.flatMap((e) => (e.items || [e]).map((o) => o.merchant.name))).size;
+    const line = T.kind === 'outfits' ? (T.list.length === 1 ? 'here’s a look I put together' : T.list.length + ' looks, from ' + stores + ' stores. my favorite’s first →') :
+      T.list.length === 1 ? 'here’s the one I’d get' : (t === 0 ? 'found ' + T.list.length + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) : 'ok, ' + T.list.length + ' more') + '. my pick’s first, swipe for more →';
+    const used = d.profile ? [d.profile.sizes && 'In your sizes', d.profile.ship_to && 'ships to ' + d.profile.ship_to].filter(Boolean).join(' · ') : '';
+    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + (used ? '<p class="used" title="' + esc(d.profile.sizes || '') + '">✓ ' + esc(used) + '</p>' : '') + '<div class="shelf' + (T.kind === 'outfits' ? ' looks' : '') + '"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="' + (T.kind === 'outfits' ? 'Outfits' : 'Picks') + '">' +
+      T.list.map((e, i) => (T.kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, i === 0)).join('') + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at"></span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
     if (!el) $('#thread').appendChild(turn);
     const rail = turn.querySelector('.rail');
-    const at = () => Math.round(rail.scrollLeft / (rail.firstElementChild.offsetWidth + 12));
+    const step = () => rail.firstElementChild.offsetWidth + 12;
     const sync = () => {
-      const i = Math.min(at(), options.length - 1);
-      turn.querySelector('.at').textContent = i + 1 + ' of ' + options.length;
+      const i = Math.min(Math.round(rail.scrollLeft / step()), T.list.length - 1);
+      turn.querySelector('.at').textContent = i + 1 + ' of ' + T.list.length + (T.done ? '' : '+');
       turn.querySelector('[data-step="-1"]').disabled = rail.scrollLeft < 4;
       turn.querySelector('[data-step="1"]').disabled = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
+      // Near the end: load the next batch, so the shelf never runs out.
+      if (!T.done && !T.loading && rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - step() * 2) loadMore(t, turn);
     };
+    T.sync = sync;
     rail.addEventListener('scroll', sync, { passive: true });
     addEventListener('resize', sync, { passive: true });
     turn.querySelector('.railnav').addEventListener('click', (e) => {
-      const step = +e.target.dataset.step;
-      if (step) rail.scrollBy({ left: step * (rail.firstElementChild.offsetWidth + 12), behavior: 'smooth' });
+      const s = +e.target.dataset.step;
+      if (s) rail.scrollBy({ left: s * step(), behavior: 'smooth' });
     });
     rail.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') rail.scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * (rail.firstElementChild.offsetWidth + 12), behavior: 'smooth' });
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') rail.scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * step(), behavior: 'smooth' });
     });
     sync();
-    say(options.length > 1 ? 'my pick’s first. swipe for more →' : 'here’s what I found');
+    say(T.list.length > 1 ? 'swipe for more →' : 'here’s what I found');
     turn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    details(T.list);
   }
-  $('#thread').addEventListener('click', (e) => {
-    const k = e.target.dataset.pick;
-    if (!k) return;
-    const [t, i] = k.split(':').map(Number);
-    const o = turns[t][i];
-    draft = { ...toDraft({ source: 'lookup', merchant: o.merchant, items: [{ ...o.item }], in_stock: o.stock === 'in' }), fromPicks: true };
-    made = null;
-    check(o.stock === 'in' ? '' : 'I couldn’t check stock at ' + (o.merchant.name || 'that store') + '. Tap “See it at the store” to make sure it’s there');
+
+  // The next batch, from stores not shown yet, onto the end of the shelf.
+  async function loadMore(t, turn) {
+    const T = turns[t];
+    T.loading = true;
+    const rail = turn.querySelector('.rail');
+    rail.insertAdjacentHTML('beforeend', skel);
+    try {
+      const d = await api('/v1/capture', { text: ask.text, more: T.more || (T.kind === 'outfits' ? 'more looks like these' : 'more like these, from other stores'), avoid: ask.avoid.slice(-60) });
+      const got = listOf(d);
+      const fresh = got && got.kind === T.kind ? got.list : [];
+      rail.querySelector('.sk')?.remove();
+      if (!fresh.length) T.done = true;
+      for (const e of fresh) {
+        for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
+        const i = T.list.push(e) - 1;
+        rail.insertAdjacentHTML('beforeend', (T.kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, false));
+      }
+      details(fresh);
+      if (++T.page >= BATCHES) T.done = true;
+    } catch {
+      rail.querySelector('.sk')?.remove();
+      T.done = true;
+    } finally {
+      T.loading = false;
+      T.sync();
+    }
+  }
+
+  // Photos and stock for stores that don't let Spot read their pages: asked
+  // after the shelf shows, then filled in where they are.
+  const asked = new Set();
+  async function details(list) {
+    const need = list.flatMap((e) => e.items || [e]).filter((o) => o.item.url && (!o.item.image_url || o.stock === 'unknown') && !asked.has(o.item.url));
+    for (let i = 0; i < need.length; i += 8) {
+      const chunk = need.slice(i, i + 8);
+      for (const o of chunk) asked.add(o.item.url);
+      api('/v1/capture/details', { urls: chunk.map((o) => ({ url: o.item.url, variant: o.item.variant || '' })) })
+        .then((r) => {
+          for (const p of r.pages || []) {
+            for (const o of chunk.filter((x) => x.item.url === p.url)) {
+              if (p.image_url && !o.item.image_url) o.item.image_url = p.image_url;
+              if (p.stock !== 'unknown') o.stock = p.stock;
+              if (p.price_cents && !o.item.price_cents) o.item.price_cents = p.price_cents;
+            }
+            const o = chunk.find((x) => x.item.url === p.url);
+            if (!o) continue;
+            for (const ph of document.querySelectorAll('#thread [data-url="' + CSS.escape(p.url) + '"]')) {
+              if (ph.classList.contains('stk')) ph.innerHTML = stockTag(o);
+              else if (ph.tagName === 'LI') ph.classList.toggle('gone', o.stock === 'out');
+              else if (p.image_url && !ph.querySelector('img')) ph.insertAdjacentHTML('afterbegin', '<img src="' + esc(p.image_url) + '" alt="" referrerpolicy="no-referrer">');
+            }
+            if (o.stock === 'out') for (const c of document.querySelectorAll('#thread .pc:not(.look) [data-url="' + CSS.escape(p.url) + '"]')) {
+              const card = c.closest('.pc');
+              card.classList.add('gone');
+              for (const b of card.querySelectorAll('[data-act="pay"],[data-act="ask"]')) b.disabled = true;
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }
+  // A photo that won't load shows the store's tile underneath instead.
+  $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
+
+  const entryOf = (k) => {
+    const [t, i] = String(k).split(':').map(Number);
+    return { T: turns[t], e: turns[t].list[i] };
+  };
+  // One tap from the shelf: the link is made right here (a look from several
+  // stores is one link, one payment); then either they pay it themselves, or
+  // it's ready to send.
+  async function oneTap(act, k, btn) {
+    const { T, e } = entryOf(k);
+    const pieces = (e.items || [e]).filter((o) => o.stock !== 'out');
+    if (!(await ensureName())) return;
+    const byStore = new Map();
+    for (const o of pieces) {
+      const key = o.merchant.url || o.merchant.name;
+      if (!byStore.has(key)) byStore.set(key, { merchant: o.merchant, items: [], extras_cents: 0 });
+      byStore.get(key).items.push({ ...o.item, quantity: o.item.quantity || 1 });
+    }
+    const stores = [...byStore.values()];
+    const last = stores.pop();
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = act === 'pay' ? 'opening checkout…' : 'making your link…';
+    say(act === 'pay' ? 'one sec, getting checkout ready…' : 'making your link…');
+    const settle = me.settle;
+    me.settle = 'card'; // Spot buys it, whoever pays
+    try {
+      basket = stores;
+      draft = { merchant: last.merchant, items: last.items, extras_cents: 0, note: '', source: 'lookup', fromPicks: true };
+      made = null;
+      await create();
+      if (act === 'pay') {
+        if (made.bundle) location.href = made.link;
+        else {
+          await api('/v1/carts/' + made.token + '/manage/pay-yourself', { k: made.key });
+          location.href = made.manage;
+        }
+        return;
+      }
+      ready();
+    } catch (err) {
+      // Something to fix first (a missing price, a store Spot can't buy
+      // from): the details screen, with the reason.
+      basket = [];
+      renderBasket();
+      draft = { ...toDraft({ source: 'lookup', merchant: last.merchant, items: last.items }), fromPicks: true };
+      check(err.message);
+    } finally {
+      me.settle = settle;
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+  // Their name goes on the link ("Kyle asked for…"): asked once, remembered.
+  function ensureName() {
+    if (me.name) return Promise.resolve(true);
+    const sheet = $('#nameSheet');
+    sheet.hidden = false;
+    $('#sheetName').focus();
+    return new Promise((done) => {
+      sheet.onsubmit = (ev) => {
+        ev.preventDefault();
+        const name = $('#sheetName').value.trim();
+        if (!name) return $('#sheetName').focus();
+        me = { ...me, name };
+        save('spot:me', me);
+        sheet.hidden = true;
+        done(true);
+      };
+      $('#sheetX').onclick = () => {
+        sheet.hidden = true;
+        done(false);
+      };
+    });
+  }
+  $('#thread').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b) return;
+    if (b.dataset.act === 'edit') {
+      const { e } = entryOf(b.dataset.k);
+      draft = { ...toDraft({ source: 'lookup', merchant: e.merchant, items: [{ ...e.item }], in_stock: e.stock === 'in' }), fromPicks: true };
+      made = null;
+      return check(e.stock === 'in' ? '' : 'I couldn’t check stock at ' + (e.merchant.name || 'that store') + '. Tap “At the store” to make sure it’s there');
+    }
+    oneTap(b.dataset.act, b.dataset.k, b);
   });
   async function askMore(e) {
     e?.preventDefault();
@@ -262,9 +475,8 @@
     $('#more2').value = '';
     say('on it, looking around…');
     try {
-      const d = await api('/v1/capture', { text: ask.text, more, avoid: ask.avoid.slice(-20) });
-      const options = d.options?.length ? d.options : d.items?.[0] && !d.sold_out && d.source === 'lookup' ? [{ merchant: d.merchant, item: d.items[0], stock: d.in_stock ? 'in' : 'unknown', why: d.why || null }] : [];
-      if (options.length) shelf(more, options, turn);
+      const d = await api('/v1/capture', { text: ask.text, more, avoid: ask.avoid.slice(-60) });
+      if (listOf(d)) shelf(more, d, turn, more);
       else {
         turn.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(d.warning || 'I couldn’t find anything new for that. Try saying it another way.');
         say('hmm, nothing new for that one');
@@ -291,8 +503,8 @@
   };
   $('#backPicks').onclick = () => {
     show('picks');
-    for (const r of document.querySelectorAll('#thread .rail')) r.dispatchEvent(new Event('scroll'));
-    say('my pick’s first. swipe for more →');
+    for (const T of turns) T.sync?.();
+    say('swipe for more →');
   };
 
   // "Not quite": what they say about this find, and everything shown so far,

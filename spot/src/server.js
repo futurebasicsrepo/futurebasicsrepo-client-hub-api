@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CartError, config, handoffLinks } from './cart.js';
-import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl } from './capture.js';
+import { CaptureError, captureFromScreenshot, captureFromText, captureFromUrl, pageDetails } from './capture.js';
 import { openDb } from './db.js';
 import { approvalPage, bundleManagePage, bundlePayPage, bundleReceiptPage, homePage, managePage, notFoundPage, payPage, receiptPage } from './pages.js';
 import { pickProvider } from './providers.js';
@@ -181,9 +181,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
   const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
-  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, more: o.more, avoid: o.avoid, ...aiHooks }));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, shipTo: o.shipTo, more: o.more, avoid: o.avoid, ...aiHooks }));
   // A signed-in person's saved sizes, for lookups that don't name one.
   const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
+  // Where their things ship ("Austin, TX"), so a lookup sticks to stores that deliver there.
+  const shipToOf = (userId) => {
+    const sh = userId ? db.users.byId(userId)?.shipping : null;
+    return sh?.city ? [sh.city, sh.state].filter(Boolean).join(', ') : '';
+  };
 
   // Keep the raw body: Stripe signs the exact bytes it sent.
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
@@ -496,7 +501,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
     // A follow-up ("find another", "in blue") carries what they said and the links already shown.
-    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)), more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
+    if (b.text) {
+      // Their saved sizes and where things ship go into every search, and
+      // come back so the shelf can say what it used.
+      const uid = accounts.userIdOf(req);
+      const profile = { sizes: sizesOf(uid), ship_to: shipToOf(uid) };
+      const d = await captureText(String(b.text), { sizes: profile.sizes, shipTo: profile.ship_to, more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
+      return uid ? { ...d, profile } : d;
+    }
     if (b.image?.data) {
       if (!process.env.ANTHROPIC_API_KEY && !capture.fromScreenshot) {
         throw new CaptureError('Screenshot capture is not configured on this server — paste a link or enter items');
@@ -504,6 +516,17 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       return captureShot({ data: String(b.image.data), media_type: String(b.image.media_type || '') });
     }
     throw new CartError('Send a url or an image');
+  });
+
+  // Photos, stock and prices for product pages Spot's own reader was turned
+  // away from (the shelf asks after it shows the picks).
+  app.post('/v1/capture/details', async (req) => {
+    limits.capture(req);
+    // Each page with the size or option picked for them, so stock is for that size.
+    const urls = Array.isArray(req.body?.urls)
+      ? req.body.urls.map((u) => (typeof u === 'string' ? u : u && typeof u.url === 'string' ? { url: u.url, variant: typeof u.variant === 'string' ? u.variant.slice(0, 80) : '' } : null)).filter(Boolean).slice(0, 8)
+      : [];
+    return capture.details ? capture.details(urls) : pageDetails(urls, aiHooks);
   });
 
   // ─── Carts ────────────────────────────────────────────────────────────────
