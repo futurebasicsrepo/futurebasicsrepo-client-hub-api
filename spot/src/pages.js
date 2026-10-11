@@ -3,7 +3,7 @@
 // goes through esc(), and data handed to scripts goes through json().
 import { HOME_SCREEN_TAGS } from './appicon.js';
 import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, cssSafe, usd } from './cart.js';
-import { plushSpot } from './plush.js';
+import { assetUrl } from './assets.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -84,7 +84,7 @@ async function api(path,body,method){const r=await fetch(path,{method:method||(b
 // One box, then one Send. The behaviour lives in src/client/home.js.
 const HOME_CSS = `
 .hero{display:flex;align-items:center;gap:12px;margin:18px 0 14px}
-.hero svg{width:74px;height:74px;flex:none;animation:bob 3.2s ease-in-out infinite}
+.hero #buddy{display:block;width:92px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-10px}.buddy3d img{display:block;width:100%;height:auto}
 @keyframes bob{50%{transform:translateY(-4px)}}
 .hero .say{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:11px 15px;font-weight:800;font-size:19px;letter-spacing:-.01em}
 .box{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:12px;transition:border-color .15s}
@@ -108,7 +108,7 @@ const HOME_CSS = `
 .textlink{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;font:inherit;font-size:14px;cursor:pointer}
 details.more{margin-top:14px}details.more summary{cursor:pointer;font-weight:600;color:var(--muted)}
 @media (hover:none){.desktop-only{display:none}}
-@media (prefers-reduced-motion:reduce){.hero svg{animation:none}}
+@media (prefers-reduced-motion:reduce){.hero #buddy{animation:none}}
 `;
 
 export function homePage({ origin, provider, cfg }) {
@@ -193,7 +193,7 @@ const PAY_CSS = `
 .bub.big{font-weight:800;font-size:20px;letter-spacing:-.01em}
 @keyframes pop{to{opacity:1;transform:none}}
 .buddy{display:flex;align-items:flex-end;gap:12px;margin-top:22px}
-.buddy svg{width:92px;height:92px;flex:none;animation:bob 3.2s ease-in-out infinite}
+.buddy #buddy{display:block;width:112px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-12px}.buddy3d img{display:block;width:100%;height:auto}
 @keyframes bob{50%{transform:translateY(-4px)}}
 .buddy .hi{font-weight:800;font-size:28px;letter-spacing:-.02em;line-height:1.05;padding-bottom:10px}
 .pcard{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:10px;margin:0}
@@ -241,13 +241,14 @@ details .sum{font-size:14px}
 .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden}
 .confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;animation:fall 1.6s ease-in forwards}
 @keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.8}}
-@media (prefers-reduced-motion:reduce){.bub{animation:none;opacity:1;transform:none}.buddy svg{animation:none}}
+@media (prefers-reduced-motion:reduce){.bub{animation:none;opacity:1;transform:none}.buddy #buddy{animation:none}}
 `;
 
 // Inline, animatable version of the mascot: pupils follow the pointer
 // (desktop) or glance at the button (phone); swaps to a happy face on pay.
 export function buddySvg(happy) {
-  return plushSpot({ id: 'buddy', cls: '', attrs: ' id="buddy"', happy, legacy: true });
+  // Spot the plush (stills of the 3D model): .open and .joy swap on pay.
+  return `<span id="buddy" class="buddy3d${happy ? ' happy' : ''}" aria-hidden="true"><img class="open" src="${assetUrl('spot-hi.webp')}" alt="" width="320" height="358" decoding="async"${happy ? ' style="display:none"' : ''}><img class="joy" src="${assetUrl('spot-yay.webp')}" alt="" width="320" height="358" decoding="async"${happy ? '' : ' style="display:none"'}></span>`;
 }
 
 export function payPage({ cart, links, provider, pageUrl, commission = false }) {

@@ -25,6 +25,7 @@ import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
+import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
 import { registerShopifyApp } from './shopifyapp.js';
@@ -313,6 +314,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     ...[400, 600, 800].map((w) => [`bricolage-${w}.woff2`, readFileSync(require.resolve(`@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-${w}-normal.woff2`))]),
     ['caveat-700.woff2', readFileSync(require.resolve('@fontsource/caveat/files/caveat-latin-700-normal.woff2'))],
   ]);
+  registerAssets(app);
   app.get('/fonts/:file', async (req, reply) => {
     const f = Object.hasOwn(fonts, req.params.file) ? fonts[req.params.file] : null;
     if (!f) return reply.code(404).send();

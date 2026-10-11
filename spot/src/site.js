@@ -525,7 +525,7 @@ ${chatWallSection()}
   ${standardsStrip()}
 </div></section>
 
-${noteSection(spotBuddy('note').replace('class="spotb"', 'class="spotb happy"'))}
+${noteSection(spotBuddy('note', { happy: true }))}
 
 <section class="sec alt" id="faq" data-say="Ask me anything. Well, these."><div class="wrap">
   <p class="kicker reveal" style="text-align:center">FAQ</p>

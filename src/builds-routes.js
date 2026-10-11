@@ -216,7 +216,7 @@ export function registerBuildRoutes(app, d) {
         sent = await sendHubEmail({ to: email, subject: build ? `A look at ${build.name}, built by Future Basics` : 'What Future Basics builds', html: hubEmailShell(build ? `A look at ${build.name}` : 'What Future Basics builds',
           `<p>${emailEscape(req.auth.email || 'Future Basics')} invited you to see ${build ? `<strong>${emailEscape(build.name)}</strong>, one of` : 'some of'} the sites and apps Future Basics has built.</p>${note ? `<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>` : ''}<p>Sign in with this email address and we will send you a code. The invite works for ${days} days.</p>${hubButton(link, 'See the builds')}`) }).catch(() => false);
       }
-      await captureLead(pool, { email, source: 'showcase', kind: 'system', text: `Invited to ${build ? build.name : 'the showcase'}${note ? `: ${note}` : ''}`, meta: { buildId: build?.id || null }, actorId: /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null });
+      await captureLead(pool, { email, source: 'showcase', kind: 'system', text: `Invited to ${build ? build.name : 'the showcase'}${note ? `: ${note}` : ''}`, meta: { buildId: build?.id || null, invite: true }, actorId: /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null });
       out.push({ email, sent: Boolean(sent), extended: Boolean(had) });
     }
     return reply.code(201).send({ invited: out });

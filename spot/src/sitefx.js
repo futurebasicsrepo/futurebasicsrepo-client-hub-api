@@ -253,7 +253,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:50;opa
 
 /* footer wave */
 .bye{display:flex;align-items:center;gap:10px;font-family:Hand,cursive;font-size:24px}
-.bye svg{width:44px;height:44px}
+.bye .buddy3d{width:56px;margin:-8px 0 -12px}.bye .buddy3d img{display:block;width:100%;height:auto}
 `;
 
 // ─── Script ─────────────────────────────────────────────────────────────────

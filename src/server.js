@@ -28,6 +28,7 @@ import { cleanPartner, CARD_SCHEMA, CARD_SYSTEM, FIXTURE_CARD } from './booth.js
 import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { registerSalesRoutes } from './sales-routes.js';
+import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -609,6 +610,7 @@ app.get('/builds', sendBuilds);
 app.get('/console-nav.js', (_req, reply) => reply.header('cache-control', 'public, max-age=300').type('application/javascript').send(readFileSync(new URL('./console-nav.js', import.meta.url), 'utf8')));
 app.get('/sales', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sales.html', import.meta.url), 'utf8')));
 registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
+registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
 app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds-admin.html', import.meta.url), 'utf8')));
 registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
 app.get('/admin', sendAdmin);
@@ -5600,6 +5602,7 @@ await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
 if(!(await getSetting('buildReposFilled'))){await backfillBuildRepos(pool).then(async n=>{await setSetting('buildReposFilled',{at:new Date().toISOString(),n});if(n)app.log.info({n},'showcase builds now know where their code lives')}).catch(e=>app.log.warn({err:e.message},'build repositories not filled in'))}
+await seedTemplates(pool).catch(e=>app.log.warn({err:e.message},'starter email templates not added'));
 await seedBuilds(pool).then(n=>{if(n)app.log.info({n},'builds seeded (hidden until reviewed)')}).catch(e=>app.log.warn({err:e.message},'builds not seeded'));
 // One time: the pictures already inside stored packs, published snapshots and version history move out into pack_blobs. New writes go out that way already.
 // Runs in the background and is safe to interrupt (a deploy): the flag is set only after a full pass, and a row with nothing left to move is skipped.
