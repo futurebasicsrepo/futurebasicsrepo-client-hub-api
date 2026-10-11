@@ -475,7 +475,7 @@ export function draftFromDescription(text) {
 // Several picks, best first, so the requester can swipe through stores like
 // a collection page instead of reading one AI answer. Asks for a look ("outfits
 // for Coachella") come back as outfits: whole looks, pieces from any store.
-const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://… the product's own page, not a search or category page", "title": "", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
+const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://… its own page if you saw it, else the store page you found it on", "title": "", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
 const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]}  or  {"kind": "outfits", "outfits": [{"name": "short look name", "why": "one line", "items": [${PRODUCT_HINT}]}]}`;
 export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
 export const MAX_OUTFITS = 4;
@@ -491,7 +491,7 @@ Using web search, find things for sale at US online stores that match. Read it t
 - Otherwise reply with up to ${count} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
 ${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
 ${LOOKUP_SCHEMA_HINT}
-Use an empty list if you can't find specific products with current prices.`;
+Use an empty list only if you found nothing at all for sale that fits; close matches are better than nothing.`;
 }
 
 // Follow-ups: "more" is what they said about the last finds ("in blue",
