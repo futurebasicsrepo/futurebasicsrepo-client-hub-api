@@ -3,7 +3,7 @@
 // goes through esc(), and data handed to scripts goes through json().
 import { HOME_SCREEN_TAGS } from './appicon.js';
 import { AUTH_TOLERANCE_BPS, AUTH_TOLERANCE_MAX_CENTS, cssSafe, usd } from './cart.js';
-import { assetUrl } from './assets.js';
+import { assetUrl, logoFaceCss } from './assets.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -19,6 +19,8 @@ main{max-width:520px;margin:0 auto;padding:20px 16px 64px}
 a{color:inherit}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;font-size:20px;text-decoration:none}
 .dot{width:22px;height:22px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 5px color-mix(in srgb,var(--spot) 22%,transparent)}
+.brand .dot{width:28px;height:28px;flex:none}
+${logoFaceCss('.brand .dot')}
 h1{font-size:34px;line-height:1.05;letter-spacing:-.03em;margin:28px 0 10px}
 h2{font-size:18px;margin:0 0 12px;letter-spacing:-.01em}
 p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}

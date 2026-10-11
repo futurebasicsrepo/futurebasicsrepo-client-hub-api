@@ -2,6 +2,7 @@
 // Visuals are the real product: the share card is rendered by sharecard.js
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
 import { HOME_SCREEN_TAGS } from './appicon.js';
+import { logoFaceCss } from './assets.js';
 import { buddySvg } from './pages.js';
 import { STANDARDS_CSS, standardsStrip } from './standards.js';
 import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, noteSection, storySection } from './sitefx.js';
@@ -52,9 +53,10 @@ nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color
 nav.scrolled{border-bottom-color:var(--line)}
 nav>.wrap{max-width:var(--wrap);display:flex;align-items:center;gap:8px;height:68px;white-space:nowrap}
 .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-.03em;text-decoration:none;flex:none}
-.logo span{width:20px;height:20px;border-radius:50%;background:var(--spot);box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 20%,transparent)}
-/* the logo is Spot's face: two eyes on the dot */
-nav .logo span{background:radial-gradient(circle at 37% 46%,#1b1712 0 1.3px,#fff 1.5px 2.9px,transparent 3.1px),radial-gradient(circle at 63% 46%,#1b1712 0 1.3px,#fff 1.5px 2.9px,transparent 3.1px),var(--spot)}
+.logo span{width:20px;height:20px;flex:none;border-radius:50%;background:var(--spot);box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 20%,transparent)}
+/* the logo is Spot's face: the plush, head only */
+nav .logo span{width:30px;height:30px}
+${logoFaceCss('.logo span')}
 nav .links{display:flex;align-items:center;gap:2px;margin-left:auto;font-weight:600;font-size:15px}
 nav .links>a,nav .navmore summary{display:flex;align-items:center;gap:4px;height:40px;padding:0 12px;border-radius:var(--r-sm);text-decoration:none;color:var(--muted);transition:color .15s,background-color .15s;cursor:pointer}
 nav .links>a:hover,nav .navmore summary:hover,nav .navmore[open] summary{color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
@@ -335,7 +337,7 @@ export function siteNav(active = '') {
 }
 
 export function siteFooter() {
-  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:16px;height:16px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><span class="flinks"><a href="/connect">Add to your AI</a><a href="/new">Make a Spot</a><a href="/agent-card">Your AI’s card</a><a href="/#rules">Rules for your AI</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/standards">Open standards</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></span></div></footer>`;
+  return `<footer><div class="wrap"><a class="logo" href="/" style="font-size:18px"><span style="width:24px;height:24px"></span>Spot</a>${byeFooter(buddyNoId(true))}<span class="sp"></span><span class="flinks"><a href="/connect">Add to your AI</a><a href="/new">Make a Spot</a><a href="/agent-card">Your AI’s card</a><a href="/#rules">Rules for your AI</a><a href="/integrations">Integrations</a><a href="/#agents">For AI builders</a><a href="/integrations#stores">For stores</a><a href="/#trust">Trust</a><a href="/standards">Open standards</a><a href="/#faq">FAQ</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></span></div></footer>`;
 }
 
 // Nav shadow, returning-user CTA, reveal-on-scroll, early-access forms.
