@@ -895,6 +895,28 @@ export async function migrate() {
       updated_at timestamptz not null default now()
     );
     alter table builds add column if not exists links jsonb not null default '[]'::jsonb; -- extra things to see on a build: walkthroughs, demos, drawings
+    -- keeping the showcase current: where the build's code lives (repo_url is the GitHub address; repo_path a folder inside it), when it last changed, and what is new (see src/builds-sync.js)
+    alter table builds add column if not exists repo_path text not null default '';
+    alter table builds add column if not exists auto_publish boolean not null default false;
+    alter table builds add column if not exists last_change_at timestamptz;
+    alter table builds add column if not exists sync_cursor timestamptz;
+    alter table builds add column if not exists synced_at timestamptz;
+    alter table builds add column if not exists sync_error text not null default '';
+    create table if not exists build_updates (
+      id uuid primary key default gen_random_uuid(),
+      build_id uuid not null references builds(id) on delete cascade,
+      ref text not null,
+      source text not null default 'github' check (source in ('github','manual')),
+      raw_title text not null default '',
+      text text not null default '',
+      url text not null default '',
+      status text not null default 'new' check (status in ('new','published','dismissed')),
+      happened_at timestamptz not null default now(),
+      created_at timestamptz not null default now(),
+      published_at timestamptz,
+      unique (build_id, ref)
+    );
+    create index if not exists build_updates_build_idx on build_updates(build_id, status, happened_at desc);
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,

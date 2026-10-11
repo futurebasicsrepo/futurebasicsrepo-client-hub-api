@@ -22,12 +22,12 @@ fi
 export JOURNEY_TMP="$(mktemp -d)"; T="$JOURNEY_TMP"; mkdir -p "$T/uploads"
 [ -z "${PLAYWRIGHT_PATH:-}" ] && [ -d /opt/node22/lib/node_modules/playwright ] && export PLAYWRIGHT_PATH=/opt/node22/lib/node_modules/playwright
 psql "$DATABASE_URL" -qAtc "delete from app_settings where key='techPackBilling'" >/dev/null 2>&1 # start every run with the payment gate on automatic
-for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
+for port in 3123 3124 3125 3126 3127 3128 3129 3130 3131 3132; do for p in $(ss -ltnp 2>/dev/null | grep ":$port " | grep -o 'pid=[0-9]*' | cut -d= -f2); do kill -9 "$p"; done; done
 COMMON=(DATABASE_URL="$DATABASE_URL" JWT_SECRET=smoke-secret UPLOAD_DIR="$T/uploads" FOLLOWUPS_DISABLED=true VENDOR_DATA_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff VENDOR_REVEAL_EMAILS=@chaos.test)
 FIX=scripts/journeys/fixtures/ai-runner.json
 # A: production-like (no dev bypass), fixture assistant, billing on, no Shopify, /start limit lifted so the mistakes are not throttled.
 #    Its connection pool is deliberately tiny (4): any request that holds a database connection while asking for a second one hangs here.
-env "${COMMON[@]}" PG_POOL_MAX=4 HERO_AUTO=off CW_AUTO=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1500 MESH_AUTO=off BUILD_LOOP_THRESHOLD=78 MESH_MIN_SCORE=78 PORT=3123 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=$([ "${JOURNEY_GATE:-on}" = off ] && echo off || echo on) START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
+env "${COMMON[@]}" PG_POOL_MAX=4 HERO_AUTO=off CW_AUTO=off MESH_POLL_MS=300 MESH_FIXTURE_MS=1500 MESH_AUTO=off BUILD_LOOP_THRESHOLD=78 MESH_MIN_SCORE=78 PORT=3123 GITHUB_API_ORIGIN=http://127.0.0.1:3132 CLIENT_HUB_URL=http://127.0.0.1:3123 AI_FIXTURE="$FIX" AI_FIXTURE_DELAY_MS=300 TECH_PACK_BILLING=$([ "${JOURNEY_GATE:-on}" = off ] && echo off || echo on) START_RATE_LIMIT=1000 node src/server.js > "$T/server-j-a.log" 2>&1 & PA=$!
 # the first server creates the tables; the other two start once it is up, so they never race to migrate an empty database
 for i in $(seq 1 120); do curl -sf "http://127.0.0.1:3123/health" >/dev/null && break; sleep 0.5; done
 # B: Shopify configured but unreachable, default limits
