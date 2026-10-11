@@ -1512,5 +1512,63 @@ await journey('J138', 'Money in a browser: Colby is turned away and never sees t
     await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j138-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J141', 'Factories in a browser: the map and list, filters by what they make and their skills, a pin narrows the list, one factory shows its packs, project dates, files and runs, makes and skills save, and a phone fits', async () => {
+  const r = await room('141'), W = 'http://work.localhost:3123', tag = `J141 ${stamp}`;
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const mk = async (name, country, body) => { const s = (await call('/v1/admin/suppliers', { token: kyle, body: { name: `${tag} ${name}`, country } })).json; await call(`/v1/admin/factories/${s.id}`, { method: 'PATCH', token: kyle, body }); return s; };
+  const a = await mk('Garments', 'China', { productTypes: ['top', 'outerwear'], skills: ['cut-sew', 'embroidery'], city: 'Shenzhen' });
+  const b = await mk('Plush', 'China', { productTypes: ['plush'], skills: ['low-moq'], city: 'Dongguan' });
+  await mk('Trims', 'Portugal', { productTypes: ['small'], skills: ['enamel'], city: 'Porto' });
+  sql(`update tech_packs set published_at=now() where product_id='${r.id}'`);
+  await call(`/v1/admin/products/${r.id}/tech-pack/factory`, { token: kyle, body: { supplierId: a.id, mode: 'quote', email: false } });
+  sql(`update projects set status='sampling',milestone='Sample approval',target_date=current_date-4 where id='${r.projectId}'`);
+  sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${r.clientId}','${r.projectId}','${r.id}','admin','${tag}-spec.pdf','${tag}-spec','application/pdf',2048,true)`);
+  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${r.id}','${a.id}','PO-${stamp}',300,'in-production',current_date-2)`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('.fbside a[data-nav]', { timeout: 10000 });
+  await page.click('.fbside a[data-nav=factories]'); await page.waitForURL(/\/factories/, { timeout: 8000 }); await page.waitForSelector('#cards .card', { timeout: 15000 });
+  ok(/Factories/.test(await page.innerText('#app h1')) && await page.locator('#tiles .tile').count() === 4, 'Factories opens from the menu with its four counts');
+  ok(await page.evaluate(() => document.getElementById('land').getAttribute('d').length > 20000) && await page.locator('#pins .pin').count() >= 3, 'the world map is drawn with a pin for each place');
+  // narrow to mine, then by what they make
+  await page.fill('#q', tag); await page.waitForFunction(() => /3 of/.test(document.getElementById('count').textContent), null, { timeout: 5000 });
+  ok(await page.locator('#cards .card').count() === 3, 'searching the name leaves just the three');
+  await page.click('#typeChips [data-type=plush]'); ok(await page.locator('#cards .card').count() === 1 && /Plush/.test(await page.innerText('#cards .card')), 'the Plush chip leaves the plush factory');
+  await page.click('#typeChips [data-type=plush]'); await page.click('#skillChips [data-skill=embroidery]'); ok(await page.locator('#cards .card').count() === 1 && /Garments/.test(await page.innerText('#cards .card')), 'a skill chip leaves the factory with that skill');
+  await page.click('#typeChips [data-type=plush]'); ok(await page.locator('#cards .card').count() === 0 && /No factory matches/.test(await page.innerText('#cards')), 'two filters that no factory meets say so');
+  await page.click('#typeChips [data-type=plush]'); await page.click('#skillChips [data-skill=embroidery]');
+  await page.selectOption('#light', 'late'); ok(await page.locator('#cards .card').count() === 1 && /Something is late/i.test(await page.innerText('#cards .card')), 'the status filter finds the late factory');
+  await page.selectOption('#light', '');
+  // a pin narrows the list
+  await page.click('#pinClear', { trial: true }).catch(() => {}); const pins = page.locator('#pins .pin'); const n = await pins.count();
+  await page.evaluate(() => document.querySelector('#pins .pin').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  ok(await page.locator('#cards .card').count() === 1 && await page.locator('#pinClear').isVisible(), 'clicking a pin lists just the factories in it');
+  await page.click('#pinClear'); ok(await page.locator('#cards .card').count() === 3 && await pins.count() === n, 'clearing the selection brings them back');
+  // zoom
+  const vb0 = await page.getAttribute('#map', 'viewBox'); await page.click('#zoom [data-name="East Asia"]'); const vb1 = await page.getAttribute('#map', 'viewBox'); ok(vb0 !== vb1 && /110/.test(vb1), 'zooming to a region moves the map'); await page.click('#zoom [data-name=World]');
+  // one factory
+  await page.locator('#cards .card', { hasText: 'Garments' }).click(); await page.waitForSelector('#dlg[open] table', { timeout: 8000 });
+  const body = await page.innerText('#dBody');
+  ok(/Sample approval/.test(body) && /sampling/i.test(body) && /late/i.test(body), 'its project shows status, milestone and that the date has passed', body.slice(0, 200));
+  ok(/Waiting for their quote/i.test(body) && /Open pack/i.test(body), 'its pack shows where it stands, with a way into it');
+  ok(new RegExp(`${tag}-spec\\.pdf`).test(body) && await page.locator('#dBody [data-dl]').count() === 1, 'the file shared with the factory is listed with a download');
+  ok(new RegExp(`PO-${stamp}`).test(body) && /in-production/i.test(body), 'its production run is listed and flagged late');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-work.png` }).catch(() => {});
+  // makes and skills
+  await page.click('#dTabs [data-tab=profile]'); await page.waitForSelector('#pform'); await page.click('#pform label.pick:has(input[value=bag])'); await page.click('#pform label.pick:has(input[value=leather])'); await page.fill('#pform [name=otherSkills]', 'waterproof taping');
+  await page.click('#pform [type=submit]'); await page.waitForFunction(() => /Saved/.test(document.getElementById('dMsg').textContent), null, { timeout: 8000 });
+  await page.click('#dClose'); const card = page.locator('#cards .card', { hasText: 'Garments' }); await page.waitForFunction(() => /Bags and cases/.test(document.getElementById('cards').textContent), null, { timeout: 5000 });
+  ok(/Bags and cases/.test(await card.innerText()) && /Leather work/.test(await card.innerText()), 'the new type and skill show on the card');
+  await page.click('#typeChips [data-type=bag]'); ok(await page.locator('#cards .card').count() === 1, 'and the Bags filter now finds it'); await page.click('#typeChips [data-type=bag]');
+  // contact and page link
+  await card.click(); await page.waitForSelector('#dlg[open] #dTabs'); await page.click('#dTabs [data-tab=contact]'); ok(await page.locator('#dBody [data-act=copy]').count() === 1 && await page.locator('#dBody [data-act=rotate]').count() === 1, 'the contact tab offers the factory page link'); await page.click('#dClose');
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-desktop.png`, fullPage: true }).catch(() => {}); await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/factories`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#cards .card', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen');
+    await ph.locator('#cards .card').first().click(); await ph.waitForSelector('#dlg[open]'); ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'the factory dialog also fits');
+    await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

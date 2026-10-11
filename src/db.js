@@ -872,6 +872,14 @@ export async function migrate() {
     alter table partners add column if not exists supplier_id uuid references suppliers(id) on delete set null;
     alter table partners add column if not exists created_by uuid references users(id) on delete set null;
     alter table partners add column if not exists updated_at timestamptz not null default now();
+    -- what a factory makes and where it is (the Factories page and its map): product types and skills from src/factories.js, a pin worked out from the place or set by hand
+    alter table suppliers add column if not exists city text;
+    alter table suppliers add column if not exists website text;
+    alter table suppliers add column if not exists product_types text[] not null default '{}';
+    alter table suppliers add column if not exists skills text[] not null default '{}';
+    alter table suppliers add column if not exists lat numeric(8,4);
+    alter table suppliers add column if not exists lng numeric(8,4);
+    alter table suppliers add column if not exists geo_manual boolean not null default false;
     create sequence if not exists style_number_seq;
     -- each time a published pack is sent to Shopify as a product: what was done, and the prices sent (so a re-export can tell a price the pack moved from one the merchant moved)
     -- the builds showcase: what Future Basics has built, who may see it, and who looked (see src/builds.js)

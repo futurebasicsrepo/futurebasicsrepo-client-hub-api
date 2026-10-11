@@ -1957,4 +1957,65 @@ await journey('J139', 'QuickBooks: connect through Intuit (a signed sign-in only
   } finally { await new Promise(r => store.close(r)); }
 });
 
+await journey('J140', 'Factories: each factory has what it makes, its skills and a place on the map; assigned packs, files, production runs and project dates show where its work stands and whether anything is late', async () => {
+  const room = await newRoom('140'), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), F = (path, o = {}) => call('/v1/admin/factories' + path, { token: kyle, ...o });
+  ok((await call('/v1/admin/factories')).status === 401 && (await call('/v1/admin/factories', { token: room.token })).status === 403 && (await call('/v1/admin/factories/map', { token: room.token })).status === 403, 'signed out people and clients cannot open Factories');
+  const tag = `J140 ${stamp}`, mk = async (name, country) => (await call('/v1/admin/suppliers', { token: kyle, body: { name: `${tag} ${name}`, country } })).json;
+  const a = await mk('Garments', 'China'), b = await mk('Plush', 'China'), c = await mk('Trims', 'Portugal');
+  ok(a.id && b.id && c.id, 'three factories exist');
+
+  // makes and skills, and the pin
+  let r = await F(`/${a.id}`, { method: 'PATCH', body: { productTypes: ['top', 'outerwear', 'bogus'], skills: ['cut-sew', 'embroidery', 'Waterproof Taping'], city: 'Shenzhen, Guangdong', website: 'garments.example.cn', leadTimeDays: 40 } });
+  ok(r.status === 200 && r.json.productTypes.join() === 'top,outerwear' && r.json.skills.join() === 'cut-sew,embroidery,waterproof taping' && r.json.lat === 22.54 && r.json.lng === 114.06 && r.json.website === 'https://garments.example.cn', 'makes, skills and website are saved, a made-up type is dropped, and the pin comes from the city', JSON.stringify(r.json).slice(0, 200));
+  r = await F(`/${b.id}`, { method: 'PATCH', body: { productTypes: ['plush'], skills: ['low-moq'], city: 'Dongguan' } }); ok(r.json.lat === 23.02, 'a second factory is pinned from its own city');
+  r = await F(`/${c.id}`, { method: 'PATCH', body: { productTypes: ['small'], skills: ['enamel'] } }); ok(r.json.lat === 39.4 && r.json.lng === -8.2, 'with no city the pin falls back to the country');
+  ok((await F(`/${a.id}`, { method: 'PATCH', body: { leadTimeDays: 9999 } })).status === 400 && (await F(`/${a.id}`, { method: 'PATCH', body: { lat: 'x', lng: 4 } })).status === 400 && (await F('/not-an-id', { method: 'PATCH', body: {} })).status === 404, 'bad lead times, pins and ids are turned away');
+  r = await F(`/${c.id}`, { method: 'PATCH', body: { lat: '38.7', lng: '-9.1' } }); ok(r.json.geoManual === true && r.json.lat === 38.7, 'a pin set by hand is kept');
+  r = await F(`/${c.id}`, { method: 'PATCH', body: { city: 'Porto' } }); ok(r.json.lat === 38.7, 'a hand-set pin does not move when the city is edited');
+  r = await F(`/${c.id}`, { method: 'PATCH', body: { lat: '', lng: '' } }); ok(r.json.geoManual === false && r.json.lat === 41.15, 'clearing the pin goes back to the city');
+
+  // the list and the map
+  let l = (await F('')).json, mine = l.factories.filter(f => f.name.startsWith(tag));
+  ok(mine.length === 3 && mine.every(f => f.light === 'idle' && f.counts.packs === 0) && l.vocab.productTypes.length >= 4 && l.vocab.skills.some(s => s.key === 'cut-sew') && l.totals.factories >= 3 && l.pins.length >= 2, 'the list has all three, idle, with the vocabulary and pins');
+  const map = (await F('/map')).json.world; ok(map && /^M[\d. ]+L/.test(map.d) && map.d.length > 20000 && map.viewBox, 'the world map is served as one path');
+
+  // assign a pack: it is waiting on their quote
+  const pid = room.productId; sql(`update tech_packs set published_at=now() where product_id='${pid}'`);
+  const as = await call(`/v1/admin/products/${pid}/tech-pack/factory`, { token: kyle, body: { supplierId: a.id, mode: 'quote', email: false } }); ok(as.status === 201, 'a pack is assigned to the first factory', as.status + ' ' + JSON.stringify(as.json).slice(0, 120));
+  let d = (await F(`/${a.id}`)).json;
+  ok(d.packs.length === 1 && d.packs[0].state === 'needs-quote' && d.packs[0].stateLabel === 'Waiting for their quote' && d.factory.counts.needsQuote === 1 && d.factory.light === 'waiting' && /\/tech-packs\//.test(d.packs[0].href) && d.pageUrl, 'the pack shows as waiting for a quote, the factory is amber and has a page link', JSON.stringify(d.packs[0] || {}).slice(0, 160));
+
+  // the project's own status and date
+  const proj = sql(`select p.project_id from products p where p.id='${pid}'`);
+  ok(Boolean(proj), 'the pack sits in a project'); sql(`update projects set status='sampling',milestone='Sample approval',target_date=current_date+3 where id='${proj}'`);
+  d = (await F(`/${a.id}`)).json; ok(d.projects.length === 1 && d.projects[0].status === 'sampling' && d.projects[0].milestone === 'Sample approval' && d.projects[0].late === false && d.projects[0].daysLeft === 3 && d.projects[0].packs.length === 1, 'the project shows its status, milestone and days left');
+  sql(`update projects set target_date=current_date-5 where id='${proj}'`);
+  d = (await F(`/${a.id}`)).json; ok(d.projects[0].late === true && d.factory.light === 'late' && d.factory.counts.lateProjects === 1, 'a slipped project date turns the factory red');
+  sql(`update projects set status='completed' where id='${proj}'`); d = (await F(`/${a.id}`)).json; ok(d.projects[0].late === false && d.factory.light === 'waiting', 'a finished project is no longer late');
+
+  // a quote arrives; a file is shared; a run is late
+  const sh = sql(`select id from tech_pack_shares where supplier_id='${a.id}' and assigned and revoked_at is null`);
+  sql(`insert into factory_quotes(share_id,tech_pack_id,version,company) select s.id,s.tech_pack_id,1,'Journey' from tech_pack_shares s where s.id='${sh}'`);
+  d = (await F(`/${a.id}`)).json; ok(d.packs[0].state === 'quoted' && d.factory.counts.quoted === 1 && d.factory.light === 'active', 'a quote moves the pack to quoted and the factory to green');
+  sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${room.clientId || cid}','${proj}','${pid}','admin','${tag}-spec.pdf','${tag}-spec','application/pdf',2048,true)`);
+  sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${room.clientId || cid}','${proj}','${pid}','admin','${tag}-private.pdf','${tag}-private','application/pdf',2048,false)`);
+  d = (await F(`/${a.id}`)).json; ok(d.files.length === 1 && d.files[0].name === `${tag}-spec.pdf` && /^\/v1\/room-files\/rf%3A/.test(d.files[0].url), 'only the file marked for the factory is listed, with a way to download it', JSON.stringify(d.files).slice(0, 160));
+  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${pid}','${a.id}','PO-${stamp}',300,'in-production',current_date-2)`);
+  d = (await F(`/${a.id}`)).json; ok(d.runs.length === 1 && d.runs[0].late === true && d.runs[0].po === `PO-${stamp}` && d.factory.counts.lateRuns === 1 && d.factory.light === 'late', 'a production run past its date is late and turns the factory red');
+  sql(`update production_runs set status='delivered' where supplier_id='${a.id}'`); d = (await F(`/${a.id}`)).json; ok(d.runs[0].late === false && d.factory.light === 'active', 'a delivered run is not late');
+
+  // the others are not touched, and the list agrees with the detail
+  l = (await F('')).json; const la = l.factories.find(f => f.id === a.id), lb = l.factories.find(f => f.id === b.id);
+  ok(la.counts.packs === 1 && lb.counts.packs === 0 && lb.light === 'idle', 'work shows only on the factory it is assigned to');
+  const dup = l.pins.find(p => p.ids.includes(a.id)); ok(dup && dup.ids.length === 1 && dup.light === 'active' && dup.work === 1 && l.pins.some(p => p.ids.includes(b.id) && p.light === 'idle'), 'each map pin names its factory, its light and the packs in its hands');
+
+  // a factory met at a fair, not a supplier yet
+  const pt = (await call('/v1/admin/partners', { token: kyle, body: { company: `${tag} Fair Mills`, city: 'Hangzhou', makes: 'knit hoodies' } })).json.partner; ok(pt?.id, 'a fair contact is saved');
+  l = (await F('')).json; const fm = l.factories.find(f => f.partnerId === pt.id); ok(fm && fm.isSupplier === false && fm.key === `partner:${pt.id}` && fm.name.endsWith('Fair Mills'), 'a fair contact is listed even though it is not a supplier yet');
+  r = await F(`/${encodeURIComponent(fm.key)}`, { method: 'PATCH', body: { productTypes: ['top'], city: 'Hangzhou', country: 'China' } }); ok(r.status === 200 && r.json.isSupplier === true && r.json.partnerId === pt.id && r.json.lat === 30.27, 'saving its makes adds it as a supplier and pins it');
+  l = (await F('')).json; ok(l.factories.filter(f => f.partnerId === pt.id).length === 1, 'it is listed once after that');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

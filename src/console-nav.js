@@ -28,7 +28,8 @@
       { label: 'Press', href: '/sales#press' },
       { label: 'Automations', href: '/sales#automations' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
-      { label: 'Factories', href: '/admin#partnersSection' },
+      { label: 'Factories', href: '/factories', key: 'factories' },
+      { label: 'Fair contacts', href: '/admin#partnersSection' },
       { label: 'Waiting on approval', href: '/admin#approvals' },
       { label: 'Production attention', href: '/admin#production' },
       { label: 'Assistant learning', href: '/admin#assistantLearning' }] },

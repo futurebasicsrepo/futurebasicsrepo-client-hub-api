@@ -20,6 +20,7 @@ import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTI
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
+import { registerFactoryRoutes } from './factories-routes.js'
 import { qbConfig as qbConfigOf } from './quickbooks.js'
 import { moneyInvoicePdf } from './money-pdf.js'
 import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
@@ -635,6 +636,7 @@ registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
 const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
+app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
 app.get('/intel', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./intel.html', import.meta.url), 'utf8')));
 app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 app.get('/admin', sendAdmin);
@@ -4416,6 +4418,7 @@ app.post('/v1/public/factories',async(req,reply)=>{
   }
   return reply.code(201).send({code:row.code,link,pageUrl});
 });
+registerFactoryRoutes(app, { pool, authenticate, adminOnly, normalizeVerification, ensureFactoryPage, supplierForPartner });
 // The start page names the factory a visitor came through, so they know who will see their pack. Only the company name is given out.
 app.get('/v1/public/factories/:code',async(req,reply)=>{
   if(!throttle(`partnerlookup:${req.ip}`,{limit:120,windowMs:3600_000}))return reply.code(429).send({error:'Too many requests'});
