@@ -5,17 +5,19 @@
 //   housed    /v1/builds/auth/check?slug=…  200 or 401, for a reverse proxy in front of a build we host (Caddy forward_auth), so a private build is private
 import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, STATUS_LABELS } from './builds.js';
 import { captureLead } from './sales-routes.js';
+import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
 
 const COOKIE = 'fb_builds', SESSION_DAYS = 14;
 const IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i, MAX_COVER_CHARS = 4_000_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const cookies = h => Object.fromEntries(String(h || '').split(/;\s*/).filter(Boolean).map(p => { const i = p.indexOf('='); return i < 0 ? [p, ''] : [p.slice(0, i), decodeURIComponent(p.slice(i + 1))]; }));
 
+export { syncBuilds };
 export function registerBuildRoutes(app, d) {
   const { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log } = d;
   const buildsUrl = () => String(process.env.BUILDS_URL || 'https://builds.thefuturebasics.com').replace(/\/$/, '');
   const isStaffEmail = email => email.split('@')[1] === 'thefuturebasics.com';
-  const BUILD_COLUMNS = `id,slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,links,sort_order,updated_at,jsonb_exists(media,'cover') as has_cover`;
+  const BUILD_COLUMNS = `id,slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,links,sort_order,updated_at,repo_path,auto_publish,last_change_at,synced_at,sync_error,jsonb_exists(media,'cover') as has_cover`;
 
   // everything we know about an address: staff, an existing client, and its invites
   async function viewerFor(email) {
@@ -33,6 +35,7 @@ export function registerBuildRoutes(app, d) {
   const needViewer = async (req, reply) => { const v = await sessionOf(req); if (!v) { reply.code(401).send({ error: 'Sign in to see the builds', code: 'SIGN_IN' }); return null; } return v; };
   const shape = (b, withDetail = false) => ({
     id: b.id, slug: b.slug, name: b.name, tagline: b.tagline, sector: b.sector, status: b.status, statusLabel: STATUS_LABELS[b.status] || b.status, hosting: b.hosting, stack: b.stack || [],
+    updatedAt: b.repo_url && b.last_change_at ? b.last_change_at : null,
     coverUrl: b.has_cover ? `/v1/builds/${b.slug}/cover?v=${new Date(b.updated_at).getTime()}` : '',
     ...(withDetail ? { summary: b.summary, highlights: b.highlights || [], hasRepo: Boolean(b.repo_url), hasLive: Boolean(b.live_url), links: (b.links || []).map(l => ({ label: l.label })) } : {})
   });
@@ -101,7 +104,8 @@ export function registerBuildRoutes(app, d) {
     const b = (await allBuilds()).find(x => x.slug === req.params.slug);
     if (!b || !canSee(b, v)) return reply.code(404).send({ error: 'Build not found' });
     await logView(v, b, 'open', req).catch(e => log.warn({ err: e.message }, 'build view not recorded'));
-    return { build: shape(b, true) };
+    const news = (await pool.query(`select text, coalesce(published_at, happened_at) as at from build_updates where build_id=$1 and status='published' order by happened_at desc limit 6`, [b.id])).rows;
+    return { build: { ...shape(b, true), news } };
   });
   app.get('/v1/builds/:slug/cover', async (req, reply) => {
     const v = await needViewer(req, reply); if (!v) return;
@@ -134,14 +138,15 @@ export function registerBuildRoutes(app, d) {
   app.get('/v1/admin/builds', { preHandler: pre }, async (_req) => {
     const rows = (await pool.query(`select ${BUILD_COLUMNS},
       (select count(*) from build_invites i where i.build_id=builds.id and i.revoked_at is null and i.expires_at>now())::int invites,
-      (select count(*) from build_views v where v.build_id=builds.id)::int views from builds order by sort_order,name`)).rows;
+      (select count(*) from build_views v where v.build_id=builds.id)::int views,
+      (select count(*) from build_updates u where u.build_id=builds.id and u.status='new')::int new_updates from builds order by sort_order,name`)).rows;
     return { builds: rows.map(b => ({ ...b, coverUrl: b.has_cover ? `/v1/admin/builds/${b.id}/cover?v=${new Date(b.updated_at).getTime()}` : '' })) };
   });
   app.post('/v1/admin/builds', { preHandler: pre }, async (req, reply) => {
     const r = cleanBuild(req.body); if (r.error) return reply.code(422).send({ error: r.error });
     const v = r.value; const taken = await pool.query('select 1 from builds where slug=$1', [v.slug]); if (taken.rowCount) return reply.code(409).send({ error: 'Another build already has that address' });
-    const row = (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order,links) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
-      [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', v.visibility || 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order ?? 100, JSON.stringify(v.links || [])])).rows[0];
+    const row = (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order,links,repo_path,auto_publish) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
+      [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', v.visibility || 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order ?? 100, JSON.stringify(v.links || []), v.repo_path || '', v.auto_publish === true])).rows[0];
     return reply.code(201).send({ id: row.id });
   });
   app.put('/v1/admin/builds/:id', { preHandler: pre }, async (req, reply) => {
@@ -165,6 +170,28 @@ export function registerBuildRoutes(app, d) {
     const row = (await pool.query('select media from builds where id=$1', [req.params.id])).rows[0];
     const m = row?.media?.cover && /^data:(image\/[a-z]+);base64,(.+)$/i.exec(row.media.cover); if (!m) return reply.code(404).send({ error: 'No picture' });
     return reply.header('cache-control', 'private, max-age=60').type(m[1]).send(Buffer.from(m[2], 'base64'));
+  });
+
+  // keeping the showcase current: what changed in each build's code since the last look (see builds-sync.js)
+  const runSync = only => syncBuilds(pool, { only, log, fetchImpl: d.fetchImpl || fetch });
+  app.post('/v1/admin/builds/sync', { preHandler: pre }, async (req) => ({ ...(await runSync(req.body?.buildId || null)) }));
+  app.get('/v1/admin/builds/updates', { preHandler: pre }, async (req) => {
+    const status = ['new', 'published', 'dismissed'].includes(req.query?.status) ? req.query.status : 'new';
+    return { updates: (await pool.query(`select u.id,u.build_id,b.name build_name,b.slug build_slug,u.source,u.raw_title,u.text,u.url,u.status,u.happened_at,u.published_at from build_updates u join builds b on b.id=u.build_id where u.status=$1 order by u.happened_at desc limit 200`, [status])).rows };
+  });
+  app.put('/v1/admin/builds/updates/:id', { preHandler: pre }, async (req, reply) => {
+    const status = req.body?.status, text = req.body?.text === undefined ? null : cleanChangeTitle(req.body.text);
+    if (status !== undefined && !['new', 'published', 'dismissed'].includes(status)) return reply.code(422).send({ error: 'Use published, dismissed or new' });
+    if (text !== null && !text) return reply.code(422).send({ error: 'Write the line a visitor will read' });
+    if (status === undefined && text === null) return reply.code(400).send({ error: 'Nothing to change' });
+    const r = await pool.query(`update build_updates set text=coalesce($2,text), status=coalesce($3,status), published_at=case when coalesce($3,status)='published' then coalesce(published_at,now()) else null end where id=$1 returning id`, [req.params.id, text, status ?? null]);
+    return r.rowCount ? { ok: true } : reply.code(404).send({ error: 'Update not found' });
+  });
+  // a line written by hand (a change that did not come through GitHub): published straight away
+  app.post('/v1/admin/builds/:id/updates', { preHandler: pre }, async (req, reply) => {
+    const text = cleanChangeTitle(req.body?.text); if (!text) return reply.code(422).send({ error: 'Write the line a visitor will read' });
+    const r = await pool.query(`insert into build_updates(build_id,ref,source,text,status,published_at) select id,'manual:'||gen_random_uuid()::text,'manual',$2,'published',now() from builds where id=$1 returning id`, [req.params.id, text]);
+    return r.rowCount ? reply.code(201).send({ id: r.rows[0].id }) : reply.code(404).send({ error: 'Build not found' });
   });
 
   // invites: who may sign in and what they may see
@@ -207,6 +234,16 @@ export async function seedBuilds(pool) {
     const r = cleanBuild({ ...b, visibility: 'hidden', sortOrder: 10 + i * 10 }); if (r.error) continue; const v = r.value;
     await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict (slug) do nothing`,
       [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order]); n++;
+  }
+  return n;
+}
+
+// Builds that were seeded before the showcase tracked where their code lives learn it once (only where staff have not set anything).
+export async function backfillBuildRepos(pool) {
+  let n = 0;
+  for (const b of SEED_BUILDS) {
+    if (!b.repoUrl) continue;
+    n += (await pool.query(`update builds set repo_url=$2, repo_path=$3 where slug=$1 and repo_url='' and repo_path=''`, [b.slug, b.repoUrl, b.repoPath || ''])).rowCount;
   }
   return n;
 }

@@ -671,6 +671,11 @@ await journey('J109', 'the builds showcase in a browser: sign-in gate, the galle
   await sp.selectOption('#fVis', 'hidden'); await sp.click('#fSave'); await sp.waitForFunction(() => !document.getElementById('dlg').open, null, { timeout: 8000 });
   ok(sql(`select visibility from builds where slug like 'gallery-${tag}%'`) === 'hidden', 'changing visibility saves');
   ok(sql(`select jsonb_array_length(links) from builds where slug like 'gallery-${tag}%'`) === '2', 'and so does adding a link');
+  await sp.click('.tab[data-t="updates"]'); await sp.waitForSelector('#updList', { state: 'visible', timeout: 5000 });
+  ok(await sp.locator('#syncNow').isVisible() && /Nothing is waiting|from/.test(await sp.innerText('#updList')) && await sp.locator('#manBuild option').count() >= 1, 'the What’s new tab has the check button, the queue and a way to add a line by hand');
+  await sp.click(`.tab[data-t="builds"]`); await sp.click(`.row:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
+  await sp.fill('#fPath', 'sites/demo'); await sp.check('#fAuto'); await sp.click('#fSave'); await sp.waitForFunction(() => !document.getElementById('dlg').open, null, { timeout: 8000 });
+  ok(sql(`select repo_path || '|' || auto_publish from builds where slug like 'gallery-${tag}%'`) === 'sites/demo|true', 'the folder and the publish-by-itself switch save from the editor');
   await sp.click('.tab[data-t="invites"]'); await sp.fill('#invEmails', `ui-guest-${tag}@chaos.test`); await sp.fill('#invDays', '3'); await sp.click('#invGo');
   await sp.waitForFunction(t => document.getElementById('invList')?.innerText.includes(t), `ui-guest-${tag}`, { timeout: 8000 }); ok(true, 'an invite appears in the list');
   ok(Number(sql(`select count(*) from build_invites where email='ui-guest-${tag}@chaos.test'`)) === 1, 'and is stored');

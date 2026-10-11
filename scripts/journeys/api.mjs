@@ -808,4 +808,90 @@ await journey('J111', 'the Sales OS: a person who looks at a build becomes a con
   await call(`/v1/admin/builds/${build.json.id}`, { token: admin, method: 'DELETE' });
 });
 
+await journey('J110', 'the showcase follows the apps: a merged change to a build is noticed, queued for staff in plain words, published when they say (or by itself), and a repository that cannot be read says so without stopping the rest', async () => {
+  const http = await import('node:http');
+  const gh = { pulls: [], files: {}, lastCommit: new Date().toISOString(), missing: new Set(['missing']) };
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x'), p = u.pathname, send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+    const m = /^\/repos\/mock\/([^/]+)(\/.*)?$/.exec(p); if (!m) return send(404, {});
+    if (gh.missing.has(m[1])) return send(404, { message: 'Not Found' });
+    if (!m[2]) return send(200, { default_branch: 'main' });
+    if (m[2] === '/commits') return send(200, [{ commit: { committer: { date: gh.lastCommit } } }]);
+    if (m[2] === '/pulls') return send(200, gh.pulls);
+    const f = /^\/pulls\/(\d+)\/files$/.exec(m[2]); if (f) return send(200, (gh.files[f[1]] || []).map(filename => ({ filename })));
+    send(404, {});
+  });
+  await new Promise(r => server.listen(3132, '127.0.0.1', r));
+  try {
+    const room = await newRoom('110', { wait: false });
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const tag = `s${stamp}`, jar = {};
+    const as = async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { ...(jar.c ? { Cookie: jar.c } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const sc = r.headers.get('set-cookie'); if (sc) jar.c = sc.split(';')[0]; const t = await r.text(); let json = {}; try { json = JSON.parse(t); } catch {} return { status: r.status, json, text: t }; };
+    await as('/v1/builds/auth/code', { body: { email: room.email } }); await sleep(150); const sign = await as('/v1/builds/auth/verify', { body: { email: room.email, code: codeFrom(LOG, room.email) } }); ok(sign.status === 200, 'setup: a client can see the showcase', sign.status);
+
+    const made = await call('/v1/admin/builds', { token: admin, body: { name: `Followed ${tag}`, visibility: 'listed', status: 'live', repoUrl: 'https://github.com/mock/app', repoPath: 'sub' } });
+    const broken = await call('/v1/admin/builds', { token: admin, body: { name: `Broken ${tag}`, visibility: 'hidden', repoUrl: 'https://github.com/mock/missing' } });
+    ok(made.status === 201 && broken.status === 201, 'setup: a build that lives in a folder of a repository, and one pointing at a repository that is not there');
+    const list = async () => (await call('/v1/admin/builds', { token: admin })).json.builds; const mine = async () => (await list()).find(b => b.id === made.json.id);
+    const slugOf = sql(`select slug from builds where id='${made.json.id}'`);
+    ok((await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'PUT', body: { repoPath: '../etc' } })).status === 200 && (await mine()).repo_path === '', 'a folder that tries to leave the repository is stored as nothing');
+    await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'PUT', body: { repoPath: '/sub/' } }); ok((await mine()).repo_path === 'sub', 'and a tidy one is kept');
+
+    // first look: records the time and the last change, queues nothing
+    const first = await call('/v1/admin/builds/sync', { token: admin, body: { buildId: made.json.id } });
+    ok(first.status === 200 && first.json.checked === 1 && first.json.queued === 0 && first.json.failed === 0, 'the first look checks the build and queues nothing from the past', first.json);
+    const b1 = await mine(); ok(b1.synced_at && b1.last_change_at && b1.sync_error === '', 'it knows when the code last changed and that the look worked', b1);
+    ok(((await as('/v1/builds')).json.builds.find(b => b.slug === slugOf) || {}).updatedAt, 'and a visitor sees when the build was last updated');
+
+    // a change that touches the build, one that does not
+    const soon = () => new Date(Date.now() + 5000).toISOString();
+    gh.pulls = [{ number: 21, title: 'feat: Orders now text you when they ship (#21)', merged_at: soon(), html_url: 'https://github.com/mock/app/pull/21' }, { number: 22, title: 'docs: readme', merged_at: soon(), html_url: 'https://github.com/mock/app/pull/22' }];
+    gh.files = { 21: ['sub/orders.js', 'package.json'], 22: ['README.md'] };
+    const second = await call('/v1/admin/builds/sync', { token: admin, body: { buildId: made.json.id } });
+    ok(second.json.queued === 1, 'a merged change that touched the build is queued, and one that did not is ignored', second.json);
+    const waiting = (await call('/v1/admin/builds/updates?status=new', { token: admin })).json.updates.filter(u => u.build_id === made.json.id);
+    ok(waiting.length === 1 && waiting[0].text === 'Orders now text you when they ship' && /pull\/21/.test(waiting[0].url) && /^feat:/.test(waiting[0].raw_title), 'staff see it in plain words, with the original title and the GitHub address', waiting);
+    ok(((await as(`/v1/builds/${slugOf}`)).json.build.news || []).length === 0, 'visitors see nothing of it until it is published');
+    ok((await mine()).new_updates === 1, 'the build list says one is waiting');
+
+    // publish, edited
+    ok((await call(`/v1/admin/builds/updates/${waiting[0].id}`, { token: admin, method: 'PUT', body: { status: 'bogus' } })).status === 422 && (await call(`/v1/admin/builds/updates/${waiting[0].id}`, { token: admin, method: 'PUT', body: { text: '   ' } })).status === 422, 'a bad status or an empty line is refused');
+    ok((await call(`/v1/admin/builds/updates/${waiting[0].id}`, { token: admin, method: 'PUT', body: { status: 'published', text: 'Orders now text you the moment they ship' } })).status === 200, 'staff publish it with their own words');
+    const seen = await as(`/v1/builds/${slugOf}`); const text = JSON.stringify(seen.json);
+    ok(seen.json.build.news.length === 1 && seen.json.build.news[0].text === 'Orders now text you the moment they ship', 'visitors read the edited line under what is new', seen.json.build.news);
+    ok(!/github|mock\/app|pull\/21|#21|feat:|raw_title|sync_error|repo_path/i.test(text), 'and nothing of the pull request, the repository or the sync reaches them');
+    ok((await call('/v1/admin/builds/sync', { token: admin, body: { buildId: made.json.id } })).json.queued === 0, 'looking again finds nothing new and does not queue the same change twice');
+
+    // automatic
+    await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'PUT', body: { autoPublish: true } });
+    gh.pulls.unshift({ number: 23, title: 'Fix: refunds show the right total', merged_at: soon(), html_url: 'https://github.com/mock/app/pull/23' }); gh.files[23] = ['sub/refunds.js'];
+    const auto = await call('/v1/admin/builds/sync', { token: admin, body: { buildId: made.json.id } });
+    ok(auto.json.published === 1 && auto.json.queued === 0, 'a build set to publish by itself publishes straight away', auto.json);
+    ok((await as(`/v1/builds/${slugOf}`)).json.build.news.map(n => n.text).join('|') === 'Refunds show the right total|Orders now text you the moment they ship', 'newest first');
+
+    // dismiss
+    await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'PUT', body: { autoPublish: false } });
+    gh.pulls.unshift({ number: 24, title: 'chore: tidy', merged_at: soon(), html_url: 'https://github.com/mock/app/pull/24' }); gh.files[24] = ['sub/x.js'];
+    await call('/v1/admin/builds/sync', { token: admin, body: { buildId: made.json.id } });
+    const tidy = (await call('/v1/admin/builds/updates?status=new', { token: admin })).json.updates.find(u => u.build_id === made.json.id);
+    ok(tidy && (await call(`/v1/admin/builds/updates/${tidy.id}`, { token: admin, method: 'PUT', body: { status: 'dismissed' } })).status === 200 && ((await as(`/v1/builds/${slugOf}`)).json.build.news || []).length === 2, 'a dismissed change never reaches visitors');
+    ok((await call('/v1/admin/builds/updates?status=dismissed', { token: admin })).json.updates.some(u => u.id === tidy.id), 'but staff can still find it');
+
+    // by hand
+    const manual = await call(`/v1/admin/builds/${made.json.id}/updates`, { token: admin, body: { text: 'New look for the order screen' } });
+    ok(manual.status === 201 && (await as(`/v1/builds/${slugOf}`)).json.build.news.some(n => n.text === 'New look for the order screen'), 'a line staff write by hand is published at once');
+    ok((await call(`/v1/admin/builds/00000000-0000-0000-0000-000000000000/updates`, { token: admin, body: { text: 'x' } })).status === 404, 'and for a build that is not there it says so');
+
+    // a repository that cannot be read does not stop the others
+    const all = await call('/v1/admin/builds/sync', { token: admin, body: {} });
+    ok(all.json.failed >= 1 && all.json.errors.some(e => e.startsWith(`Broken ${tag}`) && /cannot see this repository/.test(e)), 'a repository GitHub cannot see is reported by build name, in words staff can act on', all.json);
+    const bb = (await list()).find(b => b.id === broken.json.id); ok(/cannot see this repository/.test(bb.sync_error), 'and the build list shows the problem on that build');
+    ok((await mine()).sync_error === '', 'while the build next to it carries on');
+
+    // who may do this
+    ok((await call('/v1/admin/builds/sync', { token: room.token, body: {} })).status === 403 && (await as('/v1/admin/builds/updates')).status === 401, 'clients and showcase visitors cannot use any of it');
+    for (const id of [made, broken]) await call(`/v1/admin/builds/${id.json.id}`, { token: admin, method: 'DELETE' });
+  } finally { await new Promise(r => server.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

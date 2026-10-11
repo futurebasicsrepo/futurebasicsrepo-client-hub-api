@@ -28,7 +28,7 @@ import { cleanPartner, CARD_SCHEMA, CARD_SYSTEM, FIXTURE_CARD } from './booth.js
 import { draftElectronics, applyElectronicsDraft } from './elecdraft.js';
 import { cutoutEnabled, cutoutProvider, cutoutFromPhoto, placeCutout } from './cutout.js';
 import { registerSalesRoutes } from './sales-routes.js';
-import { registerBuildRoutes, seedBuilds } from './builds-routes.js';
+import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -608,7 +608,7 @@ app.get('/builds', sendBuilds);
 app.get('/sales', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./sales.html', import.meta.url), 'utf8')));
 registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds-admin.html', import.meta.url), 'utf8')));
-registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log });
+registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);
@@ -5597,6 +5597,7 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
+if(!(await getSetting('buildReposFilled'))){await backfillBuildRepos(pool).then(async n=>{await setSetting('buildReposFilled',{at:new Date().toISOString(),n});if(n)app.log.info({n},'showcase builds now know where their code lives')}).catch(e=>app.log.warn({err:e.message},'build repositories not filled in'))}
 await seedBuilds(pool).then(n=>{if(n)app.log.info({n},'builds seeded (hidden until reviewed)')}).catch(e=>app.log.warn({err:e.message},'builds not seeded'));
 // One time: the pictures already inside stored packs, published snapshots and version history move out into pack_blobs. New writes go out that way already.
 // Runs in the background and is safe to interrupt (a deploy): the flag is set only after a full pass, and a row with nothing left to move is skipped.
@@ -5606,6 +5607,8 @@ if(!(await getSetting('packPicturesMoved'))){
 // Background jobs, each tracked so the platform page can show when it last ran and whether it failed.
 const jobEvery = (name, every, fn, { delay = null } = {}) => { const run = trackJob(name, every, fn); setInterval(run, every).unref(); if (delay) setTimeout(run, delay).unref(); return run; };
 const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
+// The showcase follows the apps: hourly, look at each build's repository for merged changes (needs a GitHub token to read private repositories; 'Sync now' on the builds page works without the job)
+if(process.env.BUILDS_GITHUB_TOKEN||process.env.GITHUB_TOKEN)jobEvery('Showcase update sync', 60 * 60 * 1000, async()=>{const r=await syncBuilds(pool,{log:app.log,fetchImpl:(u,o)=>trackedFetch('github',u,o)});return r.queued+r.published}, { delay: 2 * 60 * 1000 });
 if (process.env.FOLLOWUPS_DISABLED !== 'true') jobEvery('Photo follow-up emails', 15 * 60 * 1000, runPhotoFollowups); else declareJob('Photo follow-up emails', 15 * 60 * 1000, 'switched off (FOLLOWUPS_DISABLED)');
 if (process.env.NURTURE_DISABLED !== 'true') jobEvery('Follow-up email sequence', 15 * 60 * 1000, runNurture); else declareJob('Follow-up email sequence', 15 * 60 * 1000, 'switched off (NURTURE_DISABLED)');
 jobEvery('Assistant recovery', 5 * 60 * 1000, runAiRecovery, { delay: 15 * 1000 });
