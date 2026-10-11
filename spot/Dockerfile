@@ -8,4 +8,4 @@ COPY src ./src
 RUN mkdir -p /data
 ENV NODE_ENV=production PORT=3000 SPOT_DB=/data/spot.db
 EXPOSE 3000
-CMD ["npm","start"]
+CMD ["node","--disable-warning=ExperimentalWarning","src/server.js"]

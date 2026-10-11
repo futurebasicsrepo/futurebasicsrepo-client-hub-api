@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { createBlobLayer, externalize } from './pack-blobs.js';
 
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -14,12 +15,46 @@ export const pool = new pg.Pool({
 pool.on('connect', client => client.on('error', e => { client.__dead = true; console.error('postgres client error:', e.message); }));
 pool.on('error', e => console.error('postgres pool error:', e.message));
 const connectOnce = pool.connect.bind(pool);
+// Big pictures are kept out of the JSON that goes into the database (see pack-blobs.js): every query through the pool or a checked-out client has them swapped for
+// references on the way in and back into the same data URLs on the way out, so the rest of the service never sees the difference.
+const rawQuery = pool.query.bind(pool);
+export const packBlobs = createBlobLayer(rawQuery);
+pool.query = packBlobs.wrap(rawQuery);
 pool.connect = async (...args) => {
   if (args.length) return connectOnce(...args);
   const client = await connectOnce(), release = client.release.bind(client);
-  client.release = err => release(err ?? (client.__dead ? true : undefined));
+  client.query = packBlobs.wrap(client.query.bind(client));
+  client.release = err => { delete client.query; return release(err ?? (client.__dead ? true : undefined)); };
   return client;
 };
+
+// Moves the pictures already inside stored packs, published snapshots and version history out into pack_blobs. Safe to run again and while the service is in use:
+// each row is locked while it is rewritten, a row with nothing left to move is skipped, and updated_at (the mark of a person's last edit) is left alone.
+export async function migratePackPictures({ log = console, pauseMs = 25 } = {}) {
+  const targets = [['tech_packs', 'id', 'data'], ['tech_packs', 'id', 'published_data'], ['tech_pack_versions', 'id', 'data']];
+  const out = { rows: 0, moved: 0, pictures: 0, bytesBefore: 0, bytesAfter: 0 };
+  for (const [table, idCol, col] of targets) {
+    const ids = (await rawQuery(`select ${idCol}::text id from ${table} where ${col} is not null order by ${idCol}`)).rows.map(r => r.id);
+    for (const id of ids) {
+      const client = await connectOnce();
+      try {
+        await client.query('begin');
+        const row = (await client.query(`select ${col} v, pg_column_size(${col}) size from ${table} where ${idCol}=$1 for update`, [id])).rows[0];
+        out.rows++;
+        const blobs = new Map(), next = row && row.v ? externalize(row.v, blobs) : null;
+        if (row && next && next !== row.v) {
+          await packBlobs.save(blobs);
+          const after = (await client.query(`update ${table} set ${col}=$2 where ${idCol}=$1 returning pg_column_size(${col}) size`, [id, next])).rows[0];
+          out.moved++; out.pictures += blobs.size; out.bytesBefore += Number(row.size); out.bytesAfter += Number(after.size);
+        }
+        await client.query('commit');
+      } catch (e) { await client.query('rollback').catch(() => {}); log.error(`pack pictures not moved for ${table}.${col} ${id}: ${e.message}`); }
+      finally { client.release(); }
+      if (pauseMs) await new Promise(r => setTimeout(r, pauseMs));
+    }
+  }
+  return out;
+}
 
 export async function migrate() {
   await pool.query(`
@@ -882,6 +917,15 @@ export async function migrate() {
     );
     create index if not exists build_views_build_idx on build_views(build_id, created_at desc);
     create index if not exists build_views_email_idx on build_views(lower(email), created_at desc);
+    -- pictures kept out of the pack JSON, once each, keyed by the hash of their bytes (see src/pack-blobs.js)
+    create table if not exists pack_blobs (
+      hash text primary key,
+      mime text not null,
+      kind text not null default 'bin',
+      bytes bytea not null,
+      size integer not null,
+      created_at timestamptz not null default now()
+    );
     create table if not exists shopify_exports (
       id uuid primary key default gen_random_uuid(),
       product_id uuid not null references products(id) on delete cascade,

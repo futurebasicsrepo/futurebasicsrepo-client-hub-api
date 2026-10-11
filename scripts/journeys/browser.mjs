@@ -155,7 +155,9 @@ await journey('J33', 'message center on a phone: list → thread → send, reply
   await page.setInputFiles('#mcFile', `${FX}/ig-screenshot.png`); ok(await page.locator('#mcFileBar').isVisible() && /ig-screenshot/.test(await page.textContent('#mcFileName')), 'a chosen file shows above the box'); await page.click('#mcSendBtn');
   await page.waitForSelector('.mc-file', { timeout: 10000 }); ok(/ig-screenshot\.png/.test(await page.textContent('.mc-file')), 'the upload appears as an attachment in the thread');
   ok(await page.$eval('.mc-msgs', e => e.scrollHeight - e.scrollTop - e.clientHeight < 40), 'the thread stays scrolled to the newest message');
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth); ok(overflow <= 1, 'nothing overflows the phone width', overflow);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  const wide = overflow > 1 ? await page.evaluate(() => [...document.querySelectorAll('body *')].map(e => ({ e, r: e.getBoundingClientRect() })).filter(x => x.r.right > innerWidth + 1 && x.r.width > 0).slice(0, 6).map(x => `${x.e.tagName.toLowerCase()}${x.e.id ? '#' + x.e.id : ''}.${String(x.e.className).slice(0, 40)} right=${Math.round(x.r.right)} ${getComputedStyle(x.e).position}`)) : [];
+  ok(overflow <= 1, 'nothing overflows the phone width', { overflow, wide });
   await page.click('.mc-back'); ok(await page.locator('.mc-list').isVisible() && await page.locator('.mc-thread').isHidden(), 'back returns to the list');
   await page.waitForSelector('.mc-row:has-text("Uploaded ig-screenshot")', { timeout: 10000 }).catch(() => {});
   ok(await page.locator('.mc-row:has-text("Uploaded ig-screenshot")').count() >= 1 && await page.locator('.mc-row:has-text("Uploaded ig-screenshot") .mc-badge').count() === 0, 'and the conversation now previews our last message ("You: …") with no unread badge');

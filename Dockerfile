@@ -6,4 +6,4 @@ COPY src ./src
 RUN mkdir -p /data/uploads
 ENV NODE_ENV=production PORT=3000 UPLOAD_DIR=/data/uploads
 EXPOSE 3000
-CMD ["npm","start"]
+CMD ["node","src/server.js"]
