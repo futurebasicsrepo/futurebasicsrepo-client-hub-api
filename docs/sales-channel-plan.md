@@ -35,8 +35,8 @@ Input a URL of a weak site; get v1/v2/v3 rebuilds.
 
 ## Order of work
 
-1. Showcase (done in this PR).
-2. CRM core + email send/receive + showcase activity feeding contacts.
+1. Showcase (done; it now follows app updates from GitHub, see `builds-showcase.md`).
+2. CRM core (done, see `sales-os.md`: contacts, deals, tasks, showcase leads), then email send/receive.
 3. Automations engine with the first three flows.
 4. Rebuild engine behind staff approval.
 5. Chat widget, opportunity finder, press comms.

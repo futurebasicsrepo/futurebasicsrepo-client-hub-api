@@ -683,4 +683,61 @@ await journey('J109', 'the builds showcase in a browser: sign-in gate, the galle
   await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'DELETE' });
 });
 
+await journey('J112', 'the Sales page in a browser: Today, adding a contact, logging and tasks from its card, moving a deal across the board (select and drag), search, and a phone', async () => {
+  const r = await room('112', { wait: false }), tag = `sl${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const W = 'http://work.localhost:3123';
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept('Went with their nephew'));
+  await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.waitForSelector('.tiles', { timeout: 10000 });
+  ok(/Open pipeline/.test(await page.innerText('.tiles')) && /Do these/.test(await page.innerText('#t-today')) && /Going quiet/.test(await page.innerText('#t-today')), 'Today shows the pipeline numbers, what to do, who is warm and what is going quiet');
+
+  // add a contact (and a deal for them) from the page
+  await page.click('.tab[data-t="contacts"]'); await page.click('#newContact'); await page.waitForSelector('#ndlg[open]');
+  await page.fill('#nName', `Dana ${tag}`); await page.fill('#nEmail', `dana-${tag}@salon.test`); await page.fill('#nCompany', `Salon ${tag}`); await page.fill('#nTags', 'vip'); await page.click('#nform button[type=submit]');
+  await page.waitForSelector('#cdlg[open] #aGo', { timeout: 8000 });
+  ok(/Added to the CRM/.test(await page.innerText('#cdlg')) && await page.locator('#cdlg .item.click:has-text("new project")').count() === 1, 'the new contact opens with its timeline and the deal that was started for them');
+  await page.fill('#aText', 'Loved the spa concept, wants a quote'); await page.selectOption('#aKind', 'call'); await page.click('#aGo'); await page.waitForFunction(() => /Loved the spa concept/.test(document.querySelector('#cdlg').innerText), null, { timeout: 8000 });
+  ok(/call/i.test(await page.innerText('#cdlg .timeline')), 'a call logged from the card appears on the timeline');
+  await page.fill('#tTitle', 'Send the proposal'); await page.fill('#tDue', '2020-01-02'); await page.click('#tGo'); await page.waitForFunction(() => /Send the proposal/.test(document.querySelector('#cTasks').innerText), null, { timeout: 8000 });
+  ok(sql(`select count(*) from sales_tasks t join sales_contacts c on c.id=t.contact_id where c.email='dana-${tag}@salon.test' and t.done_at is null`) === '1', 'a task added from the card is saved');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-contact.png` }).catch(() => {});
+  await page.fill('#ePhone', '555-0100'); await page.click('#eSave'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#eMsg').textContent), null, { timeout: 5000 });
+  ok(sql(`select phone from sales_contacts where email='dana-${tag}@salon.test'`) === '555-0100', 'edited details save');
+  await page.keyboard.press('Escape');
+
+  // search finds them; Today shows the overdue task
+  await page.fill('#q', `dana-${tag}`); await page.waitForFunction(t => document.querySelectorAll('#cList tr.click').length === 1 && document.querySelector('#cList').innerText.includes(t), `Dana ${tag}`, { timeout: 8000 });
+  ok(true, 'searching narrows the list to them');
+  await page.fill('#q', ''); await page.click('.tab[data-t="today"]'); await page.waitForSelector('#t-today .item:has-text("Send the proposal")', { timeout: 8000 }); // the tab re-fetches; wait for the new task, not for the old render
+  ok(await page.locator(`#t-today .item:has-text("Send the proposal") .chip.late`).count() === 1, 'the overdue task is on Today, marked overdue', (await page.innerText('#t-today')).replace(/\s+/g, ' ').slice(0, 400));
+  await page.check('#t-today input[data-done]:near(:text("Send the proposal"))').catch(() => {});
+
+  // the board
+  await page.click('.tab[data-t="pipeline"]'); await page.waitForSelector('#board .card');
+  const card = page.locator(`#board .card:has-text("Salon ${tag}: new project")`); ok(await card.count() === 1 && await page.locator('.col[data-stage="new"] .card:has-text("new project")').count() >= 1, 'the deal is on the board under New');
+  await card.locator('select').selectOption('meeting'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="meeting"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
+  ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'meeting', 'moving it with the menu moves it');
+  await page.dragAndDrop(`#board .card:has-text("Salon ${tag}: new project")`, '.col[data-stage="proposal"]'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="proposal"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
+  ok(sql(`select stage from sales_deals where title='Salon ${tag}: new project'`) === 'proposal', 'dragging it to another column moves it');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-board.png` }).catch(() => {});
+
+  await page.locator(`#board .card:has-text("Salon ${tag}: new project") select`).selectOption('lost'); await page.waitForFunction(t => document.querySelector(`.col[data-stage="lost"]`).innerText.includes(t), `Salon ${tag}: new project`, { timeout: 8000 });
+  ok(sql(`select lost_reason from sales_deals where title='Salon ${tag}: new project'`) === 'Went with their nephew', 'losing it asks why and keeps the answer');
+  ok(page.errs.length === 0, 'no script errors on the desktop page', page.errs); await ctx.close();
+
+  // a phone: nothing sticks out, the board scrolls inside itself
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+  await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles');
+  const over = async () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  ok(await over() <= 1, 'Today fits the phone', await over());
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j112-phone-today.png` }).catch(() => {});
+  await ph.click('.tab[data-t="pipeline"]'); await ph.waitForSelector('#board .card, #board .col'); ok(await over() <= 1, 'the board scrolls inside itself and the page does not', await over());
+  await ph.click('.tab[data-t="contacts"]'); await ph.waitForSelector('#cList tr'); ok(await over() <= 1, 'Contacts fit the phone', await over());
+  await ph.click('#cList tr.click >> nth=0'); await ph.waitForSelector('#cdlg[open] #aGo'); ok(await ph.evaluate(() => { const d = document.querySelector('#cdlg').getBoundingClientRect(); return d.right <= innerWidth + 1 && d.left >= -1; }), 'a contact card fits the phone');
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  sql(`delete from sales_contacts where email='dana-${tag}@salon.test'`);
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

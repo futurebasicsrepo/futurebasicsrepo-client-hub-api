@@ -4,6 +4,7 @@
 //   staff     /v1/admin/builds*  builds, invites, activity (the work console's own sign-in)
 //   housed    /v1/builds/auth/check?slug=…  200 or 401, for a reverse proxy in front of a build we host (Caddy forward_auth), so a private build is private
 import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, STATUS_LABELS } from './builds.js';
+import { captureLead } from './sales-routes.js';
 import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
 
 const COOKIE = 'fb_builds', SESSION_DAYS = 14;
@@ -43,6 +44,8 @@ export function registerBuildRoutes(app, d) {
     if (viewer.staff) return; // staff looking is not interest
     if (kind === 'open') { const recent = await pool.query(`select 1 from build_views where email=$1 and build_id=$2 and kind='open' and created_at>now()-interval '30 minutes' limit 1`, [viewer.email, build.id]); if (recent.rowCount) return; }
     await pool.query('insert into build_views(email,build_id,kind,ua) values($1,$2,$3,$4)', [viewer.email, build.id, kind, String(req.headers['user-agent'] || '').slice(0, 200)]);
+    // the person is a lead: they go into the CRM with what they looked at, a deal to work, and after a click-through a follow-up for the next working day
+    await captureLead(pool, { email: viewer.email, source: 'showcase', kind: kind === 'demo' ? 'showcase_demo' : 'showcase_view', text: kind === 'demo' ? `Opened the live build: ${build.name}` : `Looked at ${build.name} in the showcase`, meta: { buildId: build.id, slug: build.slug, kind }, dealTitle: `Showcase interest: ${build.name}`, followUp: kind === 'demo' ? `Follow up: they opened the live ${build.name}` : null });
     await pool.query('update build_invites set last_seen_at=now(), first_seen_at=coalesce(first_seen_at,now()) where lower(email)=$1 and revoked_at is null and expires_at>now()', [viewer.email]);
   }
 
@@ -114,7 +117,7 @@ export function registerBuildRoutes(app, d) {
   // the visit: recorded, then sent to the live build (the only address a visitor is ever sent to is one staff saved)
   app.get('/builds/go/:slug', async (req, reply) => {
     const v = await sessionOf(req); if (!v) return reply.redirect(`/builds#${encodeURIComponent(req.params.slug)}`);
-    const row = (await pool.query('select id,visibility,status,live_url from builds where slug=$1', [req.params.slug])).rows[0];
+    const row = (await pool.query('select id,slug,name,visibility,status,live_url from builds where slug=$1', [req.params.slug])).rows[0];
     if (!row || !canSee(row, v) || !row.live_url) return reply.code(404).send({ error: 'Build not found' });
     await logView(v, row, 'demo', req).catch(e => log.warn({ err: e.message }, 'build visit not recorded'));
     return reply.header('cache-control', 'no-store').redirect(row.live_url);
@@ -123,7 +126,7 @@ export function registerBuildRoutes(app, d) {
   // an extra link on a build (a walkthrough, a demo): recorded like the live build, then sent to the address staff saved
   app.get('/builds/go/:slug/:n', async (req, reply) => {
     const v = await sessionOf(req); if (!v) return reply.redirect(`/builds#${encodeURIComponent(req.params.slug)}`);
-    const row = (await pool.query('select id,visibility,status,links from builds where slug=$1', [req.params.slug])).rows[0];
+    const row = (await pool.query('select id,slug,name,visibility,status,links from builds where slug=$1', [req.params.slug])).rows[0];
     const link = row && /^\d{1,2}$/.test(req.params.n) ? (row.links || [])[Number(req.params.n)] : null;
     if (!row || !canSee(row, v) || !link?.url) return reply.code(404).send({ error: 'Link not found' });
     await logView(v, row, 'demo', req).catch(e => log.warn({ err: e.message }, 'build visit not recorded'));
@@ -213,6 +216,7 @@ export function registerBuildRoutes(app, d) {
         sent = await sendHubEmail({ to: email, subject: build ? `A look at ${build.name}, built by Future Basics` : 'What Future Basics builds', html: hubEmailShell(build ? `A look at ${build.name}` : 'What Future Basics builds',
           `<p>${emailEscape(req.auth.email || 'Future Basics')} invited you to see ${build ? `<strong>${emailEscape(build.name)}</strong>, one of` : 'some of'} the sites and apps Future Basics has built.</p>${note ? `<p style="padding:14px 16px;border-left:3px solid #4bff9a;background:#f5f5f2;white-space:pre-wrap">${emailEscape(note)}</p>` : ''}<p>Sign in with this email address and we will send you a code. The invite works for ${days} days.</p>${hubButton(link, 'See the builds')}`) }).catch(() => false);
       }
+      await captureLead(pool, { email, source: 'showcase', kind: 'system', text: `Invited to ${build ? build.name : 'the showcase'}${note ? `: ${note}` : ''}`, meta: { buildId: build?.id || null }, actorId: /^[0-9a-f-]{36}$/i.test(String(req.auth?.sub || '')) ? req.auth.sub : null });
       out.push({ email, sent: Boolean(sent), extended: Boolean(had) });
     }
     return reply.code(201).send({ invited: out });
