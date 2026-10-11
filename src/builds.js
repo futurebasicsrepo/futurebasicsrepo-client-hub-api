@@ -36,6 +36,14 @@ export function cleanBuild(input = {}, { partial = false } = {}) {
   if (has('stack')) out.stack = (Array.isArray(i.stack) ? i.stack : String(i.stack || '').split(',')).map(x => clip(x, 30)).filter(Boolean).slice(0, 14);
   if (has('summary')) out.summary = clipBlock(i.summary, 2000);
   if (has('highlights')) out.highlights = (Array.isArray(i.highlights) ? i.highlights : []).map(h => ({ title: clip(h?.title, 80), text: clip(h?.text, 280) })).filter(h => h.title || h.text).slice(0, 8);
+  if (has('links')) {
+    const list = Array.isArray(i.links) ? i.links : [], links = [];
+    for (const l of list) {
+      const url = cleanUrl(l?.url); if (url === null || (!url && (l?.label || l?.url))) return { error: `“${clip(l?.label || l?.url, 40)}” needs a web address (https://…)` };
+      if (url) links.push({ label: clip(l.label, 60) || new URL(url).hostname.replace(/^www\./, ''), url });
+    }
+    out.links = links.slice(0, 8);
+  }
   if (has('sortOrder')) { const n = Number(i.sortOrder); out.sort_order = Number.isFinite(n) ? Math.max(0, Math.min(9999, Math.round(n))) : 100; }
   return { value: out };
 }
@@ -43,6 +51,15 @@ export function cleanBuild(input = {}, { partial = false } = {}) {
 // "Title — text" lines (one highlight per line) ⇄ the stored list, for the admin form
 export const highlightsFromText = text => String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = /^(.*?)\s+[—–-]\s+(.*)$/.exec(l); return m ? { title: m[1], text: m[2] } : { title: l, text: '' }; });
 export const highlightsToText = list => (list || []).map(h => h.text ? `${h.title} — ${h.text}` : h.title).join('\n');
+
+// "Label — https://address" lines (one extra link per line) ⇄ the stored list, for the admin form. The address is the last word on the line.
+export function linksFromText(text) {
+  return String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const at = l.search(/\S+$/), url = l.slice(at), label = l.slice(0, at).replace(/[\s—–|:-]+$/, '').trim();
+    return { label, url };
+  });
+}
+export const linksToText = list => (list || []).map(l => `${l.label} — ${l.url}`).join('\n');
 
 const active = (inv, now) => !inv.revoked_at && new Date(inv.expires_at).getTime() > now;
 

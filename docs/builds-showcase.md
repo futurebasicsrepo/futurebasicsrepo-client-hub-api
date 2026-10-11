@@ -28,7 +28,9 @@ Each time a signed-in non-staff person opens a build page (`open`) or follows "O
 
 ## Staff page
 
-`/builds/admin` (work console sign-in): add, edit, reorder and hide builds; upload a cover image (shrunk in the browser); manage invites; read activity. The seed list (below) is created **hidden**, so nothing is public until it has been reviewed there.
+`/builds/admin` (work console sign-in): add, edit, reorder and hide builds; upload a cover image (shrunk in the browser); manage invites; read activity.
+
+**Also see** (extra links): each build can carry up to eight more links, one per line as `Label — https://address`: a walkthrough, a demo, hardware drawings, a store preview. Visitors see the labels under "Also see" and clicking one goes through the showcase (`/builds/go/<slug>/<n>`), which records the look like the live-build link and then sends them on. The address itself is never sent to the viewer's page. Only web addresses are accepted. A link on an artifact or any page that is shared outside the showcase is not protected by the sign-in; use it for demos with stand-in data. The seed list (below) is created **hidden**, so nothing is public until it has been reviewed there.
 
 ## Seed builds
 
@@ -67,5 +69,5 @@ JWT secret, mail sending and the database are the service's existing settings.
 
 ## API (summary)
 
-Viewer: `POST /v1/builds/auth/code|verify|logout`, `GET /v1/builds/me`, `GET /v1/builds`, `GET /v1/builds/:slug`, `GET /v1/builds/:slug/cover`, `GET /builds/go/:slug` (tracked redirect to the live build).
+Viewer: `POST /v1/builds/auth/code|verify|logout`, `GET /v1/builds/me`, `GET /v1/builds`, `GET /v1/builds/:slug`, `GET /v1/builds/:slug/cover`, `GET /builds/go/:slug` (tracked redirect to the live build), `GET /builds/go/:slug/:n` (the same for extra link *n*).
 Staff: `GET|POST /v1/admin/builds`, `PUT|DELETE /v1/admin/builds/:id`, `PUT|GET /v1/admin/builds/:id/cover`, `GET|POST /v1/admin/builds/invites`, `DELETE /v1/admin/builds/invites/:id`, `GET /v1/admin/builds/activity`.

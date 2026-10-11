@@ -14,7 +14,7 @@ export function registerBuildRoutes(app, d) {
   const { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log } = d;
   const buildsUrl = () => String(process.env.BUILDS_URL || 'https://builds.thefuturebasics.com').replace(/\/$/, '');
   const isStaffEmail = email => email.split('@')[1] === 'thefuturebasics.com';
-  const BUILD_COLUMNS = `id,slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order,updated_at,jsonb_exists(media,'cover') as has_cover`;
+  const BUILD_COLUMNS = `id,slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,links,sort_order,updated_at,jsonb_exists(media,'cover') as has_cover`;
 
   // everything we know about an address: staff, an existing client, and its invites
   async function viewerFor(email) {
@@ -33,7 +33,7 @@ export function registerBuildRoutes(app, d) {
   const shape = (b, withDetail = false) => ({
     id: b.id, slug: b.slug, name: b.name, tagline: b.tagline, sector: b.sector, status: b.status, statusLabel: STATUS_LABELS[b.status] || b.status, hosting: b.hosting, stack: b.stack || [],
     coverUrl: b.has_cover ? `/v1/builds/${b.slug}/cover?v=${new Date(b.updated_at).getTime()}` : '',
-    ...(withDetail ? { summary: b.summary, highlights: b.highlights || [], hasRepo: Boolean(b.repo_url), hasLive: Boolean(b.live_url) } : {})
+    ...(withDetail ? { summary: b.summary, highlights: b.highlights || [], hasRepo: Boolean(b.repo_url), hasLive: Boolean(b.live_url), links: (b.links || []).map(l => ({ label: l.label })) } : {})
   });
   const allBuilds = async () => (await pool.query(`select ${BUILD_COLUMNS} from builds order by sort_order, name`)).rows;
   async function logView(viewer, build, kind, req) {
@@ -116,6 +116,16 @@ export function registerBuildRoutes(app, d) {
     return reply.header('cache-control', 'no-store').redirect(row.live_url);
   });
 
+  // an extra link on a build (a walkthrough, a demo): recorded like the live build, then sent to the address staff saved
+  app.get('/builds/go/:slug/:n', async (req, reply) => {
+    const v = await sessionOf(req); if (!v) return reply.redirect(`/builds#${encodeURIComponent(req.params.slug)}`);
+    const row = (await pool.query('select id,visibility,status,links from builds where slug=$1', [req.params.slug])).rows[0];
+    const link = row && /^\d{1,2}$/.test(req.params.n) ? (row.links || [])[Number(req.params.n)] : null;
+    if (!row || !canSee(row, v) || !link?.url) return reply.code(404).send({ error: 'Link not found' });
+    await logView(v, row, 'demo', req).catch(e => log.warn({ err: e.message }, 'build visit not recorded'));
+    return reply.header('cache-control', 'no-store').redirect(link.url);
+  });
+
   // ---- staff ----
   const pre = [authenticate, adminOnly];
   app.get('/v1/admin/builds', { preHandler: pre }, async (_req) => {
@@ -127,15 +137,15 @@ export function registerBuildRoutes(app, d) {
   app.post('/v1/admin/builds', { preHandler: pre }, async (req, reply) => {
     const r = cleanBuild(req.body); if (r.error) return reply.code(422).send({ error: r.error });
     const v = r.value; const taken = await pool.query('select 1 from builds where slug=$1', [v.slug]); if (taken.rowCount) return reply.code(409).send({ error: 'Another build already has that address' });
-    const row = (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
-      [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', v.visibility || 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order ?? 100])).rows[0];
+    const row = (await pool.query(`insert into builds(slug,name,tagline,sector,status,visibility,hosting,live_url,repo_url,stack,summary,highlights,sort_order,links) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning id`,
+      [v.slug, v.name, v.tagline || '', v.sector || '', v.status || 'concept', v.visibility || 'hidden', v.hosting || 'other', v.live_url || '', v.repo_url || '', v.stack || [], v.summary || '', JSON.stringify(v.highlights || []), v.sort_order ?? 100, JSON.stringify(v.links || [])])).rows[0];
     return reply.code(201).send({ id: row.id });
   });
   app.put('/v1/admin/builds/:id', { preHandler: pre }, async (req, reply) => {
     const r = cleanBuild(req.body, { partial: true }); if (r.error) return reply.code(422).send({ error: r.error });
     const v = r.value, keys = Object.keys(v); if (!keys.length) return reply.code(400).send({ error: 'Nothing to change' });
     if (v.slug) { const taken = await pool.query('select 1 from builds where slug=$1 and id<>$2', [v.slug, req.params.id]); if (taken.rowCount) return reply.code(409).send({ error: 'Another build already has that address' }); }
-    const sets = keys.map((k, i) => `${k}=$${i + 2}`), vals = keys.map(k => (k === 'highlights' ? JSON.stringify(v[k]) : v[k]));
+    const sets = keys.map((k, i) => `${k}=$${i + 2}`), vals = keys.map(k => (k === 'highlights' || k === 'links' ? JSON.stringify(v[k]) : v[k]));
     const row = await pool.query(`update builds set ${sets.join(',')},updated_at=now() where id=$1 returning id`, [req.params.id, ...vals]);
     return row.rowCount ? { ok: true } : reply.code(404).send({ error: 'Build not found' });
   });

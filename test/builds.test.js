@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, SEED_BUILDS, STATUSES } from '../src/builds.js';
+import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, linksFromText, linksToText, SEED_BUILDS, STATUSES } from '../src/builds.js';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z'), future = '2026-11-11T00:00:00Z', past = '2026-09-01T00:00:00Z';
 const B = (over = {}) => ({ id: 'b1', slug: 's', name: 'N', visibility: 'listed', status: 'live', sort_order: 100, ...over });
@@ -53,6 +53,18 @@ test('who may ask for a sign-in code at all, and the order builds are shown in',
 test('highlights are edited as lines and survive the round trip', () => {
   const list = [{ title: 'Live roast clock', text: 'next roast day' }, { title: 'Just a title', text: '' }];
   assert.deepEqual(highlightsFromText(highlightsToText(list)), list); assert.deepEqual(highlightsFromText('A - b\n\nC – d'), [{ title: 'A', text: 'b' }, { title: 'C', text: 'd' }]);
+});
+
+test('extra links: cleaned, bounded, edited as lines and survive the round trip', () => {
+  const ok = cleanBuild({ name: 'X', links: [{ label: 'Make an Offer, walked through', url: 'https://claude.ai/artifact/abc' }, { label: '', url: 'www.example.com/demo' }] });
+  assert.deepEqual(ok.value.links, [{ label: 'Make an Offer, walked through', url: 'https://claude.ai/artifact/abc' }, { label: 'example.com', url: 'https://www.example.com/demo' }], 'a missing label falls back to the host');
+  assert.match(cleanBuild({ name: 'X', links: [{ label: 'Bad', url: 'javascript:alert(1)' }] }).error, /web address/);
+  assert.match(cleanBuild({ name: 'X', links: [{ label: 'No address', url: '' }] }).error, /web address/);
+  assert.deepEqual(cleanBuild({ name: 'X', links: [{ label: '', url: '' }] }).value.links, [], 'an empty row is dropped, not an error');
+  assert.equal(cleanBuild({ name: 'X', links: Array.from({ length: 12 }, (_, n) => ({ label: 'L' + n, url: 'https://e.com/' + n })) }).value.links.length, 8, 'at most eight');
+  assert.deepEqual(cleanBuild({ name: 'X' }).value.links, [], 'a new build starts with none'); assert.equal(cleanBuild({ tagline: 'y' }, { partial: true }).value.links, undefined, 'an update that does not send links leaves them alone'); assert.equal(cleanBuild({ links: [] }, { partial: true }).value.links.length, 0);
+  const list = [{ label: 'Hardware drawings', url: 'https://claude.ai/artifact/GVQF9iEcNxv5BXQPK9S46Z' }, { label: 'A walkthrough - with a dash', url: 'https://e.com/a-b' }];
+  assert.deepEqual(linksFromText(linksToText(list)), list); assert.deepEqual(linksFromText('Demo | https://e.com/x\n\nhttps://e.com/y'), [{ label: 'Demo', url: 'https://e.com/x' }, { label: '', url: 'https://e.com/y' }]);
 });
 
 test('the seed list is complete and valid: every build clean, addresses unique, none exposed by default', () => {

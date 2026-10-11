@@ -894,6 +894,7 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    alter table builds add column if not exists links jsonb not null default '[]'::jsonb; -- extra things to see on a build: walkthroughs, demos, drawings
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,

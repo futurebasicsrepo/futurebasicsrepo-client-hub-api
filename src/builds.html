@@ -81,6 +81,7 @@ main{max-width:1280px;margin:0 auto;padding:clamp(22px,4vw,48px) clamp(18px,4vw,
 .hl li{border:1px solid var(--line);background:#fff;border-radius:18px;padding:14px 16px}.hl b{display:block;font-weight:600}.hl span{color:#3d3d42}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin:22px 0 4px}
 .actions .go{width:auto}
+.more{display:flex;flex-direction:column;gap:2px;margin-top:20px;border-top:1px solid var(--line);padding-top:14px}.more a{color:var(--ink);text-decoration:none;padding:9px 0;border-bottom:1px solid var(--line);font-weight:500}.more a:hover,.more a:focus-visible{text-decoration:underline;text-underline-offset:3px}
 .ghost{display:inline-flex;align-items:center;border:1px solid var(--ink);color:var(--ink);background:transparent;border-radius:999px;padding:15px 22px;text-decoration:none;font-weight:500}
 .fine{color:var(--dim);font-size:13px;margin-top:8px}
 @media(max-width:860px){.one{grid-template-columns:1fr}}
@@ -150,7 +151,7 @@ async function one(slug){
     $('#app').innerHTML=`<div class="crumb"><button class="back" type="button" id="back">← All builds</button></div>
       <div class="one"><div>${cover(b)}</div><div><span class="mono" style="color:var(--dim)">${esc(b.sector||'Build')}</span><h1>${esc(b.name)}</h1>${b.tagline?`<p style="font-size:19px;margin:0;color:#2b2b30">${esc(b.tagline)}</p>`:''}
         <div class="actions">${b.hasLive?`<a class="go" href="/builds/go/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Open the live build ↗</a>`:''}<a class="ghost" href="mailto:kyle@thefuturebasics.com?subject=${encodeURIComponent('About '+b.name)}">Talk to us about one like it</a></div>
-        <p class="fine">Opens in a new tab. We note that you looked, so we can follow up.</p></div></div>
+        <p class="fine">Opens in a new tab. We note that you looked, so we can follow up.</p>${(b.links||[]).length?`<div class="more"><span class="mono" style="color:var(--dim)">Also see</span>${b.links.map((l,i)=>`<a href="/builds/go/${encodeURIComponent(b.slug)}/${i}" target="_blank" rel="noopener">${esc(l.label)} <span aria-hidden="true">↗</span></a>`).join('')}</div>`:''}</div></div>
       <div class="one" style="margin-top:28px"><div>${b.summary?`<p class="sum">${esc(b.summary)}</p>`:''}${b.highlights.length?`<ul class="hl">${b.highlights.map(h=>`<li><b>${esc(h.title)}</b>${h.text?`<span>${esc(h.text)}</span>`:''}</li>`).join('')}</ul>`:''}</div>
         <div>${b.stack.length?`<span class="mono" style="color:var(--dim)">Built with</span><div class="meta" style="padding-top:8px">${b.stack.map(s=>`<span class="tagchip">${esc(s)}</span>`).join('')}</div>`:''}</div></div>`;
     document.title=b.name+' · Future Basics Builds';scrollTo(0,0);
