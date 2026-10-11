@@ -1214,5 +1214,41 @@ await journey('J130', 'software projects in browsers: a staff member makes one w
     await ctx.close(); await A(`/builds/${bid}`, { method: 'DELETE' });
   } finally { await new Promise(r => store.close(r)); }
 });
+await journey('J124', 'the Opportunities tab in a browser: what is worth doing and why, the kinds as filters, make a task, snooze, hide, the short list on Today, the menu count, and a phone', async () => {
+  const r = await room('124', { wait: false }), tag = `op${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  const person = async n => (await S('/contacts', { body: { name: `${n} ${tag}`, email: `${n.toLowerCase().replace(/\W/g, '')}-${tag}@opp.test`, source: 'referral' } })).json.id;
+  const old = id => sql(`update sales_contacts set created_at = now() - interval '30 days' where id='${id}'`);
+  const ian = await person('Inbound Ian'); old(ian); sql(`insert into sales_activities(contact_id,kind,text,created_at) values('${ian}','email_in','Can you build us a new site?', now() - interval '2 days')`);
+  const quinn = await person('Quiet Quinn'); old(quinn); const d = (await S('/deals', { body: { title: `Site ${tag}`, contactId: quinn, stage: 'meeting', value: '9000' } })).json.id; sql(`update sales_deals set last_activity_at = now() - interval '12 days' where id='${d}'`);
+  const tess = await person('Techpack Tess'); sql(`update sales_contacts set tags='{tech-pack}', created_at = now() - interval '30 days' where id='${tess}'`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.dlg = []; page.on('dialog', d => { page.dlg.push(d.message()); d.accept(); });
+  await page.goto('http://work.localhost:3123/sales', { waitUntil: 'networkidle' }); await page.waitForSelector('.tiles', { timeout: 10000 });
+  ok(/Worth your time today/.test(await page.innerText('#t-today')), 'Today has a short list of what is worth doing');
+  await page.click('.fbside a[data-href="/sales#opportunities"]:not(.gicon)'); await page.waitForSelector('#oppList [data-okey]', { timeout: 10000 });
+  ok(/Opportunities/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu opens it and marks it');
+  const card = n => page.locator(`#oppList [data-okey]:has-text("${n} ${tag}")`);
+  ok(/wrote to us 2 days ago/.test(await card('Inbound Ian').innerText()) && /\$9,000/.test(await card('Quiet Quinn').innerText()) && /have not seen the builds|has not seen the builds/.test(await card('Techpack Tess').innerText()), 'each card says why, in plain words');
+  ok(/now/i.test(await card('Inbound Ian').locator('.pri').innerText()) && /later|when there is time/i.test(await card('Techpack Tess').locator('.pri').innerText()), 'and how soon');
+  const names = await page.$$eval('#oppList h2', e => e.map(x => x.textContent)); ok(names.findIndex(n => n.includes('Inbound Ian')) < names.findIndex(n => n.includes('Techpack Tess')), 'the strongest comes first');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-list.png` }).catch(() => {});
+  await page.click('#oppTypes [data-otype="deal_quiet"]'); await page.waitForFunction(() => document.querySelectorAll('#oppList [data-okey]').length >= 1 && ![...document.querySelectorAll('#oppList h2')].some(h => /Techpack Tess/.test(h.textContent)), null, { timeout: 8000 });
+  ok(await card('Quiet Quinn').count() === 1, 'a kind can be picked to narrow the list'); await page.click('#oppTypes [data-otype=""]'); await page.waitForSelector(`#oppList [data-okey]:has-text("Techpack Tess")`);
+  await card('Techpack Tess').locator('[data-oact="task"]').click(); await page.waitForFunction(t => ![...document.querySelectorAll('#oppList h2')].some(h => h.textContent.includes(t)), `Techpack Tess ${tag}`, { timeout: 8000 });
+  ok(Number(sql(`select count(*) from sales_tasks where contact_id='${tess}' and title like '%Tess%'`)) === 1, 'making a task from a card makes it, and the card goes');
+  await card('Quiet Quinn').locator('[data-oact="snooze"]').click(); await page.waitForFunction(t => ![...document.querySelectorAll('#oppList h2')].some(h => h.textContent.includes(t)), `Quiet Quinn ${tag}`, { timeout: 8000 });
+  ok(sql(`select state from sales_opportunity_state where key like '%${d}'`) === 'snoozed', 'snoozing hides it for a week');
+  await card('Inbound Ian').locator('[data-oact="dismiss"]').click(); await page.waitForFunction(t => ![...document.querySelectorAll('#oppList [data-okey]')].some(c => c.innerText.includes(t) && /Wrote to us, no reply/i.test(c.innerText)), `Inbound Ian ${tag}`, { timeout: 8000 }).catch(async e => { throw new Error(e.message.split('\n')[0] + ' | dialogs: ' + page.dlg.join(' / ') + ' | card: ' + (await card('Inbound Ian').innerText().catch(() => 'none'))); }); ok(true, 'and "Not now" hides that reason (the person can come back under a different one, here: warm with no deal)');
+  await page.click(`.tab[data-t="contacts"]`); await page.fill('#q', `pat`); await page.fill('#q', ''); await page.click('.tab[data-t="opportunities"]');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  await ph.goto('http://work.localhost:3123/sales#opportunities', { waitUntil: 'networkidle' }); await ph.waitForSelector('#oppList .panel'); ok(await over() <= 1, 'it fits a phone', await over());
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j124-phone.png` }).catch(() => {});
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  sql(`delete from sales_contacts where email like '%-${tag}@opp.test'`);
+});
 
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

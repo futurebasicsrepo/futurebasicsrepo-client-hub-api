@@ -1102,6 +1102,14 @@ export async function migrate() {
       created_at timestamptz not null default now()
     );
     create index if not exists chat_messages_conv_idx on chat_messages(conversation_id, created_at);
+    -- The opportunity finder (see src/sales-opportunities.js): what staff have made a task of, snoozed or hidden, and until when
+    create table if not exists sales_opportunity_state (
+      key text primary key,
+      state text not null check (state in ('done','snoozed','dismissed')),
+      until timestamptz not null,
+      actor_id uuid references users(id) on delete set null,
+      at timestamptz not null default now()
+    );
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,
