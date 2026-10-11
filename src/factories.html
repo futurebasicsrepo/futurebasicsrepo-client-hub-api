@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Factories</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#c98a00;--bad:#c23a14;--ok:#23784b;--sea:#dde6e8;--land:#f7f6f1}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2a2a2e}.btn.sm{padding:5px 12px;font-size:13px}.btn[disabled]{opacity:.5;cursor:default}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff}textarea.t{min-height:90px;resize:vertical}select.t{width:auto}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px);margin-bottom:16px}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}
+.chip.ok{background:#e5f6ec;border-color:#a9dcb9;color:#17562f}.chip.warn{background:#fff4cf;border-color:#ecd27a;color:#6d4f00}.chip.bad{background:#fde6df;border-color:#f0b4a3;color:#8c2a10}.chip.dim{color:var(--dim)}.chip.tag{background:var(--fog);text-transform:none;letter-spacing:0;font:500 12px 'Space Grotesk',sans-serif}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:10px;margin-bottom:14px}.tile{border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff}.tile b{display:block;font-size:28px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}.tile span{color:var(--dim);font-size:12px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px}.fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.mapwrap{position:relative;border-radius:16px;overflow:hidden;background:var(--sea);border:1px solid var(--line)}
+.mapwrap svg{display:block;width:100%;height:auto;max-height:520px}
+.land{fill:var(--land);stroke:#b3b8b0;stroke-width:.4;stroke-linejoin:round}
+.pin{cursor:pointer}.pin circle.pd{stroke:#fff;stroke-width:1.2;vector-effect:non-scaling-stroke}.pin:focus{outline:none}.pin:focus circle.pd,.pin:hover circle.pd{stroke:var(--ink);stroke-width:2}
+.pin.late .pd{fill:var(--bad)}.pin.waiting .pd{fill:#e8b100}.pin.active .pd{fill:var(--ok)}.pin.idle .pd{fill:#9a9aa0}
+.pin text{font:600 10px 'Space Grotesk',sans-serif;fill:#fff;text-anchor:middle;pointer-events:none}
+.zoom{position:absolute;left:10px;top:10px;display:flex;gap:6px;flex-wrap:wrap}.zoom button{border:1px solid var(--line);background:rgba(255,255,255,.92);border-radius:999px;padding:4px 11px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase}.zoom button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-top:10px}.legend span:before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 16px;display:grid;gap:8px;align-content:start;cursor:pointer;text-align:left;width:100%}.card:hover{border-color:var(--ink)}
+.card .hd{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.card h3{font-size:16px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:0}.dot.late{background:var(--bad)}.dot.waiting{background:#e8b100}.dot.active{background:var(--ok)}.dot.idle{background:#9a9aa0}
+.tags{display:flex;gap:5px;flex-wrap:wrap}.stars{color:#b58900;letter-spacing:1px;font-size:13px}
+dialog{border:0;border-radius:24px;padding:0;width:min(940px,96vw);max-height:92vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}
+.dwrap{padding:clamp(16px,2.6vw,28px);display:grid;gap:12px}.dh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.dh h2{font-size:24px;font-weight:500}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);vertical-align:top}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border-top:0}.scroll{overflow-x:auto}
+.sec{display:grid;gap:8px;margin-bottom:14px}.sec>h3{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.empty{color:var(--dim);padding:6px 0}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
+.f{display:grid;gap:4px}.f>span{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.picks{display:flex;gap:6px;flex-wrap:wrap}.pick{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;background:#fff;font-size:13px;font-weight:600}.pick:has(input:checked){background:var(--ink);color:#fff;border-color:var(--ink)}.pick input{position:absolute;opacity:0;pointer-events:none}.pick:has(input:focus-visible){outline:2px solid var(--cue);outline-offset:2px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px}.kv dt{color:var(--dim)}.kv dd{margin:0;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/factories" aria-label="Factories"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Factories</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the console</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)">Production</span><h1>Factories</h1><p class="note">Who makes what, where they are, and what is in their hands right now.</p></div>
+      <div class="acts"><a class="btn" href="/admin#partnersSection">Fair contacts</a><a class="btn" href="/booth">Fair notes</a></div></div>
+    <p class="msg" id="msg" role="status"></p>
+    <div class="tiles" id="tiles"></div>
+    <section class="panel" aria-label="Map of factories">
+      <div class="top" style="margin-bottom:10px"><div><h2>Where they are</h2><p class="note" id="mapNote"></p></div></div>
+      <div class="mapwrap"><svg id="map" role="img" aria-label="World map of factories" viewBox="0 18 1000 395" preserveAspectRatio="xMidYMid meet"><path class="land" id="land" d=""/><g id="pins"></g></svg>
+        <div class="zoom" id="zoom"></div></div>
+      <div class="legend" id="legend"></div>
+    </section>
+    <section class="panel">
+      <div class="filters"><input class="t" id="q" type="search" placeholder="Search name, city, what they make" style="max-width:340px" aria-label="Search factories">
+        <select class="t" id="light" aria-label="Status"><option value="">Any status</option><option value="late">Something is late</option><option value="waiting">Waiting on them</option><option value="active">Work in hand</option><option value="idle">No work assigned</option></select>
+        <select class="t" id="country" aria-label="Country"><option value="">Any country</option></select>
+        <button class="fchip hidden" id="pinClear">Clear map selection ×</button></div>
+      <div class="sub" style="margin:6px 0 4px">Makes</div><div class="filters" id="typeChips"></div>
+      <div class="sub" style="margin:6px 0 4px">Skills</div><div class="filters" id="skillChips"></div>
+      <div class="sub" id="count" style="margin:8px 0"></div>
+      <div class="cards" id="cards"></div>
+    </section>
+  </div>
+</main>
+<dialog id="dlg"><div class="dwrap"><div class="dh"><div><h2 id="dTitle"></h2><div id="dSub" class="sub"></div></div><button class="btn sm" id="dClose">Close</button></div><div class="tabs" id="dTabs"></div><div id="dBody"></div><p class="msg" id="dMsg" role="status"></p></div></dialog>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});let j={};try{j=await r.json()}catch{}if(!r.ok){const e=new Error(j.error||('Something went wrong ('+r.status+')'));e.status=r.status;throw e}return j}
+const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t};
+const dsay=(t,k='ok')=>{const m=$('#dMsg');m.className='msg '+k;m.textContent=t};
+const us=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(d||'');return m?`${m[2]}/${m[3]}/${m[1]}`:''};
+const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+const LIGHTS={late:['Something is late','bad'],waiting:['Waiting on them','warn'],active:['Work in hand','ok'],idle:['No work assigned','dim']};
+let D=null,F={q:'',light:'',country:'',types:new Set(),skills:new Set(),pin:null},VB='0 18 1000 395',REGION='World',OPEN=null,OTAB='work';
+const TL={},SL={};
+const REGIONS=[['World','0 18 1000 395'],['East Asia','740 110 150 110'],['South Asia','640 130 150 120'],['Europe','467 83 144 73'],['Americas','153 97 264 264']];
+
+// ---------- the list and what the filters leave ----------
+function visible(){
+  const q=F.q.trim().toLowerCase();
+  return D.factories.filter(f=>{
+    if(F.light&&f.light!==F.light)return false;
+    if(F.country&&f.country!==F.country)return false;
+    for(const t of F.types)if(!f.productTypes.includes(t))return false;
+    for(const s of F.skills)if(!f.skills.includes(s))return false;
+    if(F.pin&&!F.pin.includes(f.key))return false;
+    if(q){const hay=[f.name,f.city,f.country,f.makes,f.contactName,...f.productTypes.map(k=>TL[k]),...f.skills.map(k=>SL[k]||k)].join(' ').toLowerCase();if(!hay.includes(q))return false}
+    return true;
+  });
+}
+function renderTiles(){const t=D.totals;$('#tiles').innerHTML=[['Factories',t.factories],['With work in hand',t.withWork],['Late or waiting',t.needAttention],['Countries',t.countries]].map(([l,n])=>`<div class="tile"><b>${n}</b><span>${l}</span></div>`).join('')}
+function chips(){
+  $('#typeChips').innerHTML=D.vocab.productTypes.flatMap(g=>g.types).map(t=>`<button class="fchip ${F.types.has(t.key)?'on':''}" data-type="${esc(t.key)}">${esc(t.label)}</button>`).join('');
+  const used=new Set(D.factories.flatMap(f=>f.skills));
+  const known=D.vocab.skills.map(s=>s.key),extra=[...used].filter(k=>!known.includes(k));
+  $('#skillChips').innerHTML=[...D.vocab.skills.map(s=>[s.key,s.label]),...extra.map(k=>[k,k])].map(([k,l])=>`<button class="fchip ${F.skills.has(k)?'on':''}" data-skill="${esc(k)}">${esc(l)}</button>`).join('');
+  const cs=[...new Set(D.factories.map(f=>f.country).filter(Boolean))].sort();
+  const cur=$('#country').value;$('#country').innerHTML='<option value="">Any country</option>'+cs.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('');
+}
+const stars=n=>n?`<span class="stars" aria-label="${n} of 5">${'★'.repeat(n)}${'☆'.repeat(5-n)}</span>`:'';
+function cardHtml(f){
+  const c=f.counts,bits=[];
+  if(c.packs)bits.push(`${c.packs} pack${c.packs===1?'':'s'}`);if(c.needsQuote)bits.push(`${c.needsQuote} waiting for a quote`);if(c.toReview)bits.push(`${c.toReview} to read and sign`);if(c.unread)bits.push(`${c.unread} new message${c.unread===1?'':'s'}`);if(c.runs)bits.push(`${c.runs} run${c.runs===1?'':'s'}${c.lateRuns?` (${c.lateRuns} late)`:''}`);if(c.lateProjects)bits.push(`${c.lateProjects} project${c.lateProjects===1?'':'s'} late`);
+  const [ll,lt]=LIGHTS[f.light];
+  const place=[f.city,f.country].filter(Boolean).join(', ');
+  const types=f.productTypes.slice(0,5).map(k=>`<span class="chip tag">${esc(TL[k]||k)}</span>`).join(''),more=f.productTypes.length>5?`<span class="chip tag">+${f.productTypes.length-5}</span>`:'';
+  const sk=f.skills.slice(0,4).map(k=>`<span class="chip tag" style="border-style:dashed">${esc(SL[k]||k)}</span>`).join('');
+  return `<button class="card" data-open="${esc(f.key)}"><div class="hd"><div><h3><span class="dot ${f.light}"></span>${esc(f.name)}</h3><div class="sub">${esc(place)||'No place yet'} ${stars(f.rating)}</div></div><span class="chip ${lt}">${esc(ll)}</span></div>
+    <div class="tags">${types}${more}${sk}${!f.productTypes.length&&!f.skills.length?`<span class="sub">${f.makes?esc(f.makes):'What they make is not filled in yet'}</span>`:''}</div>
+    <div class="sub">${bits.length?esc(bits.join(' · ')):(f.isSupplier?'Nothing assigned':'Met at a fair, not a supplier yet')}</div></button>`;
+}
+function renderList(){
+  const v=visible();$('#count').textContent=`${v.length} of ${D.factories.length} factories`+(D.unpinned?` · ${D.unpinned} not on the map yet`:'');
+  $('#cards').innerHTML=v.length?v.map(cardHtml).join(''):`<p class="empty">No factory matches. Clear a filter to see more.</p>`;
+  $('#pinClear').classList.toggle('hidden',!F.pin);
+  renderMap(v);
+}
+
+// ---------- the map ----------
+function renderMap(list){
+  const vb=VB.split(' ').map(Number),k=vb[2]/1000;
+  const by=new Map();
+  for(const f of list){if(f.lat==null)continue;const key=Math.round(f.lat*20)+'|'+Math.round(f.lng*20);if(!by.has(key))by.set(key,{lat:f.lat,lng:f.lng,fs:[]});by.get(key).fs.push(f)}
+  const rank={late:3,waiting:2,active:1,idle:0};
+  const pins=[...by.values()].map(p=>{p.light=p.fs.reduce((a,f)=>rank[f.light]>rank[a]?f.light:a,'idle');p.x=(p.lng+180)/360*1000;p.y=(90-p.lat)/180*500;return p});
+  pins.sort((a,b)=>a.y-b.y);
+  $('#pins').innerHTML=pins.map(p=>{const n=p.fs.length,work=p.fs.reduce((a,f)=>a+f.counts.packs,0),r=(6+Math.min(work,8)*.7+(n>1?3:0))*k;
+    const label=`${p.fs.map(f=>f.name).join(', ')} · ${LIGHTS[p.light][0]}`;
+    return `<g class="pin ${p.light}" tabindex="0" role="button" aria-label="${esc(label)}" data-keys="${esc(p.fs.map(f=>f.key).join(','))}"><title>${esc(label)}</title><circle class="pd" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r.toFixed(2)}"/>${n>1?`<text x="${p.x.toFixed(1)}" y="${(p.y+3.8*k).toFixed(1)}" style="font-size:${(11*k).toFixed(2)}px">${n}</text>`:''}</g>`}).join('');
+  $('#map').setAttribute('viewBox',VB);
+  const placed=list.filter(f=>f.lat!=null).length;
+  $('#mapNote').textContent=`${placed} on the map${list.length-placed?`, ${list.length-placed} with no place yet`:''}. Pins are sized by the packs in their hands. Click one to list just those factories.`;
+}
+function renderZoom(){$('#zoom').innerHTML=REGIONS.map(([n,v])=>`<button class="${REGION===n?'on':''}" data-vb="${v}" data-name="${n}">${n}</button>`).join('')}
+
+// ---------- one factory ----------
+const PICK=(name,items,on)=>`<div class="picks">${items.map(([k,l])=>`<label class="pick"><input type="checkbox" name="${name}" value="${esc(k)}" ${on.includes(k)?'checked':''}>${esc(l)}</label>`).join('')}</div>`;
+function workTab(x){
+  const projects=x.projects.length?`<div class="scroll"><table><thead><tr><th>Project</th><th>Status</th><th>Next milestone</th><th>Date</th><th>Packs</th></tr></thead><tbody>${x.projects.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td><span class="chip ${p.late?'bad':'ok'}">${esc(p.status||'—')}</span></td><td>${esc(p.milestone||'')}</td><td>${p.targetDate?us(p.targetDate)+(p.late?' <span class="chip bad">late</span>':p.daysLeft!=null&&p.daysLeft<=7?` <span class="chip warn">${p.daysLeft===0?'today':p.daysLeft+' days'}</span>`:''):''}</td><td>${esc(p.packs.join(', '))}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No projects yet: they appear when a tech pack is assigned to this factory.</p>';
+  const packs=x.packs.length?`<div class="scroll"><table><thead><tr><th>Tech pack</th><th>Client</th><th>Where it stands</th><th>Sent</th><th></th></tr></thead><tbody>${x.packs.map(p=>`<tr><td><b>${esc(p.title)}</b> <span class="sub">v${p.version}${p.origin==='referral'?' · from their link':''}</span></td><td>${esc(p.client)}</td><td><span class="chip ${p.tone}">${esc(p.stateLabel)}</span>${p.unread?` <span class="chip warn">${p.unread} new message${p.unread===1?'':'s'}</span>`:''}</td><td>${us(p.assignedAt)}</td><td><a class="btn sm" href="${esc(p.href)}">Open pack</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">Nothing is assigned to this factory. Assign one from a tech pack.</p>';
+  const files=x.files.length?`<div class="scroll"><table><thead><tr><th>File</th><th>Size</th><th>Added</th><th>For</th><th></th></tr></thead><tbody>${x.files.map(f=>`<tr><td>${esc(f.name)}</td><td>${size(f.bytes)}</td><td>${us(f.at)}</td><td>${esc((f.packs||[]).join(', '))}</td><td><button class="btn sm" data-dl="${esc(f.url)}" data-name="${esc(f.name)}">Download</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No files are shared with this factory. Mark a file in a client room as visible to the factory to share it.</p>';
+  const runs=x.runs.length?`<div class="scroll"><table><thead><tr><th>PO</th><th>Product</th><th>Qty</th><th>Status</th><th>Sample</th><th>Arrives</th></tr></thead><tbody>${x.runs.map(r=>`<tr><td>${esc(r.po||'—')}</td><td>${esc(r.title)} <span class="sub">${esc(r.client)}</span></td><td>${r.quantity??''}</td><td><span class="chip ${r.done?'dim':r.late?'bad':'ok'}">${esc(r.status)}</span></td><td>${esc(r.sampleStatus||'')}</td><td>${r.etaDate?us(r.etaDate):''}${r.late?' <span class="chip bad">late</span>':''}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No production runs.</p>';
+  return `<div class="sec"><h3>Projects</h3>${projects}</div><div class="sec"><h3>Tech packs</h3>${packs}</div><div class="sec"><h3>Files they can see</h3>${files}</div><div class="sec"><h3>Production runs</h3>${runs}</div>`;
+}
+function profileTab(f){
+  return `<form id="pform" autocomplete="off" class="sec">
+    <div class="sec"><h3>What they make</h3>${D.vocab.productTypes.map(g=>`<div><div class="sub" style="margin-bottom:4px">${esc(g.group)}</div>${PICK('productTypes',g.types.map(t=>[t.key,t.label]),f.productTypes)}</div>`).join('')}</div>
+    <div class="sec"><h3>Skills</h3>${PICK('skills',D.vocab.skills.map(s=>[s.key,s.label]),f.skills)}
+      <label class="f"><span>Other skills (comma separated)</span><input class="t" name="otherSkills" value="${esc(f.skills.filter(k=>!SL[k]).join(', '))}" placeholder="e.g. waterproof taping, jacquard"></label></div>
+    <div class="g3"><label class="f"><span>City</span><input class="t" name="city" value="${esc(f.city)}" placeholder="Shenzhen"></label><label class="f"><span>Country</span><input class="t" name="country" value="${esc(f.country)}" placeholder="China"></label><label class="f"><span>Lead time (days)</span><input class="t" name="leadTimeDays" type="number" min="0" max="730" value="${f.leadTimeDays??''}"></label></div>
+    <div class="g3"><label class="f"><span>Map pin: latitude</span><input class="t" name="lat" inputmode="decimal" value="${f.geoManual&&f.lat!=null?f.lat:''}" placeholder="from the city"></label><label class="f"><span>Map pin: longitude</span><input class="t" name="lng" inputmode="decimal" value="${f.geoManual&&f.lng!=null?f.lng:''}" placeholder="from the city"></label><label class="f"><span>Website</span><input class="t" name="website" value="${esc(f.website)}" placeholder="https://"></label></div>
+    <p class="sub">The pin is worked out from the city, or the country if the city is not known. Fill in both pin numbers to place it by hand; clear them to go back.${f.lat!=null?` Now on the map at ${f.lat}, ${f.lng} (${f.pinFrom==='hand'?'by hand':f.pinFrom==='country'?'from the country':'from the city'}).`:' Not on the map yet.'}</p>
+    <label class="f"><span>Internal notes</span><textarea class="t" name="notes">${esc(f.notes)}</textarea></label>
+    <div class="acts"><button class="btn go" type="submit">Save</button></div></form>`;
+}
+function contactTab(x){
+  const f=x.factory;
+  const row=(k,v)=>v?`<dt>${k}</dt><dd>${esc(v)}</dd>`:'';
+  return `<div class="sec"><h3>Contact</h3><dl class="kv">${row('Contact',f.contactName)}${row('Email',f.email)}${row('Phone',f.phone)}${row('WeChat',f.wechat)}${row('Makes (their words)',f.makes)}${row('MOQ and price',f.moqNote)}${row('Met at',f.source)}${f.rating?`<dt>Rating</dt><dd>${stars(f.rating)}</dd>`:''}${f.website?`<dt>Website</dt><dd><a href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website)}</a></dd>`:''}</dl>${!f.email&&!f.phone&&!f.contactName&&!f.wechat?'<p class="empty">No contact details yet.</p>':''}</div>
+    <div class="sec"><h3>Their page</h3>${x.pageUrl?`<p class="sub">Everything assigned to this factory is on one private page. Anyone with the link can open it.</p><div class="acts"><button class="btn sm" data-act="copy" data-url="${esc(x.pageUrl)}">Copy link</button>${f.email?`<button class="btn sm" data-act="email">Email it to ${esc(f.email)}</button>`:''}<button class="btn sm" data-act="rotate">Make a new link</button></div>`:f.isSupplier?'<p class="empty">The page link could not be made just now.</p>':'<p class="empty">Add this factory as a supplier to give it a page and assign packs.</p>'}</div>
+    ${f.isSupplier?'':`<div class="acts"><button class="btn go" data-act="supplier">Add as a supplier</button></div>`}`;
+}
+async function openFactory(key,tab){
+  OPEN=key;OTAB=tab||OTAB;dsay('');
+  const x=await api('/v1/admin/factories/'+encodeURIComponent(key));
+  OPEN={key,x};drawOpen();if(!$('#dlg').open)$('#dlg').showModal();
+}
+function drawOpen(){
+  const {x}=OPEN,f=x.factory,[ll,lt]=LIGHTS[f.light];
+  $('#dTitle').textContent=f.name;$('#dSub').innerHTML=`<span class="chip ${lt}">${esc(ll)}</span> ${esc([f.city,f.country].filter(Boolean).join(', '))}`;
+  $('#dTabs').innerHTML=[['work','Work in hand'],['profile','Makes and skills'],['contact','Contact and page']].map(([k,l])=>`<button class="tab ${OTAB===k?'on':''}" data-tab="${k}">${l}</button>`).join('');
+  $('#dBody').innerHTML=OTAB==='work'?workTab(x):OTAB==='profile'?profileTab(f):contactTab(x);
+}
+
+// ---------- events ----------
+document.addEventListener('click',async e=>{
+  const t=e.target;
+  const ty=t.closest('[data-type]');if(ty){const k=ty.dataset.type;F.types.has(k)?F.types.delete(k):F.types.add(k);chips();renderList();return}
+  const sk=t.closest('[data-skill]');if(sk){const k=sk.dataset.skill;F.skills.has(k)?F.skills.delete(k):F.skills.add(k);chips();renderList();return}
+  const op=t.closest('[data-open]');if(op){try{await openFactory(op.dataset.open,'work')}catch(err){say(err.message,'bad')}return}
+  const pin=t.closest('.pin');if(pin){F.pin=pin.dataset.keys.split(',');renderList();$('#cards').scrollIntoView({behavior:'smooth',block:'start'});return}
+  if(t.closest('#pinClear')){F.pin=null;renderList();return}
+  const z=t.closest('[data-vb]');if(z){VB=z.dataset.vb;REGION=z.dataset.name;renderZoom();renderMap(visible());return}
+  const tb=t.closest('[data-tab]');if(tb){OTAB=tb.dataset.tab;drawOpen();dsay('');return}
+  if(t.closest('#dClose')){$('#dlg').close();return}
+  const dl=t.closest('[data-dl]');if(dl){try{const r=await fetch(dl.dataset.dl,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('That file could not be downloaded');const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=dl.dataset.name||'file';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}catch(err){dsay(err.message,'bad')}return}
+  const ac=t.closest('[data-act]');if(ac&&OPEN&&OPEN.x){
+    const f=OPEN.x.factory;
+    try{
+      if(ac.dataset.act==='copy'){try{await navigator.clipboard.writeText(ac.dataset.url);dsay('Link copied')}catch{prompt('Their page link',ac.dataset.url)}}
+      else if(ac.dataset.act==='email'){if(!confirm('Email their page link to '+f.email+'?'))return;await api('/v1/admin/suppliers/'+f.id+'/factory-page/email',{body:{}});dsay('Emailed')}
+      else if(ac.dataset.act==='rotate'){if(!confirm('Make a new link?\n\nThe old page link stops working at once. Send the new one to the factory.'))return;const r=await api('/v1/admin/suppliers/'+f.id+'/factory-page/rotate',{body:{}});OPEN.x.pageUrl=r.pageUrl;drawOpen();dsay('New link made: send it to the factory')}
+      else if(ac.dataset.act==='supplier'){const r=await api('/v1/admin/partners/'+f.partnerId+'/supplier',{body:{}});await load();await openFactory(r.supplierId,'contact');dsay('Added as a supplier')}
+    }catch(err){dsay(err.message,'bad')}
+  }
+});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('pin')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}});
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='pform')return;e.preventDefault();
+  const fd=new FormData(e.target),f=OPEN.x.factory;
+  const skills=[...fd.getAll('skills'),...String(fd.get('otherSkills')||'').split(',').map(s=>s.trim()).filter(Boolean)];
+  const body={productTypes:fd.getAll('productTypes'),skills,city:fd.get('city'),country:fd.get('country'),website:fd.get('website'),leadTimeDays:fd.get('leadTimeDays'),notes:fd.get('notes'),lat:fd.get('lat'),lng:fd.get('lng')};
+  const btn=e.target.querySelector('[type=submit]');btn.disabled=true;
+  try{const r=await api('/v1/admin/factories/'+encodeURIComponent(f.key),{method:'PATCH',body});await load();await openFactory(r.id,'profile');dsay('Saved')}catch(err){dsay(err.message,'bad');btn.disabled=false}
+});
+$('#q').addEventListener('input',e=>{F.q=e.target.value;renderList()});
+$('#light').addEventListener('change',e=>{F.light=e.target.value;renderList()});
+$('#country').addEventListener('change',e=>{F.country=e.target.value;renderList()});
+
+async function load(){
+  D=await api('/v1/admin/factories');
+  for(const g of D.vocab.productTypes)for(const t of g.types)TL[t.key]=t.label;for(const s of D.vocab.skills)SL[s.key]=s.label;
+  renderTiles();chips();renderList();
+  $('#legend').innerHTML=Object.entries(LIGHTS).map(([k,[l]])=>`<span style="--c:${{late:'var(--bad)',waiting:'#e8b100',active:'var(--ok)',idle:'#9a9aa0'}[k]}">${l}</span>`).join('');
+}
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{
+    const [m]=await Promise.all([api('/v1/admin/factories/map').catch(()=>null),load()]);
+    if(m&&m.world){$('#land').setAttribute('d',m.world.d);VB=m.world.viewBox;REGIONS[0][1]=VB}
+    renderZoom();renderMap(visible());$('#app').classList.remove('hidden');
+    const want=new URLSearchParams(location.search).get('factory');if(want)openFactory(want,'work').catch(()=>{});
+  }catch(err){if(err.status===401||err.status===403)$('#needSignin').classList.remove('hidden');else{$('#app').classList.remove('hidden');say(err.message,'bad')}}
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+</body>
+</html>
