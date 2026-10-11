@@ -49,3 +49,9 @@ Period: 7, 30 or 90 days.
 
 ## Not built yet (next)
 LLM visibility probes (asking Claude, ChatGPT and Grok the questions buyers ask and tracking whether we are named), KPI targets per person and week, feeding signals into the opportunity finder and automations, a Chrome-side capture for LinkedIn.
+
+## Seeing what was heard and what was skipped
+
+- **Watches** shows each search in a wide, readable box, and under every watch the last few posts it heard, each linking out to the original post, marked *read by the AI*, *read, not a fit*, *waiting to be read* or *passed over*.
+- **Signals → Passed over** lists the posts the cheap first look did not send to the AI, with the reason in plain words ("does not mention AI, apps or software, or product development" or "mentions AI but does not sound like someone asking for help…"). **Have the AI read this** sends one to the chosen AI anyway, and it then appears in Open with its draft. `GET /v1/intel/passed`, `POST /v1/intel/signals/:id/read`.
+- Every signal card carries a **Next step** for Future Basics (reply in the thread, send the draft as a message, email it, follow up, prepare for the call), shaped by what the person wants and where the signal stands, next to the draft. It is a suggestion; a person does it and logs it.

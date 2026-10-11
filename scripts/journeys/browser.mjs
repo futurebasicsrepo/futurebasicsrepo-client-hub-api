@@ -1383,6 +1383,7 @@ await journey('J135', 'the Intelligence page in a browser: signals ranked with a
   const card = mine('Need an app for my salon');
   ok(/92/.test(await card.locator('.score').innerText()) && /A salon owner needs a booking app/.test(await card.innerText()) && /Asked two hours ago/.test(await card.innerText()) && /Check first: Check the subreddit rules/.test(await card.innerText()) && (await card.locator('textarea[data-draft]').inputValue()).startsWith('Happy to share'), 'a card shows the score, the summary, why now, what to check first and a draft');
   ok(await card.locator('h3 a').getAttribute('href') === `https://example.com/${tag}/1` && await card.locator('h3 a').getAttribute('target') === '_blank', 'the title opens the original post in a new tab');
+  ok(/next step/i.test(await card.locator('.next').innerText()) && /“I sent it”/.test(await card.locator('.next').innerText()) && /CRM/.test(await card.locator('.next').innerText()), 'each post says what Future Basics should do next, with the draft beside it');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j135-signals.png` }).catch(() => {});
   // filters
   await page.click('#fLine [data-ln=ai]'); await page.waitForFunction(() => document.querySelectorAll('.sig').length >= 1 && ![...document.querySelectorAll('.sig')].some(e => /booking app/.test(e.innerText)), null, { timeout: 5000 });
@@ -1403,6 +1404,14 @@ await journey('J135', 'the Intelligence page in a browser: signals ranked with a
   // a post spotted by hand
   await page.click('#addPost'); await page.waitForSelector('#dlg[open]'); await page.selectOption('#dlg select[name=source]', 'linkedin'); await page.fill('#dlg input[name=author]', 'Dana Founder'); await page.fill('#dlg textarea[name=text]', `We need an AI consultant to automate onboarding ${tag}`); await page.click('#dGo');
   await page.waitForFunction(() => /Added and read/.test(document.querySelector('#runMsg').textContent), null, { timeout: 10000 }); ok(await mine(`automate onboarding ${tag}`).count() === 1 && /linkedin/i.test(await mine(`automate onboarding ${tag}`).innerText()), 'a post added by hand is read and appears with its source');
+  // what the first look passed over
+  const pz = sql(`insert into intel_signals(source,external_id,url,author,title,body,posted_at,scored_at,relevant,score,model) values('hn','ui-${tag}-pass','https://news.ycombinator.com/item?id=${stamp}','quietone','A quiet note ${tag}','we should look at automation sometime NOFIT',now(),now(),false,0,'prefilter') returning id`).split('\n')[0];
+  await page.click('#fStatus [data-st=passed]'); await page.waitForSelector(`.pass:has-text("A quiet note ${tag}")`, { timeout: 5000 });
+  const pcard = page.locator(`.pass:has-text("A quiet note ${tag}")`);
+  ok(/does not sound like someone asking/.test(await pcard.innerText()) && await pcard.locator('h3 a').getAttribute('href') === `https://news.ycombinator.com/item?id=${stamp}` && await pcard.locator('h3 a').getAttribute('target') === '_blank' && /Passed over/.test(await page.locator('#fStatus .fchip.on').innerText()), 'Passed over lists what the first look skipped, says why, and links out to the post');
+  await pcard.locator('[data-a=readnow]').click(); await page.waitForFunction(() => /^(Read|Not read)/.test(document.querySelector('#runMsg').textContent), null, { timeout: 10000 });
+  ok(sql(`select model from intel_signals where id='${pz}'`) !== 'prefilter' && await page.locator(`.pass:has-text("A quiet note ${tag}")`).count() === 0, 'asking the AI to read it takes it off that list');
+  await page.click('#fStatus [data-st=open]'); await mine('support automation').waitFor({ timeout: 5000 });
   // KPIs
   await page.click('.tab[data-t=kpis]'); await page.waitForSelector('#t-kpis .tiles'); const row = page.locator(`#t-kpis tr:has-text("Uma Staff")`);
   ok(await row.count() === 1 && /Overdue now/.test(await page.innerText('#t-kpis')) && /Who is doing what/.test(await page.innerText('#t-kpis')), 'the KPIs show the funnel, whether we are on it, and each person');
@@ -1414,6 +1423,12 @@ await journey('J135', 'the Intelligence page in a browser: signals ranked with a
   await page.waitForSelector(`#t-watches tr:has-text("Mine ${tag}")`, { timeout: 5000 }); ok(await page.locator(`#t-watches tr:has-text("Mine ${tag}")`).count() === 1, 'a new watch can be added');
   await page.locator(`#t-watches tr:has-text("Mine ${tag}") [data-en]`).uncheck(); await page.waitForFunction(t => !document.querySelector(`#t-watches tr[data-w] [data-en]`) || true, null); await sleep(500);
   ok(sql(`select enabled from intel_watches where name='Mine ${tag}'`) === 'f', 'and switched off');
+  sql(`insert into intel_signals(watch_id,source,external_id,url,title,body,scored_at,relevant,score,model) select id,'hn','ui-${tag}-heard','https://news.ycombinator.com/item?id=${stamp}1','Heard ${tag}','nothing',now(),false,0,'prefilter' from intel_watches where name='Mine ${tag}'`);
+  await page.click('.tab[data-t=watches]'); await page.waitForSelector(`.heard a:has-text("Heard ${tag}")`, { timeout: 5000 });
+  const hr = page.locator(`tr[data-rec]:has(.heard a:has-text("Heard ${tag}"))`);
+  ok(await hr.locator('a').first().getAttribute('href') === `https://news.ycombinator.com/item?id=${stamp}1` && /passed over/i.test(await hr.innerText()) && /does not mention/.test(await hr.innerText()), 'under each watch, what it last heard: a link to the post, and whether it was read or passed over');
+  ok((await page.locator('#t-watches tr[data-w] .q').first().evaluate(e => e.getBoundingClientRect().width)) > 280, '“Listening for” has room to read the whole search');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j135-watches.png` }).catch(() => {});
   // settings
   await page.click('.tab[data-t=settings]'); await page.waitForSelector('#sSave'); await page.fill('#sSla', '12'); await page.locator(`[data-team]`).first().fill(`Growth ${tag}`); await page.click('#sSave');
   await page.waitForFunction(() => /Saved/.test(document.querySelector('#sMsg').textContent), null, { timeout: 5000 }); ok(sql(`select value->>'slaHours' from app_settings where key='intel'`) === '12', 'settings save');
