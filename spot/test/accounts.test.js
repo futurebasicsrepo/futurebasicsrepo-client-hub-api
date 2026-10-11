@@ -55,7 +55,8 @@ test('an account holds your Spots, saved details, and asks from your own AI', as
   const H = { cookie };
   assert.equal((await call('GET', '/v1/me')).status, 401);
   assert.equal((await call('GET', '/account')).status, 302);
-  const page = await call('GET', '/account', undefined, H);
+  assert.equal((await call('GET', '/account', undefined, H)).headers.location, '/setup', 'someone new answers a few questions first');
+  const page = await call('GET', '/account?skip_setup=1', undefined, H);
   assert.equal(page.status, 200);
   assert.match(page.body, /id="aiStrip"/, 'your AI, its cap and your card sit right under the header');
   assert.match(page.body, /data-tab="ai"[^>]*>AI &amp; card</);

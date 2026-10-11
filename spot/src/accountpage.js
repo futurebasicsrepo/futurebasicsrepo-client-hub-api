@@ -1,7 +1,9 @@
-// /signin and /account pages. Data comes from /v1/auth/* and /v1/me.
+// /signin, /setup and /account pages. Data comes from /v1/auth/* and /v1/me.
 import { SITE_JS, siteFooter, siteHead, siteNav } from './site.js';
+import { buddySvg } from './pages.js';
 import { PASSKEY_JS } from './passkeys.js';
 import { SMS_CONSENT } from './notify.js';
+import { assetUrl } from './assets.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -91,6 +93,10 @@ ${SSO_CSS}.pk-b{width:100%;display:flex;align-items:center;justify-content:cente
 .staffbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0 0;padding:10px 14px;border:1.5px dashed var(--line);border-radius:16px}
 .staffbar[hidden]{display:none}.staffbar span{font-weight:700;font-size:14px;color:var(--muted);margin-right:auto}
 .aistrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.setupcard{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--spot);border-radius:16px;background:color-mix(in srgb,var(--spot) 6%,var(--card));color:var(--ink);text-decoration:none}
+.setupcard[hidden]{display:none}.setupcard small{display:block;color:var(--muted);font-size:14px}.setupcard .go2{color:var(--spot);font-weight:700;white-space:nowrap}
+.setupcard .sface{width:40px;height:40px;border-radius:50%;background:url(${assetUrl('spot-face.webp')}) 50% 46%/116% no-repeat,var(--spot)}
+#ai-card{scroll-margin-top:140px}
 .aistrip span{white-space:nowrap}.aistrip small{color:var(--muted)}.aistrip .go2{margin-left:auto;color:var(--spot);font-weight:700}
 .tabs button{flex:none;font:600 15px Bricolage,system-ui,sans-serif;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:999px;cursor:pointer;white-space:nowrap}
 .tabs button[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
@@ -129,8 +135,8 @@ ${SSO_CSS}.pk-b{width:100%;display:flex;align-items:center;justify-content:cente
 .hint{background:color-mix(in srgb,var(--spot2) 25%,transparent);border-radius:12px;padding:10px 12px;font-size:14px}
 `;
 
-function page({ origin, path, title, body, script, head = '' }) {
-  return `${siteHead({ title, desc: 'Your Spot account', origin, path, extraCss: CSS }).replace('<head>', `<head><meta name="robots" content="noindex">${head}`)}
+function page({ origin, path, title, body, script, head = '', css = '' }) {
+  return `${siteHead({ title, desc: 'Your Spot account', origin, path, extraCss: CSS + css }).replace('<head>', `<head><meta name="robots" content="noindex">${head}`)}
 ${siteNav()}
 <main class="acct"><div class="wrap">${body}</div></main>
 ${siteFooter()}
@@ -222,6 +228,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
     title: 'Your account · Spot',
     body: `<header class="ahead"><div><h1 id="hi">Your Spot</h1><p class="sub" id="who"></p></div><button class="btn ghost sm" id="out">Sign out</button></header>
 <div class="staffbar" id="staffBar" role="navigation" aria-label="Spot team" hidden><span>Spot team</span><a class="btn ghost sm" id="staffAdmin" href="/admin">Admin</a><a class="btn ghost sm" id="staffHealth" href="/admin/health">Health</a></div>
+<a class="setupcard" id="setupCard" href="/setup" hidden><span class="sface" aria-hidden="true"></span><span><b>Finish setting up</b><small>Your name and address, for one-tap checkout.</small></span><span class="go2">Finish →</span></a>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
 <nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
@@ -307,6 +314,8 @@ async function load(){
   renderCarts();
   const s=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('#shipForm').elements)if(el.name)el.value=s[el.name]||'';$('#payForm').venmo.value=u.venmo?'@'+u.venmo:'';$('#payForm').cashtag.value=u.cashtag?'$'+u.cashtag:'';for(const el of $('#sizeForm').elements)if(el.name)el.value=(u.sizes||{})[el.name]||'';
   sums(u);
+  // Skipped the first-sign-in questions and still no name or address: a nudge back.
+  $('#setupCard').hidden=Boolean(u.name&&u.shipping)||(me.setup.done&&!me.setup.skipped);
   $('#travs').innerHTML=u.travelers.map((t,i)=>'<div class="trav"><span>'+esc(t.given_name+' '+t.family_name)+(t.born_on?' <small class="sub">· '+esc(t.born_on)+'</small>':'')+((t.loyalty||[]).length?' <small class="sub">· ✈️ '+t.loyalty.map(l=>esc(l.airline+' '+l.number)).join(', ')+'</small>':'')+'</span><button class="linkbtn" data-rm="'+i+'">Remove</button></div>').join('');
   const row=(ic,title,sub,btn)=>'<div class="meth"><span class="ic" aria-hidden="true">'+ic+'</span><span>'+title+(sub?'<small>'+sub+'</small>':'')+'</span>'+(btn||'')+'</div>';
   const NAMES={google:'Google',facebook:'Facebook'};
@@ -459,7 +468,108 @@ $('#fundForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').
     else body={test_card:$('#fundTest').value};
     me.funding=await post('/v1/me/funding',body);$('#fundForm').hidden=true;$('#fundEl').innerHTML='';load()}catch(err){$('#err').textContent=err.message}finally{b.disabled=false}});
 $('#out').onclick=async()=>{await post('/v1/auth/logout');try{localStorage.removeItem('spot:in');localStorage.removeItem('spot:staff')}catch{}location.href='/'};
-claimLocal().then(load).catch(err=>{$('#err').textContent=err.message});`,
+// /account?add=card (from /setup): open "Your AI's card" with the add-a-card form showing.
+const addCard=()=>{const q=new URLSearchParams(location.search);if(q.get('add')!=='card')return;history.replaceState(null,'','/account#ai');tab('ai',false);
+  const b=$('#fundAdd');if(b){b.click();setTimeout(()=>$('#ai-card').scrollIntoView({block:'start'}),50)}};
+claimLocal().then(load).then(addCard).catch(err=>{$('#err').textContent=err.message});`,
+  });
+}
+
+// /setup: the first time someone signs in, Spot asks a few questions, one
+// per screen. Only the name is needed; the rest can be skipped and filled
+// in later on /account. Reaching the end, or skipping the lot, marks it done.
+const SETUP_CSS = `
+.su{max-width:520px;margin:0 auto}
+.sutop{display:flex;align-items:center;gap:12px}
+.su.done .sutop{display:none}
+.prog{flex:1;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.prog i{height:6px;border-radius:9px;background:var(--line);transition:background .3s}.prog i.on{background:var(--spot)}
+.sucount{font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap}
+.suhero{display:flex;align-items:center;gap:12px;margin:22px 0 18px}
+.suhero #buddy{display:block;width:84px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-8px}.suhero #buddy img{display:block;width:100%;height:auto}
+@keyframes bob{50%{transform:translateY(-4px)}}
+@media (prefers-reduced-motion:reduce){.suhero #buddy{animation:none}}
+.suhero .say{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 20px 6px;padding:12px 16px;font-size:clamp(21px,5.6vw,26px);line-height:1.15;letter-spacing:-.02em;outline:none}
+.su.done .suhero #buddy{width:120px}
+.sustep{gap:10px}.sustep .lead{margin:0 0 4px}
+.sustep .btn.primary{width:100%;margin-top:6px}
+.sunav{display:flex;justify-content:space-between;align-items:center;min-height:44px}
+.sunav .linkbtn{color:var(--muted);font-size:15px;padding:10px 4px}.sunav [data-skip]{margin-left:auto}
+.sustep .err{margin:0}
+/* city, state and ZIP stay on one row: it's a short form on a phone */
+.sustep .three{grid-template-columns:1.6fr 1fr 1.1fr}
+.howto{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:15px}.howto a{color:var(--spot);font-weight:700;text-decoration:none}
+.have{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600}.have[hidden]{display:none}
+.sufine{color:var(--muted);font-size:14px;margin:0}
+`;
+
+export function setupPage({ origin }) {
+  const nav = (back = true, skip = true) => `<div class="sunav">${back ? '<button type="button" class="linkbtn" data-back>← Back</button>' : ''}${skip ? '<button type="button" class="linkbtn" data-skip>Skip for now</button>' : ''}</div>`;
+  return page({
+    origin,
+    path: '/setup',
+    title: 'Set up · Spot',
+    css: SETUP_CSS,
+    body: `<div class="su" id="su">
+<div class="sutop"><div class="prog" role="progressbar" aria-label="Setup" aria-valuemin="1" aria-valuemax="5" aria-valuenow="1"><i class="on"></i><i></i><i></i><i></i><i></i></div><span class="sucount" id="count">1 of 5</span><button type="button" class="linkbtn" id="skipAll">Skip setup</button></div>
+<div class="suhero">${buddySvg(false)}<h1 class="say" id="say" tabindex="-1" aria-live="polite">What should I call you?</h1></div>
+<form class="f sustep" data-step="name" data-say="What should I call you?"><p class="lead">It’s how Spot greets you, and the name people see when you ask them to pay.</p>
+  <input name="name" placeholder="Your name" autocomplete="name" maxlength="60" required aria-label="Your name">
+  <p class="err"></p><button class="btn primary">Continue</button></form>
+<form class="f sustep" data-step="ship" data-say="Where should things ship?" hidden><p class="lead">Filled in at checkout, and your AI uses it so it never has to ask.</p>
+  <input name="name" placeholder="Full name" autocomplete="name" aria-label="Full name">
+  <input name="line1" placeholder="Street" autocomplete="address-line1" aria-label="Street">
+  <input name="line2" placeholder="Apt, suite (optional)" autocomplete="address-line2" aria-label="Apt or suite">
+  <div class="three"><input name="city" placeholder="City" autocomplete="address-level2" aria-label="City"><input name="state" placeholder="State" autocomplete="address-level1" aria-label="State"><input name="postal_code" placeholder="ZIP" autocomplete="postal-code" inputmode="numeric" aria-label="ZIP"></div>
+  <input name="phone" type="tel" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone">
+  <input name="email" type="email" placeholder="Email for receipts" autocomplete="email" aria-label="Email for receipts">
+  <p class="err" role="alert"></p><button class="btn primary">Save address</button>${nav()}</form>
+<form class="f sustep" data-step="sizes" data-say="Your sizes?" hidden><p class="lead">So Spot and your AI pick the right size without asking. Say it however the store would.</p>
+  <input name="tops" placeholder="Tops (e.g. M)" maxlength="30" aria-label="Tops size">
+  <input name="bottoms" placeholder="Pants (e.g. 32x30)" maxlength="30" aria-label="Pants size">
+  <input name="shoes" placeholder="Shoes (e.g. US 10.5)" maxlength="30" aria-label="Shoe size">
+  <p class="err"></p><button class="btn primary">Save sizes</button>${nav()}</form>
+<form class="f sustep connect" data-step="ai" data-say="Connect your AI" hidden><p class="lead">Add Spot to Claude or ChatGPT once, then just ask it for things. Nothing is bought until you say yes.</p>
+  <p class="have" id="aiHave" hidden></p>
+  <div class="mcpurl"><code id="mcpUrl"></code><button type="button" class="btn ghost sm" id="copyUrl">Copy</button></div>
+  <p class="howto"><span class="sub" style="margin:0">How to add it:</span><a href="/connect#claude" target="_blank" rel="noopener">Claude ↗</a><a href="/connect#chatgpt" target="_blank" rel="noopener">ChatGPT ↗</a><a href="/connect#other" target="_blank" rel="noopener">Other apps ↗</a></p>
+  <p class="err"></p><button class="btn primary" id="aiNext">I added it</button>${nav()}</form>
+<form class="f sustep" data-step="card" data-say="Add a card for your AI’s asks" hidden><p class="lead">Spot never gives your AI the card number, and you approve each purchase with a tap.</p>
+  <p class="have" id="cardHave" hidden></p>
+  <p class="err"></p><button class="btn primary" id="cardGo">Add a card</button>${nav()}</form>
+<div class="f sustep" data-step="done" data-say="You’re all set!" hidden><p class="lead">Ask your AI for something, or make a Spot yourself: paste a link and send it to whoever’s paying.</p>
+  <a class="btn primary" href="/new" style="width:100%">Make a Spot</a><a class="btn ghost" href="/account" style="width:100%">Go to my account</a><p class="sufine">You can change any of this in your account.</p></div>
+</div>`,
+    script: `const STEPS=[...document.querySelectorAll('.sustep')],N=STEPS.length-1;let at=0,me=null;
+function show(i){at=i;STEPS.forEach((s,j)=>s.hidden=j!==i);const s=STEPS[i],done=s.dataset.step==='done';
+  $('#say').textContent=s.dataset.say;$('#su').classList.toggle('done',done);
+  $('#count').textContent=Math.min(i+1,N)+' of '+N;document.querySelectorAll('.prog i').forEach((b,j)=>b.classList.toggle('on',j<=i));$('.prog').setAttribute('aria-valuenow',String(Math.min(i+1,N)));
+  STEPS.forEach(x=>{const e=x.querySelector('.err');if(e)e.textContent=''});scrollTo(0,0);
+  // Enter answers the question: the first box, or the main button when there's nothing to type.
+  (s.querySelector('input')||s.querySelector('.btn.primary')).focus({preventScroll:true});
+  if(done){$('#buddy .open').style.display='none';$('#buddy .joy').style.display='';post('/v1/me',{setup_done:true}).catch(()=>{})}}
+// What each step saves. Returning false stays put (the card step leaves for /account).
+const SAVE={
+  name:async v=>{const r=await post('/v1/me',{name:v.name});const sn=$('[data-step=ship]').elements.name;if(!me.user.shipping||!sn.value)sn.value=r.user.name||'';me.user=r.user},
+  ship:async v=>{me.user=(await post('/v1/me',{shipping:v})).user},
+  // Only tops, pants and shoes here: other saved sizes stay as they are.
+  sizes:async v=>{me.user=(await post('/v1/me',{sizes:{...(me.user.sizes||{}),...v}})).user},
+  card:async()=>{if(me.setup.card)return;await post('/v1/me',{setup_done:true});location.href='/account?add=card#ai';return false},
+};
+document.addEventListener('submit',async e=>{const f=e.target.closest('.sustep');if(!f)return;e.preventDefault();const b=f.querySelector('.btn.primary');b.disabled=true;
+  try{const fn=SAVE[f.dataset.step];if(fn&&(await fn(Object.fromEntries(new FormData(f))))===false)return;show(at+1)}catch(err){f.querySelector('.err').textContent=err.message}finally{b.disabled=false}});
+document.addEventListener('click',e=>{if(e.target.closest('[data-back]'))show(Math.max(0,at-1));if(e.target.closest('[data-skip]'))show(at+1)});
+$('#skipAll').onclick=async()=>{try{await post('/v1/me',{setup_done:true,setup_skipped:true})}catch{}location.href='/account'};
+$('#copyUrl').onclick=async()=>{try{await navigator.clipboard.writeText($('#mcpUrl').textContent);$('#copyUrl').textContent='Copied'}catch{}};
+(async()=>{const r=await fetch('/v1/me');if(r.status===401){location.href='/signin?next=/setup';return}
+  me=await r.json();const u=me.user;
+  // Anything already on the account is filled in, to check or change.
+  $('[data-step=name]').elements.name.value=u.name||'';
+  const sh=Object.assign({name:u.name||'',email:u.email||'',phone:u.phone||''},u.shipping||{});for(const el of $('[data-step=ship]').elements)if(el.name)el.value=sh[el.name]||'';
+  for(const el of $('[data-step=sizes]').elements)if(el.name)el.value=(u.sizes||{})[el.name]||'';
+  $('#mcpUrl').textContent=me.mcp_url;
+  if(me.setup.ai){$('#aiHave').hidden=false;$('#aiHave').textContent='✓ Your AI is connected. You can add another any time.';$('#aiNext').textContent='Continue'}
+  const c=(me.funding||{}).card;if(c){$('#cardHave').hidden=false;$('#cardHave').textContent='✓ '+c.label+' is saved for your AI.';$('#cardGo').textContent='Continue'}
+  show(0)})().catch(err=>{$('[data-step=name] .err').textContent=err.message});`,
   });
 }
 
