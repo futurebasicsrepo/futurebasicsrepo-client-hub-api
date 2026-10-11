@@ -895,6 +895,68 @@ await journey('J110', 'the showcase follows the apps: a merged change to a build
 });
 
 
+await journey('J115', 'one CRM for every customer: hub clients and the people who sign in for them become contacts tagged client / lead / tech-pack, kept in step, with tags, filters, bulk tagging and saved views', async () => {
+  const room = await newRoom('115', { wait: false }), tag = `t${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  const cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const mine = async email => (await S(`/contacts?q=${encodeURIComponent(email)}`)).json.contacts.find(c => c.email === email);
+  ok((await call('/v1/sales/tags', { token: room.token })).status === 403 && (await call('/v1/sales/segments')).status === 401, 'tags and views are for staff only');
+
+  // the hub's clients become contacts
+  sql(`update clients set status='lead', marketing_opt_out_at=null where id='${cid}'`);
+  const hasTP = sql(`select count(*) from tech_packs where client_id='${cid}'`) !== '0';
+  const r1 = await S('/import/hub', { body: {} }); ok(r1.status === 200 && r1.json.created >= 1 && r1.json.people >= 1, 'the sync adds the hub’s people', r1.json);
+  let c = await mine(room.email); ok(c && c.source === 'hub' && c.clientId === cid && c.tags.includes('lead') && !c.tags.includes('client') && (hasTP ? c.tags.includes('tech-pack') : true), 'a website lead is tagged lead (and tech-pack when they have a tech pack)', c);
+  ok(hasTP, 'setup: the room has a tech pack, so the tech-pack tag is expected');
+  const r2 = await S('/import/hub', { body: {} }); ok(r2.json.created === 0 && r2.json.updated === 0, 'running it again changes nothing', r2.json);
+
+  // staff tags survive; hub tags follow the hub
+  await S(`/contacts/${c.id}`, { method: 'PUT', body: { tags: [...c.tags, 'Builds', 'VIP Client'] } });
+  sql(`update clients set status='active' where id='${cid}'`); await S('/import/hub', { body: {} });
+  c = await mine(room.email); ok(c.tags.includes('client') && !c.tags.includes('lead') && c.tags.includes('builds') && c.tags.includes('vip-client') && c.tags.includes('tech-pack'), 'when the lead becomes a client the hub tags follow and the staff tags (builds, vip-client) stay', c.tags);
+
+  // another person who signs in for the same client; staff addresses are left out
+  const second = `second-${tag}@chaos.test`; sql(`insert into users(client_id,email,name,role) values('${cid}','${second}','Second Person','client') on conflict do nothing`);
+  const staffAddr = `staffer-${tag}@thefuturebasics.com`; sql(`insert into users(client_id,email,name,role) values('${cid}','${staffAddr}','Staffer','client') on conflict do nothing`);
+  await S('/import/hub', { body: {} }); const sp = await mine(second); ok(sp && sp.company && sp.tags.includes('client') && sp.clientId === cid && !(await mine(staffAddr)), 'another person at the same client is a contact too; our own staff are not');
+
+  // the hub's marketing opt-out is respected
+  sql(`update clients set marketing_opt_out_at=now() where id='${cid}'`); await S('/import/hub', { body: {} }); await S('/import/hub', { body: {} });
+  const d = (await S(`/contacts/${c.id}`)).json; ok(d.contact.emailOk === false && d.activities.filter(a => /Opted out of marketing/.test(a.text)).length === 1, 'a client who opted out of marketing in the hub is marked not to be emailed, once, with a note');
+  sql(`update clients set marketing_opt_out_at=null where id='${cid}'`);
+  sql(`update clients set archived_at=now() where id='${cid}'`); const third = `third-${tag}@chaos.test`; sql(`insert into users(client_id,email,name,role) values('${cid}','${third}','Third','client') on conflict do nothing`); await S('/import/hub', { body: {} });
+  ok(!(await mine(third)), 'an archived client brings in no new people'); sql(`update clients set archived_at=null where id='${cid}'`);
+
+  // tags, filters and counts
+  const mk = async (name, tags) => (await S('/contacts', { body: { name, email: `${name.toLowerCase()}-${tag}@x.test`, tags } })).json.id;
+  const c1 = await mk('One', [`${tag}a`, `${tag}b`]), c2 = await mk('Two', [`${tag}a`]), c3 = await mk('Three', [`${tag}b`, `${tag}c`]);
+  const ids = async qs => (await S(`/contacts?limit=100&${qs}`)).json.contacts.map(x => x.id);
+  ok((await ids(`tags=${tag}a,${tag}b`)).join() === c1, 'asking for two tags finds only who has both');
+  ok((await ids(`tags=${tag}a&exclude=${tag}b`)).join() === c2, 'a tag can be excluded');
+  ok((await ids(`tag=${tag}c`)).join() === c3 && (await ids(`q=${tag}c`)).includes(c3), 'one tag, or a search that matches a tag, finds them');
+  const cnt = (await S('/tags')).json; ok(cnt.tags.find(t => t.tag === `${tag}a`).n === 2 && cnt.tags.find(t => t.tag === `${tag}b`).n === 2 && cnt.auto.includes('tech-pack'), 'tag counts are right, and the hub-managed tags are named');
+  const made = (await S('/contacts', { body: { name: 'Typed', email: `typed-${tag}@x.test`, tags: 'Tech Pack, VIP!!, a_b' } })).json.id; ok((await S(`/contacts/${made}`)).json.contact.tags.join() === 'a-b,tech-pack,vip' || (await S(`/contacts/${made}`)).json.contact.tags.sort().join() === 'a-b,tech-pack,vip', 'whatever is typed becomes a clean tag');
+
+  // bulk
+  const bulk = await S('/contacts/bulk-tags', { body: { ids: [c1, c2, 'not-an-id'], add: ['Builds Customer', `${tag}z`], remove: [`${tag}a`] } });
+  ok(bulk.status === 200 && bulk.json.changed === 2, 'tags are added and removed on many contacts at once', bulk.json);
+  const t1 = (await S(`/contacts/${c1}`)).json.contact.tags, t3 = (await S(`/contacts/${c3}`)).json.contact.tags;
+  ok(!t1.includes(`${tag}a`) && t1.includes('builds-customer') && t1.includes(`${tag}b`) && t1.includes(`${tag}z`) && !t3.includes('builds-customer'), 'only the chosen contacts change, and the other tags stay');
+  ok((await S('/contacts/bulk-tags', { body: { ids: [], add: ['x'] } })).status === 422 && (await S('/contacts/bulk-tags', { body: { ids: [c1] } })).status === 422 && (await S('/contacts/bulk-tags', { body: { ids: Array.from({ length: 501 }, () => c1), add: ['x'] } })).status === 422, 'nothing chosen, nothing to do, or too many are refused');
+
+  // saved views
+  const segs = (await S('/segments')).json.segments; ok(['Tech pack customers', 'Builds customers', 'Leads', 'Showcase interest'].every(n => segs.some(s => s.name === n)) && segs.find(s => s.name === 'Tech pack customers').count >= 1, 'the starter views are there, with counts');
+  const sg = await S('/segments', { body: { name: `Mine ${tag}`, filter: { tags: [`${tag}b`, `${tag}z`] } } }); ok(sg.status === 201 && (await S('/segments')).json.segments.find(s => s.id === sg.json.id).count === 1, 'a view is saved and counts who is in it now');
+  ok((await S(`/segments/${sg.json.id}`, { method: 'PUT', body: { name: `Renamed ${tag}`, filter: { tags: [`${tag}b`] } } })).status === 200 && (await S('/segments')).json.segments.find(s => s.id === sg.json.id).count === 2, 'it can be changed');
+  ok((await S('/segments', { body: { name: 'Empty', filter: {} } })).status === 422 && (await S('/segments', { body: { filter: { tags: ['x'] } } })).status === 422 && (await S('/segments/00000000-0000-0000-0000-000000000000', { method: 'DELETE' })).status === 404, 'a view needs a name and a filter; an unknown one is not found');
+  ok((await S(`/segments/${sg.json.id}`, { method: 'DELETE' })).status === 200, 'and can be removed');
+
+  // showcase people are tagged as they arrive
+  const guest = `guest-${tag}@chaos.test`; await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, send: false } });
+  ok((await mine(guest)).tags.includes('showcase'), 'someone invited to the showcase is tagged showcase');
+});
+
 await journey('J113', 'Sales email: who may be emailed, what goes out (footer, address, one-click unsubscribe), what comes back (deliveries, bounces, spam complaints, replies, opt-outs), and nothing is sent twice or to someone who said stop', async () => {
   const http = await import('node:http'), { createHmac } = await import('node:crypto');
   const mock = { sent: [], seenKeys: new Map(), received: new Map(), n: 0, failAddress: 'failme', receivedDown: new Set() };
@@ -1002,7 +1064,7 @@ await journey('J113', 'Sales email: who may be emailed, what goes out (footer, a
 
     const newId = 'rcv_new_' + tag, newer = `newperson-${tag}@elsewhere.test`; mock.received.set(newId, { subject: 'Interested in a site', text: 'Hi, saw your showcase. Can you build one for my bakery?' });
     await hook({ type: 'email.received', data: { email_id: newId, from: `New Person <${newer}>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Interested in a site' } });
-    const np = await contact(newer); ok(np && np.source === 'inbound' && (await detail(np.id)).deals.some(d => /Inbound email: Interested in a site/.test(d.title)), 'someone new who writes in becomes a contact with a deal');
+    const np = await contact(newer); ok(np && np.source === 'inbound' && (np.tags || []).includes('inbound') && (await detail(np.id)).deals.some(d => /Inbound email: Interested in a site/.test(d.title)), 'someone new who writes in becomes a contact with a deal');
     ok((await S(`/contacts/${np.id}/email-check`)).json.relationship.ok, 'and because they wrote to us they may be answered');
 
     const outId2 = 'rcv_out_' + tag; mock.received.set(outId2, { subject: 'Please unsubscribe me', text: 'Please unsubscribe me from this list.\n\n> original text' });

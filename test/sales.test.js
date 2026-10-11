@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanContact, cleanDeal, cleanTask, cleanActivity, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv, STAGES, OPEN_STAGES } from '../src/sales.js';
+import { cleanTag, cleanTags, cleanSegment, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv, STAGES, OPEN_STAGES } from '../src/sales.js';
 
 test('a contact needs a name or an email and is cleaned', () => {
   assert.match(cleanContact({}).error, /name or an email/);
@@ -58,4 +58,17 @@ test('pasted CSV: quotes, commas inside quotes, CRLF, loose headers, blank lines
   const rows = parseCsv('﻿Name, E-mail ,Company\r\n"Reyes, Dana",dana@salon.com,"Salon ""Co"""\r\n\r\nSam,sam@roaster.co,\n');
   assert.deepEqual(rows, [{ name: 'Reyes, Dana', email: 'dana@salon.com', company: 'Salon "Co"' }, { name: 'Sam', email: 'sam@roaster.co', company: '' }]);
   assert.deepEqual(parseCsv(''), []); assert.deepEqual(parseCsv('a,b'), []);
+});
+
+test('tags are short lower-case labels, whatever is typed', () => {
+  assert.equal(cleanTag('Tech Pack'), 'tech-pack'); assert.equal(cleanTag('  VIP!! '), 'vip'); assert.equal(cleanTag('a_b  c'), 'a-b-c'); assert.equal(cleanTag('region:NYC'), 'region:nyc'); assert.equal(cleanTag('---'), ''); assert.equal(cleanTag('x'.repeat(50)).length, 30); assert.equal(cleanTag(null), '');
+  assert.deepEqual(cleanTags('Tech Pack, builds; BUILDS\n vip'), ['tech-pack', 'builds', 'vip']); assert.deepEqual(cleanTags(['A', 'a ', '', 'B b']), ['a', 'b-b']); assert.equal(cleanTags(Array.from({ length: 40 }, (_, i) => 't' + i)).length, 20, 'twenty at most');
+  assert.deepEqual(cleanContact({ name: 'x', tags: 'Tech Pack, VIP' }).value.tags, ['tech-pack', 'vip']); assert.deepEqual(AUTO_TAGS, ['client', 'lead', 'tech-pack']);
+});
+
+test('a saved view needs a name and something to filter by', () => {
+  assert.match(cleanSegment({}).error, /name/); assert.match(cleanSegment({ name: 'Empty', filter: {} }).error, /at least one/);
+  const v = cleanSegment({ name: '  Salons  ', filter: { tags: 'Tech Pack, salon', excludeTags: ['Lead'], source: 'bogus', q: ' dana ' } }).value;
+  assert.deepEqual(v, { name: 'Salons', filter: { q: 'dana', tags: ['tech-pack', 'salon'], excludeTags: ['lead'], source: '' } });
+  assert.equal(cleanSegment({ name: 'From showcase', filter: { source: 'showcase' } }).value.filter.source, 'showcase');
 });

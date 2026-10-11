@@ -984,6 +984,14 @@ export async function migrate() {
       unique (build_id, ref)
     );
     create index if not exists build_updates_build_idx on build_updates(build_id, status, happened_at desc);
+    create table if not exists sales_segments (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      filter jsonb not null default '{}'::jsonb,
+      position integer not null default 100,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists sales_contacts_tags_idx on sales_contacts using gin (tags);
     -- Sales email (see src/sales-email.js): every message sent and received, the templates, and who must not be emailed
     create table if not exists sales_emails (
       id uuid primary key default gen_random_uuid(),
