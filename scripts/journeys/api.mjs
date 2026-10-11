@@ -322,7 +322,7 @@ await journey('J39', 'platform health page: staff only, complete, honest about t
   const b = h.json, ids = (b.checks || []).map(c => c.id);
   for (const id of ['postgres', 'shopify', 'anthropic', 'resend', 'google', 'cutout', 'storage', 'host']) ok(ids.includes(id), `health lists ${id}`, ids);
   ok(['healthy', 'degraded', 'down'].includes(b.overall), 'one overall word for the banner', b.overall);
-  ok(b.checks.every(c => ['ok', 'warn', 'down', 'off', 'info'].includes(c.status) && c.name && c.summary && ['infrastructure', 'integration'].includes(c.group)), 'every check has a status, a name, a one-line summary and a group');
+  ok(b.checks.every(c => ['ok', 'warn', 'down', 'off', 'info'].includes(c.status) && c.name && c.summary && ['infrastructure', 'integration', 'listening', 'sales', 'delivery'].includes(c.group)), 'every check has a status, a name, a one-line summary and a group');
   const pg = b.checks.find(c => c.id === 'postgres'); ok(pg.status === 'ok' || (pg.status === 'warn' && /waiting for a connection/.test(pg.summary)), 'the database reads healthy (or honestly says requests are queueing on this deliberately tiny pool)', pg.summary);
   ok(pg.latencyMs >= 0 && pg.facts.some(f => f[0] === 'Version'), 'with a latency and a version');
   ok(b.checks.find(c => c.id === 'shopify').status === 'off' && /not connected/i.test(b.checks.find(c => c.id === 'shopify').summary), 'Shopify is reported as not connected here (it is not configured), not as fine');
