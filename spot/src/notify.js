@@ -123,13 +123,13 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
     async sendInvite(to, { link, base = env.PUBLIC_URL, hero = '' }) {
       return email(to, {
         subject: 'You’re in: your Spot early access 🧡',
-        text: `You signed up for early access to Spot, the yes button for AI shopping. You're in.\n\nOpen Spot: ${link}\n\nAdd Spot to Claude or ChatGPT, ask for the thing, and tap yes when it's right. Spot buys it with a card made for that one order.\n\nOn another phone or computer? Sign in at spotmeplease.com with ${to} and you're in.`,
+        text: `You signed up for early access to Spot, the yes button for AI shopping. You're in.\n\nOpen Spot: ${link}\n\nAdd Spot to Claude or ChatGPT, ask for the thing, and tap yes when it's right. Spot buys it with a card made for that one order.\n\nOn another phone or computer? Sign in at spotmeplease.com with ${to}, the email your invite was approved for, and you're in.`,
         html: emailLayout({
           preheader: 'Your spot is open. Here’s your link.',
           title: 'Your spot is open 🧡',
           lines: ['You signed up for early access to Spot, the yes button for AI shopping. You’re in.', 'Add Spot to Claude or ChatGPT, ask for the thing, and tap yes when it’s right. Spot buys it with a card made for that one order, and it shows up.'],
           cta: { url: link, label: 'Open Spot' },
-          note: `<b>On another phone or computer?</b> Sign in at spotmeplease.com with ${esc(to)} and you’re in.`,
+          note: `<b>On another phone or computer?</b> Sign in at spotmeplease.com with <b>${esc(to)}</b>, the email your invite was approved for, and you’re in.`,
           base,
           hero,
           footer: 'You’re getting this because you signed up for Spot early access.',
