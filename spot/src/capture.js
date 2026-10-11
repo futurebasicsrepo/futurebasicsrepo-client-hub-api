@@ -503,7 +503,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
       content: `Someone is shopping and typed: "${q(text)}"${more ? `\nThey saw what you found and said: "${q(more)}"` : ''}
 
 Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
-- If they want a look, an outfit, or clothes for an occasion, reply with up to ${MAX_OUTFITS} outfits: each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
+- If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${MAX_OUTFITS}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
 - Otherwise reply with up to ${MAX_OPTIONS} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
 ${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
@@ -533,7 +533,7 @@ Use an empty list if you can't find specific products with current prices.`,
       if (err instanceof Anthropic.APIError) {
         console.error('text lookup failed', err.status, err.message);
         if (soldOut.length) break;
-        return { ...draftFromDescription(text), warning: 'I couldn’t look that up right now. Add the store and price below' };
+        return { ...draftFromDescription(text), not_found: true, warning: 'I couldn’t look that up right now. Try again in a minute, or paste a link' };
       }
       throw err;
     }
@@ -541,7 +541,14 @@ Use an empty list if you can't find specific products with current prices.`,
     const answer = picksOf(response, text);
     const found = answer.outfits ? null : answer.products.filter(fresh);
     const looks = answer.outfits ? answer.outfits.map((o) => ({ ...o, items: o.items.filter(fresh) })).filter((o) => o.items.length) : null;
-    if (!found?.length && !looks?.length) break;
+    if (!found?.length && !looks?.length) {
+      if (find === FINDS - 1 || now() - started > FIND_BUDGET_MS / 2) break;
+      const last = messages.at(-1);
+      if (last.role === 'assistant') last.content = [...last.content, ...response.content];
+      else messages.push({ role: 'assistant', content: response.content });
+      messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best matches that are for sale and in stock now, even if they're not perfect: close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
+      continue;
+    }
 
     // Every pick is checked against its store at once; sold-out ones never show.
     const check = async (d) => ({ d: await withPhoto(d, page, undefined, d.hint_image), stock: await stockOf(d.items[0], { fromUrl: page, product }) });
@@ -582,7 +589,7 @@ Use an empty list if you can't find specific products with current prices.`,
   }
   // Nothing usable came back: say so, and leave what they typed as the item
   // (never "under $50" as its price) so they can fill it in or try again.
-  return { ...draftFromDescription(text), warning: followUp ? 'I couldn’t find anything new for that. Try saying it another way' : 'I couldn’t find that one. Try different words, or paste a link' };
+  return { ...draftFromDescription(text), not_found: true, warning: followUp ? 'I couldn’t find anything new for that. Try saying it another way' : 'I couldn’t find that one. Try different words, or paste a link' };
 }
 
 // The model's answer → { products } or { outfits }, best first. Reads
@@ -595,18 +602,36 @@ function picksOf(response, text) {
     console.error('lookup answer unreadable', response.stop_reason, out.slice(0, 300).replace(/\s+/g, ' '));
     return { products: salvage(out).map((p) => pick(p, text)).filter(Boolean).slice(0, MAX_OPTIONS) };
   }
-  if (Array.isArray(v.outfits) && v.outfits.length) {
-    const outfits = v.outfits
+  const looks = first(v, ['outfits', 'looks']);
+  if (Array.isArray(looks) && looks.length) {
+    const outfits = looks
       .slice(0, MAX_OUTFITS)
-      .map((o) => ({ name: String(o?.name || 'A look').trim().slice(0, 60), why: String(o?.why || '').trim().slice(0, 120) || null, items: [].concat(o?.items || []).slice(0, 6).map((p) => pick(p, text)).filter(Boolean) }))
+      .map((o) => ({ name: String(o?.name || o?.title || 'A look').trim().slice(0, 60), why: String(o?.why || o?.description || '').trim().slice(0, 120) || null, items: [].concat(first(o || {}, ['items', 'pieces', 'products']) || []).slice(0, 6).map((p) => pick(p, text)).filter(Boolean) }))
       .filter((o) => o.items.length >= 2);
     if (outfits.length) return { outfits };
   }
-  const list = Array.isArray(v.products) ? v.products : v.title ? [v] : [];
-  return { products: list.slice(0, MAX_OPTIONS).map((p) => pick(p, text)).filter(Boolean) };
+  const list = first(v, ['products', 'items', 'results']);
+  const products = (Array.isArray(list) ? list : v.title || v.name ? [v] : []).slice(0, MAX_OPTIONS).map((p) => pick(p, text)).filter(Boolean);
+  // Readable but nothing usable in it: say what it looked like, so the next
+  // miss can be fixed from the logs.
+  if (!products.length) console.error('lookup answer had no picks', response.stop_reason, Object.keys(v).join(','), out.slice(0, 400).replace(/\s+/g, ' '));
+  return { products };
 }
+// Models don't always use the exact keys asked for: take the usual synonyms.
+const first = (o, keys) => keys.map((k) => o[k]).find((v) => v != null && v !== '');
 function pick(p, text) {
   if (!p || typeof p !== 'object' || p.found === false) return null;
+  p = {
+    ...p,
+    title: first(p, ['title', 'name', 'product_name', 'product']),
+    product_url: first(p, ['product_url', 'url', 'link', 'product_link', 'href']),
+    merchant_name: first(p, ['merchant_name', 'store', 'merchant', 'retailer', 'store_name', 'brand']),
+    merchant_url: first(p, ['merchant_url', 'store_url', 'retailer_url']),
+    unit_price: first(p, ['unit_price', 'price', 'sale_price']),
+    variant: first(p, ['variant', 'size', 'option']),
+    image_url: first(p, ['image_url', 'image', 'photo', 'img']),
+  };
+  if (typeof p.title !== 'string' || typeof p.merchant_name === 'object') p.title = typeof p.title === 'string' ? p.title : '';
   const d = draftFromLookup({ found: true, ...p }, text);
   if (d.source !== 'lookup') return null;
   const img = typeof p.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(p.image_url) ? p.image_url.slice(0, 1000) : null;
@@ -758,7 +783,7 @@ async function search(anthropic, messages, onUsage) {
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: 'low' },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
       messages,
     });
     onUsage?.(response.model, response.usage);

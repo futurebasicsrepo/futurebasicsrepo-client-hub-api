@@ -172,6 +172,19 @@
         shelf(text, d);
         return;
       }
+      // Nothing found: stay right here, say so, keep what they typed. Never a
+      // cart with no product in it (and never a fee for nothing).
+      if (d.not_found) {
+        $('#capErr').innerHTML = esc(d.warning) + ' <button class="textlink" type="button" id="capRetry">Try again</button> · <button class="textlink" type="button" id="capManual">type it in myself</button>';
+        say('hmm, I came up empty on that one');
+        $('#capRetry').onclick = go;
+        $('#capManual').onclick = () => {
+          draft = toDraft(d);
+          made = null;
+          check('');
+        };
+        return;
+      }
       draft = toDraft(d);
       const priced = draft.items.every((i) => i.price_cents > 0);
       // Sure of everything: make the link straight away. Anything the
@@ -657,6 +670,10 @@
     const fee = card ? all.reduce((n, g, i) => n + feeOf(g, cushionOf(g), i === 0), 0) : 0;
     const room = card ? all.reduce((n, g) => n + cushionOf(g), 0) : 0;
     const prev = basket.length;
+    if (!goods) {
+      $('#totals').innerHTML = '<p class="small muted" style="margin:0">Add a price to see what they’ll pay.</p>';
+      return;
+    }
     $('#totals').innerHTML =
       (prev ? basket.map((st) => '<div class="sum"><span>' + esc(st.merchant.name) + '</span><span>' + usd(goodsOf(st)) + '</span></div>').join('') + '<div class="sum"><span>This store</span><span>' + usd(cart) + '</span></div>' : '') +
       (card ? '<div class="sum"><span>' + (prev ? 'Everything' : 'Items + shipping') + '</span><span>' + usd(goods) + '</span></div>' + (room ? '<div class="sum"><span>Tax and price changes (unused goes back to them)</span><span>' + usd(room) + '</span></div>' : '') + '<div class="sum"><span>Spot fee (they pay it)</span><span>' + usd(fee) + '</span></div>' : '') +
