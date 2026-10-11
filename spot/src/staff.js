@@ -16,10 +16,15 @@ export function proveEmail(db, userId, email) {
   if (userId && email) db.state.set(key(userId), { email: String(email).toLowerCase(), at: Date.now() });
 }
 
+// The account's email, if Spot itself confirmed it (else null).
+export function provenEmail(db, userId) {
+  if (!userId) return null;
+  const email = db.users.byId(userId)?.email?.toLowerCase();
+  return email && db.state.get(key(userId))?.email === email ? email : null;
+}
+
 export function isStaff(db, env, userId) {
   const domain = staffDomain(env);
-  if (!domain || !userId) return false;
-  const email = db.users.byId(userId)?.email?.toLowerCase();
-  if (!email || !email.endsWith(`@${domain}`)) return false;
-  return db.state.get(key(userId))?.email === email;
+  const email = domain ? provenEmail(db, userId) : null;
+  return Boolean(email && email.endsWith(`@${domain}`));
 }

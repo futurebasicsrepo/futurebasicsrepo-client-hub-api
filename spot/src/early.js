@@ -9,7 +9,8 @@
 //                     30 days (for people outside the company).
 //
 // Staff (signed in with a confirmed company email, staff.js) always see the
-// full site. Everything else stays open: pay links, receipts, approvals,
+// full site, and so does anyone the team invited (invites.js): through their
+// personal link (/invite/<token>), or signed in with the invited email. Everything else stays open: pay links, receipts, approvals,
 // sign-in, accounts, /admin, the API and MCP, /texts (the SMS opt-in page
 // carriers review), /terms and /privacy.
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -19,10 +20,12 @@ import { FX_JS } from './sitefx.js';
 import { spotBuddy } from './spotfx.js';
 import { sessionUserId } from './accounts.js';
 import { isStaff } from './staff.js';
+import { INVITE_COOKIE, inviteCookieOf, maskEmail } from './invites.js';
 
 export const GATED = new Set(['/', '/new', '/connect', '/integrations', '/standards', '/agent-card', '/for-stores']);
 const COOKIE = 'spot_preview';
 const DAYS = 30;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 
 export function gateOn(env, behindEdge) {
@@ -31,7 +34,22 @@ export function gateOn(env, behindEdge) {
   return Boolean(behindEdge);
 }
 
-export function registerGate(app, { db, env, behindEdge, origin }) {
+export function registerGate(app, { db, env, behindEdge, origin, invites }) {
+  // An invite link from the email: remember this browser, then show the site.
+  // It works whether or not the gate is on (after launch it just opens Spot).
+  app.get('/invite/:token', async (req, reply) => {
+    reply.header('cache-control', 'no-store').header('referrer-policy', 'no-referrer');
+    const token = String(req.params.token || '');
+    const r = invites.open(token, { known: inviteCookieOf(req) === token });
+    if (!r.ok) {
+      const notice = r.reason === 'used'
+        ? `This invite has already been opened on a few devices. Sign in with the email it was sent to (${maskEmail(r.email)}) and you’re in.`
+        : 'That invite link doesn’t work anymore. If you were invited, sign in with the email it went to.';
+      return reply.code(r.reason === 'used' ? 200 : 404).type('text/html; charset=utf-8').send(earlyAccessPage({ origin: origin(req), notice }));
+    }
+    reply.header('set-cookie', `${INVITE_COOKIE}=${token}; Path=/; Max-Age=${365 * 86400}; HttpOnly; SameSite=Lax${behindEdge ? '; Secure' : ''}`);
+    return reply.redirect('/?welcome=1', 302);
+  });
   if (!gateOn(env, behindEdge)) return;
   const key = env.SITE_PREVIEW_KEY && env.SITE_PREVIEW_KEY.length >= 16 ? env.SITE_PREVIEW_KEY : null;
   const proof = key ? sha(`preview:${key}`) : null;
@@ -54,7 +72,9 @@ export function registerGate(app, { db, env, behindEdge, origin }) {
         return reply.redirect(url.pathname + (url.search || ''), 302);
       }
     }
-    if (previewing(req) || isStaff(db, env, sessionUserId(db, req))) return;
+    if (previewing(req) || invites.cookieOk(inviteCookieOf(req))) return;
+    const userId = sessionUserId(db, req);
+    if (isStaff(db, env, userId) || invites.userOk(userId)) return;
     reply.header('cache-control', 'no-store');
     return reply.type('text/html; charset=utf-8').send(earlyAccessPage({ origin: origin(req) }));
   });
@@ -85,6 +105,8 @@ const EA_CSS = `
 .ea-kinds input:focus-visible+span{outline:2px dashed var(--spot);outline-offset:3px}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .ea-msg{min-height:24px;margin:14px 0 0;font-weight:700}
+.ea-notice{margin:24px auto 0;max-width:520px;padding:14px 18px;border-radius:16px;background:var(--card);border:1px solid color-mix(in srgb,var(--spot) 40%,var(--line));font-weight:600;line-height:1.45}
+.ea-notice a{color:var(--spot);font-weight:800}
 .ea-msg.err{color:#c4321a}
 .ea-done{display:none;margin-top:30px;padding:22px 26px;border-radius:22px;background:var(--card);border:1px solid var(--line);max-width:460px;box-shadow:0 18px 40px -24px rgba(27,23,18,.35)}
 .ea-done b{display:block;font-size:22px;letter-spacing:-.02em}.ea-done p{margin:6px 0 0;color:var(--muted)}
@@ -98,7 +120,7 @@ body.joined .ea-form{display:none}body.joined .ea-done{display:block;animation:p
 @media (max-width:520px){.ea-row{flex-direction:column;border-radius:22px}.ea-row input{min-height:48px}.ea-say{right:56%;max-width:140px;font-size:12.5px}}
 `;
 
-export function earlyAccessPage({ origin }) {
+export function earlyAccessPage({ origin, notice = '' }) {
   const title = 'Spot: early access';
   const desc = 'The yes button for AI shopping. Your AI finds it, whoever’s paying taps yes, and Spot buys it with a card made for that one order. Get early access.';
   return `${siteHead({ title, desc, origin, path: '/', extraCss: EA_CSS, image: 'og-early.jpg' })}
@@ -109,6 +131,7 @@ export function earlyAccessPage({ origin }) {
   <span class="pill"><i></i>Early access</span>
   <h1>The yes button<br>for AI shopping.</h1>
   <p class="lead">Your AI finds it. You, or whoever’s paying, tap yes. Spot buys it with a card made for that one order, and it shows up. We’re letting people in a few at a time.</p>
+  ${notice ? `<p class="ea-notice" role="status">${esc(notice)} <a href="/signin?next=/">Sign in</a></p>` : ''}
   <form class="ea-form" id="eaForm" novalidate>
     <div class="ea-row"><input type="email" name="email" id="eaEmail" required placeholder="you@email.com" autocomplete="email" inputmode="email" aria-label="Your email"><button class="btn primary" type="submit" id="eaGo">Get early access</button></div>
     <fieldset class="ea-kinds"><legend>I’m here to…</legend>

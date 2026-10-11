@@ -53,7 +53,7 @@ export const SMS_CONSENT = 'By entering your number you agree to receive texts f
 
 // Spot's email look: warm paper, the orange dot, one big button. Tables
 // and inline styles only, because that's what email clients render.
-export function emailLayout({ preheader = '', title, lines = [], cta = null, note = '', base = '' }) {
+export function emailLayout({ preheader = '', title, lines = [], cta = null, note = '', base = '', hero = '', footer = 'You’re getting this because of a Spot you’re part of.' }) {
   const p = (html) => `<p style="margin:0 0 14px;font:16px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712">${html}</p>`;
   const button = cta
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 8px"><tr><td style="border-radius:999px;background:#ff5a36"><a href="${esc(cta.url)}" style="display:inline-block;padding:14px 24px;font:700 16px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#ffffff;text-decoration:none;border-radius:999px">${esc(cta.label)}</a></td></tr></table>`
@@ -66,11 +66,11 @@ export function emailLayout({ preheader = '', title, lines = [], cta = null, not
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
 <tr><td style="padding:0 4px 16px"><a href="${esc(home)}" style="text-decoration:none;font:800 20px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#ff5a36;vertical-align:-1px;margin-right:6px"></span>Spot</a></td></tr>
 <tr><td style="background:#ffffff;border:1px solid #e8e0d4;border-radius:20px;padding:28px 26px">
-<h1 style="margin:0 0 14px;font:800 26px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712;letter-spacing:-.02em">${esc(title)}</h1>
+${hero ? `<img src="${esc(hero)}" width="132" height="148" alt="Spot" style="display:block;margin:-6px 0 10px;border:0">` : ''}<h1 style="margin:0 0 14px;font:800 26px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712;letter-spacing:-.02em">${esc(title)}</h1>
 ${lines.map(p).join('')}${button}
 ${note ? `<p style="margin:16px 0 0;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#6f675c">${note}</p>` : ''}
 </td></tr>
-<tr><td style="padding:16px 4px;font:12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#8a8175">You’re getting this because of a Spot you’re part of. <a href="${esc(home)}/privacy" style="color:#8a8175">Privacy</a> · <a href="${esc(home)}/terms" style="color:#8a8175">Terms</a></td></tr>
+<tr><td style="padding:16px 4px;font:12px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#8a8175">${esc(footer)} <a href="${esc(home)}/privacy" style="color:#8a8175">Privacy</a> · <a href="${esc(home)}/terms" style="color:#8a8175">Terms</a></td></tr>
 </table></td></tr></table></body></html>`;
 }
 
@@ -119,6 +119,24 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
   }
 
   return {
+    // An early-access invite: a personal link that lets them in (invites.js).
+    async sendInvite(to, { link, base = env.PUBLIC_URL, hero = '' }) {
+      return email(to, {
+        subject: 'You’re in: your Spot early access 🧡',
+        text: `You signed up for early access to Spot, the yes button for AI shopping. You're in.\n\nOpen Spot: ${link}\n\nAdd Spot to Claude or ChatGPT, ask for the thing, and tap yes when it's right. Spot buys it with a card made for that one order.\n\nThis link is just for you. Signing in with this email works too.`,
+        html: emailLayout({
+          preheader: 'Your spot is open. Here’s your link.',
+          title: 'Your spot is open 🧡',
+          lines: ['You signed up for early access to Spot, the yes button for AI shopping. You’re in.', 'Add Spot to Claude or ChatGPT, ask for the thing, and tap yes when it’s right. Spot buys it with a card made for that one order, and it shows up.'],
+          cta: { url: link, label: 'Open Spot' },
+          note: `This link is just for you. Signing in with ${esc(to)} works too.`,
+          base,
+          hero,
+          footer: 'You’re getting this because you signed up for Spot early access.',
+        }),
+      }).catch(() => 'failed');
+    },
+
     // Sign-in code for an account. Returns the email status.
     async sendSignInCode(to, code) {
       return email(to, {

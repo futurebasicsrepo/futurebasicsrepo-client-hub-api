@@ -16,7 +16,9 @@ import { CartError } from './cart.js';
 import { SITE_JS, siteHead, siteNav } from './site.js';
 import { GOOGLE_G, SSO_CSS } from './accountpage.js';
 import { sessionUserId } from './accounts.js';
-import { isStaff, staffDomain } from './staff.js';
+import { isStaff, provenEmail, staffDomain } from './staff.js';
+import { assetUrl } from './assets.js';
+import { normEmail, validEmail } from './invites.js';
 import { HEALTH_CSS, healthPage, healthReport } from './health.js';
 
 const COOKIE = 'spot_admin';
@@ -24,7 +26,7 @@ const KINDS = ['card', 'email', 'ip', 'phone'];
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller = null, liveChecks = null }) {
+export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller = null, liveChecks = null, invites = null, notifier = null }) {
   const token = env.SPOT_ADMIN_TOKEN && env.SPOT_ADMIN_TOKEN.length >= 16 ? env.SPOT_ADMIN_TOKEN : null;
   const want = token ? Buffer.from(sha(token)) : null;
   const same = (v) => {
@@ -137,11 +139,53 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       .map((r) => db.byId(r.id))
       .map((c) => ({ ...summary(c), reports: c.reports.length, paused: c.reports.length >= 2, reported_at: c.reports.at(-1).at }));
 
+  // Early-access invites: by email, or the next N people on the list. Each
+  // gets a personal link by email; the link comes back too, to share by hand
+  // if email isn't set up or didn't go through.
+  app.post('/v1/admin/invites', async (req) => {
+    guard(req);
+    if (!invites) throw new CartError('Not found', 404);
+    const b = req.body || {};
+    const resend = Boolean(b.resend);
+    let emails = Array.isArray(b.emails) ? b.emails.map(normEmail) : [];
+    if (b.next) emails = emails.concat(invites.nextUninvited(Math.min(50, Number(b.next) || 0)));
+    emails = [...new Set(emails)].slice(0, 50);
+    if (!emails.length) throw new CartError('No one to invite');
+    const by = provenEmail(db, sessionUserId(db, req)) || 'admin token';
+    const base = urlFor(req, '');
+    const results = [];
+    for (const email of emails) {
+      if (!validEmail(email)) { results.push({ email, status: 'bad_email' }); continue; }
+      const had = invites.get(email);
+      if (had && !had.revoked_at && !resend) { results.push({ email, status: 'already_invited' }); continue; }
+      const token = invites.create(email, by);
+      const link = `${base}/invite/${token}`;
+      const status = notifier ? await notifier.sendInvite(email, { link, base, hero: `${base}${assetUrl('email-spot.png')}` }) : 'not_configured';
+      invites.sent(email, status);
+      results.push({ email, status, link });
+    }
+    return { results };
+  });
+  app.post('/v1/admin/invites/revoke', async (req) => {
+    guard(req);
+    if (!invites?.revoke(normEmail(req.body?.email))) throw new CartError('No invite for that email', 404);
+    return { ok: true };
+  });
+
   app.get('/v1/admin/overview', async (req, reply) => {
     guard(req);
     reply.header('cache-control', 'no-store');
     const recent = db.admin.recent(200).map(summary);
     const signups = db.waitlist();
+    // Each signup with where its invite stands; people invited directly
+    // (not on the list) are added at the end.
+    const inv = new Map((invites?.list() || []).map((i) => [i.email, i]));
+    const inviteOf = (e) => {
+      const i = inv.get(e);
+      return i ? { invited_at: i.invited_at, sent: i.sent, opened_at: i.opened_at, revoked_at: i.revoked_at } : null;
+    };
+    const listed = new Set(signups.map((x) => x.email));
+    const direct = [...inv.values()].filter((i) => !listed.has(i.email)).map((i) => ({ email: i.email, kind: 'invited directly', at: i.invited_at }));
     return {
       counts: db.admin.statusCounts(),
       held: recent.filter((c) => c.hold && c.status === 'paid'),
@@ -149,7 +193,8 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       blocks: db.blocks.list(),
       keys: db.admin.keys(),
       merchants: db.merchants?.list() || [],
-      signups: signups.slice(0, 300),
+      signups: [...signups.slice(0, 300), ...direct].map((x) => ({ ...x, invite: inviteOf(x.email) })),
+      invite_waiting: invites?.waiting() ?? 0,
       signup_total: signups.length,
       backups: backups?.status() || null,
       money: moneyChecks(),
@@ -333,7 +378,12 @@ ${siteNav()}
   <section class="panel"><h2>API keys</h2><div class="tw"><table><thead><tr><th>Name</th><th>Email</th><th>Created</th><th>Status</th><th></th></tr></thead><tbody id="keys"></tbody></table></div></section>
   <section class="panel"><h2>Stores with the button</h2><div class="tw"><table><thead><tr><th>Store</th><th>Domain</th><th>Email</th><th>Joined</th><th>Verified</th></tr></thead><tbody id="merchants"></tbody></table></div></section>
   <section class="panel"><h2>Backups</h2><div id="backup"><p class="muted">Loading…</p></div><div class="row" style="margin-top:10px"><button class="ab go" data-act="backup">Back up now</button></div></section>
-  <section class="panel"><h2>Signups <span class="muted" id="signupTotal"></span></h2><div class="tw"><table><thead><tr><th>Email</th><th>Interest</th><th>When</th></tr></thead><tbody id="signups"></tbody></table></div></section>
+  <section class="panel" id="signupPanel"><h2>Signups <span class="muted" id="signupTotal"></span></h2>
+    <p class="muted" style="margin-top:0">Let people in a few at a time. Each invite emails a personal link that opens the full site (on up to 3 devices; signing in with that email works everywhere). Withdraw turns it off.</p>
+    <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:12px"><button class="ab go" data-act="invnext">Invite the next 10</button><span class="muted" id="invWaiting"></span>
+      <form class="inline" id="inviteForm" style="margin:0"><input name="email" type="email" placeholder="Invite someone by email" required aria-label="Email to invite" style="min-width:260px"><button class="ab go">Invite</button></form></div>
+    <div id="invResults"></div>
+    <div class="tw"><table><thead><tr><th>Email</th><th>Interest</th><th>When</th><th>Invite</th><th></th></tr></thead><tbody id="signups"></tbody></table></div></section>
   <p class="err" id="err"></p>
 </div></main>
 <script>(()=>{${SITE_JS}
@@ -361,13 +411,16 @@ async function load(){
     +(bk.bucket?'':'<p class="muted">⚠️ No bucket set, so backups stay on the same volume as the database. Add a Railway bucket (see docs/go-live.md).</p>')
     +'<p class="muted">Runs daily at '+String(bk.hour_utc).padStart(2,'0')+':00 UTC. On the volume: '+(bk.local.length?esc(bk.local.join(', ')):'none')+'.</p>';
   $('#signupTotal').textContent='('+d.signup_total+')';
-  $('#signups').innerHTML=d.signups.map(s=>'<tr><td>'+esc(s.email)+'</td><td>'+esc(s.kind)+'</td><td>'+when(s.at)+'</td></tr>').join('')||'<tr><td colspan="3" class="muted">No signups yet.</td></tr>';
+  $('#invWaiting').textContent=d.invite_waiting?d.invite_waiting+' waiting':'Everyone on the list is invited';
+  const invState=i=>!i?'<span class="muted">not yet</span>':i.revoked_at?'<span class="pill refunded">withdrawn</span>':i.opened_at?'<span class="pill completed">in ✓</span> <span class="muted">'+when(i.opened_at)+'</span>':'<span class="pill paid">invited</span> <span class="muted">'+when(i.invited_at)+(i.sent&&i.sent!=='sent'?' · email '+esc(i.sent.replace('_',' ')):'')+'</span>';
+  const invAct=s=>!s.invite||s.invite.revoked_at?'<button class="ab go" data-act="invite" data-v="'+esc(s.email)+'">Invite</button>':'<button class="ab" data-act="resend" data-v="'+esc(s.email)+'">Resend</button> <button class="ab no" data-act="uninvite" data-v="'+esc(s.email)+'">Withdraw</button>';
+  $('#signups').innerHTML=d.signups.map(s=>'<tr><td>'+esc(s.email)+'</td><td>'+esc(s.kind)+'</td><td>'+when(s.at)+'</td><td>'+invState(s.invite)+'</td><td>'+invAct(s)+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">No signups yet.</td></tr>';
 }
 const armed=new Set();
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   // Money moves take two taps: the first arms the button.
-  if(['refund','blockcard','revoke'].includes(a)&&!armed.has(b)){armed.add(b);b.dataset.label=b.textContent;b.textContent='Tap again to confirm';setTimeout(()=>{armed.delete(b);if(b.isConnected)b.textContent=b.dataset.label},4000);return}
+  if(['refund','blockcard','revoke','uninvite'].includes(a)&&!armed.has(b)){armed.add(b);b.dataset.label=b.textContent;b.textContent='Tap again to confirm';setTimeout(()=>{armed.delete(b);if(b.isConnected)b.textContent=b.dataset.label},4000);return}
   b.disabled=true;$('#err').textContent='';
   try{
     if(a==='release')await post('/v1/admin/carts/'+b.dataset.id+'/release');
@@ -379,9 +432,16 @@ document.addEventListener('click',async e=>{
     if(a==='unblock')await post('/v1/admin/blocks/remove',{kind:b.dataset.k,value:b.dataset.v});
     if(a==='backup'){b.textContent='Backing up…';try{await post('/v1/admin/backups/run')}finally{b.textContent='Back up now';b.disabled=false}}
     if(a==='revoke')await post('/v1/admin/keys/'+encodeURIComponent(b.dataset.v)+'/revoke');
+    if(a==='invite'||a==='resend'||a==='invnext')showInv(await post('/v1/admin/invites',a==='invnext'?{next:10}:{emails:[b.dataset.v],resend:a==='resend'}));
+    if(a==='uninvite')await post('/v1/admin/invites/revoke',{email:b.dataset.v});
+    if(a==='copyinv'){await navigator.clipboard.writeText(b.dataset.v);b.textContent='Copied';b.disabled=false;return}
     await load();
   }catch(err){$('#err').textContent=err.message;b.disabled=false}
 });
+// What happened to each invite just sent; a link to copy when email didn't go.
+const showInv=r=>{const words={sent:'emailed',already_invited:'already invited',bad_email:'not an email',not_configured:'email isn’t set up: copy the link',failed:'email failed: copy the link'};
+  $('#invResults').innerHTML=r.results.length?'<div class="hcard">'+r.results.map(x=>'<div>'+esc(x.email)+': <b>'+esc(words[x.status]||x.status)+'</b>'+(x.link?' <button class="ab" data-act="copyinv" data-v="'+esc(x.link)+'">Copy link</button>':'')+'</div>').join('')+'</div>':''};
+$('#inviteForm').addEventListener('submit',async e=>{e.preventDefault();$('#err').textContent='';try{showInv(await post('/v1/admin/invites',{emails:[e.target.email.value]}));e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 $('#blockForm').addEventListener('submit',async e=>{e.preventDefault();try{await post('/v1/admin/blocks',Object.fromEntries(new FormData(e.target)));e.target.reset();load()}catch(err){$('#err').textContent=err.message}});
 $('#refresh').onclick=load;$('#logout').onclick=async()=>{await post('/admin/logout');location.reload()};
 load().catch(err=>{$('#err').textContent=err.message});setInterval(()=>document.visibilityState==='visible'&&load().catch(()=>{}),30000);
