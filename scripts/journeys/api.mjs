@@ -1322,4 +1322,65 @@ await journey('J121', 'Chat: a visitor talks to the assistant, is handed to a pe
   const spam = []; for (let n = 0; n < 10; n++) spam.push((await visitor('198.51.100.8').say('hi')).status); ok(spam.includes(429) && spam[0] === 201, 'so is one address opening conversation after conversation');
 });
 
+await journey('J123', 'The opportunity finder: who to talk to next and why, from what the CRM already knows (chats waiting, unanswered mail, live builds opened, quiet deals, warm people, customers who could use more), strongest first, one line per person, nothing for people who opted out, and what staff set aside stays away', async () => {
+  const room = await newRoom('123', { wait: false }), tag = `o${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  const person = async (name, o = {}) => (await S('/contacts', { body: { name: `${name} ${tag}`, email: `${name.toLowerCase().replace(/\W/g, '')}-${tag}@opp.test`, source: 'referral', ...o } })).json.id;
+  const act = (id, kind, text, ago) => sql(`insert into sales_activities(contact_id,kind,text,created_at) values('${id}','${kind}','${text}', now() - interval '${ago}')`);
+  const list = async (q = '') => (await S('/opportunities' + q)).json;
+  const mine = (l, name) => l.opportunities.find(o => o.name === `${name} ${tag}`);
+  // keep the one thing each person is here for the only thing: no task, no deal, a quiet day
+  const quiet = id => sql(`update sales_contacts set created_at = now() - interval '30 days' where id='${id}'`);
+
+  ok((await call('/v1/sales/opportunities', { token: room.token })).status === 403 && (await call('/v1/sales/opportunities')).status === 401, 'clients and strangers cannot see opportunities');
+
+  const chat = await person('Chatty Cleo'); quiet(chat); sql(`insert into chat_conversations(token_hash, contact_id, status, visitor_name, last_message_at) values('t-${tag}','${chat}','waiting','Chatty Cleo', now() - interval '1 day')`);
+  const ian = await person('Inbound Ian'); quiet(ian); act(ian, 'email_in', 'Can you build us a new site?', '3 days');
+  const olivia = await person('Open Olivia'); quiet(olivia); act(olivia, 'showcase_demo', 'Opened the live build', '2 days');
+  const quinn = await person('Quiet Quinn'); quiet(quinn); const deal = (await S('/deals', { body: { title: `New site ${tag}`, contactId: quinn, stage: 'proposal', value: '8000' } })).json.id; sql(`update sales_deals set last_activity_at = now() - interval '10 days' where id='${deal}'`);
+  const hana = await person('Hot Hana'); quiet(hana); for (const d of ['1 day', '2 days', '1 day', '3 days']) act(hana, 'showcase_view', 'Looked at a build', d);
+  const cora = await person('Cold Cora'); quiet(cora); for (const d of ['30 days', '31 days', '30 days', '32 days']) act(cora, 'showcase_demo', 'Opened the live build', d);
+  const nina = await person('New Nina');
+  const tp = await person('Techpack Tess', { tags: ['tech-pack'] }); quiet(tp); const bd = await person('Builds Bea', { tags: ['builds'] }); quiet(bd);
+  const w1 = await person('Won Wes', { companyName: `Acme ${tag}` }); quiet(w1); const w2 = await person('Also Alma', { companyName: `Acme ${tag}` }); quiet(w2);
+  const wd = (await S('/deals', { body: { title: `Acme site ${tag}`, contactId: w1, stage: 'won', value: '20000' } })).json.id; ok(wd, 'setup: a won deal at Acme');
+  const out = await person('Optout Olga'); quiet(out); for (const d of ['1 day', '2 days', '1 day', '3 days']) act(out, 'showcase_view', 'Looked', d); await S(`/contacts/${out}/unsubscribe`, { method: 'PUT', body: { unsubscribed: true } });
+  const dealer = await person('Dealing Dev'); quiet(dealer); for (const d of ['1 day', '2 days', '1 day', '3 days']) act(dealer, 'showcase_view', 'Looked', d); await S('/deals', { body: { title: `Dev site ${tag}`, contactId: dealer } });
+  const tasked = await person('Tasked Tom'); quiet(tasked); act(tasked, 'showcase_demo', 'Opened', '1 day'); await S('/tasks', { body: { contactId: tasked, title: 'Call Tom' } });
+
+  const l = await list();
+  ok(mine(l, 'Chatty Cleo')?.type === 'chat_waiting' && /waiting in chat/.test(mine(l, 'Chatty Cleo').reason), 'someone waiting in chat is on the list', mine(l, 'Chatty Cleo'));
+  ok(mine(l, 'Inbound Ian')?.type === 'inbound_unanswered' && /wrote to us 3 days ago.*new site/.test(mine(l, 'Inbound Ian').reason), 'someone who wrote in and was not answered, with what they said');
+  ok(mine(l, 'Open Olivia')?.type === 'opened_live' && /opened a live build 2 days ago/.test(mine(l, 'Open Olivia').reason), 'someone who opened a live build and was not followed up');
+  const qd = mine(l, 'Quiet Quinn'); ok(qd?.type === 'deal_quiet' && /\$8,000.*10 days.*Proposal|\$8,000.*10 days/.test(qd.reason) && qd.dealId === deal, 'a deal that went quiet, with its value and how long');
+  ok(mine(l, 'Hot Hana')?.type === 'hot_no_deal' && /looked at builds 4 times/.test(mine(l, 'Hot Hana').reason), 'a hot person with no deal, and what they did');
+  ok(mine(l, 'Cold Cora')?.type === 'gone_cold' && /was warm/.test(mine(l, 'Cold Cora').reason), 'someone who was warm and went quiet');
+  ok(mine(l, 'New Nina')?.type === 'new_unworked', 'a new contact nobody has touched');
+  ok(mine(l, 'Techpack Tess')?.type === 'cross_sell_builds' && mine(l, 'Builds Bea')?.type === 'cross_sell_techpack', 'tech pack customers who have not seen the builds, and the other way round');
+  const ex = mine(l, 'Also Alma'); ok(ex?.type === 'account_expansion' && /Acme.*customer.*\$20,000/.test(ex.reason), 'a customer company where others have no deal', ex);
+  ok(!mine(l, 'Optout Olga'), 'nobody who opted out is ever suggested');
+  ok(!mine(l, 'Dealing Dev'), 'someone who already has a deal is not "interested, no deal"');
+  ok(!mine(l, 'Tasked Tom'), 'someone staff already have a task for is not nagged about');
+
+  const order = l.opportunities.map(o => o.name); ok(order.indexOf(`Chatty Cleo ${tag}`) < order.indexOf(`Inbound Ian ${tag}`) && order.indexOf(`Inbound Ian ${tag}`) < order.indexOf(`Open Olivia ${tag}`) && order.indexOf(`Open Olivia ${tag}`) < order.indexOf(`Hot Hana ${tag}`) && order.indexOf(`Hot Hana ${tag}`) < order.indexOf(`Techpack Tess ${tag}`), 'strongest first: chat, then mail, then live builds, then warm people, then ideas');
+  ok(mine(l, 'Chatty Cleo').priority === 'now' && mine(l, 'Hot Hana').priority === 'week' && mine(l, 'Techpack Tess').priority === 'later' && l.priorities.now >= 3 && l.total >= 10, 'each has a priority band, and the counts add up');
+  ok(Object.keys(l.counts).length >= 8 && l.types.length === 10, 'counts by kind, and the kinds are named');
+  const only = await list('?type=deal_quiet'); ok(only.opportunities.length >= 1 && only.opportunities.every(o => o.type === 'deal_quiet'), 'it can be narrowed to one kind');
+
+  // one line per person
+  sql(`insert into sales_activities(contact_id,kind,text,created_at) values('${ian}','showcase_view','Looked', now() - interval '1 day'),('${ian}','showcase_view','Looked', now() - interval '1 day'),('${ian}','showcase_view','Looked', now() - interval '1 day'),('${ian}','showcase_view','Looked', now() - interval '1 day')`);
+  const l2 = await list(); ok(l2.opportunities.filter(o => o.contactId === ian).length === 1 && mine(l2, 'Inbound Ian').type === 'inbound_unanswered' && mine(l2, 'Inbound Ian').also.includes('hot_no_deal'), 'a person with two reasons appears once, under the stronger, with the other noted');
+
+  // doing something about it
+  ok((await S('/opportunities/act', { body: { key: mine(l, 'Open Olivia').key, action: 'task' } })).status === 200, 'making a task from an opportunity works');
+  const od = (await S(`/contacts/${olivia}`)).json; ok(od.tasks.some(t => /Follow up with Open Olivia/.test(t.title)), 'and the task has a sensible title');
+  ok(!mine(await list(), 'Open Olivia'), 'she is off the list now');
+  ok((await S('/opportunities/act', { body: { key: mine(l, 'Hot Hana').key, action: 'dismiss' } })).status === 200 && !mine(await list(), 'Hot Hana'), 'hiding one removes it');
+  ok((await S('/opportunities/act', { body: { key: mine(l, 'Cold Cora').key, action: 'snooze', days: 3 } })).status === 200 && !mine(await list(), 'Cold Cora'), 'snoozing one removes it for now');
+  sql(`update sales_opportunity_state set until = now() - interval '1 minute' where key like '%${cora}'`); ok(mine(await list(), 'Cold Cora')?.type === 'gone_cold', 'and it comes back when the time is up, while it is still true');
+  act(ian, 'email_out', 'Thanks, here is a call link', '1 hour'); const l3 = await list(); ok(mine(l3, 'Inbound Ian')?.type !== 'inbound_unanswered', 'once someone answers, the unanswered mail is gone');
+  ok((await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } })).status === 404 && (await S('/opportunities/act', { body: { key: 'x', action: 'explode' } })).status === 422, 'something that is not there is a not-found, and an action that is not one is refused');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
