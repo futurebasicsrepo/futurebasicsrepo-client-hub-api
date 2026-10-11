@@ -9,7 +9,7 @@
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
-import { qbConfig, signState, readState, authUrl, exchangeCode, revoke, companyInfo, pushInvoice, paymentsSince, methodOf } from './quickbooks.js';
+import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, paymentsSince, methodOf } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -169,9 +169,9 @@ export function registerMoneyRoutes(app, d) {
     const row = await connRow(); if (!row || row.status !== 'connected') return null;
     const accessToken = tokenSeal.open(row.access_sealed), refreshToken = tokenSeal.open(row.refresh_sealed); if (!refreshToken) { await pool.query(`update money_connections set status='needs-reconnect', last_error='The saved sign-in can no longer be read: connect again' where provider='quickbooks'`); return null; }
     const conn = { realmId: row.realm_id, accessToken, refreshToken, accessExpiresAt: row.access_expires_at };
-    return { cfg: cfg(), conn, row, fetchImpl, save: async t => { await pool.query(`update money_connections set access_sealed=$1, refresh_sealed=$2, access_expires_at=$3, refresh_expires_at=$4, updated_at=now() where provider='quickbooks'`, [tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt]); } };
+    return { cfg: cfg(), conn, row, fetchImpl, log: d.log, save: async t => { await pool.query(`update money_connections set access_sealed=$1, refresh_sealed=$2, access_expires_at=$3, refresh_expires_at=$4, updated_at=now() where provider='quickbooks'`, [tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt]); } };
   }
-  const failed = async e => { await pool.query(`update money_connections set last_error=$1, status=case when $2 then 'needs-reconnect' else status end, updated_at=now() where provider='quickbooks'`, [String(e.message).slice(0, 300), Boolean(e.refused)]).catch(() => {}); };
+  const failed = async e => { d.log?.warn?.({ quickbooks: true, status: e.status, intuit_tid: e.tid, code: e.code, err: String(e.message).slice(0, 300) }, 'QuickBooks error'); await pool.query(`update money_connections set last_error=$1, status=case when $2 then 'needs-reconnect' else status end, updated_at=now() where provider='quickbooks'`, [(String(e.message).slice(0, 260) + (e.tid ? ` (intuit_tid ${e.tid})` : '')).slice(0, 300), Boolean(e.refused)]).catch(() => {}); };
   app.get('/v1/money/quickbooks/status', { preHandler: pre }, async () => {
     const c = cfg(), row = await connRow();
     return { configured: c.ready, sealing: sealReady(), mode: c.mode, redirectUri: c.redirectUri, connected: Boolean(row && row.status === 'connected'), needsReconnect: Boolean(row && row.status === 'needs-reconnect'), company: row?.company || '', realmId: row?.realm_id || '', connectedAt: row?.connected_at || null, lastSyncAt: row?.last_sync_at || null, lastError: row?.last_error || '', refreshExpiresAt: row?.refresh_expires_at || null };
@@ -179,7 +179,7 @@ export function registerMoneyRoutes(app, d) {
   app.post('/v1/money/quickbooks/connect', { preHandler: pre }, async (req, reply) => {
     const c = cfg(); if (!c.ready) return bad(reply, 'QuickBooks is not set up: add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to the service', 503);
     if (!sealReady()) return bad(reply, 'Saved sign-ins cannot be kept safely: set SHOPIFY_TOKEN_KEY on the service first', 503);
-    return { url: authUrl(c, signState(stateSecret, actorOf(req))), redirectUri: c.redirectUri };
+    return { url: authUrl(c, signState(stateSecret, actorOf(req)), await endpoints(c, fetchImpl)), redirectUri: c.redirectUri };
   });
   // Intuit sends the person's browser back here. There is no bearer token on this request: the signed state says who began it, and that person must still be allowed into Money.
   app.get('/v1/money/quickbooks/callback', async (req, reply) => {
