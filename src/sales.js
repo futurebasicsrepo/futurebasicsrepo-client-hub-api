@@ -6,7 +6,7 @@ export const OPEN_STAGES = ['new', 'contacted', 'meeting', 'proposal'];
 export const STAGE_LABELS = { new: 'New', contacted: 'Contacted', meeting: 'Meeting', proposal: 'Proposal', won: 'Won', lost: 'Lost' };
 // how likely each open stage is to close, for the forecast (a starting point to tune, not a promise)
 export const STAGE_ODDS = { new: 0.1, contacted: 0.2, meeting: 0.4, proposal: 0.6, won: 1, lost: 0 };
-export const SOURCES = ['manual', 'showcase', 'website', 'referral', 'outbound', 'event', 'hub', 'import'];
+export const SOURCES = ['manual', 'showcase', 'website', 'referral', 'outbound', 'event', 'hub', 'import', 'inbound'];
 export const ACTIVITY_KINDS = ['note', 'call', 'meeting', 'email_in', 'email_out', 'stage', 'showcase_view', 'showcase_demo', 'task', 'system'];
 export const MANUAL_KINDS = ['note', 'call', 'meeting', 'email_in', 'email_out']; // what a person can log by hand
 

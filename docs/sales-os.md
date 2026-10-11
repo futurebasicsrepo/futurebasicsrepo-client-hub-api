@@ -22,9 +22,29 @@ A look counts 2, a click-through 5, a call 3, a meeting 4, an email back 6. Each
 
 `sales_companies`, `sales_contacts` (unique by lower-cased email; consent fields `email_ok` and `unsubscribed_at`), `sales_deals`, `sales_activities` (the timeline), `sales_tasks`. Deleting a contact deletes their timeline and tasks. API under `/v1/sales/*` (staff only); the rules live in `src/sales.js`, storage and routes in `src/sales-routes.js`, the page is `src/sales.html`.
 
+## Email (phase 2)
+
+Resend is only the pipe. Who may be emailed, what is said, what is remembered and what happens when someone replies, bounces or says stop are all ours (`src/sales-email.js`, `src/sales-email-routes.js`).
+
+- **Sending.** On a contact's card, the Email box: pick a template (or write from scratch), edit, send. Blanks like `{{first_name|there}}` are filled in; if we do not know something and there is no fallback, the send is refused and says what is missing. Plain text with a light HTML version, sent one to one.
+- **Every email carries** your name, your business mailing address, and an unsubscribe link, plus the `List-Unsubscribe` one-click headers mail apps use. Without a mailing address nothing can be sent (set it in **Email settings**; commercial email must carry one).
+- **Who may be emailed.** Only people who know us: a hub client, someone invited to the showcase, someone who looked at or opened a build, wrote to us, met or spoke with us. For anyone else the card says so and asks you to confirm that you have spoken with them or they asked you to write; the record then says you did. Nothing overrides an unsubscribe, a bounce or a spam complaint.
+- **Stopping.** The unsubscribe page asks first (so mail scanners cannot unsubscribe people by opening links); the one-click POST from a mail app works directly. A reply that says stop or unsubscribe does the same. Staff cannot undo someone's own unsubscribe. A hard bounce or a spam complaint switches the address off too; a temporary bounce (mailbox full) does not.
+- **Replies.** A reply to `kyle@mail.thefuturebasics.com` is received by Resend and sent to us. It lands on the contact's timeline (they get hotter), a task "Reply to …" appears on Today, and you get an email with the text. Someone new who writes in becomes a contact with a deal. Automatic out-of-office replies are logged but make no work. Mail from our own sending address is ignored. Press **Reply** on a message in the timeline to answer it.
+- **Limits.** A daily limit (default 60, change it in settings) stops us using up Resend's allowance; the hub's own sign-in codes and notices share the same account, which allows 100 a day on the free plan and 3,000 a month. Resend's Pro plan is $20 a month for 50,000 with no daily limit.
+
+### One-time setup
+
+1. **Env vars on the hub service:** `RESEND_API_KEY` (already set for sign-in codes; `SALES_RESEND_API_KEY` overrides it for sales if you want a separate key), `RESEND_WEBHOOK_SECRET` (step 3). Optional: `SALES_FROM_ADDRESS`, `SALES_POSTAL_ADDRESS`, `SALES_DAILY_CAP` (all can be set on the Email settings page instead).
+2. **Receiving replies.** In Resend, open the domain `mail.thefuturebasics.com` and switch on **Receiving**. Resend shows one MX record; add it at your DNS provider for the **`mail`** name only, so Gmail on the main domain is untouched.
+3. **The webhook.** In Resend → Webhooks → add an endpoint `https://hub.thefuturebasics.com/webhooks/resend` (the settings page shows the exact address) for the events *email.delivered, email.bounced, email.failed, email.suppressed, email.complained, email.received*. Copy its signing secret (starts `whsec_`) into `RESEND_WEBHOOK_SECRET` on the hub service.
+4. **Email settings** in the Sales page: your name, the from address (`kyle@mail.thefuturebasics.com` is verified today), your mailing address, then **Send me a test**.
+
+Webhooks are checked against the signing secret and refused if the signature is wrong or older than five minutes. If Resend cannot give us a received message's body yet, we answer with an error so it tries again.
+
 ## Next phases
 
-1. **Email**: send from @thefuturebasics.com and receive replies into the timeline (respecting "do not email", with one-click unsubscribe), templates.
+1. ~~Email~~ (done, above).
 2. **Automations**: triggers (viewed a build, clicked through, replied, stage changed, silent for N days) to actions (send a template, create a task, move a stage, notify), with stop conditions and send caps. The follow-up task above is the first, hard-wired example.
 3. **Chat** on the public site and showcase, handing to a person.
 4. **Opportunity finder and press comms.**
