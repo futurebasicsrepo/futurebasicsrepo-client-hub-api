@@ -81,7 +81,11 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 .cpane .head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px}.cpane .head h2{margin:0}
 .cpane .fbchat-panel{height:min(62vh,560px);border-radius:18px}
 .cback{display:none}
-@media(max-width:860px){.chats{grid-template-columns:minmax(0,1fr)}.chats.open .clistbox{display:none}.chats:not(.open) .cpane{display:none}.cback{display:inline-flex}.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
+/* opportunities */
+.opp{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;align-items:start}.opp h2{margin:0 0 2px;font-size:17px}.opp .why{margin:4px 0 0}.opp .arow{margin-top:10px}
+.pri{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap}.pri.now{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.pri.week{background:#fff7d6;border-color:#e6d27a}.pri.later{background:#f0f0ee;color:var(--dim)}
+.opp .also{color:var(--dim);font-size:12.5px;margin-top:6px}
+@media(max-width:860px){.opp{grid-template-columns:minmax(0,1fr)}.chats{grid-template-columns:minmax(0,1fr)}.chats.open .clistbox{display:none}.chats:not(.open) .cpane{display:none}.cback{display:inline-flex}.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -93,7 +97,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
   <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/">Open the work console</a></div>
   <div id="app" class="hidden">
     <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Sales</h1>
-    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="today">Today</button><button class="tab" data-t="pipeline">Pipeline</button><button class="tab" data-t="contacts">Contacts</button><button class="tab" data-t="tasks">Tasks <span id="taskCount"></span></button><button class="tab" data-t="opportunities">Opportunities <span id="oppCount"></span></button><button class="tab" data-t="automations">Automations</button><button class="tab" data-t="chats">Chats <span id="chatCount"></span></button></div>
 
     <section id="t-today"></section>
 
@@ -119,6 +123,11 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
       </div>
     </section>
 
+    <section id="t-opportunities" class="hidden">
+      <div class="abar"><p class="note grow" id="oppNote" style="margin:0">Who to talk to next, and why. Each person appears once, under their strongest reason.</p></div>
+      <div class="views" id="oppTypes" aria-label="Kinds of opportunity"></div>
+      <div id="oppList"></div>
+    </section>
     <section id="t-automations" class="hidden">
       <div class="abar"><p class="note grow" id="autoNote" style="margin:0"></p><div class="arow" style="margin:0"><button class="btn sm" id="autoHours">Working hours</button><button class="btn sm" id="autoNow">Run what is due now</button><button class="btn go sm" id="autoNew">+ New automation</button></div></div>
       <div id="autoList"></div>
@@ -256,8 +265,9 @@ let TAB='today',OPEN_CONTACT=null,DEALS=[],CONTACT_OPTS=[];
 
 // ---------- today ----------
 async function loadToday(){
-  const [o,sv]=await Promise.all([api('/v1/sales/overview'),api('/v1/sales/segments').catch(()=>({segments:[]}))]),p=o.pipeline;
+  const [o,sv,op]=await Promise.all([api('/v1/sales/overview'),api('/v1/sales/segments').catch(()=>({segments:[]})),api('/v1/sales/opportunities').catch(()=>({opportunities:[],priorities:{now:0}}))]),p=o.pipeline;
   $('#t-today').innerHTML=`<div class="tiles"><div class="tile"><span>Open pipeline</span><b>${money(p.openValueCents)}</b><span>${p.openCount} deal${p.openCount===1?'':'s'}</span></div><div class="tile"><span>Forecast (by odds)</span><b>${money(p.forecastCents)}</b></div><div class="tile"><span>Won</span><b>${money(p.wonCents)}</b></div><div class="tile"><span>New contacts this week</span><b>${o.newLeads}</b><span>${o.totalContacts} in all</span></div></div>
+  ${op.opportunities.length?`<div class="panel"><div class="ahead"><h2>Worth your time today</h2><button class="btn sm" data-opentab="opportunities">See all ${op.total}</button></div>${op.opportunities.slice(0,3).map(x=>`<div class="item click" ${x.contactId?`data-contact="${esc(x.contactId)}"`:''}><span class="main"><b>${esc(x.name||'Someone')}${x.company?' · '+esc(x.company):''}</b><span class="sub">${esc(x.reason)}</span></span><span class="pri ${x.priority}">${esc({now:'Now',week:'This week',later:'Later'}[x.priority])}</span></div>`).join('')}</div>`:''}
   ${sv.segments.length?`<div class="panel"><h2>Your customers</h2><div class="views" style="margin:0">${sv.segments.map(g=>`<button type="button" class="fchip" data-openseg="${esc(g.id)}">${esc(g.name)}<small>${g.count}</small></button>`).join('')}</div></div>`:''}
   <div class="cols2"><div class="panel"><h2>Do these</h2>${o.tasks.length?o.tasks.map(t=>`<div class="item"><label class="check"><input type="checkbox" data-done="${esc(t.id)}" aria-label="Done"><span class="main"><b>${esc(t.title)}</b><span class="sub">${t.contact_id?`<a href="#" data-contact="${esc(t.contact_id)}">${who(t)}</a> · `:''}${new Date(t.due_at)<new Date(new Date().toDateString())?'<span class="chip late">overdue</span> ':''}${dayOf(t.due_at)}</span></span></label></div>`).join(''):'<p class="note">Nothing due. Add a task from a contact.</p>'}</div>
   <div class="panel"><h2>Warm right now</h2>${o.hot.length?o.hot.map(c=>`<div class="item click" data-contact="${esc(c.id)}"><span class="main"><b>${esc(c.name||c.email)}</b><span class="sub">${esc(c.company||c.email||'')} · last ${ago(c.heat.lastAt)}</span></span>${heatChip(c.heat)}</div>`).join(''):'<p class="note">Nobody has looked at anything lately. When someone you invited opens a build, they show up here.</p>'}</div>
@@ -437,6 +447,7 @@ $('#sTest').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent
 
 // ---------- shared behaviour ----------
 document.addEventListener('click',async e=>{
+  const ot=e.target.closest('[data-opentab]');if(ot){$$('.tab').find(t=>t.dataset.t===ot.dataset.opentab).click();return}
   const os=e.target.closest('[data-openseg]');if(os){ACTIVE_SEG=os.dataset.openseg;PICK.clear();$$('.tab').find(t=>t.dataset.t==='contacts').click();return}
   const done=e.target.closest('[data-done]');if(done&&done.type==='checkbox'){try{await api('/v1/sales/tasks/'+done.dataset.done,{method:'PUT',body:{done:true}});await refresh();if(OPEN_CONTACT&&$('#cdlg').open)openContact(OPEN_CONTACT)}catch(x){alert(x.message)}return}
   const close=e.target.closest('[data-close]');if(close){close.closest('dialog').close();return}
@@ -516,6 +527,20 @@ async function loadRuns(id){
   box.innerHTML=runs.length?`<h2 style="margin:18px 0 6px">Automations</h2>${runs.slice(0,6).map(r=>`<div class="item"><span class="main"><b>${esc(r.automation_name)}</b><span class="sub">${r.status==='active'?`Step ${r.step+1} of ${r.steps}, next ${esc(when(r.next_at))}`:r.status==='done'?'Finished':'Stopped: '+esc(r.stop_reason)}</span></span>${r.status==='active'?`<button class="btn sm" data-stoprun="${esc(r.id)}">Stop</button>`:''}</div>`).join('')}`:'';
   box.querySelectorAll('[data-stoprun]').forEach(b=>b.onclick=async()=>{try{await api('/v1/sales/runs/'+b.dataset.stoprun+'/stop',{body:{}});await openContact(id)}catch(x){alert(x.message)}});
 }
+// ---------- opportunities ----------
+let OPPS=null,OPP_TYPE='';
+const oppCard=o=>`<div class="panel opp" data-okey="${esc(o.key)}"><div><h2>${o.contactId?`<a href="#" data-contact="${esc(o.contactId)}">${esc(o.name||o.email||'Someone')}</a>`:esc(o.name||'Someone')}${o.company?` <span class="sub">· ${esc(o.company)}</span>`:''}</h2><div class="sub">${esc(o.typeLabel)}</div><p class="why">${esc(o.reason)}</p>${o.also&&o.also.length?`<div class="also">Also: ${o.also.map(t=>esc((OPPS.types.find(x=>x.type===t)||{}).label||t)).join(', ')}</div>`:''}<div class="arow"><button class="btn go sm" data-oact="task">Make a task: ${esc(o.task)}</button>${o.contactId?`<button class="btn sm" data-contact="${esc(o.contactId)}">Open contact</button>`:''}<button class="btn sm" data-oact="snooze">Snooze a week</button><button class="btn sm" data-oact="dismiss">Not now</button></div></div><span class="pri ${o.priority}">${esc({now:'Now',week:'This week',later:'When there is time'}[o.priority])}</span></div>`;
+async function loadOpportunities(){
+  OPPS=await api('/v1/sales/opportunities'+(OPP_TYPE?'?type='+OPP_TYPE:''));const o=OPPS;
+  $('#oppCount').innerHTML=o.priorities.now?`<span class="chip late">${o.priorities.now}</span>`:'';
+  $('#oppTypes').innerHTML=`<button type="button" class="fchip ${OPP_TYPE?'':'on'}" data-otype="">Everything<small>${o.total}</small></button>`+o.types.filter(t=>o.counts[t.type]||t.type===OPP_TYPE).map(t=>`<button type="button" class="fchip ${t.type===OPP_TYPE?'on':''}" data-otype="${esc(t.type)}">${esc(t.label)}<small>${o.counts[t.type]||0}</small></button>`).join('');
+  $('#oppNote').textContent=o.total?`${o.priorities.now} to do now, ${o.priorities.week} this week, ${o.priorities.later} when there is time. Each person appears once, under their strongest reason.`:'Nothing is falling through the cracks right now.';
+  $('#oppList').innerHTML=o.opportunities.length?o.opportunities.map(oppCard).join(''):'<div class="panel"><p class="note">Nothing here. When someone looks at a build, writes in, or a deal goes quiet, it shows up here with what to do.</p></div>';
+}
+$('#oppTypes').addEventListener('click',e=>{const b=e.target.closest('[data-otype]');if(!b)return;OPP_TYPE=b.dataset.otype;loadOpportunities().catch(x=>alert(x.message))});
+$('#oppList').addEventListener('click',async e=>{const b=e.target.closest('[data-oact]');if(!b)return;const key=b.closest('[data-okey]').dataset.okey;b.disabled=true;
+  try{await api('/v1/sales/opportunities/act',{body:{key,action:b.dataset.oact,days:7}});await loadOpportunities();loadTaskBadge()}catch(x){alert(x.message);b.disabled=false}});
+async function loadOppBadge(){try{const o=await api('/v1/sales/opportunities');$('#oppCount').innerHTML=o.priorities.now?`<span class="chip late">${o.priorities.now}</span>`:''}catch{}}
 // ---------- chats ----------
 let CHATS=[],CHAT_ID=null,CHAT_UI=null,CHAT_STATUS='';
 const CSTATUS={bot:['bot','Assistant'],waiting:['wait','Waiting for you'],person:['person','With a person'],closed:['closed','Closed']};
@@ -548,8 +573,8 @@ $('#chatFilter').onchange=()=>loadChats().catch(x=>alert(x.message));
 $('#chatSettings').onclick=async()=>{const {settings:s,assistantReady}=await api('/v1/sales/chats/settings');$('#cfOn').checked=s.enabled;$('#cfBot').checked=s.assistantOn;$('#cfGreet').value=s.greeting;$('#cfAbout').value=s.about;$('#cfCap').value=s.dailyBotCap;$('#cfEmbed').value=`<script src="${location.protocol}//${location.host.replace(/^work\./,'hub.')}/chat-widget.js" defer><\/script>`;$('#cfBotNote').textContent=assistantReady?'It answers from what Future Basics does and the builds the visitor may see, and hands to a person for price, timelines, anything it is unsure of, or when asked.':'The assistant is not connected yet (the service needs ANTHROPIC_API_KEY). Until then every chat goes straight to a person.';$('#cfMsg').textContent='';$('#cfdlg').showModal()};
 $('#cfSave').onclick=async()=>{const m=$('#cfMsg');m.className='msg';try{await api('/v1/sales/chats/settings',{method:'PUT',body:{enabled:$('#cfOn').checked,assistantOn:$('#cfBot').checked,greeting:$('#cfGreet').value,about:$('#cfAbout').value,dailyBotCap:$('#cfCap').value}});$('#cfdlg').close()}catch(x){m.className='msg bad';m.textContent=x.message}};
 async function loadChatBadge(){try{const {waiting}=await api('/v1/sales/chats?status=waiting');$('#chatCount').innerHTML=waiting?`<span class="chip late">${waiting}</span>`:''}catch{}}
-const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations,chats:loadChats};
-async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge();if(TAB!=='chats')loadChatBadge()}
+const LOADERS={today:loadToday,pipeline:loadPipeline,contacts:loadContacts,tasks:loadTasks,automations:loadAutomations,chats:loadChats,opportunities:loadOpportunities};
+async function refresh(){await LOADERS[TAB]();if(TAB!=='tasks')loadTaskBadge();if(TAB!=='chats')loadChatBadge();if(TAB!=='opportunities')loadOppBadge()}
 setInterval(()=>{if(TAB==='chats'&&!document.hidden)loadChats().catch(()=>{})},10000);
 const refreshQuiet=()=>refresh().catch(()=>{});
 async function loadTaskBadge(){try{const open=(await api('/v1/sales/tasks?scope=today')).tasks.length;$('#taskCount').innerHTML=open?`<span class="chip late">${open}</span>`:''}catch{}}
