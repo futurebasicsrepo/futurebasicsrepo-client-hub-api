@@ -491,7 +491,7 @@ test('website: landing page, fonts, demo cards and early-access list', async (t)
   assert.match(home.body, /yes button/);
   for (const id of ['rules', 'stores', 'trust', 'agents', 'faq']) assert.match(home.body, new RegExp(`id="${id}"`));
   assert.match(home.body, /href="\/new"/);
-  assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/site\/card-open.png"/);
+  assert.match(home.body, /og:image" content="http:\/\/localhost(:80)?\/assets\/og-site\.jpg\?v=[a-f0-9]+"/, 'the site preview image');
   assert.match(home.body, /id="agentlog"/, 'agent demo');
   assert.match(home.body, /class="sec story"/, 'how it works');
   assert.match(home.body, /id="ln3"/);

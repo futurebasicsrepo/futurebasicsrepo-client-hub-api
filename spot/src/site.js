@@ -2,7 +2,7 @@
 // Visuals are the real product: the share card is rendered by sharecard.js
 // (/site/card-*.png) and the mascot is the same SVG the app uses.
 import { HOME_SCREEN_TAGS } from './appicon.js';
-import { logoFaceCss } from './assets.js';
+import { assetUrl, logoFaceCss } from './assets.js';
 import { buddySvg } from './pages.js';
 import { STANDARDS_CSS, standardsStrip } from './standards.js';
 import { FX_CSS, FX_JS, byeFooter, chatWallSection, circleMark, noteSection, storySection } from './sitefx.js';
@@ -301,11 +301,11 @@ const tick = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10
 const check = '<span class="y">✓</span>';
 const cross = '<span class="n">—</span>';
 
-export function siteHead({ title, desc, origin, path = '/', extraCss = '' }) {
+export function siteHead({ title, desc, origin, path = '/', extraCss = '', image = 'og-site.jpg' }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title><meta name="description" content="${esc(desc)}"><meta name="theme-color" content="#ff5a36">${HOME_SCREEN_TAGS}
 <meta property="og:type" content="website"><meta property="og:site_name" content="Spot"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}/site/card-open.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
+<meta property="og:url" content="${esc(origin)}${esc(path)}"><meta property="og:image" content="${esc(origin)}${esc(assetUrl(image))}"><meta property="og:image:width" content="2400"><meta property="og:image:height" content="1260"><meta property="og:image:alt" content="Spot, the plush, standing on a YES button: the yes button for AI shopping"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(origin)}${esc(assetUrl(image))}">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16.5' r='13' fill='%23ff5a36'/%3E%3Cellipse cx='12' cy='14.5' rx='2.9' ry='3.4' fill='%23fff'/%3E%3Cellipse cx='20' cy='14.5' rx='2.9' ry='3.4' fill='%23fff'/%3E%3Ccircle cx='12.3' cy='15.3' r='1.7' fill='%231b1712'/%3E%3Ccircle cx='20.3' cy='15.3' r='1.7' fill='%231b1712'/%3E%3Cpath d='M13.4 20.2q2.6 2 5.2 0' stroke='%231b1712' stroke-width='1.3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="/fonts/bricolage-800.woff2" as="font" type="font/woff2" crossorigin>
 <style>${SITE_CSS}${FX_CSS}${extraCss}</style></head><body>`;

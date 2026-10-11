@@ -101,7 +101,7 @@ body.joined .ea-form{display:none}body.joined .ea-done{display:block;animation:p
 export function earlyAccessPage({ origin }) {
   const title = 'Spot: early access';
   const desc = 'The yes button for AI shopping. Your AI finds it, whoever’s paying taps yes, and Spot buys it with a card made for that one order. Get early access.';
-  return `${siteHead({ title, desc, origin, path: '/', extraCss: EA_CSS })}
+  return `${siteHead({ title, desc, origin, path: '/', extraCss: EA_CSS, image: 'og-early.jpg' })}
 <div class="ea-wrapbody">
 <header class="ea-top wrap"><a class="logo" href="/"><span></span>Spot</a><a class="ea-in" href="/signin">Sign in</a></header>
 <main class="ea-main wrap">
