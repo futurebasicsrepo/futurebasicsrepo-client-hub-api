@@ -33,6 +33,7 @@ import { registerSalesAutomationRoutes, seedAutomations } from './sales-automati
 import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
 import { registerCommerceRoutes } from './commerce-routes.js';
+import { registerHomeRoutes } from './home-routes.js';
 import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS } from './software.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
@@ -603,11 +604,12 @@ app.post('/v1/preview/session/exchange',async(req,reply)=>{
 });
 
 const sendAdmin = (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./admin.html',import.meta.url),'utf8'));
+const sendWorkHome = (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./work-home.html',import.meta.url),'utf8'));
 const sendClientHub = (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./client.html',import.meta.url),'utf8'));
 app.get('/', async (req, reply) => {
   const host = String(req.headers.host || '').split(':')[0].toLowerCase();
   if (host.startsWith('builds.')) return sendBuilds(req, reply);
-  return host === 'work.thefuturebasics.com' ? sendAdmin(req, reply) : sendClientHub(req, reply);
+  return host === 'work.thefuturebasics.com' ? sendWorkHome(req, reply) : sendClientHub(req, reply);
 });
 // The builds showcase: the technical builds Future Basics shows to clients and prospects, behind a sign-in (see builds.js). Viewers at builds., staff manage it at /builds/admin.
 const sendBuilds = (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds.html', import.meta.url), 'utf8'));
@@ -622,6 +624,7 @@ app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-stor
 const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
 registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, workUrl: workHubUrl, builds: buildsApi, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
+app.get('/home', sendWorkHome); // the work console's home: leads, prototypes, projects in flight (the old home is /admin: clients and production)
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);
@@ -2562,6 +2565,7 @@ function shopifyExportRoutes(path,pre,mine){
 }
 shopifyExportRoutes('/v1/admin/products/:id/tech-pack/shopify-export',[authenticate,adminOnly],false);
 shopifyExportRoutes('/v1/products/:id/tech-pack/shopify-export',[authenticate],true);
+registerHomeRoutes(app,{pool,authenticate,adminOnly});
 registerCommerceRoutes(app,{pool,authenticate,adminOnly,tokenSeal,storeExec,liveStores,storeView:r=>({...storeView(r),status:r.status,shop:r.shop}),env:process.env,log:app.log});
 // ---- A customer connects their own Shopify store. Authorization-code install: the hub asks for a single-use state tied to the customer and the shop, Shopify sends the
 // merchant back with a signed query, and only a callback that proves the signature, the state and the shop trades its code for a token (sealed before it is stored).

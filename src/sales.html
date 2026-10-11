@@ -585,6 +585,8 @@ $$('.tab').forEach(t=>t.onclick=()=>{TAB=t.dataset.t;if(location.hash.slice(1)!=
   // the left-hand menu links straight to a tab (/sales#contacts), and the tabs keep the address in step
   const fromHash=()=>{const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&t.dataset.t!==TAB)t.click()};
   fromHash();addEventListener('hashchange',fromHash);
+  // a link from the work home opens that person: /sales?contact=<id>
+  const want=new URLSearchParams(location.search).get('contact');if(want){history.replaceState(null,'',location.pathname+location.hash);openContact(want).catch(()=>{})}
 })();
 </script>
 <script src="/console-nav.js" defer></script>

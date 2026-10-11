@@ -1498,4 +1498,42 @@ await journey('J123', 'The opportunity finder: who to talk to next and why, from
   ok((await S('/opportunities/act', { body: { key: 'inbound_unanswered:nobody', action: 'task' } })).status === 404 && (await S('/opportunities/act', { body: { key: 'x', action: 'explode' } })).status === 422, 'something that is not there is a not-found, and an action that is not one is refused');
 });
 
+await journey('J132', 'the work home: staff only, counts new leads (not clients), lists the leads still waiting for a first reply, the prototypes with who has looked, and the projects in flight with the ones waiting on us first', async () => {
+  const room = await newRoom('132', { wait: false }), tag = `h${stamp}`;
+  const cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: cid, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const home = async () => (await call('/v1/admin/home', { token: admin })).json, S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  ok((await call('/v1/admin/home')).status === 401 && (await call('/v1/admin/home', { token: room.token })).status === 403, 'clients and strangers cannot read it');
+  const w = await call('/home', { headers: { host: 'work.localhost:3123' } }); ok(w.status === 200 && /Work home/.test(w.text), 'the page itself is served at /home');
+  const before = await home(); ok(Array.isArray(before.awaitingReply) && Array.isArray(before.prototypes) && Array.isArray(before.projects) && typeof before.funnel.newLeads7 === 'number' && typeof before.waiting.approvals === 'number', 'the home has leads, prototypes, projects and what is waiting', Object.keys(before));
+
+  // leads: a web lead nobody has answered, one we replied to, a hub client, and an old one
+  const mk = async (name, source, email) => (await S('/contacts', { body: { name, email, source, tags: [] } })).json.id;
+  const a = await mk(`Ann ${tag}`, 'website', `ann-${tag}@lead.test`), b = await mk(`Bob ${tag}`, 'website', `bob-${tag}@lead.test`), hubc = await mk(`Hub ${tag}`, 'hub', `hub-${tag}@lead.test`), old = await mk(`Old ${tag}`, 'website', `old-${tag}@lead.test`);
+  sql(`update sales_contacts set created_at=now()-interval '30 days' where id='${old}'`); sql(`insert into sales_activities(contact_id,kind,text) values('${b}','email_out','Thanks for getting in touch')`);
+  const after = await home(), names = after.awaitingReply.map(x => x.name);
+  ok(after.funnel.newLeads7 - before.funnel.newLeads7 === 2, 'new leads count the two recent people, not the hub client and not the one from a month ago', [before.funnel.newLeads7, after.funnel.newLeads7]);
+  ok(names.includes(`Ann ${tag}`) && !names.includes(`Bob ${tag}`) && !names.includes(`Hub ${tag}`) && !names.includes(`Old ${tag}`), 'the leads waiting for a first reply are the one nobody answered: not the one we emailed, a hub client or an old one', names);
+
+  // prototypes: a build in progress that someone has looked at
+  const build = await call('/v1/admin/builds', { token: admin, body: { name: `Proto ${tag}`, status: 'in-progress', visibility: 'invite', hosting: 'railway', stack: ['Node'] } }), bid = build.json.id;
+  const cold = await home(); const p0 = cold.prototypes.find(x => x.id === bid); ok(p0 && p0.warm === false && /Invited|Only staff|Not shared/.test(p0.next), 'a new prototype nobody has looked at says who to tell', p0);
+  sql(`insert into build_views(email,build_id,kind) values('prospect-${tag}@x.test','${bid}','open'),('prospect-${tag}@x.test','${bid}','demo')`);
+  const warm = await home(), p1 = warm.prototypes.find(x => x.id === bid);
+  ok(p1.warm && p1.lookers7 === 1 && p1.views7 === 2 && /say hello/i.test(p1.next) && warm.prototypes[0].id === bid && warm.funnel.lookers7 - cold.funnel.lookers7 === 1 && warm.funnel.demos7 - cold.funnel.demos7 === 1, 'once someone has looked it is warm, says to say hello, and rises to the top', p1);
+  const live = await call('/v1/admin/builds', { token: admin, body: { name: `Live ${tag}`, status: 'live', visibility: 'listed', hosting: 'railway' } }); sql(`insert into build_views(email,build_id,kind) select 'v${tag}'||g||'@x.test','${live.json.id}','open' from generate_series(1,5) g`);
+  ok((await home()).showNow.some(x => x.id === live.json.id && x.views30 === 5), 'a finished build people look at is offered as the one to show now');
+  ok(!(await home()).prototypes.some(x => x.id === live.json.id), 'and is not listed as a prototype');
+
+  // projects: software and product, the one the client wrote to last first
+  const sw = (await call(`/v1/admin/clients/${cid}/projects`, { token: admin, body: { name: `Site ${tag}`, kind: 'software', buildId: bid, stage: 'build' } })).json, pr = (await call(`/v1/admin/clients/${cid}/projects`, { token: admin, body: { name: `Hoodie ${tag}` } })).json;
+  let h = await home(), row = id => h.projects.find(x => x.id === id);
+  ok(row(sw.id).kind === 'software' && row(sw.id).stage === 'build' && row(sw.id).stageLabel === 'Build' && row(sw.id).buildName === `Proto ${tag}` && row(pr.id).kind === 'product' && row(sw.id).clientId === cid, 'software and product projects are both listed with their stage and build', [row(sw.id), row(pr.id)]);
+  ok((await call(`/v1/projects/${pr.id}/messages`, { token: room.token, body: { body: 'Any news on the sample?' } })).status < 300, 'setup: the client writes on the product project');
+  h = await home(); ok(row(pr.id).waitingOnUs === true && row(pr.id).owner === 'us' && h.projects.findIndex(x => x.id === pr.id) < h.projects.findIndex(x => x.id === sw.id), 'the project the client wrote to is waiting on us and is listed first');
+  await call(`/v1/admin/projects/${sw.id}`, { token: admin, method: 'PATCH', body: { stage: 'review' } }); h = await home(); ok(row(sw.id).owner === 'client' && row(sw.id).waitingOnUs === false, 'a software project in client review is the client\'s to answer');
+  await call(`/v1/admin/projects/${pr.id}/archive`, { token: admin, method: 'POST', body: {} }); h = await home(); ok(!row(pr.id) && row(sw.id), 'an archived project drops off');
+  await call(`/v1/admin/projects/${sw.id}/archive`, { token: admin, method: 'POST', body: {} }); await call(`/v1/admin/builds/${bid}`, { token: admin, method: 'DELETE' }); await call(`/v1/admin/builds/${live.json.id}`, { token: admin, method: 'DELETE' });
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

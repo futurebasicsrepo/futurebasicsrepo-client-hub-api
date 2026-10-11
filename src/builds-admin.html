@@ -276,7 +276,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{if(location.hash.slice(1)!==t.dataset.t)his
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{await loadBuilds();$('#app').classList.remove('hidden')}catch(x){$('#needSignin').classList.remove('hidden');return}
   // a link from a client's software project opens the push window for that build and client: /builds/admin?push=<build>&client=<client>
-  try{const q=new URLSearchParams(location.search),b=BUILDS.find(x=>x.id===q.get('push'));if(b){history.replaceState(null,'',location.pathname+location.hash);await openPush(b,q.get('client')||undefined)}}catch{}
+  try{const q=new URLSearchParams(location.search),b=BUILDS.find(x=>x.id===q.get('push'));if(b){history.replaceState(null,'',location.pathname+location.hash);await openPush(b,q.get('client')||undefined)}else if(q.get('new')==='1'){history.replaceState(null,'',location.pathname+location.hash);openForm(null)}}catch{}
   const fromHash=()=>{const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));if(t&&!t.classList.contains('on'))t.click()};
   fromHash();addEventListener('hashchange',fromHash);
 })();
