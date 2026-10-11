@@ -1523,7 +1523,7 @@ await journey('J141', 'Factories in a browser: the map and list, filters by what
   await call(`/v1/admin/products/${r.id}/tech-pack/factory`, { token: kyle, body: { supplierId: a.id, mode: 'quote', email: false } });
   sql(`update projects set status='sampling',milestone='Sample approval',target_date=current_date-4 where id='${r.projectId}'`);
   sql(`insert into room_files(client_id,project_id,product_id,uploader_role,original_name,storage_name,mime_type,size_bytes,factory_visible) values('${r.clientId}','${r.projectId}','${r.id}','admin','${tag}-spec.pdf','${tag}-spec','application/pdf',2048,true)`);
-  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${r.id}','${a.id}','PO-${stamp}',300,'in-production',current_date-2)`);
+  sql(`insert into production_runs(product_id,supplier_id,po_number,quantity,status,eta_date) values('${r.id}','${a.id}','PO-B${stamp}',300,'in-production',current_date-2)`);
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
   await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('.fbside a[data-nav]', { timeout: 10000 });
@@ -1552,7 +1552,7 @@ await journey('J141', 'Factories in a browser: the map and list, filters by what
   ok(/Sample approval/.test(body) && /sampling/i.test(body) && /late/i.test(body), 'its project shows status, milestone and that the date has passed', body.slice(0, 200));
   ok(/Waiting for their quote/i.test(body) && /Open pack/i.test(body), 'its pack shows where it stands, with a way into it');
   ok(new RegExp(`${tag}-spec\\.pdf`).test(body) && await page.locator('#dBody [data-dl]').count() === 1, 'the file shared with the factory is listed with a download');
-  ok(new RegExp(`PO-${stamp}`).test(body) && /in-production/i.test(body), 'its production run is listed and flagged late');
+  ok(new RegExp(`PO-B${stamp}`).test(body) && /in-production/i.test(body), 'its production run is listed and flagged late');
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j141-work.png` }).catch(() => {});
   // makes and skills
   await page.click('#dTabs [data-tab=profile]'); await page.waitForSelector('#pform'); await page.click('#pform label.pick:has(input[value=bag])'); await page.click('#pform label.pick:has(input[value=leather])'); await page.fill('#pform [name=otherSkills]', 'waterproof taping');
