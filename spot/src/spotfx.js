@@ -250,6 +250,8 @@ export const SPOTFX_JS = `
     const btn=document.getElementById('yesBtn'),hs=document.getElementById('heroSpot'),hsvg=hs&&hs.querySelector('.spotb'),count=document.getElementById('yesCount');let n=0,busy=0;
     // The live 3D plush takes over from the still once it's loaded (not on
     // Save-Data). He tells us what he's up to (cues) and gets a line for it.
+    // Just opened an early-access invite (/invite/… sends people to /?welcome=1).
+    const welcome=new URLSearchParams(location.search).has('welcome');if(welcome)history.replaceState(null,'',location.pathname+location.hash);
     let s3=null,sayT=0,eagerAt=-1e9;const hsay=document.getElementById('hsay'),said={};
     const LINES={hello:['hi! I’m Spot 👋'],poke:['boop!','hehe, that tickles','eep!','again? ok 😆','hey, I’m working here 😄'],dizzy:['whoa… everything’s spinning 💫'],shy:['oh! hi… 🙈','you’re staring 😳','…can I help you? 🙈'],eager:['go on, press it 👀','ooh, do it!','yes? yes? 👀'],yawn:['*yaaawn* 🥱','is it nap time?'],sleep:['zzz…'],wake:['oh! I’m up, I’m up 👀','wasn’t sleeping! 😳'],back:['you’re back! 👋','missed you 🧡']};
     const line=k=>{const a=LINES[k]||[];said[k]=(said[k]??-1)+1;return a[said[k]%a.length]||''};
@@ -257,7 +259,8 @@ export const SPOTFX_JS = `
     const onCue=c=>{if(c==='snore')return zz(hs);if(c==='sleep'){zz(hs);return hSay(line('sleep'),1800)}if(c==='eager'){if(Date.now()-eagerAt<20000)return;eagerAt=Date.now()}hSay(line(c),c==='dizzy'?2800:2300)};
     if(hs&&!(navigator.connection&&navigator.connection.saveData))import(${JSON.stringify(assetUrl('spot3d.js'))}).then(m=>{s3=m.mountSpot3D(hs,{onCue});if(!s3)return;hs.classList.add('has3d');
       let met=null;try{met=sessionStorage.getItem('spot-met');sessionStorage.setItem('spot-met','1')}catch{}
-      if(!met)setTimeout(()=>{s3.play('wave');hSay(line('hello'),2600)},900)}).catch(()=>{});
+      if(welcome)setTimeout(()=>{s3.hop();s3.happy(true);hSay('you’re in! welcome 🧡',3400);spotConfetti(st,'50%','45%',60);setTimeout(()=>s3.happy(false),2200)},900);
+      else if(!met)setTimeout(()=>{s3.play('wave');hSay(line('hello'),2600)},900)}).catch(()=>{});
     const heroCheer=(ms)=>{if(!s3)return cheer(hs,hsvg,ms);s3.hop();s3.happy(true);clearTimeout(hs._h);hs._h=setTimeout(()=>s3.happy(false),ms)};
     const lines=['approved. signed. sent ✍️','another yes! 🧡','the store got the order 📦','card used, then closed 🔒','you’re good at this','ok now ask your AI for real →'];
     const yes=()=>{n++;btn.classList.add('down');setTimeout(()=>btn.classList.remove('down'),150);btn.classList.remove('ringing');void btn.offsetWidth;btn.classList.add('ringing');try{navigator.vibrate&&navigator.vibrate(8)}catch{}

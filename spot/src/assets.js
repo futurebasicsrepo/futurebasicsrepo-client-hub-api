@@ -4,14 +4,15 @@
 // everywhere else: hi, yay (happy), oh (surprised), sleep, and his face on
 // its own (face, face-blink) for the logo, and peeking over the note
 // (peek, plus paws on their own to sit in front of the card). og-site and
-// og-early are the link previews for the site and the early-access page. URLs carry a content hash, so
+// og-early are the link previews for the site and the early-access page;
+// email-spot is Spot cheering in the invite email (PNG, for email apps). URLs carry a content hash, so
 // they can be cached for good.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-const TYPES = { js: 'text/javascript; charset=utf-8', webp: 'image/webp', jpg: 'image/jpeg' };
-const FILES = ['spot3d.js', 'spot-hi.webp', 'spot-yay.webp', 'spot-oh.webp', 'spot-sleep.webp', 'spot-face.webp', 'spot-face-blink.webp', 'spot-peek.webp', 'spot-paws.webp', 'og-site.jpg', 'og-early.jpg'];
+const TYPES = { js: 'text/javascript; charset=utf-8', webp: 'image/webp', jpg: 'image/jpeg', png: 'image/png' };
+const FILES = ['spot3d.js', 'spot-hi.webp', 'spot-yay.webp', 'spot-oh.webp', 'spot-sleep.webp', 'spot-face.webp', 'spot-face-blink.webp', 'spot-peek.webp', 'spot-paws.webp', 'og-site.jpg', 'og-early.jpg', 'email-spot.png'];
 
 // A missing file is logged and served as a 404, never a crash at start.
 export const ASSETS = Object.fromEntries(

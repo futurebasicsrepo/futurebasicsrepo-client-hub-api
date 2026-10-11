@@ -49,6 +49,7 @@ import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 import { registerGate } from './early.js';
+import { createInvites } from './invites.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
@@ -151,6 +152,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
   const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  // Early-access invites, sent from /admin (invites.js).
+  const invites = createInvites(db);
   // Nightly database backups (started from the entry point, not in tests).
   const backups = createBackups({ db, env, dir: backupDir || join(dirname(env.SPOT_DB || './data/spot.db'), 'backups'), notifier, log: app.log, ...(backupFetch ? { fetchImpl: backupFetch } : {}) });
   app.decorate('backups', backups);
@@ -253,7 +256,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // ─── Pages ────────────────────────────────────────────────────────────────
   // ─── Website ──────────────────────────────────────────────────────────────
   // Until launch, the marketing pages show early access (early.js).
-  registerGate(app, { db, env, behindEdge, origin: (req) => urlFor(req, '') });
+  registerGate(app, { db, env, behindEdge, origin: (req) => urlFor(req, ''), invites });
   app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
 
   // MCP Registry domain check for the com.spotmeplease/* namespace:
@@ -828,7 +831,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     launchBrowser: fulfill.launch || (async () => (await import('playwright')).chromium.launch({ args: ['--no-sandbox'] })),
     ...(fulfill.liveFetch ? { fetchImpl: fulfill.liveFetch } : {}),
   });
-  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller, liveChecks });
+  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller, liveChecks, invites, notifier });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });
