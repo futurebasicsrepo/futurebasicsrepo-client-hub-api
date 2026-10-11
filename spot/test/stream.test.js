@@ -74,6 +74,8 @@ test('picks go out before their store checks; checks follow as updates; then don
   assert.equal(calls[0].model, 'claude-sonnet-5-5', 'the quicker model by default');
   assert.match(calls[0].messages[0].content, /up to 6 products/, 'a small first batch');
   assert.match(calls[0].messages[0].content, /their sizes are tops M\./);
+  assert.match(calls[0].messages[0].content, /Never answer a shopping request with an empty list/);
+  assert.doesNotMatch(calls[0].messages[0].content, /must be in stock/, 'stock is checked by Spot, not a reason to return nothing');
 });
 
 test('products written between searches all reach the shelf; one listing page can hold several', async () => {

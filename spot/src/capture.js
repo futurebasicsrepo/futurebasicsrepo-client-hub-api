@@ -489,9 +489,9 @@ export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', avoid =
 Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
 - If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${outfits}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
 - Otherwise reply with up to ${count} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
-${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
+${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Skip anything you saw marked sold out, but don't hold back for want of proof: Spot checks each store's own page for stock, size and price before anyone pays. Products named in roundups, gift guides, or category and search pages count: use them, with the best link you have and the price you saw (or your best estimate). Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
 ${LOOKUP_SCHEMA_HINT}
-Use an empty list only if you found nothing at all for sale that fits; close matches are better than nothing.`;
+Never answer a shopping request with an empty list: give your best picks from what you found, even if you're unsure of stock or the exact price.`;
 }
 
 // Follow-ups: "more" is what they said about the last finds ("in blue",
@@ -547,7 +547,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
       const last = messages.at(-1);
       if (last.role === 'assistant') last.content = [...last.content, ...response.content];
       else messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best matches that are for sale and in stock now, even if they're not perfect: close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
+      messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best picks from what you found, even from roundups or category pages, and even if you couldn't confirm stock or the exact price: Spot checks the store pages itself, and close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
       continue;
     }
 
@@ -988,7 +988,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     const last = messages.at(-1);
     if (last.role === 'assistant') last.content = [...last.content, ...(response?.content || [])];
     else messages.push({ role: 'assistant', content: response?.content || [] });
-    messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best matches that are for sale and in stock now, even if they're not perfect: close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
+    messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best picks from what you found, even from roundups or category pages, and even if you couldn't confirm stock or the exact price: Spot checks the store pages itself, and close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
   }
   console.log('stream lookup', `${now() - started}ms`, model, JSON.stringify({ ...stats, sent: sent.length, asked: count }), sent.length < Math.min(count, 3) ? said.slice(-500).replace(/\s+/g, ' ') : '');
   if (!sent.length) return nothing();
