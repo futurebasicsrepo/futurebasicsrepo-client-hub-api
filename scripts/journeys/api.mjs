@@ -1778,4 +1778,42 @@ await journey('J132', 'the work home: staff only, counts new leads (not clients)
   await call(`/v1/admin/projects/${sw.id}/archive`, { token: admin, method: 'POST', body: {} }); await call(`/v1/admin/builds/${bid}`, { token: admin, method: 'DELETE' }); await call(`/v1/admin/builds/${live.json.id}`, { token: admin, method: 'DELETE' });
 });
 
+await journey('J136', 'Health and connections cover the whole platform: the AI readers, each listening source, the listening pipeline, sales email, chat, automations, the GitHub sync and the client stores, with no secret in the answer', async () => {
+  const room = await newRoom('136', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`), email = `health-${stamp}@chaos.test`;
+  const uid = sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','Hana Staff','admin') returning id`).split('\n')[0], admin = await forge({ sub: uid, clientId: cid, role: 'admin', email });
+  // stand-in services for the free probes: ChatGPT and Grok list their models, Reddit hands out a token, Discord knows its bot, Resend lists a verified domain
+  const http = await import('node:http'), store = http.createServer((req, res) => {
+    const send = (c, b) => { res.writeHead(c, { 'content-type': 'application/json' }); res.end(JSON.stringify(b)); }, auth = req.headers.authorization || '', u = new URL(req.url, 'http://x');
+    if (u.pathname === '/v1/models') return send(['Bearer oa-key', 'Bearer xai-key'].includes(auth) ? 200 : 401, { data: [] });
+    if (u.pathname === '/api/v1/access_token') return auth === 'Basic ' + Buffer.from('rid:rsec').toString('base64') ? send(200, { access_token: 'RT', expires_in: 3600 }) : send(401, {});
+    if (u.pathname === '/api/v10/users/@me') return auth === 'Bot dbot' ? send(200, { id: '1' }) : send(401, {});
+    if (u.pathname === '/domains') return auth === 'Bearer test-key' ? send(200, { data: [{ name: 'thefuturebasics.com', status: 'verified' }] }) : send(401, {});
+    send(404, {});
+  });
+  await new Promise(r => store.listen(3133, '127.0.0.1', r));
+  try {
+  const h = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json, by = Object.fromEntries(h.checks.map(c => [c.id, c]));
+  const ids = ['reader-openai', 'reader-xai', 'src-reddit', 'src-hn', 'src-brave', 'src-x', 'src-discord', 'intel', 'sales-email', 'chat', 'automations', 'github', 'stores'];
+  ok(ids.every(i => by[i] && by[i].summary && Array.isArray(by[i].facts) && ['ok', 'warn', 'down', 'off'].includes(by[i].status)), 'every part of the platform has a check with a state, a sentence and facts', ids.filter(i => !by[i]));
+  ok(['listening', 'sales', 'delivery'].every(g => h.checks.some(c => c.group === g)), 'they are grouped: listening, sales, delivery');
+  const fact = (id, k) => (by[id].facts.find(f => f[0] === k) || [])[1];
+  ok(fact('reader-openai', 'Model') && fact('reader-xai', 'Model') && by['reader-openai'].status !== 'off' && by['reader-xai'].status !== 'off', 'ChatGPT and Grok show their model and are not "off" when their keys are set', [by['reader-openai'].summary, by['reader-xai'].summary]);
+  ok(fact('src-reddit', 'Key') === 'set' && fact('src-brave', 'Key') === 'set' && fact('src-x', 'Key') === 'set' && fact('src-discord', 'Key') === 'set' && fact('src-hn', 'Key') === 'none needed', 'each source says whether its key is set (and that Hacker News needs none)');
+  ok(by['src-reddit'].status === 'ok' && /Reddit|watch|Ready/.test(by['src-reddit'].summary), 'Reddit signs in with the key (a free check), so it is ok', by['src-reddit'].summary);
+  ok(fact('sales-email', 'Postal address in the footer') === 'set' && fact('sales-email', 'Reply and bounce webhook') === 'secret set' && /^\d+$/.test(fact('sales-email', 'Sent, last 7 days')), 'sales email reports the footer address, the webhook secret and the last 7 days');
+  ok(/^\d+$/.test(fact('chat', 'Waiting for a person')) && /^\d+$/.test(fact('automations', 'Switched on')) && /^\d+$/.test(fact('stores', 'Shopify stores connected')) && ['missing', 'GITHUB_TOKEN', 'BUILDS_GITHUB_TOKEN'].includes(fact('github', 'Token')) && /Builds linked/.test(by.github.facts.map(f => f[0]).join()), 'chat, automations and client stores report their counts; GitHub says which token it uses (or that none is set)');
+  // a chat waiting a long time is flagged
+  const conv = sql(`insert into chat_conversations(token_hash,status,last_message_at) values('h-${stamp}','waiting',now() - interval '45 minutes') returning id`).split('\n')[0];
+  const h2 = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json, chat = h2.checks.find(c => c.id === 'chat');
+  ok(chat.status === 'warn' && /waiting for a person/.test(chat.summary), 'a visitor left waiting for a person is flagged', chat.summary); sql(`delete from chat_conversations where id='${conv}'`);
+  // a failing watch is flagged on its source
+  const wid = sql(`insert into intel_watches(name,kind,query,enabled,last_run_at,last_status,last_error) values('J136 ${stamp}','web','x',true,now(),'refused','Brave refused our key') returning id`).split('\n')[0];
+  const h3 = (await call('/v1/admin/platform/health?fresh=1', { token: admin })).json, br = h3.checks.find(c => c.id === 'src-brave'), pipe = h3.checks.find(c => c.id === 'intel');
+  ok(['warn', 'down'].includes(br.status) && /Brave refused our key/.test(br.summary) && pipe.status === 'warn', 'a watch that cannot listen is flagged on its source and on the pipeline, with the reason', [br.summary, pipe.summary]); sql(`delete from intel_watches where id='${wid}'`);
+  const body = JSON.stringify(h3), leaked = ['oa-key', 'xai-key', 'rsec', 'whsec_dGVzdC1zZWNyZXQ=', 'test-key', 'dbot', ':"bk"', ':"xt"'].filter(x => body.includes(x)); ok(!leaked.length, 'no key or secret appears anywhere in the answer', leaked.map(x => [x, body.slice(Math.max(0, body.indexOf(x) - 60), body.indexOf(x) + 40)]));
+  ok(['listenkeys', 'readers', 'salesmail', 'githubtoken', 'tokenkey'].every(i => h3.config.some(c => c.id === i)), 'the settings list covers the newer parts too', h3.config.map(c => c.id));
+  ok((await call('/v1/admin/platform/health', { token: room.token })).status === 403, 'a client still cannot read it');
+  } finally { await new Promise(r => store.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);
