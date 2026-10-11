@@ -1374,6 +1374,22 @@ export async function migrate() {
     );
     create index if not exists prototypes_created_idx on prototypes(created_at desc);
     create index if not exists prototypes_host_idx on prototypes(host);
+    -- Lead searches (src/proto-leads.js): tired websites of small trades in a town, audited and ranked, so a rep can pick who to build a prototype for.
+    create table if not exists prototype_searches (
+      id uuid primary key default gen_random_uuid(),
+      trade text not null default '',
+      place text not null default '',
+      mode text not null default 'search' check (mode in ('search','list')),
+      status text not null default 'running' check (status in ('running','done','failed')),
+      step text not null default '',
+      queries text[] not null default '{}',
+      results jsonb not null default '[]'::jsonb,
+      skipped jsonb not null default '{}'::jsonb,
+      error text not null default '',
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
     create table if not exists money_invoices (
       id uuid primary key default gen_random_uuid(),
       number text not null unique,

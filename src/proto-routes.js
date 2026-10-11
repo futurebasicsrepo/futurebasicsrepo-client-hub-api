@@ -11,6 +11,7 @@ import { crawlSite, auditSite, cleanSiteUrl } from './proto-crawl.js';
 import { INDUSTRIES, industryByKey, detectIndustry } from './proto-industry.js';
 import { buildBrief, buildPrototype, protoCostCents, protoAiReady, PROTO_MODEL } from './proto-build.js';
 import { slugify } from './builds.js';
+import { findLeads, SEARCH_TERMS } from './proto-leads.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (s, n) => String(s ?? '').replace(/[\u0000-\u001F]+/g, ' ').trim().slice(0, n);
@@ -61,6 +62,7 @@ export function registerProtoRoutes(app, d) {
         [id, out.html, JSON.stringify(out.qa), out.model, out.usage.input, out.usage.output, cost, out.note || '', JSON.stringify([{ at: new Date().toISOString(), text: out.qa.pass ? `Ready: passes the quality check (${out.qa.score}%)` : 'Built, but it does not pass the quality check' }]), brief.name]);
       // a published prototype that was rebuilt keeps its address and its build
       const done = await get(id); if (done.published_at && done.build_id) await syncBuild(done).catch(() => {});
+      if (done.contact_id) await note(done.contact_id, done.deal_id, `A new site prototype for ${brief.name} is built${out.qa.pass ? '' : ' (it does not pass the quality check yet)'}. Their current site scored ${audit.score}/100.`, r.created_by);
     } catch (e) {
       log.warn?.({ err: e.message, prototypeId: id }, 'prototype build failed');
       await pool.query(`update prototypes set status='failed', error=$2, step='Failed', steps=steps || $3::jsonb, updated_at=now() where id=$1`, [id, clip(e.message, 300), JSON.stringify([{ at: new Date().toISOString(), text: `Failed: ${clip(e.message, 200)}` }])]).catch(() => {});
@@ -108,8 +110,9 @@ export function registerProtoRoutes(app, d) {
     if (!throttle(`protobuild:${req.auth.sub}`, { limit: 40, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of builds this hour: try again in a while' });
     const active = (await pool.query(`select id from prototypes where host=$1 and status in ('queued','reading','building') limit 1`, [c.host])).rows[0]; if (active) return reply.code(409).send({ error: `${c.host} is already being built`, id: active.id });
     if ((await usedToday()) >= perDay()) return reply.code(429).send({ error: `The limit of ${perDay()} prototypes a day is reached. It resets as the day goes on.` });
-    const row = (await pool.query(`insert into prototypes(slug,url,host,company,industry,industry_from,city,notes,created_by,step,steps) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'Queued',$10::jsonb) returning id`,
-      [newSlug(), c.url, c.host, clip(b.company, 80), b.industry || '', b.industry ? 'chosen' : '', clip(b.city, 60), clip(b.notes, 600), req.auth.sub, JSON.stringify([{ at: new Date().toISOString(), text: 'Queued' }])])).rows[0];
+    const contactId = UUID.test(String(b.contactId || '')) && (await pool.query('select 1 from sales_contacts where id=$1', [b.contactId])).rowCount ? b.contactId : null, dealId = UUID.test(String(b.dealId || '')) && (await pool.query('select 1 from sales_deals where id=$1', [b.dealId])).rowCount ? b.dealId : null;
+    const row = (await pool.query(`insert into prototypes(slug,url,host,company,industry,industry_from,city,notes,created_by,step,steps,contact_id,deal_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'Queued',$10::jsonb,$11,$12) returning id`,
+      [newSlug(), c.url, c.host, clip(b.company, 80), b.industry || '', b.industry ? 'chosen' : '', clip(b.city, 60), clip(b.notes, 600), req.auth.sub, JSON.stringify([{ at: new Date().toISOString(), text: 'Queued' }]), contactId, dealId])).rows[0];
     enqueue(row.id); return reply.code(202).send({ prototype: view(await get(row.id)) });
   });
   app.post('/v1/admin/prototypes/:id/rebuild', { preHandler: pre }, async (req, reply) => {
@@ -131,7 +134,7 @@ export function registerProtoRoutes(app, d) {
   });
   app.post('/v1/admin/prototypes/:id/publish', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
-    try { return { prototype: view(await publish(r)) }; } catch (e) { return reply.code(e.code || 500).send({ error: e.message }); }
+    try { const p = await publish(r); if (p.contact_id && !r.published_at) await note(p.contact_id, p.deal_id, `The prototype for ${p.company || p.host} is published: ${urlOf(p)}`, req.auth.sub); return { prototype: view(p) }; } catch (e) { return reply.code(e.code || 500).send({ error: e.message }); }
   });
   app.post('/v1/admin/prototypes/:id/unpublish', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
@@ -150,12 +153,62 @@ export function registerProtoRoutes(app, d) {
       if (res.statusCode >= 400) return reply.code(res.statusCode).send({ error: j.error || 'The invitation could not be sent' });
       invites = j;
     }
+    if (invites && r.contact_id) {
+      await note(r.contact_id, r.deal_id, `Shared the prototype with ${[].concat(emails).join(', ')}: ${urlOf(r)}`, req.auth.sub);
+      if (r.deal_id) await pool.query(`update sales_deals set stage='contacted', updated_at=now() where id=$1 and stage='new'`, [r.deal_id]).catch(() => {});
+    }
     return { prototype: view(await get(r.id)), invites, link: urlOf(r), buildId: r.build_id };
   });
   app.delete('/v1/admin/prototypes/:id', { preHandler: pre }, async (req, reply) => {
     if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = await get(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
     if (r.build_id) await pool.query(`update builds set status='archived', visibility='hidden', updated_at=now() where id=$1`, [r.build_id]);
     await pool.query('delete from prototypes where id=$1', [r.id]); return { ok: true };
+  });
+
+  // ---------- leads: search or paste, ranked worst site first; and into the CRM ----------
+  const note = async (contactId, dealId, text, actor) => { if (!contactId) return; await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'note',$3,'{}'::jsonb,$4)`, [contactId, dealId || null, clip(text, 700), actor || null]).catch(() => {}); await pool.query('update sales_contacts set last_activity_at=now() where id=$1', [contactId]).catch(() => {}); if (dealId) await pool.query('update sales_deals set last_activity_at=now() where id=$1', [dealId]).catch(() => {}); };
+  const knownHosts = async () => { const s = new Set(); for (const r of (await pool.query('select host from prototypes')).rows) s.add(r.host); for (const r of (await pool.query(`select website from sales_companies where website<>''`)).rows) { const c = cleanSiteUrl(r.website); if (c.host) s.add(c.host); } return s; };
+  const searchesToday = async () => Number((await pool.query(`select count(*)::int n from prototype_searches where created_at > now() - interval '24 hours'`)).rows[0].n);
+  const searchView = r => ({ id: r.id, trade: r.trade, place: r.place, mode: r.mode, status: r.status, step: r.step, queries: r.queries, results: r.results, skipped: r.skipped, error: r.error, createdAt: r.created_at, found: (r.results || []).length });
+  app.get('/v1/admin/prototypes/leads/meta', { preHandler: pre }, async () => ({ search: Boolean(env.BRAVE_API_KEY), trades: INDUSTRIES.filter(i => SEARCH_TERMS[i.key]).map(i => ({ key: i.key, label: i.label, terms: SEARCH_TERMS[i.key] })), today: await searchesToday(), perDay: Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30)) }));
+  app.get('/v1/admin/prototypes/leads/searches', { preHandler: pre }, async () => ({ searches: (await pool.query('select * from prototype_searches order by created_at desc limit 15')).rows.map(searchView) }));
+  app.get('/v1/admin/prototypes/leads/searches/:id', { preHandler: pre }, async (req, reply) => { if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = (await pool.query('select * from prototype_searches where id=$1', [req.params.id])).rows[0]; return r ? { search: searchView(r) } : reply.code(404).send({ error: 'Not found' }); });
+  app.post('/v1/admin/prototypes/leads/search', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}; let urls = null, mode = 'search';
+    if (b.urls !== undefined && b.urls !== null && String(Array.isArray(b.urls) ? b.urls.join('') : b.urls).trim()) {
+      mode = 'list'; urls = (Array.isArray(b.urls) ? b.urls : String(b.urls).split(/[\s,;]+/)).map(x => String(x).trim()).filter(Boolean).slice(0, 25);
+      const bad = urls.map(u => ({ u, c: cleanSiteUrl(u) })).find(x => x.c.error); if (bad) return reply.code(422).send({ error: `“${clip(bad.u, 60)}”: ${bad.c.error}` });
+    } else {
+      if (!INDUSTRIES.some(i => i.key === b.trade) || !SEARCH_TERMS[b.trade]) return reply.code(422).send({ error: 'Pick the trade to search for' });
+      if (!clip(b.place, 60)) return reply.code(422).send({ error: 'Say where to look (a town, county or city and state)' });
+      if (!env.BRAVE_API_KEY) return reply.code(409).send({ error: 'Web search is not connected (the service needs BRAVE_API_KEY). You can paste a list of addresses instead.' });
+      if ((await searchesToday()) >= Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30))) return reply.code(429).send({ error: 'The searches for today are used up. You can still paste a list of addresses.' });
+    }
+    if (!throttle(`protosearch:${req.auth.sub}`, { limit: 15, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of searches this hour: try again in a while' });
+    const row = (await pool.query(`insert into prototype_searches(trade,place,mode,created_by,step) values($1,$2,$3,$4,'Starting') returning id`, [b.trade || '', clip(b.place, 60), mode, req.auth.sub])).rows[0];
+    (async () => {
+      try {
+        const out = await findLeads({ trade: b.trade || 'trade', place: clip(b.place, 60), urls, env, crawlOpts: d.crawlOpts || {}, exclude: mode === 'search' ? await knownHosts() : new Set(), onStep: t => pool.query('update prototype_searches set step=$2, updated_at=now() where id=$1', [row.id, t]).catch(() => {}) });
+        await pool.query(`update prototype_searches set status='done', step='Done', queries=$2, results=$3::jsonb, skipped=$4::jsonb, updated_at=now() where id=$1`, [row.id, out.queries, JSON.stringify(out.items), JSON.stringify(out.skipped)]);
+      } catch (e) { log.warn?.({ err: e.message }, 'lead search failed'); await pool.query(`update prototype_searches set status='failed', error=$2, step='Failed', updated_at=now() where id=$1`, [row.id, clip(e.message, 300)]).catch(() => {}); }
+    })();
+    return reply.code(202).send({ search: searchView((await pool.query('select * from prototype_searches where id=$1', [row.id])).rows[0]) });
+  });
+  // A lead into the CRM: the company, a contact (named for the business until someone learns the owner's name), a deal in New, and what is wrong with their site on the timeline.
+  app.post('/v1/admin/prototypes/leads/add', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}, c = cleanSiteUrl(b.url || b.host); if (c.error) return reply.code(422).send({ error: c.error });
+    const name = clip(b.company, 100) || c.host, trade = INDUSTRIES.some(i => i.key === b.trade) ? b.trade : 'trade', email = clip(b.email, 200).toLowerCase(), phone = clip(b.phone, 40);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return reply.code(422).send({ error: 'That email does not look right' });
+    let co = (await pool.query(`select id from sales_companies where lower(name)=lower($1) or lower(website) like $2 limit 1`, [name, `%${c.host}%`])).rows[0];
+    if (!co) co = (await pool.query(`insert into sales_companies(name, website, notes) values($1,$2,$3) returning id`, [name, c.url, clip(`${industryByKey(trade).label}${b.city ? ' · ' + b.city : ''}`, 300)])).rows[0];
+    let contact = email ? (await pool.query('select id from sales_contacts where lower(email)=$1', [email])).rows[0] : null;
+    if (!contact) contact = (await pool.query(`select id from sales_contacts where company_id=$1 and source='site-prototype' limit 1`, [co.id])).rows[0];
+    let created = false;
+    if (!contact) { contact = (await pool.query(`insert into sales_contacts(name,email,phone,title,company_id,source,tags,notes) values($1,$2,$3,'Owner (name not known yet)',$4,'site-prototype',$5,$6) returning id`, [name, email || null, phone, co.id, ['site-prototype', trade], clip(`Found a tired website: ${c.url}`, 400)])).rows[0]; created = true; }
+    const title = `Website rebuild: ${name}`; let deal = (await pool.query(`select id from sales_deals where contact_id=$1 and title=$2 and stage not in ('won','lost') limit 1`, [contact.id, title])).rows[0], madeDeal = false;
+    if (!deal) { deal = (await pool.query(`insert into sales_deals(contact_id, company_id, title, stage, source) values($1,$2,$3,'new','site-prototype') returning id`, [contact.id, co.id, title])).rows[0]; madeDeal = true; }
+    if (created || madeDeal) await note(contact.id, deal.id, `Found by site prospecting: ${c.url} scores ${b.score ?? '?'}/100.${Array.isArray(b.problems) && b.problems.length ? ' ' + b.problems.slice(0, 4).map(x => clip(x, 120)).join(' ') : ''}`, req.auth.sub);
+    return reply.code(created || madeDeal ? 201 : 200).send({ contactId: contact.id, dealId: deal.id, companyId: co.id, created, madeDeal });
   });
 
   // ---------- the published page ----------
