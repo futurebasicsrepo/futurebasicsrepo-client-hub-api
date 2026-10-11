@@ -3,12 +3,15 @@
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { agentLabel } from './approvals.js';
-import { COVER_MAX_CENTS, CartError, cardLimitCents, computeTotals, config, decideAuthorization, goodsCents, transition, validateCart } from './cart.js';
+import { COVER_MAX_CENTS, CartError, cardLimitCents, computeTotals, config, decideAuthorization, goodsCents, safeExtrasCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
 
 const ISSUE_RETRY_MS = 60_000;
+// The part of a payer's hold let go when the store charged less (see capture).
+const UNUSED_HOLD = 'unused_hold';
+const letGo = (cart) => (cart.refunds || []).filter((r) => r.key === UNUSED_HOLD).reduce((n, r) => n + r.amount_cents, 0);
 
 // A store quote is good for these exact items shipped to this address.
 export function quoteKey(cart) {
@@ -416,19 +419,29 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // requester, and the cart is priced at that, so Spot's card covers what
     // the store will really charge. Reused for 30 minutes while the items
     // and address stay the same; without an answer the estimate stands.
-    async confirmTotal(cart) {
+    async confirmTotal(cart, { buyerIp = null } = {}) {
       if (!this.quoter || cart.status !== 'open' || cart.settle !== 'card' || (cart.kind || 'goods') !== 'goods' || cart.bundle_id || !cart.requester?.shipping) return cart;
       const key = quoteKey(cart);
       if (cart.quote?.key === key && Date.now() - cart.quote.at < 30 * 60_000) return cart;
-      const q = await this.quoter(cart, cart.requester.shipping).catch(() => null);
+      if (cart.estimate?.key === key && Date.now() - cart.estimate.at < 10 * 60_000) return cart;
+      const q = await this.quoter(cart, cart.requester.shipping, { buyerIp }).catch(() => null);
       if (q) return this.applyQuote(cart, q);
-      // A store that can price its own checkout must, before anyone's card
-      // is touched: an estimate is how a hold ends up short of the store's total.
-      if (this.quotable && (await this.quotable(cart).catch(() => false))) {
-        db.event(cart.id, 'quote_failed');
-        throw new CartError(`${cart.merchant.name} didn’t confirm its shipping and tax just now, so nothing was charged. Try again in a minute.`, 503);
-      }
+      // A store that can price its checkout but didn't just now: the order
+      // still goes ahead, held at the most it can come to (an estimate is
+      // how a hold ends up short of the store's total).
+      if (this.quotable && (await this.quotable(cart).catch(() => false))) return this.safeEstimate(cart, key);
       return cart;
+    },
+    // Shipping and tax at their likely most for this address (never less
+    // than the estimate already on the cart). The payer is only ever
+    // charged what the store takes; the rest of the hold is let go.
+    safeEstimate(cart, key = quoteKey(cart)) {
+      const room = Math.max(0, cfg.maxCartCents - cart.subtotal_cents);
+      const extras = Math.max(cart.extras_cents || 0, Math.min(safeExtrasCents(cart.subtotal_cents, cart.requester.shipping?.state), room));
+      const next = { ...cart, ...computeTotals(cart.items, extras, 'card', cfg), estimate: { key, at: Date.now(), extras_cents: extras } };
+      if (!db.save(next, 'open')) return db.byId(cart.id);
+      db.event(cart.id, 'quote_failed', { safe_estimate: true, was_cents: cart.total_cents, now_cents: next.total_cents });
+      return next;
     },
     // Set by the server: can this cart's store price its own checkout?
     quotable: null,
@@ -497,7 +510,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     events: (cart) => db.events(cart.id),
 
     // Payer opened the pay page and wants to pay by card / wallet.
-    async startPayment(token) {
+    async startPayment(token, { ip = null } = {}) {
       let cart = load(token);
       if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'card') throw new CartError(cart.settle === 'direct' ? 'This one is paid on the store’s own checkout' : 'This one is paid straight to them on Venmo or Cash App', 409);
@@ -508,14 +521,15 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.kind !== 'flight' && !cart.payment_ref && !(await this.canOrder(cart))) {
         throw new CartError(`Spot can't order from ${cart.merchant.name} automatically yet, so it can't take a card payment for this cart.${cart.requester.venmo || cart.requester.cashtag ? ' Send it straight to them on Venmo or Cash App instead.' : ''}`, 409);
       }
-      cart = await this.confirmTotal(cart);
+      cart = await this.confirmTotal(cart, { buyerIp: ip });
       cart = await this.readyCard(cart);
       const { ref, client } = await provider.createPayment(cart);
       if (ref !== cart.payment_ref) {
         const next = { ...cart, payment_ref: ref };
         if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       }
-      return client;
+      // The total as the store priced it just now, for the page to show.
+      return { ...client, total_cents: cart.total_cents };
     },
 
     // Called by the Stripe webhook (or the sandbox) once money has landed.
@@ -787,6 +801,16 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // capture_due for the sweeper to retry.
     async capture(cart) {
       if (!cart?.payment_ref || cart.payment_captured_at || cart.settle !== 'card' || !provider.capturePayment) return cart;
+      // Only what the store took: the rest of the hold (the cushion, a safe
+      // estimate's headroom) is let go now, never charged and refunded.
+      // A bundle's carts share one payment, so theirs waits for the store to settle.
+      if (!cart.bundle_id && cart.kind !== 'flight' && cart.spent_cents != null) {
+        const unused = goodsCents(cart) - cart.spent_cents - (cart.refunded_cents || 0);
+        if (unused > 0) cart = await this.refundPart(cart.id, unused, UNUSED_HOLD, 'unused');
+        // Let go of it before the capture, never after (that would be a refund).
+        else if ((cart.refunds || []).some((r) => r.key === UNUSED_HOLD && r.state === 'failed')) cart = await this._sendPart(cart, UNUSED_HOLD);
+        if (cart.payment_captured_at) return cart;
+      }
       try {
         const r = await provider.capturePayment(cart.payment_ref);
         if (r === 'canceled') {
@@ -850,7 +874,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         if (status === 'expired') return this.patch(cur.id, (c) => ({ ...c, release_after: Date.now() + 30 * 24 * HOUR }), 'authorization_expired');
         return this.refundCart(cur, { reason: status === 'reversed' ? 'store_reversed' : 'store_released' });
       }
-      const unused = goodsCents(cur) - captured;
+      const unused = goodsCents(cur) - captured - letGo(cur);
       return unused > 0 ? this.refundPart(cur.id, unused, `unused_${id}`, 'unused') : cur;
     },
 
@@ -900,7 +924,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
             const { captured } = db.issuing.totals(cart.id);
             if (captured) {
               const settled = this.patch(cart.id, (c) => ({ ...c, release_after: null }));
-              const unused = goodsCents(settled) - captured;
+              const unused = goodsCents(settled) - captured - letGo(settled);
               if (unused > 0) done.push(await this.refundPart(cart.id, unused, 'unused_late', 'unused'));
             } else if (now > cart.release_after) {
               done.push(await this.refundCart(this.patch(cart.id, (c) => ({ ...c, release_after: null })), { reason: 'store_never_charged' }));
@@ -1322,7 +1346,7 @@ export function ownerCart(cart) {
     disputed: Boolean(cart.dispute),
     refund_reason: cart.refund_reason || null,
     refunded_cents: cart.refunded_cents || 0,
-    refunds: (cart.refunds || []).map(({ reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at })),
+    refunds: (cart.refunds || []).map(({ key, reason, amount_cents, state, at }) => ({ reason, amount_cents, state, at, ...(key === UNUSED_HOLD ? { held: true } : {}) })),
     travelers: cart.flight?.travelers?.map(({ given_name, family_name, born_on, gender, loyalty }) => ({ given_name, family_name, born_on, gender, loyalty: loyalty || [] })) || null,
     contact: cart.flight?.contact || cart.train?.contact || null,
     riders: cart.train?.riders || null,

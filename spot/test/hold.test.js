@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider, stripeProvider } from '../src/providers.js';
+import { safeExtrasCents } from '../src/cart.js';
 
 const cfg = { feeBps: 0, feeFixedCents: 200, maxCartCents: 50000, expiresHours: 72 };
 const body = { requester: { name: 'Kyle' }, merchant: { name: 'SKLZ', url: 'https://sklz.com' }, items: [{ title: 'Pro Mini Hoop', price_cents: 3499 }] };
@@ -43,13 +44,18 @@ test('the payer’s card is held, and charged only when the store accepts the or
   assert.ok(a.spot.load(token).payment_captured_at);
   assert.ok(a.spot.events(cart).some((e) => e.kind === 'payment_captured'));
 
-  // The store charges less than held: the unused part is refunded (it was captured).
+  // Only the store's $36 was taken: the rest of the hold was let go, never charged.
+  const goods = cart.cart_cents + cart.cushion_cents;
+  let back = provider.refunds.filter((r) => r.cart === cart.id);
+  assert.deepEqual(back.map((r) => [r.amount_cents, r.key, r.released]), [[goods - 3600, 'unused_hold', true]]);
+
+  // The store settles for less than it authorized: that bit is refunded (it was captured).
   await call('POST', '/v1/sandbox/issuing', { token, k, type: 'capture', amount_cents: 3400 });
   await call('POST', '/v1/sandbox/issuing', { token, k, type: 'closed' });
-  const back = provider.refunds.filter((r) => r.cart === cart.id);
-  assert.equal(back.length, 1);
-  assert.equal(back[0].released, undefined, 'after the capture it’s a refund');
+  back = provider.refunds.filter((r) => r.cart === cart.id);
+  assert.deepEqual(back.map((r) => [r.amount_cents, r.released]), [[goods - 3600, true], [200, undefined]], 'after the capture it’s a refund, of only what wasn’t let go already');
   assert.equal(provider.captured.size, 1, 'captured once');
+  assert.equal(a.spot.load(token).refunded_cents, goods - 3400);
 });
 
 test('an order Spot can’t place is released, never charged: the payer is told so', async (t) => {
@@ -78,6 +84,11 @@ test('a capture that fails is retried by the sweep, never lost', async (t) => {
     if (down) throw new Error('Stripe is down');
     return real(ref);
   };
+  const realRefund = provider.refund.bind(provider);
+  provider.refund = async (...args) => {
+    if (down) throw new Error('Stripe is down');
+    return realRefund(...args);
+  };
   const { a, call } = app(t, provider);
   const { token, k, cart } = await paid(call, a);
   await call('POST', '/v1/sandbox/authorize', { token, k, merchant_name: 'SKLZ', amount_cents: 3600 });
@@ -92,29 +103,64 @@ test('a capture that fails is retried by the sweep, never lost', async (t) => {
   assert.equal(after.capture_due, null);
 });
 
-test('a store that can price its checkout must, before anything is held', async (t) => {
-  const { a, call } = app(t);
+test('a store that can price its checkout but doesn’t answer: held at the most it can come to, charged only what the store takes', async (t) => {
+  const { a, call, provider } = app(t);
   a.spot.quoter = async () => null;
   a.spot.quotable = async () => true;
+  const ship = { name: 'Kyle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'k@example.com' };
   const made = (await call('POST', '/v1/carts', body)).body;
-  await call('POST', `/v1/carts/${made.cart.token}/manage/prepare`, { k: made.manage_key, shipping: { name: 'Kyle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'k@example.com' } });
+  await call('POST', `/v1/carts/${made.cart.token}/manage/prepare`, { k: made.manage_key, shipping: ship });
+  const before = a.spot.load(made.cart.token);
   const r = await call('POST', `/v1/carts/${made.cart.token}/pay`, {});
-  assert.equal(r.status, 503);
-  assert.match(r.body.error, /SKLZ didn’t confirm its shipping and tax just now, so nothing was charged/);
-  assert.ok(!a.spot.load(made.cart.token).payment_ref, 'no hold');
+  assert.equal(r.status, 200, 'the order isn’t refused');
+  const held = a.spot.load(made.cart.token);
+  // $34.99 of items: $15 shipping, 11% Texas-safe tax on $49.99.
+  assert.equal(held.extras_cents, 1500 + Math.ceil((3499 + 1500) * 0.11));
+  assert.ok(held.total_cents > before.total_cents, 'held for more than the AI’s estimate');
+  assert.ok(!held.quote, 'still an estimate (the page says so)');
+  assert.ok(a.spot.events(held).some((e) => e.kind === 'quote_failed'));
+  assert.equal(r.body.total_cents, held.total_cents, 'the page hears the new total');
 
-  // It answers: the cart is priced at the store’s real total and the hold goes ahead.
+  // The same estimate is reused for a while rather than asking the store again.
+  let asked = 0;
+  a.spot.quoter = async () => (asked++, null);
+  await call('POST', `/v1/carts/${made.cart.token}/pay`, {});
+  assert.equal(asked, 0);
+
+  // Paid and ordered: the store charges $42 of it; the rest of the hold is let go.
+  const paid = (await call('POST', `/v1/carts/${made.cart.token}/sandbox-pay`, { payer_name: 'Mom' })).body.cart;
+  assert.equal(paid.status, 'card_issued');
+  await call('POST', '/v1/sandbox/authorize', { token: made.cart.token, k: made.manage_key, merchant_name: 'SKLZ', amount_cents: 4200 });
+  await tick();
+  const goods = held.cart_cents + held.cushion_cents;
+  const back = provider.refunds.filter((x) => x.cart === held.id);
+  assert.deepEqual(back.map((x) => [x.amount_cents, x.released]), [[goods - 4200, true]], 'never charged, so nothing to refund');
+  const m = (await call('GET', `/v1/carts/${made.cart.token}/manage?k=${made.manage_key}`)).body;
+  assert.deepEqual(m.cart.refunds.map((x) => [x.amount_cents, x.held]), [[goods - 4200, true]], 'the page says it was held, never charged');
+  assert.ok(provider.captured.has(held.payment_ref));
+
+  // It answers: the cart is priced at the store’s real total.
   a.spot.quoter = async () => ({ total_cents: 4589, subtotal_cents: 3499, shipping_cents: 750, tax_cents: 340 });
-  const ok = await call('POST', `/v1/carts/${made.cart.token}/sandbox-pay`, { payer_name: 'Mom' });
-  assert.equal(ok.body.cart.status, 'card_issued');
-  assert.equal(a.spot.load(made.cart.token).quote.total_cents, 4589);
+  const other = (await call('POST', '/v1/carts', body)).body;
+  await call('POST', `/v1/carts/${other.cart.token}/manage/prepare`, { k: other.manage_key, shipping: ship });
+  assert.equal((await call('POST', `/v1/carts/${other.cart.token}/sandbox-pay`, { payer_name: 'Mom' })).body.cart.status, 'card_issued');
+  assert.equal(a.spot.load(other.cart.token).quote.total_cents, 4589);
 
   // A store that can't price its checkout (no UCP) keeps the estimate.
   a.spot.quoter = async () => null;
   a.spot.quotable = async () => false;
-  const other = (await call('POST', '/v1/carts', body)).body;
-  await call('POST', `/v1/carts/${other.cart.token}/manage/prepare`, { k: other.manage_key, shipping: { name: 'Kyle', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'k@example.com' } });
-  assert.equal((await call('POST', `/v1/carts/${other.cart.token}/sandbox-pay`, { payer_name: 'Mom' })).body.cart.status, 'card_issued');
+  const third = (await call('POST', '/v1/carts', body)).body;
+  await call('POST', `/v1/carts/${third.cart.token}/manage/prepare`, { k: third.manage_key, shipping: ship });
+  const est = a.spot.load(third.cart.token).total_cents;
+  assert.equal((await call('POST', `/v1/carts/${third.cart.token}/sandbox-pay`, { payer_name: 'Mom' })).body.cart.status, 'card_issued');
+  assert.equal(a.spot.load(third.cart.token).total_cents, est);
+});
+
+test('safe estimate: shipping between $15 and $40, tax at the state’s most (none where there’s no sales tax)', () => {
+  assert.equal(safeExtrasCents(2000, 'TX'), 1500 + Math.ceil(3500 * 0.11));
+  assert.equal(safeExtrasCents(100000, 'CA'), 4000 + Math.ceil(104000 * 0.11));
+  assert.equal(safeExtrasCents(20000, 'OR'), 3000);
+  assert.equal(safeExtrasCents(2000, 'ak'), 1500 + Math.ceil(3500 * 0.08));
 });
 
 test('a ready card for a link nobody paid is canceled with the link', async (t) => {

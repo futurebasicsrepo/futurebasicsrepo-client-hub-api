@@ -13,8 +13,9 @@
 //   quote(cart, ship)      → { total_cents, subtotal_cents, shipping_cents, tax_cents } | null
 import { buyer, discover, orderRef, shipTo, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
 import { CartError } from './cart.js';
+import { assertPublicHost } from './capture.js';
 
-export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null, shopifyAuth = null } = {}) {
+export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null, shopifyAuth = null, rateWaits = [1500, 3000] } = {}) {
   const found = new Map(); // origin → { at, discovery } (stores rarely change)
   async function discovery(url) {
     let origin;
@@ -73,9 +74,10 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
             return Boolean(m?.groups?.length && m.groups.every((g) => g.selected_option_id || g.options?.length));
           };
           co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, shipTo(co, ship)));
-          // Shipping rates can lag the address by a moment: ask once more.
-          if (!priced(co)) {
-            await new Promise((r) => setTimeout(r, 1500));
+          // Shipping rates can lag the address by a few seconds: ask again, a little later each time.
+          for (const ms of rateWaits) {
+            if (priced(co)) break;
+            await new Promise((r) => setTimeout(r, ms));
             co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, shipTo(co, ship)));
           }
           const pick = selectShipping(co);
@@ -85,7 +87,7 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
           if (!shipping?.groups?.length || !shipping.groups.every((g) => g.selected_option_id)) {
             // Some Shopify stores leave shipping out of agent checkout
             // (ColourPop); their own cart still prices it for the address.
-            const rate = await cartShippingCents(cart.merchant.url, resolved.lines, ship, { fetchImpl });
+            const rate = await cartShippingCents(cart.merchant.url, resolved.lines, ship, { fetchImpl, allowPrivate });
             if (rate == null) return why(`no shipping options for ${ship.city}, ${ship.state} ${ship.postal_code}, from agent checkout or the store’s cart`), null;
             if (co.currency && co.currency !== 'USD') return why(`priced in ${co.currency}, not USD`), null;
             const amount = (type) => co.totals?.find((t) => t.type === type)?.amount ?? null;
@@ -172,7 +174,7 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
 // isn't Shopify or won't say.
 const US_STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico' };
 
-export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fetch } = {}) {
+export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fetch, allowPrivate = false, waits = [1000, 1500, 2500] } = {}) {
   let origin;
   try {
     origin = new URL(storeUrl).origin;
@@ -182,6 +184,9 @@ export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fet
   const items = (lines || []).map((l) => ({ id: Number(String(l.item?.id || '').replace(/^gid:\/\/shopify\/ProductVariant\//, '')), quantity: l.quantity }));
   if (!items.length || items.some((i) => !Number.isSafeInteger(i.id) || i.id <= 0)) return null;
   try {
+    // The cart lives on the store's main domain (deathwishcoffee.com → www.…): follow it there first.
+    origin = await storeOrigin(origin, { fetchImpl, allowPrivate });
+    if (!origin) return null;
     const add = await fetchImpl(`${origin}/cart/add.js`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ items }), redirect: 'error', signal: AbortSignal.timeout(8000) });
     if (!add.ok) return null;
     const set = typeof add.headers.getSetCookie === 'function' ? add.headers.getSetCookie() : [add.headers.get('set-cookie')].filter(Boolean);
@@ -189,13 +194,47 @@ export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fet
     if (!cookie) return null;
     const state = US_STATES[String(ship.state || '').toUpperCase()] || ship.state;
     const q = new URLSearchParams({ 'shipping_address[zip]': ship.postal_code, 'shipping_address[country]': 'United States', 'shipping_address[province]': state });
-    const res = await fetchImpl(`${origin}/cart/shipping_rates.json?${q}`, { headers: { cookie, accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const rates = ((await res.json()).shipping_rates || []).map((r) => Math.round(Number(r.price) * 100)).filter((c) => Number.isFinite(c) && c >= 0);
+    const get = (path, init = {}) => fetchImpl(`${origin}${path}?${q}`, { ...init, headers: { cookie, accept: 'application/json', ...init.headers }, redirect: 'error', signal: AbortSignal.timeout(8000) });
+    const cents = (body) => (body?.shipping_rates || []).map((r) => Math.round(Number(r.price) * 100)).filter((c) => Number.isFinite(c) && c >= 0);
+    let rates = [];
+    const res = await get('/cart/shipping_rates.json');
+    if (res.ok) rates = cents(await res.json().catch(() => null));
+    // Stores whose rates come from a carrier app answer slowly: Shopify's
+    // asynchronous rates ask for them, then hand them over when they're in.
+    if (!rates.length) {
+      const prep = await get('/cart/prepare_shipping_rates.json', { method: 'POST' }).catch(() => null);
+      if (prep && (prep.ok || prep.status === 202)) {
+        for (const ms of waits) {
+          await new Promise((r) => setTimeout(r, ms));
+          const r = await get('/cart/async_shipping_rates.json').catch(() => null);
+          if (!r || (!r.ok && r.status !== 202)) break;
+          const body = r.status === 202 ? null : await r.json().catch(() => null);
+          if (body?.shipping_rates) {
+            rates = cents(body);
+            break;
+          }
+        }
+      }
+    }
     // Leave nothing behind in the store's cart.
     await fetchImpl(`${origin}/cart/clear.js`, { method: 'POST', headers: { cookie, accept: 'application/json' }, signal: AbortSignal.timeout(5000) }).catch(() => {});
     return rates.length ? Math.min(...rates) : null;
   } catch {
     return null;
   }
+}
+
+// Where a store's storefront really answers: its home page's last redirect
+// (bare domain → www, http → https), checked public at every hop.
+async function storeOrigin(origin, { fetchImpl, allowPrivate }) {
+  let u = new URL('/', origin);
+  for (let hop = 0; hop < 4; hop++) {
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (!allowPrivate) await assertPublicHost(u.hostname);
+    const res = await fetchImpl(u, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(6000) });
+    const loc = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+    if (!loc) return u.origin;
+    u = new URL(loc, u);
+  }
+  return null;
 }

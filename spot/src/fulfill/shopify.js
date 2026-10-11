@@ -63,6 +63,18 @@ export async function loadShopifyProduct(productUrl, opts) {
   return { origin, handle, title: p.title, variants: p.variants };
 }
 
+// The in-stock variant a product link names with ?variant=<id>, if any.
+export function linkedVariant(variants, url) {
+  let id;
+  try {
+    id = new URL(url).searchParams.get('variant');
+  } catch {
+    return null;
+  }
+  if (!id || !/^\d+$/.test(id)) return null;
+  return (variants || []).find((v) => String(v.id) === id && v.available !== false) || null;
+}
+
 // Pick the variant the requester meant. Captured variant text looks like
 // "Black / M" or "10.5"; Shopify variants have option1..3 and a title.
 export function matchVariant(variants, wanted, productTitle = '') {
@@ -114,7 +126,10 @@ export async function resolveShopifyCart(cart, opts) {
     if (!product) return null;
     if (origin && origin !== product.origin) return null;
     origin = product.origin;
-    const variant = matchVariant(product.variants, item.variant, product.title);
+    // A link to one variant (?variant=<id>, as the store's own pages make)
+    // names it exactly, unless the item asks for a size or colour it isn't.
+    const linked = linkedVariant(product.variants, item.url);
+    const variant = linked && (!item.variant || variantHits(product.variants, item.variant, product.title).includes(linked)) ? linked : matchVariant(product.variants, item.variant, product.title);
     if (!variant) return { origin, unresolved: item.title, choose: missingChoice(product, item.variant) };
     lines.push({ variant_id: variant.id, quantity: item.quantity, title: `${product.title}${variant.title && variant.title !== 'Default Title' ? ` — ${variant.title}` : ''}`, price_cents: variant.price });
   }
