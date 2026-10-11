@@ -124,7 +124,7 @@ test('invites: staff invite someone; the emailed link lets that browser past the
   const email = mail.find((m) => m.to[0] === 'friend@example.com');
   assert.match(email.subject, /You’re in/);
   assert.ok(email.html.includes(r.link) && email.text.includes(r.link), 'the link is in the email');
-  assert.match(email.html, /assets\/email-spot\.png/, 'with Spot cheering');
+  assert.match(email.html, /assets\/email-spot\.gif\?v=/, 'with Spot waving');
   assert.match(email.html, /Sign in at spotmeplease\.com with <b>friend@example\.com<\/b>, the email your invite was approved for/, 'names the approved email');
   assert.equal((await call('POST', '/v1/admin/invites', { emails: ['friend@example.com'] }, staff)).body.results[0].status, 'already_invited');
 

@@ -13,6 +13,7 @@
 // confirmed with a code on Spot's website (`verified`): a number an AI
 // passes along gets email until its owner confirms it.
 import { usd } from './cart.js';
+import { assetUrl } from './assets.js';
 
 export function normalizePhone(raw) {
   const s = String(raw || '').trim();
@@ -53,7 +54,7 @@ export const SMS_CONSENT = 'By entering your number you agree to receive texts f
 
 // Spot's email look: warm paper, the orange dot, one big button. Tables
 // and inline styles only, because that's what email clients render.
-export function emailLayout({ preheader = '', title, lines = [], cta = null, note = '', base = '', hero = '', footer = 'You’re getting this because of a Spot you’re part of.' }) {
+export function emailLayout({ preheader = '', title, lines = [], cta = null, note = '', base = '', hero = true, heroWidth = 104, footer = 'You’re getting this because of a Spot you’re part of.' }) {
   const p = (html) => `<p style="margin:0 0 14px;font:16px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712">${html}</p>`;
   const button = cta
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 8px"><tr><td style="border-radius:999px;background:#ff5a36"><a href="${esc(cta.url)}" style="display:inline-block;padding:14px 24px;font:700 16px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#ffffff;text-decoration:none;border-radius:999px">${esc(cta.label)}</a></td></tr></table>`
@@ -66,7 +67,7 @@ export function emailLayout({ preheader = '', title, lines = [], cta = null, not
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
 <tr><td style="padding:0 4px 16px"><a href="${esc(home)}" style="text-decoration:none;font:800 20px -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#ff5a36;vertical-align:-1px;margin-right:6px"></span>Spot</a></td></tr>
 <tr><td style="background:#ffffff;border:1px solid #e8e0d4;border-radius:20px;padding:28px 26px">
-${hero ? `<img src="${esc(hero)}" width="132" height="148" alt="Spot" style="display:block;margin:-6px 0 10px;border:0">` : ''}<h1 style="margin:0 0 14px;font:800 26px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712;letter-spacing:-.02em">${esc(title)}</h1>
+${hero ? `<img src="${esc(typeof hero === 'string' ? hero : `${home}${assetUrl('email-spot.gif')}`)}" width="${heroWidth}" height="${Math.round(heroWidth * 1.118)}" alt="Spot waving" style="display:block;margin:-6px 0 8px;border:0;outline:none">` : ''}<h1 style="margin:0 0 14px;font:800 26px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1b1712;letter-spacing:-.02em">${esc(title)}</h1>
 ${lines.map(p).join('')}${button}
 ${note ? `<p style="margin:16px 0 0;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#6f675c">${note}</p>` : ''}
 </td></tr>
@@ -120,7 +121,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
 
   return {
     // An early-access invite: a personal link that lets them in (invites.js).
-    async sendInvite(to, { link, base = env.PUBLIC_URL, hero = '' }) {
+    async sendInvite(to, { link, base = env.PUBLIC_URL }) {
       return email(to, {
         subject: 'You’re in: your Spot early access 🧡',
         text: `You signed up for early access to Spot, the yes button for AI shopping. You're in.\n\nOpen Spot: ${link}\n\nAdd Spot to Claude or ChatGPT, ask for the thing, and tap yes when it's right. Spot buys it with a card made for that one order.\n\nOn another phone or computer? Sign in at spotmeplease.com with ${to}, the email your invite was approved for, and you're in.`,
@@ -131,7 +132,7 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
           cta: { url: link, label: 'Open Spot' },
           note: `<b>On another phone or computer?</b> Sign in at spotmeplease.com with <b>${esc(to)}</b>, the email your invite was approved for, and you’re in.`,
           base,
-          hero,
+          heroWidth: 132,
           footer: 'You’re getting this because you signed up for Spot early access.',
         }),
       }).catch(() => 'failed');
