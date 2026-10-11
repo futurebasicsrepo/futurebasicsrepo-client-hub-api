@@ -144,6 +144,31 @@ export function storesVerdict({ s }) {
 // ---------- the checks ----------
 
 // d: { pool, env, telemetry, getSetting, fetchImpl }
+// Site prototypes: is Claude connected, are builds and changes finishing, is anything stuck. Judged from what was stored (no call, no cost).
+// p: { total, finished7, failed7, last_error, stuck, ready7, edits7, cost7 }
+export function prototypesVerdict({ aiReady, p }) {
+  const problems = [], failing = p.finished7 >= 3 && p.failed7 / p.finished7 >= 0.5;
+  if (!aiReady) problems.push('Claude is not connected (ANTHROPIC_API_KEY): builds use the standard template and changes to a page are switched off');
+  if (p.stuck) problems.push(`${plural(p.stuck, 'build or change', 'builds or changes')} ${p.stuck === 1 ? 'has' : 'have'} been running for over 20 minutes`);
+  if (failing) problems.push(`${p.failed7} of ${plural(p.finished7, 'build')} failed in the last 7 days${p.last_error ? ` (last: ${String(p.last_error).slice(0, 100)})` : ''}`);
+  if (problems.length) return { status: !aiReady && !p.stuck && !failing ? 'off' : 'warn', summary: problems.join('; ').replace(/^./, ch => ch.toUpperCase()) };
+  if (!p.total) return { status: 'ok', summary: 'Ready: no prototypes built yet' };
+  return { status: 'ok', summary: `${plural(p.ready7, 'build')} and ${plural(p.edits7, 'change')} in the last 7 days${p.cost7 ? ` · about $${(p.cost7 / 100).toFixed(2)} of Claude` : ''}` };
+}
+
+// Lead search (Brave): key present, and how the real searches have been going. A test search would cost quota, so none is made.
+// s: { today, perDay, done7, failed7, last_at, last_status, last_error, schedules, schedulesOn, scheduleJob }
+export function leadSearchVerdict({ hasKey, s }) {
+  if (!hasKey) return { status: 'off', summary: 'Not connected: add BRAVE_API_KEY to search for tired sites by trade and town (pasting a list of addresses works without it)' };
+  const err = String(s.last_error || '');
+  if (s.last_status === 'failed' && /refused the key/i.test(err)) return { status: 'down', summary: 'Brave refused the key: check BRAVE_API_KEY' };
+  if (s.failed7 && !s.done7) return { status: 'down', summary: `Every search in the last 7 days failed${err ? ` (last: ${err.slice(0, 120)})` : ''}` };
+  if (s.last_status === 'failed') return { status: 'warn', summary: `The last search failed${err ? `: ${err.slice(0, 120)}` : ''}` };
+  if (s.today >= s.perDay) return { status: 'warn', summary: `Today's ${s.perDay} searches are used up` };
+  if (s.schedulesOn && s.scheduleJob && s.scheduleJob.health && s.scheduleJob.health !== 'ok') return { status: 'warn', summary: `${plural(s.schedulesOn, 'saved search', 'saved searches')} on, but the job that runs them is ${s.scheduleJob.health}${s.scheduleJob.lastError ? ` (${String(s.scheduleJob.lastError).slice(0, 100)})` : ''}` };
+  return { status: 'ok', summary: `Key set · ${plural(s.done7, 'search', 'searches')} in the last 7 days${s.last_at ? `, last ${ago(s.last_at)}` : ''} · ${plural(s.schedulesOn, 'saved search', 'saved searches')} running by themselves` };
+}
+
 export async function coverageChecks(d) {
   const { pool, env = process.env, telemetry, getSetting, fetchImpl = fetch } = d, one = async (sql, args = []) => (await pool.query(sql, args)).rows[0];
   const job = name => (telemetry?.jobs || []).find(j => j.name === name) || null;
@@ -230,6 +255,25 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Invoices', String(c.total)], ['Sent and open', String(c.open)], ['Overdue', String(c.overdue)], ['Drafts', String(c.drafts)], ['Past invoices with no payment recorded', String(c.unrecorded)], ['Payment instructions on invoices', String(stored.instructions || '').trim() ? 'saved' : 'not saved'], ['People who can open Money', String(access.length)]] };
   }));
 
+  // Site prototypes and the lead search that feeds them.
+  listing.push(row('prototypes', 'Site prototypes', 'sales', async () => {
+    const p = await one(`select count(*)::int total, count(*) filter (where status in ('queued','reading','building','editing') and updated_at < now() - interval '20 minutes')::int stuck,
+        count(*) filter (where status='failed' and updated_at > now() - interval '7 days')::int failed7, count(*) filter (where status in ('ready','failed') and updated_at > now() - interval '7 days')::int finished7,
+        (select error from prototypes where status='failed' order by updated_at desc limit 1) last_error,
+        (select count(*) from prototype_versions where source in ('build','rebuild') and created_at > now() - interval '7 days')::int ready7, (select count(*) from prototype_versions where source='edit' and created_at > now() - interval '7 days')::int edits7,
+        (select coalesce(sum(cost_cents),0) from prototype_versions where created_at > now() - interval '7 days')::float cost7, (select count(*) from prototypes where published_at is not null)::int published from prototypes`);
+    const v = prototypesVerdict({ aiReady: Boolean(env.ANTHROPIC_API_KEY), p });
+    return { ...v, facts: [['Claude', env.ANTHROPIC_API_KEY ? `connected (${env.PROTOTYPE_MODEL || 'claude-opus-5-5'})` : 'not connected'], ['Prototypes', String(p.total)], ['Published', String(p.published)], ['Built, last 7 days', String(p.ready7)], ['Changes made, last 7 days', String(p.edits7)], ['Failed, last 7 days', String(p.failed7)], ['Claude spend, last 7 days', `$${(p.cost7 / 100).toFixed(2)}`], ['Limits', `${env.PROTOTYPES_PER_DAY || 25} builds and ${env.PROTOTYPE_EDITS_PER_DAY || 80} changes a day`]] };
+  }));
+  listing.push(row('leadsearch', 'Lead search (Brave)', 'sales', async () => {
+    const s = await one(`select count(*) filter (where created_at > now() - interval '24 hours')::int today, count(*) filter (where status='done' and created_at > now() - interval '7 days')::int done7, count(*) filter (where status='failed' and created_at > now() - interval '7 days')::int failed7,
+        (select created_at from prototype_searches where mode='search' order by created_at desc limit 1) last_at, (select status from prototype_searches where mode='search' order by created_at desc limit 1) last_status, (select error from prototype_searches where mode='search' order by created_at desc limit 1) last_error,
+        (select count(*) from prototype_search_schedules)::int schedules, (select count(*) from prototype_search_schedules where enabled)::int "schedulesOn" from prototype_searches where mode='search'`);
+    const j = job('Lead search schedules'), perDay = Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30));
+    const v = leadSearchVerdict({ hasKey: Boolean(env.BRAVE_API_KEY), s: { ...s, perDay, scheduleJob: j && !j.disabled ? { health: jobHealth(j), lastError: j.lastError } : null } });
+    return { ...v, facts: [['Key', env.BRAVE_API_KEY ? 'set' : 'missing'], ['Searches today', `${s.today} of ${perDay}`], ['Worked, last 7 days', String(s.done7)], ['Failed, last 7 days', String(s.failed7)], ['Saved searches', `${s.schedules} (${s.schedulesOn} on)`], ['Saved-search job', j ? (j.disabled ? 'switched off' : j.lastRunAt ? `last ran ${ago(j.lastRunAt)}` : 'not run yet') : 'not scheduled']] };
+  }));
+
   // Builds, client stores and delivery.
   listing.push(row('github', 'Showcase sync (GitHub)', 'delivery', async () => {
     const token = env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN || '', j = job('Showcase update sync');
@@ -261,6 +305,8 @@ export function coverageConfig({ env = process.env } = {}) {
   add('moneyaccess', 'Who can open Money', env.MONEY_ACCESS_EMAILS ? 'ok' : 'ok', env.MONEY_ACCESS_EMAILS ? `Only ${moneyAccessList(env).length} named in MONEY_ACCESS_EMAILS.` : 'Danielle and Kyle (the default). Set MONEY_ACCESS_EMAILS to change who.');
   const qbHave = [env.QUICKBOOKS_CLIENT_ID, env.QUICKBOOKS_CLIENT_SECRET].filter(Boolean).length;
   add('quickbooks', 'QuickBooks keys', qbHave === 2 ? (env.QUICKBOOKS_ENV === 'production' || env.QUICKBOOKS_ENV === 'sandbox' ? 'ok' : 'warn') : qbHave === 1 ? 'warn' : 'info', qbHave === 2 ? (env.QUICKBOOKS_ENV === 'production' ? 'Both keys are set, for your live books.' : env.QUICKBOOKS_ENV === 'sandbox' ? 'Both keys are set, for the sandbox (test books). Use production keys and QUICKBOOKS_ENV=production for the real ones.' : 'Both keys are set, but QUICKBOOKS_ENV should be sandbox or production (it is treated as sandbox).') : qbHave === 1 ? 'Only one of QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET is set.' : 'Not set: QuickBooks is not connected (QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_ENV).');
+  add('protoai', 'Site prototypes: Claude', env.ANTHROPIC_API_KEY ? 'ok' : 'warn', env.ANTHROPIC_API_KEY ? `Connected: builds and changes use ${env.PROTOTYPE_MODEL || 'claude-opus-5-5'}.` : 'ANTHROPIC_API_KEY is not set: prototypes use the standard template and cannot be changed in the studio.');
+  add('leadsearch', 'Lead search by trade and town', env.BRAVE_API_KEY ? 'ok' : 'info', env.BRAVE_API_KEY ? 'BRAVE_API_KEY is set: searches and saved searches work.' : 'No BRAVE_API_KEY: reps can still paste addresses, but cannot search by trade and town or save searches.');
   const sendKey = env.SALES_RESEND_API_KEY || env.RESEND_API_KEY;
   add('salesmail', 'Sales email setup', !sendKey ? 'info' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'ok' : 'warn', !sendKey ? 'No key: the Sales page cannot send email.' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'Key, webhook secret and postal address are all set.' : `Missing: ${[!env.RESEND_WEBHOOK_SECRET && 'RESEND_WEBHOOK_SECRET (replies and bounces)', !env.SALES_POSTAL_ADDRESS && 'SALES_POSTAL_ADDRESS (email footer)'].filter(Boolean).join(' and ')}.`);
   add('githubtoken', 'Showcase GitHub token', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'ok' : 'info', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'Set: the showcase can follow app updates.' : 'Not set: the showcase does not follow app updates (BUILDS_GITHUB_TOKEN).');

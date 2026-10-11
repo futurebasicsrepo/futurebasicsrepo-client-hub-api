@@ -248,7 +248,7 @@ await journey('J40', 'platform health page in the console: opens from the header
     ok(page.url().endsWith('/platform') && await page.isVisible('#platformPage') && await page.isHidden('#app'), 'the header link opens the page at /platform');
     const names = await page.$$eval('.pf-card .pf-name', els => els.map(e => e.textContent.trim()));
     for (const n of ['Database', 'Shopify', 'Assistant', 'Email', 'Google', 'Photo cutout', 'File storage', 'Railway']) ok(names.some(x => x.includes(n)), `a card for ${n}`, names);
-    for (const n of ['ChatGPT', 'Grok', 'Reddit', 'Hacker News', 'Web search', 'X', 'Discord', 'Listening pipeline', 'Sales email', 'Website chat', 'Sales automations', 'Showcase sync', 'Client stores']) ok(names.some(x => x.includes(n)), `a card for ${n} (the whole platform is covered)`, names);
+    for (const n of ['ChatGPT', 'Grok', 'Reddit', 'Hacker News', 'Web search', 'X', 'Discord', 'Listening pipeline', 'Sales email', 'Website chat', 'Sales automations', 'Site prototypes', 'Lead search', 'Showcase sync', 'Client stores']) ok(names.some(x => x.includes(n)), `a card for ${n} (the whole platform is covered)`, names);
     const heads = await page.$$eval('.pf-h', els => els.map(e => e.textContent.trim())); ok(['Listening and AI readers', 'Sales, email and chat', 'Builds, stores and delivery'].every(h => heads.includes(h)), 'the new cards are grouped under their own headings', heads);
     ok(/All systems healthy|Something needs attention|The platform is down/.test(await page.textContent('.pf-banner')), 'the banner says the overall state in words');
     ok(await page.$$eval('.pf-card', cs => cs.length >= 8 && cs.every(c => { const b = c.querySelector('.pf-badge'); return b && b.querySelector('i') && b.textContent.trim().length > 2; })), 'every card shows its state as an icon and a word, not colour alone');
@@ -1713,6 +1713,49 @@ await journey('J143', 'the invoice editor offers the project and the kind of wor
   await page.click('#dActs [type=submit]'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#dMsg')?.textContent || document.querySelector('#msg').textContent), null, { timeout: 8000 }).catch(() => {});
   const saved = (await call(`/v1/money/invoices/${none.id}`, { token: kyle })).json.invoice; ok(saved.workKind === 'software' && saved.projectId === r.projectId, 'saving keeps the project and the kind', JSON.stringify([saved.workKind, saved.projectId]));
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+});
+
+await journey('J152', 'Saved lead searches in a browser: save one, watch it run by itself, see the new leads on the work home, open them from there, pause and remove it, and a phone fits', async () => {
+  const r = await room('152', { wait: false }), W = 'http://work.localhost:3123', H = `sched-hvac-${stamp}.test`, town = `Savedville ${stamp}, PA`;
+  const http = (await import('node:http')).default;
+  const TIRED = `<html><head><title>Home</title></head><body><center><font color="#cc0000">SAVED HVAC</font></center><table><tr><td>x</td></tr></table><p>Call 610-555-0188 for heating and cooling in Savedville PA 19601.</p><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2011 Saved Hvac</div></body></html>`;
+  const site = http.createServer((q, s) => { const h = String(q.headers['x-original-host'] || '').replace(/^www\./, ''); s.writeHead(h === H ? 200 : 404, { 'content-type': 'text/html' }); s.end(h === H ? TIRED : 'no'); });
+  const brave = http.createServer((q, s) => { s.writeHead(200, { 'content-type': 'application/json' }); s.end(JSON.stringify({ web: { results: [{ title: 'Saved Hvac', url: `https://${H}/` }] } })); });
+  await new Promise(res => site.listen(3134, '127.0.0.1', res)); await new Promise(res => brave.listen(3133, '127.0.0.1', res));
+  try {
+    const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+    await page.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) #url', { timeout: 15000 });
+    await page.click('.tab[data-t=leads]'); await page.waitForSelector('#lSaved #sSave', { timeout: 10000 });
+    ok(/Saved searches/i.test(await page.innerText('#lSaved')) && await page.locator('#sSave').isEnabled() && await page.locator('#sEvery option').count() === 5, 'the Find leads tab has a Saved searches panel with a frequency to pick');
+    await page.selectOption('#sTrade', 'hvac'); await page.fill('#sPlace', town); await page.selectOption('#sEvery', '14'); await page.click('#sSave');
+    await page.waitForSelector(`#lSaved li:has-text("${town}")`, { timeout: 10000 });
+    ok(/every 2 weeks/.test(await page.innerText(`#lSaved li:has-text("${town}")`)), 'the search is saved with how often it runs');
+    // it runs by itself (the job ticks every 1.5 s here)
+    await page.waitForFunction(t => [...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t) && /1 quick-turn of 1/.test(l.textContent) && /new/i.test(l.textContent)), town, { timeout: 25000 });
+    ok(true, 'it ran by itself and found one quick-turn site, marked new');
+    await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j152-saved.png`, fullPage: true }).catch(() => {});
+    // the work home lists it; the row opens the results
+    await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#reachList .row[data-k=lead]', { timeout: 15000 });
+    const row = page.locator(`#reachList .row[data-k=lead]:has-text("${town}")`); ok(await row.count() === 1 && /1 quick-turn site: hvac/i.test(await row.innerText()) && /new leads/i.test(await row.locator('.chip').innerText()), 'the work home lists the new leads');
+    await row.click(); await page.waitForURL(/\/prototypes\?search=/, { timeout: 10000 }); await page.waitForSelector(`#lOut .card[data-host="${H}"]`, { timeout: 15000 });
+    ok(/bad site/i.test(await page.innerText(`#lOut .card[data-host="${H}"]`)) && await page.locator('#t-leads:not(.hidden)').count() === 1, 'the row opens the Find leads tab on those results');
+    await page.waitForFunction(t => [...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t) && !/\bnew\b/i.test(l.querySelector('.mini').textContent)), town, { timeout: 8000 }).catch(() => {});
+    await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForTimeout(800); ok(await page.locator(`#reachList .row[data-k=lead]:has-text("${town}")`).count() === 0, 'once opened it is off the Today list');
+    // pause, run now, remove
+    await page.goto(`${W}/prototypes#leads`, { waitUntil: 'networkidle' }); await page.click('.tab[data-t=leads]'); await page.waitForSelector(`#lSaved li:has-text("${town}")`);
+    const li = page.locator(`#lSaved li:has-text("${town}")`); await li.locator('[data-sch-toggle]').click(); await page.waitForFunction(t => [...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t) && /paused/.test(l.textContent)), town, { timeout: 8000 });
+    ok(/Resume/.test(await li.innerText()), 'pausing says so and offers Resume'); await li.locator('[data-sch-toggle]').click(); await page.waitForFunction(t => [...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t) && !/paused/.test(l.textContent)), town, { timeout: 8000 });
+    await li.locator('[data-sch-run]').click(); await page.waitForFunction(() => /Searching|results show up/.test(document.querySelector('#lMsg').textContent), null, { timeout: 8000 }); ok(true, 'Run now starts a search');
+    await page.waitForFunction(t => [...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t) && /0 quick-turn of 0/.test(l.textContent)), town, { timeout: 25000 }); ok(true, 'a run with nothing new says so');
+    await li.locator('[data-sch-del]').click(); await page.waitForFunction(t => ![...document.querySelectorAll('#lSaved li')].some(l => l.textContent.includes(t)), town, { timeout: 8000 }); ok(Number(sql(`select count(*) from prototype_search_schedules where place='${town}'`)) === 0, 'removing it removes it');
+    // a bad save is refused in words
+    await page.fill('#sPlace', ''); await page.click('#sSave'); await page.waitForFunction(() => /Say where to look/.test(document.querySelector('#lMsg').textContent), null, { timeout: 5000 }); ok(true, 'saving without a place is refused in plain words');
+    ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+    const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/prototypes`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#url', { timeout: 15000 }); await ph.click('.tab[data-t=leads]'); await ph.waitForSelector('#lSaved #sSave', { timeout: 10000 });
+      ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j152-phone.png`, fullPage: true }).catch(() => {}); } finally { await pc.close(); }
+  } finally { await new Promise(res => site.close(res)); await new Promise(res => brave.close(res)); }
 });
 
 await browser.close();

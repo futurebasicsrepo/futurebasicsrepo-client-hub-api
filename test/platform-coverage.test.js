@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
+import { readerVerdict, sourceVerdict, pipelineVerdict, salesEmailVerdict, chatVerdict, automationsVerdict, githubVerdict, storesVerdict, moneyVerdict, prototypesVerdict, leadSearchVerdict, coverageConfig, redactSecrets } from '../src/platform-coverage.js';
 
 test('an AI reader is off without a key, down when refused, a warning when out of credit', () => {
   const base = { label: 'Grok (xAI)', keyName: 'XAI_API_KEY' };
@@ -91,4 +91,33 @@ test('the Money card: instructions, late invoices, past invoices nobody has sett
   assert.match(moneyVerdict({ hasInstructions: true, c: c({ overdue: 2, unrecorded: 3 }), access }).summary, /2 invoices are overdue; 3 past invoices with no payment recorded/);
   assert.match(moneyVerdict({ hasInstructions: true, c: c(), access: [] }).summary, /nobody is named/i);
   assert.equal(moneyVerdict({ hasInstructions: true, c: c(), access }).status, 'ok');
+});
+
+test('the prototypes card: Claude, builds that fail, builds that hang, and a quiet start', () => {
+  const base = { total: 4, finished7: 4, failed7: 0, last_error: '', stuck: 0, ready7: 3, edits7: 5, cost7: 1234 };
+  assert.equal(prototypesVerdict({ aiReady: true, p: { ...base, total: 0, finished7: 0, ready7: 0, edits7: 0, cost7: 0 } }).summary, 'Ready: no prototypes built yet');
+  const ok = prototypesVerdict({ aiReady: true, p: base }); assert.equal(ok.status, 'ok'); assert.match(ok.summary, /3 builds and 5 changes in the last 7 days · about \$12\.34 of Claude/);
+  const off = prototypesVerdict({ aiReady: false, p: base }); assert.equal(off.status, 'off'); assert.match(off.summary, /Claude is not connected \(ANTHROPIC_API_KEY\).*standard template.*switched off/);
+  const bad = prototypesVerdict({ aiReady: true, p: { ...base, finished7: 4, failed7: 3, last_error: 'The site answered 500' } }); assert.equal(bad.status, 'warn'); assert.match(bad.summary, /3 of 4 builds failed.*The site answered 500/);
+  assert.equal(prototypesVerdict({ aiReady: true, p: { ...base, finished7: 2, failed7: 2 } }).status, 'ok', 'two failures are not a pattern yet');
+  const stuck = prototypesVerdict({ aiReady: true, p: { ...base, stuck: 2 } }); assert.equal(stuck.status, 'warn'); assert.match(stuck.summary, /2 builds or changes have been running for over 20 minutes/);
+  assert.equal(prototypesVerdict({ aiReady: false, p: { ...base, stuck: 1 } }).status, 'warn', 'a hang outranks "not connected"');
+});
+
+test('the lead search card: key, refused key, failures, the daily cap, and the job behind saved searches', () => {
+  const s = { today: 3, perDay: 30, done7: 5, failed7: 0, last_at: new Date().toISOString(), last_status: 'done', last_error: '', schedules: 2, schedulesOn: 2, scheduleJob: null };
+  assert.match(leadSearchVerdict({ hasKey: false, s }).summary, /add BRAVE_API_KEY.*pasting a list/); assert.equal(leadSearchVerdict({ hasKey: false, s }).status, 'off');
+  const ok = leadSearchVerdict({ hasKey: true, s }); assert.equal(ok.status, 'ok'); assert.match(ok.summary, /5 searches in the last 7 days.*2 saved searches running by themselves/);
+  assert.equal(leadSearchVerdict({ hasKey: true, s: { ...s, done7: 1, schedulesOn: 1 } }).summary.includes('1 search in the last 7 days'), true);
+  const refused = leadSearchVerdict({ hasKey: true, s: { ...s, last_status: 'failed', last_error: 'Brave refused the key' } }); assert.equal(refused.status, 'down'); assert.match(refused.summary, /check BRAVE_API_KEY/);
+  assert.equal(leadSearchVerdict({ hasKey: true, s: { ...s, done7: 0, failed7: 3, last_status: 'failed', last_error: 'Brave could not be reached' } }).status, 'down');
+  assert.equal(leadSearchVerdict({ hasKey: true, s: { ...s, last_status: 'failed', last_error: 'Brave is busy: try again later' } }).status, 'warn');
+  assert.match(leadSearchVerdict({ hasKey: true, s: { ...s, today: 30 } }).summary, /Today's 30 searches are used up/);
+  const job = leadSearchVerdict({ hasKey: true, s: { ...s, scheduleJob: { health: 'failing', lastError: 'boom' } } }); assert.equal(job.status, 'warn'); assert.match(job.summary, /2 saved searches on, but the job that runs them is failing \(boom\)/);
+});
+
+test('the prototype settings are listed with the rest', () => {
+  const have = coverageConfig({ env: { ANTHROPIC_API_KEY: 'k', BRAVE_API_KEY: 'b' } }), none = coverageConfig({ env: {} }), by = (l, id) => l.find(x => x.id === id);
+  assert.equal(by(have, 'protoai').status, 'ok'); assert.equal(by(have, 'leadsearch').status, 'ok');
+  assert.equal(by(none, 'protoai').status, 'warn'); assert.match(by(none, 'protoai').detail, /standard template/); assert.equal(by(none, 'leadsearch').status, 'info'); assert.match(by(none, 'leadsearch').detail, /paste addresses/);
 });

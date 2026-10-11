@@ -636,7 +636,7 @@ registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSett
 registerPressRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendToContact: salesEmail.sendToContact, previewFor: salesEmail.previewFor, aiEnabled, log: app.log });
 registerSalesOpportunityRoutes(app, { pool, authenticate, adminOnly });
 // PROTOTYPE_TEST_ORIGIN is only set by the journeys: every site is then read from that stand-in server instead of the internet
-registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle, env: process.env, log: app.log, publicUrl: process.env.BUILDS_PUBLIC_URL || 'https://builds.thefuturebasics.com',
+const protos=registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle, env: process.env, log: app.log, publicUrl: process.env.BUILDS_PUBLIC_URL || 'https://builds.thefuturebasics.com',
   crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {},
   edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
@@ -5695,6 +5695,8 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
 jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
+// saved lead searches that are due (PROTOTYPE_SCHEDULE_TICK_MS is only shortened by the journeys)
+if(process.env.BRAVE_API_KEY)jobEvery('Lead search schedules', Number(process.env.PROTOTYPE_SCHEDULE_TICK_MS || 3 * 3600 * 1000), async()=>protos.runSchedules(), process.env.PROTOTYPE_SCHEDULE_TICK_MS?{}:{ delay: 2 * 60 * 1000 }); else declareJob('Lead search schedules', 3 * 3600 * 1000, 'switched off (no BRAVE_API_KEY)');
 jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');

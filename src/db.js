@@ -1417,6 +1417,20 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- Saved lead searches that run on their own (weekly by default): a trade and a town, and the searches they made.
+    create table if not exists prototype_search_schedules (
+      id uuid primary key default gen_random_uuid(),
+      trade text not null,
+      place text not null,
+      every_days integer not null default 7 check (every_days between 1 and 30),
+      enabled boolean not null default true,
+      last_run_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now()
+    );
+    alter table prototype_searches add column if not exists schedule_id uuid references prototype_search_schedules(id) on delete cascade;
+    alter table prototype_searches add column if not exists seen_at timestamptz;
+    create index if not exists prototype_searches_schedule_idx on prototype_searches(schedule_id, created_at desc);
     create table if not exists money_invoices (
       id uuid primary key default gen_random_uuid(),
       number text not null unique,
