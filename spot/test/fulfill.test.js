@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { plainReason } from '../src/fulfill/index.js';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
@@ -157,10 +158,13 @@ test('order before the card exists is refused', async (t) => {
 });
 
 test('a store total above the card limit stops before bothering the requester', { timeout: 90_000 }, async (t) => {
-  const { store, call, cart, k, waitFor } = await setup(t, { model: scriptedModel({ misbehave: false, total: '$999.00' }) });
+  const { app, store, call, cart, k, waitFor } = await setup(t, { model: scriptedModel({ misbehave: false, total: '$999.00' }) });
   await call('POST', `/v1/carts/${cart.token}/manage/order`, { k, shipping });
   const done = await waitFor((b) => b.cart.fulfillment?.state === 'needs_you');
-  assert.match(done.cart.fulfillment.reason, /\$999\.00, above the card limit of \$275\.63/);
+  // People read what it means for them; the checkout's own words are for staff.
+  assert.match(done.cart.fulfillment.reason, /total came in higher than expected .* Spot’s team has been told/);
+  assert.equal(done.cart.fulfillment.detail, undefined);
+  assert.match(app.spot.load(cart.token).fulfillment.detail, /\$999\.00, above the card limit of \$275\.63/);
   assert.equal(store.orders.length, 0);
 });
 
@@ -185,4 +189,16 @@ test('for_me cart: pay on the phone and the checkout agent starts by itself', { 
   }
   assert.equal(f.state, 'awaiting_confirm', f?.reason);
   assert.equal(f.method, 'shopify');
+});
+
+test('why an order stopped, said plainly: the checkout’s words become what it means for the person', () => {
+  const said = (raw) => plainReason(raw, 'SKLZ');
+  assert.equal(said('Order total is $42.49 ($34.99 item + $7.50 standard shipping, the only/cheapest shipping option), which exceeds the one-time card\'s $36.74 limit. Need guidance before paying.'), 'SKLZ’s total came in higher than expected (shipping or tax). Spot’s team has been told and will sort it out.');
+  assert.match(said('This item is sold out in size M'), /out of stock/);
+  assert.match(said("The store doesn't ship to PO boxes"), /didn’t accept the shipping address/);
+  assert.match(said('A CAPTCHA appeared at checkout'), /human check/);
+  assert.match(said('Checkout requires you to log in'), /wants an account/);
+  assert.match(said('The checkout assistant declined this page'), /couldn’t finish SKLZ’s checkout on its own/);
+  assert.match(said('Checkout took too long'), /Try again below/);
+  assert.equal(said('Something odd happened with the coupon field'), 'Spot couldn’t finish SKLZ’s checkout on its own. Spot’s team has been told.');
 });

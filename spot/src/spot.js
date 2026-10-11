@@ -1341,7 +1341,8 @@ export function ownerCart(cart) {
     spent_at: cart.spent_at || null,
     spent_cents: cart.spent_cents ?? null,
     spent_merchant: cart.spent_merchant || null,
-    fulfillment: cart.fulfillment || null,
+    // The checkout's own words (detail) are for staff, not the page.
+    fulfillment: cart.fulfillment ? (({ detail, ...f }) => f)(cart.fulfillment) : null,
     held: Boolean(cart.hold),
     disputed: Boolean(cart.dispute),
     refund_reason: cart.refund_reason || null,
