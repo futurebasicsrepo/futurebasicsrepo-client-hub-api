@@ -35,7 +35,7 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
 .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:11px 0;border-top:1px solid var(--line)}.row:first-child{border-top:0}
 .row b{font-weight:600}.row .what{min-width:0}.row .what div{overflow:hidden;text-overflow:ellipsis}
 .chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}
-.chip.hot,.chip.us{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.warm{background:#fff7d6;border-color:#e6d27a}.chip.new{background:#eef0ff;border-color:#c5caf4;color:#3b46a8}.chip.task{background:var(--fog)}.chip.client{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.sw{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip.hot,.chip.us{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot)}.chip.warm{background:#fff7d6;border-color:#e6d27a}.chip.new{background:#eef0ff;border-color:#c5caf4;color:#3b46a8}.chip.task{background:var(--fog)}.chip.signal{background:#e9fbf1;border-color:#a9dcbf;color:#23784b}.chip.client{background:#e5f6ec;border-color:#a9dcbf;color:var(--ok)}.chip.sw{background:var(--ink);border-color:var(--ink);color:#fff}
 .protos{display:grid;gap:12px;margin-top:10px}
 .proto{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:start;border:1px solid var(--line);border-radius:16px;padding:10px;background:#fff}
 .proto .shot{width:96px;height:64px;border-radius:10px;background:var(--ink);overflow:hidden}.proto .shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
@@ -94,11 +94,12 @@ function renderFunnel(o,h){
 }
 function renderReach(o,h){
   const rows=[];
-  for(const t of (o.tasks||[]).slice(0,4))rows.push({k:'task',kl:'Task',name:t.title,sub:t.contact_name||t.contact_email||'',when:t.due_at?`due ${ago(t.due_at)==='today'?'today':ago(t.due_at)}`:'',href:t.contact_id?`/sales?contact=${t.contact_id}#contacts`:'/sales#tasks'});
-  for(const c of (o.hot||[]).filter(c=>c.heat&&c.heat.level!=='cold').slice(0,4))rows.push({k:c.heat.level==='hot'?'hot':'warm',kl:c.heat.level,name:c.name||c.email,sub:[c.company,c.source].filter(Boolean).join(' · '),when:'',href:`/sales?contact=${c.id}#contacts`});
+  for(const t of (o.tasks||[]).slice(0,3))rows.push({k:'task',kl:'Task',name:t.title,sub:t.contact_name||t.contact_email||'',when:t.due_at?`due ${ago(t.due_at)==='today'?'today':ago(t.due_at)}`:'',href:t.contact_id?`/sales?contact=${t.contact_id}#contacts`:'/sales#tasks'});
+  for(const g of ((h.signals||{}).top||[]).slice(0,3))rows.push({k:'signal',kl:'Post · '+g.score,name:g.title||g.summary,sub:[({reddit:'Reddit',hn:'Hacker News',news:'News',web:'Web',x:'X',discord:'Discord',linkedin:'LinkedIn',meta:'Meta'})[g.source]||g.source,g.summary,g.ownerName?'with '+g.ownerName:''].filter(Boolean).join(' · '),when:g.status==='new'?'new':'in progress',href:`/intel?signal=${g.id}`});
+  for(const c of (o.hot||[]).filter(c=>c.heat&&c.heat.level!=='cold').slice(0,3))rows.push({k:c.heat.level==='hot'?'hot':'warm',kl:c.heat.level,name:c.name||c.email,sub:[c.company,c.source].filter(Boolean).join(' · '),when:'',href:`/sales?contact=${c.id}#contacts`});
   const seen=new Set(rows.map(r=>r.name));
   for(const c of h.awaitingReply.slice(0,5))if(!seen.has(c.name))rows.push({k:'new',kl:'No reply yet',name:c.name,sub:[c.company,c.source].filter(Boolean).join(' · '),when:`arrived ${ago(c.createdAt)}`,href:`/sales?contact=${c.id}#contacts`});
-  $('#reachList').innerHTML=rows.length?rows.slice(0,9).map(r=>`<a class="row" href="${esc(r.href)}" style="text-decoration:none" data-k="${esc(r.k)}"><span class="chip k ${esc(r.k)}">${esc(r.kl)}</span><span class="what"><b>${esc(r.name)}</b><div class="sub">${esc(r.sub)}</div></span><span class="sub">${esc(r.when)}</span></a>`).join(''):'<p class="empty">Nobody is waiting. Add a lead, or invite someone to look at a build.</p>';
+  $('#reachList').innerHTML=rows.length?rows.slice(0,10).map(r=>`<a class="row" href="${esc(r.href)}" style="text-decoration:none" data-k="${esc(r.k)}"><span class="chip k ${esc(r.k)}">${esc(r.kl)}</span><span class="what"><b>${esc(r.name)}</b><div class="sub">${esc(r.sub)}</div></span><span class="sub">${esc(r.when)}</span></a>`).join(''):'<p class="empty">Nobody is waiting. Add a lead, or invite someone to look at a build.</p>';
 }
 function protoCard(b,extra){
   return `<div class="proto ${b.warm?'warm':''}" data-pid="${esc(b.id)}"><div class="shot">${b.hasCover?`<img data-cover="${esc(b.id)}" alt="">`:''}</div><div><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><h3>${esc(b.name)}</h3><span class="chip">${esc(String(b.status).replace('-',' '))}</span></div>

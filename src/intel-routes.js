@@ -17,6 +17,7 @@ import { buildKpis } from './intel-kpis.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MANUAL_PLATFORMS = ['linkedin', 'meta', 'x', 'reddit', 'discord', 'hn', 'web', 'email', 'other'];
 const DISMISS = ['not_a_fit', 'vendor', 'too_old', 'already_handled', 'spam', 'other'];
+const CHAN_LABEL = { public_reply: 'a public reply', dm: 'a direct message', email: 'email', linkedin: 'LinkedIn', x: 'X', reddit: 'Reddit', discord: 'Discord', call: 'a call', other: 'another channel' };
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 // Starting watches, made once. The ones that need a key on the service are made switched off so nothing fails until the key is there.
@@ -95,6 +96,60 @@ export function registerIntelRoutes(app, d) {
     return reply.code(201).send({ id, read: r.read === 1, note: r.stopped || '' });
   });
 
+  // ---------- the handoff from a signal into the CRM (one contact, one deal, a timeline, a follow-up) ----------
+  // Future Basics owns the whole thing for now: the deal belongs to the team, not to one person. Everything here is recorded on the contact's timeline.
+  const STAGE_LABEL = { new: 'New', contacted: 'Contacted', meeting: 'Meeting', proposal: 'Proposal', won: 'Won', lost: 'Lost' };
+  const where = s => KIND_LABEL[s.source] || s.source;
+  async function timeline(contactId, dealId, text, meta, actor) {
+    if (!contactId) return;
+    await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'note',$3,$4::jsonb,$5)`, [contactId, dealId, String(text).slice(0, 700), JSON.stringify(meta), actor]);
+    await pool.query('update sales_contacts set last_activity_at=now() where id=$1', [contactId]);
+    if (dealId) await pool.query('update sales_deals set last_activity_at=now() where id=$1', [dealId]);
+  }
+  async function ensureContact(sig, { name, email }) {
+    let contactId = sig.contact_id, created = false;
+    if (!contactId && email) contactId = (await pool.query('select id from sales_contacts where lower(email)=$1', [email])).rows[0]?.id || null;
+    if (!contactId) {
+      const who = clip(name, 120) || clip(sig.author, 120) || clip(sig.title, 80) || 'Someone from the web';
+      contactId = (await pool.query(`insert into sales_contacts(name,email,source,tags,notes) values($1,$2,'intel',$3,$4) returning id`, [who, email || null, ['intel', sig.source], `Found on ${where(sig)}: ${sig.url || ''}\\n${sig.summary || ''}`.slice(0, 1000)])).rows[0].id; created = true;
+    }
+    return { contactId, created };
+  }
+  async function moveDeal(dealId, contactId, stage, actor, { valueCents = null, reason = '' } = {}) {
+    const d = (await pool.query('select title, stage from sales_deals where id=$1', [dealId])).rows[0]; if (!d) return false;
+    const closing = ['won', 'lost'].includes(stage);
+    await pool.query(`update sales_deals set stage=$2, value_cents=coalesce($3, value_cents), lost_reason=case when $2='lost' then $4 else lost_reason end, closed_at=case when $5 then coalesce(closed_at, now()) else null end, updated_at=now(), last_activity_at=now() where id=$1`, [dealId, stage, valueCents, reason, closing]);
+    if (d.stage !== stage) {
+      await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,actor_id) values($1,$2,'stage',$3,$4)`, [contactId, dealId, `${d.title}: ${STAGE_LABEL[d.stage]} → ${STAGE_LABEL[stage]}${stage === 'lost' && reason ? ` (${reason})` : ''}`.slice(0, 500), actor]);
+      await fireTrigger(pool, { type: 'deal_stage', contactId, dealId, stage }, { deliberate: true });
+    }
+    return true;
+  }
+  // What each step a person logs does to the CRM. Returns { contactId, dealId } once there is one.
+  async function handoff(sig, kind, actor, { note = '', channel = '', valueCents = null } = {}) {
+    if (!['outreach', 'reply', 'meeting', 'won', 'lost', 'reopened'].includes(kind)) return null;
+    if (kind === 'reopened' && !sig.deal_id) return null;
+    const { contactId, created } = await ensureContact(sig, {});
+    let dealId = sig.deal_id, madeDeal = false;
+    if (!dealId && kind !== 'reopened') {
+      dealId = (await pool.query(`insert into sales_deals(contact_id,title,stage,value_cents,source) values($1,$2,$3,0,'intel') returning id`, [contactId, clip(sig.summary || sig.title, 140) || `${where(sig)} lead`, kind === 'outreach' ? 'contacted' : kind === 'meeting' ? 'meeting' : kind === 'won' ? 'won' : kind === 'lost' ? 'lost' : 'contacted'])).rows[0].id; madeDeal = true;
+    }
+    await pool.query('update intel_signals set contact_id=$2, deal_id=$3 where id=$1', [sig.id, contactId, dealId]);
+    const meta = { signalId: sig.id, url: sig.url, channel };
+    if (kind === 'outreach') {
+      await timeline(contactId, dealId, `Sent on ${CHAN_LABEL[channel] || channel}, from ${where(sig)}: ${note}`, meta, actor);
+      if (!madeDeal) { const d = (await pool.query('select stage from sales_deals where id=$1', [dealId])).rows[0]; if (d?.stage === 'new') await moveDeal(dealId, contactId, 'contacted', actor); }
+      if (!Number((await pool.query('select count(*) n from sales_tasks where contact_id=$1 and done_at is null', [contactId])).rows[0].n)) await pool.query(`insert into sales_tasks(contact_id,deal_id,title,due_at,created_by) values($1,$2,$3,now() + interval '3 days',$4)`, [contactId, dealId, `Follow up on what we sent: ${clip(sig.summary || sig.title, 100)}`, actor]);
+    } else if (kind === 'reply') await timeline(contactId, dealId, `They replied${note ? `: ${note}` : ''}`, meta, actor);
+    else if (kind === 'meeting') { await timeline(contactId, dealId, `Meeting booked${note ? `: ${note}` : ''}`, meta, actor); if (!madeDeal) await moveDeal(dealId, contactId, 'meeting', actor); }
+    else if (kind === 'won') { await timeline(contactId, dealId, `Won${note ? `: ${note}` : ''}`, meta, actor); if (!madeDeal) await moveDeal(dealId, contactId, 'won', actor, { valueCents }); else await pool.query('update sales_deals set value_cents=$2, closed_at=now() where id=$1', [dealId, valueCents]); }
+    else if (kind === 'lost') { await timeline(contactId, dealId, `Lost${note ? `: ${note}` : ''}`, meta, actor); if (!madeDeal) await moveDeal(dealId, contactId, 'lost', actor, { reason: clip(note, 200) }); else await pool.query(`update sales_deals set lost_reason=$2, closed_at=now() where id=$1`, [dealId, clip(note, 200)]); }
+    else if (kind === 'reopened') { const d = (await pool.query('select stage from sales_deals where id=$1', [dealId])).rows[0]; if (d?.stage === 'lost') await moveDeal(dealId, contactId, 'contacted', actor); }
+    if (created) await fireTrigger(pool, { type: 'contact_created', contactId, source: 'intel' });
+    if (madeDeal) await record(sig.id, actor, 'deal', { note: clip(sig.summary || sig.title, 140), valueCents: 0 });
+    return { contactId, dealId };
+  }
+
   app.post('/v1/intel/signals/:id/:action', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const id = req.params.id, action = req.params.action, b = req.body || {}, actor = actorOf(req);
     const sig = (await pool.query(`${SELECT} where s.id=$1`, [id])).rows[0]; if (!sig) return bad(reply, 'Not found', 404);
@@ -109,16 +164,16 @@ export function registerIntelRoutes(app, d) {
       }
       case 'release': { if (closed) return bad(reply, 'This one is closed.', 409); await pool.query('update intel_signals set owner_id=null, claimed_at=null where id=$1', [id]); return { ok: true, status: await record(id, actor, 'released') }; }
       case 'dismiss': { const reason = DISMISS.includes(b.reason) ? b.reason : null; if (!reason) return bad(reply, 'Say why: not a fit, a vendor, too old, already handled, spam or other'); await pool.query('update intel_signals set dismiss_reason=$2 where id=$1', [id, reason]); return { ok: true, status: await record(id, actor, 'dismissed', { note: clip(b.note, 300) || reason }) }; }
-      case 'reopen': { if (!['dismissed', 'lost'].includes(sig.status)) return bad(reply, 'Only a dismissed or lost one can be reopened', 409); await pool.query(`update intel_signals set dismiss_reason='' where id=$1`, [id]); return { ok: true, status: await record(id, actor, 'reopened') }; }
+      case 'reopen': { if (!['dismissed', 'lost'].includes(sig.status)) return bad(reply, 'Only a dismissed or lost one can be reopened', 409); await pool.query(`update intel_signals set dismiss_reason='' where id=$1`, [id]); const st = await record(id, actor, 'reopened'); await handoff(sig, 'reopened', actor); return { ok: true, status: st }; }
       case 'outreach': {
         if (closed) return bad(reply, 'This one is closed. Reopen it first.', 409); if (!CHANNELS.includes(b.channel)) return bad(reply, 'Say where it went: a public reply, a direct message, an email…');
         if (!String(b.note || '').trim()) return bad(reply, 'Paste or write what you sent, so there is a record');
         if (!sig.owner_id) await pool.query('update intel_signals set owner_id=$2, claimed_at=coalesce(claimed_at, now()) where id=$1', [id, actor]);
-        return { ok: true, status: await record(id, actor, 'outreach', { channel: b.channel, note: String(b.note) }) };
+        const st = await record(id, actor, 'outreach', { channel: b.channel, note: String(b.note) }), h = await handoff(sig, 'outreach', actor, { note: clip(b.note, 600), channel: b.channel }); return { ok: true, status: st, ...(h || {}) };
       }
-      case 'reply': case 'meeting': { if (closed) return bad(reply, 'This one is closed. Reopen it first.', 409); if (action === 'reply' && !['actioned', 'replied'].includes(sig.status) && sig.status !== 'meeting') return bad(reply, 'Log what you sent first, then the reply', 409); return { ok: true, status: await record(id, actor, action, { note: clip(b.note, 500) }) }; }
-      case 'won': { if (sig.status === 'dismissed') return bad(reply, 'Reopen it first', 409); const v = Math.round(Number(b.valueCents)); if (!Number.isFinite(v) || v < 0 || v > 1e11) return bad(reply, 'Enter what it is worth'); return { ok: true, status: await record(id, actor, 'won', { valueCents: v, note: clip(b.note, 300) }) }; }
-      case 'lost': { if (sig.status === 'dismissed') return bad(reply, 'Reopen it first', 409); return { ok: true, status: await record(id, actor, 'lost', { note: clip(b.note, 300) }) }; }
+      case 'reply': case 'meeting': { if (closed) return bad(reply, 'This one is closed. Reopen it first.', 409); if (action === 'reply' && !['actioned', 'replied'].includes(sig.status) && sig.status !== 'meeting') return bad(reply, 'Log what you sent first, then the reply', 409); const st = await record(id, actor, action, { note: clip(b.note, 500) }); await handoff(sig, action, actor, { note: clip(b.note, 300) }); return { ok: true, status: st }; }
+      case 'won': { if (sig.status === 'dismissed') return bad(reply, 'Reopen it first', 409); const v = Math.round(Number(b.valueCents)); if (!Number.isFinite(v) || v < 0 || v > 1e11) return bad(reply, 'Enter what it is worth'); const st = await record(id, actor, 'won', { valueCents: v, note: clip(b.note, 300) }); await handoff(sig, 'won', actor, { note: clip(b.note, 300), valueCents: v }); return { ok: true, status: st }; }
+      case 'lost': { if (sig.status === 'dismissed') return bad(reply, 'Reopen it first', 409); const st = await record(id, actor, 'lost', { note: clip(b.note, 300) }); await handoff(sig, 'lost', actor, { note: clip(b.note, 300) }); return { ok: true, status: st }; }
       case 'read': {
         if (!throttle(`intel-read:${actor}`, { limit: 30, windowMs: 3600_000 })) return bad(reply, 'Slow down: 30 reads an hour', 429);
         await pool.query(`update intel_signals set scored_at=null, model='' where id=$1 and (model='prefilter' or scored_at is null)`, [id]);
@@ -132,18 +187,12 @@ export function registerIntelRoutes(app, d) {
         catch (e) { return bad(reply, e.message || 'The draft did not come back. Try again.', 502); }
       }
       case 'to-crm': {
-        let contactId = sig.contact_id, created = false; const email = String(b.email || '').trim().toLowerCase();
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad(reply, 'That email address does not look right');
-        if (!contactId && email) contactId = (await pool.query('select id from sales_contacts where lower(email)=$1', [email])).rows[0]?.id || null;
-        if (!contactId) {
-          const name = clip(b.name, 120) || clip(sig.author, 120) || clip(sig.title, 80) || 'Someone from the web';
-          contactId = (await pool.query(`insert into sales_contacts(name,email,source,tags,notes) values($1,$2,'intel',$3,$4) returning id`, [name, email || null, ['intel', sig.source], `Found on ${KIND_LABEL[sig.source] || sig.source}: ${sig.url || ''}\n${sig.summary || ''}`.slice(0, 1000)])).rows[0].id; created = true;
-        }
+        const email = String(b.email || '').trim().toLowerCase(); if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad(reply, 'That email address does not look right');
+        const { contactId, created } = await ensureContact(sig, { name: b.name, email });
         let dealId = sig.deal_id;
         if (b.dealTitle && !dealId) { const v = Math.max(0, Math.round(Number(b.valueCents) || 0)); dealId = (await pool.query(`insert into sales_deals(contact_id,title,value_cents,source) values($1,$2,$3,'intel') returning id`, [contactId, clip(b.dealTitle, 140), v])).rows[0].id; await record(id, actor, 'deal', { note: clip(b.dealTitle, 140), valueCents: v }); }
-        await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'note',$3,$4::jsonb,$5)`, [contactId, dealId, `Added from a ${KIND_LABEL[sig.source] || sig.source} signal: ${sig.summary || sig.title || sig.url}`.slice(0, 500), JSON.stringify({ signalId: id, url: sig.url }), actor]);
+        await timeline(contactId, dealId, `Added from a ${where(sig)} signal: ${sig.summary || sig.title || sig.url}`, { signalId: id, url: sig.url }, actor);
         if (b.task !== false) await pool.query(`insert into sales_tasks(contact_id,deal_id,title,due_at) values($1,$2,$3,now() + interval '1 day')`, [contactId, dealId, clip(b.taskTitle, 200) || `Follow up: ${clip(sig.summary || sig.title, 120)}`]);
-        await pool.query('update sales_contacts set last_activity_at=now() where id=$1', [contactId]);
         await pool.query('update intel_signals set contact_id=$2, deal_id=$3 where id=$1', [id, contactId, dealId]);
         if (created) await fireTrigger(pool, { type: 'contact_created', contactId, source: 'intel' });
         return { ok: true, contactId, dealId, created };

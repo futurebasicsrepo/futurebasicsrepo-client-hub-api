@@ -25,8 +25,8 @@ export function buildKpis({ signals = [], open = [], events = [], usage = [], st
   };
   // by person: what they did (events carry the person), and what is waiting on them
   const bySignal = new Map([...signals, ...open].map(s => [s.id, s]));
-  const people = new Map(staff.map(p => [p.id, { id: p.id, name: p.name, team: teams[p.id] || '', claimed: 0, outreach: 0, replies: 0, meetings: 0, deals: 0, won: 0, wonCents: 0, dismissed: 0, owned: 0, overdue: 0, firstHours: [], withinSla: 0, claimedSurfaced: 0 }]));
-  const person = id => { if (!id) return null; if (!people.has(id)) people.set(id, { id, name: 'Someone who has left', team: teams[id] || '', claimed: 0, outreach: 0, replies: 0, meetings: 0, deals: 0, won: 0, wonCents: 0, dismissed: 0, owned: 0, overdue: 0, firstHours: [], withinSla: 0, claimedSurfaced: 0 }); return people.get(id); };
+  const people = new Map(staff.map(p => [p.id, { id: p.id, name: p.name, team: teams[p.id] || 'Future Basics', claimed: 0, outreach: 0, replies: 0, meetings: 0, deals: 0, won: 0, wonCents: 0, dismissed: 0, owned: 0, overdue: 0, firstHours: [], withinSla: 0, claimedSurfaced: 0 }]));
+  const person = id => { if (!id) return null; if (!people.has(id)) people.set(id, { id, name: 'Someone who has left', team: teams[id] || 'Future Basics', claimed: 0, outreach: 0, replies: 0, meetings: 0, deals: 0, won: 0, wonCents: 0, dismissed: 0, owned: 0, overdue: 0, firstHours: [], withinSla: 0, claimedSurfaced: 0 }); return people.get(id); };
   const field = { claimed: 'claimed', outreach: 'outreach', reply: 'replies', meeting: 'meetings', deal: 'deals', won: 'won', dismissed: 'dismissed' };
   for (const e of events) { const p = person(e.actor_id); if (p && field[e.kind]) { p[field[e.kind]]++; if (e.kind === 'won') p.wonCents += Number(e.value_cents) || 0; } }
   for (const s of open) { const p = person(s.owner_id); if (p && ['new', 'reviewing'].includes(s.status)) p.owned++; if (p && s.status === 'new' && s.relevant && Number(s.score) >= min && hours(now, s.found_at) > sla) p.overdue++; }
@@ -36,7 +36,7 @@ export function buildKpis({ signals = [], open = [], events = [], usage = [], st
     .sort((a, b) => (b.won - a.won) || (b.meetings - a.meetings) || (b.outreach - a.outreach) || a.name.localeCompare(b.name));
   out.people = rows;
   const byTeam = new Map();
-  for (const p of rows) { const k = p.team || 'No team'; const t = byTeam.get(k) || { team: k, people: 0, claimed: 0, outreach: 0, replies: 0, meetings: 0, won: 0, wonCents: 0, overdue: 0 }; t.people++; for (const f of ['claimed', 'outreach', 'replies', 'meetings', 'won', 'wonCents', 'overdue']) t[f] += p[f]; byTeam.set(k, t); }
+  for (const p of rows) { const k = p.team || 'Future Basics'; const t = byTeam.get(k) || { team: k, people: 0, claimed: 0, outreach: 0, replies: 0, meetings: 0, won: 0, wonCents: 0, overdue: 0 }; t.people++; for (const f of ['claimed', 'outreach', 'replies', 'meetings', 'won', 'wonCents', 'overdue']) t[f] += p[f]; byTeam.set(k, t); }
   out.teams = [...byTeam.values()].map(t => ({ ...t, replyRate: pct(t.replies, t.outreach) })).sort((a, b) => b.wonCents - a.wonCents || b.meetings - a.meetings);
   // what is working: by service line and by source
   const group = key => { const m = new Map(); for (const s of signals) { const k = s[key] || 'none'; const g = m.get(k) || { key: k, found: 0, surfaced: 0, outreach: 0, replies: 0, meetings: 0, won: 0 }; g.found++; if (surfaced.includes(s)) g.surfaced++; if (sets.outreach.has(s.id)) g.outreach++; if (sets.reply.has(s.id)) g.replies++; if (sets.meeting.has(s.id)) g.meetings++; if (sets.won.has(s.id)) g.won++; m.set(k, g); } return [...m.values()].sort((a, b) => b.surfaced - a.surfaced); };

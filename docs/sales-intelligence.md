@@ -55,3 +55,22 @@ LLM visibility probes (asking Claude, ChatGPT and Grok the questions buyers ask 
 - **Watches** shows each search in a wide, readable box, and under every watch the last few posts it heard, each linking out to the original post, marked *read by the AI*, *read, not a fit*, *waiting to be read* or *passed over*.
 - **Signals → Passed over** lists the posts the cheap first look did not send to the AI, with the reason in plain words ("does not mention AI, apps or software, or product development" or "mentions AI but does not sound like someone asking for help…"). **Have the AI read this** sends one to the chosen AI anyway, and it then appears in Open with its draft. `GET /v1/intel/passed`, `POST /v1/intel/signals/:id/read`.
 - Every signal card carries a **Next step** for Future Basics (reply in the thread, send the draft as a message, email it, follow up, prepare for the call), shaped by what the person wants and where the signal stands, next to the draft. It is a suggestion; a person does it and logs it.
+
+## From a signal to a deal (the handoff)
+
+A deal starts when a person logs **I sent it**, not before. From then on each step they log moves the CRM, so nothing is copied by hand. The deal belongs to Future Basics as a team for now; who took the post is recorded on the signal, not on the deal.
+
+| Logged on the signal | What happens in Sales |
+| --- | --- |
+| **I sent it** | The contact is made (source `intel`, tagged `intel` and the platform) unless there already is one. One deal is made at **Contacted** (never a second). The timeline gets exactly what was sent and where. A follow-up task is set for three days on, unless the contact already has an open task. A new contact fires the `contact_created` automation trigger. |
+| **They replied** | A note on the timeline. |
+| **Meeting booked** | The deal moves to **Meeting** (the `deal_stage` trigger fires). |
+| **Won** | The deal moves to **Won** at the value entered and is closed. |
+| **Lost** | The deal moves to **Lost** with the reason, and is closed. |
+| **Reopen** (after lost) | The deal goes back to **Contacted**. |
+
+**Add to CRM** still works for a post you want in Sales before anything is sent. If a deal already exists it is reused. A post logged as won or lost with no deal gets one at that stage.
+
+**Link to a post.** Each signal has **Copy link**: `/intel?signal=<id>` opens Intelligence with that post first and the rest below, and **Show everything** drops it. A link to a post that is gone says so.
+
+**One Today list.** Posts worth a look (score at or above the setting, new or in progress) appear on the work home in **Reach out today** with the tasks, hot contacts and leads waiting, and open that post. KPIs read people without a team as **Future Basics**.
