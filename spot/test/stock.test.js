@@ -240,3 +240,45 @@ test('the shelf asks for photos and stock of pages Spot couldn\'t read', async (
   assert.equal(seen[0][0], 'https://nike.example/p1');
   assert.equal(r.json().pages[0].image_url, 'https://cdn.example/a.jpg');
 });
+
+test('every search uses their saved sizes and where things ship, and says so', async (t) => {
+  const seen = [];
+  const fromText = async (text, o = {}) => (seen.push(o), { source: 'lookup', kind: 'products', merchant: { name: 'S' }, items: [{ title: 'Hoodie', variant: 'M', quantity: 1, price_cents: 4000, url: 'https://s.example/h' }], options: [{ merchant: { name: 'S' }, item: { title: 'Hoodie', variant: 'M', quantity: 1, price_cents: 4000, url: 'https://s.example/h' }, stock: 'in' }] });
+  const details = async (urls) => (seen.push({ details: urls }), { pages: [] });
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg: { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 }, logger: false, env: { SPOT_AGENT: 'off' }, capture: { fromText, details } });
+  t.after(() => a.close());
+  const call = async (method, url, payload, headers = {}) => {
+    const r = await a.inject({ method, url, payload, headers });
+    return { status: r.statusCode, body: r.json(), headers: r.headers };
+  };
+  // Signed out: nothing to use.
+  const anon = await call('POST', '/v1/capture', { text: 'black hoodie' });
+  assert.equal(anon.body.profile, undefined);
+  assert.deepEqual([seen[0].sizes, seen[0].shipTo], ['', '']);
+
+  const start = await call('POST', '/v1/auth/start', { email: 'kyle@example.com' });
+  const cookie = (await call('POST', '/v1/auth/verify', { email: 'kyle@example.com', code: start.body.code })).headers['set-cookie'].split(';')[0];
+  await call('POST', '/v1/me', { sizes: { tops: 'M', shoes: 'US 10.5' }, shipping: { name: 'Kyle R', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com' } }, { cookie });
+  const r = await call('POST', '/v1/capture', { text: 'black hoodie' }, { cookie });
+  assert.equal(seen.at(-1).sizes, 'tops M, shoes US 10.5');
+  assert.equal(seen.at(-1).shipTo, 'Austin, TX');
+  assert.deepEqual(r.body.profile, { sizes: 'tops M, shoes US 10.5', ship_to: 'Austin, TX' }, 'the shelf can say what it used');
+
+  // Stock checks are for the size picked.
+  await call('POST', '/v1/capture/details', { urls: [{ url: 'https://nike.example/p1', variant: 'M' }, 'https://x.example/2'] });
+  assert.deepEqual(seen.at(-1).details, [{ url: 'https://nike.example/p1', variant: 'M' }, 'https://x.example/2']);
+});
+
+test('the search is told their sizes and city; page reads check the size', async () => {
+  const { client, calls } = model([{ products: [] }]);
+  await captureFromText('outfits for coachella', { client, fromUrl: stockAt([]), product: noShopify, sizes: 'tops M, pants 32, shoes US 10.5', shipTo: 'Austin, TX' });
+  const prompt = calls[0].messages[0].content;
+  assert.match(prompt, /their sizes are tops M, pants 32, shoes US 10\.5\./);
+  assert.match(prompt, /They live in Austin, TX, so only pick stores that ship there/);
+  assert.match(prompt, /For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes/);
+
+  const seen = [];
+  const dc = { beta: { messages: { create: async (req) => (seen.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"pages":[]}' }] }) } } };
+  await pageDetails([{ url: 'https://nike.example/p1', variant: 'Black / M' }, 'https://x.example/2'], { client: dc });
+  assert.match(seen[0].messages[0].content, /1\. https:\/\/nike\.example\/p1 \(size or option: Black \/ M\)\n2\. https:\/\/x\.example\/2\n/);
+});

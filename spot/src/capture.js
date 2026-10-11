@@ -486,7 +486,7 @@ export const MAX_OUTFITS = 4;
 const FINDS = 3; // a search that turns up only sold-out items is retried, up to this many
 const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with what we have
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
@@ -505,7 +505,7 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
 Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
 - If they want a look, an outfit, or clothes for an occasion, reply with up to ${MAX_OUTFITS} outfits: each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
 - Otherwise reply with up to ${MAX_OPTIONS} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
-Use the size, colour or options they gave.${sizes ? ` If something comes in sizes and they didn't say one, use their saved size (${q(sizes).slice(0, 300)}) and put it in "variant".` : ''} Everything must be in stock right now in that option: skip anything the page shows as sold out or unavailable. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
+${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
 Use an empty list if you can't find specific products with current prices.`,
     },
@@ -689,14 +689,20 @@ function withOutfits(outfits, soldOut) {
 // photo, stock and price. Best effort: anything it can't tell stays unknown.
 const DETAILS_MAX = 8;
 export async function pageDetails(urls, { client, onUsage, onError } = {}) {
-  const list = [...new Set([].concat(urls || []).map(String).filter((u) => /^https?:\/\//i.test(u)))].slice(0, DETAILS_MAX);
+  // Each: a page address, or { url, variant } when a size or option was picked.
+  const byUrl = new Map();
+  for (const u of [].concat(urls || [])) {
+    const url = String(typeof u === 'string' ? u : u?.url || '');
+    if (/^https?:\/\//i.test(url) && !byUrl.has(url)) byUrl.set(url, typeof u === 'object' && u?.variant ? String(u.variant).slice(0, 80) : '');
+  }
+  const list = [...byUrl.keys()].slice(0, DETAILS_MAX);
   if (!list.length || (!client && !process.env.ANTHROPIC_API_KEY)) return { pages: [] };
   const anthropic = client ?? anthropicClient();
   const messages = [
     {
       role: 'user',
-      content: `Open each of these product pages with web_fetch and report, for each: the main product photo's full https address, whether it can be bought right now (in stock), and the current price.
-${list.map((u, i) => `${i + 1}. ${u}`).join('\n')}
+      content: `Open each of these product pages with web_fetch and report, for each: the main product photo's full https address, whether it can be bought right now (in stock, in the size or option given), and the current price.
+${list.map((u, i) => `${i + 1}. ${u}${byUrl.get(u) ? ` (size or option: ${byUrl.get(u).replace(/[\n"]/g, ' ')})` : ''}`).join('\n')}
 Reply with ONLY this JSON and nothing else:
 {"pages": [{"url": "the address above", "image_url": "https://… or empty", "in_stock": true or false or null, "unit_price": "$0.00 or empty"}]}
 Use empty or null for anything the page doesn't show or couldn't be opened.`,

@@ -64,7 +64,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .cell .stile b{font-size:26px}.cell .stile small{display:none}
 .collage{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:2px;aspect-ratio:1/1;background:var(--line);border-bottom:1px solid var(--line)}.collage .cell{position:relative;overflow:hidden;background:#fff}.collage.n2{grid-template-rows:1fr}.collage.n3 .cell:first-child{grid-row:span 2}
 .pieces{list-style:none;margin:6px 0 0;padding:0;font-size:13px}.pieces li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px dashed var(--line)}.pieces a{color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.pieces span{color:var(--muted);white-space:nowrap}.pieces li.gone a{text-decoration:line-through;color:var(--muted)}
-.pc.gone{opacity:.55}.pr small{font-size:13px;font-weight:600;color:var(--muted)}
+.pc.gone{opacity:.55}.used{margin:-4px 0 10px 38px;font-size:13px;font-weight:600;color:var(--ok)}.profilechip{margin:8px 2px 0}.profilechip a{color:inherit;font-weight:700}.pieces i{font-style:normal;color:var(--muted)}.pr small{font-size:13px;font-weight:600;color:var(--muted)}
 .wallets{font-size:12px;font-weight:600;color:var(--muted);text-align:center;margin-top:5px}
 .cardlinks{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:13px}.cardlinks a{color:var(--muted);font-weight:600}.cardlinks .textlink{font-size:13px}
 .shelf.looks .pc{flex-basis:84%}
@@ -156,6 +156,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
       <button class="btn" id="go">Spot it</button>
     </div>
   </div>
+  <p class="small muted profilechip" id="profileChip"></p>
   <div class="err" id="capErr"></div>
   <div class="card" id="basket" hidden></div>
   <p class="hint">Someone taps your link and covers it, and the store gets the order. You can put carts from up to 5 stores in one link.</p>

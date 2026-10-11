@@ -37,6 +37,34 @@
   };
 
   let me = load('spot:me', {});
+  // Signed in: their account's name, email, sizes and where things ship.
+  // Every search uses the sizes and ship-to (the server reads them from the
+  // account); the page shows which, so it's never a guess.
+  let account = null; // { sizes: { tops: 'M', … }, ship_to: 'Austin, TX' }
+  const SIZE_LABEL = { tops: 'Tops', bottoms: 'Pants', shoes: 'Shoes', dresses: 'Dresses' };
+  const sizeLine = (z) => Object.entries(SIZE_LABEL).filter(([k]) => z?.[k]).map(([k, l]) => l + ' ' + z[k]).join(' · ');
+  function renderProfile() {
+    const el = $('#profileChip');
+    if (!account) {
+      el.innerHTML = '<a href="/signin?next=/new">Sign in</a> so Spot shops in your sizes and ships to you';
+      return;
+    }
+    const z = sizeLine(account.sizes);
+    el.innerHTML = (z ? '✓ <b>Your sizes</b> ' + esc(z) : '<a href="/account#details">Add your sizes</a> so Spot picks the right ones') +
+      (account.ship_to ? ' · ships to ' + esc(account.ship_to) : '') + (z ? ' · <a href="/account#details">edit</a>' : '');
+  }
+  fetch('/v1/me', { headers: { accept: 'application/json' } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      if (!j?.user) return renderProfile();
+      const u = j.user;
+      account = { sizes: u.sizes || {}, ship_to: u.shipping?.city ? [u.shipping.city, u.shipping.state].filter(Boolean).join(', ') : '' };
+      // Their name goes on links without asking again.
+      if (!me.name && u.name) me = { ...me, name: u.name };
+      if (!me.email && u.email) me = { ...me, email: u.email };
+      renderProfile();
+    })
+    .catch(() => renderProfile());
   let contacts = load('spot:contacts', []);
   let draft = null; // { merchant, items, extras_cents, note, source, sold_out, in_stock }
   // What they asked for, and the product links already shown, so "find
@@ -209,13 +237,21 @@
     '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
     '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
   const total = (items) => items.reduce((n, o) => n + (o.item.price_cents || 0), 0);
+  // The size picked is one of theirs ("M" in "Black / M", "10.5" in "US 10.5").
+  const yours = (variant) => {
+    const words = new Set(String(variant).toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean));
+    return Object.values(account?.sizes || {}).some((v) => {
+      const w = String(v).toLowerCase().split(/[^a-z0-9.]+/).filter((x) => x && x !== 'us');
+      return w.length > 0 && w.every((x) => words.has(x));
+    });
+  };
 
   function productCard(o, k, top) {
     const it = o.item;
     return '<article class="pc' + (top ? ' top' : '') + (o.stock === 'out' ? ' gone' : '') + '" data-card="' + k + '">' +
       (top ? '<span class="badge">Spot’s pick</span>' : '') + photo(o, 'ph') +
       '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
-      '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + '</div>' : '') +
+      '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
       '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' +
@@ -227,7 +263,7 @@
       '<div class="collage n' + Math.min(look.items.length, 4) + '">' + look.items.slice(0, 4).map((o) => photo(o, 'cell')).join('') + '</div>' +
       '<div class="pb"><div class="st">' + look.items.length + ' pieces · ' + stores + (stores > 1 ? ' stores' : ' store') + '</div><div class="t">' + esc(look.name) + '</div>' +
       (look.why ? '<div class="why">' + esc(look.why) + '</div>' : '') +
-      '<ul class="pieces">' + look.items.map((o) => '<li data-url="' + esc(o.item.url || '') + '"><a href="' + esc(o.item.url || '#') + '" target="_blank" rel="noopener">' + esc(o.item.title) + '</a><span>' + esc(o.merchant.name || '') + ' · ' + (o.item.price_cents ? usd(o.item.price_cents) : '—') + '</span></li>').join('') + '</ul>' +
+      '<ul class="pieces">' + look.items.map((o) => '<li data-url="' + esc(o.item.url || '') + '"><a href="' + esc(o.item.url || '#') + '" target="_blank" rel="noopener">' + esc(o.item.title) + (o.item.variant ? ' <i>' + esc(o.item.variant) + '</i>' : '') + '</a><span>' + esc(o.merchant.name || '') + ' · ' + (o.item.price_cents ? usd(o.item.price_cents) : '—') + '</span></li>').join('') + '</ul>' +
       '<div class="pr">' + usd(total(look.items)) + '<small> the look</small></div>' + buttons(k, false) + '</div></article>';
   }
   const skel = '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>';
@@ -246,7 +282,8 @@
     const stores = new Set(T.list.flatMap((e) => (e.items || [e]).map((o) => o.merchant.name))).size;
     const line = T.kind === 'outfits' ? (T.list.length === 1 ? 'here’s a look I put together' : T.list.length + ' looks, from ' + stores + ' stores. my favorite’s first →') :
       T.list.length === 1 ? 'here’s the one I’d get' : (t === 0 ? 'found ' + T.list.length + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) : 'ok, ' + T.list.length + ' more') + '. my pick’s first, swipe for more →';
-    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + '<div class="shelf' + (T.kind === 'outfits' ? ' looks' : '') + '"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="' + (T.kind === 'outfits' ? 'Outfits' : 'Picks') + '">' +
+    const used = d.profile ? [d.profile.sizes && 'In your sizes', d.profile.ship_to && 'ships to ' + d.profile.ship_to].filter(Boolean).join(' · ') : '';
+    turn.innerHTML = '<div class="me">' + esc(said) + '</div>' + spotSays(line) + (used ? '<p class="used" title="' + esc(d.profile.sizes || '') + '">✓ ' + esc(used) + '</p>' : '') + '<div class="shelf' + (T.kind === 'outfits' ? ' looks' : '') + '"><div class="rail" tabindex="0" role="region" aria-roledescription="carousel" aria-label="' + (T.kind === 'outfits' ? 'Outfits' : 'Picks') + '">' +
       T.list.map((e, i) => (T.kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, i === 0)).join('') + '</div><div class="railnav"><button type="button" data-step="-1" aria-label="Previous">‹</button><span class="at"></span><button type="button" data-step="1" aria-label="Next">›</button></div></div>';
     if (!el) $('#thread').appendChild(turn);
     const rail = turn.querySelector('.rail');
@@ -311,7 +348,7 @@
     for (let i = 0; i < need.length; i += 8) {
       const chunk = need.slice(i, i + 8);
       for (const o of chunk) asked.add(o.item.url);
-      api('/v1/capture/details', { urls: chunk.map((o) => o.item.url) })
+      api('/v1/capture/details', { urls: chunk.map((o) => ({ url: o.item.url, variant: o.item.variant || '' })) })
         .then((r) => {
           for (const p of r.pages || []) {
             for (const o of chunk.filter((x) => x.item.url === p.url)) {
