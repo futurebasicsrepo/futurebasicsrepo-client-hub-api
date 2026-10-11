@@ -181,7 +181,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
   const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
-  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, ...aiHooks }));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, more: o.more, avoid: o.avoid, ...aiHooks }));
   // A signed-in person's saved sizes, for lookups that don't name one.
   const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
 
@@ -485,7 +485,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.capture(req);
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
-    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)) });
+    // A follow-up ("find another", "in blue") carries what they said and the links already shown.
+    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)), more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
     if (b.image?.data) {
       if (!process.env.ANTHROPIC_API_KEY && !capture.fromScreenshot) {
         throw new CaptureError('Screenshot capture is not configured on this server — paste a link or enter items');

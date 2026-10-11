@@ -52,7 +52,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .err{color:#c62828;font-weight:600;margin-top:10px;min-height:1em}
 .edit-item{display:grid;grid-template-columns:1fr 64px 34px;gap:6px;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
 .edit-item [data-f=title]{grid-column:1/-1}
-.found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}.found .thumb{width:72px;height:72px}.found a{font-size:13px;font-weight:600;color:var(--muted)}
+.found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}.refine{margin:2px 0 10px}.refine p{margin:0 0 6px;font-weight:600}.refrow{display:flex;gap:8px}.refrow input{flex:1;min-width:0;margin:0}.refrow .btn{flex:none;white-space:nowrap;margin:0}.tag{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:2px 7px;vertical-align:1px}.tag.out{background:color-mix(in srgb,#d92d20 16%,transparent);color:#d92d20}.tag.in{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}.found .thumb{width:72px;height:72px}.found a{font-size:13px;font-weight:600;color:var(--muted)}
 .edit-item input{padding:10px}
 .x{border:0;background:transparent;font-size:20px;color:var(--muted);cursor:pointer}
 .linkbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;word-break:break-all;font-weight:600}
@@ -138,6 +138,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   <div class="card">
     <p class="small" id="checkMsg" style="margin:0 0 6px;color:var(--warn)"></p>
     <div class="item found" id="found" hidden></div>
+    <div class="refine" id="refine" hidden><p class="small" id="refineQ"></p><div class="refrow"><input id="more" maxlength="300" enterkeyhint="search" placeholder="e.g. green, size 3T" aria-label="What should change?"><button class="btn ghost small" id="moreGo" type="button">Find another</button></div></div>
     <label for="merchant">Store</label><input id="merchant" placeholder="Store name">
     <label>Items</label><div id="items"></div>
     <button class="btn ghost small" id="addItem" type="button">+ Add item</button>

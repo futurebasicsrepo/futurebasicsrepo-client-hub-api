@@ -262,6 +262,13 @@ export function registerAgentApi(app, { spot, fulfiller, notifier, flights, env,
       const source = b.url || b.text;
       if (!source) throw new CartError('Give items, a url, or a text description');
       const draft = await capture.text(String(source), { sizes: capture.sizesOf?.(req.spotUserId) || '' });
+      // Never make an ask for something the store shows as sold out.
+      if (draft.sold_out) {
+        const it = draft.items[0];
+        const err = new CartError(`${it.title} is sold out at ${draft.merchant?.name || 'the store'}${draft.tried?.length > 1 ? ' (and so was everything else Spot found)' : ''}. Ask your user what else would work, or search for another and pass items.`, 422);
+        err.draft = { merchant: draft.merchant, items: draft.items };
+        throw err;
+      }
       merchant = merchant || draft.merchant;
       items = draft.items;
       extras = extras || draft.extras_cents || 0;

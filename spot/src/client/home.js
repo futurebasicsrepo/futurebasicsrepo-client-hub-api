@@ -38,7 +38,10 @@
 
   let me = load('spot:me', {});
   let contacts = load('spot:contacts', []);
-  let draft = null; // { merchant, items, extras_cents, note }
+  let draft = null; // { merchant, items, extras_cents, note, source, sold_out, in_stock }
+  // What they asked for, and the product links already shown, so "find
+  // another" looks for something new.
+  let ask = { text: '', avoid: [] };
   let made = null; // { token, key, link, manage, rev }
   let image = null; // { data, media_type, name }
   // Carts from other stores, waiting to go in the same link (a multi-store ask).
@@ -132,13 +135,14 @@
     say(image ? 'ooh, let me look at that…' : /https?:\/\//.test(text) ? 'grabbing it…' : 'looking it up…');
     try {
       const d = await api('/v1/capture', image ? { image } : { text });
-      draft = { merchant: d.merchant || { name: '', url: null }, items: d.items?.length ? d.items : [blank()], extras_cents: d.extras_cents || 0, note: '' };
+      ask = { text: image ? '' : text, avoid: [] };
+      draft = toDraft(d);
       made = null;
       const priced = draft.items.every((i) => i.price_cents > 0);
       // Sure of everything: make the link straight away. Anything the
       // server refuses (a gift card, over the cap, a store that doesn't take
       // direct checkout) opens the check step with the reason, to fix there.
-      if (!d.needs_review && priced && draft.merchant.name && me.name && !basket.length && me.settle !== 'direct') {
+      if (!d.needs_review && !d.sold_out && priced && draft.merchant.name && me.name && !basket.length && me.settle !== 'direct') {
         try {
           await create();
           ready();
@@ -165,6 +169,54 @@
 
   // ─── Check ────────────────────────────────────────────────────────────────
   const blank = () => ({ title: '', variant: null, quantity: 1, price_cents: null, image_url: null, url: null });
+  const toDraft = (d) => ({
+    merchant: d.merchant || { name: '', url: null },
+    items: d.items?.length ? d.items : [blank()],
+    extras_cents: d.extras_cents || 0,
+    note: '',
+    source: d.source,
+    sold_out: Boolean(d.sold_out),
+    in_stock: Boolean(d.in_stock),
+    tried: d.tried || [],
+  });
+
+  // "Not quite": what they say about this find, and everything shown so far,
+  // go back for another look (a sold-out find is never offered again).
+  async function findAnother() {
+    const more = $('#more').value.trim();
+    const top = draft.items[0] || {};
+    for (const u of [top.url, ...(draft.tried || [])]) if (u && !ask.avoid.includes(u)) ask.avoid.push(u);
+    ask.avoid = ask.avoid.slice(-10);
+    // A pasted link or a screenshot has no words to search with: use what it was.
+    const base = ask.text && !/https?:\/\//.test(ask.text) ? ask.text : [top.title, draft.merchant.name && 'from ' + draft.merchant.name].filter(Boolean).join(' ');
+    if (!base) return $('#more').focus();
+    const btn = $('#moreGo');
+    btn.disabled = true;
+    btn.textContent = 'looking…';
+    $('#checkErr').textContent = '';
+    say(draft.sold_out ? 'on it, finding one that’s in stock…' : 'on it, looking again…');
+    try {
+      const d = await api('/v1/capture', { text: base, more: more || (draft.sold_out ? 'that one is sold out, find one in stock' : 'show me a different one'), avoid: ask.avoid });
+      if (!ask.text) ask.text = base;
+      const keep = { note: $('#note').value.trim() };
+      draft = { ...toDraft(d), ...keep };
+      $('#more').value = '';
+      check(d.warning || '');
+    } catch (e) {
+      $('#checkErr').textContent = e.message;
+      say('hmm, that one got away from me');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Find another';
+    }
+  }
+  $('#moreGo').onclick = findAnother;
+  $('#more').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      findAnother();
+    }
+  });
 
   function check(msg) {
     $('#checkMsg').textContent = msg || '';
@@ -203,14 +255,19 @@
     $('#found').hidden = !(top && top.image_url);
     if (top && top.image_url) {
       const img = String(top.image_url).replace(/["'()\\]/g, (c) => '%' + c.charCodeAt(0).toString(16));
-      $('#found').innerHTML = '<div class="thumb" style="background-image:url(\'' + esc(img) + '\')"></div><div><div class="t">' + esc(top.title) + '</div><div class="v">' + esc([top.variant, draft.merchant.name].filter(Boolean).join(' · ')) + '</div>' +
+      $('#found').innerHTML = '<div class="thumb" style="background-image:url(\'' + esc(img) + '\')"></div><div><div class="t">' + (draft.sold_out ? '<span class="tag out">Sold out</span> ' : draft.in_stock ? '<span class="tag in">In stock</span> ' : '') + esc(top.title) + '</div><div class="v">' + esc([top.variant, draft.merchant.name].filter(Boolean).join(' · ')) + '</div>' +
         (top.url && /^https?:/i.test(top.url) ? '<a href="' + esc(top.url) + '" target="_blank" rel="noopener">See it at the store ↗</a>' : '') + '</div>';
     }
+    // Something found for them (or sold out): they can ask for another.
+    $('#refine').hidden = Boolean(made) || !(draft.sold_out || draft.source === 'lookup' || draft.source === 'text');
+    $('#refineQ').textContent = draft.sold_out ? 'Sold out. What else would work?' : 'Not quite? Tell me what to change.';
+    $('#moreGo').className = draft.sold_out ? 'btn small' : 'btn ghost small';
     $('#note').value = draft.note || '';
     $('#saveCheck').textContent = made ? 'Save changes' : 'Looks good →';
+    delete $('#saveCheck').dataset.sure;
     renderItems();
     show('check');
-    say(made ? 'what should I fix?' : 'quick check before we send it');
+    say(made ? 'what should I fix?' : draft.sold_out ? 'aw, that one’s sold out' : 'quick check before we send it');
   }
 
   function renderItems() {
@@ -232,6 +289,7 @@
     if (el.dataset.f === 'title') {
       it.title = el.value;
       it.variant = null;
+      draft.sold_out = false;
     }
     if (el.dataset.f === 'price') it.price_cents = toCents(el.value);
     if (el.dataset.f === 'qty') it.quantity = Math.max(1, parseInt(el.value) || 1);
@@ -283,6 +341,12 @@
     $('#checkErr').textContent = '';
     const name = $('#name').value.trim();
     if (!name) return ($('#checkErr').textContent = "what's your name? so they know who's asking"), $('#name').focus();
+    if (draft.sold_out && !made && !btn.dataset.sure) {
+      btn.dataset.sure = '1';
+      btn.textContent = 'Send anyway →';
+      return ($('#checkErr').textContent = 'The store shows this as sold out, so it may not be orderable. Find another above, or tap again to send it anyway.');
+    }
+    delete btn.dataset.sure;
     me = {
       name,
       email: $('#email').value.trim(),
