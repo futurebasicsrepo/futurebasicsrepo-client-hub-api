@@ -709,8 +709,8 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   // search finds them; Today shows the overdue task
   await page.fill('#q', `dana-${tag}`); await page.waitForFunction(t => document.querySelectorAll('#cList tr.click').length === 1 && document.querySelector('#cList').innerText.includes(t), `Dana ${tag}`, { timeout: 8000 });
   ok(true, 'searching narrows the list to them');
-  await page.fill('#q', ''); await page.click('.tab[data-t="today"]'); await page.waitForSelector('#t-today .item');
-  ok(await page.locator(`#t-today .item:has-text("Send the proposal") .chip.late`).count() === 1, 'the overdue task is on Today, marked overdue');
+  await page.fill('#q', ''); await page.click('.tab[data-t="today"]'); await page.waitForSelector('#t-today .item:has-text("Send the proposal")', { timeout: 8000 }); // the tab re-fetches; wait for the new task, not for the old render
+  ok(await page.locator(`#t-today .item:has-text("Send the proposal") .chip.late`).count() === 1, 'the overdue task is on Today, marked overdue', (await page.innerText('#t-today')).replace(/\s+/g, ' ').slice(0, 400));
   await page.check('#t-today input[data-done]:near(:text("Send the proposal"))').catch(() => {});
 
   // the board
