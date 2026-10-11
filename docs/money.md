@@ -15,6 +15,14 @@
 ## Data
 `money_invoices` and `money_payments` (see `src/db.js`). The rules are plain functions in `src/money.js` (`test/money.test.js`); the staff API is `src/money-routes.js`; the PDF is `src/money-pdf.js` (Space Grotesk and IBM Plex Mono through `src/brand-pdf.js`, the same as every other document). Platform health has a Money card (instructions saved, overdue, past invoices to settle).
 
+## Payment links on the invoice
+The kind of work decides how a client pays, and the link prints in the PDF's "How to pay" card (and can be copied from the invoice).
+- **Product development → Shopify.** Money makes a Shopify draft order for the amount due now (the balance after deposits, or the "amount due now" you set) and uses its checkout link. When the checkout is paid, a check every 30 minutes (or `POST /v1/money/shopify-links/sync`) records the payment once, as a Shopify payment on the invoice, and settles it.
+- **Software development → QuickBooks.** The invoice is made in QuickBooks first if it is not there yet (not emailed), then QuickBooks's own pay page for it (card and bank) is read back. QuickBooks only gives that page to an invoice with the client's email and online payments on. Payments made there come back through the QuickBooks payment read.
+- **Choosing the kind:** on the invoice, pick the **project** (a project knows whether it is product or software development, and sets the client) or choose the **kind of work** directly. With neither chosen there is no link.
+- Editing an invoice drops its Shopify link (the amount may have changed): make it again from the invoice. A paid or void invoice prints no link.
+- The QuickBooks email to the client, when you use "Create and email from QuickBooks", is QuickBooks's own design. The PDF from Money, the work console and the hub is the Future Basics one.
+
 ## QuickBooks Online
 Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danielle or Kyle only), **Test connection** (reads the company name, changes nothing), **Read payments now**, **Disconnect**.
 - **Railway variables:** `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENV` (`sandbox` or `production`; start with sandbox). Register the redirect URI `https://work.thefuturebasics.com/v1/money/quickbooks/callback` in the Intuit app. Tokens are saved sealed (AES-GCM) and refreshed automatically.

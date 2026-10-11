@@ -29,10 +29,10 @@ import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
 import { registerShopifyApp } from './shopifyapp.js';
-import { registerAccounts, sizesLine } from './accounts.js';
+import { needsSetup, registerAccounts, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
 import { agentCardPage } from './agentcard.js';
-import { accountPage, approverConfirmPage, signinPage } from './accountpage.js';
+import { accountPage, approverConfirmPage, setupPage, signinPage } from './accountpage.js';
 import { registerOAuth } from './oauth.js';
 import { registerMcpAuth } from './mcpauth.js';
 import { poppyJson } from './pap.js';
@@ -181,7 +181,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const captureUrl = capture.fromUrl || ((u) => captureFromUrl(u, { sign: signRequest }));
   const aiHooks = { onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err) };
   const captureShot = capture.fromScreenshot || ((img) => captureFromScreenshot(img, aiHooks));
-  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, ...aiHooks }));
+  const captureText = capture.fromText || ((t, o = {}) => captureFromText(t, { fromUrl: captureUrl, sizes: o.sizes, more: o.more, avoid: o.avoid, ...aiHooks }));
   // A signed-in person's saved sizes, for lookups that don't name one.
   const sizesOf = (userId) => sizesLine(userId ? db.users.byId(userId)?.sizes : null);
 
@@ -292,9 +292,19 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // The SMS opt-in page carriers review: the text sign-in, open and readable.
   app.get('/texts', async (req, reply) => html(reply, signinPage({ origin: urlFor(req, ''), providers: oauth.available, texts: true })));
   app.get('/account', async (req, reply) => {
-    if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/account');
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.redirect('/signin?next=/account');
     reply.header('cache-control', 'no-store');
+    // Just signed in, nothing filled in yet: a few questions first. Only the
+    // plain landing; a sign-in headed somewhere else (a pay link, an AI's
+    // Allow) goes straight there.
+    if (req.query.skip_setup === undefined && req.query.add === undefined && needsSetup(db.users.byId(uid))) return reply.redirect('/setup');
     return html(reply, accountPage({ origin: urlFor(req, ''), provider: provider.name }));
+  });
+  app.get('/setup', async (req, reply) => {
+    if (!accounts.userIdOf(req)) return reply.redirect('/signin?next=/setup');
+    reply.header('cache-control', 'no-store');
+    return html(reply, setupPage({ origin: urlFor(req, '') }));
   });
   app.get('/terms', async (req, reply) => html(reply, termsPage({ origin: urlFor(req, ''), env })));
   app.get('/privacy', async (req, reply) => html(reply, privacyPage({ origin: urlFor(req, ''), env })));
@@ -365,7 +375,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // The logo, for app directories and partner portals.
   app.get('/logo.svg', async (req, reply) => reply.type('image/svg+xml').header('cache-control', cacheDay).send(appIconSvg({ bg: null, fill: 1 })));
   app.get('/logo.png', async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(1200)));
-  app.get('/robots.txt', async (req, reply) => reply.type('text/plain').header('cache-control', cacheDay).send(`User-agent: *\nDisallow: /c/\nDisallow: /b/\nDisallow: /account\nDisallow: /admin\nDisallow: /v1/\nDisallow: /oauth/\nDisallow: /approvals/\nAllow: /\n`));
+  app.get('/robots.txt', async (req, reply) => reply.type('text/plain').header('cache-control', cacheDay).send(`User-agent: *\nDisallow: /c/\nDisallow: /b/\nDisallow: /account\nDisallow: /setup\nDisallow: /admin\nDisallow: /v1/\nDisallow: /oauth/\nDisallow: /approvals/\nAllow: /\n`));
   // Spot's crawler names this page in its user agent.
   app.get('/for-stores', async (req, reply) => reply.redirect('/#stores', 302));
 
@@ -485,7 +495,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.capture(req);
     const b = req.body || {};
     if (b.url) return captureUrl(String(b.url));
-    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)) });
+    // A follow-up ("find another", "in blue") carries what they said and the links already shown.
+    if (b.text) return captureText(String(b.text), { sizes: sizesOf(accounts.userIdOf(req)), more: typeof b.more === 'string' ? b.more : '', avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [] });
     if (b.image?.data) {
       if (!process.env.ANTHROPIC_API_KEY && !capture.fromScreenshot) {
         throw new CaptureError('Screenshot capture is not configured on this server — paste a link or enter items');

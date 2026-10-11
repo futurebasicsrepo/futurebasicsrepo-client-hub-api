@@ -53,7 +53,7 @@ test('staff see Admin and Health on their account page (on any device); everyone
   const kyle = await signIn('kyle@thefuturebasics.com');
   const me = (await call('GET', '/v1/me', undefined, kyle)).body;
   assert.deepEqual(me.staff, { admin_url: '/admin', health_url: '/admin/health' });
-  const page = (await call('GET', '/account', undefined, kyle)).body;
+  const page = (await call('GET', '/account?skip_setup=1', undefined, kyle)).body;
   assert.match(page, /id="staffBar"[^>]*hidden/, 'shown by the page only when /v1/me says staff');
   assert.match(page, /localStorage\.setItem\('spot:staff','1'\)/, 'remembered for the site menu');
   const home = (await call('GET', '/', undefined, kyle)).body;

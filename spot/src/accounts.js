@@ -5,7 +5,7 @@
 //   POST /v1/auth/verify  { email, code }   → session cookie (30 days)
 //   POST /v1/auth/logout
 //   GET  /v1/me                             → profile, Spots, "ready for you", keys
-//   POST /v1/me           { name, shipping, travelers, venmo, cashtag, sizes }
+//   POST /v1/me           { name, shipping, travelers, venmo, cashtag, sizes, setup_done, setup_skipped }
 //   POST /v1/me/claim     { links: [{ token, k }] }  Spots made before signing in
 //   POST /v1/me/keys      { agent_name }    → an API key tied to this account
 //   POST /v1/me/keys/:name/revoke
@@ -185,14 +185,17 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     const user = me(req);
     reply.header('cache-control', 'no-store');
     const carts = db.users.carts(user.id, 100).map((c) => ({ ...ownerCart(c), created_at: c.created_at, manage_url: urlFor(req, `/c/${c.token}/manage`) }));
+    const keys = keysOf(user.id);
     return {
       user: profile(user),
       // Open asks for you to finish, plus any your AI built (even ones meant for someone else to pay).
       ready: carts.filter((c) => c.status === 'open' && (c.for === 'self' || c.built_by)),
       carts,
-      keys: keysOf(user.id),
+      keys,
       approver: approverView(user.id),
       funding: fundingView(db, user.id),
+      // The first-sign-in setup (/setup): whether it's finished, and which of its steps are filled in.
+      setup: { done: Boolean(user.setup_at), skipped: Boolean(user.setup_skipped), needed: needsSetup(user), name: Boolean(user.name), shipping: Boolean(user.shipping), sizes: Boolean(user.sizes), ai: keys.some((k) => !k.revoked), card: Boolean(fundingOf(db, user.id)) },
       passkeys: db.passkeys.ofUser(user.id),
       linked: db.identities.providersOf(user.id).filter((p) => p !== 'phone'),
       mcp_url: urlFor(req, '/mcp'),
@@ -210,6 +213,11 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
     if (b.shipping !== undefined) next.shipping = b.shipping ? validateShipping({ ...b.shipping, email: b.shipping.email || user.email || '' }) : null;
     if (b.travelers !== undefined) next.travelers = cleanTravelers(b.travelers);
     if (b.sizes !== undefined) next.sizes = cleanSizes(b.sizes);
+    // Setup finished (the last screen) or skipped; either way /account stops sending you to /setup.
+    if (b.setup_done === true) {
+      next.setup_at = next.setup_at || Date.now();
+      next.setup_skipped = b.setup_skipped === true;
+    }
     // Where Spot sends money for stores it can't buy from (Amazon).
     for (const [k, prefix, what] of [['venmo', '@', 'Venmo handle'], ['cashtag', '$', 'Cash App $cashtag']]) {
       if (b[k] === undefined) continue;
@@ -393,7 +401,13 @@ function profile(u) {
 
 // The saved profile, as stored (users.doc).
 function docOf(u) {
-  return { phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [], venmo: u.venmo || null, cashtag: u.cashtag || null, sizes: u.sizes || null };
+  return { phone: u.phone || null, name: u.name || null, shipping: u.shipping || null, travelers: u.travelers || [], venmo: u.venmo || null, cashtag: u.cashtag || null, sizes: u.sizes || null, setup_at: u.setup_at || null, setup_skipped: Boolean(u.setup_skipped) };
+}
+
+// Someone new lands on /setup after signing in. Accounts that already have
+// a name and an address never do, and nobody does twice.
+export function needsSetup(u) {
+  return Boolean(u) && !u.setup_at && !(u.name && u.shipping);
 }
 
 // Clothing and shoe sizes, so a lookup (or your AI) picks the right one

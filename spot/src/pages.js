@@ -52,7 +52,23 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .err{color:#c62828;font-weight:600;margin-top:10px;min-height:1em}
 .edit-item{display:grid;grid-template-columns:1fr 64px 34px;gap:6px;align-items:center;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
 .edit-item [data-f=title]{grid-column:1/-1}
-.found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}.found .thumb{width:72px;height:72px}.found a{font-size:13px;font-weight:600;color:var(--muted)}
+.found{border:1px solid var(--line);border-radius:14px;padding:10px;margin:4px 0 6px}
+.turn{margin:6px 0 18px}.me{margin:0 0 10px auto;width:fit-content;max-width:80%;background:var(--spot);color:var(--spot-ink);font-weight:600;padding:9px 14px;border-radius:18px 18px 4px 18px}
+.shelf{position:relative}.rail{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 16px;padding:2px 16px 10px;margin:0 -16px;scrollbar-width:none;-webkit-overflow-scrolling:touch}.rail::-webkit-scrollbar{display:none}
+.spotsay{display:flex;align-items:flex-end;gap:8px;margin:0 0 10px}.spotsay i{width:30px;height:30px;border-radius:50%;flex:none;background:var(--spot) 50% 46%/116% no-repeat}.spotsay span{background:var(--card);border:1px solid var(--line);padding:8px 13px;border-radius:18px 18px 18px 4px;font-weight:600;font-size:15px}
+.pc{flex:0 0 68%;scroll-snap-align:start;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.pc.top{border:2px solid var(--spot)}.pc .badge{position:absolute;top:10px;left:10px;z-index:1;background:var(--spot);color:var(--spot-ink);font-size:12px;font-weight:800;padding:4px 9px;border-radius:999px}
+.pc .ph{aspect-ratio:1/1;background:#fff center/contain no-repeat;border-bottom:1px solid var(--line);display:grid;place-items:center;font-size:42px}
+.pc .pb{padding:12px 14px 14px;display:flex;flex-direction:column;gap:3px;flex:1}.pc .st{font-size:12px;font-weight:700;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pc .t{font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pc .v{font-size:13px;color:var(--muted)}.pc .why{font-size:13px;color:var(--muted);font-style:italic}
+.pc .pr{font-size:20px;font-weight:800;margin-top:auto;padding-top:6px}.pc .btn{margin-top:8px;padding:12px 14px;font-size:16px}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
+.pc.sk .ph,.pc.sk .ln{background:linear-gradient(90deg,var(--line),color-mix(in srgb,var(--line) 40%,transparent),var(--line));background-size:200% 100%;animation:sk 1.2s linear infinite}.pc.sk .ln{height:12px;border-radius:6px;margin:6px 0}@keyframes sk{to{background-position:-200% 0}}
+.railnav{display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:700;color:var(--muted)}.railnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px;cursor:pointer}.railnav button:disabled{opacity:.35;cursor:default}
+.askbar{display:flex;gap:8px;position:sticky;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.08)}.askbar input{flex:1;min-width:0;border:0;background:transparent;margin:0;box-shadow:none}.askbar .btn{width:auto;margin:0;flex:none;padding:10px 16px}
+.picknav{display:flex;justify-content:space-between;margin-top:12px}.backpicks{margin:0 0 8px;font-weight:700}
+@media (min-width:600px){.pc{flex-basis:46%}}
+@media (min-width:760px){.shelf{width:min(980px,calc(100vw - 48px));left:50%;transform:translateX(-50%)}.rail{margin:0;padding:2px 0 10px;scroll-padding:0}.pc{flex-basis:calc((100% - 36px) / 3.25)}}
+@media (prefers-reduced-motion:reduce){.pc.sk .ph,.pc.sk .ln{animation:none}.rail{scroll-behavior:auto}}.refine{margin:2px 0 10px}.refine p{margin:0 0 6px;font-weight:600}.refrow{display:flex;gap:8px}.refrow input{flex:1;min-width:0;margin:0}.refrow .btn{flex:none;white-space:nowrap;margin:0}.tag{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:2px 7px;vertical-align:1px}.tag.out{background:color-mix(in srgb,#d92d20 16%,transparent);color:#d92d20}.tag.in{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}.found .thumb{width:72px;height:72px}.found a{font-size:13px;font-weight:600;color:var(--muted)}
 .edit-item input{padding:10px}
 .x{border:0;background:transparent;font-size:20px;color:var(--muted);cursor:pointer}
 .linkbox{display:flex;gap:8px;align-items:center;background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;word-break:break-all;font-weight:600}
@@ -134,10 +150,18 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
   <p class="hint">Someone taps your link and covers it, and the store gets the order. You can put carts from up to 5 stores in one link.</p>
 </section>
 
+<section id="picks" hidden>
+  <div id="thread" aria-live="polite" data-face="${assetUrl('spot-face.webp')}"></div>
+  <form class="askbar" id="askMore"><input id="more2" maxlength="300" enterkeyhint="send" placeholder="cheaper? in green? size 3T?" aria-label="Ask for something else"><button class="btn small" id="askGo">Ask</button></form>
+  <p class="small muted picknav"><button class="textlink" id="picksOver" type="button">start over</button><button class="textlink" id="picksManual" type="button">type it in myself</button></p>
+</section>
+
 <section id="check" hidden>
   <div class="card">
     <p class="small" id="checkMsg" style="margin:0 0 6px;color:var(--warn)"></p>
     <div class="item found" id="found" hidden></div>
+    <button class="textlink backpicks" id="backPicks" type="button" hidden>← Back to the picks</button>
+    <div class="refine" id="refine" hidden><p class="small" id="refineQ"></p><div class="refrow"><input id="more" maxlength="300" enterkeyhint="search" placeholder="e.g. green, size 3T" aria-label="What should change?"><button class="btn ghost small" id="moreGo" type="button">Find another</button></div></div>
     <label for="merchant">Store</label><input id="merchant" placeholder="Store name">
     <label>Items</label><div id="items"></div>
     <button class="btn ghost small" id="addItem" type="button">+ Add item</button>

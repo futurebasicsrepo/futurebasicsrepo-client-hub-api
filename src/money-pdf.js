@@ -71,7 +71,7 @@ export function moneyInvoicePdf(inv, settings = {}, state = {}) {
     doc.roundedRect(L, top, cardW, ch, 12).lineWidth(1).strokeColor(LINE).stroke();
     doc.fillColor(DIM).font('MONO').fontSize(8).text('HOW TO PAY', L + 18, top + 16, { characterSpacing: 1.2, lineBreak: false });
     let cy = top + 32;
-    if (inv.pay_url) { doc.fillColor(INK).font('SG-M').fontSize(10.5).text('Pay securely online:', L + 18, cy, { width: cardW - 36 }); doc.fillColor(GREEN).font('MONO-M').fontSize(8).text(safe(inv.pay_url), L + 18, doc.y + 2, { width: cardW - 36, link: inv.pay_url, underline: true }); cy = doc.y + 8; }
+    if (inv.pay_url) { doc.fillColor(INK).font('SG-M').fontSize(10.5).text(inv.pay_channel === 'quickbooks' ? 'Pay by card or bank transfer online:' : 'Pay by card online:', L + 18, cy, { width: cardW - 36 }); doc.fillColor(GREEN).font('MONO-M').fontSize(8).text(safe(inv.pay_url), L + 18, doc.y + 2, { width: cardW - 36, link: inv.pay_url, underline: true }); cy = doc.y + 8; }
     if (body) { doc.fillColor(INK).font('SG').fontSize(9.5).text(block(body), L + 18, cy, { width: cardW - 36, lineGap: 2 }); }
   }
   y = Math.max(by + boxH, doc.y) + 26;

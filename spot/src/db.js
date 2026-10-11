@@ -402,10 +402,10 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
         const from = userRow(q.userById.get(fromId));
         const into = userRow(q.userById.get(intoId));
         if (!from || !into || fromId === intoId) return;
-        const pick = ({ phone, name, shipping, travelers, venmo, cashtag, sizes }) => ({ phone: phone || null, name: name || null, shipping: shipping || null, travelers: travelers || [], venmo: venmo || null, cashtag: cashtag || null, sizes: sizes || null });
+        const pick = ({ phone, name, shipping, travelers, venmo, cashtag, sizes, setup_at, setup_skipped }) => ({ phone: phone || null, name: name || null, shipping: shipping || null, travelers: travelers || [], venmo: venmo || null, cashtag: cashtag || null, sizes: sizes || null, setup_at: setup_at || null, setup_skipped: Boolean(setup_skipped) });
         const a = pick(into);
         const b = pick(from);
-        const doc = { phone: a.phone || b.phone, name: a.name || b.name, shipping: a.shipping || b.shipping, travelers: a.travelers.length ? a.travelers : b.travelers, venmo: a.venmo || b.venmo, cashtag: a.cashtag || b.cashtag, sizes: a.sizes || b.sizes };
+        const doc = { phone: a.phone || b.phone, name: a.name || b.name, shipping: a.shipping || b.shipping, travelers: a.travelers.length ? a.travelers : b.travelers, venmo: a.venmo || b.venmo, cashtag: a.cashtag || b.cashtag, sizes: a.sizes || b.sizes, setup_at: a.setup_at || b.setup_at, setup_skipped: a.setup_at ? a.setup_skipped : b.setup_skipped };
         db.exec('BEGIN');
         try {
           db.prepare("UPDATE carts SET doc = json_set(doc, '$.user_id', ?) WHERE json_extract(doc, '$.user_id') = ?").run(intoId, fromId);

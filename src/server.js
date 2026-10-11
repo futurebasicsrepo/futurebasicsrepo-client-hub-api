@@ -640,7 +640,20 @@ registerProtoRoutes(app, { pool, authenticate, adminOnly, throttle, env: process
   crawlOpts: process.env.PROTOTYPE_TEST_ORIGIN ? { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } } : {},
   edit: process.env.PROTOTYPE_TEST_EDIT ? stubEdit : undefined });
 registerIntelRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, throttle, log: app.log });
-const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log });
+const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, tokenSeal: sealer(process.env), stateSecret: process.env.JWT_SECRET || 'dev', workUrl: workHubUrl, log: app.log,
+  // product development is paid through a Shopify checkout (a draft order for the amount due), see money-routes.js
+  shopifyInvoiceLink: async ({ title, amountCents, currency, email, note, number }) => {
+    if (!shopifyConfigured()) throw new Error('Shopify is not connected: product development is paid through a Shopify link');
+    const input = { lineItems: [{ title, quantity: 1, requiresShipping: false, taxable: false, originalUnitPriceWithCurrency: { amount: (Number(amountCents) / 100).toFixed(2), currencyCode: currency || 'USD' } }], email: email || undefined, note, tags: ['future-basics-money', `invoice-${String(number).replace(/[^A-Za-z0-9_-]/g, '-')}`], visibleToCustomer: true };
+    const draft = requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
+    return { url: draft.invoiceUrl, draftId: draft.id, name: draft.name };
+  },
+  shopifyDraftStatus: async id => {
+    if (!shopifyConfigured()) return null;
+    const d = (await shopifyGraphql(DRAFT_ORDER_STATUS, { id })).draftOrder; if (!d) return null;
+    const o = d.order, paid = o?.displayFinancialStatus === 'PAID' || d.status === 'COMPLETED';
+    return { paid, amountCents: Math.round(Number((o || d).totalPriceSet?.shopMoney?.amount || 0) * 100), paidAt: d.updatedAt, orderName: o?.name || d.name };
+  } });
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
 app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./prototypes.html', import.meta.url), 'utf8')));
@@ -5682,6 +5695,7 @@ const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);
 // The CRM stays in step with the hub: clients, leads and the people who sign in for them are contacts, tagged client / lead / tech-pack.
 jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(pool,{sendToContact:salesEmail.sendToContact,checkContact:salesEmail.checkContact},{log:app.log});return r.steps||0}, { delay: 45 * 1000 });
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
+jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');
 jobEvery('CRM sync from the hub', 60 * 60 * 1000, async()=>{const r=await syncHubContacts(pool);return r.created+r.updated}, { delay: 90 * 1000 });

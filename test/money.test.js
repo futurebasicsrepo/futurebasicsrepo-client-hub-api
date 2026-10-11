@@ -76,3 +76,13 @@ test('a CSV can carry tax, a deposit already paid, and the amount due now', () =
   assert.deepEqual([a.taxCents, a.totalCents, a.creditsCents, a.balanceCents, a.dueNowCents, a.dueNowLabel, a.credits[0].label], [560950, 7060950, 3530475, 3530475, 3530475, 'Final Payment Due', 'Deposit Paid 3/9']);
   assert.deepEqual([b.taxRatePct, b.chargeTax, b.taxCents, b.totalCents, b.dueNowCents, b.dueNowLabel], [8.63, false, 0, 2900000, 1450000, 'Due Now']);
 });
+
+test('an invoice keeps its kind of work and project (they decide the payment link), and ignores what is not valid', () => {
+  const base = { company: 'Acme', lines: [{ description: 'Work', qty: 1, rate: 100 }] };
+  assert.equal(cleanInvoice({ ...base, workKind: 'software' }).value.workKind, 'software');
+  assert.equal(cleanInvoice({ ...base, workKind: 'product' }).value.workKind, 'product');
+  assert.equal(cleanInvoice({ ...base, workKind: 'hardware' }).value.workKind, '');
+  assert.equal(cleanInvoice(base).value.workKind, '');
+  assert.equal(cleanInvoice({ ...base, projectId: '0a1b2c3d-0000-4000-8000-000000000000' }).value.projectId, '0a1b2c3d-0000-4000-8000-000000000000');
+  assert.equal(cleanInvoice({ ...base, projectId: 'not-an-id' }).value.projectId, null);
+});
