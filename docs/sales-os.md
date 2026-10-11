@@ -49,9 +49,30 @@ Resend is only the pipe. Who may be emailed, what is said, what is remembered an
 
 Webhooks are checked against the signing secret and refused if the signature is wrong or older than five minutes. If Resend cannot give us a received message's body yet, we answer with an error so it tries again.
 
+## Automations (phase 3)
+Sales page → **Automations** (menu: Customers → Automations). An automation is a **trigger** and a list of **steps**, run once per person.
+
+**Triggers:** someone looks at a build; someone opens a live build; a new contact is added (optionally "from website", etc.); a tag is added; a deal moves to a stage; a contact writes back; an open deal has had nothing for N days.
+Contacts brought in by an import or the hourly hub sync do not start "new contact" automations (so a bulk import never mails anyone); a tag the sync adds (`client`, `tech-pack`) does start "tag is added" ones.
+
+**Steps:** *Wait* (hours or days), *Task* (a task for staff, with `{{first_name}}`, `{{name}}`, `{{company}}`, `{{build}}` filled in), *Tag* (add or remove), *Email* (a template from Email → Templates).
+
+**Starter automations** are made switched off: follow up after someone looks at a build; someone opened a live build; a deal has gone quiet (7 days); new website lead. Every automation starts off. **Try on a contact** shows what each step would do for that person right now without doing it.
+
+**What keeps it safe**
+- An email step goes through exactly the same rules as email written by hand: a relationship (they are a client, looked at a build, were invited, wrote or met with us), never to anyone who unsubscribed, bounced or complained, the mailing address and from-address are set, and the daily limit holds. It is never "confirmed" on staff's behalf. For someone nothing shows we know, the step is skipped and **you get a task** to write yourself; for someone who opted out it is skipped quietly.
+- **Working hours:** automatic email goes out only inside a window (default 9am to 6pm US Eastern, weekdays; set in Working hours, in UTC). Outside it, the step waits for the next window; at the daily limit it waits for tomorrow. Tasks and tags are not held back. If email is not set up yet, people wait rather than lose their step.
+- **Stop if they write back** (on by default): a reply, an opt-out (link, reply or bounce), or marking them "do not email" cancels everything waiting for that person. Staff can also stop one person partway from their card.
+- **Once per person** unless you choose "again after N days".
+- A step is written to the log before it is done, so a crash can lose a step but never repeat one (no double emails).
+- An automation that takes in more than 40 people within an hour (an unusual trigger, or a runaway tag) **switches itself off** with a note. Staff tagging a list on purpose is not counted.
+- **Working hours → Pause every automation** stops everything at once; people part way stay where they are.
+- Editing an automation changes what people part way through do next (they keep their place by step number); switching one off holds them until it is on again; deleting one stops them where they are and leaves every record alone.
+
+**How it runs:** a job every minute does what is due ("Run what is due now" does the same on demand). It is listed with the other background jobs on Platform health.
+
 ## Next phases
 
-1. ~~Email~~ (done, above).
-2. **Automations**: triggers (viewed a build, clicked through, replied, stage changed, silent for N days) to actions (send a template, create a task, move a stage, notify), with stop conditions and send caps. The follow-up task above is the first, hard-wired example.
-3. **Chat** on the public site and showcase, handing to a person.
-4. **Opportunity finder and press comms.**
+1. ~~Email~~ and ~~Automations~~ (done, above). Possible next steps for automations: a "move the deal" step, notifying staff in chat/email, and branching on a reply or a click.
+2. **Chat** on the public site and showcase, handing to a person.
+3. **Opportunity finder and press comms.**

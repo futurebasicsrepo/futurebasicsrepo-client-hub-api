@@ -1092,4 +1092,138 @@ await journey('J113', 'Sales email: who may be emailed, what goes out (footer, a
   } finally { await new Promise(r => resend.close(r)); }
 });
 
+await journey('J119', 'Sales automations: a trigger starts them for the right person once, steps run in order (task, tag, wait, email), email goes only to people who know us and never twice, a reply or an opt-out stops what is waiting, working hours and the pause switch hold everything back, and only staff can see any of it', async () => {
+  const http = await import('node:http'), { createHmac } = await import('node:crypto');
+  const mock = { sent: [], seenKeys: new Map(), received: new Map(), n: 0 };
+  const resend = http.createServer((req, res) => {
+    const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+      const send = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+      const u = new URL(req.url, 'http://x'); if (req.headers.authorization !== 'Bearer test-key') return send(401, { message: 'bad key' });
+      if (req.method === 'POST' && u.pathname === '/emails') { const body = JSON.parse(Buffer.concat(chunks).toString() || '{}'), key = req.headers['idempotency-key']; if (key && mock.seenKeys.has(key)) return send(200, { id: mock.seenKeys.get(key) }); const id = `re_auto_${stamp}_${++mock.n}`; if (key) mock.seenKeys.set(key, id); mock.sent.push({ id, body }); return send(200, { id }); }
+      const m = /^\/emails\/receiving\/(.+)$/.exec(u.pathname); if (req.method === 'GET' && m) { const id = decodeURIComponent(m[1]); return mock.received.has(id) ? send(200, mock.received.get(id)) : send(404, {}); }
+      send(404, {});
+    });
+  });
+  await new Promise(r => resend.listen(3133, '127.0.0.1', r));
+  try {
+    const room = await newRoom('119', { wait: false }), tag = `a${stamp}`;
+    const admin = await forge({ sub: sql(`select id from users where lower(email)='${room.email}'`), clientId: sql(`select client_id from users where lower(email)='${room.email}'`), role: 'admin', email: 'kyle@thefuturebasics.com' });
+    const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+    const hook = async evt => { const raw = JSON.stringify(evt), id = `msg_${Math.random().toString(36).slice(2)}`, ts = String(Math.floor(Date.now() / 1000)); const sig = 'v1,' + createHmac('sha256', Buffer.from('test-secret')).update(`${id}.${ts}.${raw}`).digest('base64'); return (await fetch(BASE + '/webhooks/resend', { method: 'POST', headers: { 'content-type': 'application/json', 'svix-id': id, 'svix-timestamp': ts, 'svix-signature': sig }, body: raw })).status; };
+    const contactByEmail = async email => (await S(`/contacts?q=${encodeURIComponent(email)}`)).json.contacts.find(c => c.email === email);
+    const detail = async id => (await S(`/contacts/${id}`)).json;
+    const process = async () => (await S('/automations/process', { method: 'POST', body: {} })).json;
+    const sentTo = email => mock.sent.filter(m => m.body.to?.[0] === email);
+    const runsOf = async id => (await S(`/contacts/${id}/runs`)).json.runs;
+    const flow = `flow-${tag}`;
+
+    // who can see it, and what ships switched off
+    ok((await call('/v1/sales/automations', { token: room.token })).status === 403 && (await call('/v1/sales/automations')).status === 401, 'clients and strangers cannot see automations');
+    const first = (await S('/automations')).json; ok(first.automations.length >= 4 && first.automations.every(a => !a.enabled) && first.templates.length >= 4 && first.triggers.length === 7, 'the starter automations are there and every one is switched off', first.automations.map(a => a.name));
+    ok(first.automations.every(a => a.triggerText && a.stepText.length), 'each comes with its trigger and steps in plain words');
+    await S('/automations/settings', { method: 'PUT', body: { startHour: 0, endHour: 24, weekdaysOnly: false, paused: false } });
+    ok((await S('/automations/settings', { method: 'PUT', body: { startHour: 20, endHour: 10 } })).status === 422, 'working hours that end before they start are refused');
+
+    // making one
+    const tpl = (await S('/templates', { body: { name: `Hello ${tag}`, subject: 'Hello {{first_name|there}}', body: 'Hi {{first_name|there}}, thanks for looking. {{sender}}' } })).json.id;
+    const steps = [{ kind: 'task', title: 'Say hi to {{first_name|them}}', dueDays: 0 }, { kind: 'tag', add: 'Welcomed' }, { kind: 'wait', days: 1 }, { kind: 'email', templateId: tpl }];
+    const make = (o = {}) => S('/automations', { body: { name: `Flow ${tag}`, trigger: { type: 'tag_added', tag: flow }, steps, stopOnReply: true, ...o } });
+    ok((await make({ steps: [] })).status === 422 && (await make({ steps: [{ kind: 'task', title: 'x' }, { kind: 'wait', days: 1 }] })).status === 422 && (await make({ steps: [{ kind: 'email', templateId: '00000000-0000-4000-8000-000000000000' }] })).status === 422 && (await make({ trigger: { type: 'tag_added' } })).status === 422, 'no steps, ending on a wait, a deleted template or a trigger with no tag are all refused');
+    const made = await make(); ok(made.status === 201, 'a good one is made', made.json);
+    const aid = made.json.id, mine = async () => (await S('/automations')).json.automations.find(a => a.id === aid);
+    ok((await mine()).enabled === false, 'and it starts switched off');
+
+    // people
+    const invited = async (label) => { const e = `${label}-${tag}@auto.test`; await call('/v1/admin/builds/invites', { token: admin, body: { emails: e, days: 7, note: 'Met at the expo', send: false } }); const c = await contactByEmail(e); await S(`/contacts/${c.id}`, { method: 'PUT', body: { name: `${label[0].toUpperCase() + label.slice(1)} Person` } }); return c; };
+    const A = await invited('ann'), B = await S('/contacts', { body: { name: 'Bob Stranger', email: `bob-${tag}@auto.test`, source: 'manual' } }), C = await invited('cat'), D = await invited('dan');
+    const tagIt = (id, tags = [flow]) => S(`/contacts/${id}`, { method: 'PUT', body: { tags } });
+    await tagIt(A.id); await process();
+    ok((await runsOf(A.id)).length === 0, 'switched off, tagging someone starts nothing');
+
+    // switching it on
+    ok((await S(`/automations/${aid}`, { method: 'PUT', body: { enabled: true } })).status === 200 && (await mine()).enabled, 'it can be switched on');
+    await tagIt(A.id, []); await tagIt(A.id); // tag removed and added again
+    let ra = await runsOf(A.id); ok(ra.length === 1 && ra[0].status === 'active', 'adding the tag starts it for that person', ra);
+    ok((await detail(A.id)).activities.some(a => /Started the automation “Flow/.test(a.text)), 'and says so on their timeline');
+    await process();
+    let da = await detail(A.id);
+    ok(da.tasks.some(t => /Say hi to Ann/.test(t.title)) && da.contact.tags.includes('welcomed'), 'the first steps run: a task made with their first name in it, a tag added');
+    ra = await runsOf(A.id); ok(ra[0].status === 'active' && ra[0].step === 3 && new Date(ra[0].next_at) > new Date(Date.now() + 20 * 3600_000), 'then it waits a day', ra[0]);
+    ok(sentTo(A.email).length === 0, 'nothing has been emailed yet');
+    await process(); ok(sentTo(A.email).length === 0 && (await runsOf(A.id))[0].step === 3, 'running it again before the day is up does nothing');
+    sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${A.id}' and status='active'`); await process();
+    const mail = sentTo(A.email); ok(mail.length === 1 && /Hello Ann/.test(mail[0].body.subject) && /Unsubscribe/i.test(mail[0].body.text) && mail[0].body.headers?.['List-Unsubscribe'], 'after the day the email goes: with their name, the footer and a one-click unsubscribe');
+    ra = await runsOf(A.id); ok(ra[0].status === 'done', 'and the run is finished');
+    await process(); await process(); ok(sentTo(A.email).length === 1, 'running the job again never sends it twice');
+    ok((await detail(A.id)).activities.some(a => a.kind === 'email_out' && /Hello Ann/.test(a.text)), 'the email is on the timeline', sql(`select string_agg(kind||':'||outcome||':'||detail, ' | ') from sales_run_log l join sales_runs r on r.id=l.run_id where r.contact_id='${A.id}'`) + ' / ' + sql(`select string_agg(status||':'||coalesce(error,''), ' | ') from sales_emails where contact_id='${A.id}'`));
+    await tagIt(A.id, []); await tagIt(A.id); ok((await runsOf(A.id)).length === 1, 'adding the same tag again does not run it again (once per person)');
+    const stats = await mine(); ok(stats.done === 1 && stats.emails === 1, 'the automation counts who finished and how many emails went', { a: stats.active, d: stats.done, s: stats.stopped, e: stats.emails });
+
+    // someone who does not know us
+    await tagIt(B.json.id); await process();
+    sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${B.json.id}' and status='active'`); await process();
+    ok(sentTo(`bob-${tag}@auto.test`).length === 0 && (await detail(B.json.id)).tasks.some(t => /Write to this contact yourself/.test(t.title)), 'a contact nothing shows we know is not emailed; staff get a task instead', (await detail(B.json.id)).tasks);
+    await process(); ok(sentTo(`bob-${tag}@auto.test`).length === 0, 'and still no email on the next pass');
+
+    // someone who opted out
+    await S(`/contacts/${C.id}/unsubscribe`, { method: 'PUT', body: { unsubscribed: true } });
+    await tagIt(C.id); await process(); sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${C.id}' and status='active'`); await process();
+    ok(sentTo(C.email).length === 0, 'someone marked as not to be emailed never gets the email');
+
+    // a reply stops what is waiting; so does an opt-out by link
+    await tagIt(D.id); await process();
+    ok((await runsOf(D.id))[0].status === 'active', 'setup: Dan is waiting a day');
+    const rid = 'rcv_' + tag; mock.received.set(rid, { id: rid, subject: 'Re: hello', text: 'Yes please, call me.', headers: {} });
+    ok(await hook({ type: 'email.received', data: { email_id: rid, from: `Dan Person <${D.email}>`, to: ['kyle@mail.thefuturebasics.com'], subject: 'Re: hello' } }) === 200, 'a reply comes in');
+    const rd = await runsOf(D.id); ok(rd[0].status === 'stopped' && /wrote back/.test(rd[0].stop_reason), 'it stops what was waiting to write to them', rd[0]);
+    sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${D.id}'`); await process(); ok(sentTo(D.email).length === 0, 'and nothing is sent to them');
+
+    // working hours and the pause switch
+    const E = await invited('eve'); await tagIt(E.id); await process(); sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${E.id}' and status='active'`);
+    await S('/automations/settings', { method: 'PUT', body: { startHour: 0, endHour: 1, weekdaysOnly: false } });
+    const hour = new Date().getUTCHours(); if (hour === 0) await S('/automations/settings', { method: 'PUT', body: { startHour: 5, endHour: 6 } });
+    await process(); ok(sentTo(E.email).length === 0, 'outside working hours the email waits');
+    const held = (await runsOf(E.id))[0]; ok(held.status === 'active' && new Date(held.next_at) > new Date(), 'and the run is put off to the next working hour, not dropped', held);
+    await S('/automations/settings', { method: 'PUT', body: { startHour: 0, endHour: 24, paused: true } });
+    sql(`update sales_runs set next_at = now() - interval '1 minute' where contact_id='${E.id}'`); const paused = await process();
+    ok(paused.paused === true && sentTo(E.email).length === 0, 'the pause switch holds everything back');
+    await S('/automations/settings', { method: 'PUT', body: { paused: false } }); await process(); ok(sentTo(E.email).length === 1, 'and releases it when switched off again');
+
+    // trying it first
+    const F = await invited('fay'); const dry = await S(`/automations/${aid}/dry-run`, { body: { contactId: F.id } });
+    ok(dry.status === 200 && dry.json.plan.length === 4 && /Fay/.test(dry.json.plan[0].result) && /Would send “Hello Fay”/.test(dry.json.plan[3].result), 'a test on a contact shows what each step would do, in their words, without doing it', dry.json);
+    ok((await runsOf(F.id)).length === 0 && sentTo(F.email).length === 0, 'and nothing was done');
+    const dryB = await S(`/automations/${aid}/dry-run`, { body: { contactId: B.json.id } }); ok(/held back/.test(dryB.json.plan[3].result), 'for someone we cannot email it says the email would be held back');
+
+    // stopping one by hand; other triggers
+    const G = await invited('gus'); await tagIt(G.id); const run = (await runsOf(G.id))[0];
+    ok((await S(`/runs/${run.id}/stop`, { method: 'POST', body: {} })).status === 200 && (await runsOf(G.id))[0].status === 'stopped', 'staff can stop one person partway');
+    const q = (await S('/automations', { body: { name: `Stage ${tag}`, trigger: { type: 'deal_stage', stage: 'proposal' }, steps: [{ kind: 'task', title: 'Prepare the proposal for {{name}}' }] } })).json.id; await S(`/automations/${q}`, { method: 'PUT', body: { enabled: true } });
+    const deal = await S('/deals', { body: { title: `Deal ${tag}`, contactId: A.id } }); await S(`/deals/${deal.json.id}`, { method: 'PUT', body: { stage: 'proposal' } }); await process();
+    ok((await detail(A.id)).tasks.some(t => /Prepare the proposal for Ann Person/.test(t.title)), 'a deal moving to a stage starts the automation that listens for it');
+    const w = (await S('/automations', { body: { name: `Web ${tag}`, trigger: { type: 'contact_created', source: 'website' }, steps: [{ kind: 'task', title: 'Reply to {{name}} within the day' }] } })).json.id; await S(`/automations/${w}`, { method: 'PUT', body: { enabled: true } });
+    const web = (await S('/contacts', { body: { name: 'Web Lead', email: `web-${tag}@auto.test`, source: 'website' } })).json.id, hand = (await S('/contacts', { body: { name: 'By Hand', email: `hand-${tag}@auto.test`, source: 'manual' } })).json.id; await process();
+    ok((await detail(web)).tasks.some(t => /Reply to Web Lead/.test(t.title)) && !(await detail(hand)).tasks.some(t => /Reply to/.test(t.title)), 'a new website contact starts the one for website contacts, and a hand-added one does not');
+    const showFlow = (await S('/automations', { body: { name: `Look ${tag}`, trigger: { type: 'showcase_view' }, steps: [{ kind: 'task', title: '{{name}} looked at {{build}}' }] } })).json.id; await S(`/automations/${showFlow}`, { method: 'PUT', body: { enabled: true } });
+    const gb = (await call('/v1/admin/builds', { token: admin, body: { name: `Look ${tag}`, visibility: 'listed', status: 'live', liveUrl: 'https://example.com/' + tag } })).json;
+    const viewer = `viewer-${tag}@auto.test`, vjar = { c: '' };
+    const asViewer = async (path, o = {}) => { const r = await fetch(BASE + path, { method: o.method || (o.body !== undefined ? 'POST' : 'GET'), redirect: 'manual', headers: { ...(vjar.c ? { Cookie: vjar.c } : {}), ...(o.body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: o.body !== undefined ? JSON.stringify(o.body) : undefined }); const c = r.headers.getSetCookie?.().map(x => x.split(';')[0]).join('; '); if (c) vjar.c = c; return { status: r.status }; };
+    await call('/v1/admin/builds/invites', { token: admin, body: { emails: viewer, days: 7, send: false } });
+    await asViewer('/v1/builds/auth/code', { body: { email: viewer } }); await sleep(150); await asViewer('/v1/builds/auth/verify', { body: { email: viewer, code: codeFrom(LOG, viewer) } });
+    const gbSlug = (await S('/automations')).json && (await call('/v1/admin/builds', { token: admin })).json.builds.find(b => b.id === gb.id).slug;
+    await asViewer(`/v1/builds/${gbSlug}`); await process();
+    const vc = await contactByEmail(viewer); ok(vc && (await detail(vc.id)).tasks.some(t => new RegExp(`Look ${tag}`).test(t.title)), 'someone looking at a build in the showcase starts the one that listens for that, and the task says which build');
+    await call(`/v1/admin/builds/${gb.id}`, { token: admin, method: 'DELETE' });
+
+    // the safety nets
+    const flood = (await S('/automations', { body: { name: `Flood ${tag}`, trigger: { type: 'contact_created', source: 'event' }, steps: [{ kind: 'task', title: 'Hello {{name}}' }] } })).json.id; await S(`/automations/${flood}`, { method: 'PUT', body: { enabled: true } });
+    for (let n = 0; n < 42; n++) await S('/contacts', { body: { name: `Crowd ${n}`, email: `crowd${n}-${tag}@auto.test`, source: 'event' } });
+    const f = (await S('/automations')).json.automations.find(a => a.id === flood); ok(f.enabled === false && /Switched off automatically/.test(f.note) && f.active + f.done <= 40, 'an automation that takes in a flood of people in an hour switches itself off', { enabled: f.enabled, note: f.note, n: f.active + f.done });
+    await S(`/automations/${aid}`, { method: 'PUT', body: { name: `Flow ${tag} v2`, trigger: { type: 'tag_added', tag: flow }, steps, stopOnReply: false, reenterDays: 7 } }); const edited = await mine(); ok(edited.name.endsWith('v2') && edited.stopOnReply === false && edited.reenterDays === 7, 'an automation can be edited');
+    ok((await S(`/automations/${aid}`, { method: 'DELETE' })).status === 200 && (await S('/automations')).json.automations.every(a => a.id !== aid), 'and deleted');
+    ok((await detail(A.id)).tasks.length >= 1, 'deleting it leaves the contact and their tasks alone');
+    for (const x of [q, w, showFlow, flood]) await S(`/automations/${x}`, { method: 'DELETE' }); // leave nothing switched on for the journeys that follow
+  } finally { await new Promise(r => resend.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

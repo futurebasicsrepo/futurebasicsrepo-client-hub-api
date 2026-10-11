@@ -1025,6 +1025,46 @@ export async function migrate() {
       detail text not null default '',
       created_at timestamptz not null default now()
     );
+    -- Sales automations (see src/sales-automations.js): a trigger and steps, run once per contact, with a log of what each step did
+    create table if not exists sales_automations (
+      id uuid primary key default gen_random_uuid(),
+      name text not null,
+      enabled boolean not null default false,
+      trigger jsonb not null,
+      steps jsonb not null default '[]'::jsonb,
+      stop_on_reply boolean not null default true,
+      reenter_days integer,
+      note text not null default '',
+      position integer not null default 100,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists sales_runs (
+      id uuid primary key default gen_random_uuid(),
+      automation_id uuid not null references sales_automations(id) on delete cascade,
+      contact_id uuid not null references sales_contacts(id) on delete cascade,
+      deal_id uuid references sales_deals(id) on delete set null,
+      status text not null default 'active' check (status in ('active','done','stopped')),
+      step integer not null default 0,
+      next_at timestamptz not null default now(),
+      stop_reason text not null default '',
+      context jsonb not null default '{}'::jsonb,
+      started_at timestamptz not null default now(),
+      finished_at timestamptz
+    );
+    create unique index if not exists sales_runs_one_active_idx on sales_runs(automation_id, contact_id) where status = 'active';
+    create index if not exists sales_runs_due_idx on sales_runs(next_at) where status = 'active';
+    create index if not exists sales_runs_contact_idx on sales_runs(contact_id, started_at desc);
+    create table if not exists sales_run_log (
+      id uuid primary key default gen_random_uuid(),
+      run_id uuid not null references sales_runs(id) on delete cascade,
+      step integer not null,
+      kind text not null,
+      outcome text not null check (outcome in ('done','skipped','failed')),
+      detail text not null default '',
+      created_at timestamptz not null default now(),
+      unique (run_id, step)
+    );
     create table if not exists build_invites (
       id uuid primary key default gen_random_uuid(),
       email text not null,

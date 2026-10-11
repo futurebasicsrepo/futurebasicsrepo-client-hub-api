@@ -21,7 +21,8 @@
       { label: 'Sales today', href: '/sales#today' },
       { label: 'Contacts', href: '/sales#contacts' },
       { label: 'Pipeline', href: '/sales#pipeline' },
-      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' }] },
+      { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' },
+      { label: 'Automations', href: '/sales#automations' }] },
     { id: 'production', label: 'Production', icon: 'box', items: [
       { label: 'Factories', href: '/admin#partnersSection' },
       { label: 'Waiting on approval', href: '/admin#approvals' },
@@ -166,7 +167,19 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     setInterval(() => { badges(); paintActive(); }, 1500); // the pages draw their own counts and open sub-pages themselves
     // arriving from another page at /admin#inbox: the section only exists once the page has loaded its data, so wait for it
     const want = (location.hash || '').slice(1);
-    if (want && pathOf() === '/admin') { let n = 0; const t = setInterval(() => { const el = document.getElementById(want); if ((el && el.offsetParent) || ++n > 40) { clearInterval(t); if (el && el.offsetParent) el.scrollIntoView({ block: 'start' }); } }, 250); }
+    if (want && pathOf() === '/admin') {
+      let n = 0, touched = false; for (const ev of ['wheel', 'touchstart', 'keydown', 'mousedown']) window.addEventListener(ev, () => { touched = true; }, { once: true, passive: true });
+      const t = setInterval(() => {
+        const el = document.getElementById(want);
+        if ((el && el.offsetParent) || ++n > 40) {
+          clearInterval(t);
+          if (el && el.offsetParent) { // the lists above it fill in after the page opens and push it down: keep it in view until they settle, unless the person has started scrolling
+            let k = 0; const hold = () => { if (touched) return; const top = el.getBoundingClientRect().top; if (top < 20 || top > 160) el.scrollIntoView({ block: 'start' }); if (++k < 10) setTimeout(hold, 400); };
+            hold();
+          }
+        }
+      }, 250);
+    }
   }
   window.fbNav = { badge: badges };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
