@@ -65,8 +65,11 @@ export function parseProductHtml(html, pageUrl) {
   };
 
   const items = [];
+  const offers = [];
   for (const node of jsonLdNodes(html)) {
     const types = [].concat(node['@type'] || []).map(String);
+    if (types.includes('Product')) offers.push(...offersOf(node));
+    if (types.includes('ProductGroup') && Array.isArray(node.hasVariant)) for (const v of node.hasVariant) offers.push(...offersOf({ ...v, name: v?.name || node.name }));
     if (types.includes('Product')) {
       const item = productFromLd(node, pageUrl);
       if (item) items.push(item);
@@ -106,13 +109,69 @@ export function parseProductHtml(html, pageUrl) {
     }
   }
 
-  return {
+  // No structured offers: some stores only say it in a meta tag.
+  const metaStock = availabilityOf(meta['product:availability'] || meta['og:availability'] || meta['availability']);
+  if (!offers.length && metaStock != null) offers.push({ words: new Set(), in: metaStock });
+  const soldOut = !blocked && deduped.length > 0 && stockFrom(offers, deduped[0].variant, deduped[0].title) === 'out';
+
+  const out = {
     source: 'url',
     merchant,
     items: deduped.slice(0, 25),
-    needs_review: deduped.some((i) => !i.price_cents) || !deduped.length,
+    needs_review: deduped.some((i) => !i.price_cents) || !deduped.length || soldOut,
     ...(blocked ? { warning: `${merchant.name} doesn’t let Spot read its pages. Add the item and price below` } : {}),
+    ...(soldOut ? { sold_out: true, warning: `${merchant.name} shows this as sold out. Ask Spot to find another below` } : {}),
   };
+  // What the page says about stock, per option, for stockOf (not sent to the browser).
+  Object.defineProperty(out, 'offers', { value: offers, enumerable: false });
+  return out;
+}
+
+// ─── Stock ──────────────────────────────────────────────────────────────────
+// Is it in stock? Asked of the store's own data, never of the model: a web
+// search can turn up a product page long after the last one sold.
+//   Shopify stores   /products/<handle>.js, each variant's `available`
+//   everyone else    schema.org availability on the product page's offers
+// 'in' | 'out' | 'unknown' (the store didn't say, or couldn't be read).
+const OUT = new Set(['outofstock', 'soldout', 'discontinued', 'instoreonly']);
+const IN = new Set(['instock', 'limitedavailability', 'onlineonly', 'preorder', 'presale', 'backorder']);
+function availabilityOf(v) {
+  const k = String(v || '').toLowerCase().replace(/^.*[/#]/, '').replace(/[^a-z]/g, '');
+  return OUT.has(k) ? false : IN.has(k) ? true : null;
+}
+const wordsOf = (...xs) => new Set(xs.map((x) => String(x || '').toLowerCase().replace(/[^a-z0-9.]+/g, ' ').trim()).join(' ').split(' ').filter(Boolean));
+
+function offersOf(node) {
+  const out = [];
+  for (const o of [].concat(node?.offers || [])) {
+    if (!o || typeof o !== 'object') continue;
+    const inStock = availabilityOf(o.availability);
+    if (inStock == null) continue;
+    out.push({ words: wordsOf(node.name, node.color, node.size, node.sku, o.name, o.sku, ...[].concat(node.additionalProperty || []).map((p) => p?.value)), in: inStock });
+  }
+  return out;
+}
+
+// The option asked for ("Natural / 2T"): just its offers, when the store
+// names them; otherwise the product as a whole is in stock if any of it is.
+export function stockFrom(offers, variant, title = '') {
+  if (!offers?.length) return 'unknown';
+  const inTitle = wordsOf(title);
+  const want = [...wordsOf(variant)].filter((w) => !inTitle.has(w));
+  const hits = want.length ? offers.filter((o) => want.every((w) => o.words.has(w))) : [];
+  const pool = hits.length ? hits : offers;
+  return pool.some((o) => o.in) ? 'in' : 'out';
+}
+
+export async function stockOf(item, { fromUrl = captureFromUrl, product = shopifyProduct } = {}) {
+  if (!item?.url) return 'unknown';
+  const p = await product(item.url).catch(() => null);
+  if (p?.variants?.length) {
+    return stockFrom(p.variants.map((v) => ({ words: wordsOf(v.option1, v.option2, v.option3, v.title), in: v.available !== false })), item.variant, p.title);
+  }
+  const page = await fromUrl(item.url).catch(() => null);
+  if (!page || page.warning?.includes('doesn’t let Spot')) return 'unknown';
+  return stockFrom(page.offers, item.variant, item.title);
 }
 
 const BOT_WALL = /^\s*(robot or human\??|are you (a )?(robot|human)\??|just a moment\.*…?|access denied|attention required!?|pardon our interruption|verify you are (a )?human|please verify you are a human|security check|captcha)\b/i;
@@ -413,68 +472,123 @@ export function draftFromDescription(text) {
 
 const LOOKUP_SCHEMA_HINT = `{"found": true|false, "merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00"}`;
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl, sizes = '', onUsage, onError } = {}) {
+// Follow-ups: "more" is what they said about the last find ("in blue",
+// "it's sold out"), "avoid" the product links already shown, so a second
+// ask finds something else instead of the same page.
+const FINDS = 3; // a sold-out find is retried with another, up to this many
+const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with what we have
+
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
-  if (url) return fromUrl(url);
+  more = String(more || '').trim().slice(0, 300);
+  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(0, 10);
+  const followUp = Boolean(more || avoid.length);
+  if (url && !followUp) return fromUrl(url);
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
 
+  const q = (x) => String(x).replace(/"/g, "'");
   const anthropic = client ?? anthropicClient();
   const messages = [
     {
       role: 'user',
-      content: `Someone wants a friend to buy them this: "${text.replace(/"/g, "'")}"
+      content: `Someone wants a friend to buy them this: "${q(text)}"${more ? `\nThey saw what you found last time and said: "${q(more)}"` : ''}
 
-Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${String(sizes).replace(/"/g, "'").slice(0, 300)}) and put it in "variant".` : ''} Reply with ONLY this JSON and nothing else:
+Find it for sale at one US online store (prefer the brand's own store), using web search. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${q(sizes).slice(0, 300)}) and put it in "variant".` : ''} It must be in stock right now in that option: skip anything the page shows as sold out or unavailable.${avoid.length ? ` Don't suggest any of these again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
 Set "found" to false if you can't find a specific product with a current price.`,
     },
   ];
-  // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
+  // One page fetch per product, shared by the stock check and the photo.
+  const pages = new Map();
+  const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
+
+  const started = now();
+  const soldOut = [];
+  let draft = null;
+  for (let find = 0; find < FINDS; find++) {
+    let response;
+    try {
+      response = await search(anthropic, messages, onUsage);
+    } catch (err) {
+      // Can't look it up right now: let them fill in the store and price.
+      onError?.(err);
+      if (err instanceof Anthropic.APIError) {
+        console.error('text lookup failed', err.status, err.message);
+        if (soldOut.length) break;
+        return { ...draftFromDescription(text), warning: 'I couldn’t look that up right now. Add the store and price below' };
+      }
+      throw err;
+    }
+    if (response.stop_reason === 'refusal') break;
+    const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    let v;
+    try {
+      v = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0]);
+    } catch {
+      break;
+    }
+    draft = draftFromLookup(v, text);
+    const item = draft.items[0];
+    if (draft.source !== 'lookup') break;
+    const stock = await stockOf(item, { fromUrl: page, product });
+    if (stock !== 'out') {
+      draft = await withPhoto(draft, page);
+      return stock === 'in' ? { ...draft, in_stock: true } : { ...draft, warning: `I couldn’t check stock at ${draft.merchant.name || 'that store'}. Tap “See it at the store” to make sure it’s there` };
+    }
+    // Sold out at the store: tell the model and look again.
+    soldOut.push(draft);
+    if (find === FINDS - 1 || now() - started > FIND_BUDGET_MS) break;
+    // (A paused search already left an assistant turn: the answer continues it.)
+    const last = messages.at(-1);
+    if (last.role === 'assistant') last.content = [...last.content, ...response.content];
+    else messages.push({ role: 'assistant', content: response.content });
+    messages.push(
+      { role: 'user', content: `I checked the store: ${item.title}${item.variant ? ` (${item.variant})` : ''} is sold out${item.url ? ` at ${item.url}` : ''}. Find a different one that's in stock right now: the same thing at another store, or the closest match. Reply with ONLY the JSON.` },
+    );
+  }
+  // Everything found was sold out: show the last one, marked, so they can
+  // say what else would do.
+  if (soldOut.length) {
+    const last = await withPhoto(soldOut.at(-1), page);
+    return {
+      ...last,
+      sold_out: true,
+      tried: soldOut.map((d) => d.items[0].url).filter(Boolean),
+      warning: soldOut.length > 1 ? `Everything I found is sold out (${soldOut.length} tries). Tell me what else would work below` : `That one’s sold out at ${last.merchant.name || 'the store'}. Tell me what else would work below`,
+    };
+  }
+  return draft && draft.source === 'lookup' ? withPhoto(draft, page) : draftFromDescription(text);
+}
+
+// Web search runs server-side; long searches can pause the turn, so resume a couple of times.
+async function search(anthropic, messages, onUsage) {
   let response;
-  try {
-    for (let i = 0; i < 3; i++) {
-      response = await anthropic.beta.messages.create({
-        model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
-        max_tokens: 4000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'low' },
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
-        messages,
-      });
-      onUsage?.(response.model, response.usage);
-      if (response.stop_reason !== 'pause_turn') break;
-      messages.push({ role: 'assistant', content: response.content });
-    }
-  } catch (err) {
-    // Can't look it up right now: let them fill in the store and price.
-    onError?.(err);
-    if (err instanceof Anthropic.APIError) {
-      console.error('text lookup failed', err.status, err.message);
-      return { ...draftFromDescription(text), warning: 'I couldn’t look that up right now. Add the store and price below' };
-    }
-    throw err;
+  for (let i = 0; i < 3; i++) {
+    response = await anthropic.beta.messages.create({
+      model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+      max_tokens: 4000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low' },
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 4 }],
+      messages,
+    });
+    onUsage?.(response.model, response.usage);
+    if (response.stop_reason !== 'pause_turn') break;
+    messages.push({ role: 'assistant', content: response.content });
   }
-  if (response.stop_reason === 'refusal') return draftFromDescription(text);
-  const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const json = out.match(/\{[\s\S]*\}/)?.[0];
-  let v;
-  try {
-    v = JSON.parse(json);
-  } catch {
-    return draftFromDescription(text);
-  }
-  return withPhoto(draftFromLookup(v, text), fromUrl);
+  return response;
 }
 
 // The photo of the colour asked for, not the product's first one: Shopify
 // stores list each variant's own image at /products/<handle>.js.
-async function shopifyVariantPhoto(url) {
+async function shopifyProduct(url) {
   const { loadShopifyProduct } = await import('./fulfill/shopify.js');
   const product = await loadShopifyProduct(url, {});
   return product && { title: product.title, variants: product.variants };
 }
+const shopifyVariantPhoto = shopifyProduct;
 async function colorPhoto(item, variantPhoto) {
   if (!item.variant || !variantPhoto) return null;
   const product = await variantPhoto(item.url);
