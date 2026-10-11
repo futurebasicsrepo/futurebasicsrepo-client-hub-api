@@ -825,6 +825,9 @@ export class JsonObjects {
   }
 }
 
+const SEARCHES = 3; // per batch on the shelf; more come as they swipe
+const QUICK = `\nBe quick: at most ${SEARCHES} searches (one search often turns up several stores), then write the answer.`;
+
 // Recent answers, so asking the same thing again is instant.
 export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {}) {
   const map = new Map();
@@ -860,13 +863,13 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
 
   const anthropic = client ?? anthropicClient();
   const outfitsWanted = Math.max(1, Math.min(MAX_OUTFITS, Math.ceil(count / 3)));
-  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid, count, outfits: outfitsWanted }) }];
+  const messages = [{ role: 'user', content: lookupPrompt({ text, more, sizes, shipTo, avoid, count, outfits: outfitsWanted }) + QUICK }];
   const pages = new Map();
   const page = (u) => (pages.has(u) || pages.set(u, fromUrl(u)), pages.get(u));
   const seen = new Set(avoid);
   const sent = []; // what went out, kept up to date for the cache
   const checks = [];
-  const stats = { searches: 0, objects: 0, unusable: 0, repeats: 0 };
+  const stats = { searches: 0, steps: 0, objects: 0, unusable: 0, repeats: 0 };
   let kind = null;
   // Pages they've already seen are out; in this answer, the same page and
   // title twice is a repeat (one listing page can hold several products).
@@ -936,7 +939,10 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
           betas: ['server-side-fallback-2026-07-01'],
           fallbacks: 'default',
           output_config: { effort: 'low' },
-          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
+          // The plain search: the filtering version adds a code step after
+          // each search, which roughly doubled the wait. A few searches in
+          // all, continuations included.
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: Math.max(1, SEARCHES - stats.searches) }],
           messages,
         });
         stream.on('streamEvent', (ev) => {
@@ -945,7 +951,8 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
           // found: keep its place so the products after the search still parse.
           if (ev.type === 'content_block_start' && ev.content_block?.type === 'server_tool_use') {
             if (!objects.emitted) objects.reset();
-            stats.searches++;
+            if (ev.content_block.name === 'web_search') stats.searches++;
+            else stats.steps++;
             emit({ type: 'searching' });
           }
         });

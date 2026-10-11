@@ -93,6 +93,48 @@ test('products written between searches all reach the shelf; one listing page ca
   assert.deepEqual(events.at(-1), { type: 'done', kind: 'products', count: 3 });
 });
 
+test('plain search, a few in all: a paused turn carries on with what is left', async () => {
+  const calls = [];
+  let n = 0;
+  const client = { beta: { messages: { stream: (params) => {
+    calls.push(JSON.parse(JSON.stringify(params)));
+    const handlers = {};
+    const me = ++n;
+    return {
+      on(ev, cb) {
+        (handlers[ev] ||= []).push(cb);
+        return this;
+      },
+      async finalMessage() {
+        const start = (name) => { for (const cb of handlers.streamEvent || []) cb({ type: 'content_block_start', content_block: { type: 'server_tool_use', name } }); };
+        if (me === 1) {
+          start('web_search');
+          start('web_search');
+          return { stop_reason: 'pause_turn', model: params.model, usage: {}, content: [] };
+        }
+        start('web_search');
+        const text = JSON.stringify({ products: [P(1), P(2, 'gap')] });
+        for (const cb of handlers.text || []) cb(text);
+        return { stop_reason: 'end_turn', model: params.model, usage: {}, content: [{ type: 'text', text }] };
+      },
+    };
+  } } } };
+  const events = [];
+  const quiet = console.log;
+  const lines = [];
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    await streamLookup('black tee', { client, fromUrl: slowPage(1), product: noShopify }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  assert.deepEqual(calls.map((c) => c.tools[0].type), ['web_search_20250305', 'web_search_20250305'], 'no code step after every search');
+  assert.deepEqual(calls.map((c) => c.tools[0].max_uses), [3, 1], 'the second leg gets what is left');
+  assert.match(calls[0].messages[0].content, /at most 3 searches/);
+  assert.equal(events.filter((e) => e.type === 'pick').length, 2);
+  assert.match(lines.find((l) => l.startsWith('stream lookup')), /"searches":3,"steps":0/);
+});
+
 test('the quicker model missing on the account: the bigger one, without a fuss', async () => {
   const quiet = console.error;
   console.error = () => {};
