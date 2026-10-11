@@ -740,6 +740,66 @@ await journey('J112', 'the Sales page in a browser: Today, adding a contact, log
   sql(`delete from sales_contacts where email='dana-${tag}@salon.test'`);
 });
 
+await journey('J116', 'tags in the Sales page: tag a contact from its card, filter by tag (include and hide), bulk tag, save a view and use it, the starter views, and a phone', async () => {
+  const r = await room('116', { wait: false }), tag = `tg${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const W = 'http://work.localhost:3123';
+  for (const n of ['a', 'b', 'c']) sql(`insert into sales_contacts(name,email,source,tags) values('Person ${n} ${tag}','${n}-${tag}@tags.test','manual','${n === 'c' ? '{salon,nyc}' : '{salon}'}')`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept(`Salon ${tag}`));
+  await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.waitForSelector('.tiles', { timeout: 10000 });
+  ok(await page.locator('#t-today [data-openseg]').count() >= 4, 'Today lists the starter customer views with their counts');
+  await page.click('.tab[data-t="contacts"]'); await page.waitForSelector('#tagFilter [data-ftag="salon"]');
+  ok(await page.locator('#views [data-seg]').count() >= 5, 'the starter views are there (Everyone plus tech pack, builds, leads, showcase)');
+
+  // filter: include, then hide
+  await page.fill('#q', tag); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 3, null, { timeout: 8000 });
+  await page.click('#tagFilter [data-ftag="nyc"]'); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 1, null, { timeout: 8000 });
+  ok(/Person c/.test(await page.innerText('#cList')), 'clicking a tag shows only the people with it');
+  await page.click('#tagFilter [data-ftag="nyc"]'); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 2, null, { timeout: 8000 });
+  ok(!/Person c/.test(await page.innerText('#cList')) && await page.locator('#tagFilter .fchip.not').count() === 1, 'clicking it again hides the people with it');
+  await page.click('#tagFilter .fchip.not'); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 3, null, { timeout: 8000 });
+
+  // tag from the card
+  await page.click(`#cList tr:has-text("Person a ${tag}")`); await page.waitForSelector('#cdlg[open] #eTagAdd');
+  await page.fill('#eTagAdd', 'Hot Prospect'); await page.press('#eTagAdd', 'Enter'); await page.waitForSelector('#eTagRow .tag:has-text("hot-prospect")', { timeout: 8000 });
+  ok(sql(`select tags::text from sales_contacts where email='a-${tag}@tags.test'`).includes('hot-prospect'), 'a tag typed on the card is cleaned and saved');
+  await page.click('#eTagRow [data-untag="salon"]'); await page.waitForFunction(() => !document.querySelector('#eTagRow').innerText.includes('salon'), null, { timeout: 8000 });
+  ok(!sql(`select tags::text from sales_contacts where email='a-${tag}@tags.test'`).includes('salon'), 'removing a tag from the card saves');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-card.png` }).catch(() => {});
+  await page.keyboard.press('Escape');
+
+  // bulk tag the two that are left with "salon"
+  await page.fill('#q', tag); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 3, null, { timeout: 8000 });
+  await page.check(`#cList tr:has-text("Person b ${tag}") [data-pick]`); await page.check(`#cList tr:has-text("Person c ${tag}") [data-pick]`);
+  ok(/2 selected/.test(await page.innerText('#bulk')), 'ticking people opens the tag bar with the count');
+  await page.fill('#bulkTag', 'Spring Launch'); await page.click('#bulkAdd'); await page.waitForFunction(() => /2 updated/.test(document.querySelector('#bulkMsg').textContent), null, { timeout: 8000 });
+  ok(sql(`select count(*) from sales_contacts where email like '%-${tag}@tags.test' and 'spring-launch' = any(tags)`) === '2', 'adding a tag to the ticked people tags exactly them');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-bulk.png` }).catch(() => {});
+
+  // save the view and use it from another visit
+  await page.click('#tagFilter [data-ftag="spring-launch"]'); await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 2, null, { timeout: 8000 });
+  await page.click('#saveView'); await page.waitForSelector(`#views .fchip.on:has-text("Salon ${tag}")`, { timeout: 8000 });
+  ok(sql(`select count(*) from sales_segments where name='Salon ${tag}'`) === '1' && /2/.test(await page.innerText('#views .fchip.on')), 'saving the view keeps it with its count');
+  await page.reload({ waitUntil: 'networkidle' }); await page.click('.tab[data-t="contacts"]'); await page.click(`#views [data-seg]:has-text("Salon ${tag}")`);
+  await page.waitForFunction(() => document.querySelectorAll('#cList tr.click').length === 2, null, { timeout: 8000 });
+  await page.waitForSelector('#tagFilter .fchip.on:has-text("spring-launch")', { timeout: 8000 }).catch(() => {});
+  ok(await page.locator('#tagFilter .fchip.on:has-text("spring-launch")').count() === 1, 'opening the saved view later restores its tag filter');
+  page.removeAllListeners('dialog'); page.on('dialog', d => d.accept());
+  await page.click('#views [data-segdel]'); await page.waitForFunction(t => !document.querySelector('#views').innerText.includes(t), `Salon ${tag}`, { timeout: 8000 });
+  ok(sql(`select count(*) from sales_segments where name='Salon ${tag}'`) === '0', 'deleting a view removes the view and not the people');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+
+  // a phone
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); await pc.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+  await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles'); await ph.click('.tab[data-t="contacts"]'); await ph.waitForSelector('#cList tr'); await ph.check('#cList [data-pick] >> nth=0');
+  const over = await ph.evaluate(() => document.documentElement.scrollWidth - innerWidth); ok(over <= 1, 'Contacts with tags and the tag bar fit the phone', over);
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j116-phone.png` }).catch(() => {});
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();
+  sql(`delete from sales_contacts where email like '%-${tag}@tags.test'`);
+});
+
 await journey('J114', 'Sales email in a browser: send from a contact with a template, read it back, a contact who cannot be emailed says why, a reply arrives and is answered, templates, settings, and a phone', async () => {
   const http = await import('node:http'), { createHmac } = await import('node:crypto');
   const mock = { sent: [], received: new Map(), n: 0 };

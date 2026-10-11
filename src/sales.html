@@ -51,6 +51,15 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
 .ev p{margin:0;white-space:pre-wrap;word-break:break-word}
 .mailbody{white-space:pre-wrap;word-break:break-word;background:var(--fog);border-radius:12px;padding:10px 12px;margin-top:6px;font-size:13px}.emailbox{margin:0 0 20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--fog)}.emailbox .why{color:var(--bad);margin:0 0 6px}.tpl{padding:12px 0;border-top:1px solid var(--line)}.tpl:first-of-type{border-top:0}
 .check{display:flex;gap:10px;align-items:flex-start}.check input{margin-top:4px;width:18px;height:18px;flex:none}
+.tag{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font:500 11px 'IBM Plex Mono',monospace;border:1px solid var(--line);background:var(--fog);color:var(--ink);white-space:nowrap;cursor:default}
+.tag.auto{background:#e8f4ff;border-color:#b9d8f2}.tag button{border:0;background:none;padding:0 0 0 2px;cursor:pointer;color:var(--dim);font-size:13px;line-height:1}.tag button:hover{color:var(--bad)}
+.tagrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;cursor:pointer;font:500 12px 'Space Grotesk',sans-serif;color:var(--ink)}.fchip small{color:var(--dim);margin-left:4px}.fchip:hover{border-color:var(--ink)}
+.fchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}.fchip.on small{color:#cfcfd4}.fchip.not{background:#ffe9e1;border-color:#f4b9a4;color:var(--hot);text-decoration:line-through}
+.seg{display:inline-flex;align-items:center;gap:2px}.seg [data-segdel]{border:0;background:none;cursor:pointer;color:var(--dim);font-size:16px;padding:0 4px}.seg [data-segdel]:hover{color:var(--bad)}
+.views{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.views .fchip{font-weight:600}
+.bulk{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--ink);color:#fff;border-radius:14px;padding:10px 14px;margin-bottom:12px}.bulk input.t{width:150px;background:#fff}.bulk .btn{border-color:#fff;color:#fff}.bulk .btn:hover{background:#fff;color:var(--ink)}
+td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
 @media(max-width:860px){.fields,.cols2{grid-template-columns:minmax(0,1fr)}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.board{grid-auto-columns:82%}.ev{grid-template-columns:1fr;gap:2px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -75,13 +84,17 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
 
     <section id="t-contacts" class="hidden">
       <div class="panel">
+        <div class="views" id="views" aria-label="Saved views"></div>
+        <div class="tagrow" id="tagFilter" aria-label="Filter by tag" style="margin-bottom:12px"></div>
         <div class="toolbar">
           <input class="t grow" id="q" type="search" placeholder="Search name, email, company or tag" aria-label="Search contacts">
           <select class="t" id="fSource" aria-label="Source"><option value="">Any source</option></select>
           <select class="t" id="fHeat" aria-label="Warmth"><option value="">Any warmth</option><option value="hot">Hot</option><option value="warm">Warm</option><option value="cold">Cold</option></select>
           <button class="btn go sm" id="newContact">+ Add</button><button class="btn sm" id="importBtn">Import</button><button class="btn sm" id="tplBtn">Templates</button><button class="btn sm" id="setBtn">Email settings</button>
         </div>
-        <div class="scroll"><table><thead><tr><th>Contact</th><th>Company</th><th>Warmth</th><th>Open deals</th><th>Last activity</th></tr></thead><tbody id="cList"></tbody></table></div>
+        <div class="bulk hidden" id="bulk"><b id="bulkN"></b><input class="t" id="bulkTag" list="tagList" placeholder="tag name" aria-label="Tag to add or remove"><button class="btn sm" id="bulkAdd">Add tag</button><button class="btn sm" id="bulkRemove">Remove tag</button><button class="btn sm" id="bulkClear">Clear</button><span class="msg" id="bulkMsg" style="color:#fff"></span></div>
+        <datalist id="tagList"></datalist>
+        <div class="scroll"><table><thead><tr><th class="pick"><input type="checkbox" id="pickAll" aria-label="Select all shown"></th><th>Contact</th><th>Company</th><th>Tags</th><th>Warmth</th><th>Open deals</th><th>Last activity</th></tr></thead><tbody id="cList"></tbody></table></div>
         <p class="sub" id="cCount"></p>
       </div>
     </section>
@@ -169,8 +182,9 @@ let TAB='today',OPEN_CONTACT=null,DEALS=[],CONTACT_OPTS=[];
 
 // ---------- today ----------
 async function loadToday(){
-  const o=await api('/v1/sales/overview'),p=o.pipeline;
+  const [o,sv]=await Promise.all([api('/v1/sales/overview'),api('/v1/sales/segments').catch(()=>({segments:[]}))]),p=o.pipeline;
   $('#t-today').innerHTML=`<div class="tiles"><div class="tile"><span>Open pipeline</span><b>${money(p.openValueCents)}</b><span>${p.openCount} deal${p.openCount===1?'':'s'}</span></div><div class="tile"><span>Forecast (by odds)</span><b>${money(p.forecastCents)}</b></div><div class="tile"><span>Won</span><b>${money(p.wonCents)}</b></div><div class="tile"><span>New contacts this week</span><b>${o.newLeads}</b><span>${o.totalContacts} in all</span></div></div>
+  ${sv.segments.length?`<div class="panel"><h2>Your customers</h2><div class="views" style="margin:0">${sv.segments.map(g=>`<button type="button" class="fchip" data-openseg="${esc(g.id)}">${esc(g.name)}<small>${g.count}</small></button>`).join('')}</div></div>`:''}
   <div class="cols2"><div class="panel"><h2>Do these</h2>${o.tasks.length?o.tasks.map(t=>`<div class="item"><label class="check"><input type="checkbox" data-done="${esc(t.id)}" aria-label="Done"><span class="main"><b>${esc(t.title)}</b><span class="sub">${t.contact_id?`<a href="#" data-contact="${esc(t.contact_id)}">${who(t)}</a> · `:''}${new Date(t.due_at)<new Date(new Date().toDateString())?'<span class="chip late">overdue</span> ':''}${dayOf(t.due_at)}</span></span></label></div>`).join(''):'<p class="note">Nothing due. Add a task from a contact.</p>'}</div>
   <div class="panel"><h2>Warm right now</h2>${o.hot.length?o.hot.map(c=>`<div class="item click" data-contact="${esc(c.id)}"><span class="main"><b>${esc(c.name||c.email)}</b><span class="sub">${esc(c.company||c.email||'')} · last ${ago(c.heat.lastAt)}</span></span>${heatChip(c.heat)}</div>`).join(''):'<p class="note">Nobody has looked at anything lately. When someone you invited opens a build, they show up here.</p>'}</div>
   <div class="panel"><h2>Going quiet</h2>${o.stale.length?o.stale.map(d=>`<div class="item click" data-contact="${esc(d.contact_id||'')}" data-deal="${esc(d.id)}"><span class="main"><b>${esc(d.title)}</b><span class="sub">${esc(LABEL[d.stage])} · ${d.contact_name?esc(d.contact_name)+' · ':''}nothing for ${d.days} days</span></span><span class="chip late">${money(d.value_cents)}</span></div>`).join(''):'<p class="note">Every open deal has moved in the last week.</p>'}</div>
@@ -212,15 +226,45 @@ $('#dform').addEventListener('submit',async e=>{e.preventDefault();const m=$('#d
 $('#dDelete').onclick=async()=>{if(!confirm('Delete this deal?'))return;try{await api('/v1/sales/deals/'+EDIT_DEAL.id,{method:'DELETE'});$('#ddlg').close();await refresh()}catch(x){alert(x.message)}};
 
 // ---------- contacts ----------
-let qTimer=null;
-async function loadContacts(){
-  const qs=new URLSearchParams({limit:'100'});if($('#q').value.trim())qs.set('q',$('#q').value.trim());if($('#fSource').value)qs.set('source',$('#fSource').value);if($('#fHeat').value)qs.set('heat',$('#fHeat').value);
-  const {contacts,total}=await api('/v1/sales/contacts?'+qs);
-  $('#cList').innerHTML=contacts.length?contacts.map(c=>`<tr class="click" data-contact="${esc(c.id)}"><td><b>${esc(c.name||c.email||'Unnamed')}</b><div class="sub">${esc(c.name?c.email||'':'')}${c.unsubscribed?' · not to be emailed':''}</div></td><td>${esc(c.company||'')}</td><td>${heatChip(c.heat)}</td><td>${c.openDeals?c.openDeals+' · '+money(c.openValueCents):'—'}</td><td class="sub">${esc(ago(c.lastActivityAt))}</td></tr>`).join(''):'<tr><td colspan="5" class="note">No contacts match. Add one, import a list, or invite someone to the showcase and they appear when they look.</td></tr>';
-  $('#cCount').textContent=total>contacts.length?`Showing ${contacts.length} of ${total}`:`${total} contact${total===1?'':'s'}`;
+let qTimer=null,TAGS=[],AUTO=[],SEGS=[],ACTIVE_SEG=null,PICK=new Set(),SHOWN=[];
+const IN=[],OUT=[];
+const tagHtml=(t,x)=>`<span class="tag ${AUTO.includes(t)?'auto':''}">${esc(t)}${x?`<button type="button" data-untag="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button>`:''}</span>`;
+function filterNow(){return {q:$('#q').value.trim(),tags:[...IN],excludeTags:[...OUT],source:$('#fSource').value}}
+function filterQs(){const f=filterNow(),qs=new URLSearchParams({limit:'100'});if(f.q)qs.set('q',f.q);if(f.source)qs.set('source',f.source);if(f.tags.length)qs.set('tags',f.tags.join(','));if(f.excludeTags.length)qs.set('exclude',f.excludeTags.join(','));if($('#fHeat').value)qs.set('heat',$('#fHeat').value);return qs}
+async function loadTagsAndViews(){
+  const [t,v]=await Promise.all([api('/v1/sales/tags'),api('/v1/sales/segments')]);TAGS=t.tags;AUTO=t.auto;SEGS=v.segments;
+  $('#tagList').innerHTML=TAGS.map(x=>`<option value="${esc(x.tag)}">`).join('');
+  const shownTags=TAGS.filter(x=>x.n>0).slice(0,24);for(const x of [...IN,...OUT])if(!shownTags.find(y=>y.tag===x))shownTags.push({tag:x,n:0});
+  $('#tagFilter').innerHTML=shownTags.length?`<span class="sub">Tags</span>`+shownTags.map(x=>`<button type="button" class="fchip ${IN.includes(x.tag)?'on':OUT.includes(x.tag)?'not':''}" data-ftag="${esc(x.tag)}" title="Click to show only these, again to hide them, again to clear">${esc(x.tag)}<small>${x.n}</small></button>`).join(''):'<span class="sub">No tags yet. Add them from a contact, or select several and tag them together.</span>';
+  const on=Boolean(IN.length||OUT.length||$('#q').value.trim()||$('#fSource').value);
+  $('#views').innerHTML=`<button type="button" class="fchip ${!on&&!ACTIVE_SEG?'on':''}" data-seg="">Everyone</button>`+SEGS.map(sg=>`<span class="seg"><button type="button" class="fchip ${ACTIVE_SEG===sg.id?'on':''}" data-seg="${esc(sg.id)}">${esc(sg.name)}<small>${sg.count}</small></button>${ACTIVE_SEG===sg.id?`<button type="button" data-segdel="${esc(sg.id)}" aria-label="Delete the view ${esc(sg.name)}" >×</button>`:''}</span>`).join('')+(on&&!ACTIVE_SEG?'<button type="button" class="btn sm" id="saveView">Save this view</button>':'');
 }
+async function loadContacts(){
+  if(ACTIVE_SEG&&!SEGS.find(x=>x.id===ACTIVE_SEG)){await loadTagsAndViews()}
+  if(ACTIVE_SEG){const sg=SEGS.find(x=>x.id===ACTIVE_SEG);if(sg&&!IN.length&&!OUT.length&&!$('#q').value&&!$('#fSource').value)setFilter(sg.filter)}
+  const {contacts,total}=await api('/v1/sales/contacts?'+filterQs());SHOWN=contacts;PICK=new Set([...PICK].filter(id=>contacts.some(c=>c.id===id)));
+  $('#cList').innerHTML=contacts.length?contacts.map(c=>`<tr class="click" data-contact="${esc(c.id)}"><td class="pick"><input type="checkbox" data-pick="${esc(c.id)}" ${PICK.has(c.id)?'checked':''} aria-label="Select ${esc(c.name||c.email||'contact')}"></td><td><b>${esc(c.name||c.email||'Unnamed')}</b><div class="sub">${esc(c.name?c.email||'':'')}${c.unsubscribed?' · not to be emailed':''}</div></td><td>${esc(c.company||'')}</td><td><div class="tagrow">${(c.tags||[]).map(t=>tagHtml(t)).join('')}</div></td><td>${heatChip(c.heat)}</td><td>${c.openDeals?c.openDeals+' · '+money(c.openValueCents):'—'}</td><td class="sub">${esc(ago(c.lastActivityAt))}</td></tr>`).join(''):'<tr><td colspan="7" class="note">No contacts match. Add one, import a list, or invite someone to the showcase and they appear when they look.</td></tr>';
+  $('#cCount').textContent=total>contacts.length?`Showing ${contacts.length} of ${total}`:`${total} contact${total===1?'':'s'}`;
+  showBulk();loadTagsAndViews().catch(()=>{});
+}
+function showBulk(){$('#bulk').classList.toggle('hidden',!PICK.size);$('#bulkN').textContent=`${PICK.size} selected`;$('#pickAll').checked=SHOWN.length>0&&SHOWN.every(c=>PICK.has(c.id))}
+function setFilter(f){IN.length=0;OUT.length=0;IN.push(...(f.tags||[]));OUT.push(...(f.excludeTags||[]));$('#q').value=f.q||'';$('#fSource').value=f.source||'';$('#fHeat').value=''}
+$('#views').addEventListener('click',async e=>{
+  const del=e.target.closest('[data-segdel]');if(del){const sg=SEGS.find(x=>x.id===del.dataset.segdel);if(!confirm(`Delete the view "${sg?.name}"? The people in it stay.`))return;try{await api('/v1/sales/segments/'+del.dataset.segdel,{method:'DELETE'});ACTIVE_SEG=null;await loadContacts()}catch(x){alert(x.message)}return}
+  const b=e.target.closest('[data-seg]');if(b){ACTIVE_SEG=b.dataset.seg||null;setFilter(ACTIVE_SEG?SEGS.find(x=>x.id===ACTIVE_SEG).filter:{});PICK.clear();await loadContacts();return}
+  if(e.target.id==='saveView'){const name=prompt('Name this view (for example "Salon owners in NYC")');if(!name)return;try{const r=await api('/v1/sales/segments',{body:{name,filter:filterNow()}});ACTIVE_SEG=r.id;await loadContacts()}catch(x){alert(x.message)}}
+});
+$('#tagFilter').addEventListener('click',e=>{const b=e.target.closest('[data-ftag]');if(!b)return;const t=b.dataset.ftag;ACTIVE_SEG=null;
+  if(IN.includes(t)){IN.splice(IN.indexOf(t),1);OUT.push(t)}else if(OUT.includes(t))OUT.splice(OUT.indexOf(t),1);else IN.push(t);PICK.clear();loadContacts()});
+$('#cList').addEventListener('change',e=>{const p=e.target.closest('[data-pick]');if(!p)return;e.stopPropagation();p.checked?PICK.add(p.dataset.pick):PICK.delete(p.dataset.pick);showBulk()});
+$('#cList').addEventListener('click',e=>{if(e.target.closest('[data-pick]'))e.stopPropagation()},true);
+$('#pickAll').onchange=()=>{$('#pickAll').checked?SHOWN.forEach(c=>PICK.add(c.id)):PICK.clear();$$('[data-pick]').forEach(i=>i.checked=PICK.has(i.dataset.pick));showBulk()};
+$('#bulkClear').onclick=()=>{PICK.clear();$$('[data-pick]').forEach(i=>i.checked=false);showBulk()};
+async function bulk(kind){const m=$('#bulkMsg'),tag=$('#bulkTag').value;m.textContent='';if(!tag.trim()){m.textContent='Name a tag first';return}
+  try{const r=await api('/v1/sales/contacts/bulk-tags',{body:{ids:[...PICK],[kind]:[tag]}});m.textContent=`${r.changed} updated`;$('#bulkTag').value='';await loadContacts()}catch(x){m.textContent=x.message}}
+$('#bulkAdd').onclick=()=>bulk('add');$('#bulkRemove').onclick=()=>bulk('remove');
 $('#fSource').innerHTML+=Object.entries(SOURCE).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-$('#q').addEventListener('input',()=>{clearTimeout(qTimer);qTimer=setTimeout(loadContacts,250)});$('#fSource').onchange=$('#fHeat').onchange=loadContacts;
+$('#q').addEventListener('input',()=>{ACTIVE_SEG=null;clearTimeout(qTimer);qTimer=setTimeout(loadContacts,250)});$('#fSource').onchange=$('#fHeat').onchange=()=>{ACTIVE_SEG=null;loadContacts()};
 
 $('#newContact').onclick=()=>{$('#nform').reset();$('#nMsg').textContent='';$('#ndlg').showModal();$('#nName').focus()};
 $('#nform').addEventListener('submit',async e=>{e.preventDefault();const m=$('#nMsg');m.className='msg';m.textContent='Adding…';
@@ -243,7 +287,7 @@ async function openContact(id){
     <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Deals</h2><button class="btn sm" id="cDeal">+ Deal</button></div>
     <div style="margin:8px 0">${deals.map(d=>`<div class="item click" data-deal="${esc(d.id)}"><span class="main"><b>${esc(d.title)}</b><span class="sub">${esc(LABEL[d.stage])}${d.expected_close?' · close '+esc(dayOf(d.expected_close)):''}</span></span><span>${d.value_cents?money(d.value_cents):''}</span></div>`).join('')||'<p class="note">No deals yet.</p>'}</div>
   </div><div>
-    <h2>Details</h2><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" id="eName" value="${esc(c.name)}"></label><label class="f"><span class="mono">Email</span><input class="t" id="eEmail" type="email" value="${esc(c.email||'')}"></label><label class="f"><span class="mono">Company</span><input class="t" id="eCompany" value="${esc(c.company)}"></label><label class="f"><span class="mono">Title</span><input class="t" id="eTitle" value="${esc(c.title)}"></label><label class="f"><span class="mono">Phone</span><input class="t" id="ePhone" value="${esc(c.phone)}"></label><label class="f"><span class="mono">Tags</span><input class="t" id="eTags" value="${esc((c.tags||[]).join(', '))}"></label><label class="f wide"><span class="mono">Notes</span><textarea class="t" id="eNotes">${esc(c.notes)}</textarea></label></div>
+    <h2>Details</h2><div class="fields"><label class="f"><span class="mono">Name</span><input class="t" id="eName" value="${esc(c.name)}"></label><label class="f"><span class="mono">Email</span><input class="t" id="eEmail" type="email" value="${esc(c.email||'')}"></label><label class="f"><span class="mono">Company</span><input class="t" id="eCompany" value="${esc(c.company)}"></label><label class="f"><span class="mono">Title</span><input class="t" id="eTitle" value="${esc(c.title)}"></label><label class="f"><span class="mono">Phone</span><input class="t" id="ePhone" value="${esc(c.phone)}"></label><div class="f wide"><span class="mono" style="display:block;margin-bottom:5px;color:var(--dim)">Tags</span><div class="tagrow" id="eTagRow">${(c.tags||[]).map(t=>tagHtml(t,true)).join('')}<input class="t" id="eTagAdd" list="tagList" placeholder="add a tag" aria-label="Add a tag" style="width:140px;padding:5px 10px;border-radius:999px"></div></div><label class="f wide"><span class="mono">Notes</span><textarea class="t" id="eNotes">${esc(c.notes)}</textarea></label></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px"><button class="btn go sm" id="eSave">Save details</button><button class="btn sm" id="eUnsub">${c.unsubscribed?'Allow emails again':'Do not email'}</button><button class="btn danger sm" id="eDel">Delete</button><span class="msg" id="eMsg"></span></div>
     <h2 style="margin-top:18px">Timeline</h2><div class="timeline">${activities.map(a=>`<div class="ev"><time>${esc(when(a.created_at))}</time><div><span class="k">${esc(KIND[a.kind]||a.kind)}${a.actor_name?' · '+esc(a.actor_name):''}</span><p>${esc(a.text)}</p>${a.meta&&a.meta.emailId?`<div style="margin-top:4px"><button class="btn sm" data-email="${esc(a.meta.emailId)}">Read</button>${a.kind==='email_in'&&!a.meta.auto?` <button class="btn sm" data-reply="${esc(a.text)}">Reply</button>`:''}</div><div class="mailbody hidden"></div>`:''}</div></div>`).join('')||'<p class="note">Nothing yet.</p>'}</div>
   </div></div>`;
@@ -252,7 +296,11 @@ async function openContact(id){
   $('#aGo').onclick=async()=>{const m=$('#aMsg');try{await api(`/v1/sales/contacts/${id}/activities`,{body:{kind:$('#aKind').value,text:$('#aText').value}});await openContact(id);refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
   $('#tGo').onclick=async()=>{try{await api('/v1/sales/tasks',{body:{contactId:id,title:$('#tTitle').value,dueAt:$('#tDue').value}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
   $('#cDeal').onclick=()=>openDeal(null,id);
-  $('#eSave').onclick=async()=>{const m=$('#eMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/sales/contacts/'+id,{method:'PUT',body:{name:$('#eName').value,email:$('#eEmail').value,companyName:$('#eCompany').value,title:$('#eTitle').value,phone:$('#ePhone').value,tags:$('#eTags').value,notes:$('#eNotes').value}});m.className='msg ok';m.textContent='Saved';refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
+  const setTags=async tags=>{try{await api('/v1/sales/contacts/'+id,{method:'PUT',body:{tags}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
+  $('#eTagRow').onclick=e=>{const b=e.target.closest('[data-untag]');if(b)setTags((c.tags||[]).filter(t=>t!==b.dataset.untag))};
+  $('#eTagAdd').onkeydown=e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();const v=e.target.value.trim();if(v)setTags([...(c.tags||[]),v])}};
+  $('#eTagAdd').onchange=e=>{const v=e.target.value.trim();if(v)setTags([...(c.tags||[]),v])};
+  $('#eSave').onclick=async()=>{const m=$('#eMsg');m.className='msg';m.textContent='Saving…';try{await api('/v1/sales/contacts/'+id,{method:'PUT',body:{name:$('#eName').value,email:$('#eEmail').value,companyName:$('#eCompany').value,title:$('#eTitle').value,phone:$('#ePhone').value,notes:$('#eNotes').value}});m.className='msg ok';m.textContent='Saved';refreshQuiet()}catch(x){m.className='msg bad';m.textContent=x.message}};
   $('#eUnsub').onclick=async()=>{try{await api(`/v1/sales/contacts/${id}/unsubscribe`,{method:'PUT',body:{unsubscribed:!c.unsubscribed}});await openContact(id);refreshQuiet()}catch(x){alert(x.message)}};
   $('#eDel').onclick=async()=>{if(!confirm('Delete this contact and their history?'))return;try{await api('/v1/sales/contacts/'+id,{method:'DELETE'});$('#cdlg').close();await refresh()}catch(x){alert(x.message)}};
 }
@@ -314,6 +362,7 @@ $('#sTest').onclick=async()=>{const m=$('#sMsg');m.className='msg';m.textContent
 
 // ---------- shared behaviour ----------
 document.addEventListener('click',async e=>{
+  const os=e.target.closest('[data-openseg]');if(os){ACTIVE_SEG=os.dataset.openseg;PICK.clear();$$('.tab').find(t=>t.dataset.t==='contacts').click();return}
   const done=e.target.closest('[data-done]');if(done&&done.type==='checkbox'){try{await api('/v1/sales/tasks/'+done.dataset.done,{method:'PUT',body:{done:true}});await refresh();if(OPEN_CONTACT&&$('#cdlg').open)openContact(OPEN_CONTACT)}catch(x){alert(x.message)}return}
   const close=e.target.closest('[data-close]');if(close){close.closest('dialog').close();return}
   const dealEl=e.target.closest('[data-deal]:not(.card):not(select)');if(dealEl&&!e.target.closest('a')){const id=dealEl.dataset.deal;if(!DEALS.find(d=>d.id===id))DEALS=(await api('/v1/sales/deals')).deals;openDeal(id);return}
