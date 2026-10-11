@@ -240,6 +240,8 @@ $('#importBtn').onclick=importer;
   if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
   try{await api('/v1/money/me')}catch(x){$(x.status===403?'#noAccess':'#needSignin').classList.remove('hidden');return}
   $('#app').classList.remove('hidden');const t=$$('.tab').find(x=>x.dataset.t===location.hash.slice(1));show(t?t.dataset.t:'overview');
+  // a link from the work home Today list opens that invoice
+  const want=new URLSearchParams(location.search).get('invoice');if(want&&/^[0-9a-f-]{36}$/i.test(want)){try{const r=await api('/v1/money/invoices/'+want);editor(r.invoice)}catch{}}
 })();
 </script>
 <script src="/console-nav.js" defer></script>

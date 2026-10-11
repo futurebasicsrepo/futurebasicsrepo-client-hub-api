@@ -1715,5 +1715,38 @@ await journey('J143', 'the invoice editor offers the project and the kind of wor
   ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
 });
 
+await journey('J150', 'Late invoices on the work home Today list: first in the list for the people Money is open to, opening the invoice from it, nothing for anyone else, and a phone fits', async () => {
+  const r = await room('150', { wait: false }), W = 'http://work.localhost:3123', tag = `lt${stamp}`;
+  const staff = async email => forge({ sub: sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email });
+  const kyle = await staff('kyle@thefuturebasics.com'), other = await staff(`ops-${stamp}@thefuturebasics.com`);
+  // five invoices, sent and long overdue (so they are the latest of any in this database), one of them paid and one not yet due: those must not show
+  const ids = []; for (let n = 0; n < 5; n++) { const inv = (await call('/v1/money/invoices', { token: kyle, body: { company: `Late ${tag} ${n}`, contactEmail: 'ap@x.test', lines: [{ description: 'Work', qty: 1, rate: 500 }] } })).json.invoice; ids.push(inv.id); sql(`update money_invoices set status='sent', issued_on=current_date-6000, due_on=current_date-${5000 - n * 10} where id='${inv.id}'`); }
+  const paid = (await call('/v1/money/invoices', { token: kyle, body: { company: `Paid ${tag}`, contactEmail: 'ap@x.test', lines: [{ description: 'Work', qty: 1, rate: 500 }] } })).json.invoice; sql(`update money_invoices set status='paid', issued_on=current_date-6000, due_on=current_date-5500 where id='${paid.id}'`);
+  const future = (await call('/v1/money/invoices', { token: kyle, body: { company: `Future ${tag}`, contactEmail: 'ap@x.test', lines: [{ description: 'Work', qty: 1, rate: 500 }] } })).json.invoice; sql(`update money_invoices set status='sent', due_on=current_date+20 where id='${future.id}'`);
+  ok((await call('/v1/money/overview', { token: other })).status === 403 && (await call('/v1/money/overview', { token: kyle })).json.overdueCount >= 5, 'Money answers for the people named for it and refuses everyone else');
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#reachList .row[data-k=money]', { timeout: 15000 });
+  const rows = await page.$$eval('#reachList .row', rs => rs.map(x => ({ k: x.dataset.k, text: x.innerText.replace(/\s+/g, ' '), href: x.getAttribute('href') })));
+  ok(rows[0].k === 'money' && rows[1].k === 'money' && rows[2].k === 'money' && rows[3].k === 'money', 'the late invoices come first in the list', JSON.stringify(rows.slice(0, 5).map(x => x.k)));
+  ok(/overdue/i.test(rows[0].text) && /Late .* · / .test(rows[0].text) && /\$500 owed/.test(rows[0].text) && /days late/.test(rows[0].text) && /^\/money\?invoice=[0-9a-f-]{36}#invoices$/.test(rows[0].href), 'a row says who, which invoice, how much and how late, and links to it', rows[0].text);
+  ok(/\d+ more late invoices?/.test(rows[3].text) && rows[3].href === '/money#invoices', 'past three there is one line for the rest', rows[3].text);
+  ok(!rows.some(x => /Paid lt|Future lt/.test(x.text) || x.text.includes(`Paid ${tag}`) || x.text.includes(`Future ${tag}`)), 'a paid invoice and one not yet due are not listed');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j150-home.png`, fullPage: true }).catch(() => {});
+  // the row opens that invoice
+  await page.click('#reachList .row[data-k=money]:first-child'); await page.waitForURL(/\/money\?invoice=/, { timeout: 10000 }); await page.waitForSelector('#dlg[open] #detail .panel', { timeout: 15000 });
+  const num = (await call(`/v1/money/invoices/${ids[0]}`, { token: kyle })).json.invoice.number; ok(page.url().includes(`invoice=${ids[0]}`) && (await page.innerText('#dlg')).includes(num), 'the most overdue invoice opens straight from the Today list', num + ' / ' + (await page.innerText('#dlg')).slice(0, 60));
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+
+  // anyone else sees the list as before
+  const c2 = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await c2.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, other);
+  const p2 = await c2.newPage(); p2.errs = []; p2.on('pageerror', e => p2.errs.push(e.message));
+  await p2.goto(`${W}/home`, { waitUntil: 'networkidle' }); await p2.waitForSelector('#reachList', { timeout: 15000 }); await p2.waitForTimeout(1200);
+  ok(await p2.locator('#reachList .row[data-k=money]').count() === 0 && !/Late lt/.test(await p2.innerText('#reachList')) && p2.errs.length === 0, 'someone Money is not open to sees no invoices and no errors'); await c2.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#reachList .row[data-k=money]', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j150-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

@@ -31,5 +31,8 @@ Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danie
 - **For Intuit's app review:** the sign-in addresses are read from Intuit's discovery document (kept for a day; the built-in addresses are used if it cannot be read, and only an `intuit.com` address is ever trusted with the client secret). Every failed QuickBooks call is logged (status, `intuit_tid`, Intuit's error code and message, the path, never a token or a body) and the Money page's last error ends with the `intuit_tid` so Intuit support can find the call.
 - Platform health has a QuickBooks card (connected, needs reconnect, last sync, last error with secrets scrubbed).
 
+## On the work home Today list
+Late invoices come first in **Reach out today** on the work home, for the people Money is open to (Danielle and Kyle): up to three rows, most overdue first, each with the company, the invoice number, what is owed and how many days late, then one line for the rest ("N more late invoices, $X late in all"). A row opens that invoice (`/money?invoice=<id>`). It reads the same `/v1/money/overview` the Money page uses after the page has loaded, so everyone else gets a refusal and sees the list exactly as before. Journey J150.
+
 ## Next
 Shopify Payments payouts and fees, overdue invoices on the work home's Today list, and invoices made from a won deal or a project.
