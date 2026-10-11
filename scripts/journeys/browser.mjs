@@ -633,4 +633,45 @@ await journey('J66', 'Pantone C: every colour on the pack gets a coated Pantone 
   } finally { await wctx.close(); }
 });
 
+await journey('J109', 'the builds showcase in a browser: sign-in gate, the gallery on a phone, a detail page, and the staff page', async () => {
+  const r = await room('109', { wait: false }), tag = `ui${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const made = await call('/v1/admin/builds', { token: admin, body: { name: `Gallery ${tag}`, tagline: 'A tagline for the gallery', sector: 'Retail', visibility: 'listed', status: 'live', hosting: 'railway', liveUrl: 'https://example.com/' + tag, summary: 'What it is and why it was built.', highlights: [{ title: 'Real filtering', text: 'Over AJAX' }], stack: ['Node', 'Postgres'] } });
+  ok(made.status === 201, 'setup: a listed build', made.status);
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto('http://builds.localhost:3123/', { waitUntil: 'networkidle' });
+  ok(await page.locator('#gate').isVisible() && await page.locator('#email').isVisible() && (await page.locator('.b').count()) === 0, 'a visitor who is not signed in sees only the gate');
+  ok(/Future Basics/.test(await page.title()) || (await page.locator('img[src*="logo"], svg').count()) > 0, 'with the brand on it');
+  await page.fill('#email', r.email); await page.click('#askGo'); await page.waitForSelector('#code', { state: 'visible', timeout: 8000 }); await sleep(200);
+  const code = codeFrom(LOG, r.email); ok(/^\d{6}$/.test(code || ''), 'a code is sent', code);
+  await page.fill('#code', '000000'); await page.click('#codeGo'); await page.waitForFunction(() => /wrong|expired/i.test(document.getElementById('msg')?.textContent || ''), null, { timeout: 8000 }).catch(() => {});
+  ok(/wrong|expired/i.test(await page.textContent('#msg')) && (await page.locator('.b').count()) === 0, 'a wrong code is refused with a message');
+  await page.fill('#code', code); await page.click('#codeGo'); await page.waitForSelector('.b', { timeout: 10000 });
+  ok(await page.locator(`.b:has-text("Gallery ${tag}")`).count() === 1, 'the right code opens the gallery with the build on it');
+  ok(await page.$eval('body', () => document.documentElement.scrollWidth - innerWidth) <= 1, 'the gallery fits the phone');
+  await page.click(`.b:has-text("Gallery ${tag}")`); await page.waitForFunction(() => /What it is and why/.test(document.body.innerText), null, { timeout: 8000 });
+  ok(/real filtering/i.test(await page.innerText('body')) && /postgres/i.test(await page.innerText('body')), 'a build opens with its summary, highlights and stack');
+  ok(await page.$eval('body', () => document.documentElement.scrollWidth - innerWidth) <= 1, 'the detail fits the phone');
+  const link = page.locator('a:has-text("live build")'); ok(await link.count() >= 1 && /\/builds\/go\//.test(await link.first().getAttribute('href')), 'its live link goes through the showcase so the visit is recorded');
+  ok(Number(sql(`select count(*) from build_views v join builds b on b.id=v.build_id where b.slug like 'gallery-${tag}%' and v.email='${r.email}'`)) === 1, 'and the look was recorded');
+  await page.click('#back'); await page.waitForSelector('.b', { timeout: 5000 }); ok(await page.locator('.b').count() >= 1, 'Back returns to the gallery');
+  await page.reload({ waitUntil: 'networkidle' }); ok(await page.locator('.b').count() >= 1 && await page.locator('#gate').isHidden(), 'reloading keeps them signed in');
+  ok(page.errs.length === 0, 'no script errors on the viewer', page.errs); await ctx.close();
+
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const sp = await sctx.newPage(); sp.errs = []; sp.on('pageerror', e => sp.errs.push(e.message));
+  await sp.goto('http://work.localhost:3123/builds/admin', { waitUntil: 'networkidle' }); await sp.waitForSelector('.row', { timeout: 10000 });
+  ok(await sp.locator(`.row:has-text("Gallery ${tag}")`).count() === 1 && await sp.locator('.row:has-text("Spot")').count() >= 1, 'staff see every build, the seeded ones too');
+  await sp.click(`.row:has-text("Gallery ${tag}") [data-edit]`); await sp.waitForSelector('#dlg[open]', { timeout: 5000 });
+  ok(await sp.inputValue('#fName') === `Gallery ${tag}` && await sp.inputValue('#fVis') === 'listed', 'a build opens in the editor with its values');
+  await sp.selectOption('#fVis', 'hidden'); await sp.click('#fSave'); await sp.waitForFunction(() => !document.getElementById('dlg').open, null, { timeout: 8000 });
+  ok(sql(`select visibility from builds where slug like 'gallery-${tag}%'`) === 'hidden', 'changing visibility saves');
+  await sp.click('.tab[data-t="invites"]'); await sp.fill('#invEmails', `ui-guest-${tag}@chaos.test`); await sp.fill('#invDays', '3'); await sp.click('#invGo');
+  await sp.waitForFunction(t => document.getElementById('invList')?.innerText.includes(t), `ui-guest-${tag}`, { timeout: 8000 }); ok(true, 'an invite appears in the list');
+  ok(Number(sql(`select count(*) from build_invites where email='ui-guest-${tag}@chaos.test'`)) === 1, 'and is stored');
+  ok(sp.errs.length === 0, 'no script errors on the staff page', sp.errs); await sctx.close();
+  await call(`/v1/admin/builds/${made.json.id}`, { token: admin, method: 'DELETE' });
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);
