@@ -248,6 +248,8 @@ await journey('J40', 'platform health page in the console: opens from the header
     ok(page.url().endsWith('/platform') && await page.isVisible('#platformPage') && await page.isHidden('#app'), 'the header link opens the page at /platform');
     const names = await page.$$eval('.pf-card .pf-name', els => els.map(e => e.textContent.trim()));
     for (const n of ['Database', 'Shopify', 'Assistant', 'Email', 'Google', 'Photo cutout', 'File storage', 'Railway']) ok(names.some(x => x.includes(n)), `a card for ${n}`, names);
+    for (const n of ['ChatGPT', 'Grok', 'Reddit', 'Hacker News', 'Web search', 'X', 'Discord', 'Listening pipeline', 'Sales email', 'Website chat', 'Sales automations', 'Showcase sync', 'Client stores']) ok(names.some(x => x.includes(n)), `a card for ${n} (the whole platform is covered)`, names);
+    const heads = await page.$$eval('.pf-h', els => els.map(e => e.textContent.trim())); ok(['Listening and AI readers', 'Sales, email and chat', 'Builds, stores and delivery'].every(h => heads.includes(h)), 'the new cards are grouped under their own headings', heads);
     ok(/All systems healthy|Something needs attention|The platform is down/.test(await page.textContent('.pf-banner')), 'the banner says the overall state in words');
     ok(await page.$$eval('.pf-card', cs => cs.length >= 8 && cs.every(c => { const b = c.querySelector('.pf-badge'); return b && b.querySelector('i') && b.textContent.trim().length > 2; })), 'every card shows its state as an icon and a word, not colour alone');
     await page.screenshot({ path: `${S}/j40-health-desktop.png`, fullPage: true });

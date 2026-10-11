@@ -19,6 +19,7 @@ import { heroConfig, heroCandidates, pickHero, measureColours, snapColours, hero
 import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTIONS } from './loop.js';
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
+import { coverageChecks, coverageConfig, redactSecrets } from './platform-coverage.js'
 import { runChecks, configChecks, jobHealth, insights as platformInsights, classifyAiFailure, assistantAlertContent, probeAssistant, PROBE_MODEL } from './platform.js';
 import { draftSnapshot, draftDiff, aggregateDiffs } from './learning.js';
 import { renderColorways, mergeColorwayTiles } from './colorway.js';
@@ -758,12 +759,14 @@ app.get('/v1/admin/platform/health',{preHandler:[authenticate,adminOnly]},async 
   const payCheck={id:'payments',name:'Shopify payments (sync)',group:'integration',status:payVerdict.status,summary:payVerdict.summary,latencyMs:payState.lastMs??null,
     facts:shopifyConfigured()?[['Last successful run',ago(payState.lastOkAt)],['Last run read',`${payState.scanned??0} paid ${payState.scanned===1?'order':'orders'} · ${payState.imported??0} new · ${payState.unlocked??0} ${payState.unlocked===1?'pack':'packs'} unlocked`],['Not matched to a room',String((payState.unmatched||[]).length)],['In the ledger',`${payStats.count} ${payStats.count===1?'payment':'payments'} · $${(payStats.totalCents/100).toLocaleString()}`],['Last 24 hours',`${payStats.lastDay} ${payStats.lastDay===1?'payment':'payments'}`],['Paid but still locked',String(payStats.paidButLocked)],['Payers without a store customer link',String(payStats.unlinkedPayers)],['Store spend last refreshed',ago(payStats.lastSpendRefresh)]]:[]};
   checks.splice(Math.max(1,checks.findIndex(c=>c.id==='shopify')+1),0,payCheck);
+  // The parts of the platform that came after the first checks: AI readers, listening sources, sales email, chat, automations, GitHub sync, client stores.
+  checks.push(...await coverageChecks({pool,env:process.env,telemetry,getSetting}).catch(e=>[{id:'coverage',name:'More checks',group:'integration',status:'warn',summary:`The extra checks could not run: ${String(e.message).slice(0,160)}`,facts:[]}]));
   const recentPayments=(await pool.query(`select py.id,py.kind,py.title,py.amount_cents,py.shopify_order_name,py.paid_at,py.source,c.name client_name from payments py join clients c on c.id=py.client_id order by py.paid_at desc limit 8`).catch(()=>({rows:[]}))).rows;
   const events=(await pool.query('select id,at,source,level,message from platform_events order by id desc limit 25').catch(()=>({rows:[]}))).rows;
-  const config=configChecks({env:process.env,billing,shopifyConfigured,techPackProduct});
+  const config=[...configChecks({env:process.env,billing,shopifyConfigured,techPackProduct}),...coverageConfig({env:process.env})];
   const body={generatedAt:new Date().toISOString(),overall:overallStatus([...checks,...config.map(c=>({id:'setting',status:c.status}))]),checks,config,
     jobs:telemetry.jobs.map(j=>({...j,health:jobHealth(j)})),telemetry:{since:telemetry.since,uptimeSec:telemetry.uptimeSec,integrations:telemetry.integrations,requests:telemetry.requests,eventLoop:telemetry.eventLoop},events,payments:{recent:recentPayments,unmatched:payState.unmatched||[],lastRunAt:payState.lastRunAt||null,lastOkAt:payState.lastOkAt||null,lastError:payState.lastError||null,runs:payState.runs||0,stats:payStats}};
-  healthCache={at:Date.now(),body};return body;
+  const safe=redactSecrets(body);healthCache={at:Date.now(),body:safe};return safe;
 });
 app.get('/v1/admin/platform/insights',{preHandler:[authenticate,adminOnly]},async req=>platformInsights(pool,{days:req.query?.days,priceCents:TECH_PACK_PRICE_CENTS}));
 app.get('/v1/admin/shopify/status',{preHandler:[authenticate,adminOnly]},async()=>{
