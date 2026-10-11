@@ -48,6 +48,7 @@ import { standardsPage } from './standards.js';
 import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
+import { registerGate } from './early.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
@@ -251,6 +252,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   // ─── Pages ────────────────────────────────────────────────────────────────
   // ─── Website ──────────────────────────────────────────────────────────────
+  // Until launch, the marketing pages show early access (early.js).
+  registerGate(app, { db, env, behindEdge, origin: (req) => urlFor(req, '') });
   app.get('/', async (req, reply) => html(reply, sitePage({ origin: urlFor(req, ''), provider: provider.name })));
 
   // MCP Registry domain check for the com.spotmeplease/* namespace:
