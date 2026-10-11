@@ -10,7 +10,8 @@ import { gzip as gzipCb } from 'node:zlib';
 import { promisify } from 'node:util';
 import { basename, extname, join } from 'node:path';
 import sharp from 'sharp';
-import { migrate, pool } from './db.js';
+import { migrate, pool, migratePackPictures, packBlobs } from './db.js';
+import { storedForm } from './pack-blobs.js';
 import { setSink, recordRequest, trackJob, declareJob, trackedFetch, timed, reportError, snapshot as telemetrySnapshot, overallStatus } from './telemetry.js';
 import { buildQueues, AUTO_RETRY_LIMIT } from './queues.js';
 import { runSpecCheck, imageConfig, referencePhotos as packPhotos } from './check.js';
@@ -4541,10 +4542,10 @@ async function preparePhotos(list){
 // the same title with the same photo, from the same room, inside three minutes is the same draft.
 async function recentDuplicateDraft(db,{clientId,title,photo}){
   if(!photo)return null;
-  const md5=createHash('md5').update(photo).digest('hex');
+  const md5=createHash('md5').update(photo).digest('hex'),stored=storedForm(photo); // a picture moved out of the pack is stored as a reference
   return (await db.query(`select p.id product_id,tp.id pack_id,tp.ai_status from tech_packs tp join products p on p.id=tp.product_id
     where tp.client_id=$1 and tp.initiated_by='client' and tp.status='draft' and p.title=$2 and tp.created_at>now()-interval '3 minutes'
-    and exists(select 1 from jsonb_array_elements(tp.data->'sketches') sk where md5(sk->>'image')=$3) order by tp.created_at desc limit 1`,[clientId,title,md5])).rows[0]||null;
+    and exists(select 1 from jsonb_array_elements(tp.data->'sketches') sk where sk->>'image'=$4 or md5(sk->>'image')=$3) order by tp.created_at desc limit 1`,[clientId,title,md5,stored])).rows[0]||null;
 }
 async function startHubDraft(req,reply,{project,newProjectName}){
   const title=String(req.body?.title||'').trim().slice(0,200),productType=String(req.body?.productType||'').trim().slice(0,120),description=String(req.body?.description||'').trim().slice(0,3000);
@@ -5586,6 +5587,11 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
+// One time: the pictures already inside stored packs, published snapshots and version history move out into pack_blobs. New writes go out that way already.
+// Runs in the background and is safe to interrupt (a deploy): the flag is set only after a full pass, and a row with nothing left to move is skipped.
+if(!(await getSetting('packPicturesMoved'))){
+  migratePackPictures({log:app.log}).then(async r=>{await setSetting('packPicturesMoved',{at:new Date().toISOString(),...r});app.log.info(r,'pack pictures moved out of the pack JSON')}).catch(e=>app.log.warn({err:e.message},'pack pictures not moved'));
+}
 // Background jobs, each tracked so the platform page can show when it last ran and whether it failed.
 const jobEvery = (name, every, fn, { delay = null } = {}) => { const run = trackJob(name, every, fn); setInterval(run, every).unref(); if (delay) setTimeout(run, delay).unref(); return run; };
 const offerJob = jobEvery('Offer sweep', 5 * 60 * 1000, runOfferSweep);

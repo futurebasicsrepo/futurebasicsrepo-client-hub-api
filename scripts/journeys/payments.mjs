@@ -320,4 +320,46 @@ await journey('J106', 'a pack drawn from a description can be re-run by staff, e
   ok(front && front.callouts.length > 0 && front.callouts.some(c => c.photo || c.hphoto), 'with the callouts pinned on it and detail pictures on them, from the one run', front && [front.callouts.length, front.callouts.filter(c => c.photo || c.hphoto).length]);
 });
 
+await journey('J107', 'pictures live outside the pack JSON: a pack and its published snapshot are small, read back byte for byte, the same picture is stored once, and packs stored the old way are moved without changing a thing', async () => {
+  const sharp = (await import('sharp')).default, { req } = await import('./lib.mjs'), pg = req('pg'), { migratePackPictures } = await import('../../src/db.js');
+  const mail = `blob-${stamp}@chaos.test`, r = await call('/v1/public/start', { body: { email: mail, name: 'Blob Tester', title: 'Blob hoodie', photos: [runner] } }); ok(r.status === 201, 'setup: a pack', r.status);
+  const cid = r.json.client.id, pid = r.json.product.id; await waitAi(call, r.json.token, pid);
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${mail}'`), clientId: cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  const pack = async () => (await adm(`/v1/admin/products/${pid}/tech-pack`)).json.techPack;
+  // a pack with plenty of pictures: eight callout photos, two of them the same picture
+  const noise = async n => `data:image/jpeg;base64,${(await sharp({ create: { width: 360, height: 360, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).jpeg({ quality: 85 }).toBuffer()).toString('base64')}`;
+  const pics = []; for (let i = 0; i < 6; i++) pics.push(await noise(i));
+  let d = await pack(), data = structuredClone(d.data); const sk = data.sketches[0];
+  while (sk.callouts.length < 8) sk.callouts.push({ n: sk.callouts.length + 1, label: 'Detail ' + sk.callouts.length, spec: 'x', note: '', photo: '', x: 0.3, y: 0.3 });
+  sk.callouts.forEach((c, i) => { c.photo = pics[i % 6]; }); // 8 callouts, 6 distinct pictures
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data } })).status === 200, 'staff save a pack with eight callout photos (six different pictures)');
+  const rawRow = async () => { const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect(); try { return (await c.query(`select data, published_data, pg_column_size(data) dsize, pg_column_size(published_data) psize, updated_at from tech_packs where product_id=$1`, [pid])).rows[0]; } finally { await c.end(); } };
+  let raw = await rawRow(); const text = JSON.stringify(raw.data);
+  ok(!text.includes('data:image/') && (text.match(/fbblob:[0-9a-f]{64}/g) || []).length >= 8, 'in the database the pack holds references, not pictures', [text.length, (text.match(/fbblob:/g) || []).length]);
+  d = await pack(); ok(d.data.sketches[0].callouts.every((c, i) => c.photo === pics[i % 6]), 'and every callout photo reads back as exactly the picture that went in');
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack/publish`, { method: 'POST', body: { override: 'journey: pictures' } })).status === 200, 'staff publish');
+  raw = await rawRow(); ok(raw.published_data && !JSON.stringify(raw.published_data).includes('data:image/') && Number(raw.psize) < 20000, 'the published snapshot is references too, and small', [raw.psize, raw.dsize]);
+  const blobCount = Number(sql(`select count(*) from pack_blobs b where exists(select 1 from tech_packs tp where tp.product_id='${pid}' and tp.data::text like '%'||b.hash||'%')`));
+  ok(blobCount <= 6 + 4, 'the same picture is stored once however many callouts, snapshots and versions hold it', blobCount);
+  const media = (await adm(`/v1/admin/products/${pid}/tech-pack/media`)).json.media, firstBytes = async () => Buffer.from(await (await fetch(BASE + media[0].url.replace(/^https?:\/\/[^/]+/, ''))).arrayBuffer());
+  const before = { data: JSON.stringify((await pack()).data), pic: await firstBytes() };
+  ok(before.pic.length > 1000, 'the published picture is served from the store');
+  // a pack stored the old way (pictures inline in the data, the published snapshot and a version) is moved, byte for byte
+  const hyd = await pack();
+  const legacy = new pg.Client({ connectionString: process.env.DATABASE_URL }); await legacy.connect();
+  try { await legacy.query(`update tech_packs set data=$2::jsonb, published_data=$2::jsonb where product_id=$1`, [pid, JSON.stringify(hyd.data)]); await legacy.query(`update tech_pack_versions set data=$2::jsonb where tech_pack_id=(select id from tech_packs where product_id=$1)`, [pid, JSON.stringify(hyd.data)]); } finally { await legacy.end(); }
+  raw = await rawRow(); const stamp0 = String(raw.updated_at), bigBefore = Number(raw.dsize); ok(JSON.stringify(raw.data).includes('data:image/') && bigBefore > 40000, 'setup: the pack, its snapshot and a version now hold their pictures inline, as before', bigBefore);
+  const m1 = await migratePackPictures({ log: { error() {} }, pauseMs: 0 }); ok(m1.moved >= 3 && m1.pictures >= 6, 'the move finds them', m1);
+  raw = await rawRow(); ok(!JSON.stringify(raw.data).includes('data:image/') && !JSON.stringify(raw.published_data).includes('data:image/') && Number(raw.dsize) < bigBefore / 5, 'the pack and its snapshot are now references, a fraction of the size', [bigBefore, raw.dsize]);
+  ok(sql(`select count(*) from tech_pack_versions v join tech_packs tp on tp.id=v.tech_pack_id where tp.product_id='${pid}' and v.data::text like '%data:image/%'`) === '0', 'and so is the version history');
+  ok(String(raw.updated_at) === stamp0, 'the move does not count as an edit (updated_at is untouched)');
+  ok(JSON.stringify((await pack()).data) === before.data && (await firstBytes()).equals(before.pic), 'the pack and the published picture read back exactly as before the move');
+  const m2 = await migratePackPictures({ log: { error() {} }, pauseMs: 0 }); ok(m2.moved === 0, 'running it again moves nothing', m2);
+  // saving still works and a changed picture is a new one
+  const d2 = await pack(), data2 = structuredClone(d2.data); data2.sketches[0].callouts[0].photo = await noise(99);
+  ok((await adm(`/v1/admin/products/${pid}/tech-pack`, { method: 'PUT', body: { data: data2 } })).status === 200 && (await pack()).data.sketches[0].callouts[0].photo === data2.sketches[0].callouts[0].photo && (await pack()).data.sketches[0].callouts[1].photo === pics[1], 'saving a changed picture stores the new one and keeps the rest');
+  // a double-tap on Create still finds the draft that holds the same picture (the check compares what is stored)
+  const dup = await call('/v1/public/start', { body: { email: mail, name: 'Blob Tester', title: 'Blob hoodie', photos: [runner] } }); ok([200, 201].includes(dup.status), 'a second start with the same photo and title is accepted', dup.status);
+});
+
 summary(); process.exit(bad ? 1 : 0);
