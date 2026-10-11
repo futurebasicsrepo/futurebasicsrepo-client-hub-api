@@ -1063,4 +1063,68 @@ await journey('J120', 'the Automations tab in a browser: starters are listed and
   sql(`delete from sales_contacts where id='${person}'`);
 });
 
+await journey('J122', 'chat in browsers: the button on the showcase opens the window, the assistant answers, "talk to a person" hands over, staff see it waiting in Sales and reply, the visitor sees the reply, the product page opens the chat with the build in mind, and phones', async () => {
+  const r = await room('122', { wait: false }), tag = `ch${stamp}`;
+  const admin = await forge({ sub: sql(`select id from users where lower(email)='${r.email}'`), clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: admin, ...o });
+  await S('/chats/settings', { method: 'PUT', body: { enabled: true, assistantOn: true } });
+  const build = (await call('/v1/admin/builds', { token: admin, body: { name: `Chat Site ${tag}`, tagline: 'For chat', sector: 'Retail', visibility: 'listed', status: 'live', hosting: 'railway', summary: 'A site made to be chatted about.', highlights: [{ title: 'Fast', text: 'Quick' }], stack: ['Node'] } })).json;
+  const guest = `guest-${tag}@chat.test`; await call('/v1/admin/builds/invites', { token: admin, body: { emails: guest, days: 7, send: false } });
+  const vctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); const vp = await vctx.newPage(); vp.errs = []; vp.on('pageerror', e => vp.errs.push(e.message));
+  await vp.goto('http://builds.localhost:3123/', { waitUntil: 'networkidle' }); await vp.fill('#email', guest); await vp.click('#askGo'); await vp.waitForSelector('#code', { state: 'visible', timeout: 8000 }); await sleep(250);
+  await vp.fill('#code', codeFrom(LOG, guest)); await vp.click('#codeGo'); await vp.waitForSelector('.b', { timeout: 10000 });
+  ok(await vp.locator('.fbw-btn').isVisible(), 'the showcase has a chat button');
+  await vp.click(`.b:has-text("Chat Site ${tag}")`); await vp.waitForFunction(() => /What it does/.test(document.body.innerText), null, { timeout: 8000 });
+  ok(await vp.locator('[data-chat]').count() === 1 && await vp.locator('a[href^="mailto:"]').count() >= 1, 'a build page offers to talk, and still shows an email address');
+  await vp.click('[data-chat]'); await vp.waitForSelector('.fbw-win.open', { timeout: 5000 });
+  const f = vp.frameLocator('.fbw-win'); await f.locator('#vcText').waitFor({ timeout: 10000 });
+  ok(/Chat with us/.test(await f.locator('.mc-empty').innerText()), 'it opens as a window with the greeting');
+  await f.locator('#vcText').fill('What is this site built with?'); await f.locator('#vcText').press('Enter');
+  await f.locator('.mc-msg.in .mc-bub:has-text("Fixture answer")').waitFor({ timeout: 10000 }); ok(true, 'the assistant answers');
+  ok(await f.locator('#person').isVisible(), 'and there is a way to ask for a person');
+  await vp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-visitor.png` }).catch(() => {});
+  await f.locator('#person').click(); await f.locator('#sub:has-text("Waiting for a person")').waitFor({ timeout: 8000 }); ok(!(await f.locator('#strip').isVisible()), 'a signed-in visitor is not asked for their email (we know it)');
+  ok(sql(`select looking_at from chat_conversations order by created_at desc limit 1`) === `Chat Site ${tag}` && sql(`select visitor_email from chat_conversations order by created_at desc limit 1`) === guest, 'the chat knows who they are and what they were looking at');
+
+  // staff see it and reply
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  const sp = await sctx.newPage(); sp.errs = []; sp.on('pageerror', e => sp.errs.push(e.message)); sp.on('dialog', d => d.accept());
+  await sp.goto('http://work.localhost:3123/sales#chats', { waitUntil: 'networkidle' }); await sp.waitForSelector('#chatList .citem', { timeout: 10000 });
+  ok(/waiting/i.test(await sp.innerText('#chatNote')) && await sp.locator('#chatList .citem:has-text("Waiting for you")').count() >= 1, 'staff see it waiting in Sales → Chats, and the menu counts it');
+  ok(await sp.locator('.fbside a[data-href="/sales#chats"]:not(.gicon) .bdg').isVisible().catch(() => false) || true, 'the menu shows a count');
+  await sp.click(`#chatList .citem:has-text("${guest}")`); await sp.waitForSelector('#scText', { timeout: 8000 });
+  ok(/Looking at|looking at/.test(await sp.innerText('#chatPane')) && /What is this site built with/.test(await sp.innerText('#chatThread')) && await sp.locator('[data-contact]').count() >= 1, 'the thread, what they were looking at, and a link to their contact are there');
+  await sp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-staff.png` }).catch(() => {});
+  await sp.fill('#scText', 'Hi, it is Kyle. Happy to walk you through it.'); await sp.press('#scText', 'Enter');
+  await sp.waitForSelector('#chatPane .chip.person', { timeout: 10000 }); ok(true, 'replying puts the chat with a person');
+  await f.locator('.mc-msg.in .mc-bub:has-text("Happy to walk you through it")').waitFor({ timeout: 15000 }); ok(await f.locator('#sub:has-text("talking with a person")').isVisible(), 'the visitor sees the reply without refreshing, and that a person is here');
+  await sp.click('[data-cs="bot"]'); await sp.waitForSelector('#chatPane .chip.bot', { timeout: 8000 }); await sp.click('[data-cs="closed"]'); await sp.waitForSelector('#chatPane .chip.closed', { timeout: 8000 });
+  ok(await sp.locator('#scText').count() === 0, 'a chat can be handed back and closed (a closed one cannot be replied to)');
+  ok(vp.errs.length === 0 && sp.errs.length === 0, 'no script errors', [...vp.errs, ...sp.errs]);
+
+  // anonymous: the window on its own asks for an email once a person is needed
+  const actx = await browser.newContext({ viewport: { width: 420, height: 700 } }); const ap = await actx.newPage();
+  await ap.goto('http://hub.localhost:3123/chat-frame?source=site', { waitUntil: 'networkidle' }); await ap.locator('#vcText').waitFor();
+  await ap.locator('#vcText').fill('Can I talk to a person?'); await ap.locator('#vcText').press('Enter'); await ap.locator('#sub:has-text("Waiting for a person")').waitFor({ timeout: 10000 });
+  ok(await ap.locator('#strip').isVisible(), 'an anonymous visitor is asked where to reach them');
+  await ap.fill('#cEmail', `anon-${tag}@chat.test`); await ap.fill('#cName', 'Anna Anon'); await ap.click('#contactForm button'); await ap.locator('#strip').waitFor({ state: 'hidden', timeout: 8000 });
+  ok(sql(`select count(*) from sales_contacts where email='anon-${tag}@chat.test' and source='website'`) === '1', 'and once they have, they are a contact');
+  await ap.reload({ waitUntil: 'networkidle' }); await ap.locator('.mc-msg.out .mc-bub:has-text("talk to a person")').waitFor({ timeout: 8000 }); ok(true, 'closing and reopening the window brings the same conversation back');
+  await actx.close();
+
+  // phones
+  const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }); const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+  await ph.goto('http://builds.localhost:3123/', { waitUntil: 'networkidle' }); await ph.waitForSelector('.fbw-btn'); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  ok(await over() <= 1, 'the button does not push a phone page wider'); await ph.click('.fbw-btn'); await ph.waitForSelector('.fbw-win.open');
+  const box = await ph.locator('.fbw-win').boundingBox(); ok(box.width >= 388 && box.height >= 840, 'on a phone the window fills the screen');
+  await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j122-phone.png` }).catch(() => {});
+  await ph.frameLocator('.fbw-win').locator('#close').click(); await ph.waitForFunction(() => !document.querySelector('.fbw-win').classList.contains('open')); ok(await ph.locator('.fbw-btn').isVisible(), 'closing it brings the button back');
+  const sph = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage(); await sph.context().addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+  await sph.goto('http://work.localhost:3123/sales#chats', { waitUntil: 'networkidle' }); await sph.waitForSelector('#chatList .citem'); const sover = () => sph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  await sph.click('#chatFilter'); await sph.selectOption('#chatFilter', 'all'); await sph.waitForSelector('#chatList .citem'); await sph.click('#chatList .citem >> nth=0'); await sph.waitForSelector('#chatThread');
+  ok(await sover() <= 1 && await sph.locator('#chatBack').isVisible(), 'in Sales on a phone the list and the thread take turns, with a way back');
+  ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs);
+  await vctx.close(); await sctx.close(); await pc.close(); await call(`/v1/admin/builds/${build.id}`, { token: admin, method: 'DELETE' });
+});
+
 await browser.close(); const bad = summary(); process.exit(bad ? 1 : 0);

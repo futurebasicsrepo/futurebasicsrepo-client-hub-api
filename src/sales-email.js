@@ -89,12 +89,12 @@ export const htmlToText = html => String(html ?? '').replace(/<(style|script)[\s
 
 // ---------- who may be emailed ----------
 // A relationship: they are a hub client, or they did something (looked at a build, clicked through, replied, met or spoke with us), or they were invited.
-const RELATIONSHIP_KINDS = ['showcase_view', 'showcase_demo', 'email_in', 'meeting', 'call'];
+const RELATIONSHIP_KINDS = ['showcase_view', 'showcase_demo', 'email_in', 'chat_in', 'meeting', 'call'];
 export function relationship({ clientId = null, kinds = [], invited = false } = {}) {
   if (clientId) return { ok: true, why: 'a Future Basics client' };
   if (invited) return { ok: true, why: 'invited to the showcase' };
   const k = (kinds || []).find(x => RELATIONSHIP_KINDS.includes(x));
-  return k ? { ok: true, why: { showcase_view: 'looked at a build', showcase_demo: 'opened a live build', email_in: 'wrote to us', meeting: 'met with us', call: 'spoke with us' }[k] } : { ok: false, why: 'nothing yet shows they know us' };
+  return k ? { ok: true, why: { showcase_view: 'looked at a build', showcase_demo: 'opened a live build', email_in: 'wrote to us', chat_in: 'chatted with us', meeting: 'met with us', call: 'spoke with us' }[k] } : { ok: false, why: 'nothing yet shows they know us' };
 }
 // → { ok, reasons: [plain words] }. Staff can confirm a relationship that the record does not show (they met at an event); nothing else can be overridden.
 export function canEmail({ contact, suppressed = null, rel, confirmed = false, settings = {}, sentToday = 0, configured = true }) {

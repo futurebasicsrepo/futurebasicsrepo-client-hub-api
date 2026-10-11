@@ -31,6 +31,7 @@ import { registerSalesRoutes, seedSegments, syncHubContacts } from './sales-rout
 import { registerSalesEmailRoutes, seedTemplates } from './sales-email-routes.js';
 import { registerSalesAutomationRoutes, seedAutomations } from './sales-automations-routes.js';
 import { processRuns } from './sales-automations-engine.js';
+import { registerChatRoutes } from './chat-routes.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
@@ -615,7 +616,8 @@ registerSalesRoutes(app, { pool, authenticate, adminOnly, log: app.log });
 const salesEmail = registerSalesEmailRoutes(app, { pool, authenticate, adminOnly, secret, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, publicUrl: clientHubUrl, workUrl: workHubUrl, log: app.log, fetchImpl: (url, opts) => trackedFetch('resend', url, opts) });
 registerSalesAutomationRoutes(app, { pool, authenticate, adminOnly, setSetting, sendToContact: salesEmail.sendToContact, checkContact: salesEmail.checkContact, log: app.log });
 app.get('/builds/admin', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./builds-admin.html', import.meta.url), 'utf8')));
-registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
+const buildsApi = registerBuildRoutes(app, { pool, authenticate, adminOnly, secret, SignJWT, jwtVerify, hash, throttle, CODE_ASK, CODE_GUESS, tooManyCodes, tooManyGuesses, cleanCode, randomInt, sendHubEmail, hubEmailShell, hubButton, emailEscape, clientForEmail, log: app.log, fetchImpl: (url, opts) => trackedFetch('github', url, opts) });
+registerChatRoutes(app, { pool, authenticate, adminOnly, throttle, hash, getSetting, setSetting, sendHubEmail, hubEmailShell, emailEscape, notifyTo: intakeNotificationEmail, workUrl: workHubUrl, builds: buildsApi, aiEnabled, log: app.log });
 app.get('/admin', sendAdmin);
 app.get('/clients/:id', sendAdmin);
 app.get('/platform', sendAdmin);

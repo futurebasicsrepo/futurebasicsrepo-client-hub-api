@@ -7,7 +7,7 @@ export const STAGE_LABELS = { new: 'New', contacted: 'Contacted', meeting: 'Meet
 // how likely each open stage is to close, for the forecast (a starting point to tune, not a promise)
 export const STAGE_ODDS = { new: 0.1, contacted: 0.2, meeting: 0.4, proposal: 0.6, won: 1, lost: 0 };
 export const SOURCES = ['manual', 'showcase', 'website', 'referral', 'outbound', 'event', 'hub', 'import', 'inbound'];
-export const ACTIVITY_KINDS = ['note', 'call', 'meeting', 'email_in', 'email_out', 'stage', 'showcase_view', 'showcase_demo', 'task', 'system'];
+export const ACTIVITY_KINDS = ['note', 'call', 'meeting', 'email_in', 'email_out', 'chat_in', 'chat_out', 'stage', 'showcase_view', 'showcase_demo', 'task', 'system'];
 export const MANUAL_KINDS = ['note', 'call', 'meeting', 'email_in', 'email_out']; // what a person can log by hand
 
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -77,7 +77,7 @@ export function cleanActivity(input = {}) {
 }
 
 // How warm a contact is, from what they did and how recently. Each event counts for its weight and halves every week.
-const HEAT_WEIGHT = { showcase_demo: 5, showcase_view: 2, email_in: 6, meeting: 4, call: 3 };
+const HEAT_WEIGHT = { showcase_demo: 5, showcase_view: 2, email_in: 6, chat_in: 5, meeting: 4, call: 3 };
 export function heat(events, now = Date.now()) {
   let score = 0, last = 0;
   for (const e of events || []) {
