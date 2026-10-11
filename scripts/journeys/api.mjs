@@ -1686,7 +1686,16 @@ await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news,
     ok((await act(B.token, s1, 'reply', { note: 'They answered' })).json.status === 'replied' && (await act(B.token, s1, 'meeting', { note: 'Tuesday 3pm' })).json.status === 'meeting', 'their reply and the meeting are logged');
     ok((await act(B.token, s1, 'won', { valueCents: -5 })).status === 422 && (await act(B.token, s1, 'won', { valueCents: 1250000, note: 'Signed' })).json.status === 'won', 'a win needs a value and is logged');
     ok((await act(B.token, s1, 'outreach', { channel: 'dm', note: 'again' })).status === 409 && (await act(B.token, s1, 'claim')).status === 409, 'a closed one is not worked on again until it is reopened');
-    d1 = (await I(`/signals/${s1}`)).json; ok(d1.events.map(e => e.kind).join() === 'claimed,assigned,outreach,reply,meeting,won' && Number(d1.events.find(e => e.kind === 'won').value_cents) === 1250000, 'the whole story is on the record, in order', d1.events.map(e => e.kind));
+    d1 = (await I(`/signals/${s1}`)).json; ok(d1.events.map(e => e.kind).join() === 'claimed,assigned,outreach,deal,reply,meeting,won' && Number(d1.events.find(e => e.kind === 'won').value_cents) === 1250000, 'the whole story is on the record, in order', d1.events.map(e => e.kind));
+    // "I sent it" is where the deal starts, and every later step moves it: nothing is copied by hand
+    const h1 = (await I(`/signals/${s1}`)).json.signal, cid1 = h1.contactId, did1 = h1.dealId;
+    ok(cid1 && did1 && sql(`select source||'|'||array_to_string(tags,',') from sales_contacts where id='${cid1}'`).startsWith('intel|intel,') && sql(`select source from sales_deals where id='${did1}'`) === 'intel', '"I sent it" made the contact (tagged intel) and the deal, without anyone pressing Add to CRM');
+    ok(sql(`select count(*) from sales_deals where contact_id='${cid1}'`) === '1' && sql(`select stage||'|'||value_cents||'|'||(closed_at is not null) from sales_deals where id='${did1}'`) === 'won|1250000|true', 'there is one deal, and the win closed it at its value');
+    const tl = sql(`select string_agg(kind||':'||text, ' // ' order by created_at, id) from sales_activities where deal_id='${did1}'`);
+    ok(/note:Sent on a public reply, from X: Happy to help: here is how I would start/.test(tl) && /stage:.*Contacted → Meeting/.test(tl) && /stage:.*Meeting → Won/.test(tl) && /note:They replied: They answered/.test(tl) && /note:Meeting booked: Tuesday 3pm/.test(tl), 'the contact\'s timeline has exactly what was sent, the reply, the meeting and each stage change', tl);
+    ok(sql(`select count(*) from sales_tasks where contact_id='${cid1}' and title like 'Follow up on what we sent%' and due_at > now() + interval '2 days'`) === '1', 'a follow-up task was set for three days on');
+    ok((await call('/v1/intel/signals/' + s2 + '/lost', { token: A.token, body: {} })).status === 200 && sql(`select stage||'|'||(closed_at is not null) from sales_deals where id=(select deal_id from intel_signals where id='${s2}')`) === 'lost|true' && sql(`select source from sales_deals where id=(select deal_id from intel_signals where id='${s2}')`) === 'intel', 'marking one lost closes its deal as lost (a signal with no deal gets one)');
+    ok((await act(A.token, s2, 'reopen')).json.status === 'new' && sql(`select stage from sales_deals where id=(select deal_id from intel_signals where id='${s2}')`) === 'contacted', 'reopening a lost one puts its deal back to Contacted');
     ok((await act(A.token, s2, 'dismiss', {})).status === 422 && (await act(A.token, s2, 'dismiss', { reason: 'vendor', note: 'selling their own thing' })).json.status === 'dismissed', 'dismissing needs a reason');
     ok(!(await I('/overview')).json.signals.some(s => s.id === s2) && (await I('/overview?status=dismissed')).json.signals.some(s => s.id === s2), 'a dismissed post leaves the list and is found under Dismissed');
     ok((await act(A.token, s2, 'reopen')).json.status === 'new' && (await act(A.token, s3, 'reopen')).status === 409, 'a dismissed one can be reopened; one that was never closed cannot');
@@ -1714,9 +1723,9 @@ await journey('J134', 'Sales intelligence: listens to Reddit, Hacker News, news,
 
     // the KPIs
     const k = (await I('/kpis?days=30')).json;
-    ok(k.funnel.found >= 6 && k.funnel.surfaced >= 5 && k.funnel.actioned === 1 && k.funnel.replied === 1 && k.funnel.meetings === 1 && k.funnel.won === 1 && k.funnel.deals === 1 && k.totals.wonCents === 1250000, 'the funnel counts what happened', k.funnel);
+    ok(k.funnel.found >= 6 && k.funnel.surfaced >= 5 && k.funnel.actioned === 1 && k.funnel.replied === 1 && k.funnel.meetings === 1 && k.funnel.won === 1 && k.funnel.deals === 3 && k.totals.wonCents === 1250000, 'the funnel counts what happened', k.funnel);
     const ann = k.people.find(p => p.id === A.id), ben = k.people.find(p => p.id === B.id);
-    ok(ann.claimed === 1 && ann.dismissed === 1 && ann.deals === 1 && ben.claimed === 0 && ben.outreach === 1 && ben.replies === 1 && ben.meetings === 1 && ben.won === 1 && ben.wonCents === 1250000, 'each person\'s record is theirs: who took it, sent, got replies, booked meetings, won what (handing a post over is not the same as taking it)', [ann, ben]);
+    ok(ann.claimed === 1 && ann.dismissed === 1 && ann.deals === 2 && ben.deals === 1 && ben.claimed === 0 && ben.outreach === 1 && ben.replies === 1 && ben.meetings === 1 && ben.won === 1 && ben.wonCents === 1250000, 'each person\'s record is theirs: who took it, sent, got replies, booked meetings, won what (handing a post over is not the same as taking it)', [ann, ben]);
     ok(k.rates.reply === 100 && k.rates.meeting === 100 && k.response.slaHours === 24 && k.response.overdue >= 0 && k.cost.cents > 0 && k.costByProvider.some(c => c.provider === 'openai'), 'the rates, the response time target and the cost are there');
     await I('/settings', { method: 'PUT', body: { teams: { [A.id]: 'Growth', [B.id]: 'Growth', 'not-a-user': 'x' } } });
     const kt = (await I('/kpis?days=7')).json; ok(kt.teams.length === 1 && kt.teams[0].team === 'Growth' && kt.teams[0].people >= 2 && kt.teams[0].wonCents === 1250000 && kt.days === 7, 'by team once people are put in teams, and the period can be changed');
@@ -1735,6 +1744,10 @@ await journey('J132', 'the work home: staff only, counts new leads (not clients)
   ok((await call('/v1/admin/home')).status === 401 && (await call('/v1/admin/home', { token: room.token })).status === 403, 'clients and strangers cannot read it');
   const w = await call('/home', { headers: { host: 'work.localhost:3123' } }); ok(w.status === 200 && /Work home/.test(w.text), 'the page itself is served at /home');
   const before = await home(); ok(Array.isArray(before.awaitingReply) && Array.isArray(before.prototypes) && Array.isArray(before.projects) && typeof before.funnel.newLeads7 === 'number' && typeof before.waiting.approvals === 'number', 'the home has leads, prototypes, projects and what is waiting', Object.keys(before));
+  ok(before.signals && typeof before.signals.total === 'number' && typeof before.signals.overdue === 'number' && Array.isArray(before.signals.top), 'it also counts the posts from listening that are worth a look');
+  const sg = sql(`insert into intel_signals(source,external_id,url,title,summary,scored_at,relevant,score,model,status) values('reddit','home-${tag}','https://example.com/h','Need an app ${tag}','A salon needs an app',now(),true,100,'fixture','new') returning id`).split('\n')[0];
+  const withSig = await home(); ok(withSig.signals.top[0]?.id === sg && withSig.signals.total === before.signals.total + 1, 'a post worth a look is on the list, strongest first');
+  sql(`update intel_signals set status='dismissed' where id='${sg}'`); const gone = await home(); ok(!gone.signals.top.some(x => x.id === sg) && gone.signals.total === before.signals.total, 'a dismissed one leaves it');
 
   // leads: a web lead nobody has answered, one we replied to, a hub client, and an old one
   const mk = async (name, source, email) => (await S('/contacts', { body: { name, email, source, tags: [] } })).json.id;

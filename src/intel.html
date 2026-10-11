@@ -43,7 +43,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(640px,94vw);max-height:92
 table.watches{table-layout:fixed;min-width:820px}.wacts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}table.watches td,table.watches th{overflow-wrap:anywhere}
 .q{font:400 13px/1.5 'IBM Plex Mono',monospace;background:var(--fog);border-radius:10px;padding:8px 10px}
 tr.rec>td{border-top:0;padding:0 10px 14px}.heard{display:grid;gap:6px;border-left:3px solid var(--line);padding-left:12px}.heard a{font-weight:600;text-decoration:none}.heard a:hover{text-decoration:underline}.heard .row{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
-.pass{padding:14px 0;border-top:1px solid var(--line)}.pass:first-child{border-top:0}.pass .why{font-weight:400;color:var(--dim)}
+.pass{padding:14px 0;border-top:1px solid var(--line)}.pass:first-child{border-top:0}.sig.linked{background:#f4fff9;border-radius:14px;padding-left:10px;padding-right:10px;outline:2px solid #a9dcbf}.pass .why{font-weight:400;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -75,7 +75,8 @@ const ago=v=>{if(!v)return 'never';const h=(Date.now()-new Date(v))/36e5;return 
 const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString(),cents=c=>c==null?'—':'$'+(Number(c)/100).toFixed(2),pct=v=>v==null?'—':v+'%';
 const LINES={ai:'AI',apps:'Apps',product:'Product'},STATUS=[['open','Open'],['new','New'],['reviewing','In progress'],['actioned','Sent'],['replied','Replied'],['meeting','Meeting'],['won','Won'],['lost','Lost'],['dismissed','Dismissed'],['passed','Passed over']];
 const CHAN={public_reply:'A public reply',dm:'A direct message',email:'An email',linkedin:'LinkedIn',x:'X',reddit:'Reddit',discord:'Discord',call:'A call',other:'Somewhere else'};
-let TAB='signals',STATE={status:'open',line:'',source:'',owner:'',q:'',low:false},OV=null,SIGS=[];
+let TAB='signals',STATE={status:'open',line:'',source:'',owner:'',q:'',low:false,linked:(new URLSearchParams(location.search).get('signal')||'').match(/^[0-9a-f-]{36}$/i)?new URLSearchParams(location.search).get('signal'):''},OV=null,SIGS=[];
+const linkFor=id=>`${location.origin}/intel?signal=${id}`;
 
 // a small form in a dialog: fields [{name,label,type,value,options,full}], send(values)
 function ask(title,fields,send,go='Save'){
@@ -96,7 +97,9 @@ async function loadSignals(){
   $('#fSource').innerHTML='<option value="">Every source</option>'+OV.sources.map(s=>`<option value="${s.kind}" ${STATE.source===s.kind?'selected':''}>${esc(s.label)}</option>`).join('')+'<option value="linkedin">LinkedIn (added by hand)</option><option value="meta">Meta (added by hand)</option>';
   $('#fOwner').innerHTML='<option value="">Anyone</option><option value="me">Mine</option><option value="none">Unassigned</option>'+OV.staff.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');$('#fOwner').value=STATE.owner;
   if(STATE.status==='passed'){const r=await api('/v1/intel/passed');SIGS=r.signals;$('#list').innerHTML=`<p class="sub" style="margin:0 0 6px">Posts the cheap first look did not send to the AI, with why. If one looks like a real chance, ask the AI to read it and you will get the draft and next step.</p>`+(SIGS.length?SIGS.map(passedCard).join(''):'<p class="empty">Nothing was passed over.</p>');return}
-  $('#list').innerHTML=SIGS.length?SIGS.map(card).join(''):`<p class="empty">${OV.counts.open?'Nothing matches those filters.':OV.counts.passed?`Nothing worth a look yet. ${OV.counts.passed} post${OV.counts.passed===1?' was':'s were'} passed over by the first look: open “Passed over” to see why.`:'Nothing waiting. Press Listen now, add a post you spotted, or check Watches.'}</p>`;
+  let banner='';
+  if(STATE.linked){try{const r=await api('/v1/intel/signals/'+STATE.linked);SIGS=[r.signal,...SIGS.filter(x=>x.id!==STATE.linked)];banner=`<div class="next" style="margin:0 0 6px"><b>Linked</b>The post you were sent is first below. <button class="btn sm" data-a="unlink" type="button">Show everything</button></div>`}catch{STATE.linked='';history.replaceState(null,'','/intel'+location.hash);banner=`<div class="risk" style="margin:0 0 6px">That post is no longer in the list.</div>`}}
+  $('#list').innerHTML=banner+(SIGS.length?SIGS.map(card).join(''):`<p class="empty">${OV.counts.open?'Nothing matches those filters.':OV.counts.passed?`Nothing worth a look yet. ${OV.counts.passed} post${OV.counts.passed===1?' was':'s were'} passed over by the first look: open “Passed over” to see why.`:'Nothing waiting. Press Listen now, add a post you spotted, or check Watches.'}</p>`);
 }
 function passedCard(s){return `<article class="pass" data-id="${esc(s.id)}"><div class="meta"><span class="chip">${esc(s.sourceLabel)}</span>${s.watch?`<span class="sub">${esc(s.watch)}</span>`:''}<span class="sub">${s.author?esc(s.author)+' · ':''}posted ${esc(ago(s.postedAt||s.foundAt))}</span></div>
   <h3>${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.url)} ↗</a>`:esc(s.title)}</h3><div class="sub">${esc(s.reason)}</div>
@@ -104,14 +107,14 @@ function passedCard(s){return `<article class="pass" data-id="${esc(s.id)}"><div
   <div class="bar"><button class="btn sm go" data-a="readnow">Have the AI read this</button></div></article>`}
 function card(s){
   const cls=s.score>=75?'hi':s.score>=50?'mid':'lo',mine=s.ownerId&&s.ownerId===OV.me,open=['new','reviewing'].includes(s.status),live=!['dismissed','won','lost'].includes(s.status);
-  return `<article class="sig" data-id="${esc(s.id)}"><div><div class="score ${cls}" title="Score ${s.score}">${s.score}</div></div><div>
+  return `<article class="sig${s.id===STATE.linked?' linked':''}" data-id="${esc(s.id)}"><div><div class="score ${cls}" title="Score ${s.score}">${s.score}</div></div><div>
    <div class="meta"><span class="chip">${esc(s.sourceLabel)}</span>${s.serviceLine?`<span class="chip line">${esc(LINES[s.serviceLine])}</span>`:''}${s.intent?`<span class="chip">${esc(s.intentLabel)}</span>`:''}<span class="sub">${s.author?esc(s.author)+' · ':''}posted ${esc(ago(s.postedAt||s.foundAt))}</span><span class="chip ${s.status==='won'?'ok':s.status==='dismissed'||s.status==='lost'?'':''}">${esc(s.status==='reviewing'?'in progress':s.status)}</span>${s.ownerName?`<span class="sub">· ${esc(s.ownerName)}</span>`:''}</div>
    <h3>${s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title||s.summary||s.url)} ↗</a>`:esc(s.title||s.summary)}</h3>
    <div>${esc(s.summary)}</div>${s.whyNow?`<div class="why">${esc(s.whyNow)}</div>`:''}${s.angle?`<div class="sub">Angle: ${esc(s.angle)}</div>`:''}${s.risks?`<div class="risk">Check first: ${esc(s.risks)}</div>`:''}
    ${s.nextStep?`<div class="next"><b>Next step</b>${esc(s.nextStep)}</div>`:''}
    <details><summary>What they wrote</summary><div class="orig">${esc(s.body||s.title||'(nothing kept)')}</div></details>
    ${s.draft&&live?`<div class="draft"><span class="mono sub">Suggested ${esc((CHAN[s.draftChannel]||'reply').toLowerCase())} (edit before you send it yourself)</span><textarea class="t" data-draft>${esc(s.draft)}</textarea></div>`:''}
-   <div class="bar">${live?`<button class="btn sm" data-a="copy">Copy draft</button><button class="btn sm" data-a="redraft">New draft…</button>`:''}
+   <div class="bar"><button class="btn sm" data-a="link" title="A link to this post inside the console, to send a teammate">Copy link</button>${live?`<button class="btn sm" data-a="copy">Copy draft</button><button class="btn sm" data-a="redraft">New draft…</button>`:''}
      ${open&&!mine?`<button class="btn sm go" data-a="claim">I'll take it</button>`:''}${s.status==='reviewing'&&mine?`<button class="btn sm" data-a="release">Release</button>`:''}${open?`<button class="btn sm" data-a="assign">Assign…</button>`:''}
      ${live&&['new','reviewing','actioned','replied'].includes(s.status)?`<button class="btn sm ${open?'go':''}" data-a="outreach">I sent it</button>`:''}${['actioned','replied'].includes(s.status)?`<button class="btn sm" data-a="reply">They replied</button>`:''}${['actioned','replied','meeting'].includes(s.status)?`<button class="btn sm" data-a="meeting">Meeting booked</button>`:''}
      ${['actioned','replied','meeting'].includes(s.status)?`<button class="btn sm" data-a="won">Won</button><button class="btn sm" data-a="lost">Lost</button>`:''}
@@ -120,9 +123,11 @@ function card(s){
 }
 async function act(id,action,body){const r=await api(`/v1/intel/signals/${id}/${action}`,{body:body||{}});await loadSignals();return r}
 $('#list').addEventListener('click',async e=>{
-  const b=e.target.closest('[data-a]');if(!b)return;const el=b.closest('[data-id]'),id=el.dataset.id,s=SIGS.find(x=>x.id===id),a=b.dataset.a,draft=el.querySelector('[data-draft]')?.value||'';
+  const b=e.target.closest('[data-a]');if(!b)return;const el=b.closest('[data-id]'),id=el?.dataset.id,s=SIGS.find(x=>x.id===id),a=b.dataset.a,draft=el?.querySelector('[data-draft]')?.value||'';
   try{
+    if(a==='link'){try{await navigator.clipboard.writeText(linkFor(id));b.textContent='Link copied'}catch{window.prompt('Copy this link',linkFor(id))}return}
     if(a==='copy'){try{await navigator.clipboard.writeText(draft);b.textContent='Copied'}catch{el.querySelector('[data-draft]').select();b.textContent='Select and copy'}return}
+    if(a==='unlink'){STATE.linked='';history.replaceState(null,'','/intel'+location.hash);return void await loadSignals()}
     if(a==='readnow'){b.disabled=true;b.textContent='Reading…';const r=await api(`/v1/intel/signals/${id}/read`,{body:{}});$('#runMsg').className='msg '+(r.read?'ok':'bad');$('#runMsg').textContent=r.read?'Read. It is in Open (or under lower scores) with its draft and next step.':('Not read. '+(r.note||''));return void await loadSignals()}
     if(a==='claim'||a==='release'||a==='reopen')return void await act(id,a);
     if(a==='assign')return ask('Assign to',[{name:'ownerId',label:'Who should take this',type:'select',value:OV.me,options:OV.staff.map(p=>[p.id,p.name])}],v=>act(id,'assign',{ownerId:v.ownerId}),'Assign');

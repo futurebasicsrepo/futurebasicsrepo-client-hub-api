@@ -15,6 +15,11 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       where c.created_at > now() - interval '21 days' and c.email is not null and not (c.source = any($1))
         and not exists (select 1 from sales_activities a where a.contact_id=c.id and a.kind in ('email_out','call','meeting','chat_out'))
       order by c.created_at desc limit 8`, [ex]);
+    // Posts the listening found that are worth a person's time: they join the same "today" list as tasks and leads.
+    const [ist] = await q(`select coalesce((select (value->>'minScore')::int from app_settings where key='intel'), 40) min_score, coalesce((select (value->>'slaHours')::int from app_settings where key='intel'), 24) sla`);
+    const [sc] = await q(`select count(*)::int total, count(*) filter (where status='new' and owner_id is null and found_at < now() - make_interval(hours => $2))::int overdue from intel_signals where scored_at is not null and relevant and score >= $1 and status in ('new','reviewing')`, [ist.min_score, ist.sla]);
+    const sigs = await q(`select s.id, s.source, s.title, s.summary, s.score, s.status, s.found_at, s.posted_at, coalesce(nullif(u.name,''), u.email) owner_name from intel_signals s left join users u on u.id=s.owner_id
+      where s.scored_at is not null and s.relevant and s.score >= $1 and s.status in ('new','reviewing') order by s.score desc, s.found_at desc limit 5`, [ist.min_score]);
     const protos = await q(`select b.id,b.slug,b.name,b.tagline,b.status,b.visibility,b.live_url,b.stack,jsonb_exists(b.media,'cover') has_cover,jsonb_array_length(b.catalog)::int products,
         (select count(*) from build_views v where v.build_id=b.id and v.created_at > now() - interval '7 days')::int views7,
         (select count(distinct v.email) from build_views v where v.build_id=b.id and v.created_at > now() - interval '7 days')::int lookers7,
@@ -36,6 +41,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const [prod] = await q(`select count(*)::int n from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
       where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date < current_date and pr.status not in ('complete','delivered'))) and c.archived_at is null and c.status not in ('archive','archived')`);
     return {
+      signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),
       prototypes: protos.map(prototypeRow), showNow: showNow.map(r => ({ ...prototypeRow(r), views30: Number(r.views7) || 0 })),
