@@ -40,7 +40,11 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const [appr] = await q(`select count(*)::int n from approvals a join products p on p.id=a.product_id join clients c on c.id=p.client_id where a.status='pending' and c.archived_at is null and c.status not in ('archive','archived')`);
     const [prod] = await q(`select count(*)::int n from production_runs pr join products p on p.id=pr.product_id join clients c on c.id=p.client_id
       where (pr.status in ('blocked','delayed') or (pr.eta_date is not null and pr.eta_date < current_date and pr.status not in ('complete','delivered'))) and c.archived_at is null and c.status not in ('archive','archived')`);
+    // saved lead searches that found quick-turn sites nobody has opened yet
+    const leadSearches = await q(`select id, trade, place, created_at, (select count(*) from jsonb_array_elements(results) r where (r->>'reachable')::boolean and (r->>'quickTurn')::boolean)::int quick
+      from prototype_searches where schedule_id is not null and status='done' and seen_at is null and created_at > now() - interval '14 days' order by created_at desc limit 20`).then(r => r.filter(x => x.quick > 0).slice(0, 3)).catch(() => []);
     return {
+      leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
       awaitingReply: awaiting.map(r => ({ id: r.id, name: r.name || r.email, email: r.email, company: r.company || '', source: r.source, createdAt: r.created_at })),

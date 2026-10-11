@@ -2227,4 +2227,62 @@ await journey('J146', 'Finding leads: search a trade and a town, skip the direct
   } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
 });
 
+await journey('J151', 'Saved lead searches: they run by themselves when due, bring new sites only, surface the quick turns on the work home until someone opens them, can be paused, and the Platform page reports the prototypes and the search', async () => {
+  const room = await newRoom('151', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };
+  const kyle = await staff('kyle@thefuturebasics.com'), P = (path, o = {}) => call('/v1/admin/prototypes' + path, { token: kyle, ...o });
+  const http = (await import('node:http')).default, H = `sched-pipes-${stamp}.test`, town = `Schedton ${stamp}, PA`;
+  const TIRED = `<html><head><title>Home</title></head><body bgcolor="#ffffff"><center><font face="Arial" color="#cc0000">SCHED PIPES</font></center><table><tr><td>Services</td></tr></table><p>Call 484-555-0123 for plumbing and drains in Schedton PA 19401.</p><script src="/js/jquery-1.7.2.min.js"></script><div>&copy; 2012 Sched Pipes</div></body></html>`;
+  const site = http.createServer((q, s) => { const h = String(q.headers['x-original-host'] || '').replace(/^www\./, ''); s.writeHead(h === H ? 200 : 404, { 'content-type': 'text/html' }); s.end(h === H ? TIRED : 'no'); });
+  const brave = http.createServer((q, s) => { s.writeHead(200, { 'content-type': 'application/json' }); s.end(JSON.stringify({ web: { results: [{ title: 'Plumbers - Yelp', url: 'https://www.yelp.com/search?x=1' }, { title: 'Sched Pipes', url: `https://${H}/` }] } })); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r)); await new Promise(r => brave.listen(3133, '127.0.0.1', r));
+  const schedules = async () => (await P('/leads/schedules')).json.schedules, mine = async id => (await schedules()).find(x => x.id === id);
+  const waitFor = async (fn, ms = 25000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) throw new Error('timed out'); await sleep(250); } };
+  try {
+    // who may, and what is refused
+    ok((await call('/v1/admin/prototypes/leads/schedules')).status === 401 && (await call('/v1/admin/prototypes/leads/schedules', { token: room.token })).status === 403 && (await call('/v1/admin/prototypes/leads/schedules', { token: room.token, body: { trade: 'plumbing', place: 'x' } })).status === 403, 'signed out people and clients cannot see or save searches');
+    const bad = body => P('/leads/schedules', { body }); ok((await bad({ trade: 'astronaut', place: town })).status === 422 && (await bad({ trade: 'plumbing', place: '' })).status === 422 && (await bad({ trade: 'plumbing', place: town, everyDays: 0 })).status === 422 && (await bad({ trade: 'plumbing', place: town, everyDays: 31 })).status === 422 && (await bad({ trade: 'plumbing', place: town, everyDays: 'soon' })).status === 422, 'an unknown trade, no place and an odd frequency are refused');
+
+    // save one: it is due at once, and the job picks it up
+    const c = await bad({ trade: 'plumbing', place: town }); const id = c.json.schedule && c.json.schedule.id;
+    ok(c.status === 201 && c.json.schedule.everyDays === 7 && c.json.schedule.enabled && c.json.schedule.tradeLabel === 'Plumbing' && c.json.schedule.lastRunAt === null && c.json.schedule.last === null, 'a saved search is kept, weekly by default', JSON.stringify(c.json).slice(0, 200));
+    ok((await bad({ trade: 'plumbing', place: town.toUpperCase() })).status === 409, 'the same trade and place is not saved twice');
+    const done = await waitFor(async () => { const x = await mine(id); return x && x.last && x.last.status === 'done' ? x : null; });
+    ok(done.lastRunAt && done.last.found === 1 && done.last.quick === 1 && done.last.seen === false, 'the job ran it by itself: one tired quick-turn site, not yet looked at', JSON.stringify(done.last));
+    const list = (await P('/leads/searches')).json.searches, srch = list.find(x => x.scheduleId === id);
+    ok(srch && srch.mode === 'search' && srch.results[0].host === H && srch.results[0].quickTurn && srch.skipped.directories >= 1 && srch.seenAt === null, 'its results are in Recent searches, the directory skipped', JSON.stringify(srch && srch.skipped));
+
+    // the work home says so until it is opened
+    let home = (await P('/../home')).json; const entry = (home.leadSearches || []).find(x => x.id === srch.id);
+    ok(entry && entry.quick === 1 && entry.place === town && entry.trade === 'plumbing', 'the work home lists the new quick-turn site', JSON.stringify(home.leadSearches));
+    const opened = await P(`/leads/searches/${srch.id}`); ok(opened.json.search.results.length === 1, 'opening the search shows its results');
+    home = (await P('/../home')).json; ok(!(home.leadSearches || []).some(x => x.id === srch.id) && (await mine(id)).last.seen === true, 'once opened it leaves the Today list');
+
+    // the next run brings new sites only
+    const before = Number(sql(`select count(*) from prototype_searches where schedule_id='${id}'`));
+    const run = await P(`/leads/schedules/${id}/run`, { body: {} }); ok(run.status === 202 && run.json.search.scheduleId === id, 'Run now starts a search');
+    const again = await waitFor(async () => { const r = (await P('/leads/searches')).json.searches.find(x => x.id === run.json.search.id); return r && r.status !== 'running' ? r : null; });
+    ok(again.status === 'done' && again.found === 0 && again.skipped.known + again.skipped.duplicates >= 1 && Number(sql(`select count(*) from prototype_searches where schedule_id='${id}'`)) === before + 1, 'the second run finds nothing new: what was shown before is skipped', JSON.stringify(again.skipped));
+    home = (await P('/../home')).json; ok(!(home.leadSearches || []).some(x => x.id === again.id), 'a run with nothing new does not appear on the Today list');
+
+    // pause and resume
+    ok((await P(`/leads/schedules/${id}`, { method: 'PATCH', body: { everyDays: 99 } })).status === 422 && (await P('/leads/schedules/nope', { method: 'PATCH', body: { enabled: false } })).status === 404, 'a bad frequency and a bad id are refused');
+    const paused = await P(`/leads/schedules/${id}`, { method: 'PATCH', body: { enabled: false, everyDays: 3 } }); ok(paused.json.schedule.enabled === false && paused.json.schedule.everyDays === 3 && paused.json.schedule.nextRunAt === null, 'pausing keeps the search and clears when it runs next');
+    sql(`update prototype_search_schedules set last_run_at = now() - interval '8 days' where id='${id}'`); const n1 = Number(sql(`select count(*) from prototype_searches where schedule_id='${id}'`)); await sleep(4500);
+    ok(Number(sql(`select count(*) from prototype_searches where schedule_id='${id}'`)) === n1, 'a paused search does not run, however overdue');
+    await P(`/leads/schedules/${id}`, { method: 'PATCH', body: { enabled: true } }); await waitFor(async () => Number(sql(`select count(*) from prototype_searches where schedule_id='${id}'`)) === n1 + 1);
+    ok(true, 'resumed, and being overdue it runs at once');
+    await waitFor(async () => (await mine(id)).last.status !== 'running');
+
+    // the Platform page
+    const hh = (await call('/v1/admin/platform/health?fresh=1', { token: kyle })).json, pr = hh.checks.find(x => x.id === 'prototypes'), ls = hh.checks.find(x => x.id === 'leadsearch');
+    ok(pr && pr.group === 'sales' && pr.status === 'off' && /Claude is not connected/.test(pr.summary) && pr.facts.some(f => f[0] === 'Prototypes') , 'the Platform page has a prototypes card, and says Claude is not connected here', pr && pr.summary);
+    ok(ls && ls.status === 'ok' && /Key set/.test(ls.summary) && ls.facts.some(f => f[0] === 'Saved searches' && /1 \(1 on\)/.test(f[1])) && !JSON.stringify(hh).includes('"bk"'), 'and a lead search card: key set, the saved search counted, no key shown', ls && ls.summary);
+    ok(hh.config.some(x => x.id === 'protoai' && x.status === 'warn') && hh.config.some(x => x.id === 'leadsearch' && x.status === 'ok') && (hh.jobs || []).some(j => j.name === 'Lead search schedules'), 'the settings and the job are listed too');
+
+    // remove
+    ok((await P(`/leads/schedules/${id}`, { method: 'DELETE' })).json.ok === true && (await schedules()).every(x => x.id !== id) && (await P(`/leads/schedules/${id}`, { method: 'DELETE' })).status === 404, 'a saved search can be removed');
+  } finally { await new Promise(r => site.close(r)); await new Promise(r => brave.close(r)); }
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

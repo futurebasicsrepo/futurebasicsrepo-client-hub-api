@@ -74,6 +74,7 @@ dialog{border:0;border-radius:24px;padding:0;width:min(1240px,97vw);max-height:9
         <details style="margin-top:12px"><summary class="sub" style="cursor:pointer">Or paste a list of addresses (one per line, up to 25)</summary><textarea class="t" id="lList" style="margin-top:8px" placeholder="joesplumbing.com&#10;sparkelectric.net"></textarea><div class="acts" style="margin-top:8px"><button class="btn" id="lAudit" type="button">Check these sites</button></div></details>
         <p class="msg" id="lMsg" role="status"></p>
       </div>
+      <div class="panel" id="lSaved"></div>
       <div id="lOut"></div>
       <div class="panel" id="lRecent"></div>
     </section>
@@ -197,8 +198,20 @@ document.addEventListener('click',async e=>{
 // ---------- leads ----------
 let LM=null,LS=null,LPOLL=null,CRM={};
 async function leadMeta(){if(LM)return;LM=await api('/v1/admin/prototypes/leads/meta');$('#lTrade').innerHTML=LM.trades.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
-  if(!LM.search){$('#lSearch').disabled=true;$('#lMsg').className='msg';$('#lMsg').textContent='Web search is not connected here (BRAVE_API_KEY), so use the list of addresses.'}await recent()}
+  if(!LM.search){$('#lSearch').disabled=true;$('#lMsg').className='msg';$('#lMsg').textContent='Web search is not connected here (BRAVE_API_KEY), so use the list of addresses.'}await Promise.all([recent(),saved()])}
 const lsay=(t,k='ok')=>{const m=$('#lMsg');m.className='msg '+k;m.textContent=t};
+// ---------- saved searches (they run by themselves) ----------
+const EVERY=[[1,'every day'],[3,'every 3 days'],[7,'every week'],[14,'every 2 weeks'],[30,'every month']],everyText=n=>(EVERY.find(e=>e[0]===n)||[0,'every '+n+' days'])[1];
+function savedHtml(list,search){
+  const rows=list.map(x=>{const l=x.last,res=!l?'<span class="chip dim">not run yet</span>':l.status==='running'?'<span class="chip run">searching…</span>':l.status==='failed'?`<span class="chip bad">failed: ${esc(l.error||'')}</span>`:`<span class="chip ${l.quick?'ok':'dim'}">${l.quick} quick-turn of ${l.found}</span>${l.quick&&!l.seen?'<span class="chip warn">new</span>':''}`;
+    return `<li data-sch="${x.id}"><div><b>${esc(x.tradeLabel)} · ${esc(x.place)}</b> <span class="sub">${esc(everyText(x.everyDays))}${x.enabled?'':' · paused'}${x.lastRunAt?' · last ran '+ago(x.lastRunAt):''}</span></div><div class="mini">${res}</div>
+    <div class="acts">${l&&l.status==='done'?`<button class="btn sm" type="button" data-sch-open="${l.id}">See the last results</button>`:''}<button class="btn sm" type="button" data-sch-run="${x.id}" ${search?'':'disabled'}>Run now</button><button class="btn sm" type="button" data-sch-toggle="${x.id}" data-on="${x.enabled?1:0}">${x.enabled?'Pause':'Resume'}</button><button class="btn sm danger" type="button" data-sch-del="${x.id}">Remove</button></div></li>`}).join('');
+  return `<h3>Saved searches</h3><p class="sub">They run on their own and bring new sites only: the ones already shown, in the CRM or built are skipped. The best quick turns show up on the work home Today list.</p>${rows?`<ul class="vers" style="margin-top:8px">${rows}</ul>`:'<p class="sub" style="margin-top:8px">None yet.</p>'}
+  <div class="form" style="margin-top:12px;grid-template-columns:1.2fr 1.4fr 1fr auto"><label class="f"><span>Trade</span><select class="t" id="sTrade" style="width:100%">${LM.trades.map(t=>`<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')}</select></label><label class="f"><span>Where</span><input class="t" id="sPlace" placeholder="Norristown, PA"></label><label class="f"><span>How often</span><select class="t" id="sEvery" style="width:100%">${EVERY.map(e=>`<option value="${e[0]}" ${e[0]===7?'selected':''}>${esc(e[1])}</option>`).join('')}</select></label><button class="btn go" id="sSave" type="button" ${search?'':'disabled'}>Save this search</button></div>${search?'':'<p class="sub">Saved searches need web search (BRAVE_API_KEY).</p>'}`}
+let SCH=null;
+async function saved(){const r=await api('/v1/admin/prototypes/leads/schedules');SCH=r;const keep={t:$('#sTrade')&&$('#sTrade').value,p:$('#sPlace')&&$('#sPlace').value,e:$('#sEvery')&&$('#sEvery').value};$('#lSaved').innerHTML=savedHtml(r.schedules,r.search);if(keep.p){$('#sTrade').value=keep.t;$('#sPlace').value=keep.p;$('#sEvery').value=keep.e}
+  clearTimeout(SPOLL);if(r.search&&!$('#t-leads').classList.contains('hidden')&&r.schedules.some(x=>x.enabled&&(!x.last||x.last.status==='running')))SPOLL=setTimeout(()=>saved().catch(()=>{}),2000)}
+let SPOLL=null;
 async function recent(){const r=await api('/v1/admin/prototypes/leads/searches');$('#lRecent').innerHTML=r.searches.length?`<h3>Recent searches</h3><div class="mini" style="margin-top:8px">${r.searches.map(s=>`<button class="btn sm" data-search="${s.id}">${esc(s.mode==='list'?'Pasted list':(LM.trades.find(t=>t.key===s.trade)||{label:s.trade}).label+' · '+s.place)} · ${s.found} sites · ${ago(s.createdAt)}</button>`).join('')}</div>`:''}
 function leadCard(i,idx){
   const crm=CRM[i.host];
@@ -221,6 +234,11 @@ document.addEventListener('click',async e=>{
   const t=e.target,sr=t.closest('[data-search]');if(sr){try{await pollSearch(sr.dataset.search)}catch(err){lsay(err.message,'bad')}return}
   const ac=t.closest('[data-lead-crm]');if(ac&&LS){const i=LS.results[+ac.dataset.leadCrm];try{await addCrm(i);showSearch(LS);lsay(`${i.name||i.host} is in the CRM with a deal in New.`)}catch(err){lsay(err.message,'bad')}return}
   const ab=t.closest('[data-lead-build]');if(ab&&LS){const i=LS.results[+ab.dataset.leadBuild];ab.disabled=true;try{const crm=CRM[i.host]||await addCrm(i).catch(()=>null);const r=await api('/v1/admin/prototypes',{body:{url:i.url,industry:i.industry&&i.industry!=='trade'?i.industry:'',company:i.name,city:i.city,contactId:crm&&crm.contactId,dealId:crm&&crm.dealId}});await load();showTab('list');await open(r.prototype.id)}catch(err){lsay(err.message,'bad');ab.disabled=false}return}
+  const so=t.closest('[data-sch-open]');if(so){try{await pollSearch(so.dataset.schOpen);await saved();$('#lOut').scrollIntoView({behavior:'smooth'})}catch(err){lsay(err.message,'bad')}return}
+  const sr2=t.closest('[data-sch-run]');if(sr2){try{await api(`/v1/admin/prototypes/leads/schedules/${sr2.dataset.schRun}/run`,{body:{}});lsay('Searching: the results show up here in a minute.');await saved()}catch(err){lsay(err.message,'bad')}return}
+  const st=t.closest('[data-sch-toggle]');if(st){try{await api(`/v1/admin/prototypes/leads/schedules/${st.dataset.schToggle}`,{method:'PATCH',body:{enabled:st.dataset.on!=='1'}});await saved()}catch(err){lsay(err.message,'bad')}return}
+  const sd=t.closest('[data-sch-del]');if(sd){if(!confirm('Remove this saved search? The results it already found stay in Recent searches.'))return;try{await api('/v1/admin/prototypes/leads/schedules/'+sd.dataset.schDel,{method:'DELETE'});await saved()}catch(err){lsay(err.message,'bad')}return}
+  if(t.closest('#sSave')){try{await api('/v1/admin/prototypes/leads/schedules',{body:{trade:$('#sTrade').value,place:$('#sPlace').value,everyDays:Number($('#sEvery').value)}});lsay('Saved: it runs by itself, starting now.');await saved();$('#sPlace').value=''}catch(err){lsay(err.message,'bad')}return}
   const tb=t.closest('.tab[data-t]');if(tb){showTab(tb.dataset.t)}
 });
 function showTab(n){document.querySelectorAll('.tab[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===n));$('#t-list').classList.toggle('hidden',n!=='list');$('#t-leads').classList.toggle('hidden',n!=='leads');if(n==='leads')leadMeta().catch(err=>lsay(err.message,'bad'))}
@@ -231,7 +249,7 @@ function showTab(n){document.querySelectorAll('.tab[data-t]').forEach(b=>b.class
     META=await api('/v1/admin/prototypes/meta');$('#industry').insertAdjacentHTML('beforeend',META.industries.map(i=>`<option value="${esc(i.key)}">${esc(i.label)}</option>`).join(''));
     $('#aiChip').className='chip '+(META.ai?'ok':'warn');$('#aiChip').textContent=META.ai?'Claude connected':'Claude not connected: uses the template';
     await load();$('#app').classList.remove('hidden');
-    const want=new URLSearchParams(location.search);if(want.get('open'))open(want.get('open')).catch(()=>{});if(want.get('url')){$('#url').value=want.get('url')}
+    const want=new URLSearchParams(location.search);if(want.get('search')){showTab('leads');try{await leadMeta();await pollSearch(want.get('search'))}catch(e){lsay(e.message,'bad')}}if(want.get('open'))open(want.get('open')).catch(()=>{});if(want.get('url')){$('#url').value=want.get('url')}
   }catch(err){if(err.status===401||err.status===403)$('#needSignin').classList.remove('hidden');else{$('#app').classList.remove('hidden');say(err.message,'bad')}}
 })();
 </script>

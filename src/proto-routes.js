@@ -235,10 +235,22 @@ export function registerProtoRoutes(app, d) {
   const note = async (contactId, dealId, text, actor) => { if (!contactId) return; await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta,actor_id) values($1,$2,'note',$3,'{}'::jsonb,$4)`, [contactId, dealId || null, clip(text, 700), actor || null]).catch(() => {}); await pool.query('update sales_contacts set last_activity_at=now() where id=$1', [contactId]).catch(() => {}); if (dealId) await pool.query('update sales_deals set last_activity_at=now() where id=$1', [dealId]).catch(() => {}); };
   const knownHosts = async () => { const s = new Set(); for (const r of (await pool.query('select host from prototypes')).rows) s.add(r.host); for (const r of (await pool.query(`select website from sales_companies where website<>''`)).rows) { const c = cleanSiteUrl(r.website); if (c.host) s.add(c.host); } return s; };
   const searchesToday = async () => Number((await pool.query(`select count(*)::int n from prototype_searches where created_at > now() - interval '24 hours'`)).rows[0].n);
-  const searchView = r => ({ id: r.id, trade: r.trade, place: r.place, mode: r.mode, status: r.status, step: r.step, queries: r.queries, results: r.results, skipped: r.skipped, error: r.error, createdAt: r.created_at, found: (r.results || []).length });
+  const searchView = r => ({ id: r.id, trade: r.trade, place: r.place, mode: r.mode, status: r.status, step: r.step, queries: r.queries, results: r.results, skipped: r.skipped, error: r.error, createdAt: r.created_at, found: (r.results || []).length,
+    scheduleId: r.schedule_id || null, seenAt: r.seen_at || null, quick: (r.results || []).filter(i => i.reachable && i.quickTurn).length });
+  const searchCap = () => Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30));
+  // What a saved search has already shown, so each run brings new sites only.
+  const scheduleSeen = async (scheduleId, exceptId) => { const hosts = new Set(); for (const r of (await pool.query(`select results from prototype_searches where schedule_id=$1 and id<>$2 and status='done' order by created_at desc limit 8`, [scheduleId, exceptId])).rows) for (const i of r.results || []) if (i.host) hosts.add(i.host); return hosts; };
+  // The search itself, in the background: ranked results onto the row, or the reason it failed.
+  async function runLeadSearch(id, { trade, place, urls = null, mode = 'search', scheduleId = null }) {
+    try {
+      let exclude = new Set(); if (mode === 'search') { exclude = await knownHosts(); if (scheduleId) for (const h of await scheduleSeen(scheduleId, id)) exclude.add(h); }
+      const out = await findLeads({ trade, place, urls, env, crawlOpts: d.crawlOpts || {}, exclude, onStep: t => pool.query('update prototype_searches set step=$2, updated_at=now() where id=$1', [id, t]).catch(() => {}) });
+      await pool.query(`update prototype_searches set status='done', step='Done', queries=$2, results=$3::jsonb, skipped=$4::jsonb, updated_at=now() where id=$1`, [id, out.queries, JSON.stringify(out.items), JSON.stringify(out.skipped)]);
+    } catch (e) { log.warn?.({ err: e.message }, 'lead search failed'); await pool.query(`update prototype_searches set status='failed', error=$2, step='Failed', updated_at=now() where id=$1`, [id, clip(e.message, 300)]).catch(() => {}); }
+  }
   app.get('/v1/admin/prototypes/leads/meta', { preHandler: pre }, async () => ({ search: Boolean(env.BRAVE_API_KEY), trades: INDUSTRIES.filter(i => SEARCH_TERMS[i.key]).map(i => ({ key: i.key, label: i.label, terms: SEARCH_TERMS[i.key] })), today: await searchesToday(), perDay: Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30)) }));
   app.get('/v1/admin/prototypes/leads/searches', { preHandler: pre }, async () => ({ searches: (await pool.query('select * from prototype_searches order by created_at desc limit 15')).rows.map(searchView) }));
-  app.get('/v1/admin/prototypes/leads/searches/:id', { preHandler: pre }, async (req, reply) => { if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = (await pool.query('select * from prototype_searches where id=$1', [req.params.id])).rows[0]; return r ? { search: searchView(r) } : reply.code(404).send({ error: 'Not found' }); });
+  app.get('/v1/admin/prototypes/leads/searches/:id', { preHandler: pre }, async (req, reply) => { if (!UUID.test(req.params.id)) return reply.code(404).send({ error: 'Not found' }); const r = (await pool.query('select * from prototype_searches where id=$1', [req.params.id])).rows[0]; if (!r) return reply.code(404).send({ error: 'Not found' }); if (r.schedule_id && !r.seen_at && r.status !== 'running') { r.seen_at = new Date(); await pool.query('update prototype_searches set seen_at=now() where id=$1', [r.id]).catch(() => {}); } return { search: searchView(r) }; });
   app.post('/v1/admin/prototypes/leads/search', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}; let urls = null, mode = 'search';
     if (b.urls !== undefined && b.urls !== null && String(Array.isArray(b.urls) ? b.urls.join('') : b.urls).trim()) {
@@ -248,18 +260,62 @@ export function registerProtoRoutes(app, d) {
       if (!INDUSTRIES.some(i => i.key === b.trade) || !SEARCH_TERMS[b.trade]) return reply.code(422).send({ error: 'Pick the trade to search for' });
       if (!clip(b.place, 60)) return reply.code(422).send({ error: 'Say where to look (a town, county or city and state)' });
       if (!env.BRAVE_API_KEY) return reply.code(409).send({ error: 'Web search is not connected (the service needs BRAVE_API_KEY). You can paste a list of addresses instead.' });
-      if ((await searchesToday()) >= Math.max(1, Number(env.PROTOTYPE_SEARCHES_PER_DAY || 30))) return reply.code(429).send({ error: 'The searches for today are used up. You can still paste a list of addresses.' });
+      if ((await searchesToday()) >= searchCap()) return reply.code(429).send({ error: 'The searches for today are used up. You can still paste a list of addresses.' });
     }
     if (!throttle(`protosearch:${req.auth.sub}`, { limit: 15, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of searches this hour: try again in a while' });
     const row = (await pool.query(`insert into prototype_searches(trade,place,mode,created_by,step) values($1,$2,$3,$4,'Starting') returning id`, [b.trade || '', clip(b.place, 60), mode, req.auth.sub])).rows[0];
-    (async () => {
-      try {
-        const out = await findLeads({ trade: b.trade || 'trade', place: clip(b.place, 60), urls, env, crawlOpts: d.crawlOpts || {}, exclude: mode === 'search' ? await knownHosts() : new Set(), onStep: t => pool.query('update prototype_searches set step=$2, updated_at=now() where id=$1', [row.id, t]).catch(() => {}) });
-        await pool.query(`update prototype_searches set status='done', step='Done', queries=$2, results=$3::jsonb, skipped=$4::jsonb, updated_at=now() where id=$1`, [row.id, out.queries, JSON.stringify(out.items), JSON.stringify(out.skipped)]);
-      } catch (e) { log.warn?.({ err: e.message }, 'lead search failed'); await pool.query(`update prototype_searches set status='failed', error=$2, step='Failed', updated_at=now() where id=$1`, [row.id, clip(e.message, 300)]).catch(() => {}); }
-    })();
+    runLeadSearch(row.id, { trade: b.trade || 'trade', place: clip(b.place, 60), urls, mode });
     return reply.code(202).send({ search: searchView((await pool.query('select * from prototype_searches where id=$1', [row.id])).rows[0]) });
   });
+  // ---------- saved searches that run by themselves ----------
+  const DAY_MS = 86400_000, tradeLabel = k => (INDUSTRIES.find(i => i.key === k) || { label: k }).label.split(' (')[0];
+  const scheduleView = async r => {
+    const last = (await pool.query('select id,status,error,results,seen_at,created_at from prototype_searches where schedule_id=$1 order by created_at desc limit 1', [r.id])).rows[0] || null;
+    return { id: r.id, trade: r.trade, tradeLabel: tradeLabel(r.trade), place: r.place, everyDays: r.every_days, enabled: r.enabled, lastRunAt: r.last_run_at, nextRunAt: r.enabled ? new Date((r.last_run_at ? new Date(r.last_run_at).getTime() : Date.now()) + (r.last_run_at ? r.every_days * DAY_MS : 0)).toISOString() : null,
+      last: last && { id: last.id, status: last.status, error: last.error, found: (last.results || []).length, quick: (last.results || []).filter(i => i.reachable && i.quickTurn).length, seen: Boolean(last.seen_at), at: last.created_at } };
+  };
+  const getSchedule = async id => UUID.test(String(id)) ? (await pool.query('select * from prototype_search_schedules where id=$1', [id])).rows[0] : null;
+  // a search row for a saved search, started now (the caller decides whether to wait for it)
+  async function beginScheduled(sch, by = null) {
+    await pool.query('update prototype_search_schedules set last_run_at=now() where id=$1', [sch.id]);
+    const row = (await pool.query(`insert into prototype_searches(trade,place,mode,created_by,schedule_id,step) values($1,$2,'search',$3,$4,'Starting') returning id`, [sch.trade, sch.place, by, sch.id])).rows[0];
+    return { id: row.id, run: () => runLeadSearch(row.id, { trade: sch.trade, place: sch.place, mode: 'search', scheduleId: sch.id }) };
+  }
+  app.get('/v1/admin/prototypes/leads/schedules', { preHandler: pre }, async () => ({ schedules: await Promise.all((await pool.query('select * from prototype_search_schedules order by created_at')).rows.map(scheduleView)), search: Boolean(env.BRAVE_API_KEY) }));
+  app.post('/v1/admin/prototypes/leads/schedules', { preHandler: pre }, async (req, reply) => {
+    const b = req.body || {}, place = clip(b.place, 60), every = b.everyDays === undefined ? 7 : Number(b.everyDays);
+    if (!INDUSTRIES.some(i => i.key === b.trade) || !SEARCH_TERMS[b.trade]) return reply.code(422).send({ error: 'Pick the trade to search for' });
+    if (!place) return reply.code(422).send({ error: 'Say where to look (a town, county or city and state)' });
+    if (!Number.isInteger(every) || every < 1 || every > 30) return reply.code(422).send({ error: 'Choose how often: every 1 to 30 days' });
+    if (!env.BRAVE_API_KEY) return reply.code(409).send({ error: 'Web search is not connected (the service needs BRAVE_API_KEY), so a saved search would never run.' });
+    if (Number((await pool.query('select count(*)::int n from prototype_search_schedules')).rows[0].n) >= 10) return reply.code(409).send({ error: 'There are 10 saved searches already: remove one first' });
+    if ((await pool.query('select 1 from prototype_search_schedules where trade=$1 and lower(place)=lower($2)', [b.trade, place])).rowCount) return reply.code(409).send({ error: 'That trade and place is already saved' });
+    const r = (await pool.query('insert into prototype_search_schedules(trade,place,every_days,created_by) values($1,$2,$3,$4) returning *', [b.trade, place, every, req.auth.sub])).rows[0];
+    return reply.code(201).send({ schedule: await scheduleView(r) });
+  });
+  app.patch('/v1/admin/prototypes/leads/schedules/:id', { preHandler: pre }, async (req, reply) => {
+    const r = await getSchedule(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' }); const b = req.body || {};
+    if ('everyDays' in b && !(Number.isInteger(Number(b.everyDays)) && Number(b.everyDays) >= 1 && Number(b.everyDays) <= 30)) return reply.code(422).send({ error: 'Choose how often: every 1 to 30 days' });
+    await pool.query('update prototype_search_schedules set enabled=coalesce($2, enabled), every_days=coalesce($3, every_days) where id=$1', [r.id, 'enabled' in b ? Boolean(b.enabled) : null, 'everyDays' in b ? Number(b.everyDays) : null]);
+    return { schedule: await scheduleView(await getSchedule(r.id)) };
+  });
+  app.delete('/v1/admin/prototypes/leads/schedules/:id', { preHandler: pre }, async (req, reply) => { const r = await getSchedule(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' }); await pool.query('delete from prototype_search_schedules where id=$1', [r.id]); return { ok: true }; });
+  app.post('/v1/admin/prototypes/leads/schedules/:id/run', { preHandler: pre }, async (req, reply) => {
+    const r = await getSchedule(req.params.id); if (!r) return reply.code(404).send({ error: 'Not found' });
+    if (!env.BRAVE_API_KEY) return reply.code(409).send({ error: 'Web search is not connected (the service needs BRAVE_API_KEY)' });
+    if ((await searchesToday()) >= searchCap()) return reply.code(429).send({ error: 'The searches for today are used up.' });
+    if ((await pool.query(`select 1 from prototype_searches where schedule_id=$1 and status='running'`, [r.id])).rowCount) return reply.code(409).send({ error: 'This search is already running' });
+    if (!throttle(`protosearch:${req.auth.sub}`, { limit: 15, windowMs: 3600_000 })) return reply.code(429).send({ error: 'That is a lot of searches this hour: try again in a while' });
+    const s = await beginScheduled(r, req.auth.sub); s.run(); return reply.code(202).send({ search: searchView((await pool.query('select * from prototype_searches where id=$1', [s.id])).rows[0]) });
+  });
+  // The job: saved searches that are due, a few at a time, keeping some of the day's searches free for people.
+  async function runSchedules() {
+    if (!env.BRAVE_API_KEY) return 0;
+    const due = (await pool.query(`select * from prototype_search_schedules where enabled and (last_run_at is null or last_run_at < now() - make_interval(days => every_days)) order by last_run_at nulls first limit 3`)).rows, reserve = Math.min(5, Math.floor(searchCap() / 4)); let n = 0;
+    for (const sch of due) { if ((await searchesToday()) >= searchCap() - reserve) break; const s = await beginScheduled(sch); await s.run(); n++; }
+    return n;
+  }
+
   // A lead into the CRM: the company, a contact (named for the business until someone learns the owner's name), a deal in New, and what is wrong with their site on the timeline.
   app.post('/v1/admin/prototypes/leads/add', { preHandler: pre }, async (req, reply) => {
     const b = req.body || {}, c = cleanSiteUrl(b.url || b.host); if (c.error) return reply.code(422).send({ error: c.error });
@@ -286,5 +342,5 @@ export function registerProtoRoutes(app, d) {
     return reply.header('content-security-policy', CSP).header('x-robots-tag', 'noindex, nofollow, noarchive').header('referrer-policy', 'no-referrer').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').type('text/html; charset=utf-8').send(withRibbon(r.html));
   };
   app.get('/p/:slug', serve); app.get('/p/:slug/', serve);
-  return { run, enqueue, view };
+  return { run, enqueue, view, runSchedules };
 }
