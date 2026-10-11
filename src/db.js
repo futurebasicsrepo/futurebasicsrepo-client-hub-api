@@ -1384,6 +1384,24 @@ export async function migrate() {
     create index if not exists money_payments_invoice_idx on money_payments (invoice_id);
     create index if not exists money_payments_paid_idx on money_payments (paid_on desc);
     create unique index if not exists money_payments_qb_idx on money_payments (qb_id) where qb_id is not null;
+    -- The one QuickBooks Online company the Money hub is connected to. Tokens are stored sealed (never plain) and never leave the server.
+    create table if not exists money_connections (
+      provider text primary key check (provider in ('quickbooks')),
+      realm_id text not null,
+      company text not null default '',
+      mode text not null default 'sandbox',
+      access_sealed text,
+      refresh_sealed text,
+      access_expires_at timestamptz,
+      refresh_expires_at timestamptz,
+      status text not null default 'connected' check (status in ('connected','needs-reconnect')),
+      last_error text not null default '',
+      last_sync_at timestamptz,
+      sync_cursor timestamptz,
+      connected_by uuid references users(id) on delete set null,
+      connected_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),

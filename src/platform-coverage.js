@@ -7,6 +7,7 @@ import { loadSettings } from './intel-engine.js';
 import { automationSettings } from './sales-automations-engine.js';
 import { jobHealth } from './platform.js';
 import { moneyAccessList } from './money.js';
+import { qbConfig } from './quickbooks.js';
 
 const ms = t => Date.now() - t;
 const withTimeout = (p, label, limit = 6000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} did not answer within ${limit / 1000}s`)), limit))]);
@@ -106,6 +107,20 @@ export function moneyVerdict({ hasInstructions, c, access }) {
   return { status: 'ok', summary: `${plural(c.total, 'invoice')} · ${plural(c.open, 'open invoice')}, none overdue` };
 }
 
+// QuickBooks Online: keys, the sealed sign-in, and whether payments are being read. Judged from what is stored (no call is made).
+export function quickbooksVerdict({ configured, sealing, row, now = Date.now() }) {
+  if (!configured) return { status: 'off', summary: 'Not connected: add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to the service' };
+  if (!sealing) return { status: 'warn', summary: 'The keys are set, but saved sign-ins cannot be kept safely: set SHOPIFY_TOKEN_KEY' };
+  if (!row) return { status: 'off', summary: 'The keys are set. Press Connect QuickBooks in Money → Settings' };
+  if (row.status === 'needs-reconnect') return { status: 'down', summary: `The connection stopped working: connect again in Money → Settings${row.last_error ? ` (${String(row.last_error).slice(0, 120)})` : ''}` };
+  const days = row.refresh_expires_at ? (new Date(row.refresh_expires_at).getTime() - now) / 86400000 : null;
+  if (days != null && days < 14) return { status: 'warn', summary: `The sign-in runs out in ${Math.max(0, Math.round(days))} days: connect again to renew it` };
+  const last = row.last_sync_at ? new Date(row.last_sync_at).getTime() : null;
+  if (row.last_error) return { status: 'warn', summary: `Connected to ${row.company || 'QuickBooks'}, but the last call failed: ${String(row.last_error).slice(0, 140)}` };
+  if (last && now - last > 3 * 3600_000) return { status: 'warn', summary: `Payments have not been read since ${ago(row.last_sync_at)}` };
+  return { status: 'ok', summary: `Connected to ${row.company || 'QuickBooks'} (${row.mode === 'production' ? 'live books' : 'sandbox: test books'}) · payments last read ${row.last_sync_at ? ago(row.last_sync_at) : 'not yet'}` };
+}
+
 export function githubVerdict({ hasToken, probe, job }) {
   if (!hasToken) return { status: 'off', summary: 'Not connected: the showcase does not follow app updates (add BUILDS_GITHUB_TOKEN)' };
   if (probe?.error) return { status: 'warn', summary: probe.error };
@@ -193,6 +208,11 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Sending as', from || 'not set'], ['Key', env.SALES_RESEND_API_KEY ? 'its own (SALES_RESEND_API_KEY)' : key ? 'shared with sign-in email' : 'missing'], ['Domains', probe?.restricted ? 'not readable with a sending-only key' : probe?.domains?.length ? probe.domains.join(', ') : 'none'], ['Reply and bounce webhook', env.RESEND_WEBHOOK_SECRET ? 'secret set' : 'secret missing'],
       ['Postal address in the footer', postal ? 'set' : 'missing'], ['Sent, last 7 days', String(stats.sent7)], ['Bounced or reported, last 7 days', String(stats.bounced7 + stats.complained7)], ['Replies received, last 7 days', String(stats.received7)], ['Last reply', stats.last_in ? ago(stats.last_in) : 'none yet']] };
   }));
+  listing.push(row('quickbooks', 'QuickBooks Online', 'sales', async () => {
+    const c = qbConfig(env), sealing = Boolean(env.SHOPIFY_TOKEN_KEY || env.SHOPIFY_APP_CLIENT_SECRET), r = (await pool.query(`select company, mode, status, last_error, last_sync_at, refresh_expires_at, connected_at from money_connections where provider='quickbooks'`)).rows[0] || null;
+    const v = quickbooksVerdict({ configured: c.ready, sealing, row: r });
+    return { ...v, facts: [['Keys', c.ready ? 'set' : 'missing'], ['Environment', c.mode], ['Company', r?.company || '—'], ['Connected since', r ? ago(r.connected_at) : '—'], ['Payments last read', r?.last_sync_at ? ago(r.last_sync_at) : 'not yet'], ['Sign-in valid until', r?.refresh_expires_at ? new Date(r.refresh_expires_at).toISOString().slice(0, 10) : '—']] };
+  }));
   listing.push(row('chat', 'Website chat', 'sales', async () => {
     const c = await one(`select count(*) filter (where status='waiting')::int waiting, min(last_message_at) filter (where status='waiting') oldest, count(*) filter (where created_at > now() - interval '24 hours')::int started24, count(*) filter (where status='person')::int with_person, count(*)::int total from chat_conversations`);
     const v = chatVerdict({ aiReady: Boolean(env.ANTHROPIC_API_KEY || env.AI_FIXTURE), c });
@@ -239,6 +259,8 @@ export function coverageConfig({ env = process.env } = {}) {
   add('readers', 'AI readers', ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY'].some(k => env[k]) ? 'ok' : 'warn', ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY'].some(k => env[k]) ? `Connected: ${[['ANTHROPIC_API_KEY', 'Claude'], ['OPENAI_API_KEY', 'ChatGPT'], ['XAI_API_KEY', 'Grok']].filter(([k]) => env[k]).map(([, l]) => l).join(', ')}.` : 'No AI key is set, so Intelligence cannot read posts.');
   add('intelauto', 'Automatic listening', env.INTEL_AUTO === 'off' ? 'info' : 'ok', env.INTEL_AUTO === 'off' ? 'Switched off (INTEL_AUTO=off): posts only arrive when someone presses Listen now.' : 'On: watches are listened to on their schedule.');
   add('moneyaccess', 'Who can open Money', env.MONEY_ACCESS_EMAILS ? 'ok' : 'ok', env.MONEY_ACCESS_EMAILS ? `Only ${moneyAccessList(env).length} named in MONEY_ACCESS_EMAILS.` : 'Danielle and Kyle (the default). Set MONEY_ACCESS_EMAILS to change who.');
+  const qbHave = [env.QUICKBOOKS_CLIENT_ID, env.QUICKBOOKS_CLIENT_SECRET].filter(Boolean).length;
+  add('quickbooks', 'QuickBooks keys', qbHave === 2 ? (env.QUICKBOOKS_ENV === 'production' || env.QUICKBOOKS_ENV === 'sandbox' ? 'ok' : 'warn') : qbHave === 1 ? 'warn' : 'info', qbHave === 2 ? (env.QUICKBOOKS_ENV === 'production' ? 'Both keys are set, for your live books.' : env.QUICKBOOKS_ENV === 'sandbox' ? 'Both keys are set, for the sandbox (test books). Use production keys and QUICKBOOKS_ENV=production for the real ones.' : 'Both keys are set, but QUICKBOOKS_ENV should be sandbox or production (it is treated as sandbox).') : qbHave === 1 ? 'Only one of QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET is set.' : 'Not set: QuickBooks is not connected (QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_ENV).');
   const sendKey = env.SALES_RESEND_API_KEY || env.RESEND_API_KEY;
   add('salesmail', 'Sales email setup', !sendKey ? 'info' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'ok' : 'warn', !sendKey ? 'No key: the Sales page cannot send email.' : env.RESEND_WEBHOOK_SECRET && env.SALES_POSTAL_ADDRESS ? 'Key, webhook secret and postal address are all set.' : `Missing: ${[!env.RESEND_WEBHOOK_SECRET && 'RESEND_WEBHOOK_SECRET (replies and bounces)', !env.SALES_POSTAL_ADDRESS && 'SALES_POSTAL_ADDRESS (email footer)'].filter(Boolean).join(' and ')}.`);
   add('githubtoken', 'Showcase GitHub token', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'ok' : 'info', env.BUILDS_GITHUB_TOKEN || env.GITHUB_TOKEN ? 'Set: the showcase can follow app updates.' : 'Not set: the showcase does not follow app updates (BUILDS_GITHUB_TOKEN).');

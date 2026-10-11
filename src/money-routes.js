@@ -6,8 +6,10 @@
 //   POST /v1/money/import                      a CSV of past invoices: { csv, apply } (apply:false only previews)
 //   GET  /v1/money/payments                    the ledger: money received from every source, newest first
 //   GET|PUT /v1/money/settings                 the payment instructions printed on invoices
+//   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
+import { qbConfig, signState, readState, authUrl, exchangeCode, revoke, companyInfo, pushInvoice, paymentsSince, methodOf } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -15,7 +17,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {} } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -158,6 +160,88 @@ export function registerMoneyRoutes(app, d) {
     return { applied: true, ...summary };
   });
 
+
+  // ---------- QuickBooks Online ----------
+  const cfg = () => qbConfig(env, workUrl), sealReady = () => Boolean(tokenSeal?.ready);
+  const connRow = async () => (await pool.query(`select * from money_connections where provider='quickbooks'`)).rows[0] || null;
+  // The connected company as a context for quickbooks.js, or null when not connected (or the sealing key changed, which means connect again).
+  async function qbContext() {
+    const row = await connRow(); if (!row || row.status !== 'connected') return null;
+    const accessToken = tokenSeal.open(row.access_sealed), refreshToken = tokenSeal.open(row.refresh_sealed); if (!refreshToken) { await pool.query(`update money_connections set status='needs-reconnect', last_error='The saved sign-in can no longer be read: connect again' where provider='quickbooks'`); return null; }
+    const conn = { realmId: row.realm_id, accessToken, refreshToken, accessExpiresAt: row.access_expires_at };
+    return { cfg: cfg(), conn, row, fetchImpl, save: async t => { await pool.query(`update money_connections set access_sealed=$1, refresh_sealed=$2, access_expires_at=$3, refresh_expires_at=$4, updated_at=now() where provider='quickbooks'`, [tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt]); } };
+  }
+  const failed = async e => { await pool.query(`update money_connections set last_error=$1, status=case when $2 then 'needs-reconnect' else status end, updated_at=now() where provider='quickbooks'`, [String(e.message).slice(0, 300), Boolean(e.refused)]).catch(() => {}); };
+  app.get('/v1/money/quickbooks/status', { preHandler: pre }, async () => {
+    const c = cfg(), row = await connRow();
+    return { configured: c.ready, sealing: sealReady(), mode: c.mode, redirectUri: c.redirectUri, connected: Boolean(row && row.status === 'connected'), needsReconnect: Boolean(row && row.status === 'needs-reconnect'), company: row?.company || '', realmId: row?.realm_id || '', connectedAt: row?.connected_at || null, lastSyncAt: row?.last_sync_at || null, lastError: row?.last_error || '', refreshExpiresAt: row?.refresh_expires_at || null };
+  });
+  app.post('/v1/money/quickbooks/connect', { preHandler: pre }, async (req, reply) => {
+    const c = cfg(); if (!c.ready) return bad(reply, 'QuickBooks is not set up: add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to the service', 503);
+    if (!sealReady()) return bad(reply, 'Saved sign-ins cannot be kept safely: set SHOPIFY_TOKEN_KEY on the service first', 503);
+    return { url: authUrl(c, signState(stateSecret, actorOf(req))), redirectUri: c.redirectUri };
+  });
+  // Intuit sends the person's browser back here. There is no bearer token on this request: the signed state says who began it, and that person must still be allowed into Money.
+  app.get('/v1/money/quickbooks/callback', async (req, reply) => {
+    const q = req.query || {}, back = (k, why = '') => reply.redirect(`${workUrl.replace(/\/$/, '')}/money?qb=${k}${why ? `&why=${encodeURIComponent(why)}` : ''}#settings`);
+    const st = readState(stateSecret, q.state); if (!st) return back('error', 'That sign-in link expired. Press Connect QuickBooks again.');
+    const u = (await pool.query('select id, email, role from users where id=$1', [st.u])).rows[0]; if (!u || u.role !== 'admin' || !moneyAllowed(u.email, env)) return back('error', 'Money is not open to that person.');
+    if (q.error) return back('error', q.error === 'access_denied' ? 'QuickBooks sign-in was cancelled.' : 'QuickBooks did not finish the sign-in.');
+    const c = cfg(); if (!c.ready || !sealReady() || !q.code || !q.realmId) return back('error', 'The sign-in came back without what we need. Try again.');
+    try {
+      const t = await exchangeCode(c, String(q.code), fetchImpl), ctx = { cfg: c, conn: { realmId: String(q.realmId), accessToken: t.accessToken, refreshToken: t.refreshToken, accessExpiresAt: t.accessExpiresAt }, fetchImpl }, info = await companyInfo(ctx);
+      await pool.query(`insert into money_connections(provider,realm_id,company,mode,access_sealed,refresh_sealed,access_expires_at,refresh_expires_at,status,last_error,connected_by,connected_at,sync_cursor,last_sync_at) values('quickbooks',$1,$2,$3,$4,$5,$6,$7,'connected','',$8,now(),null,null)
+        on conflict (provider) do update set realm_id=$1, company=$2, mode=$3, access_sealed=$4, refresh_sealed=$5, access_expires_at=$6, refresh_expires_at=$7, status='connected', last_error='', connected_by=$8, connected_at=now(), sync_cursor=null, last_sync_at=null, updated_at=now()`,
+        [String(q.realmId), info.name, c.mode, tokenSeal.seal(t.accessToken), tokenSeal.seal(t.refreshToken), t.accessExpiresAt, t.refreshExpiresAt, u.id]);
+      return back('connected');
+    } catch (e) { return back('error', e.message); }
+  });
+  app.post('/v1/money/quickbooks/test', { preHandler: pre }, async (req, reply) => {
+    const ctx = await qbContext(); if (!ctx) return bad(reply, cfg().ready ? 'QuickBooks is not connected yet: press Connect QuickBooks' : 'QuickBooks is not set up: add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET', 409);
+    const t0 = Date.now();
+    try { const info = await companyInfo(ctx); await pool.query(`update money_connections set company=$1, last_error='', updated_at=now() where provider='quickbooks'`, [info.name || ctx.row.company]); return { ok: true, company: info.name, country: info.country, mode: ctx.cfg.mode, realmId: ctx.conn.realmId, ms: Date.now() - t0 }; }
+    catch (e) { await failed(e); return bad(reply, e.message, 502); }
+  });
+  app.post('/v1/money/quickbooks/disconnect', { preHandler: pre }, async () => {
+    const ctx = await qbContext(); if (ctx) await revoke(ctx.cfg, ctx.conn.refreshToken, fetchImpl);
+    await pool.query(`delete from money_connections where provider='quickbooks'`); return { ok: true };
+  });
+  // Make (and optionally email) one invoice in QuickBooks. An invoice already there is not made twice.
+  app.post('/v1/money/invoices/:id/quickbooks', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
+    if (cur.qb_id) return bad(reply, `This invoice is already in QuickBooks (${cur.qb_doc_number || cur.qb_id})`, 409);
+    if (['void', 'paid'].includes(cur.status)) return bad(reply, `A ${cur.status} invoice is not sent to QuickBooks`, 409);
+    const send = req.body?.send === true; if (send && !cur.contact_email) return bad(reply, 'Add their email to the invoice first, so QuickBooks knows where to send it');
+    const ctx = await qbContext(); if (!ctx) return bad(reply, 'QuickBooks is not connected yet. Connect it in Money → Settings.', 409);
+    try {
+      const r = await pushInvoice(ctx, { ...cur, issued_on: iso(cur.issued_on), due_on: iso(cur.due_on) }, { send, onlinePayments: (await getSetting('moneyPayment').catch(() => null))?.onlinePayments !== false });
+      await pool.query(`update money_invoices set qb_id=$2, qb_doc_number=$3, qb_sync_token=$4, qb_link=$5, qb_synced_at=now(), status=case when status in ('draft','unrecorded') then 'sent' else status end, sent_at=coalesce(sent_at, now()), updated_at=now() where id=$1`, [cur.id, r.id, r.docNumber || cur.number, r.syncToken, `${ctx.cfg.appOrigin}/app/invoice?txnId=${encodeURIComponent(r.id)}`]);
+      await onChange('quickbooks', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), emailed: r.emailed, customerCreated: r.customerCreated });
+    } catch (e) { await failed(e); return bad(reply, e.message, 502); }
+  });
+  // Read payments QuickBooks has recorded and match them to our invoices (by the QuickBooks invoice id). Safe to run again: each payment is kept once.
+  async function syncQuickBooks() {
+    const ctx = await qbContext(); if (!ctx) return { skipped: 'not connected', added: 0 };
+    const since = ctx.row.sync_cursor ? new Date(ctx.row.sync_cursor) : new Date(Date.now() - 90 * 86400000), startedAt = new Date(), connectedOn = iso(ctx.row.connected_at);
+    try {
+      let added = 0, kept = 0; const list = await paymentsSince(ctx, since.toISOString().replace(/\.\d+Z$/, '-00:00'));
+      for (const p of list) for (const a of p.applied) {
+        const inv = (await pool.query('select * from money_invoices where qb_id=$1', [a.invoiceId])).rows[0];
+        if (!inv && p.paidOn < connectedOn) continue; // money QuickBooks took before we were connected, for invoices we never made: leave it out of our ledger
+        const r = await pool.query(`insert into money_payments(invoice_id, source, method, company, amount_cents, currency, paid_on, reference, note, qb_id) values($1,'quickbooks',$2,$3,$4,$5,$6,$7,$8,$9) on conflict (qb_id) where qb_id is not null do nothing`,
+          [inv?.id || null, methodOf(p.method), inv?.company || p.customer, a.amountCents, inv?.currency || 'USD', p.paidOn || iso(new Date()), p.reference, inv ? '' : `QuickBooks invoice ${a.invoiceId}`, `${p.id}:${a.invoiceId}`]);
+        if (r.rowCount) { added++; if (inv) { const after = await one(inv.id); if (after && after.status !== 'paid' && after.status !== 'void' && rawOwed(after) === 0) await pool.query(`update money_invoices set status='paid', paid_at=now(), updated_at=now() where id=$1`, [inv.id]); } } else kept++;
+      }
+      await pool.query(`update money_connections set last_sync_at=now(), sync_cursor=$1, last_error='', updated_at=now() where provider='quickbooks'`, [new Date(startedAt.getTime() - 5 * 60_000)]);
+      return { added, kept, seen: list.length };
+    } catch (e) { await failed(e); throw e; }
+  }
+  app.post('/v1/money/quickbooks/sync', { preHandler: pre }, async (req, reply) => {
+    if (!(await connRow())) return bad(reply, 'QuickBooks is not connected yet', 409);
+    try { return { ok: true, ...(await syncQuickBooks()) }; } catch (e) { return bad(reply, e.message, 502); }
+  });
+  void log;
+
   // ---------- the ledger and the overview ----------
   async function ledger(limit = 400) {
     const mine = (await pool.query(`select p.id, p.source, p.method, p.company, p.amount_cents, p.currency, p.paid_on, p.reference, p.note, i.number invoice_number from money_payments p left join money_invoices i on i.id=p.invoice_id order by p.paid_on desc, p.created_at desc limit $1`, [limit])).rows
@@ -191,4 +275,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
+  return { syncQuickBooks };
 }

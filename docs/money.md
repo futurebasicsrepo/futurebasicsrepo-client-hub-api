@@ -15,5 +15,12 @@
 ## Data
 `money_invoices` and `money_payments` (see `src/db.js`). The rules are plain functions in `src/money.js` (`test/money.test.js`); the staff API is `src/money-routes.js`; the PDF is `src/money-pdf.js` (font: Rubik Mono One, SIL OFL, with its licence in `src/fonts`). Platform health has a Money card (instructions saved, overdue, past invoices to settle).
 
+## QuickBooks Online
+Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danielle or Kyle only), **Test connection** (reads the company name, changes nothing), **Read payments now**, **Disconnect**.
+- **Railway variables:** `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_ENV` (`sandbox` or `production`; start with sandbox). Register the redirect URI `https://work.thefuturebasics.com/v1/money/quickbooks/callback` in the Intuit app. Tokens are saved sealed (AES-GCM) and refreshed automatically.
+- **Invoices are made here and pushed to QuickBooks:** the customer and item are found or created, the invoice goes over with the same lines, tax, deposit and terms, and can be emailed from QuickBooks (card and bank payment turned on). The PDF the client gets from work/hub stays the Future Basics template.
+- **Payments come back** every 30 minutes (and on “Read payments now”): each QuickBooks payment is recorded once against its invoice (unique `qb_id`). A payment with no matching invoice is recorded only if it was paid on or after the connect date, so old books do not flood the ledger.
+- Platform health has a QuickBooks card (connected, needs reconnect, last sync, last error with secrets scrubbed).
+
 ## Next
-QuickBooks Online (connect, create and send the invoice there, read payments back), Shopify Payments payouts and fees, overdue invoices on the work home's Today list, and invoices made from a won deal or a project.
+Shopify Payments payouts and fees, overdue invoices on the work home's Today list, and invoices made from a won deal or a project.
