@@ -10,15 +10,22 @@ import { gzipSync } from 'node:zlib';
 const TYPES = { js: 'text/javascript; charset=utf-8', webp: 'image/webp' };
 const FILES = ['spot3d.js', 'spot-hi.webp', 'spot-yay.webp'];
 
+// A missing file is logged and served as a 404, never a crash at start.
 export const ASSETS = Object.fromEntries(
-  FILES.map((name) => {
-    const body = readFileSync(new URL(`../assets/${name}`, import.meta.url));
+  FILES.flatMap((name) => {
+    let body;
+    try {
+      body = readFileSync(new URL(`../assets/${name}`, import.meta.url));
+    } catch (err) {
+      console.error(`asset missing: assets/${name} (${err.code || err.message})`);
+      return [];
+    }
     const v = createHash('sha256').update(body).digest('hex').slice(0, 10);
-    return [name, { body, v, type: TYPES[name.split('.').pop()], gz: name.endsWith('.js') ? gzipSync(body, { level: 9 }) : null }];
+    return [[name, { body, v, type: TYPES[name.split('.').pop()], gz: name.endsWith('.js') ? gzipSync(body, { level: 9 }) : null }]];
   }),
 );
 
-export const assetUrl = (name) => `/assets/${name}?v=${ASSETS[name].v}`;
+export const assetUrl = (name) => `/assets/${name}${ASSETS[name] ? `?v=${ASSETS[name].v}` : ''}`;
 
 export function registerAssets(app) {
   app.get('/assets/:file', async (req, reply) => {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildApp } from '../src/server.js';
 import { openDb } from '../src/db.js';
 import { sandboxProvider } from '../src/providers.js';
+import { readFileSync } from 'node:fs';
 import { ASSETS, assetUrl } from '../src/assets.js';
 
 test('Spot in 3D and his stills: served with a content hash, gzipped JS, cached for good', async (t) => {
@@ -23,4 +24,10 @@ test('Spot in 3D and his stills: served with a content hash, gzipped JS, cached 
   // The home page loads the live plush and shows the still until then; pay pages use the stills.
   const home = (await a.inject({ method: 'GET', url: '/' })).body;
   assert.ok(home.includes(assetUrl('spot3d.js')) && home.includes(assetUrl('spot-hi.webp')));
+});
+
+test('the production image ships the assets (the Dockerfile copies them next to src)', () => {
+  const docker = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+  assert.match(docker, /^COPY src \.\/src$/m);
+  assert.match(docker, /^COPY assets \.\/assets$/m);
 });
