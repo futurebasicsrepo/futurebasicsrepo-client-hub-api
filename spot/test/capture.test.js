@@ -109,7 +109,7 @@ test('text lookup asks Claude with web search and resumes paused turns', async (
   const fromUrl = async (u) => (pages.push(u), { items: [{ title: 'XT-6', price_cents: 20000, image_url: 'https://salomon.com/xt6.jpg' }] });
   const d = await captureFromText('salomon xt-6 in 10.5', { client, fromUrl, sizes: 'shoes US 10.5' });
   assert.equal(calls.length, 2);
-  assert.match(calls[0].messages[0].content, /saved size \(shoes US 10\.5\)/, 'saved sizes go in the prompt');
+  assert.match(calls[0].messages[0].content, /their sizes are shoes US 10\.5\./, 'saved sizes go in the prompt');
   assert.deepEqual(pages, ['https://salomon.com/xt6']);
   assert.equal(d.items[0].image_url, 'https://salomon.com/xt6.jpg', 'the photo comes from the product page');
   assert.equal(calls[0].tools[0].type, 'web_search_20260209');

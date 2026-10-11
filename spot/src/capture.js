@@ -458,10 +458,12 @@ export function splitText(raw) {
 }
 
 // Draft for a description when no lookup is possible: one item named after
-// what they typed, with any "$120" in it used as the price.
+// what they typed, with any "$120" in it used as the price. "under $50" is a
+// budget, not a price, so it stays in the words.
+const BUDGET = /\b(under|below|less than|max|up to|no more than|budget|around|about|cheaper than)\s*\$/i;
 export function draftFromDescription(text) {
-  const price = text.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/);
-  const title = text.replace(/\$\s?\d[\d,]*(?:\.\d{1,2})?/, '').replace(/\s+/g, ' ').trim() || text;
+  const price = BUDGET.test(text) ? null : text.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/);
+  const title = (price ? text.replace(/\$\s?\d[\d,]*(?:\.\d{1,2})?/, '') : text).replace(/\s+/g, ' ').trim() || text;
   return {
     source: 'text',
     merchant: { name: '', url: null },
@@ -471,21 +473,24 @@ export function draftFromDescription(text) {
 }
 
 // Several picks, best first, so the requester can swipe through stores like
-// a collection page instead of reading one AI answer.
-const LOOKUP_SCHEMA_HINT = `{"products": [{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00", "why": "short reason, under 60 characters"}]}`;
-export const MAX_OPTIONS = 6;
+// a collection page instead of reading one AI answer. Asks for a look ("outfits
+// for Coachella") come back as outfits: whole looks, pieces from any store.
+const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://…", "title": "", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
+const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]}  or  {"kind": "outfits", "outfits": [{"name": "short look name", "why": "one line", "items": [${PRODUCT_HINT}]}]}`;
+export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
+export const MAX_OUTFITS = 4;
 
 // Follow-ups: "more" is what they said about the last finds ("in blue",
-// "cheaper"), "avoid" the product links already shown, so a second ask
-// finds something else instead of the same pages.
+// "cheaper"), "avoid" the product links already shown, so a second ask (or
+// the next batch) finds something else instead of the same pages.
 const FINDS = 3; // a search that turns up only sold-out items is retried, up to this many
 const FIND_BUDGET_MS = 35_000; // no new search after this long; answer with what we have
 
-export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
+export async function captureFromText(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], onUsage, onError, now = Date.now } = {}) {
   const { text, url } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
-  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(0, 20);
+  avoid = [].concat(avoid || []).map((u) => String(u).slice(0, 500)).filter((u) => /^https?:\/\//i.test(u)).slice(-60);
   const followUp = Boolean(more || avoid.length);
   if (url && !followUp) return fromUrl(url);
   if (!client && !process.env.ANTHROPIC_API_KEY) return draftFromDescription(text);
@@ -495,11 +500,14 @@ export async function captureFromText(raw, { client, fromUrl = captureFromUrl, p
   const messages = [
     {
       role: 'user',
-      content: `Someone wants a friend to buy them this: "${q(text)}"${more ? `\nThey saw what you found last time and said: "${q(more)}"` : ''}
+      content: `Someone is shopping and typed: "${q(text)}"${more ? `\nThey saw what you found and said: "${q(more)}"` : ''}
 
-Using web search, find up to ${MAX_OPTIONS} products for sale at US online stores that match, from different stores where you can (the brand's own store counts). Put your recommendation first, then the next best. Use the size, colour or options they gave.${sizes ? ` If it comes in sizes and they didn't say one, use their saved size (${q(sizes).slice(0, 300)}) and put it in "variant".` : ''} Each must be in stock right now in that option: skip anything the page shows as sold out or unavailable.${avoid.length ? ` Don't suggest any of these again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
+Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
+- If they want a look, an outfit, or clothes for an occasion, reply with up to ${MAX_OUTFITS} outfits: each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
+- Otherwise reply with up to ${MAX_OPTIONS} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
+${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Everything must be in stock right now in that size and option: skip anything the page shows as sold out or unavailable in it. Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else:
 ${LOOKUP_SCHEMA_HINT}
-Use an empty "products" list if you can't find a specific product with a current price.`,
+Use an empty list if you can't find specific products with current prices.`,
     },
   ];
   // One page fetch per product, shared by the stock check and the photo.
@@ -509,6 +517,12 @@ Use an empty "products" list if you can't find a specific product with a current
   const started = now();
   const soldOut = [];
   const seen = new Set(avoid);
+  const fresh = (d) => {
+    const u = d.items[0].url;
+    if (u && seen.has(u)) return false;
+    if (u) seen.add(u);
+    return true;
+  };
   for (let find = 0; find < FINDS; find++) {
     let response;
     try {
@@ -524,18 +538,27 @@ Use an empty "products" list if you can't find a specific product with a current
       throw err;
     }
     if (response.stop_reason === 'refusal') break;
-    const found = picksOf(response, text).filter((d) => {
-      const u = d.items[0].url;
-      if (u && seen.has(u)) return false;
-      if (u) seen.add(u);
-      return true;
-    });
-    if (!found.length) break;
-    // Every pick is checked against the store at once; sold-out ones never show.
-    const checked = await Promise.all(found.map(async (d) => ({ d, stock: await stockOf(d.items[0], { fromUrl: page, product }) })));
-    const live = checked.filter((c) => c.stock !== 'out');
-    soldOut.push(...checked.filter((c) => c.stock === 'out').map((c) => c.d));
-    if (live.length) return withOptions(await Promise.all(live.map(async ({ d, stock }) => ({ d: await withPhoto(d, page), stock }))), soldOut);
+    const answer = picksOf(response, text);
+    const found = answer.outfits ? null : answer.products.filter(fresh);
+    const looks = answer.outfits ? answer.outfits.map((o) => ({ ...o, items: o.items.filter(fresh) })).filter((o) => o.items.length) : null;
+    if (!found?.length && !looks?.length) break;
+
+    // Every pick is checked against its store at once; sold-out ones never show.
+    const check = async (d) => ({ d: await withPhoto(d, page, undefined, d.hint_image), stock: await stockOf(d.items[0], { fromUrl: page, product }) });
+    if (looks) {
+      const outfits = (await Promise.all(looks.map(async (o) => ({ ...o, items: await Promise.all(o.items.map(check)) }))))
+        .map((o) => {
+          soldOut.push(...o.items.filter((c) => c.stock === 'out').map((c) => c.d));
+          return { ...o, items: o.items.filter((c) => c.stock !== 'out') };
+        })
+        .filter((o) => o.items.length >= 2);
+      if (outfits.length) return withOutfits(outfits, soldOut);
+    } else {
+      const checked = await Promise.all(found.map(check));
+      const live = checked.filter((c) => c.stock !== 'out');
+      soldOut.push(...checked.filter((c) => c.stock === 'out').map((c) => c.d));
+      if (live.length) return withOptions(live, soldOut);
+    }
 
     // All sold out at the store: tell the model and look again.
     if (find === FINDS - 1 || now() - started > FIND_BUDGET_MS) break;
@@ -543,8 +566,8 @@ Use an empty "products" list if you can't find a specific product with a current
     const last = messages.at(-1);
     if (last.role === 'assistant') last.content = [...last.content, ...response.content];
     else messages.push({ role: 'assistant', content: response.content });
-    const gone = checked.map(({ d }) => `${d.items[0].title}${d.items[0].variant ? ` (${d.items[0].variant})` : ''}${d.items[0].url ? ` at ${d.items[0].url}` : ''}`);
-    messages.push({ role: 'user', content: `I checked the stores: ${gone.length > 1 ? 'all of those are' : 'that one is'} sold out (${gone.join('; ')}). Find different ones that are in stock right now: the same thing at other stores, or the closest matches. Reply with ONLY the JSON.` });
+    const gone = soldOut.slice(-12).map((d) => `${d.items[0].title}${d.items[0].variant ? ` (${d.items[0].variant})` : ''}${d.items[0].url ? ` at ${d.items[0].url}` : ''}`);
+    messages.push({ role: 'user', content: `I checked the stores: ${gone.length > 1 ? 'these are' : 'that one is'} sold out (${gone.join('; ')}). Find different ones that are in stock right now: the same thing at other stores, or the closest matches. Reply with ONLY the JSON.` });
   }
   // Everything found was sold out: show the last one, marked, so they can
   // say what else would do.
@@ -557,26 +580,83 @@ Use an empty "products" list if you can't find a specific product with a current
       warning: soldOut.length > 1 ? `Everything I found is sold out (${soldOut.length} checked). Tell me what else would work below` : `That one’s sold out at ${last.merchant.name || 'the store'}. Tell me what else would work below`,
     };
   }
-  return draftFromDescription(text);
+  // Nothing usable came back: say so, and leave what they typed as the item
+  // (never "under $50" as its price) so they can fill it in or try again.
+  return { ...draftFromDescription(text), warning: followUp ? 'I couldn’t find anything new for that. Try saying it another way' : 'I couldn’t find that one. Try different words, or paste a link' };
 }
 
-// The model's answer → drafts, best first. Takes {"products": [...]} or a
-// single product object.
+// The model's answer → { products } or { outfits }, best first. Reads
+// {"products": [...]}, {"outfits": [...]}, a single product object, JSON in a
+// code fence, and an answer cut off mid-list (it keeps the whole products).
 function picksOf(response, text) {
   const out = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  let v;
-  try {
-    v = JSON.parse(out.match(/\{[\s\S]*\}/)?.[0]);
-  } catch {
-    return [];
+  const v = readJson(out);
+  if (!v) {
+    console.error('lookup answer unreadable', response.stop_reason, out.slice(0, 300).replace(/\s+/g, ' '));
+    return { products: salvage(out).map((p) => pick(p, text)).filter(Boolean).slice(0, MAX_OPTIONS) };
   }
-  const list = Array.isArray(v?.products) ? v.products : v ? [v] : [];
-  return list
-    .slice(0, MAX_OPTIONS)
-    .map((p) => ({ p, d: draftFromLookup({ found: true, ...p }, text) }))
-    .filter(({ p, d }) => p?.found !== false && d.source === 'lookup')
-    .map(({ p, d }) => ({ ...d, why: String(p.why || '').trim().slice(0, 80) || null }));
+  if (Array.isArray(v.outfits) && v.outfits.length) {
+    const outfits = v.outfits
+      .slice(0, MAX_OUTFITS)
+      .map((o) => ({ name: String(o?.name || 'A look').trim().slice(0, 60), why: String(o?.why || '').trim().slice(0, 120) || null, items: [].concat(o?.items || []).slice(0, 6).map((p) => pick(p, text)).filter(Boolean) }))
+      .filter((o) => o.items.length >= 2);
+    if (outfits.length) return { outfits };
+  }
+  const list = Array.isArray(v.products) ? v.products : v.title ? [v] : [];
+  return { products: list.slice(0, MAX_OPTIONS).map((p) => pick(p, text)).filter(Boolean) };
 }
+function pick(p, text) {
+  if (!p || typeof p !== 'object' || p.found === false) return null;
+  const d = draftFromLookup({ found: true, ...p }, text);
+  if (d.source !== 'lookup') return null;
+  const img = typeof p.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(p.image_url) ? p.image_url.slice(0, 1000) : null;
+  return { ...d, why: String(p.why || '').trim().slice(0, 80) || null, hint_image: img };
+}
+export function readJson(out) {
+  const body = String(out).replace(/```(?:json)?/gi, '');
+  const a = body.indexOf('{');
+  const b = body.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  try {
+    return JSON.parse(body.slice(a, b + 1));
+  } catch {
+    try {
+      return JSON.parse(body.slice(a, b + 1).replace(/,\s*([}\]])/g, '$1')); // trailing commas
+    } catch {
+      return null;
+    }
+  }
+}
+// Each complete {...} that names a product page, from text that isn't valid JSON as a whole.
+export function salvage(out) {
+  const found = [];
+  const s = String(out);
+  for (let i = s.indexOf('{'); i >= 0 && found.length < MAX_OPTIONS; i = s.indexOf('{', i + 1)) {
+    let depth = 0;
+    let str = false;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (str) {
+        if (c === '\\') j++;
+        else if (c === '"') str = false;
+      } else if (c === '"') str = true;
+      else if (c === '{') depth++;
+      else if (c === '}' && --depth === 0) {
+        try {
+          const o = JSON.parse(s.slice(i, j + 1));
+          if (o && o.product_url && o.title) {
+            found.push(o);
+            i = j;
+          }
+        } catch {}
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+const optionOf = ({ d, stock }) => ({ merchant: d.merchant, item: d.items[0], stock, why: d.why });
 
 // The recommendation is the draft (so everything that reads one draft keeps
 // working); every in-stock pick, it included, rides along as `options`.
@@ -585,10 +665,87 @@ function withOptions(picks, soldOut) {
   const tried = soldOut.map((d) => d.items[0].url).filter(Boolean);
   return {
     ...top.d,
+    kind: 'products',
     ...(top.stock === 'in' ? { in_stock: true } : { warning: `I couldn’t check stock at ${top.d.merchant.name || 'that store'}. Tap “See it at the store” to make sure it’s there` }),
-    options: picks.map(({ d, stock }) => ({ merchant: d.merchant, item: d.items[0], stock, why: d.why })),
+    options: picks.map(optionOf),
     ...(tried.length ? { tried } : {}),
   };
+}
+
+// Outfits: the draft is the first look's first piece; the looks ride along.
+function withOutfits(outfits, soldOut) {
+  const tried = soldOut.map((d) => d.items[0].url).filter(Boolean);
+  const first = outfits[0].items[0];
+  return {
+    ...first.d,
+    kind: 'outfits',
+    outfits: outfits.map((o) => ({ name: o.name, why: o.why, items: o.items.map(optionOf) })),
+    ...(tried.length ? { tried } : {}),
+  };
+}
+
+// Pages Spot's own reader is turned away from (big stores behind bot
+// protection): the model opens them with its web fetch tool and reports the
+// photo, stock and price. Best effort: anything it can't tell stays unknown.
+const DETAILS_MAX = 8;
+export async function pageDetails(urls, { client, onUsage, onError } = {}) {
+  // Each: a page address, or { url, variant } when a size or option was picked.
+  const byUrl = new Map();
+  for (const u of [].concat(urls || [])) {
+    const url = String(typeof u === 'string' ? u : u?.url || '');
+    if (/^https?:\/\//i.test(url) && !byUrl.has(url)) byUrl.set(url, typeof u === 'object' && u?.variant ? String(u.variant).slice(0, 80) : '');
+  }
+  const list = [...byUrl.keys()].slice(0, DETAILS_MAX);
+  if (!list.length || (!client && !process.env.ANTHROPIC_API_KEY)) return { pages: [] };
+  const anthropic = client ?? anthropicClient();
+  const messages = [
+    {
+      role: 'user',
+      content: `Open each of these product pages with web_fetch and report, for each: the main product photo's full https address, whether it can be bought right now (in stock, in the size or option given), and the current price.
+${list.map((u, i) => `${i + 1}. ${u}${byUrl.get(u) ? ` (size or option: ${byUrl.get(u).replace(/[\n"]/g, ' ')})` : ''}`).join('\n')}
+Reply with ONLY this JSON and nothing else:
+{"pages": [{"url": "the address above", "image_url": "https://… or empty", "in_stock": true or false or null, "unit_price": "$0.00 or empty"}]}
+Use empty or null for anything the page doesn't show or couldn't be opened.`,
+    },
+  ];
+  let response;
+  try {
+    for (let i = 0; i < 3; i++) {
+      response = await anthropic.beta.messages.create({
+        model: process.env.SPOT_DETAILS_MODEL || process.env.SPOT_VISION_MODEL || 'claude-opus-5',
+        max_tokens: 4000,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: 'low' },
+        tools: [{ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: list.length + 2 }],
+        messages,
+      });
+      onUsage?.(response.model, response.usage);
+      if (response.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: response.content });
+    }
+  } catch (err) {
+    onError?.(err);
+    if (err instanceof Anthropic.APIError) {
+      console.error('page details failed', err.status, err.message);
+      return { pages: [] };
+    }
+    throw err;
+  }
+  const v = readJson(response.content.filter((b) => b.type === 'text').map((b) => b.text).join(''));
+  const asked = new Set(list);
+  const pages = [].concat(v?.pages || [])
+    .filter((p) => p && asked.has(String(p.url)))
+    .map((p) => {
+      const price = dollarsToCents(p.unit_price);
+      return {
+        url: String(p.url),
+        image_url: typeof p.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(p.image_url) ? p.image_url.slice(0, 1000) : null,
+        stock: p.in_stock === true ? 'in' : p.in_stock === false ? 'out' : 'unknown',
+        price_cents: price && price > 0 ? price : null,
+      };
+    });
+  return { pages };
 }
 
 // Web search runs server-side; long searches can pause the turn, so resume a couple of times.
@@ -597,11 +754,11 @@ async function search(anthropic, messages, onUsage) {
   for (let i = 0; i < 3; i++) {
     response = await anthropic.beta.messages.create({
       model: process.env.SPOT_VISION_MODEL || 'claude-opus-5',
-      max_tokens: 4000,
+      max_tokens: 16000, // a dozen products or four outfits, written out
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       output_config: { effort: 'low' },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
       messages,
     });
     onUsage?.(response.model, response.usage);
@@ -642,18 +799,21 @@ async function colorPhoto(item, variantPhoto) {
 // Search finds the page, not a reliable image URL: read the photo (and the
 // price, if search missed it) off the product page itself. Best effort.
 const PHOTO_WAIT_MS = 6000;
-export async function withPhoto(draft, fromUrl, variantPhoto = shopifyVariantPhoto) {
+// `hint` is a photo address the search itself turned up: used only when the
+// page can't be read (its own photo is the one to trust).
+export async function withPhoto(draft, fromUrl, variantPhoto = shopifyVariantPhoto, hint = null) {
   const item = draft.items?.[0];
   if (draft.source !== 'lookup' || !item?.url || item.image_url) return draft;
+  const fallback = () => (hint ? { ...draft, items: [{ ...item, image_url: hint }, ...draft.items.slice(1)] } : draft);
   let timer;
   try {
     const page = await Promise.race([fromUrl(item.url), new Promise((_, no) => (timer = setTimeout(() => no(new Error('slow')), PHOTO_WAIT_MS)))]);
     const found = page?.items?.[0];
-    if (!found || page.warning) return draft;
-    const image = (await colorPhoto(item, variantPhoto).catch(() => null)) || found.image_url || null;
+    if (!found || page.warning) return fallback();
+    const image = (await colorPhoto(item, variantPhoto).catch(() => null)) || found.image_url || hint || null;
     return { ...draft, items: [{ ...item, image_url: image, price_cents: item.price_cents || found.price_cents || null }, ...draft.items.slice(1)] };
   } catch {
-    return draft;
+    return fallback();
   } finally {
     clearTimeout(timer);
   }
