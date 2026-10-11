@@ -14,8 +14,27 @@ export function qbConfig(env = process.env, workUrl = 'https://work.thefuturebas
   return { ready: Boolean(clientId && clientSecret), clientId, clientSecret, mode, redirectUri: env.QUICKBOOKS_REDIRECT_URI || `${String(workUrl).replace(/\/$/, '')}/v1/money/quickbooks/callback`,
     authOrigin: origin('QUICKBOOKS_AUTH_ORIGIN', 'https://appcenter.intuit.com', env), oauthOrigin: origin('QUICKBOOKS_OAUTH_ORIGIN', 'https://oauth.platform.intuit.com', env), revokeOrigin: origin('QUICKBOOKS_REVOKE_ORIGIN', 'https://developer.api.intuit.com', env),
     apiOrigin: origin('QUICKBOOKS_API_ORIGIN', mode === 'production' ? 'https://quickbooks.api.intuit.com' : 'https://sandbox-quickbooks.api.intuit.com', env),
-    appOrigin: origin('QUICKBOOKS_APP_ORIGIN', mode === 'production' ? 'https://app.qbo.intuit.com' : 'https://app.sandbox.qbo.intuit.com', env) };
+    appOrigin: origin('QUICKBOOKS_APP_ORIGIN', mode === 'production' ? 'https://app.qbo.intuit.com' : 'https://app.sandbox.qbo.intuit.com', env),
+    // Intuit's discovery document names the current sign-in endpoints. A stand-in server (any *_ORIGIN override) has none, so it is skipped there.
+    discoveryUrl: env.QUICKBOOKS_DISCOVERY_URL ?? (['AUTH', 'OAUTH', 'REVOKE'].some(k => env[`QUICKBOOKS_${k}_ORIGIN`]) ? '' : `https://developer.api.intuit.com/.well-known/openid${mode === 'production' ? '' : '_sandbox'}_configuration`) };
 }
+
+// The endpoints of the OAuth2 flow, from the discovery document (kept for a day), or the ones written here when it cannot be read.
+const cache = new Map();
+export async function endpoints(cfg, fetchImpl = fetch, now = Date.now()) {
+  const fallback = { auth: `${cfg.authOrigin}/connect/oauth2`, token: `${cfg.oauthOrigin}/oauth2/v1/tokens/bearer`, revoke: `${cfg.revokeOrigin}/v2/oauth2/tokens/revoke`, from: 'built-in' };
+  if (!cfg.discoveryUrl) return fallback;
+  const hit = cache.get(cfg.discoveryUrl); if (hit && hit.until > now) return hit.value;
+  let value = fallback;
+  try {
+    const res = await fetchImpl(cfg.discoveryUrl, { headers: { Accept: 'application/json' } }), j = await res.json();
+    const ok = u => typeof u === 'string' && /^https:\/\/[a-z0-9.-]+\.intuit\.com\//i.test(u); // only an Intuit address is ever trusted with the client secret
+    if (res.ok && ok(j.authorization_endpoint) && ok(j.token_endpoint)) value = { auth: j.authorization_endpoint, token: j.token_endpoint, revoke: ok(j.revocation_endpoint) ? j.revocation_endpoint : fallback.revoke, from: 'discovery' };
+  } catch { /* the built-in addresses */ }
+  cache.set(cfg.discoveryUrl, { value, until: now + (value.from === 'discovery' ? 86_400_000 : 300_000) });
+  return value;
+}
+export const forgetEndpoints = () => cache.clear();
 
 // The `state` of the sign-in: who started it and when, signed, so only a sign-in this service began can finish.
 export function signState(secret, userId, now = Date.now()) { const body = b64(JSON.stringify({ u: userId, exp: now + 10 * 60_000, n: randomBytes(8).toString('hex') })); return `${body}.${b64(createHmac('sha256', secret).update(body).digest())}`; }
@@ -24,19 +43,21 @@ export function readState(secret, state, now = Date.now()) {
   const want = createHmac('sha256', secret).update(body).digest(), got = Buffer.from(sig, 'base64url'); if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
   try { const j = JSON.parse(Buffer.from(body, 'base64url').toString()); return j.exp > now && j.u ? j : null; } catch { return null; }
 }
-export const authUrl = (cfg, state) => `${cfg.authOrigin}/connect/oauth2?${new URLSearchParams({ client_id: cfg.clientId, response_type: 'code', scope: SCOPE, redirect_uri: cfg.redirectUri, state })}`;
+export const authUrl = (cfg, state, ep) => `${ep?.auth || `${cfg.authOrigin}/connect/oauth2`}?${new URLSearchParams({ client_id: cfg.clientId, response_type: 'code', scope: SCOPE, redirect_uri: cfg.redirectUri, state })}`;
 
 const basic = cfg => `Basic ${Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64')}`;
+const tidOf = res => { try { return res.headers?.get?.('intuit_tid') || ''; } catch { return ''; } };
 async function tokenCall(cfg, form, fetchImpl) {
-  const res = await fetchImpl(`${cfg.oauthOrigin}/oauth2/v1/tokens/bearer`, { method: 'POST', headers: { Authorization: basic(cfg), Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form).toString() }).catch(() => { throw new Error('Could not reach QuickBooks to sign in'); });
+  const ep = await endpoints(cfg, fetchImpl);
+  const res = await fetchImpl(ep.token, { method: 'POST', headers: { Authorization: basic(cfg), Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form).toString() }).catch(() => { throw new Error('Could not reach QuickBooks to sign in'); });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok || !j.access_token) throw Object.assign(new Error(res.status === 400 || res.status === 401 ? 'QuickBooks refused the sign-in (the code expired, or the Client ID and Secret do not match the app)' : `QuickBooks answered ${res.status} to the sign-in`), { refused: res.status === 400 || res.status === 401 });
+  if (!res.ok || !j.access_token) throw Object.assign(new Error(res.status === 400 || res.status === 401 ? 'QuickBooks refused the sign-in (the code expired, or the Client ID and Secret do not match the app)' : `QuickBooks answered ${res.status} to the sign-in`), { refused: res.status === 400 || res.status === 401, status: res.status, tid: tidOf(res), code: j.error });
   const now = Date.now();
   return { accessToken: j.access_token, refreshToken: j.refresh_token, accessExpiresAt: new Date(now + (Number(j.expires_in) || 3600) * 1000), refreshExpiresAt: new Date(now + (Number(j.x_refresh_token_expires_in) || 8_640_000) * 1000) };
 }
 export const exchangeCode = (cfg, code, fetchImpl = fetch) => tokenCall(cfg, { grant_type: 'authorization_code', code, redirect_uri: cfg.redirectUri }, fetchImpl);
 export const refreshTokens = (cfg, refreshToken, fetchImpl = fetch) => tokenCall(cfg, { grant_type: 'refresh_token', refresh_token: refreshToken }, fetchImpl);
-export async function revoke(cfg, token, fetchImpl = fetch) { try { await fetchImpl(`${cfg.revokeOrigin}/v2/oauth2/tokens/revoke`, { method: 'POST', headers: { Authorization: basic(cfg), Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); return true; } catch { return false; } }
+export async function revoke(cfg, token, fetchImpl = fetch) { try { const ep = await endpoints(cfg, fetchImpl); await fetchImpl(ep.revoke, { method: 'POST', headers: { Authorization: basic(cfg), Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }); return true; } catch { return false; } }
 
 // A call to the accounting API for one connected company. ctx: { cfg, conn: { realmId, accessToken, refreshToken, accessExpiresAt }, save(tokens), fetchImpl }.
 // An expired access token is refreshed first (and the new pair saved: Intuit rotates the refresh token); a 401 is retried once after a refresh.
@@ -47,8 +68,13 @@ export async function qb(ctx, path, { method = 'GET', body, raw = false, query =
   const url = `${cfg.apiOrigin}/v3/company/${encodeURIComponent(conn.realmId)}${path}${path.includes('?') ? '&' : '?'}${new URLSearchParams({ ...query, minorversion: MINOR })}`;
   const go = () => fetchImpl(url, { method, headers: { Authorization: `Bearer ${conn.accessToken}`, Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : raw ? { 'Content-Type': 'application/octet-stream' } : {}) }, body: body !== undefined ? JSON.stringify(body) : undefined }).catch(() => { throw new Error('Could not reach QuickBooks'); });
   let res = await go(); if (res.status === 401) { await refresh(); res = await go(); }
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = j.Fault?.Error?.[0]; throw Object.assign(new Error(res.status === 401 ? 'QuickBooks no longer accepts this connection: connect it again' : `QuickBooks: ${String(e?.Detail || e?.Message || `answered ${res.status}`).slice(0, 220)}`), { status: res.status, code: e?.code, refused: res.status === 401 }); }
+  const j = await res.json().catch(() => ({})), tid = tidOf(res);
+  if (!res.ok) {
+    const e = j.Fault?.Error?.[0], detail = String(e?.Detail || e?.Message || `answered ${res.status}`).slice(0, 220);
+    // every failed call is logged with what Intuit support asks for (the intuit_tid, the status, the code, the path): never a token or a body
+    ctx.log?.warn?.({ quickbooks: true, status: res.status, intuit_tid: tid, code: e?.code, fault: e?.Message, detail: e?.Detail, method, path: path.split('?')[0].replace(/\/\d+$/, '/{id}') }, 'QuickBooks call failed');
+    throw Object.assign(new Error(res.status === 401 ? 'QuickBooks no longer accepts this connection: connect it again' : `QuickBooks: ${detail}`), { status: res.status, code: e?.code, refused: res.status === 401, tid });
+  }
   return j;
 }
 const esc = v => String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
