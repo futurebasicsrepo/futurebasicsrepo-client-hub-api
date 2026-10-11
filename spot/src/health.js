@@ -10,6 +10,9 @@
 //   SPOT_COST_ISSUING_CARD_CENTS  per virtual card       (default 10¢)
 //   SPOT_INTERCHANGE_BPS       Stripe's interchange share on Spot-card spend (default 0: set it from your Stripe agreement)
 //   SPOT_AFFILIATE_BPS         commission on affiliate orders (default 300 = 3%)
+
+import { SITE_JS, siteNav } from './site.js';
+
 const DAY = 86_400_000;
 const dayOf = (t) => new Date(t).toISOString().slice(0, 10);
 
@@ -365,6 +368,7 @@ $('#runChecks').onclick=async e=>{const b=e.target;b.disabled=true;b.textContent
 
 export function healthPage({ head }) {
   return `${head}
+${siteNav()}
 <main class="hl"><div class="wrap">
   <div class="bar"><div><h1>Spot health</h1><p class="sub" id="when">Loading…</p></div><div style="display:flex;gap:8px"><a class="ab" href="/admin">Admin</a><button class="ab" id="refresh">Refresh</button></div></div>
   <div class="banner" id="banner">Checking…</div>
@@ -381,6 +385,6 @@ export function healthPage({ head }) {
   <h2>Money</h2><div id="money"></div>
   <h2>Auto-pay fallbacks</h2><div class="list" id="autopay"></div>
 </div></main>
-<script>(()=>{${HEALTH_JS}})();</script>
+<script>(()=>{${SITE_JS}})();(()=>{${HEALTH_JS}})();</script>
 </body></html>`;
 }
