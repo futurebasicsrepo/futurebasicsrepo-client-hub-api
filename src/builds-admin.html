@@ -20,6 +20,7 @@ header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px
 .hbtn{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:999px;padding:8px 14px;text-decoration:none;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.hbtn:hover{background:#fff;color:var(--ink)}
 main{max-width:1180px;margin:0 auto;padding:26px clamp(14px,3vw,36px) 80px}
 h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}
+.count{display:inline-block;min-width:18px;padding:1px 6px;border-radius:999px;background:var(--cue,#4bff9a);color:#0b0b0d;font-size:10px;text-align:center;margin-left:4px}.upd{padding:12px 0;border-top:1px solid var(--line)}.upd:first-child{border-top:0}
 .tabs{display:flex;gap:8px;margin:18px 0}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.4vw,26px);margin-bottom:16px}
 .row{display:grid;grid-template-columns:minmax(0,1.6fr) 120px 150px 80px 80px auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
@@ -54,7 +55,7 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
   <div id="app" class="hidden">
     <span class="mono" style="color:var(--dim)">Future Basics</span><h1>Builds</h1>
     <p class="note">What visitors see at <b id="where"></b>. Everything starts hidden: make a build <b>listed</b> (anyone invited to “all listed builds” and every client sees it) or <b>invite only</b> (only people invited to that build by name).</p>
-    <div class="tabs"><button class="tab on" data-t="builds">Builds</button><button class="tab" data-t="invites">Invites</button><button class="tab" data-t="activity">Who looked</button></div>
+    <div class="tabs"><button class="tab on" data-t="builds">Builds</button><button class="tab" data-t="invites">Invites</button><button class="tab" data-t="updates">What’s new <span id="newCount" class="count hidden"></span></button><button class="tab" data-t="activity">Who looked</button></div>
 
     <section id="t-builds" class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px"><b>All builds</b><button class="btn go sm" id="newBuild">+ New build</button></div>
@@ -76,6 +77,18 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
       <div class="scroll"><table><thead><tr><th>Email</th><th>Can see</th><th>Expires</th><th>Last in</th><th>Views</th><th></th></tr></thead><tbody id="invList"></tbody></table></div>
     </section>
 
+    <section id="t-updates" class="panel hidden">
+      <b>What changed in the apps</b>
+      <p class="note">When a change to a build’s code is merged on GitHub it lands here (checked every hour, or press the button). Publish it, editing the line first if you like, and visitors see it under “What’s new” on that build. Dismiss the ones that aren’t worth showing. A build set to publish automatically skips this step.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px"><button class="btn go sm" id="syncNow" type="button">Check GitHub now</button><select class="t" id="updStatus" style="width:auto"><option value="new">Waiting for you</option><option value="published">Published</option><option value="dismissed">Dismissed</option></select><span class="msg" id="syncMsg" role="status"></span></div>
+      <div id="updList"></div>
+      <form id="manualForm" class="fields" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+        <label class="f"><span class="mono">Add a line yourself</span><select class="t" id="manBuild"></select></label>
+        <label class="f wide"><span class="mono">What changed, in words a visitor understands</span><input class="t" id="manText" maxlength="160" placeholder="Orders now text you when they ship"></label>
+        <div style="display:flex;align-items:end;justify-content:flex-end"><button class="btn sm" type="submit">Publish</button></div>
+      </form>
+    </section>
+
     <section id="t-activity" class="panel hidden">
       <b>Who looked</b><p class="note">Every time an invited person opens a build or clicks through to the live site. Staff looking is not counted.</p>
       <div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Build</th><th>What</th></tr></thead><tbody id="actList"></tbody></table></div>
@@ -94,7 +107,9 @@ table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--dim);fo
     <label class="f"><span class="mono">Status</span><select class="t" id="fStatus"><option value="live">Live</option><option value="concept">Concept</option><option value="in-progress">In progress</option><option value="archived">Archived</option></select></label>
     <label class="f"><span class="mono">Who can see it</span><select class="t" id="fVis"><option value="hidden">Hidden (staff only)</option><option value="listed">Listed (all invited, every client)</option><option value="invite">Invite only (named invites)</option></select></label>
     <label class="f"><span class="mono">Live address</span><input class="t" id="fLive" placeholder="https://…"></label>
-    <label class="f"><span class="mono">Repository (staff only)</span><input class="t" id="fRepo" placeholder="https://github.com/…"></label>
+    <label class="f"><span class="mono">Repository (staff only; GitHub addresses are watched for changes)</span><input class="t" id="fRepo" placeholder="https://github.com/…"></label>
+    <label class="f"><span class="mono">Folder in the repository (if the build lives in one)</span><input class="t" id="fPath" placeholder="sites/bennysbeans"></label>
+    <label class="f wide"><span class="mono"><input type="checkbox" id="fAuto"> Publish its changes to “What’s new” automatically</span></label>
     <label class="f wide"><span class="mono">Built with (commas)</span><input class="t" id="fStack" placeholder="Node, Postgres, Railway"></label>
     <label class="f wide"><span class="mono">What it is and why it matters</span><textarea class="t" id="fSummary" style="min-height:120px"></textarea></label>
     <label class="f wide"><span class="mono">Highlights (one per line: Title — what it does)</span><textarea class="t" id="fHl"></textarea></label>
@@ -122,13 +137,14 @@ const hlTo=l=>(l||[]).map(h=>h.text?`${h.title} — ${h.text}`:h.title).join('\n
 
 async function loadBuilds(){
   const {builds}=await api('/v1/admin/builds');BUILDS=builds;
-  $('#list').innerHTML=builds.length?builds.map(b=>`<div class="row"><div class="name">${b.coverUrl?`<img class="thumb" data-cover="${esc(b.coverUrl)}" alt="">`:'<span class="thumb"></span>'}<div style="min-width:0"><b>${esc(b.name)}</b><div class="sub">${esc(b.tagline||b.live_url||'')}</div></div></div>
+  $('#list').innerHTML=builds.length?builds.map(b=>`<div class="row"><div class="name">${b.coverUrl?`<img class="thumb" data-cover="${esc(b.coverUrl)}" alt="">`:'<span class="thumb"></span>'}<div style="min-width:0"><b>${esc(b.name)}</b><div class="sub">${esc(b.tagline||b.live_url||'')}</div>${b.repo_url?(b.sync_error?`<div class="sub" style="color:#b3261e">Sync: ${esc(b.sync_error)}</div>`:`<div class="sub">${b.synced_at?`Checked ${esc(fmt(b.synced_at))}`:'Not checked yet'}${b.last_change_at?` · code changed ${esc(fmt(b.last_change_at))}`:''}${b.new_updates?` · <b>${b.new_updates} waiting</b>`:''}</div>`):''}</div></div>
     <div><span class="pillv ${esc(b.visibility)}">${esc(VIS[b.visibility])}</span></div>
     <div><select class="t" data-vis="${esc(b.id)}" aria-label="Who can see ${esc(b.name)}">${Object.entries(VIS).map(([k,v])=>`<option value="${k}" ${k===b.visibility?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="sub">${b.invites} invited</div><div class="sub">${b.views} views</div>
     <div><button class="btn sm" data-edit="${esc(b.id)}">Edit</button></div></div>`).join(''):'<p class="note">No builds yet.</p>';
   // the picture route wants the work sign-in, which an <img> cannot send, so each thumbnail is fetched with it
   $$('img[data-cover]').forEach(async im=>{try{const r=await fetch(im.dataset.cover,{headers:{Authorization:'Bearer '+TOKEN()}});if(r.ok)im.src=URL.createObjectURL(await r.blob())}catch{}});
+  const waiting=builds.reduce((n,b)=>n+(b.new_updates||0),0);$('#newCount').textContent=waiting;$('#newCount').classList.toggle('hidden',!waiting);$('#manBuild').innerHTML=builds.map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
   $('#invBuild').innerHTML='<option value="">All listed builds</option>'+builds.map(b=>`<option value="${esc(b.id)}">${esc(b.name)} only</option>`).join('');
 }
 $('#list').addEventListener('change',async e=>{const s=e.target.closest('[data-vis]');if(!s)return;try{await api('/v1/admin/builds/'+s.dataset.vis,{method:'PUT',body:{visibility:s.value}});await loadBuilds()}catch(x){alert(x.message)}});
@@ -138,7 +154,7 @@ $('#newBuild').onclick=()=>openForm(null);
 function openForm(b){
   EDIT=b;$('#dTitle').textContent=b?b.name:'New build';$('#fDelete').classList.toggle('hidden',!b);$('#fMsg').textContent='';$('#fMsg').className='msg';
   const v=b||{};for(const [id,val] of Object.entries({fName:v.name,fSlug:v.slug,fTag:v.tagline,fSector:v.sector,fLive:v.live_url,fRepo:v.repo_url,fSummary:v.summary,fSort:v.sort_order??100}))$('#'+id).value=val??'';
-  $('#fHost').value=v.hosting||'other';$('#fStatus').value=v.status||'concept';$('#fVis').value=v.visibility||'hidden';$('#fStack').value=(v.stack||[]).join(', ');$('#fHl').value=hlTo(v.highlights);$('#fLinks').value=lnTo(v.links);$('#fCover').value='';
+  $('#fHost').value=v.hosting||'other';$('#fStatus').value=v.status||'concept';$('#fVis').value=v.visibility||'hidden';$('#fStack').value=(v.stack||[]).join(', ');$('#fHl').value=hlTo(v.highlights);$('#fPath').value=v.repo_path||'';$('#fAuto').checked=Boolean(v.auto_publish);$('#fLinks').value=lnTo(v.links);$('#fCover').value='';
   $('#dlg').showModal();$('#fName').focus();
 }
 $('#dClose').onclick=()=>$('#dlg').close();
@@ -146,7 +162,7 @@ $('#dClose').onclick=()=>$('#dlg').close();
 const shrink=file=>new Promise((res,rej)=>{const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{const w=Math.min(1400,img.naturalWidth),h=Math.round(img.naturalHeight*w/img.naturalWidth),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.82))};img.onerror=()=>rej(new Error('That picture could not be opened'));img.src=u});
 $('#form').addEventListener('submit',async e=>{e.preventDefault();const btn=$('#fSave'),m=$('#fMsg');btn.disabled=true;m.className='msg';m.textContent='Saving…';
   try{
-    const body={name:$('#fName').value,slug:$('#fSlug').value||undefined,tagline:$('#fTag').value,sector:$('#fSector').value,hosting:$('#fHost').value,status:$('#fStatus').value,visibility:$('#fVis').value,liveUrl:$('#fLive').value,repoUrl:$('#fRepo').value,stack:$('#fStack').value,summary:$('#fSummary').value,highlights:hlFrom($('#fHl').value),links:lnFrom($('#fLinks').value),sortOrder:Number($('#fSort').value)};
+    const body={name:$('#fName').value,slug:$('#fSlug').value||undefined,tagline:$('#fTag').value,sector:$('#fSector').value,hosting:$('#fHost').value,status:$('#fStatus').value,visibility:$('#fVis').value,liveUrl:$('#fLive').value,repoUrl:$('#fRepo').value,stack:$('#fStack').value,summary:$('#fSummary').value,highlights:hlFrom($('#fHl').value),repoPath:$('#fPath').value,autoPublish:$('#fAuto').checked,links:lnFrom($('#fLinks').value),sortOrder:Number($('#fSort').value)};
     if(!body.slug)delete body.slug;
     let id=EDIT?.id;if(EDIT)await api('/v1/admin/builds/'+id,{method:'PUT',body});else id=(await api('/v1/admin/builds',{method:'POST',body})).id;
     const f=$('#fCover').files[0];if(f)await api('/v1/admin/builds/'+id+'/cover',{method:'PUT',body:{image:await shrink(f)}});
@@ -165,11 +181,20 @@ $('#inviteForm').addEventListener('submit',async e=>{e.preventDefault();const b=
     const sent=r.invited.filter(x=>x.sent).length;m.className='msg ok';m.textContent=`${r.invited.length} invited${$('#invSend').checked?`, ${sent} emailed`:''}${r.invited.some(x=>x.extended)?' (existing invites were extended)':''}.`;$('#invEmails').value='';await loadInvites();await loadBuilds()}
   catch(x){m.className='msg bad';m.textContent=x.message}finally{b.disabled=false}});
 
+async function loadUpdates(){
+  const st=$('#updStatus').value,{updates}=await api('/v1/admin/builds/updates?status='+st);
+  $('#updList').innerHTML=updates.length?updates.map(u=>`<div class="upd" data-id="${esc(u.id)}"><div class="sub"><b>${esc(u.build_name)}</b> · ${esc(fmt(u.happened_at))}${u.source==='manual'?' · written by hand':''}${u.raw_title&&u.raw_title!==u.text?` · from “${esc(u.raw_title)}”`:''}${u.url?` · <a href="${esc(u.url)}" target="_blank" rel="noopener">on GitHub</a>`:''}</div>
+    <div style="display:flex;gap:8px;margin-top:6px"><input class="t" data-text value="${esc(u.text)}" maxlength="160" aria-label="The line a visitor will read" style="flex:1">${st!=='published'?'<button class="btn go sm" data-set="published">Publish</button>':'<button class="btn sm" data-set="published">Save</button><button class="btn sm" data-set="dismissed">Take down</button>'}${st==='new'?'<button class="btn sm" data-set="dismissed">Dismiss</button>':''}</div></div>`).join(''):`<p class="note">${st==='new'?'Nothing is waiting. When a change to a build is merged on GitHub it appears here.':'Nothing here.'}</p>`;
+}
+$('#updStatus').onchange=loadUpdates;
+$('#updList').addEventListener('click',async e=>{const b=e.target.closest('[data-set]');if(!b)return;const row=b.closest('[data-id]');try{await api('/v1/admin/builds/updates/'+row.dataset.id,{method:'PUT',body:{status:b.dataset.set,text:row.querySelector('[data-text]').value}});await loadUpdates();await loadBuilds()}catch(x){alert(x.message)}});
+$('#syncNow').onclick=async()=>{const b=$('#syncNow'),m=$('#syncMsg');b.disabled=true;m.className='msg';m.textContent='Checking GitHub…';try{const r=await api('/v1/admin/builds/sync',{body:{}});m.className=r.failed?'msg bad':'msg ok';m.textContent=`${r.checked} build${r.checked===1?'':'s'} checked, ${r.queued} new change${r.queued===1?'':'s'}${r.published?`, ${r.published} published`:''}${r.failed?`. ${r.failed} could not be read: ${r.errors.join('; ')}`:'.'}`;await loadUpdates();await loadBuilds()}catch(x){m.className='msg bad';m.textContent=x.message}finally{b.disabled=false}};
+$('#manualForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/v1/admin/builds/'+$('#manBuild').value+'/updates',{body:{text:$('#manText').value}});$('#manText').value='';$('#updStatus').value='published';await loadUpdates()}catch(x){alert(x.message)}});
 async function loadActivity(){
   const {events}=await api('/v1/admin/builds/activity');
   $('#actList').innerHTML=events.length?events.map(v=>`<tr><td>${fmt(v.created_at)}</td><td>${esc(v.email)}</td><td>${esc(v.build_name)}</td><td>${v.kind==='demo'?'Clicked through to the live site':'Opened the page'}</td></tr>`).join(''):'<tr><td colspan="4" class="note">Nobody has looked yet.</td></tr>';
 }
-$$('.tab').forEach(t=>t.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of ['builds','invites','activity'])$('#t-'+k).classList.toggle('hidden',k!==t.dataset.t);if(t.dataset.t==='invites')loadInvites();if(t.dataset.t==='activity')loadActivity()});
+$$('.tab').forEach(t=>t.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('on',x===t));for(const k of ['builds','invites','updates','activity'])$('#t-'+k).classList.toggle('hidden',k!==t.dataset.t);if(t.dataset.t==='invites')loadInvites();if(t.dataset.t==='updates')loadUpdates();if(t.dataset.t==='activity')loadActivity()});
 
 (async()=>{
   $('#where').textContent=location.hostname.startsWith('work.')?'builds.thefuturebasics.com':location.origin+'/builds';

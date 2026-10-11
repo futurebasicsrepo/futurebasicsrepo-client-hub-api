@@ -7,6 +7,8 @@
 //   hidden  - staff only (a draft, or something withdrawn)
 // An invite has an optional build: none means "all listed builds", one means that build (listed or invite-only). Invites expire and can be revoked.
 
+import { cleanRepoPath } from './builds-sync.js';
+
 export const STATUSES = ['live', 'concept', 'in-progress', 'archived'];
 export const VISIBILITIES = ['listed', 'invite', 'hidden'];
 export const HOSTINGS = ['railway', 'vercel', 'shopify', 'github-pages', 'other'];
@@ -36,6 +38,8 @@ export function cleanBuild(input = {}, { partial = false } = {}) {
   if (has('stack')) out.stack = (Array.isArray(i.stack) ? i.stack : String(i.stack || '').split(',')).map(x => clip(x, 30)).filter(Boolean).slice(0, 14);
   if (has('summary')) out.summary = clipBlock(i.summary, 2000);
   if (has('highlights')) out.highlights = (Array.isArray(i.highlights) ? i.highlights : []).map(h => ({ title: clip(h?.title, 80), text: clip(h?.text, 280) })).filter(h => h.title || h.text).slice(0, 8);
+  if (has('repoPath')) out.repo_path = cleanRepoPath(i.repoPath);
+  if (has('autoPublish')) out.auto_publish = i.autoPublish === true || i.autoPublish === 'true';
   if (has('links')) {
     const list = Array.isArray(i.links) ? i.links : [], links = [];
     for (const l of list) {
@@ -80,23 +84,23 @@ export const hasAnyAccess = (viewer, now = Date.now()) => Boolean(viewer && (vie
 
 // The builds already made, seeded once, hidden until they have been reviewed in the console.
 export const SEED_BUILDS = [
-  { slug: 'spot', name: 'Spot', tagline: 'The yes button for AI shopping.', sector: 'Commerce · AI', status: 'live', hosting: 'railway', liveUrl: 'https://spotmeplease.com',
+  { slug: 'spot', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'spot', name: 'Spot', tagline: 'The yes button for AI shopping.', sector: 'Commerce · AI', status: 'live', hosting: 'railway', liveUrl: 'https://spotmeplease.com',
     summary: 'AI can find it and fill the cart; a person has to say yes to paying. Spot is that yes: from the user, or from whoever is paying, with rules the user sets for their AI and signed proof of every approval. Stores embed an "Ask someone to pay" button by their checkout.',
     highlights: [{ title: 'Rules for every AI key', text: 'Per-order and monthly limits, allowed stores, refused or sent to an approver' }, { title: 'Signed approvals', text: 'EdDSA-signed proof of every yes; requests to stores are signed too' }, { title: 'Store button', text: "Opens the shopper's cart at the store's own prices" }], stack: ['Node', 'Fastify', 'Postgres', 'Shopify app', 'Railway'] },
-  { slug: 'bennys-beans', name: "Benny's Beans", tagline: 'Roasted after you order.', sector: 'Coffee · Retail', status: 'concept', hosting: 'railway', liveUrl: 'https://bennys-beans.up.railway.app',
+  { slug: 'bennys-beans', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'sites/bennysbeans', name: "Benny's Beans", tagline: 'Roasted after you order.', sector: 'Coffee · Retail', status: 'concept', hosting: 'railway', liveUrl: 'https://bennys-beans.up.railway.app',
     summary: "A rebuilt site for a one-person small-batch roaster, and a system that makes two roast days a week run themselves: shop, subscriptions, brew guides, wholesale, find-us, gifts, and a roaster console. Built as Future Basics' showcase for coffee businesses.",
     highlights: [{ title: 'Live roast clock', text: 'The hero shows the next roast day and what is still open to order' }, { title: 'Roaster console', text: 'The roaster runs the order-to-roast cycle from one screen' }, { title: 'Subscriptions and wholesale', text: 'Both are on the page, not a contact form' }], stack: ['Static HTML/CSS/JS', 'Caddy', 'Railway'] },
-  { slug: 'modish-nail-spa', name: 'Modish Nail Spa', tagline: 'Polished, with a pour.', sector: 'Salons · Spas', status: 'concept', hosting: 'railway', liveUrl: 'https://modish-site-production.up.railway.app',
+  { slug: 'modish-nail-spa', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'sites/modish', name: 'Modish Nail Spa', tagline: 'Polished, with a pour.', sector: 'Salons · Spas', status: 'concept', hosting: 'railway', liveUrl: 'https://modish-site-production.up.railway.app',
     summary: 'A rebuilt site for a two-location nail spa. The website sells the experience and the system behind it keeps chairs full: live open/closed status and walk-in wait, a lookbook with "Book this look", booking by service, technician and time, a remote walk-in waitlist, gift cards, and an owner view.',
     highlights: [{ title: 'Book the chair', text: 'Spa → services → technician → a time that fits the visit' }, { title: 'Remote waitlist', text: 'Walk-ins join from their phone and are told when to come' }, { title: 'Owner console', text: 'Bookings, waitlist and gift cards in one place' }], stack: ['Static HTML/CSS/JS', 'Caddy', 'Railway'] },
-  { slug: 'nursepartners', name: 'NursePartners', tagline: 'Fill the roster, convert the daughter.', sector: 'Healthcare · Home care', status: 'concept', hosting: 'railway', liveUrl: 'https://nursepartners-site-production.up.railway.app',
+  { slug: 'nursepartners', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'sites/nursepartners', name: 'NursePartners', tagline: 'Fill the roster, convert the daughter.', sector: 'Healthcare · Home care', status: 'concept', hosting: 'railway', liveUrl: 'https://nursepartners-site-production.up.railway.app',
     summary: "A rebuilt site for a home care agency, aimed at the adult child researching at 10pm, referral partners and caregivers: a cost calculator, local pages with a ZIP checker, a dementia care explorer, weekly family updates, and an agency console.",
     highlights: [{ title: 'Three entry points', text: 'Families, referral partners and caregivers each get their own path' }, { title: 'Cost calculator', text: 'Rate × schedule, minus what long-term-care cover pays' }, { title: 'Local search pages', text: 'ZIP checker, neighbourhoods and FAQ markup' }], stack: ['Static HTML/CSS/JS', 'Railway'] },
-  { slug: 'common-ground', name: 'Common Ground', tagline: "Philly sneaker and streetwear consignment, dressed in '90s nostalgia.", sector: 'Retail · Shopify', status: 'live', hosting: 'shopify', liveUrl: 'https://commonground12.com', repoUrl: '',
+  { slug: 'common-ground', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'themes/common-ground', name: 'Common Ground', tagline: "Philly sneaker and streetwear consignment, dressed in '90s nostalgia.", sector: 'Retail · Shopify', status: 'live', hosting: 'shopify', liveUrl: 'https://commonground12.com',
     summary: 'A from-scratch Shopify theme for a consignment and trade-in store, with a mega menu of every collection, filters that work, a Sell page that sends items with photos to an offers system, and a staff counter for making offers.',
     highlights: [{ title: 'Real filtering', text: 'Brand, type, size grid, price, availability, colour and tags over AJAX' }, { title: 'Sell and trade-in', text: 'Sellers send photos and get an offer thread on a private link' }], stack: ['Shopify Online Store 2.0', 'Liquid', 'Fastify', 'Postgres'] },
   { slug: 'cuesea', name: 'Cuesea', tagline: '', sector: '', status: 'live', hosting: 'other', liveUrl: 'https://cuesea.ai', summary: 'To fill in.', highlights: [], stack: [] },
-  { slug: 'incha-tv', name: 'incha.tv', tagline: 'A fan-first media platform by INCHA Studios.', sector: 'Media', status: 'in-progress', hosting: 'vercel',
+  { slug: 'incha-tv', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv', name: 'incha.tv', tagline: 'A fan-first media platform by INCHA Studios.', sector: 'Media', status: 'in-progress', hosting: 'vercel',
     summary: 'Fans upload clips and photos, lightly edit them, and publish publicly, unlisted or privately. Videos are converted in the background to play on any phone; others can upvote, comment and share.',
     highlights: [{ title: 'Any phone video', text: 'iPhone HEVC and others converted to H.264 in the background' }, { title: 'Private by default', text: 'Every upload starts as a private draft' }], stack: ['Next.js', 'Fastify', 'Postgres', 'ffmpeg', 'Vercel', 'Railway'] }
 ];

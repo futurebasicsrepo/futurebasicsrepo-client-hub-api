@@ -52,11 +52,26 @@ client-demo.thefuturebasics.com {
 
 `/v1/builds/auth/check?slug=…` answers `200` when the cookie belongs to someone who may see that build and `401` otherwise. For the cookie to reach `client-demo.thefuturebasics.com`, set `BUILDS_COOKIE_DOMAIN=.thefuturebasics.com`. A 401 should redirect the visitor to `https://builds.thefuturebasics.com/#/<slug>` to sign in.
 
+## Keeping it current as the apps change
+
+Each build can say where its code lives: the **Repository** address (GitHub) and, when the build is a folder inside a bigger repository, the **Folder**. Most of ours live in the hub repository (Spot in `spot/`, the coffee, nail and home care sites in `sites/…`, incha.tv in `incha-tv/`, the Common Ground theme in `themes/common-ground`); the piggy bank has its own repository. Existing builds are filled in once, at the first start after this change, and only where staff have not set anything.
+
+Every hour (or when you press **Check GitHub now** on the *What's new* tab) the service looks at each build's repository:
+
+- **Updated date.** The newest commit that touched the build's folder. Cards show "Updated Oct 9"; a build page shows it above its news.
+- **What's new.** Each pull request merged into the default branch that touched the build's folder is queued, cleaned up into a plain line (no "feat:", no "(#227)", no full stop), on the *What's new* tab. Staff publish it, editing the words first if they like, or dismiss it. A build can be set to **publish its changes automatically** instead. Staff can also write a line by hand for changes that do not come through GitHub.
+- The first look at a build only records the time; it does not put the build's history in the queue.
+- Visitors only ever get the cleaned line and its date. The pull request's own title, number and address, and any sync problem, stay with staff.
+- A repository GitHub cannot read (wrong address, or a token that cannot see it) is shown on that build's row in words staff can act on, and does not stop the others.
+
+Needs one setting on the hub service: **`BUILDS_GITHUB_TOKEN`** (or `GITHUB_TOKEN`), a read-only GitHub token (fine-grained: *Contents*, *Pull requests* and *Metadata* read) for every repository whose builds are listed. Without it the hourly job does not run and public repositories can still be checked with the button. The job appears on the Platform page as "Showcase update sync".
+
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `BUILDS_URL` | `https://builds.thefuturebasics.com` | where sign-in emails link to |
+| `BUILDS_GITHUB_TOKEN` | unset | read-only GitHub token so the showcase can follow each build's repository (see above) |
 | `BUILDS_COOKIE_DOMAIN` | unset (host-only cookie) | share the sign-in with housed builds on sibling subdomains |
 
 JWT secret, mail sending and the database are the service's existing settings.
@@ -70,4 +85,4 @@ JWT secret, mail sending and the database are the service's existing settings.
 ## API (summary)
 
 Viewer: `POST /v1/builds/auth/code|verify|logout`, `GET /v1/builds/me`, `GET /v1/builds`, `GET /v1/builds/:slug`, `GET /v1/builds/:slug/cover`, `GET /builds/go/:slug` (tracked redirect to the live build), `GET /builds/go/:slug/:n` (the same for extra link *n*).
-Staff: `GET|POST /v1/admin/builds`, `PUT|DELETE /v1/admin/builds/:id`, `PUT|GET /v1/admin/builds/:id/cover`, `GET|POST /v1/admin/builds/invites`, `DELETE /v1/admin/builds/invites/:id`, `GET /v1/admin/builds/activity`.
+Staff: `GET|POST /v1/admin/builds`, `PUT|DELETE /v1/admin/builds/:id`, `PUT|GET /v1/admin/builds/:id/cover`, `GET|POST /v1/admin/builds/invites`, `DELETE /v1/admin/builds/invites/:id`, `GET /v1/admin/builds/activity`, `POST /v1/admin/builds/sync`, `GET /v1/admin/builds/updates?status=`, `PUT /v1/admin/builds/updates/:id`, `POST /v1/admin/builds/:id/updates`.
