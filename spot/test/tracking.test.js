@@ -144,3 +144,10 @@ test('paid on the store’s own checkout: Spot finds the order, follows it, and 
   await until(() => pushes.length && emails.some((m) => /is on its way/.test(m.subject)), 'push and email');
   assert.equal(pushes[0].url, 'https://web.push.apple.com/abc', 'to the device they turned on');
 });
+
+test('a Shopify store’s order is asked for by its gid', async () => {
+  const { shopifyOrderId } = await import('../src/direct.js');
+  assert.equal(shopifyOrderId('https://sports-basement.myshopify.com/api/ucp/mcp', '6512345678'), 'gid://shopify/Order/6512345678');
+  assert.equal(shopifyOrderId('https://sports-basement.myshopify.com/api/ucp/mcp', 'gid://shopify/Order/1'), 'gid://shopify/Order/1');
+  assert.equal(shopifyOrderId('https://store.example/ucp', '123'), '123', 'other stores keep their own ids');
+});
