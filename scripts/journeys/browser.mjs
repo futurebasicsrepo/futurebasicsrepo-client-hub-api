@@ -1904,7 +1904,7 @@ await journey('J160', 'My accounts on Home: the customers you own with what each
   const olive = await forge({ sub: oliveId, clientId: r.clientId, role: 'admin', email: `olive-${tag}@thefuturebasics.com` }), pat = await forge({ sub: patId, clientId: r.clientId, role: 'admin', email: `pat-${tag}@thefuturebasics.com` });
   const mkClient = (name, owner) => sql(`insert into clients(name,slug,status,owner_id) values('${name} ${tag}','${name.toLowerCase().replace(/ /g, '-')}-${tag}','active',${owner ? `'${owner}'` : 'null'}) returning id`).split('\n')[0];
   const mkProj = (cid, name) => sql(`insert into projects(client_id,name,status,milestone,kind,stage) values('${cid}','${name}','active','Build','software','build') returning id`).split('\n')[0];
-  const busy = mkClient('Busy Bakery', oliveId), calm = mkClient('Calm Cafe', oliveId), free = mkClient('Free Florist', null);
+  const busy = mkClient('Busy Bakery', oliveId), calm = mkClient('Calm Cafe', oliveId), free = mkClient('000 Free Florist', null); // sorts first: the unowned list shows the first dozen by name, and a full run leaves many clients
   const pBusy = mkProj(busy, 'Busy site'); mkProj(calm, 'Calm site'); mkProj(free, 'Free site');
   sql(`insert into project_messages(project_id,client_id,author_role,body) values('${pBusy}','${busy}','client','When can we see it?')`);
   const H = (t, path = '/home') => call('/v1/admin' + path, { token: t });
@@ -1925,7 +1925,7 @@ await journey('J160', 'My accounts on Home: the customers you own with what each
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
   await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#myList .acct', { timeout: 15000 });
   const t = await page.innerText('#myPanel');
-  ok(/My accounts/i.test(t) && /Busy Bakery/i.test(t) && /1 project waiting on you/i.test(t) && /All clear/i.test(t) && /Accounts nobody owns/i.test(t) && /Free Florist/i.test(t), 'Home shows My accounts with what each needs and the accounts nobody owns', t.slice(0, 300));
+  ok(/My accounts/i.test(t) && /Busy Bakery/i.test(t) && /1 project waiting on you/i.test(t) && /All clear/i.test(t) && /Accounts nobody owns/i.test(t) && /000 Free Florist/i.test(t), 'Home shows My accounts with what each needs and the accounts nobody owns', t.slice(0, 300));
   await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-home.png` }).catch(() => {});
   await page.click(`[data-take] >> nth=0`); await page.waitForFunction(() => !document.querySelector('#unownedBox [data-take]') || document.querySelectorAll('#myList .acct').length >= 3, null, { timeout: 8000 });
   ok(await page.locator('#myList .acct').count() >= 3, 'pressing Take moves the account into my accounts on the page');
