@@ -28,6 +28,22 @@ p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}
 .tabs{display:flex;gap:6px;background:var(--line);padding:4px;border-radius:14px;margin-bottom:14px}
 .tabs button{flex:1;border:0;background:transparent;padding:10px 6px;border-radius:10px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tabs.modes{margin:0;flex:0 0 auto;width:168px;padding:3px;border-radius:12px}.tabs.modes button{padding:7px 10px;font-size:15px}
+body.shopping main{max-width:1200px}body.shopping #hero,body.shopping .sandbox,body.shopping .anypage,body.shopping #mine{display:none}
+.shophead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
+.views{display:flex;gap:4px;background:var(--line);padding:3px;border-radius:10px}.views button{border:0;background:transparent;width:36px;height:32px;border-radius:8px;font-size:17px;line-height:1;color:var(--muted);cursor:pointer}.views button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}}
+.grid.one{grid-template-columns:minmax(0,1fr);max-width:560px;margin:0 auto}
+.tile{display:flex;flex-direction:column;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:16px;overflow:hidden;padding:0;font:inherit;color:inherit;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.tile:hover{transform:translateY(-2px);box-shadow:0 8px 22px -12px rgba(0,0,0,.35)}.tile:focus-visible{outline:2px solid var(--spot);outline-offset:2px}
+.tile .ph{aspect-ratio:1/1;background:#fff;position:relative;overflow:hidden;border-bottom:1px solid var(--line)}.tile .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:8px;z-index:1}
+.tile .tb{padding:10px 12px 12px;display:flex;flex-direction:column;gap:2px}.tile .st{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .t{font-weight:700;font-size:14.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.tile .pr{font-weight:800;margin-top:2px}
+.grid.one .tile .t{font-size:17px}.grid.one .tile .tb{padding:14px 16px 16px}
+.shopempty{text-align:center;padding:40px 16px}.shopempty p{margin:4px 0}.shopempty .btn{margin-top:14px;width:auto;display:inline-flex;padding:13px 22px}
+.shopsheet{max-height:92svh;overflow:auto;padding-top:44px}.shopsheet .sheetx{z-index:5;background:var(--card);border-radius:50%;width:36px;height:36px;line-height:1}.shopsheet .pc{flex:none;width:100%;max-width:420px;margin:0 auto}
 label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 6px}
 input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
 input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;border-color:transparent}
@@ -144,8 +160,15 @@ details.more{margin-top:14px}details.more summary{cursor:pointer;font-weight:600
 export function homePage({ origin, provider, cfg }) {
   const bookmarklet = `javascript:location.href=${JSON.stringify(`${origin}/new?url=`)}+encodeURIComponent(location.href)`;
   const body = `
-<a class="brand" href="/"><span class="dot"></span>Spot</a>
-<div class="hero">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
+<div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div></div>
+<section id="shop" hidden>
+  <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
+    <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid">▦</button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time">▢</button></div></div>
+  <div class="grid" id="shopGrid"></div>
+  <div class="shopempty" id="shopEmpty" hidden><p><b>Nothing here yet.</b></p><p class="muted">Ask Spot for something, and everything it finds shows up here to come back to.</p><button class="btn" type="button" id="shopStart">Ask Spot →</button></div>
+  <div class="sheet shopsheet" id="shopSheet" hidden role="dialog" aria-label="Product"><button class="sheetx" id="shopSheetX" type="button" aria-label="Close">×</button><div id="shopCard"></div></div>
+</section>
+<div class="hero" id="hero">${buddySvg(false)}<div class="say" id="say" aria-live="polite">what do you want?</div></div>
 ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.</div>' : ''}
 
 <section id="compose">
@@ -212,7 +235,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 
 <section id="mine" class="card" hidden><h2>My Spots</h2><div id="mineList"></div></section>
 
-<section class="card desktop-only">
+<section class="card desktop-only anypage">
   <h2>Spot from any page</h2>
   <p class="small muted" style="margin-top:0">Drag this to your bookmarks bar. On any product page, click it.</p>
   <div data-bmwrap><a class="bm" href="${esc(bookmarklet)}" draggable="true" data-bm>● Spot this</a><div class="bmhow" hidden><ol><li>Show your bookmarks bar: <b>⌘ Shift B</b> (Mac) or <b>Ctrl Shift B</b> (Windows).</li><li>Drag <b>● Spot this</b> onto it.</li><li>Won’t drag? Right-click the bookmarks bar → <b>Add page…</b>, name it <b>Spot this</b>, and paste the code below as the URL.</li></ol><button type="button" class="btn ghost bmcopy">Copy the code</button></div></div><script>document.querySelectorAll('[data-bm]').forEach(a=>{const how=a.closest('[data-bmwrap]').querySelector('.bmhow');a.addEventListener('click',e=>{e.preventDefault();how.hidden=false});how.querySelector('.bmcopy').addEventListener('click',async ev=>{try{await navigator.clipboard.writeText(a.getAttribute('href'));ev.target.textContent='Copied ✓ now paste it as the URL'}catch{prompt('Copy this, then paste it as the bookmark URL:',a.getAttribute('href'))}})})</script>

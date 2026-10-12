@@ -209,6 +209,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       phone  TEXT PRIMARY KEY,
       at     INTEGER NOT NULL
     );
+    -- Products Spot has shown a signed-in shopper (their Shop page): one row
+    -- per product page, the newest showing kept.
+    CREATE TABLE IF NOT EXISTS seen_products (
+      user_id  TEXT NOT NULL,
+      url      TEXT NOT NULL,
+      doc      TEXT NOT NULL,
+      at       INTEGER NOT NULL,
+      PRIMARY KEY (user_id, url)
+    );
+    CREATE INDEX IF NOT EXISTS seen_products_recent ON seen_products (user_id, at DESC);
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -478,6 +488,29 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    // A shopper's Shop page: every product Spot has shown them, newest first.
+    seen: {
+      KEEP: 300,
+      last: 0,
+      add(userId, url, doc, at = Date.now()) {
+        if (!userId || !url) return;
+        // Strictly increasing, so "newest first" holds within a millisecond.
+        at = this.last = Math.max(at, this.last + 1);
+        db.prepare('INSERT INTO seen_products (user_id, url, doc, at) VALUES (?, ?, ?, ?) ON CONFLICT (user_id, url) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(userId, url, JSON.stringify(doc), at);
+      },
+      prune(userId) {
+        db.prepare('DELETE FROM seen_products WHERE user_id = ? AND url NOT IN (SELECT url FROM seen_products WHERE user_id = ? ORDER BY at DESC LIMIT ?)').run(userId, userId, this.KEEP);
+      },
+      list(userId, limit = 300) {
+        return db
+          .prepare('SELECT doc, at FROM seen_products WHERE user_id = ? ORDER BY at DESC LIMIT ?')
+          .all(userId, Math.min(limit, this.KEEP))
+          .map((r) => ({ ...JSON.parse(r.doc), seen_at: r.at }));
+      },
+      clear(userId) {
+        db.prepare('DELETE FROM seen_products WHERE user_id = ?').run(userId);
+      },
+    },
     keyByName: (name) => q.keyByName.get(name) || null,
     issuing: {
       // True if this transaction is new (a webhook can arrive twice).
