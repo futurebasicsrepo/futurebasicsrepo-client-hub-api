@@ -31,7 +31,7 @@
   const TOURS = [
     {
       id: 'hub-signin', title: 'Sign in to your room',
-      match: () => shown('#send') || shown('#verify'),
+      match: () => !!$('#newTechPack') && (shown('#send') || shown('#verify')) && !store.get('fb.client.token'), // the hub shows its sign-in until it has loaded, so someone already signed in must not see this
       steps: [
         { target: '#email', title: 'Type your work email', do: 'Enter the email you use for work.', why: 'Your room is private to your company. We email a six-digit code instead of a password, so there is nothing to remember.', done: () => /.+@.+\..+/.test(($('#email') || {}).value || ''), after: 'Got it.' },
         { target: '#send button', title: 'Send the access code', do: 'Press “Send access code”.', why: 'The code proves the email is yours. It arrives in under a minute.', done: 'click', after: 'The code is on its way.' },
@@ -268,7 +268,7 @@
   if (window.__fbHelperTours) { window.__fbHelperTours(TOURS); return; } // lets a test read the guides without drawing anything
 
   // ---- state -------------------------------------------------------------------------------------------------------------------------------
-  let lost = 0, on = store.get(K_ON) === '1', tour = null, i = 0, phase = 'doing', cheerAt = 0, listOpen = false;
+  let lost = 0, idle = 0, on = store.get(K_ON) === '1', tour = null, i = 0, phase = 'doing', cheerAt = 0, listOpen = false;
   let root, tog, ring, group, bubble, mouse, built = false, lastTick = 0;
   let px = innerWidth / 2, py = innerHeight / 2, gx = innerWidth / 2, gy = innerHeight / 2, mode = 'go', goFrom = null, frozen = false, face = 1, lastKey = '';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -283,7 +283,7 @@
   const CSS = `
 .fbh,.fbh *{box-sizing:border-box}
 .fbh{position:fixed;inset:0;z-index:2147483000;pointer-events:none;font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;color:#141416}
-.fbh-tog{position:fixed;bottom:14px;left:14px;pointer-events:auto;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border:1px solid rgba(20,20,22,.2);border-radius:999px;background:#fff;color:#141416;font:500 13px 'Space Grotesk',system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 24px rgba(20,20,22,.16);transition:transform .15s}
+.fbh-tog{position:fixed;bottom:var(--fbb,14px);left:14px;pointer-events:auto;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border:1px solid rgba(20,20,22,.2);border-radius:999px;background:#fff;color:#141416;font:500 13px 'Space Grotesk',system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 24px rgba(20,20,22,.16);transition:transform .15s}
 body.fbnav .fbh-tog{left:calc(var(--fbw,236px) + 14px)}
 dialog .fbh-tog.on{display:none}
 @media(max-width:900px){body.fbnav .fbh-tog{left:14px}}
@@ -310,7 +310,7 @@ dialog .fbh-tog.on{display:none}
 .fbh-acts button.go{background:#141416;color:#fff;border-color:#141416}.fbh-acts button.q{margin-left:auto;border-color:transparent;color:#717177}
 .fbh-acts button:disabled{opacity:.4;cursor:default}
 .fbh-list{display:grid;gap:4px;margin-top:8px}.fbh-list button{text-align:left;border-radius:12px;display:flex;justify-content:space-between;gap:8px}.fbh-list button small{color:#717177}
-.fbh-g.sheet{left:8px;right:8px;width:auto;bottom:58px;top:auto;transform:none}.fbh-g.sheet .fbh-mouse{margin-left:12px}.fbh-g.sheet .fbh-b{max-height:44vh}
+.fbh-g.sheet{left:8px;right:8px;width:auto;bottom:calc(var(--fbb,14px) + 44px);top:auto;transform:none}.fbh-g.sheet .fbh-mouse{margin-left:12px}.fbh-g.sheet .fbh-b{max-height:44vh}
 @media(prefers-reduced-motion:reduce){.fbh-ring,.fbh-g .tail,.fbh-g.moving .fbh-mouse svg{animation:none}.fbh-tog,.fbh-tog .sw:after{transition:none}}
 @media print{.fbh{display:none}}`;
 
@@ -330,7 +330,7 @@ dialog .fbh-tog.on{display:none}
     addEventListener('pointermove', e => { if (e.pointerType === 'touch') return; px = e.clientX; py = e.clientY; if (mode === 'go' && goFrom && Date.now() - goFrom.at > 700 && Math.hypot(px - goFrom.x, py - goFrom.y) > 70) mode = 'follow'; }, { passive: true });
     addEventListener('resize', () => { lastKey = ''; });
     document.addEventListener('click', onDocClick, true);
-    document.addEventListener('input', () => setTimeout(check, 30), true);
+    document.addEventListener('input', e => { setTimeout(check, 30); aheadInput(e.target); }, true);
     document.addEventListener('change', () => setTimeout(check, 30), true);
     addEventListener('keydown', e => { if (e.altKey && e.shiftKey && (e.key === 'G' || e.key === 'g')) { e.preventDefault(); set(!on); } });
     paintToggle();
@@ -383,6 +383,14 @@ dialog .fbh-tog.on{display:none}
     return false;
   }
   function check() { const s = curStep(); if (on && s && phase === 'doing' && isDone(s)) done(); }
+  // typing in a box a later step asks about also catches the guide up to that step
+  function aheadInput(t) {
+    const s = curStep(); if (!on || !s || phase !== 'doing' || !tour || !t || root.contains(t) || stepEl(s) === t) return;
+    for (let k = i + 1; k < tour.steps.length; k++) {
+      const x = tour.steps[k]; if (x.done !== 'input') continue;
+      if (stepEl(x) === t && String(t.value || '').trim().length >= (x.min || 1)) { i = k; enterStep(); done(); return; }
+    }
+  }
   function onDocClick(e) {
     if (!on || root.contains(e.target)) return;
     const s = curStep(); if (!s || phase !== 'doing') return;
@@ -410,6 +418,7 @@ dialog .fbh-tog.on{display:none}
     if (!built) return;
     listOpen = listOpen && !!tour;
     if (!on) { group.style.display = 'none'; ring.style.display = 'none'; return; }
+    if (!tour && idle < 3) { group.style.display = 'none'; ring.style.display = 'none'; return; } // a page that is still loading is not a page without a guide
     let h = '';
     if (!tour) {
       h = `<div class="meta"><span>${NAME} the helper mouse</span></div><h3>No guide for this page yet</h3><p>${NAME} follows you around, and the guides appear where there is something to walk through. Try My day or the client hub.</p>${tail(false)}`;
@@ -485,9 +494,15 @@ dialog .fbh-tog.on{display:none}
     mouse.classList.toggle('l', face < 0);
     group.style.transform = `translate(${Math.round(gx - ox)}px,${Math.round(gy - oy)}px)`;
   }
+  // a page can have its own bar along the bottom (the tech pack's tabs on a phone): sit above it, never on top of it
+  function clearBottom() {
+    const tb = $('#tabs'); let b = 14;
+    if (tb && shown(tb)) { const r = tb.getBoundingClientRect(); if (r.top > innerHeight * 0.5 && r.height < innerHeight * 0.3) b = Math.round(innerHeight - r.top + 12); }
+    if (root.style.getPropertyValue('--fbb') !== b + 'px') root.style.setProperty('--fbb', b + 'px');
+  }
   function tick() {
     if (!built) return;
-    host();
+    host(); clearBottom();
     if (!on) return;
     pick();
     const s = curStep();
@@ -497,7 +512,8 @@ dialog .fbh-tog.on{display:none}
     }
     if (s && phase === 'cheer' && Date.now() - cheerAt > 1500) advance();
     // keep the bubble's text current (a step's text can depend on the page)
-    const key = [tour && tour.id, i, phase, listOpen, !!(s && stepEl(s))].join('|');
+    idle = tour ? 0 : Math.min(idle + 1, 3);
+    const key = [tour && tour.id, i, phase, listOpen, !!(s && stepEl(s)), idle >= 3].join('|');
     if (key !== lastKey) { lastKey = key; render(); }
   }
 
