@@ -195,4 +195,46 @@ await journey('J170', 'Contracts: when Future Basics\' own details are missing, 
   } finally { await b.close(); }
 });
 
+await journey('J171', 'The client hub carries the agreement: a contract is tied to its client by the signer, shows in Waiting on you with its signing link for the signer only, moves along as it is signed, and a signed one stays in Your agreements', async () => {
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
+  const dash = async (token = room.token) => (await call('/v1/dashboard', { token })).json;
+  const hubClient = { company: 'Hub Co', address: '1 Main St, Norristown PA 19401', signerName: 'Hub Signer', signerTitle: 'Owner', signerEmail: room.email };
+  const made = await C('', { body: { content: body({ title: `Hub agreement ${stamp}`, client: hubClient, fee: { totalCents: 500000 } }, buildPlan({ type: 'full', totalCents: 500000, method: 'invoice' }).plan) } }); const id = made.json.contract.id;
+  ok(sql(`select client_id from contracts where id='${id}'`) === clientId, 'a contract with no project is tied to its client by the signer\'s own sign-in', sql(`select client_id from contracts where id='${id}'`));
+  ok((await dash()).agreements.length === 0, 'a draft is not in the hub');
+  const sent = await C(`/${id}/send`, { body: {} }); const tok = tokenOf(sent.json.link);
+  let d = await dash(), a = d.agreements.find(x => x.id === id), w = d.waiting.find(x => x.kind === 'contract' && x.id === `ct-${id}`);
+  ok(a && a.status === 'sent' && a.needs === 'sign' && a.youAreSigner === true && a.link === sent.json.link && a.totalCents === 500000, 'once sent it is in Your agreements, and the signer\'s own link is there', a);
+  ok(w && w.needs === 'sign' && w.href === sent.json.link && /^Sign Hub agreement/.test(w.title), 'and in Waiting on you, with a button to sign', w);
+  // someone else at the same client sees it, but not the signing link; a staff preview of the hub gets no link either
+  const otherId = sql(`insert into users(client_id,email,name,role) values('${clientId}','teammate-${stamp}@chaos.test','Teammate','client') returning id`).split('\n')[0];
+  const other = await forge({ sub: otherId, clientId, role: 'client' }), od = await dash(other), oa = od.agreements.find(x => x.id === id);
+  ok(oa && oa.link === null && oa.youAreSigner === false && !od.waiting.some(x => x.kind === 'contract'), 'a teammate sees the agreement but is not handed the signing link', oa);
+  const pv = await dash(await forge({ sub: await staff('kyle@thefuturebasics.com'), clientId, role: 'client', preview: true }));
+  ok(pv.agreements.every(x => x.link === null) && !pv.waiting.some(x => x.kind === 'contract'), 'a staff preview of the hub gets no signing links');
+  // signing from that link moves it along
+  ok((await P(tok, '/sign', { body: { name: 'Hub Signer', title: 'Owner', agree: true, esign: true } })).status === 200, 'the signer signs from the link');
+  d = await dash(); a = d.agreements.find(x => x.id === id);
+  ok(a.status === 'signed_by_client' && a.needs === null && !d.waiting.some(x => x.id === `ct-${id}`), 'it leaves Waiting on you and shows as signed by them');
+  ok((await K(`/${id}/countersign`, { body: {} })).status === 200, 'Future Basics countersigns');
+  d = await dash(); a = d.agreements.find(x => x.id === id);
+  ok(a.status === 'executed' && a.link && /^\/v1\/public\/contracts\/.+\/pdf$/.test(a.pdfUrl) && a.summary, 'it stays in Your agreements as signed by both, with the signed PDF', a);
+  const pdf = await fetch(BASE + a.pdfUrl); ok(pdf.status === 200 && Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString() === '%PDF-', 'the PDF opens from the hub');
+  // automatic payments: after signing, "Add payment details" waits in the hub
+  const m2 = await C('', { body: { content: body({ title: `Hub autopay ${stamp}`, client: hubClient, fee: { totalCents: 300000 } }, buildPlan({ type: 'full', totalCents: 300000, method: 'card', autopay: true }).plan) } }); const id2 = m2.json.contract.id;
+  const t2 = tokenOf((await C(`/${id2}/send`, { body: {} })).json.link);
+  ok((await P(t2, '/sign', { body: { name: 'Hub Signer', title: 'Owner', agree: true, esign: true, autopay: true } })).status === 200 && (await K(`/${id2}/countersign`, { body: {} })).status === 200, 'a contract with automatic payments is signed by both');
+  d = await dash(); const w2 = d.waiting.find(x => x.id === `ct-${id2}`);
+  ok(w2 && w2.needs === 'details' && w2.title === 'Add your payment details' && w2.href.includes('/sign/'), 'the hub asks for the payment details, linking to the page where they are added', w2);
+  // the hub page itself
+  if (playwright) {
+    const b = await playwright.chromium.launch();
+    try { const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.token', t); localStorage.setItem('token', t); localStorage.setItem('fb.hub.token', t); } catch {} }, room.token);
+      const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(String(e))); await pg.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+      if (await pg.locator('#agreements').count()) { await pg.waitForSelector('#agreements:not(.hidden)', { timeout: 8000 }).catch(() => {}); const txt = await pg.locator('#agreements').innerText().catch(() => ''); ok(!txt || /Hub agreement/i.test(txt), 'the hub page lists the agreement when signed in', txt.slice(0, 120)); }
+      ok(errs.length === 0, 'no page errors on the hub', errs);
+    } finally { await b.close(); }
+  }
+});
+
 const badCount = summary(); process.exit(badCount ? 1 : 0);

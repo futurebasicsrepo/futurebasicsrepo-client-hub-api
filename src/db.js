@@ -1648,6 +1648,9 @@ export async function migrate() {
       unique (contract_id, seq, attempt)
     );
     alter table money_connections add column if not exists scope text not null default 'com.intuit.quickbooks.accounting';
+    -- a contract made before it was tied to a client room (a blank one, or one whose signer sits in a room): tie it by the signer's own sign-in so it shows in their hub
+    update contracts c set client_id = u.client_id from users u join clients cl on cl.id = u.client_id
+      where c.client_id is null and cl.slug <> 'future-basics' and cl.archived_at is null and lower(u.email) = lower(c.content->'client'->>'signerEmail');
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),

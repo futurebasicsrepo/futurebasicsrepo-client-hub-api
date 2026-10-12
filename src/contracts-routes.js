@@ -129,12 +129,26 @@ export function registerContractRoutes(app, d) {
     return { contracts: list, counts: { draft: list.filter(v => v.status === 'draft').length, awaitingClient: list.filter(v => v.status === 'sent').length, awaitingUs: list.filter(v => v.status === 'signed_by_client').length, executed: list.filter(v => v.status === 'executed').length, openCents: open.reduce((s, v) => s + v.totalCents, 0) } };
   });
 
+  // Which client room a contract belongs to, so it shows up in their hub: from the project, else the signer's own sign-in, else the client's contact or allowed emails, else the company name.
+  async function resolveClient({ projectId = null, signerEmail = '', company = '' } = {}) {
+    if (projectId) { const c = (await pool.query('select client_id from projects where id=$1', [projectId])).rows[0]?.client_id; if (c) return c; }
+    const email = String(signerEmail || '').trim().toLowerCase();
+    if (email) {
+      const byUser = (await pool.query(`select u.client_id from users u join clients c on c.id=u.client_id where lower(u.email)=$1 and c.slug<>'future-basics' and c.archived_at is null limit 1`, [email])).rows[0]?.client_id; if (byUser) return byUser;
+      const byClient = (await pool.query(`select id from clients where slug<>'future-basics' and archived_at is null and (lower(contact_email)=$1 or $1=any(allowed_emails)) order by created_at limit 2`, [email])).rows; if (byClient.length === 1) return byClient[0].id;
+    }
+    const name = String(company || '').trim().toLowerCase();
+    if (name) { const byName = (await pool.query(`select id from clients where slug<>'future-basics' and archived_at is null and lower(name)=$1 limit 2`, [name])).rows; if (byName.length === 1) return byName[0].id; }
+    return null;
+  }
+
   async function save(req, reply, existing) {
     const st = await settings(), c = cleanContent(req.body?.content, { settings: st, lenient: true });
     if (!c.value.title) return bad(reply, 'Give the contract a title');
     const dealId = UUID.test(String(req.body?.dealId || '')) ? req.body.dealId : existing?.deal_id || null, projectId = UUID.test(String(req.body?.projectId || '')) ? req.body.projectId : existing?.project_id || null;
     let clientId = existing?.client_id || null, contactId = existing?.contact_id || null;
     if (projectId) clientId = (await pool.query('select client_id from projects where id=$1', [projectId])).rows[0]?.client_id || clientId;
+    if (!clientId) clientId = await resolveClient({ projectId, signerEmail: c.value.client?.signerEmail, company: c.value.client?.company });
     if (dealId) contactId = (await pool.query('select contact_id from sales_deals where id=$1', [dealId])).rows[0]?.contact_id || contactId;
     if (existing) {
       await pool.query('update contracts set title=$2, kind=$3, content=$4::jsonb, total_cents=$5, currency=$6, deal_id=$7, project_id=$8, client_id=$9, contact_id=$10, updated_at=now() where id=$1', [existing.id, c.value.title, c.value.kind, JSON.stringify(c.value), c.value.fee.totalCents, c.value.fee.currency, dealId, projectId, clientId, contactId]);
@@ -187,6 +201,7 @@ export function registerContractRoutes(app, d) {
     if (!['draft', 'sent'].includes(r.status)) return bad(reply, r.status === 'expired' ? 'This contract has expired. Revise it to send a fresh copy.' : `A ${r.status.replace(/_/g, ' ')} contract cannot be sent`, 409);
     const st = await settings(), u = await userOf(req), c = cleanContent(r.content, { settings: st });
     if (c.error) return bad(reply, c.error); const problems = sendProblems(c.value, st); if (problems.length) return bad(reply, problems[0]);
+    if (!r.client_id) { const cid = await resolveClient({ projectId: r.project_id, signerEmail: c.value.client.signerEmail, company: c.value.client.company }); if (cid) { await pool.query('update contracts set client_id=$2 where id=$1', [r.id, cid]); r.client_id = cid; } }
     const signNow = req.body?.signNow === true;
     if (signNow && !(u && moneyAllowed(u.email, env))) return bad(reply, 'Only the people who sign for Future Basics can sign for it', 403);
     const rendered = renderContract({ ...c.value, number: r.number }, st), hash = docHash(rendered), days = c.value.terms.expiresDays, message = clip(req.body?.message, 1000);
@@ -346,6 +361,24 @@ export function registerContractRoutes(app, d) {
     return { ok: true, ...(await autopay.run({ today: env.AUTOPAY_TEST_CLOCK === '1' && /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.today || '')) ? req.body.today : undefined })) };
   });
 
+
+  // ---- the client's hub: their agreements, what is waiting on them, and the way to sign or add payment details from there ----------------------------------------
+  // Only the person named as signer gets the signing link; other people at the client see the agreement and who it is waiting on. A staff preview of the hub gets no links.
+  async function hubContracts({ clientId, userId, preview = false }) {
+    if (!clientId) return [];
+    const me = String((await pool.query('select email from users where id=$1', [userId]).catch(() => ({ rows: [] }))).rows[0]?.email || '').toLowerCase();
+    const rows = (await pool.query(`select * from contracts where client_id=$1 and status in ('sent','signed_by_client','executed') order by coalesce(executed_at, sent_at, created_at) desc`, [clientId])).rows, out = [];
+    for (let r of rows) {
+      r = await fresh(r); if (!r || !['sent', 'signed_by_client', 'executed'].includes(r.status)) continue;
+      const c = r.content, mine = Boolean(me) && me === String(c.client.signerEmail || '').toLowerCase(), token = signToken(secret, r.id, r.token_version), link = mine && !preview ? `${publicUrl}/sign/${token}` : null;
+      const method = c.plan.autopay && autopay ? await autopay.activeMethod(r.id) : null, wantsDetails = Boolean(autopay && c.plan.autopay && r.client_signature?.autopay && ['signed_by_client', 'executed'].includes(r.status) && !method);
+      out.push({ id: r.id, number: r.number, title: r.title, status: r.status, totalCents: Number(r.total_cents), currency: r.currency, sentAt: r.sent_at, executedAt: r.executed_at, expiresAt: r.expires_at, signerName: c.client.signerName || '',
+        youAreSigner: mine, link, pdfUrl: link ? `/v1/public/contracts/${token}/pdf` : null, summary: planWords(c.plan, r.currency), autopay: Boolean(c.plan.autopay), cardOnFile: method ? method.label : null,
+        needs: r.status === 'sent' ? 'sign' : wantsDetails ? 'details' : null });
+    }
+    return out;
+  }
+
   // ---- the client ------------------------------------------------------------------------------------------------------------------------------------
   async function byToken(req, reply) {
     if (!throttle(`contract:${req.ip}`, { limit: 120, windowMs: 3600_000 }) || !throttle('contract:all', { limit: 4000, windowMs: 3600_000 })) { bad(reply, 'Too many tries from here. Please wait a few minutes.', 429); return null; }
@@ -405,5 +438,5 @@ export function registerContractRoutes(app, d) {
     await notifyStaff(`${r.content.client.signerName || 'The client'} declined ${r.number}`, `<p><b>${emailEscape(r.title)}</b> was declined${reason ? `: ${emailEscape(reason)}` : '.'}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
     return { ok: true };
   });
-  return { autopay, draftInvoices };
+  return { autopay, draftInvoices, hubContracts, resolveClient };
 }

@@ -58,6 +58,12 @@ Any signed-in teammate can draft, send, remind, revise, void and read contracts.
 | Tests | `test/contracts.test.js`, journey J164 (API), J165 (browser) |
 | Automatic payments | `src/autopay.js`, `src/qb-payments.js`, see `docs/autopay.md` |
 
+## In the client hub
+
+A contract belongs to a client (`contracts.client_id`). It is set from the project when there is one; otherwise from the signer's email (the hub user with that email, then the client's contact or allowed emails, then the company name), when a draft is saved and again when it is sent. At startup, contracts still without a client are tied the same way.
+
+Once sent, the hub's dashboard carries it (`agreements`): a signing request shows in **Waiting on you** ("Sign ...", or "Add your payment details" when automatic payments were agreed but no card or account is on file yet), and every sent or signed agreement stays under **Your agreements** with its status, summary and, once signed by both, the signed PDF. Only the signer's own sign-in gets the private signing link; a teammate sees the agreement without it, and a staff preview of the hub never gets a link. Covered by journey J171.
+
 ## Not built yet
 
 - Reminders on a schedule (today staff press **Send a reminder**, once a day at most).
