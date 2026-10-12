@@ -35,7 +35,7 @@ export function planDue({ sched, charges = [], today, paused = false, hasMethod 
 }
 
 export function createAutopay(d) {
-  const { pool, proc, money, draftInvoices = null, reload = null, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
+  const { pool, proc, stripe = null, getSetting = async () => null, money, draftInvoices = null, reload = null, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
     secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', log = console, env = process.env } = d;
   const first = n => String(n || '').trim().split(/\s+/)[0] || 'there', iso = x => (x instanceof Date ? x.toISOString().slice(0, 10) : x ? String(x).slice(0, 10) : null);
   const ev = (id, kind, { actor = 'autopay', detail = '', meta = {} } = {}) => pool.query('insert into contract_events(contract_id,kind,actor,detail,meta) values($1,$2,$3,$4,$5::jsonb)', [id, kind, actor, String(detail).slice(0, 500), JSON.stringify(meta)]).catch(() => {});
@@ -45,9 +45,17 @@ export function createAutopay(d) {
   const sched = r => schedule(r.content.plan, { signedOn: signedOn(r), deliveryOn: iso(r.delivered_on) || r.content.timeline?.completionOn || null }).map((p, i) => ({ ...p, seq: i + 1 }));
   const activeMethod = async id => (await pool.query(`select * from contract_payment_methods where contract_id=$1 and status='active'`, [id])).rows[0] || null;
 
-  // Ready to take payments? The QuickBooks connection has to have been made with the payments permission.
-  async function readiness() {
+  // Which processor takes new details: QuickBooks Payments (the default) or Stripe. Set in Contracts, Settings (or AUTOPAY_PROCESSOR=stripe on the service). Details already on file stay with the processor that holds them.
+  const chosen = async () => { const set = await getSetting('autopayProcessor').catch(() => null), name = set?.processor || env.AUTOPAY_PROCESSOR; return name === 'stripe' ? 'stripe' : 'quickbooks'; }, procOf = name => (name === 'stripe' ? stripe : proc);
+  // Ready to take payments? Through QuickBooks Payments the connection has to have been made with the payments permission. Through Stripe the keys have to be set;
+  // QuickBooks is still the books, so a payment taken while it is down is booked on a later run (and an invoice is put there before anything is charged).
+  async function readiness(name = null) {
+    name = name || await chosen();
     const ctx = await money.qbContext().catch(() => null);
+    if (name === 'stripe') {
+      if (!stripe?.configured()) return { ready: false, ctx, why: 'Stripe is not set up: add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET to the service (AUTOPAY_PROCESSOR=stripe).' };
+      return { ready: true, ctx, why: '' };
+    }
     if (!ctx) return { ready: false, ctx: null, why: 'QuickBooks is not connected yet (Money, Settings).' };
     if (!ctx.cfg.payments) return { ready: false, ctx, why: 'Payments are not switched on: set QUICKBOOKS_PAYMENTS=on on the service, then connect QuickBooks again.' };
     if (!String(ctx.row?.scope || '').includes('payment')) return { ready: false, ctx, why: 'QuickBooks was connected before payments were switched on: connect it again in Money, Settings.' };
@@ -62,7 +70,8 @@ export function createAutopay(d) {
     if (!['signed_by_client', 'executed'].includes(r.status)) return { error: 'Sign the agreement first', status: 409 };
     const want = (plan.method === 'either' ? sig.method : plan.method) === 'card' ? 'card' : 'bank';
     if (kind !== want) return { error: want === 'bank' ? 'This agreement is paid by bank account (ACH)' : 'This agreement is paid by card', status: 422 };
-    const k = kind === 'card' ? 'card' : 'bank', rd = await readiness();
+    if (await chosen() === 'stripe') return { error: 'Payment details are added on the secure payment page', status: 409 };
+    const k = kind === 'card' ? 'card' : 'bank', rd = await readiness('quickbooks');
     if (!rd.ready) return { error: 'Payment details cannot be taken just yet. We have been told and will email you the moment they can.', status: 503, notReady: rd.why };
     const c = r.content.client;
     let cust; try { cust = await ensureCustomer(rd.ctx, { company: c.company, contact_name: c.signerName, contact_email: c.signerEmail, address: c.address }); } catch (e) { await money.qbFailed(e); return { error: 'Could not reach the payment service. Try again in a minute.', status: 502 }; }
@@ -74,26 +83,95 @@ export function createAutopay(d) {
       await notifyStaff(`Saving payment details failed for ${r.number} (${c.company})`, `<p>${emailEscape(String(e.message).slice(0, 400))}${e.code ? ` <code>${emailEscape(e.code)}</code>` : ''}${e.tid ? ` (intuit_tid ${emailEscape(e.tid)})` : ''}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
       const said = String(e.detail || '').replace(/\s+/g, ' ').trim().slice(0, 160); // Intuit's own words (never the client's numbers) help the client fix a typo and us find the cause
       return { error: e.status === 400 || e.status === 422 ? `Those payment details were not accepted${said ? ` (${said.replace(/\.$/, '')})` : ''}. Check them and try again.` : 'Could not save the payment details. Try again in a minute.', status: e.status === 400 || e.status === 422 ? 422 : 502 }; }
-    const authorization = { by: sig.name, at: new Date().toISOString(), ip, ua: String(ua).slice(0, 300), contractHash: r.doc_hash, text: authorizationText(k, r.content.provider?.name || 'Future Basics') };
-    const db = await pool.connect(); let old = null;
+    return store(r, { processor: 'quickbooks', k, customerId: cust.id, inst, by: sig.name, at: new Date().toISOString(), ip, ua, rd });
+  }
+  // Keep a saved card or bank account against the contract (replacing any earlier one) and tell everyone. Shared by every processor.
+  async function store(r, { processor, k, customerId, inst, by, at, ip = '', ua = '', rd = null }) {
+    const c = r.content.client, authorization = { by, at, ip, ua: String(ua).slice(0, 300), contractHash: r.doc_hash, text: authorizationText(k, r.content.provider?.name || 'Future Basics') };
+    const db = await pool.connect(); let old = null, same = false;
     try {
-      await db.query('begin'); old = (await db.query(`update contract_payment_methods set status='removed', removed_at=now() where contract_id=$1 and status='active' returning *`, [r.id])).rows[0] || null;
-      await db.query(`insert into contract_payment_methods(contract_id,kind,customer_id,instrument_id,label,last4,exp,consent) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, [r.id, k, cust.id, inst.id, inst.label, inst.last4, inst.exp, JSON.stringify(authorization)]);
+      await db.query('begin'); await db.query('select pg_advisory_xact_lock(hashtext($1))', [String(r.id)]);
+      const cur = (await db.query(`select * from contract_payment_methods where contract_id=$1 and status='active'`, [r.id])).rows[0];
+      if (cur && cur.processor === processor && cur.instrument_id === inst.id) same = true;
+      else {
+        old = (await db.query(`update contract_payment_methods set status='removed', removed_at=now() where contract_id=$1 and status='active' returning *`, [r.id])).rows[0] || null;
+        await db.query(`insert into contract_payment_methods(contract_id,processor,kind,customer_id,instrument_id,label,last4,exp,consent) values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`, [r.id, processor, k, customerId, inst.id, inst.label, inst.last4, inst.exp, JSON.stringify(authorization)]);
+      }
       await db.query('commit');
     } catch (e) { await db.query('rollback').catch(() => {}); throw e; } finally { db.release(); }
-    if (old) proc.removeInstrument(rd.ctx, { customerId: old.customer_id, kind: old.kind === 'card' ? 'card' : 'bank', id: old.instrument_id }).catch(() => {});
-    await ev(r.id, 'payment_method_saved', { actor: sig.name, detail: inst.label, meta: { kind: k, replaced: Boolean(old) } });
+    const method = { kind: k, label: inst.label, last4: inst.last4, exp: inst.exp };
+    if (same) return { ok: true, method, already: true };
+    if (old && !(old.processor === processor && old.instrument_id === inst.id)) procOf(old.processor)?.removeInstrument(rd?.ctx || null, { customerId: old.customer_id, kind: old.kind === 'card' ? 'card' : 'bank', id: old.instrument_id }).catch(() => {});
+    await ev(r.id, 'payment_method_saved', { actor: by, detail: inst.label, meta: { kind: k, replaced: Boolean(old), processor } });
     await email(r, `Payment details saved for ${r.content.title}`, 'Payment details saved', `<p>We have saved your <b>${emailEscape(inst.label)}</b> for the automatic payments in <b>${emailEscape(r.content.title)}</b> (${emailEscape(r.number)}). We charge each payment on its due date and email a receipt each time, with a few days' notice before.</p><p>You can change the ${k === 'card' ? 'card' : 'bank account'} any time from your agreement link:</p>${hubButton(linkOf(r), 'Open your agreement')}`);
-    await notifyStaff(`Payment details received for ${r.number} (${c.company})`, `<p>${emailEscape(sig.name)} saved a ${emailEscape(inst.label)} for <b>${emailEscape(r.content.title)}</b>.</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
-    return { ok: true, method: { kind: k, label: inst.label, last4: inst.last4, exp: inst.exp } };
+    await notifyStaff(`Payment details received for ${r.number} (${c.company})`, `<p>${emailEscape(by)} saved a ${emailEscape(inst.label)} for <b>${emailEscape(r.content.title)}</b>.</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
+    return { ok: true, method };
+  }
+
+  // ---- Stripe: the client is sent to Stripe's page to add the card (Apple Pay and Google Pay come with it) or bank account, then comes back ----
+  const wantKind = r => ((r.content.plan.method === 'either' ? r.client_signature?.method : r.content.plan.method) === 'card' ? 'card' : 'bank');
+  async function startStripeSetup(r, { returnUrl, kind = null, ip = '' }) {
+    const plan = r.content.plan, sig = r.client_signature, rd = await readiness('stripe');
+    if (!plan.autopay || !sig?.autopay) return { error: 'This agreement does not have automatic payments', status: 409 };
+    if (!['signed_by_client', 'executed'].includes(r.status)) return { error: 'Sign the agreement first', status: 409 };
+    const want = wantKind(r); if (kind && kind !== want) return { error: want === 'bank' ? 'This agreement is paid by bank account (ACH)' : 'This agreement is paid by card', status: 422 };
+    if (!rd.ready) return { error: 'Payment details cannot be taken just yet. We have been told and will email you the moment they can.', status: 503, notReady: rd.why };
+    const c = r.content.client; let sess;
+    try {
+      const prior = (await pool.query(`select customer_id from contract_payment_methods where contract_id=$1 and processor='stripe' order by created_at desc limit 1`, [r.id])).rows[0];
+      const cust = await stripe.ensureCustomer({ id: prior?.customer_id || '', email: c.signerEmail, name: c.signerName || c.company, metadata: { contract: r.number, company: String(c.company || '').slice(0, 200) } });
+      const sep = returnUrl.includes('?') ? '&' : '?';
+      sess = await stripe.startSetup({ customerId: cust.id, kind: want, successUrl: `${returnUrl}${sep}pay=done&session_id={CHECKOUT_SESSION_ID}`, cancelUrl: `${returnUrl}${sep}pay=cancel`,
+        metadata: { contract: r.id, kind: want, consent_by: String(sig.name || '').slice(0, 120), consent_at: new Date().toISOString(), consent_ip: String(ip).slice(0, 64), consent_hash: String(r.doc_hash || '').slice(0, 64) } });
+    } catch (e) {
+      log.warn?.({ payments: true, err: String(e.message).slice(0, 200), code: e.code }, 'starting the Stripe page failed');
+      await ev(r.id, 'payment_method_failed', { actor: sig.name, detail: String(e.message).replace(/^Stripe: /, '').slice(0, 300), meta: { processor: 'stripe', step: 'start' } });
+      await notifyStaff(`Could not open the payment page for ${r.number} (${c.company})`, `<p>${emailEscape(String(e.message).slice(0, 400))}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
+      return { error: 'Could not open the payment page. Try again in a minute.', status: 502 };
+    }
+    await ev(r.id, 'payment_setup_started', { actor: sig.name, detail: want, meta: { processor: 'stripe' } });
+    return { ok: true, url: sess.url };
+  }
+  // The client came back from Stripe's page (or Stripe told us): keep what they saved. `read` is { complete, verifying, customerId, metadata, instrument } from Stripe.
+  async function finishStripeSetup(r, read, { ip = '', ua = '', by = '' } = {}) {
+    const sig = r.client_signature; if (!sig?.autopay) return { error: 'This agreement does not have automatic payments', status: 409 };
+    if (read.metadata?.contract !== r.id) return { error: 'This payment page belongs to a different agreement', status: 403 };
+    if (read.verifying) return { pending: true, message: 'Your bank is confirming the account (it can take a day or two). We will email you as soon as it is ready.', status: 202 };
+    if (!read.complete || !read.instrument) return { error: 'The payment details were not finished on the payment page. Try again.', status: 409 };
+    const k = read.instrument.kind, want = wantKind(r); if (k !== want) return { error: want === 'bank' ? 'This agreement is paid by bank account (ACH)' : 'This agreement is paid by card', status: 422 };
+    const out = await store(r, { processor: 'stripe', k, customerId: read.customerId, inst: read.instrument, by: by || read.metadata.consent_by || sig.name, at: read.metadata.consent_at || new Date().toISOString(), ip: ip || read.metadata.consent_ip || '', ua, rd: await readiness('stripe') });
+    return out;
+  }
+  async function completeStripePage(r, sessionId, meta = {}) {
+    let read; try { read = await stripe.readSetup(sessionId); } catch (e) { log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'reading the Stripe page failed'); return { error: 'Could not confirm the payment details just yet. Refresh this page in a minute.', status: 502 }; }
+    return finishStripeSetup(r, read, meta);
+  }
+  // Stripe's webhook: details saved (also when the client never made it back to our page), a bank account confirmed, a debit settled or refused.
+  async function stripeEvent(evt) {
+    const o = evt?.data?.object || {}, type = evt?.type;
+    if (type === 'checkout.session.completed' && o.mode === 'setup' && o.metadata?.contract) {
+      const r = await reload(o.metadata.contract); if (!r) return { ignored: 'unknown contract' };
+      const out = await finishStripeSetup(r, await stripe.readSetup(o.id)); if (out.ok && r.status === 'executed') await runFor(r.id).catch(() => {}); return out;
+    }
+    if (type === 'setup_intent.succeeded' && o.metadata?.contract) {
+      const r = await reload(o.metadata.contract); if (!r) return { ignored: 'unknown contract' };
+      const out = await finishStripeSetup(r, await stripe.readIntent(o.id)); if (out.ok && r.status === 'executed') await runFor(r.id).catch(() => {}); return out;
+    }
+    if (['payment_intent.succeeded', 'payment_intent.payment_failed', 'payment_intent.processing'].includes(type) && o.id) {
+      const row = (await pool.query(`select contract_id from contract_charges where charge_id=$1`, [o.id])).rows[0]; if (!row) return { ignored: 'not ours' };
+      await runFor(row.contract_id).catch(() => {}); return { ok: true };
+    }
+    return { ignored: type };
   }
 
   // ---- taking a payment ----
   async function book(r, row, inv, m, today = todayISO()) {
     // the money has been taken: put it in QuickBooks and the ledger. If QuickBooks is down this is tried again on the next run.
     try {
-      const rd = await readiness(); if (!rd.ctx) throw new Error('QuickBooks is not connected');
-      const b = await money.bookAutopay(rd.ctx, inv, { customerId: m.customer_id, amountCents: Number(row.amount_cents), method: m.kind === 'card' ? 'card' : 'ach', reference: row.charge_id || '', paidOn: today, note: `Automatic payment ${row.seq} of agreement ${r.number}` });
+      const ctx = m.processor === 'quickbooks' ? (await readiness('quickbooks')).ctx : await money.qbContext().catch(() => null); if (!ctx) throw new Error('QuickBooks is not connected');
+      let customerId = m.customer_id; // QuickBooks keeps its own customer: for a payment taken elsewhere it is found (or made) by the client's details
+      if (m.processor !== 'quickbooks') { const c = r.content.client; customerId = (await ensureCustomer(ctx, { company: c.company, contact_name: c.signerName, contact_email: c.signerEmail, address: c.address })).id; }
+      const b = await money.bookAutopay(ctx, inv, { customerId, amountCents: Number(row.amount_cents), method: m.kind === 'card' ? 'card' : 'ach', reference: row.charge_id || '', paidOn: today, note: `Automatic payment ${row.seq} of agreement ${r.number}${m.processor === 'stripe' ? ' (Stripe)' : ''}` });
       await pool.query(`update contract_charges set booked_at=now(), qb_payment_id=$2, book_error='' where id=$1`, [row.id, b.qbPaymentId]);
       return true;
     } catch (e) { await pool.query(`update contract_charges set book_error=$2 where id=$1`, [row.id, String(e.message).slice(0, 240)]); log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'a payment was taken but could not be put in QuickBooks yet'); return false; }
@@ -105,6 +183,7 @@ export function createAutopay(d) {
     if (!u.rowCount) return; const fresh = u.rows[0], m = (await pool.query('select * from contract_payment_methods where id=$1', [fresh.method_id])).rows[0], inv = await invoiceFor(r.id, fresh.seq);
     await ev(r.id, 'autopay_paid', { detail: `${dollars(fresh.amount_cents, fresh.currency)} taken for payment ${fresh.seq}`, meta: { seq: fresh.seq, kind: fresh.kind, attempt: fresh.attempt } });
     if (inv && m) await book(r, fresh, inv, m, today);
+    if (m && procOf(m.processor)?.fees) procOf(m.processor).fees(chargeId).then(f => f && pool.query('update contract_charges set fee_cents=$2, net_cents=$3 where id=$1', [fresh.id, f.feeCents, f.netCents])).catch(() => {});
     if (!fresh.receipt_sent_at) {
       const left = sched(r).length - (await pool.query(`select count(distinct seq)::int n from contract_charges where contract_id=$1 and status='succeeded'`, [r.id])).rows[0].n;
       await email(r, `Receipt: ${dollars(fresh.amount_cents, fresh.currency)} for ${r.content.title}`, 'Payment received', `<p>We received <b>${emailEscape(dollars(fresh.amount_cents, fresh.currency))}</b> for <b>${emailEscape(r.content.title)}</b> (${emailEscape(r.number)}), paid by ${emailEscape(m?.label || 'your payment method')}.</p><p>${left > 0 ? `${left} payment${left === 1 ? '' : 's'} left in the schedule.` : 'That was the last payment in the schedule. Thank you.'}</p>`);
@@ -127,36 +206,38 @@ export function createAutopay(d) {
   }
   // Ask the processor for this attempt (the same request id every time, so asking again cannot take it twice) and settle what it answers.
   async function ask(r, row, m, rd, today = todayISO()) {
+    const px = procOf(m.processor), plain = e => String(e.message).replace(/^(QuickBooks Payments|Stripe): /, '');
     try {
-      const res = await proc.charge(rd.ctx, { kind: row.kind, instrumentId: m.instrument_id, amountCents: Number(row.amount_cents), currency: row.currency, requestId: row.request_id, description: `${r.number} payment ${row.seq}` });
+      const res = await px.charge(rd.ctx, { kind: row.kind, instrumentId: m.instrument_id, customerId: m.customer_id, amountCents: Number(row.amount_cents), currency: row.currency, requestId: row.request_id, description: `${r.number} payment ${row.seq}`, metadata: { contract: r.number, contract_id: r.id, seq: String(row.seq) } });
       if (res.status === 'succeeded') await succeed(r, row, res.id, today);
       else if (res.status === 'pending') await pool.query(`update contract_charges set charge_id=$2 where id=$1`, [row.id, res.id]);
       else await fail(r, row, res.reason || 'Declined', today);
       return res.status;
     } catch (e) {
-      // a refusal from the processor is final for this attempt; anything else (no answer) leaves it pending to be asked again with the same id
-      if (e.status && e.status >= 400 && e.status < 500 && !e.refused) { await fail(r, row, e.message.replace(/^QuickBooks Payments: /, ''), today); return 'declined'; }
-      if (e.refused) await money.qbFailed(e);
+      // a refusal from the processor is final for this attempt; anything else (no answer, too many requests) leaves it pending to be asked again with the same id
+      if (e.status && e.status >= 400 && e.status < 500 && e.status !== 429 && !e.refused) { await fail(r, row, plain(e), today); return 'declined'; }
+      if (e.refused && m.processor === 'quickbooks') await money.qbFailed(e);
+      if (e.refused && m.processor === 'stripe') await notifyStaff('Stripe refused our key', `<p>${emailEscape(plain(e))}</p><p>Check STRIPE_SECRET_KEY on the service.</p>`);
       await pool.query(`update contract_charges set error=$2 where id=$1`, [row.id, String(e.message).slice(0, 240)]); return 'unknown';
     }
   }
   async function attempt(r, seq, attemptNo, trigger, today = todayISO()) {
     const m = await activeMethod(r.id); if (!m) return { skipped: 'no payment method on file' };
-    const rd = await readiness(); if (!rd.ready) return { skipped: rd.why };
+    const rd = await readiness(m.processor); if (!rd.ready) return { skipped: rd.why };
     let inv = await invoiceFor(r.id, seq); if (!inv) return { skipped: 'the invoice for this payment has not been drafted' };
     if (['paid', 'void'].includes(inv.status)) return { skipped: `the invoice is ${inv.status}` };
     const owed = Number(inv.total_cents) - Number(inv.paid_cents || 0), want = sched(r)[seq - 1]?.amountCents || owed, amount = Math.min(owed, want);
     if (amount <= 0) return { skipped: 'nothing is owed on the invoice' };
-    if (!inv.qb_id) { try { await money.pushAndSave(rd.ctx, inv); inv = await invoiceFor(r.id, seq); } catch (e) { await money.qbFailed(e); return { skipped: `the invoice could not be put in QuickBooks: ${e.message}` }; } }
+    if (!inv.qb_id) { if (!rd.ctx) return { skipped: 'QuickBooks is not connected, so the invoice cannot be put there before the payment is taken' }; try { await money.pushAndSave(rd.ctx, inv); inv = await invoiceFor(r.id, seq); } catch (e) { await money.qbFailed(e); return { skipped: `the invoice could not be put in QuickBooks: ${e.message}` }; } }
     const ins = await pool.query(`insert into contract_charges(contract_id,seq,attempt,invoice_id,method_id,kind,amount_cents,currency,request_id,due_on,triggered_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict do nothing returning *`,
       [r.id, seq, attemptNo, inv.id, m.id, m.kind, amount, r.currency || 'USD', `fb-ch-${r.id}-${seq}-${attemptNo}`, iso(sched(r)[seq - 1]?.falls), trigger]);
     if (!ins.rowCount) return { skipped: 'already tried' };
     return { tried: await ask(r, ins.rows[0], m, rd, today) };
   }
   async function poll(r, row, today = todayISO()) {
-    const m = (await pool.query('select * from contract_payment_methods where id=$1', [row.method_id])).rows[0], rd = await readiness(); if (!m || !rd.ready) return;
+    const m = (await pool.query('select * from contract_payment_methods where id=$1', [row.method_id])).rows[0], rd = m ? await readiness(m.processor) : null; if (!m || !rd.ready) return;
     if (!row.charge_id) { await ask(r, row, m, rd, today); return; } // asked, but no answer came back: ask again with the same request id
-    try { const res = await proc.status(rd.ctx, { kind: row.kind, chargeId: row.charge_id }); if (res.status === 'succeeded') await succeed(r, row, row.charge_id, today); else if (res.status === 'declined') await fail(r, row, res.reason || 'The bank did not accept the debit', today); } catch (e) { if (e.refused) await money.qbFailed(e); }
+    try { const res = await procOf(m.processor).status(rd.ctx, { kind: row.kind, chargeId: row.charge_id }); if (res.status === 'succeeded') await succeed(r, row, row.charge_id, today); else if (res.status === 'declined') await fail(r, row, res.reason || 'The bank did not accept the debit', today); } catch (e) { if (e.refused && m.processor === 'quickbooks') await money.qbFailed(e); }
   }
 
   async function notices(r, m, plan) {
@@ -230,5 +311,5 @@ export function createAutopay(d) {
     const res = await attempt(r, seq, Number(prior) + 1, 'staff', today); return res.tried ? { ok: true, result: res.tried } : { error: res.skipped, status: 409 };
   }
 
-  return { saveMethod, run, runFor, chargeNow, overview, readiness, activeMethod, askForDetails, sched, linkOf };
+  return { saveMethod, startStripeSetup, completeStripePage, stripeEvent, chosen, run, runFor, chargeNow, overview, readiness, activeMethod, askForDetails, sched, linkOf };
 }

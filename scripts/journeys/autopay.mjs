@@ -5,6 +5,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { journey, ok, summary, api, jpeg, sleep, sql, stamp, forge } from './lib.mjs';
 import { buildPlan } from '../../src/contracts.js';
+import { signWebhook } from '../../src/stripe-payments.js';
 let playwright = null; try { playwright = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright'); } catch {}
 const BASE = 'http://127.0.0.1:3130', MOCK = 'http://127.0.0.1:3133', call = api(BASE);
 const mk = async () => (await call('/v1/public/start', { body: { email: `ja-${stamp}-${Math.random().toString(36).slice(2, 7)}@chaos.test`, name: 'Autopay Admin', title: 'Autopay runner', photos: [jpeg()] } })).json;
@@ -14,7 +15,7 @@ const kyle = await forge({ sub: await staff('kyle@thefuturebasics.com'), clientI
 const C = (path, o = {}) => call('/v1/contracts' + path, { token: colby, ...o }), K = (path, o = {}) => call('/v1/contracts' + path, { token: kyle, ...o });
 const tokenOf = link => String(link).split('/sign/')[1], P = (token, path = '', o = {}) => call(`/v1/public/contracts/${token}${path}`, o);
 const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
-const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`, SIGNER3 = `pay3-${stamp}@salon.test`;
+const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`, SIGNER3 = `pay3-${stamp}@salon.test`, SIGNER4 = `pay4-${stamp}@salon.test`, SIGNER5 = `pay5-${stamp}@salon.test`, SIGNER6 = `pay6-${stamp}@salon.test`;
 const body = (n, email, plan, over = {}) => ({ title: `Autopay site ${n} ${stamp}`, kind: 'website', client: { company: `Pay Salon ${n} ${stamp}`, address: '1 Main St, Norristown PA 19401', signerName: 'Pat Payer', signerTitle: 'Owner', signerEmail: email }, project: { name: 'Salon website' }, scope: ['A five-page website', 'Booking link'], fee: { totalCents: 300000 }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-02-15' }, plan, ...over });
 const sign = (o = {}) => ({ name: 'Pat Payer', title: 'Owner', agree: true, esign: true, autopay: true, ...o });
 const CARD = { card: { number: '4111111111111111', expMonth: '08', expYear: '2031', cvc: '123', name: 'Pat Payer', address: { postalCode: '19401', country: 'US' } } };
@@ -74,6 +75,44 @@ const mock = http.createServer((req, res) => {
   });
 });
 await new Promise(r => mock.listen(3133, '127.0.0.1', r));
+
+// ---- the stand-in for Stripe: customers, Checkout pages (setup mode), payment methods, payment intents (idempotent), fees ----
+const stm = { customers: [], sessions: {}, intents: {}, byKey: {}, detached: [], seen: [], n: 0 };
+const PMS = {
+  pm_card_ok: { id: 'pm_card_ok', type: 'card', card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2031, wallet: { type: 'apple_pay' } } },
+  pm_card_declined: { id: 'pm_card_declined', type: 'card', card: { brand: 'visa', last4: '0002', exp_month: 12, exp_year: 2031 } },
+  pm_bank_ok: { id: 'pm_bank_ok', type: 'us_bank_account', us_bank_account: { account_type: 'checking', bank_name: 'STRIPE TEST BANK', last4: '6789' } },
+};
+const stripeMock = http.createServer((req, res) => {
+  const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => {
+    const u = new URL(req.url, 'http://x'), raw = Buffer.concat(chunks).toString(), form = new URLSearchParams(raw), json = (c, b) => { res.writeHead(c, { 'content-type': 'application/json' }); res.end(JSON.stringify(b)); };
+    stm.seen.push({ method: req.method, path: u.pathname, raw, auth: req.headers.authorization, idem: req.headers['idempotency-key'] || '' });
+    if (!/^Bearer sk_test_/.test(req.headers.authorization || '')) return json(401, { error: { type: 'invalid_request_error', message: 'Invalid API Key provided' } });
+    const g = k => form.get(k), meta = () => Object.fromEntries([...form.entries()].filter(([k]) => /^metadata\[/.test(k)).map(([k, v]) => [k.slice(9, -1), v]));
+    if (u.pathname === '/v1/customers' && req.method === 'POST') { const id = `cus_${++stm.n}`; stm.customers.push({ id, email: g('email'), name: g('name') }); return json(200, { id }); }
+    if (u.pathname === '/v1/checkout/sessions' && req.method === 'POST') { const id = `cs_test_${++stm.n}x${Math.random().toString(36).slice(2, 8)}`; stm.sessions[id] = { id, params: Object.fromEntries(form.entries()), types: form.getAll('payment_method_types[]'), metadata: meta(), customer: g('customer'), status: 'open', url: `http://127.0.0.1:3135/pay/${id}` }; return json(200, { id, url: stm.sessions[id].url }); }
+    let m = /^\/v1\/checkout\/sessions\/(cs_[\w]+)$/.exec(u.pathname);
+    if (m) { const s = stm.sessions[m[1]]; if (!s) return json(404, { error: { message: 'No such session' } }); return json(200, { id: s.id, status: s.status, mode: 'setup', customer: s.customer, metadata: s.metadata, setup_intent: s.si || null }); }
+    m = /^\/v1\/setup_intents\/(seti_[\w]+)$/.exec(u.pathname); if (m) { const s = Object.values(stm.sessions).find(x => x.si?.id === m[1]); return s ? json(200, s.si) : json(404, { error: { message: 'No such setup intent' } }); }
+    if (u.pathname === '/v1/payment_intents' && req.method === 'POST') {
+      const key = req.headers['idempotency-key']; if (key && stm.byKey[key]) return json(stm.byKey[key].code, stm.byKey[key].body);
+      const pm = g('payment_method'), id = `pi_${++stm.n}`, amount = Number(g('amount')), reply = (code, body, pi) => { if (key) stm.byKey[key] = { code, body }; if (pi) stm.intents[id] = pi; return json(code, body); };
+      if (!PMS[pm]) return reply(400, { error: { type: 'invalid_request_error', code: 'resource_missing', message: `No such PaymentMethod: '${pm}'` } });
+      if (g('off_session') !== 'true' || g('confirm') !== 'true' || !g('customer') || g('currency') !== 'usd') return reply(400, { error: { type: 'invalid_request_error', message: 'bad request' } });
+      if (pm === 'pm_card_declined') { const pi = { id, status: 'requires_payment_method', amount, last_payment_error: { message: 'Your card was declined.' } }; return reply(402, { error: { type: 'card_error', code: 'card_declined', decline_code: 'generic_decline', message: 'Your card was declined.', payment_intent: pi } }, pi); }
+      const bank = pm === 'pm_bank_ok', pi = { id, status: bank ? 'processing' : 'succeeded', amount, pm, meta: meta(), types: form.getAll('payment_method_types[]') };
+      return reply(200, pi, pi);
+    }
+    m = /^\/v1\/payment_intents\/(pi_\d+)$/.exec(u.pathname);
+    if (m) { const pi = stm.intents[m[1]]; if (!pi) return json(404, { error: { message: 'No such payment_intent' } }); const fee = Math.round(pi.amount * (pi.pm === 'pm_bank_ok' ? 0.008 : 0.029)) + (pi.pm === 'pm_bank_ok' ? 0 : 30); return json(200, { ...pi, latest_charge: pi.status === 'succeeded' ? { balance_transaction: { fee, net: pi.amount - fee } } : null }); }
+    m = /^\/v1\/payment_methods\/(pm_\w+)\/detach$/.exec(u.pathname); if (m && req.method === 'POST') { stm.detached.push(m[1]); return json(200, { id: m[1] }); }
+    json(404, { error: { message: `Unrecognized request URL (${req.method}: ${u.pathname})` } });
+  });
+});
+await new Promise(r => stripeMock.listen(3135, '127.0.0.1', r));
+// the client finishes on Stripe's page: the payment method is saved against the customer and the session completes
+const stripeFinish = (sessionId, pm, over = {}) => { const s = stm.sessions[sessionId]; s.status = 'complete'; s.si = { id: `seti_${sessionId.slice(8, 20).replace(/\W/g, '')}`, status: 'succeeded', customer: s.customer, metadata: s.metadata, payment_method: PMS[pm], ...over }; return s.si; };
+const hook = async (type, object, { secret = 'whsec_journey', badSig = false } = {}) => { const rawBody = JSON.stringify({ id: `evt_${Math.random().toString(36).slice(2)}`, type, data: { object } }); return fetch(`${BASE}/v1/stripe/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'stripe-signature': badSig ? 't=1,v1=00' : signWebhook({ rawBody, secret }) }, body: rawBody }); };
 
 const today = new Date().toISOString().slice(0, 10);
 // the tokens a browser would get: the number goes to the provider, never to us
@@ -256,5 +295,72 @@ try {
     await connect(); ok((await P(E2.token, '/payment-method', { body: { kind: 'card', token: await tokenFor(CARD) } })).status === 200, 'another client adds a card');
     await run('2031-01-01'); ok((await outbox(SIGNER3.replace('pay3', 'pay4'))).every(e => !/Add your payment details/.test(e.subject)), 'and is never asked once the details are on file');
   });
-} finally { mock.close(); }
+
+  await journey('J173', 'Automatic payments through Stripe: cards (with Apple Pay), and bank debits, are added on Stripe\'s own page, charged once on their due date, and every payment is booked in QuickBooks with Stripe\'s fee kept', async () => {
+    const set = await K('/autopay/processor', { method: 'PUT', body: { processor: 'stripe' } }); ok(set.status === 200 && set.json.payments.processor === 'stripe' && set.json.payments.stripe.configured, 'staff switch automatic payments to Stripe', set.json);
+    ok((await C('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } })).status === 403, 'only a signer can switch it back');
+    const F = await make('F', SIGNER4, planCard); ok((await P(F.token, '/sign', { body: sign() })).status === 200 && (await K(`/${F.id}/countersign`, { body: {} })).status === 200, 'a card contract is signed by both');
+    const pay = (await P(F.token)).json.pay; ok(pay.hosted && pay.processor === 'stripe' && pay.ready && pay.tokensUrl === null && pay.kind === 'card', 'the client page uses the Stripe page, not our own card form', pay);
+    ok((await P(F.token, '/payment-session', { body: {} })).status === 422, 'the client has to tick the authorization first');
+    const ps = await P(F.token, '/payment-session', { body: { agree: true, kind: 'bank' } }); ok(ps.status === 422, 'asking for a bank account on a card contract is refused');
+    const st = await P(F.token, '/payment-session', { body: { agree: true, kind: 'card' } }); ok(st.status === 200 && /\/pay\/cs_test_/.test(st.json.url), 'the client is sent to Stripe\'s page', st.json);
+    const sid = st.json.url.split('/pay/')[1], sess = stm.sessions[sid];
+    ok(sess.params.mode === 'setup' && sess.params.currency === 'usd' && sess.types.join() === 'card' && sess.metadata.contract === F.id && sess.params.success_url.includes(`/sign/${F.token}`) && sess.params.success_url.includes('{CHECKOUT_SESSION_ID}') && stm.customers.some(c => c.id === sess.customer && c.email === SIGNER4), 'a setup session for a card, for this contract and this signer, that returns to the agreement page', sess.params);
+    ok(sql(`select count(*) from contract_payment_methods where contract_id='${F.id}'`) === '0', 'nothing is saved until Stripe says so');
+    const early = await P(F.token, '/payment-session/complete', { body: { sessionId: sid } }); ok(early.status === 409, 'coming back without finishing on Stripe saves nothing', early.json);
+    stripeFinish(sid, 'pm_card_ok');
+    const other = await make('F2', SIGNER5, planCard); await P(other.token, '/sign', { body: sign() }); await K(`/${other.id}/countersign`, { body: {} });
+    const sid2 = (await P(other.token, '/payment-session', { body: { agree: true, kind: 'card' } })).json.url.split('/pay/')[1]; stripeFinish(sid2, 'pm_card_ok');
+    ok((await P(F.token, '/payment-session/complete', { body: { sessionId: sid2 } })).status === 403, 'another agreement\'s payment page cannot be used on this one');
+    const done = await P(F.token, '/payment-session/complete', { body: { sessionId: sid } }); ok(done.status === 200 && done.json.method.label === 'Apple Pay · Visa ending 4242' && done.json.method.last4 === '4242', 'back from Stripe the card is kept, and named for what it is (Apple Pay)', done.json);
+    ok(sql(`select processor||'|'||kind||'|'||instrument_id from contract_payment_methods where contract_id='${F.id}' and status='active'`) === 'stripe|card|pm_card_ok', 'kept as a Stripe payment method, with only its id and last four digits');
+    // the deposit that fell due on signing is taken at once
+    const pi = Object.values(stm.intents).find(x => x.meta?.contract === F.number && x.meta.seq === '1'); const req1 = stm.seen.find(x => x.path === '/v1/payment_intents' && x.raw.includes(encodeURIComponent(F.number)));
+    ok(pi && pi.amount === 60000 && pi.status === 'succeeded' && /idempotency|fb-ch-/.test(req1.idem) && req1.raw.includes('off_session=true') && req1.raw.includes('confirm=true') && req1.raw.includes('payment_method_types%5B%5D=card'), 'the deposit is charged off-session for $600.00 with a fixed idempotency key', { pi, idem: req1?.idem });
+    const qbPay = qbm.payments.at(-1); ok(qbPay && qbPay.body.TotalAmt === 600 && qbPay.body.PaymentRefNum === pi.id.slice(0, 21) && /Stripe/.test(qbPay.body.PrivateNote), 'it is booked in QuickBooks as a payment on the invoice, referenced by the Stripe payment', qbPay);
+    ok(sql(`select count(*) from money_payments where reference='${pi.id}' and source='quickbooks' and method='card' and amount_cents=60000`) === '1', 'and in our ledger, once');
+    await sleep(500); ok(sql(`select fee_cents||'|'||net_cents from contract_charges where contract_id='${F.id}' and seq=1`) === '1770|58230', 'Stripe\'s fee ($17.70) and what reaches the bank ($582.30) are kept with the payment', sql(`select fee_cents||'|'||net_cents from contract_charges where contract_id='${F.id}' and seq=1`));
+    const mail = await outbox(SIGNER4); ok(mail.some(e => /Receipt: \$600\.00/.test(e.subject)) && mail.some(e => /Payment details saved/.test(e.subject)), 'the client got a receipt and a note that the details are saved');
+    const again = await run(today); ok(stm.seen.filter(x => x.path === '/v1/payment_intents' && x.raw.includes(encodeURIComponent(F.number))).length === 1, 'running the job again takes nothing more');
+    // Stripe's webhook: refuses what is not signed by Stripe, and a repeat changes nothing
+    ok((await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } }, { badSig: true })).status === 401 && (await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } }, { secret: 'whsec_other' })).status === 401, 'a webhook not signed by Stripe is refused');
+    ok((await hook('checkout.session.completed', { id: sid, mode: 'setup', metadata: { contract: F.id } })).status === 200 && sql(`select count(*) from contract_payment_methods where contract_id='${F.id}'`) === '1', 'a repeated "details saved" from Stripe changes nothing');
+    // a client who never made it back to our page is still saved, from Stripe's own word
+    const G2 = await make('G2', SIGNER6, planCard); await P(G2.token, '/sign', { body: sign() }); await K(`/${G2.id}/countersign`, { body: {} });
+    if (playwright) {
+      const br = await playwright.chromium.launch(); const errs = [];
+      try { const pg = await (await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true })).newPage(); pg.on('pageerror', e => errs.push(String(e)));
+        await pg.goto(`${BASE}/sign/${G2.token}`, { waitUntil: 'networkidle' }); await pg.waitForSelector('#pGo', { timeout: 10000 });
+        const txt = await pg.locator('#payBox').innerText(); ok(/Apple Pay/.test(txt) && /Google Pay/.test(txt) && /Continue to secure payment/.test(txt) && !(await pg.locator('#cNum').count()), 'on a phone the page offers Apple Pay, Google Pay or a card on the secure page, and has no card form of its own');
+        ok(await pg.locator('#pGo').isDisabled(), 'the button waits for the authorization'); await pg.check('#pAuth'); ok(await pg.locator('#pGo').isEnabled(), 'and wakes once it is ticked');
+        await Promise.all([pg.waitForURL(/127\.0\.0\.1:3135\/pay\/cs_test_/, { timeout: 10000 }).catch(() => {}), pg.click('#pGo')]); ok(/3135\/pay\/cs_test_/.test(pg.url()), 'pressing it takes them to Stripe\'s page', pg.url());
+        ok(errs.length === 0, 'no page errors', errs);
+      } finally { await br.close(); }
+    }
+    const sid3 = (await P(G2.token, '/payment-session', { body: { agree: true, kind: 'card' } })).json.url.split('/pay/')[1]; stripeFinish(sid3, 'pm_card_ok');
+    ok((await hook('checkout.session.completed', { id: sid3, mode: 'setup', metadata: { contract: G2.id } })).status === 200 && sql(`select label from contract_payment_methods where contract_id='${G2.id}' and status='active'`) === 'Apple Pay · Visa ending 4242', 'a client who closed the tab on Stripe\'s page is still saved, by Stripe\'s webhook');
+    // changing the card detaches the old one at Stripe
+    const sid4 = (await P(F.token, '/payment-session', { body: { agree: true, kind: 'card' } })).json.url.split('/pay/')[1]; stripeFinish(sid4, 'pm_card_declined');
+    ok((await P(F.token, '/payment-session/complete', { body: { sessionId: sid4 } })).status === 200 && stm.detached.includes('pm_card_ok') && sql(`select count(*) from contract_payment_methods where contract_id='${F.id}' and status='active'`) === '1', 'a new card replaces the old one, which is removed at Stripe');
+    // a card the bank refuses: tried again once, then left to a person
+    await run('2027-01-05'); const fm = await outbox(SIGNER4); ok(fm.some(e => /\$800\.00 did not go through/.test(e.subject) && /declined/i.test(e.text)), 'a declined card is told plainly, with the reason from the bank');
+    await run('2027-01-08'); ok((await outbox(SIGNER4)).some(e => /We could not take \$800\.00/.test(e.subject)) && (await outbox('')).some(e => /Autopay failed twice: \$800\.00/.test(e.subject)), 'after one retry the client and staff are told it needs a person');
+    // bank debits: a bank account on Stripe, pending until the bank settles it
+    const B2 = await make('B2', SIGNER2.replace('pay2', 'pay2s'), planBank, { timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '' } });
+    await P(B2.token, '/sign', { body: sign({ name: 'Pat Payer' }) }); await K(`/${B2.id}/countersign`, { body: {} });
+    const bsr = await P(B2.token, '/payment-session', { body: { agree: true, kind: 'bank' } }); ok(bsr.status === 200, 'the bank contract opens Stripe', bsr.json); const bs = bsr.json.url.split('/pay/')[1], bsess = stm.sessions[bs];
+    ok(bsess.types.join() === 'us_bank_account' && bsess.params['payment_method_options[us_bank_account][financial_connections][permissions][]'] === 'payment_method', 'a bank contract opens Stripe\'s bank page (instant bank sign-in, or account numbers)');
+    stripeFinish(bs, 'pm_bank_ok', { status: 'requires_action', next_action: { type: 'verify_with_microdeposits' } }); stm.sessions[bs].si.payment_method = PMS.pm_bank_ok;
+    const pend = await P(B2.token, '/payment-session/complete', { body: { sessionId: bs } }); ok(pend.status === 202 && pend.json.pending && sql(`select count(*) from contract_payment_methods where contract_id='${B2.id}'`) === '0', 'a bank account waiting for its test deposits is not kept yet, and the client is told what happens next', pend.json);
+    stm.sessions[bs].si.status = 'succeeded'; delete stm.sessions[bs].si.next_action;
+    ok((await hook('setup_intent.succeeded', { id: stm.sessions[bs].si.id, metadata: { contract: B2.id } })).status === 200 && sql(`select label from contract_payment_methods where contract_id='${B2.id}' and status='active'`) === 'Checking account ending 6789', 'once the bank confirms, Stripe tells us and the account is kept');
+    const dep = Object.values(stm.intents).find(x => x.meta?.contract === B2.number); ok(dep && dep.amount === 150000 && dep.status === 'processing' && dep.types.join() === 'us_bank_account', 'the $1,500.00 deposit goes to the bank as an ACH debit and is processing', dep);
+    const ov2 = (await K(`/${B2.id}`)).json.autopay; ok(ov2.installments[0].state === 'pending', 'it shows as with the bank', ov2.installments.map(i => i.state));
+    const beforeBooked = qbm.payments.length; dep.status = 'succeeded';
+    ok((await hook('payment_intent.succeeded', { id: dep.id })).status === 200, 'Stripe says the debit settled');
+    await sleep(500); ok(qbm.payments.length === beforeBooked + 1 && sql(`select count(*) from money_payments where reference='${dep.id}'`) === '1' && (await outbox(SIGNER2.replace('pay2', 'pay2s'))).some(e => /Receipt: \$1,500\.00/.test(e.subject)), 'it is then booked in QuickBooks and the ledger, and the client gets a receipt');
+    ok(!stm.seen.some(x => /4111|4242424242424242|11000000333456781|322079353/.test(x.raw)), 'no card or bank number ever reached us or Stripe through us');
+    const back = await K('/autopay/processor', { method: 'PUT', body: { processor: 'quickbooks' } }); ok(back.status === 200 && back.json.payments.processor === 'quickbooks', 'and staff can switch back to QuickBooks Payments');
+  });
+} finally { mock.close(); stripeMock.close(); }
 const bad = summary(); process.exit(bad ? 1 : 0);
