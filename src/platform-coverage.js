@@ -267,7 +267,7 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Invoices', String(c.total)], ['Sent and open', String(c.open)], ['Overdue', String(c.overdue)], ['Drafts', String(c.drafts)], ['Past invoices with no payment recorded', String(c.unrecorded)], ['Payment instructions on invoices', String(stored.instructions || '').trim() ? 'saved' : 'not saved'], ['People who can open Money', String(access.length)]] };
   }));
 
-  listing.push(row('shopifypayouts', 'Shopify Payments payouts', 'sales', async () => {
+  listing.push(row('shopifypayouts', 'Bank payouts and fees', 'sales', async () => {
     const st = (await getSetting('moneyPayouts').catch(() => null)) || {}, p = await one(`select count(*)::int total, coalesce(sum(fee_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float fee30, coalesce(sum(gross_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float gross30 from money_payouts`);
     const linked = Boolean(env.SHOPIFY_STORE_DOMAIN && (env.SHOPIFY_ADMIN_ACCESS_TOKEN || (env.SHOPIFY_CLIENT_ID && env.SHOPIFY_CLIENT_SECRET))), v = payoutsVerdict({ configured: linked, st, p });
     return { ...v, facts: [['Store', linked ? 'connected' : 'not connected'], ['Payouts read', String(p.total)], ['Last read', st.lastSyncAt ? ago(st.lastSyncAt) : 'not yet'], ['Needs the read_shopify_payments scope', st.needsScope ? 'yes' : 'no']] };
