@@ -450,7 +450,10 @@
   const initials = (name) => String(name || '?').replace(/^the\s+/i, '').split(/[\s&’'.-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const tile = (o) => '<span class="stile" style="--h:' + hue(o.merchant.name) + '"><b>' + esc(initials(o.merchant.name)) + '</b><small>' + esc(o.merchant.name || '') + '</small></span>';
   const photo = (o, cls) => '<div class="' + cls + '" data-url="' + esc(o.item.url || '') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + '</div>';
-  const buttons = (k, sold) =>
+  // Over Spot's per-ask cap: say so on the card, not after a tap (the store
+  // link below still works).
+  const buttons = (k, sold, cents) =>
+    cents > CFG.max ? '<div class="overcap">Over Spot’s ' + usd(CFG.max) + ' limit for now. Buy it at the store.</div>' :
     (sold ? '' : '<div class="wpay" data-k="' + k + '" hidden></div>') +
     '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
     '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
@@ -476,7 +479,7 @@
       (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') +
-      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
+      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out', (it.price_cents || 0) * (it.quantity || 1)) +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') + (String(k).startsWith('s:') ? '<button class="textlink" type="button" data-act="nope" data-k="' + k + '">👎 Not for me</button>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
@@ -487,7 +490,7 @@
       '<div class="pb"><div class="st">' + look.items.length + ' pieces · ' + stores + (stores > 1 ? ' stores' : ' store') + '</div><div class="t">' + esc(look.name) + '</div>' +
       (look.why ? '<div class="why">' + esc(look.why) + '</div>' : '') +
       '<ul class="pieces">' + look.items.map((o) => '<li data-url="' + esc(o.item.url || '') + '"><a href="' + esc(o.item.url || '#') + '" target="_blank" rel="noopener">' + esc(o.item.title) + (o.item.variant ? ' <i>' + esc(o.item.variant) + '</i>' : '') + '</a><span>' + esc(o.merchant.name || '') + ' · ' + (o.item.price_cents ? usd(o.item.price_cents) : '—') + '</span></li>').join('') + '</ul>' +
-      '<div class="pr">' + usd(total(look.items)) + '<small> the look</small></div>' + buttons(k, false) + '</div></article>';
+      '<div class="pr">' + usd(total(look.items)) + '<small> the look</small></div>' + buttons(k, false, total(look.items)) + '</div></article>';
   }
   const skel = '<article class="pc sk"><div class="ph"></div><div class="pb"><div class="ln" style="width:50%"></div><div class="ln"></div><div class="ln" style="width:70%"></div></div></article>';
   const urlsOf = (entry) => (entry.items ? entry.items : [entry]).map((o) => o.item.url).filter(Boolean);
