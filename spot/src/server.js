@@ -39,7 +39,7 @@ import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
 import { registerShopifyApp } from './shopifyapp.js';
-import { needsSetup, registerAccounts, sizesLine } from './accounts.js';
+import { needsSetup, registerAccounts, sessionUserId, sizesLine } from './accounts.js';
 import { aiStopped, cardLabel, fundingOf, registerFunding } from './funding.js';
 import { agentCardPage } from './agentcard.js';
 import { accountPage, approverConfirmPage, setupPage, signinPage } from './accountpage.js';
@@ -255,17 +255,25 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // Small fixed-window limiter; enough to stop a script hammering capture
-  // (which costs a model call) or minting thousands of links.
+  // (which costs a model call) or minting thousands of links. Some limits
+  // give a signed-in account its own, larger allowance (`perAccount`):
+  // one ask on the Shop page is several searches at once, and people on the
+  // same Wi-Fi share an address.
   const hits = new Map();
-  const limit = (key, max, windowMs) => (req) => {
-    const k = `${key}:${req.ip}`;
+  const limit = (key, max, windowMs, perAccount = 0) => (req) => {
+    const uid = perAccount ? sessionUserId(db, req) : null;
+    const k = uid ? `${key}:u:${uid}` : `${key}:${req.ip}`;
+    const cap = uid ? perAccount : max;
     const now = Date.now();
     const h = hits.get(k);
     if (!h || h.reset < now) hits.set(k, { n: 1, reset: now + windowMs });
-    else if (++h.n > max) throw new CartError('Too many requests, slow down', 429);
+    else if (++h.n > cap) throw new CartError('Too many requests, slow down', 429);
   };
+  const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
   const limits = {
-    capture: limit('capture', Number(process.env.SPOT_CAPTURE_PER_10M || 30), 600_000),
+    capture: limit('capture', num(process.env.SPOT_CAPTURE_PER_10M, 30), 600_000, num(process.env.SPOT_CAPTURE_PER_10M_ACCOUNT, 150)),
+    // Photos and stock for the picks on screen: a few per ask, so its own bucket.
+    details: limit('details', 60, 600_000, 300),
     create: limit('create', Number(process.env.SPOT_CREATE_PER_10M || 20), 600_000),
     pay: limit('pay', 60, 600_000),
     // Wallet prices: one per card in view, more as the address changes.
@@ -276,7 +284,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     // Card facts: one per batch of cards on screen, and once more for a new store's policy.
     facts: limit('facts', 300, 600_000),
     // Fit and reviews: an AI read per product not seen in two weeks.
-    reviews: limit('reviews', 40, 600_000),
+    reviews: limit('reviews', 40, 600_000, 120),
     card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
@@ -759,7 +767,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // Photos, stock and prices for product pages Spot's own reader was turned
   // away from (the shelf asks after it shows the picks).
   app.post('/v1/capture/details', async (req) => {
-    limits.capture(req);
+    limits.details(req);
     // Each page with the size or option picked for them, so stock is for that size.
     const urls = Array.isArray(req.body?.urls)
       ? req.body.urls.map((u) => (typeof u === 'string' ? u : u && typeof u.url === 'string' ? { url: u.url, variant: typeof u.variant === 'string' ? u.variant.slice(0, 80) : '', ...(typeof u.title === 'string' && u.title ? { title: u.title.slice(0, 140) } : {}) } : null)).filter(Boolean).slice(0, 8)

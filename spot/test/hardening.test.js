@@ -127,3 +127,29 @@ test('a CSS-breaking image address is encoded', async (t) => {
   assert.doesNotMatch(made.cart.items[0].image_url, /['()]/);
   assert.doesNotMatch((await call('GET', `/c/${made.cart.token}`)).body, /url\('[^']*'\);position/, 'can’t close the url(…) and add styles');
 });
+
+test('browsing limits: a signed-in shopper has their own allowance, not the Wi-Fi’s', async (t) => {
+  const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg, logger: false, env: { SPOT_AGENT: 'on' }, capture: { details: async () => ({ products: [] }) } });
+  t.after(() => a.close());
+  const post = (url, payload, headers = {}) => a.inject({ method: 'POST', url, payload, headers });
+  const signIn = async (email) => {
+    const start = (await post('/v1/auth/start', { email })).json();
+    const v = await post('/v1/auth/verify', { email, code: start.code });
+    return { cookie: v.headers['set-cookie'].split(';')[0] };
+  };
+  const kyle = await signIn('kyle@example.com');
+  const dani = await signIn('dani@example.com');
+  const details = (h) => post('/v1/capture/details', { urls: ['https://shop.example/p'] }, h);
+  // Someone signed out on the same network uses up the address's allowance…
+  let anon;
+  for (let i = 0; i < 61; i++) anon = await details();
+  assert.equal(anon.statusCode, 429, 'signed out: limited by address');
+  // …and both signed-in people still browse, each on their own allowance.
+  for (let i = 0; i < 100; i++) assert.equal((await details(kyle)).statusCode, 200);
+  assert.equal((await details(dani)).statusCode, 200);
+  // It's still a limit.
+  let last;
+  for (let i = 0; i < 201; i++) last = await details(kyle);
+  assert.equal(last.statusCode, 429);
+  assert.equal((await details(dani)).statusCode, 200, 'one account’s use doesn’t count against another');
+});
