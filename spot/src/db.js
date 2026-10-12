@@ -468,9 +468,10 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
           db.prepare("UPDATE carts SET doc = json_set(doc, '$.user_id', ?) WHERE json_extract(doc, '$.user_id') = ?").run(intoId, fromId);
           for (const t of ['api_keys', 'identities', 'passkeys', 'sessions']) db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).run(intoId, fromId);
           // Account settings kept outside the users row: the saved card, the
-          // approver, and the AI kill switch. Keep the surviving account's own
-          // when it has one; a stop on either account stays on.
-          for (const kind of ['funding', 'approver', 'ai_stop']) {
+          // approver, the AI kill switch, the confirmed email (it moves with
+          // the email, below) and early access. Keep the surviving account's
+          // own when it has one; a stop on either account stays on.
+          for (const kind of ['funding', 'approver', 'ai_stop', 'email_proven', 'invited']) {
             const get = (id) => db.prepare('SELECT value FROM settings WHERE key = ?').get(`state:${kind}:${id}`)?.value;
             const theirs = get(fromId);
             if (theirs && (!get(intoId) || kind === 'ai_stop')) db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(`state:${kind}:${intoId}`, theirs);

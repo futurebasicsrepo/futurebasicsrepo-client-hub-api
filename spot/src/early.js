@@ -10,7 +10,8 @@
 //
 // Staff (signed in with a confirmed company email, staff.js) always see the
 // full site, and so does anyone the team invited (invites.js): through their
-// personal link (/invite/<token>), or signed in with the invited email. Everything else stays open: pay links, receipts, approvals,
+// personal link (/invite/<token>), or signed in with the invited email; once
+// an invited browser is signed in, that account is in on every device. Everything else stays open: pay links, receipts, approvals,
 // sign-in, accounts, /admin, the API and MCP, /texts (the SMS opt-in page
 // carriers review), /terms and /privacy.
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -47,6 +48,7 @@ export function registerGate(app, { db, env, behindEdge, origin, invites }) {
         : 'That invite link doesn’t work anymore. If you were invited, sign in with the email it went to.';
       return reply.code(r.reason === 'used' ? 200 : 404).type('text/html; charset=utf-8').send(earlyAccessPage({ origin: origin(req), notice }));
     }
+    invites.admit(sessionUserId(db, req), r.email);
     reply.header('set-cookie', `${INVITE_COOKIE}=${token}; Path=/; Max-Age=${365 * 86400}; HttpOnly; SameSite=Lax${behindEdge ? '; Secure' : ''}`);
     return reply.redirect('/?welcome=1', 302);
   });
@@ -72,8 +74,11 @@ export function registerGate(app, { db, env, behindEdge, origin, invites }) {
         return reply.redirect(url.pathname + (url.search || ''), 302);
       }
     }
-    if (previewing(req) || invites.cookieOk(inviteCookieOf(req))) return;
+    if (previewing(req)) return;
     const userId = sessionUserId(db, req);
+    // An invited browser that's signed in lets the account in everywhere.
+    const invited = invites.cookieEmail(inviteCookieOf(req));
+    if (invited) return void invites.admit(userId, invited);
     if (isStaff(db, env, userId) || invites.userOk(userId)) return;
     reply.header('cache-control', 'no-store');
     return reply.type('text/html; charset=utf-8').send(earlyAccessPage({ origin: origin(req) }));

@@ -13,6 +13,7 @@ import { provenEmail } from './staff.js';
 export const INVITE_COOKIE = 'spot_invite';
 export const MAX_DEVICES = 3;
 const sha = (s) => createHash('sha256').update(String(s)).digest('hex');
+const admitKey = (userId) => `invited:${userId}`;
 export const normEmail = (e) => String(e || '').trim().toLowerCase().slice(0, 200);
 export const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 
@@ -50,6 +51,9 @@ export function createInvites(db) {
     waiting: db.raw.prepare('SELECT COUNT(DISTINCT email) AS n FROM signups WHERE email NOT IN (SELECT email FROM invites)'),
   };
   const live = (inv) => Boolean(inv && !inv.revoked_at);
+  const admit = (userId, email) => {
+    if (userId && email && !db.state.get(admitKey(userId))) db.state.set(admitKey(userId), { email: normEmail(email), at: Date.now() });
+  };
 
   return {
     get: (email) => q.get.get(normEmail(email)) || null,
@@ -82,12 +86,24 @@ export function createInvites(db) {
       const link = token ? q.link.get(sha(token)) : null;
       return Boolean(link) && live(q.get.get(link.email));
     },
+    // The invited email behind this browser's link, when it still works.
+    cookieEmail(token) {
+      const link = token ? q.link.get(sha(token)) : null;
+      return link && live(q.get.get(link.email)) ? link.email : null;
+    },
+    // Once in, the account stays in: on any device, however they sign in
+    // (passkey, text, Google), until the invite is withdrawn.
+    admit,
     userOk(userId) {
+      if (!userId) return false;
       const email = provenEmail(db, userId);
-      const inv = email && q.get.get(email);
-      if (!live(inv)) return false;
-      q.opened.run(Date.now(), email);
-      return true;
+      if (email && live(q.get.get(email))) {
+        q.opened.run(Date.now(), email);
+        admit(userId, email);
+        return true;
+      }
+      const was = db.state.get(admitKey(userId))?.email;
+      return Boolean(was) && live(q.get.get(was));
     },
   };
 }
