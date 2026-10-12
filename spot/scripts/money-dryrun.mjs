@@ -165,6 +165,42 @@ await scenario('A link nobody pays expires: nothing moves', async ({ provider, m
   return 'expired · $0 moved';
 });
 
+await scenario('Chip in: three people cover it, the store charges less, each gets their share back', async ({ provider, make, call, storeCharges, cart }, expect) => {
+  const { token, k } = await make();
+  const on = await call('POST', `/v1/carts/${token}/manage/chip`, { k });
+  expect(on.status === 200, `chip in turned on (${on.status})`);
+  const total = cart(token).total_cents;
+  const parts = [5000, 4000, total - 9000];
+  for (const [i, cents] of parts.entries()) {
+    const r = await call('POST', `/v1/carts/${token}/chip/sandbox`, { cents, name: ['Mom', 'Dad', 'Sam'][i] });
+    if (r.status !== 200) throw new Error(`chip ${i + 1}: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+  const held = cart(token);
+  expect(held.status === 'card_issued', `covered → Spot’s card ready (${held.status})`);
+  expect(held.chips.filter((c) => c.state === 'held').reduce((n, c) => n + c.cents, 0) === total, 'exactly the total is held');
+  const before = provider.refunds.length;
+  await storeCharges(token, k, 11000);
+  const back = provider.refunds.slice(before);
+  const backCents = back.reduce((n, r) => n + r.amount_cents, 0);
+  expect(back.length === 3, `the unused part split across all three (${back.length} refunds)`);
+  expect(new Set(back.map((r) => r.key)).size === back.length, 'a separate refund per person');
+  return `held ${usd(total)} from 3 · store took ${usd(11000)} · back ${usd(backCents)} (${back.map((r) => usd(r.amount_cents)).join(' + ')})`;
+});
+
+await scenario('Chip in that never fills: the requester cancels and every hold is let go', async ({ provider, make, call, cart }, expect) => {
+  const { token, k } = await make();
+  await call('POST', `/v1/carts/${token}/manage/chip`, { k });
+  await call('POST', `/v1/carts/${token}/chip/sandbox`, { cents: 3000, name: 'Mom' });
+  await call('POST', `/v1/carts/${token}/chip/sandbox`, { cents: 2000, name: 'Dad' });
+  const r = await call('POST', `/v1/carts/${token}/manage/cancel`, { k });
+  expect(r.status === 200, `canceled (${r.status})`);
+  await new Promise((done) => setTimeout(done, 50));
+  const c = cart(token);
+  expect(c.chips.every((x) => x.state === 'released'), 'both holds released');
+  expect(provider.captured.size === 0, 'nobody charged');
+  return `held ${usd(5000)} from 2 · released ${usd(5000)}`;
+});
+
 await scenario('Spot’s card balance too low: the payer is told before anything is held', async ({ provider, make, call, cart }, expect) => {
   const { token } = await make();
   provider.issuingCents = 1000;
