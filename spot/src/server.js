@@ -1010,7 +1010,26 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     return { cart: publicCart(done) };
   });
 
+  // Chip in: one person's part of the cart (a hold until the whole thing is covered).
+  app.post('/v1/carts/:token/chip', async (req) => {
+    limits.pay(req);
+    const r = await spot.startChip(req.params.token, { cents: req.body?.cents, name: req.body?.name, email: req.body?.email, ip: req.ip });
+    return { ...r, publishable_key: provider.name === 'stripe' ? env.STRIPE_PUBLISHABLE_KEY || null : null };
+  });
+  app.post('/v1/carts/:token/chip/paid', async (req) => {
+    limits.pay(req);
+    return { cart: publicCart(await spot.checkChip(req.params.token, String(req.body?.ref || ''))) };
+  });
+  app.post('/v1/carts/:token/chip/sandbox', async (req) => {
+    if (provider.name !== 'sandbox') throw new CartError('Not available', 404);
+    limits.pay(req);
+    const r = await spot.startChip(req.params.token, { cents: req.body?.cents, name: req.body?.name, email: req.body?.email });
+    const done = await spot.paymentSucceeded({ paymentRef: r.ref, amountCents: r.cents, payer: { name: req.body?.name || null, fingerprint: req.body?.test_card ? String(req.body.test_card).slice(0, 40) : null } });
+    return { cart: publicCart(done) };
+  });
+
   // ─── Requester (manage key) ───────────────────────────────────────────────
+  app.post('/v1/carts/:token/manage/chip', async (req) => ({ cart: ownerCart(spot.setChipIn(req.params.token, keyOf(req), req.body?.on !== false)) }));
   // The private key from the link, or the signed-in owner's session.
   const keyOf = (req) => ({ k: req.body?.k || req.query?.k, userId: accounts.userIdOf(req) });
 

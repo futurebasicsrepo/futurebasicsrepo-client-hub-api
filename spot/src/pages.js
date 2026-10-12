@@ -278,6 +278,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
     <button class="btn dark small" style="margin-top:10px">Save</button>
   </form>
   <div class="sendrow"><a class="btn ghost" id="txt">Text</a><a class="btn ghost" id="wa" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" id="copy">Copy</button></div>
+  <p class="small" id="chipNudge" hidden style="margin-top:12px">🎁 Big one? <button type="button" class="textlink" id="chipIt">Let a few people chip in</button>. Each pays part; nothing is charged unless it's covered.</p>
   <p class="small" id="shipNudge" hidden style="margin-top:12px">📦 One step before they can pay: <a id="shipLink" href="#">add where it ships</a>. They'll pay the store directly.</p>
   <p class="small muted" style="margin-top:14px;display:flex;justify-content:space-between;gap:10px"><button class="textlink" id="edit">edit cart</button><a id="manageLink" href="#">see who pays →</a><button class="textlink" id="again">start another</button></p>
 </section>
@@ -325,6 +326,11 @@ const PAY_CSS = `
 .btn.go{font-size:19px;padding:17px;border-radius:18px;box-shadow:0 10px 24px color-mix(in srgb,var(--spot) 35%,transparent)}
 .btn.go:active{transform:scale(.98)}
 .namefield{display:flex;gap:8px;align-items:center;margin-top:6px}
+.chipbar{margin:4px 0 10px}.cbar{height:12px;border-radius:99px;background:var(--line);overflow:hidden}.cbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--spot),#ffb347);transition:width .6s cubic-bezier(.2,1,.3,1)}
+.cmeta{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-top:6px;color:var(--muted)}.cmeta b{color:var(--ink)}
+.amts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.amts button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}.amts button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.amt{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:var(--card)}.amt span{font-weight:800}.amt input{border:0;background:transparent;padding:11px 0;width:100%}
+.chipfields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
 .namefield input{padding:10px 12px}
 details{margin-top:8px;color:var(--muted);font-size:14px}
 details summary{cursor:pointer;font-weight:600}
@@ -405,7 +411,7 @@ ${provider === 'stripe' && cart.settle === 'card' && open ? '<script src="https:
       whoBox(cart),
       products,
       costs(cart),
-      `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
+      cart.chip_in ? chipBubble(cart, total) : `<div class="bub big">it's ${total} all in. want to cover it?</div>`,
     ];
   }
   // stagger the pop-in
@@ -446,7 +452,7 @@ const nope=$('#nope');if(nope)nope.onclick=async()=>{if(!confirm('Let '+${json(n
     const a=$('#act');if(a)a.remove();const d=$('details');if(d)d.remove();const l=document.querySelector('.lock');if(l)l.remove();
     $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">no worries 💛</div><div class="bub" style="animation-delay:.45s">I let '+${json(esc(name))}+' know. nothing was charged.</div>')}
   catch(e){nope.disabled=false;alert(e.message)}};
-${open && cart.settle === 'card' ? payScript(cart, provider) : ''}
+${open && cart.settle === 'card' ? (cart.chip_in ? chipScript(cart, provider) : payScript(cart, provider)) : ''}
 ${open && cart.settle === 'direct' ? directScript(cart) : ''}`;
   return shell({ title: ogTitle, head, body, script });
 }
@@ -527,6 +533,7 @@ function actionBox(cart, links, provider, total) {
 <button class="btn go" id="go">Pay ${store} ${total}</button>
 <p class="small muted" style="text-align:center;margin:10px 0 0">You pay ${store} on its own checkout, with its shipping to ${name} already filled in. Spot never touches your money and adds no fee.</p><div class="err" id="payErr"></div>${alt}`;
   }
+  if (cart.chip_in) return chipBox(cart);
   const fallback = links.length ? `<p class="small muted" style="text-align:center;margin:10px 0 0">or send it straight to them: ${links.map((l) => `<a href="${esc(l.url)}">${l.kind === 'venmo' ? 'Venmo' : 'Cash App'}</a>`).join(' · ')}</p>` : '';
   if (provider === 'sandbox') {
     return `<div class="namefield"><input id="payer" maxlength="60" placeholder="your name (optional)" aria-label="Your name (optional)"></div>
@@ -567,6 +574,56 @@ ${cart.pay_at_store?.ready ? '' : "setTimeout(()=>location.reload(),15000);"}
 if(go&&!go.disabled)go.onclick=async()=>{go.disabled=true;go.textContent='opening '+${json(cart.merchant.name)}+'…';$('#payErr').textContent='';
   try{const r=await api('/v1/carts/'+T+'/direct/start',{name:$('#payer').value.trim()});watch();location.href=r.continue_url}
   catch(e){$('#payErr').textContent=e.message;go.disabled=false;go.textContent='Try again'}};`;
+}
+
+function chipBubble(cart, total) {
+  const p = cart.chips || { raised_cents: 0, people: 0, names: [] };
+  const pct = Math.min(100, Math.round((p.raised_cents / Math.max(1, cart.total_cents)) * 100));
+  const who = p.names.length ? `${p.names.slice(0, 3).map(esc).join(', ')}${p.people > 3 ? ` + ${p.people - 3}` : ''}` : 'be the first';
+  return `<div class="bub big">it's ${total} all in. friends are chipping in, add what you like 🎁</div>
+<div class="bub chipbar"><div class="cbar"><i style="width:${pct}%"></i></div><div class="cmeta"><span><b>${usd(p.raised_cents)}</b> of ${total}</span><span>${p.people ? `${p.people} ${p.people === 1 ? 'person' : 'people'} · ${who}` : who}</span></div></div>`;
+}
+
+// Chip in: pick a part (or all that's left), and pay just that. It's a hold
+// until everyone together covers the cart.
+function chipBox(cart) {
+  const left = Math.max(0, cart.total_cents - (cart.chips?.raised_cents || 0));
+  const picks = [...new Set([2500, 5000, 10000].filter((c) => c < left).concat(left))];
+  return `<div class="amts" id="amts">${picks.map((c, i) => `<button type="button" data-c="${c}" class="${i === picks.length - 1 ? 'on' : ''}">${c === left ? `All that’s left · ${usd(c)}` : usd(c)}</button>`).join('')}</div>
+<label class="amt"><span>$</span><input id="chipAmt" inputmode="decimal" value="${(left / 100).toFixed(2)}" aria-label="Your part, in dollars"></label>
+<div class="chipfields"><input id="payer" maxlength="40" placeholder="your name" aria-label="Your name" autocomplete="given-name"><input id="chipEmail" type="email" maxlength="200" placeholder="email for updates" aria-label="Email for updates (optional)" autocomplete="email"></div>
+<div id="chipPay" hidden><div id="express"></div><div class="or" id="orCard" hidden>or pay with card</div><div id="stripeEl" style="margin-top:8px"></div></div>
+<button class="btn go" id="go">Chip in ${usd(left)}</button>
+<p class="small muted" style="text-align:center;margin:8px 0 0">A hold on your card, not a charge. Your part is charged only if everyone together covers it by ${new Date(cart.expires_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })}. If not, it’s let go.</p>
+<div class="err" id="payErr"></div>`;
+}
+
+function chipScript(cart, provider) {
+  const T = json(cart.token);
+  const left = Math.max(0, cart.total_cents - (cart.chips?.raised_cents || 0));
+  return `const LEFT=${left};let cents=LEFT;const fmt=c=>'$'+(c/100).toFixed(2).replace(/\.00$/,'');
+const setAmt=c=>{cents=c;$('#go').textContent='Chip in '+fmt(c);document.querySelectorAll('#amts button').forEach(b=>b.classList.toggle('on',Number(b.dataset.c)===c))};
+document.querySelectorAll('#amts button').forEach(b=>b.onclick=()=>{setAmt(Number(b.dataset.c));$('#chipAmt').value=(cents/100).toFixed(2)});
+$('#chipAmt').oninput=()=>{const v=Math.round(parseFloat(String($('#chipAmt').value).replace(/[^0-9.]/g,''))*100);if(v>0)setAmt(Math.min(v,LEFT))};
+const done=(c,who)=>{if(c.status!=='open'){celebrate(who);return}const p=c.chips||{};
+  $('#chat').insertAdjacentHTML('beforeend','<div class="bub big" style="animation-delay:.1s">you’re in'+(who?', '+esc(who):'')+' 🧡</div><div class="bub" style="animation-delay:.4s">'+fmt(p.raised_cents||0)+' of '+fmt(${cart.total_cents})+' so far. send this link to a few more people and it’s done.</div>');
+  const a=$('#act');if(a)a.remove();scrollTo({top:document.body.scrollHeight,behavior:'smooth'})};
+${provider === 'sandbox' ? `$('#go').onclick=async()=>{const b=$('#go');b.disabled=true;b.textContent='holding…';$('#payErr').textContent='';
+  try{const who=$('#payer').value.trim();const r=await api('/v1/carts/'+${T}+'/chip/sandbox',{cents,name:who,email:$('#chipEmail').value.trim()});done(r.cart,who)}
+  catch(e){$('#payErr').textContent=e.message;b.disabled=false;setAmt(cents)}};` : `let started=null;
+$('#go').onclick=async()=>{const b=$('#go');$('#payErr').textContent='';const who=$('#payer').value.trim();
+  if(!started){b.disabled=true;b.textContent='one sec…';
+    try{const c=await api('/v1/carts/'+${T}+'/chip',{cents,name:who,email:$('#chipEmail').value.trim()});
+      const stripe=Stripe(c.publishable_key);const elements=stripe.elements({clientSecret:c.client_secret,appearance:{theme:matchMedia('(prefers-color-scheme: dark)').matches?'night':'stripe',variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
+      const settle=async()=>{const {error}=await stripe.confirmPayment({elements,redirect:'if_required',confirmParams:{return_url:location.href}});if(error){$('#payErr').textContent=error.message;return false}
+        let cart=(await api('/v1/carts/'+${T}+'/chip/paid',{ref:c.ref})).cart;done(cart,who);return true};
+      started={settle};document.querySelectorAll('#amts,.amt,.chipfields').forEach(e=>e.hidden=true);$('#chipPay').hidden=false;
+      const ex=elements.create('expressCheckout',{buttonHeight:52,buttonTheme:{applePay:'black',googlePay:'black'},buttonType:{applePay:'plain',googlePay:'plain'}});
+      ex.on('ready',({availablePaymentMethods})=>{if(availablePaymentMethods)$('#orCard').hidden=false});ex.on('confirm',async(ev)=>{if(!await settle())ev.paymentFailed&&ev.paymentFailed()});ex.mount('#express');
+      elements.create('payment',{layout:'tabs',wallets:{applePay:'never',googlePay:'never'}}).mount('#stripeEl');
+      b.disabled=false;b.textContent='Hold '+fmt(c.cents);
+    }catch(e){$('#payErr').textContent=e.message;b.disabled=false;setAmt(cents)}return}
+  b.disabled=true;b.textContent='confirming…';if(!await started.settle()){b.disabled=false;b.textContent='Try again'}};`}`;
 }
 
 function payScript(cart, provider, base = '/v1/carts/') {
@@ -628,11 +685,11 @@ let tick=null,PROFILE=null,SAVED=null,SHARE=null;
 const THX_EMOJI=['🙏','❤️','🎉','😭','🥹'],THX={msg:null,emoji:'🙏'};
 const firstName=n=>String(n||'').trim().split(/\\s+/)[0];
 function thanksBox(c){
-  const fn=c.payer_name?esc(firstName(c.payer_name)):'';
+  const fn=c.payer_name?esc(c.chip_in?c.payer_name:firstName(c.payer_name)):'';
   if(c.thanks)return '<section class="card thx" id="thx"><h2>💌 Thank-you sent</h2><p class="small muted" style="margin:0 0 12px">'+(fn?fn+' can':'They can')+' see it on their receipt.</p><div class="thx-quote">'+(c.thanks.emoji?'<span class="thx-e">'+esc(c.thanks.emoji)+'</span>':'')+'<span>'+esc(c.thanks.message)+'</span></div></section>';
   if(!c.can_thank)return '';
   if(THX.msg===null)THX.msg='Thank you so much. You made my day.';
-  return '<section class="card thx" id="thx"><h2>'+(fn||'Someone')+' spotted you 🧡</h2><p class="small muted" style="margin:0">Send a quick thank-you. It shows on their receipt.</p>'
+  return '<section class="card thx" id="thx"><h2>'+(fn||'Someone')+' spotted you 🧡</h2><p class="small muted" style="margin:0">'+(c.chip_in?'Send a quick thank-you. Spot emails it to everyone who chipped in.':'Send a quick thank-you. It shows on their receipt.')+'</p>'
     +'<div class="thx-row" role="group" aria-label="Add an emoji (optional)">'+THX_EMOJI.map(e=>'<button type="button" class="thx-pick'+(THX.emoji===e?' on':'')+'" data-e="'+e+'" aria-pressed="'+(THX.emoji===e)+'">'+e+'</button>').join('')+'</div>'
     +'<textarea id="thxMsg" maxlength="280" rows="3" aria-label="Your thank-you">'+esc(THX.msg)+'</textarea><div class="thx-meta"><span id="thxLeft"></span></div>'
     +'<button class="btn" id="thxSend">Send '+(fn||'them')+' a thank-you</button><div class="err" id="thxErr"></div></section>';
@@ -833,6 +890,15 @@ async function draw(){
   if(fl)h+='<section class="card">'+itinerary(fl)+totals(c)+'</section>';
   if(c.kind==='train'&&c.train)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
   if(!self)h+='<section class="card">'+(SHARE&&c.status==='open'?'<h2>Send it to whoever’s paying 💸</h2><p class="small muted" style="margin-top:0">They pay on this link, then you tell Spot where it ships.</p>':'')+'<div class="small muted">Your link</div><div class="linkbox" style="margin-top:6px">'+esc(r.link)+'</div>'+(c.status==='open'?'<button class="btn" id="share">'+(navigator.share?'Share link':'Copy link')+'</button>':'')+(c.status==='open'&&!c.bundle_id&&!c.approver&&['card','direct'].includes(c.settle)?'<button class="btn ghost" id="claim">Pay it yourself</button><div class="err" id="claimErr"></div>':'')+'<div class="sum total"><span>'+(c.settle==='card'?'Your cart':'You get')+'</span><span>'+usd(c.cart_cents)+'</span></div></section>';
+  // Chip in: several people pay a part each (holds until it's covered).
+  if(!self&&c.settle==='card'&&!c.bundle_id&&(c.kind||'goods')==='goods'&&(c.chip_in||c.status==='open')){
+    const p=c.chips||{raised_cents:0},list=(c.chip_list||[]).filter(x=>x.state!=='released');
+    h+='<section class="card" id="chipSec"><h2>'+(c.chip_in?'Chipping in 🎁':'Split it with a few people?')+'</h2>'
+      +(c.chip_in?'<div class="cbar"><i style="width:'+Math.min(100,Math.round(p.raised_cents/Math.max(1,c.total_cents)*100))+'%"></i></div><p class="small muted" style="margin:0">'+usd(p.raised_cents)+' of '+usd(c.total_cents)+(list.length?': '+list.map(x=>esc(x.name||'Someone')+' '+usd(x.cents)).join(', '):'. Nobody yet: send your link around.')+'</p>'
+        :'<p class="small muted" style="margin-top:0">Let a few people each pay part, like a group gift. Their cards are only held until it’s covered. If it isn’t, nothing is charged.</p>')
+      +(c.status==='open'&&!c.chip_in?'<button class="btn ghost" id="chipOn">Let people chip in</button>':'')
+      +(c.status==='open'&&c.chip_in&&!list.length?'<button class="btn ghost" id="chipOff">One person pays instead</button>':'')
+      +'<div class="err" id="chipErr"></div></section>'}
   if(c.settle==='direct'&&c.status==='open'&&!self){
     const sh=c.requester.shipping;
     h+='<section class="card" id="shipDirect"><h2>'+(sh?'Ships to':'Where should it ship?')+'</h2>'
@@ -866,6 +932,8 @@ async function draw(){
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   const ds=$('#dShip');if(ds)ds.onsubmit=async(e)=>{e.preventDefault();try{await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(ds))});draw()}catch(err){$('#dShipErr').textContent=err.message}};
   on('editShip',()=>{$('#dShip').hidden=false;$('#editShip').remove()});
+  const chipSet=on2=>async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/chip',{k:K,on:on2});draw()}catch(e){$('#chipErr').textContent=e.message}};
+  on('chipOn',chipSet(true));on('chipOff',chipSet(false));
   on('claim',async()=>{const b=$('#claim');b.disabled=true;try{await api('/v1/carts/'+TOKEN+'/manage/pay-yourself',{k:K});SHARE=null;draw()}catch(e){b.disabled=false;$('#claimErr').textContent=e.message}});
   on('share',async()=>{const text=(SHARE&&SHARE.share_message)||('psst… can you spot me? 👀 '+(c.items[0]?.title||'')+' from '+c.merchant.name+'\\n'+r.link);try{if(navigator.share)await navigator.share({text});else{await navigator.clipboard.writeText(text);$('#share').textContent='Copied ✓'}}catch{}});
   const sim=async(type)=>{const cents=Math.round(parseFloat($('#sa').value)*100);try{await api('/v1/sandbox/issuing',{token:TOKEN,k:K,type,amount_cents:cents});draw()}catch(e){$('#simOut').textContent=e.message}};
@@ -889,7 +957,7 @@ async function draw(){
   if(['open','paid','refunding'].includes(c.status)||live)setTimeout(function again(){const typing=['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'<section class="card"><h2>Sign in to see this Spot</h2><p class="muted">It’s in your Spot account.</p><a class="btn" href="/signin?next='+encodeURIComponent(location.pathname)+'">Sign in</a></section>'});`;
-  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script><script src="/client/wallet.js"></script>' : ''}<style>${THX_CSS}.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script><script src="/client/wallet.js"></script>' : ''}<style>${THX_CSS}.cbar{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin:4px 0 8px}.cbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--spot),#ffb347)}.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
 .route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}
 .route .line{position:relative;text-align:center;min-width:0}.route .line i{display:block;height:2px;background:var(--line);margin:0 4px;position:relative}.route .line i::after{content:'✈';position:absolute;right:-4px;top:-10px;font-style:normal;font-size:14px;color:var(--accent,#ff5a36)}

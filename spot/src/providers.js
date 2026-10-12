@@ -47,7 +47,7 @@ export function sandboxProvider() {
   return {
     name: 'sandbox',
     async createPayment(cart) {
-      return { ref: `sbx_pi_${cart.id}`, client: { mode: 'sandbox' } };
+      return { ref: cart.chip_id ? `sbx_pi_${cart.id}_${cart.chip_id}` : `sbx_pi_${cart.id}`, client: { mode: 'sandbox' } };
     },
     async cancelPayment() {
       return true;
@@ -202,10 +202,10 @@ export function stripeProvider(env = process.env) {
           // (see capturePayment), released if Spot can't buy it.
           capture_method: 'manual',
           automatic_payment_methods: { enabled: true },
-          description: `Spot cart for ${cart.requester.name} at ${cart.merchant.name}`,
-          metadata: { spot_cart_id: cart.id, ...(cart.bundle ? { spot_bundle: '1' } : {}) },
+          description: cart.chip_id ? `Chipping in on ${cart.requester.name}'s Spot at ${cart.merchant.name}` : `Spot cart for ${cart.requester.name} at ${cart.merchant.name}`,
+          metadata: { spot_cart_id: cart.id, ...(cart.bundle ? { spot_bundle: '1' } : {}), ...(cart.chip_id ? { spot_chip: cart.chip_id } : {}) },
         },
-        { idempotencyKey: `spot-hold-${cart.id}-${cart.rev || 1}` },
+        { idempotencyKey: cart.chip_id ? `spot-chip-${cart.id}-${cart.chip_id}` : `spot-hold-${cart.id}-${cart.rev || 1}` },
       );
       return { ref: pi.id, client: clientFor(pi, env) };
     },

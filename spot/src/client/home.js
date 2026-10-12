@@ -1978,6 +1978,16 @@
     $('#linkText').textContent = made.link;
     $('#manageLink').href = made.manage;
     $('#shipNudge').hidden = me.settle !== 'direct' || Boolean(made.bundle);
+    // A group gift: several people each pay part (spot.js chip in).
+    $('#chipNudge').hidden = Boolean(made.bundle) || me.settle === 'direct' || me.settle === 'handoff';
+    $('#chipIt').onclick = async () => {
+      try {
+        await api('/v1/carts/' + made.token + '/manage/chip', { k: made.key, on: true });
+        $('#chipNudge').textContent = '🎁 Friends can chip in. Send the link to a few people.';
+      } catch (e) {
+        $('#chipNudge').textContent = e.message;
+      }
+    };
     $('#edit').hidden = Boolean(made.bundle);
     $('#shipLink').href = made.manage;
     renderPeople();
