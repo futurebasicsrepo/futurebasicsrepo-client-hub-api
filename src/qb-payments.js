@@ -5,7 +5,7 @@
 //     server, a log or the database. The server only ever holds the token, then the id of the card or account saved on file at Intuit.
 //   * Every call carries a Request-Id, so asking twice for the same charge can never take the money twice.
 //   * Needs the QuickBooks connection to have been made with the payments permission (QUICKBOOKS_PAYMENTS=on, then connect again) and a QuickBooks Payments account.
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { authed } from './quickbooks.js';
 
 export const PATH = { tokens: '/quickbooks/v4/payments/tokens', charges: '/quickbooks/v4/payments/charges', echecks: '/quickbooks/v4/payments/echecks' };
@@ -21,8 +21,11 @@ const failure = (res, j, fallback) => {
   const e = j?.errors?.[0] || {}, detail = String(e.detail || e.message || fallback || `answered ${res.status}`).slice(0, 240);
   return Object.assign(new Error(`QuickBooks Payments: ${detail}`), { status: res.status, code: e.code || '', detail, refused: res.status === 401 || res.status === 403, tid: res.headers?.get?.('intuit_tid') || '' });
 };
+// Intuit accepts a Request-Id of at most 40 characters. Ours say what they are for (contract, payment, try), which can be longer, so a long one is
+// shortened to a fixed fingerprint of itself: the same attempt always gives the same Request-Id, which is what keeps a repeat from charging twice.
+export const requestIdFor = id => { const s = String(id || ''); return !s ? randomUUID() : s.length <= 40 ? s : `fb-${createHash('sha256').update(s).digest('hex').slice(0, 36)}`; };
 async function call(ctx, cfg, path, { method = 'GET', body, requestId } = {}) {
-  const res = await authed(ctx, `${cfg.paymentsOrigin}${path}`, { method, headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), 'Request-Id': requestId || randomUUID() }, body: body !== undefined ? JSON.stringify(body) : undefined });
+  const res = await authed(ctx, `${cfg.paymentsOrigin}${path}`, { method, headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), 'Request-Id': requestIdFor(requestId) }, body: body !== undefined ? JSON.stringify(body) : undefined });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) {
     ctx.log?.warn?.({ quickbooks: true, payments: true, status: res.status, intuit_tid: res.headers?.get?.('intuit_tid') || '', code: j?.errors?.[0]?.code, message: String(j?.errors?.[0]?.message || '').slice(0, 200), detail: String(j?.errors?.[0]?.detail || '').slice(0, 300), moreInfo: String(j?.errors?.[0]?.moreInfo || '').slice(0, 200), method, path: path.replace(/\/[0-9A-Za-z-]{8,}/g, '/{id}') }, 'QuickBooks Payments call failed');
