@@ -849,63 +849,68 @@ function withOutfits(outfits, soldOut) {
 // photo, stock and price. Best effort: anything it can't tell stays unknown.
 const DETAILS_MAX = 8;
 export async function pageDetails(urls, { client, onUsage, onError } = {}) {
-  // Each: a page address, or { url, variant } when a size or option was picked.
+  // Each: a page address, or { url, variant, title } (the size or option
+  // picked; the product's name, for a category or search page).
   const byUrl = new Map();
   for (const u of [].concat(urls || [])) {
     const url = String(typeof u === 'string' ? u : u?.url || '');
-    if (/^https?:\/\//i.test(url) && !byUrl.has(url)) byUrl.set(url, typeof u === 'object' && u?.variant ? String(u.variant).slice(0, 80) : '');
+    if (/^https?:\/\//i.test(url) && !byUrl.has(url)) byUrl.set(url, { variant: typeof u === 'object' && u?.variant ? String(u.variant).slice(0, 80) : '', title: typeof u === 'object' && u?.title ? String(u.title).slice(0, 140) : '' });
   }
   const list = [...byUrl.keys()].slice(0, DETAILS_MAX);
   if (!list.length || (!client && !process.env.ANTHROPIC_API_KEY)) return { pages: [] };
   const anthropic = client ?? anthropicClient();
-  const messages = [
-    {
-      role: 'user',
-      content: `Open each of these product pages with web_fetch and report, for each: the main product photo's full https address, whether it can be bought right now (in stock, in the size or option given), and the current price.
-${list.map((u, i) => `${i + 1}. ${u}${byUrl.get(u) ? ` (size or option: ${byUrl.get(u).replace(/[\n"]/g, ' ')})` : ''}`).join('\n')}
-Reply with ONLY this JSON and nothing else:
-{"pages": [{"url": "the address above", "image_url": "https://… or empty", "in_stock": true or false or null, "unit_price": "$0.00 or empty"}]}
-Use empty or null for anything the page doesn't show or couldn't be opened.`,
-    },
-  ];
+  // One page per call, all at once, on the quicker model: a shelf of photos
+  // in the time one page takes, not one after another (15–50s before).
+  const pages = await Promise.all(list.map((url) => pageDetail(anthropic, url, byUrl.get(url), { onUsage, onError })));
+  return { pages: pages.filter(Boolean) };
+}
+async function pageDetail(anthropic, url, { variant, title }, { onUsage, onError }) {
+  const q = (x) => x.replace(/[\n"]/g, ' ');
+  const content = `Open this page with web_fetch: ${url}
+${title ? `It should be (or list) "${q(title)}"${variant ? `, in ${q(variant)}` : ''}. If it's a list or search page, report on that product.` : variant ? `Size or option: ${q(variant)}.` : ''}
+Reply with ONLY this JSON: {"image_url": "the product's main photo, its full https address, or empty", "in_stock": true or false or null, "unit_price": "$0.00 or empty"}
+Use empty or null for anything the page doesn't show or couldn't be opened.`;
+  // The plain fetch: one page, read once (no filtering step after it).
+  const tools = [{ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 2, max_content_tokens: 20000 }];
+  const messages = [{ role: 'user', content }];
+  // Haiku first (the quickest: reading one page needs no more), thinking off;
+  // Sonnet if Haiku turns the request down.
+  const fast = process.env.SPOT_DETAILS_MODEL || 'claude-haiku-5-5';
+  const steady = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5';
+  const ask = (model) =>
+    /haiku/.test(model)
+      ? anthropic.beta.messages.create({ model, max_tokens: 600, thinking: { type: 'disabled' }, output_config: { effort: 'low' }, tools, messages })
+      : anthropic.beta.messages.create({ model, max_tokens: 600, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low' }, tools, messages });
   let response;
+  const started = Date.now();
   try {
-    for (let i = 0; i < 3; i++) {
-      response = await anthropic.beta.messages.create({
-        model: process.env.SPOT_DETAILS_MODEL || process.env.SPOT_VISION_MODEL || 'claude-opus-5',
-        max_tokens: 4000,
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-        output_config: { effort: 'low' },
-        tools: [{ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: list.length + 2 }],
-        messages,
-      });
-      onUsage?.(response.model, response.usage);
-      if (response.stop_reason !== 'pause_turn') break;
-      messages.push({ role: 'assistant', content: response.content });
+    try {
+      response = await ask(fast);
+    } catch (err) {
+      if (!(err instanceof Anthropic.APIError) || fast === steady || ![400, 404].includes(err.status)) throw err;
+      console.error('page details: quick model declined, using', steady, err.status, err.message);
+      response = await ask(steady);
     }
+    onUsage?.(response.model, response.usage);
   } catch (err) {
     onError?.(err);
     if (err instanceof Anthropic.APIError) {
       console.error('page details failed', err.status, err.message);
-      return { pages: [] };
+      return null;
     }
     throw err;
   }
   const v = readJson(response.content.filter((b) => b.type === 'text').map((b) => b.text).join(''));
-  const asked = new Set(list);
-  const pages = [].concat(v?.pages || [])
-    .filter((p) => p && asked.has(String(p.url)))
-    .map((p) => {
-      const price = dollarsToCents(p.unit_price);
-      return {
-        url: String(p.url),
-        image_url: typeof p.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(p.image_url) ? p.image_url.slice(0, 1000) : null,
-        stock: p.in_stock === true ? 'in' : p.in_stock === false ? 'out' : 'unknown',
-        price_cents: price && price > 0 ? price : null,
-      };
-    });
-  return { pages };
+  // How often a photo comes back, and how fast: what to tune before launch.
+  console.log('page details', `${Date.now() - started}ms`, response.model, new URL(url).hostname, v?.image_url ? 'photo' : 'no photo');
+  if (!v) return null;
+  const price = dollarsToCents(v.unit_price);
+  return {
+    url,
+    image_url: typeof v.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(v.image_url) ? v.image_url.slice(0, 1000) : null,
+    stock: v.in_stock === true ? 'in' : v.in_stock === false ? 'out' : 'unknown',
+    price_cents: price && price > 0 ? price : null,
+  };
 }
 
 // ─── Streaming lookup ───────────────────────────────────────────────────────

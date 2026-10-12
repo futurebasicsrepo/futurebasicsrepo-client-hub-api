@@ -213,20 +213,47 @@ test('a photo the search saw is used when the store won\'t let Spot read its pag
   assert.equal(d.options[1].item.image_url, null, 'only https photos');
 });
 
-test('page details: the model reads blocked pages for photo, stock and price', async () => {
+test('page details: each blocked page read at once, on the quicker model, for photo, stock and price', async () => {
   const calls = [];
-  const client = { beta: { messages: { create: async (req) => (calls.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ pages: [
-    { url: 'https://nike.example/p1', image_url: 'https://static.nike.example/p1.jpg', in_stock: true, unit_price: '$45.00' },
-    { url: 'https://dicks.example/p2', image_url: '', in_stock: false, unit_price: '' },
-    { url: 'https://evil.example/not-asked', image_url: 'https://x/y.jpg', in_stock: true },
-  ] }) }] }) } } };
-  const r = await pageDetails(['https://nike.example/p1', 'https://dicks.example/p2', 'nope'], { client });
-  assert.equal(calls[0].tools[0].type, 'web_fetch_20260209');
-  assert.match(calls[0].messages[0].content, /1\. https:\/\/nike\.example\/p1\n2\. https:\/\/dicks\.example\/p2/);
+  const answers = {
+    'https://nike.example/p1': { image_url: 'https://static.nike.example/p1.jpg', in_stock: true, unit_price: '$45.00' },
+    'https://dicks.example/p2': { image_url: '', in_stock: false, unit_price: '' },
+  };
+  const client = { beta: { messages: { create: async (req) => {
+    calls.push(req);
+    const url = Object.keys(answers).find((u) => req.messages[0].content.includes(u));
+    return { stop_reason: 'end_turn', model: req.model, usage: {}, content: [{ type: 'text', text: JSON.stringify(answers[url]) }] };
+  } } } };
+  const r = await pageDetails(['https://nike.example/p1', { url: 'https://dicks.example/p2', title: 'Polarized sunglasses', variant: 'Black' }, 'nope'], { client });
+  assert.equal(calls.length, 2, 'one call per page, side by side');
+  assert.equal(calls[0].model, 'claude-haiku-5-5', 'the quickest model reads the page');
+  assert.deepEqual(calls[0].thinking, { type: 'disabled' });
+  assert.equal(calls[0].fallbacks, undefined, 'Haiku takes no server-side fallback');
+  assert.equal(calls[0].tools[0].type, 'web_fetch_20250910', 'the plain fetch, no filtering step');
+  assert.match(calls[1].messages[0].content, /It should be \(or list\) "Polarized sunglasses", in Black\. If it's a list or search page, report on that product\./);
   assert.deepEqual(r.pages, [
     { url: 'https://nike.example/p1', image_url: 'https://static.nike.example/p1.jpg', stock: 'in', price_cents: 4500 },
     { url: 'https://dicks.example/p2', image_url: null, stock: 'out', price_cents: null },
-  ], 'only the pages asked about');
+  ]);
+});
+
+test('page details: Haiku turns the request down, Sonnet reads it', async () => {
+  const { Anthropic } = await import('../src/anthropic.js');
+  const models = [];
+  const client = { beta: { messages: { create: async (req) => {
+    models.push(req.model);
+    if (/haiku/.test(req.model)) throw new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'tool not supported' } }, 'tool not supported', new Headers());
+    return { stop_reason: 'end_turn', model: req.model, usage: {}, content: [{ type: 'text', text: '{"image_url":"https://cdn.example/x.jpg","in_stock":true}' }] };
+  } } } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const r = await pageDetails(['https://shop.example/p'], { client });
+    assert.deepEqual(models, ['claude-haiku-5-5', 'claude-sonnet-5-5']);
+    assert.equal(r.pages[0].image_url, 'https://cdn.example/x.jpg');
+  } finally {
+    console.error = quiet;
+  }
 });
 
 test('the shelf asks for photos and stock of pages Spot couldn\'t read', async (t) => {
@@ -258,10 +285,10 @@ test('every search uses their saved sizes and where things ship, and says so', a
 
   const start = await call('POST', '/v1/auth/start', { email: 'kyle@example.com' });
   const cookie = (await call('POST', '/v1/auth/verify', { email: 'kyle@example.com', code: start.body.code })).headers['set-cookie'].split(';')[0];
-  await call('POST', '/v1/me', { sizes: { tops: 'M', shoes: 'US 10.5' }, shipping: { name: 'Kyle R', line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', email: 'kyle@example.com' } }, { cookie });
+  await call('POST', '/v1/me', { sizes: { tops: 'M', shoes: 'US 10.5' }, shipping: { name: 'Kyle R', line1: '1 Main St', city: 'Austin,', state: 'TX', postal_code: '78701', email: 'kyle@example.com' } }, { cookie });
   const r = await call('POST', '/v1/capture', { text: 'black hoodie' }, { cookie });
   assert.equal(seen.at(-1).sizes, 'tops M, shoes US 10.5');
-  assert.equal(seen.at(-1).shipTo, 'Austin, TX');
+  assert.equal(seen.at(-1).shipTo, 'Austin, TX', 'a stray comma in the city doesn’t double up');
   assert.deepEqual(r.body.profile, { sizes: 'tops M, shoes US 10.5', ship_to: 'Austin, TX' }, 'the shelf can say what it used');
 
   // Stock checks are for the size picked.
@@ -278,9 +305,10 @@ test('the search is told their sizes and city; page reads check the size', async
   assert.match(prompt, /For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes/);
 
   const seen = [];
-  const dc = { beta: { messages: { create: async (req) => (seen.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"pages":[]}' }] }) } } };
+  const dc = { beta: { messages: { create: async (req) => (seen.push(req), { stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }] }) } } };
   await pageDetails([{ url: 'https://nike.example/p1', variant: 'Black / M' }, 'https://x.example/2'], { client: dc });
-  assert.match(seen[0].messages[0].content, /1\. https:\/\/nike\.example\/p1 \(size or option: Black \/ M\)\n2\. https:\/\/x\.example\/2\n/);
+  assert.match(seen[0].messages[0].content, /web_fetch: https:\/\/nike\.example\/p1\nSize or option: Black \/ M\./);
+  assert.doesNotMatch(seen[1].messages[0].content, /Size or option/);
 });
 
 test('a reply in its own words is still read: name/url/store/price, looks of pieces', async () => {
