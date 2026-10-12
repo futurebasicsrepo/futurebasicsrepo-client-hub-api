@@ -1201,7 +1201,9 @@
     ['rated', '★ 4 and up'],
     ['watching', '👀 Watching'],
   ];
-  const PRICES = [0, 25, 50, 100, 250, 500];
+  const PRICES = [0, 25, 50, 100, 250, 500, 1000, 2500];
+  const STORES_SHOWN = 8;
+  let storesAll = false;
   const sortNow = () => prefs.sort || (taste.n >= 5 ? 'foryou' : 'new');
   // Sorting and filtering by store data needs the card facts for the whole page.
   const needsFacts = () => ['deal', 'price_asc', 'price_desc', 'protect'].includes(sortNow()) || prefs.filters.sale || prefs.filters.protect || prefs.filters.freeret || prefs.filters.max;
@@ -1260,33 +1262,49 @@
   const activeCount = () => Object.entries(prefs.filters).filter(([k, v]) => (k === 'stores' ? v?.length : v)).length + (prefs.hidden?.length ? 1 : 0);
 
   // The sort-and-filter sheet: sort, filters, collections, Spot's read on you.
+  // The sheet, phone first: a header that stays put, sort and price as one
+  // swipeable row each, the busiest stores first (the rest a tap away),
+  // collections that wrap instead of running off the edge.
   function renderTools() {
     const f = prefs.filters;
     const chip = (act, v, label, on) => '<button type="button" class="chip' + (on ? ' on' : '') + '" data-tool="' + act + '" data-v="' + esc(v) + '" aria-pressed="' + Boolean(on) + '">' + label + '</button>';
-    const stores = [...new Set(shopAll.map((o) => o.merchant?.name).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const perStore = new Map();
+    for (const o of shopAll) if (o.merchant?.name) perStore.set(o.merchant.name, (perStore.get(o.merchant.name) || 0) + 1);
+    const picked = f.stores || [];
+    const byCount = [...perStore].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([x]) => x);
+    const stores = storesAll ? [...byCount].sort((a, b) => a.localeCompare(b)) : [...new Set([...picked.filter((x) => perStore.has(x)), ...byCount.slice(0, STORES_SHOWN)])];
     const groups = new Map();
     for (const o of shopAll) groups.set(o.asked || '', (groups.get(o.asked || '') || 0) + 1);
     const hidden = new Set(prefs.hidden || []);
     const s = tasteSummary();
-    const learned = [...s.stores.map((x) => chip('forget-store', x, esc(x) + ' ×', true)), ...s.words.map((x) => chip('forget-word', x, esc(x) + ' ×', true)), s.price ? chip('forget-price', '', usd(s.price.low).replace('.00', '') + '–' + usd(s.price.high).replace('.00', '') + ' ×', true) : '', ...s.avoid.map((x) => chip('forget-avoid', x, 'not ' + esc(x) + ' ×', false))].filter(Boolean);
+    // Stores are kept lowercased; show them the way the store writes its name.
+    const nameOf = new Map([...perStore.keys()].map((x) => [x.toLowerCase(), x]));
+    const storeName = (x) => nameOf.get(x) || x.replace(/\b\w/g, (c) => c.toUpperCase());
+    const learned = [...s.stores.map((x) => chip('forget-store', x, '🏬 ' + esc(storeName(x)) + ' ×', true)), ...s.words.map((x) => chip('forget-word', x, esc(x) + ' ×', true)), s.price ? chip('forget-price', '', usd(s.price.low).replace('.00', '') + '–' + usd(s.price.high).replace('.00', '') + ' ×', true) : '', ...s.avoid.map((x) => chip('forget-avoid', x, 'not ' + esc(nameOf.get(x) || x) + ' ×', false))].filter(Boolean);
+    const active = Object.entries(f).filter(([k, v]) => (k === 'stores' ? v?.length : v)).length + hidden.size;
     $('#toolsBody').innerHTML =
-      '<h3>Sort</h3><div class="chips">' + SORTS.map(([k, l]) => chip('sort', k, l, sortNow() === k)).join('') + '</div>' +
+      '<div class="toolshead"><b>Sort &amp; filter</b>' + (active ? '<span class="muted small">' + active + ' on</span>' : '') + '<button type="button" class="toolsx" data-tool="done" data-v="" aria-label="Close">×</button></div>' +
+      '<h3>Sort</h3><div class="chips row">' + SORTS.map(([k, l]) => chip('sort', k, l, sortNow() === k)).join('') + '</div>' +
       (sortNow() === 'foryou' && taste.n < 5 ? '<p class="small muted">Spot is still getting to know you. Open, watch and choose a few things and this gets sharper.</p>' : '') +
       '<h3>Filter</h3><div class="chips">' + FILTERS.map(([k, l]) => chip('filter', k, l, f[k])).join('') + '</div>' +
-      '<div class="chips">' + PRICES.map((p) => chip('max', p, p ? 'Under $' + p : 'Any price', (f.max || 0) === p)).join('') + '</div>' +
-      (stores.length > 1 ? '<h3>Stores</h3><div class="chips">' + stores.map((x) => chip('store', x, esc(x), f.stores?.includes(x))).join('') + '</div>' : '') +
-      '<h3>Collections</h3><p class="small muted">Everything Spot showed you for each ask. Hide one, or remove it for good.</p><div class="colls">' +
-      [...groups].map(([a, n]) => '<div class="coll' + (hidden.has(a) ? ' off' : '') + '"><button type="button" class="collname" data-tool="toggle-coll" data-v="' + esc(a) + '" aria-pressed="' + !hidden.has(a) + '"><span class="eye">' + (hidden.has(a) ? '◌' : '●') + '</span> ' + esc(a || 'Other finds') + ' <span class="muted">' + n + '</span></button>' + (a === '👀 Watching' ? '' : '<button type="button" class="collx" data-tool="remove-coll" data-v="' + esc(a) + '" aria-label="Remove ' + esc(a || 'these') + '">Remove</button>') + '</div>').join('') + '</div>' +
+      '<h3>Price</h3><div class="chips row">' + PRICES.map((p) => chip('max', p, p ? 'Under $' + p.toLocaleString('en-US') : 'Any price', (f.max || 0) === p)).join('') + '</div>' +
+      (perStore.size > 1 ? '<h3>Stores <span class="muted small">' + perStore.size + '</span></h3><div class="chips">' + stores.map((x) => chip('store', x, esc(x) + ' <span class="n">' + perStore.get(x) + '</span>', picked.includes(x))).join('') +
+        (perStore.size > STORES_SHOWN ? '<button type="button" class="chip more" data-tool="all-stores" data-v="">' + (storesAll ? 'Fewer' : 'All ' + perStore.size + ' stores') + '</button>' : '') + '</div>' : '') +
+      '<h3>Collections</h3><p class="small muted">What Spot showed you for each ask. Tap to show or hide it.</p><div class="colls">' +
+      [...groups].map(([a, n]) => '<div class="coll' + (hidden.has(a) ? ' off' : '') + '"><button type="button" class="collname" data-tool="toggle-coll" data-v="' + esc(a) + '" aria-pressed="' + !hidden.has(a) + '"><span class="collt" aria-hidden="true">' + (hidden.has(a) ? '' : '✓') + '</span><span class="colln">' + esc(a || 'Other finds') + '</span><span class="collc">' + n + '</span></button>' + (a === '👀 Watching' ? '' : '<button type="button" class="collx" data-tool="remove-coll" data-v="' + esc(a) + '" aria-label="Remove ' + esc(a || 'these') + ' for good"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"/></svg></button>') + '</div>').join('') + '</div>' +
       '<h3>Spot’s read on you</h3>' + (learned.length ? '<div class="chips">' + learned.join('') + '</div><p class="small muted">Learned from what you open, watch and choose' + (account ? ', and used to shape new searches too' : '') + '. Tap one to make Spot forget it. <button type="button" class="textlink" data-tool="reset-taste" data-v="">Start over</button></p>' : '<p class="small muted">Nothing yet. Spot learns your style from what you open, watch, choose, and turn down with 👎 Not for me.</p>') +
       '<div class="toolsfoot"><button type="button" class="btn ghost small" data-tool="clear" data-v="">Clear all</button><button type="button" class="btn small" data-tool="done" data-v="">Show ' + shopList.length + '</button></div>';
   }
   function openTools() {
     renderTools();
     $('#shopTools').hidden = false;
+    $('#shopTools').scrollTop = 0;
+    document.body.classList.add('sheeton');
     if (needsFacts()) wantFacts(shopAll.filter((o) => !factsBy.has(o.item.url)));
   }
   $('#shopFab').onclick = openTools;
-  $('#shopToolsX').onclick = () => ($('#shopTools').hidden = true);
+  const closeTools = () => (($('#shopTools').hidden = true), document.body.classList.remove('sheeton'));
+  $('#shopToolsX').onclick = closeTools;
   $('#shopTools').addEventListener('click', async (ev) => {
     const b = ev.target.closest('[data-tool]');
     if (!b) return;
@@ -1320,8 +1338,9 @@
       taste = blankTaste();
       save(TASTE, taste);
       if (account) api('/v1/me/taste', { reset: true }).catch(() => {});
-    } else if (t === 'clear') prefs = { sort: null, filters: {}, hidden: [] };
-    else if (t === 'done') return ($('#shopTools').hidden = true);
+    } else if (t === 'clear') (prefs = { sort: null, filters: {}, hidden: [] }), (storesAll = false);
+    else if (t === 'done') return closeTools();
+    else if (t === 'all-stores') return (storesAll = !storesAll), renderTools();
     savePrefs();
     renderShop();
     renderTools();
