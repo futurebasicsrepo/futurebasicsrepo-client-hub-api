@@ -469,6 +469,7 @@
       (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
@@ -670,7 +671,7 @@
     if (T.list.length > 1) say('swipe for more →');
     details(added);
     wantFacts(added);
-    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]);
+    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]), loadDelivery(T.list[0]);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -802,6 +803,50 @@
     paintReviews(url);
   }
 
+  // ─── Arrives by ──────────────────────────────────────────────────────────
+  // The store's own delivery dates to their saved address (Shopify stores),
+  // else the store's usual shipping time from its policy page.
+  const deliveryBy = new Map();
+  const day = (iso) => {
+    const [y, m, d] = String(iso).split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  const span = (a, b) => (a && b && a !== b ? day(a) + ' – ' + day(b) : day(b || a));
+  function deliveryHtml(o, k) {
+    const d = deliveryBy.get(o.item.url);
+    if (d === 'loading') return '<div class="dll wait">Checking delivery…</div>';
+    if (!d) return '<button class="textlink dlgo" type="button" data-act="delivery" data-k="' + k + '">🚚 When would it arrive?</button>';
+    if (d.none || d.error) return '<div class="dll muted">' + (account ? 'The store doesn’t say when it would arrive.' : '<a href="/signin?next=/new">Sign in</a> to see when it would arrive at your door.') + '</div>';
+    const to = d.to ? ' to ' + esc(d.to) : '';
+    if (d.source === 'store') {
+      const c = d.cheapest;
+      const cost = c.cents === 0 ? 'free shipping' : usd(c.cents) + ' shipping';
+      let h = c.max_date ? '🚚 Arrives <b>' + span(c.min_date, c.max_date) + '</b>' + to + ' · ' + cost : '🚚 ' + (c.cents === 0 ? 'Free shipping' : usd(c.cents) + ' shipping') + to + (c.name ? ' (' + esc(c.name) + ')' : '');
+      if (d.fastest) h += '<br><span class="muted">or by <b>' + day(d.fastest.max_date) + '</b> for ' + usd(d.fastest.cents) + (d.fastest.name ? ' (' + esc(d.fastest.name) + ')' : '') + '</span>';
+      return '<div class="dll">' + h + '</div>';
+    }
+    return '<div class="dll">🚚 Usually arrives <b>' + span(d.min_date, d.max_date) + '</b>' + (d.free_over_cents === 0 ? ' · free shipping' : d.free_over_cents ? ' · free shipping over ' + usd(d.free_over_cents) : '') + (account ? '' : ' · <a href="/signin?next=/new">sign in</a> for your exact date') + '</div>';
+  }
+  function paintDelivery(url) {
+    for (const el of document.querySelectorAll('.dl[data-dl="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = deliveryHtml(o, el.dataset.k);
+    }
+  }
+  async function loadDelivery(o) {
+    const url = o?.item?.url;
+    if (!url || deliveryBy.has(url)) return;
+    deliveryBy.set(url, 'loading');
+    paintDelivery(url);
+    try {
+      const r = await api('/v1/delivery', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
+      deliveryBy.set(url, r.delivery || { error: true });
+    } catch {
+      deliveryBy.set(url, { error: true });
+    }
+    paintDelivery(url);
+  }
+
   // ─── Cheaper elsewhere ───────────────────────────────────────────────────
   // The same product at other stores for less (compare.js): the AI searches,
   // Spot checks each store's own price where it can. One tap switches the
@@ -854,6 +899,7 @@
     o.stock = offer.in_stock ? 'in' : 'unknown';
     o.why = 'Same one, ' + usd(was - offer.cents) + ' less here' + (o.why ? '. ' + o.why : '');
     compareBy.set(offer.url, { offers: [] });
+    loadDelivery(o);
     const card = document.querySelector('[data-card="' + CSS.escape(k) + '"]');
     if (card) card.outerHTML = productCard(o, k, /^\d+:0$/.test(k));
     if (String(k).startsWith('s:')) $('#shopCard').innerHTML = productCard(o, k, false);
@@ -1110,6 +1156,7 @@
     wantFacts([shopList[i]]);
     loadReviews(shopList[i]);
     loadCompare(shopList[i]);
+    loadDelivery(shopList[i]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
@@ -1119,7 +1166,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (['watch', 'reviews', 'compare', 'switch'].includes(b.dataset.act)) return actOn(b);
+    if (['watch', 'reviews', 'compare', 'switch', 'delivery'].includes(b.dataset.act)) return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1278,6 +1325,10 @@
   function actOn(b) {
     if (b.dataset.act === 'watch') return toggleWatch(b);
     if (b.dataset.act === 'switch') return switchStore(b);
+    if (b.dataset.act === 'delivery') {
+      const { e } = entryOf(b.dataset.k);
+      return loadDelivery((e?.items || [e])[0]);
+    }
     if (b.dataset.act === 'compare') {
       const { e } = entryOf(b.dataset.k);
       return loadCompare((e?.items || [e])[0]);

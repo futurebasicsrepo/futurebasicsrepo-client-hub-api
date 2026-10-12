@@ -40,7 +40,13 @@ export function policyFrom(v, site) {
     returns_days: days(v.returns_days),
     free_returns: yes(v.free_returns),
     source_url: v.source_url.slice(0, 500),
+    // Standard shipping, order to door, in business days; free over $X.
+    ship_days_min: days(v.ship_days_min),
+    ship_days_max: days(v.ship_days_max),
+    free_shipping_over: Number.isFinite(Number(v.free_shipping_over)) && Number(v.free_shipping_over) >= 0 && Number(v.free_shipping_over) < 10000 && v.free_shipping_over !== null && v.free_shipping_over !== '' ? Math.round(Number(v.free_shipping_over) * 100) : null,
   };
+  if (out.ship_days_min && out.ship_days_max && out.ship_days_min > out.ship_days_max) [out.ship_days_min, out.ship_days_max] = [out.ship_days_max, out.ship_days_min];
+  if (!out.ship_days_max) out.ship_days_min = null;
   if (out.price_adjustment !== true) out.adjustment_days = null;
   return out.price_adjustment == null && out.returns_days == null && out.free_returns == null ? null : out;
 }
@@ -51,9 +57,10 @@ async function readPolicy(site, name, { client, onUsage, onError } = {}) {
   const content = `Find ${who}'s own customer policies on its own site:
 1. Price adjustments: if ${site} lowers its price after someone buys, does it refund the difference? For how many days after purchase, and how do you ask?
 2. Returns: how many days, and are returns free?
+3. Standard shipping in the US: how many business days from order to delivery (processing plus transit), and the order total over which shipping is free.
 Read the policy page itself (help center, FAQ, returns or price policy). Price matching a competitor is not a price adjustment.
 Reply with ONLY this JSON:
-{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "source_url": "the https address of the policy page you read, on ${site}"}
+{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "ship_days_min": number or null, "ship_days_max": number or null, "free_shipping_over": dollars as a number (0 if always free) or null, "source_url": "the https address of the policy page you read, on ${site}"}
 Say true or false only when the page says so (for example "we do not offer price adjustments"); null when it doesn't say.`;
   const messages = [{ role: 'user', content }];
   try {
@@ -184,6 +191,15 @@ export function createStoreFacts({ db, client = null, product = shopifyProduct, 
     // A store's policy when it's already known (the price watch's window).
     known(site) {
       const got = site && db.policies.get(site);
+      return got && !got.unknown ? got : null;
+    },
+    // The policy, reading it first if Spot hasn't yet (up to `ms`).
+    async whenKnown(site, name = '', ms = 25000) {
+      if (!site) return null;
+      policy(site, name);
+      const p = inflight.get(site);
+      if (p) await Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+      const got = db.policies.get(site);
       return got && !got.unknown ? got : null;
     },
     settled: () => Promise.all(inflight.values()),

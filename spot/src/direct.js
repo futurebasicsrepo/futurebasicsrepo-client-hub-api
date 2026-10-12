@@ -174,7 +174,15 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
 // isn't Shopify or won't say.
 const US_STATES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico' };
 
-export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fetch, allowPrivate = false, waits = [1000, 1500, 2500] } = {}) {
+export async function cartShippingCents(storeUrl, lines, ship, opts = {}) {
+  const rates = await cartShippingRates(storeUrl, lines, ship, opts);
+  return rates?.length ? Math.min(...rates.map((r) => r.cents)) : null;
+}
+
+// Every rate the store's cart offers for that address: { name, cents,
+// min_date, max_date } (the dates when the store gives a delivery range,
+// "2026-10-16"), for "arrives by" on a card (delivery.js).
+export async function cartShippingRates(storeUrl, lines, ship, { fetchImpl = fetch, allowPrivate = false, waits = [1000, 1500, 2500] } = {}) {
   let origin;
   try {
     origin = new URL(storeUrl).origin;
@@ -195,7 +203,11 @@ export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fet
     const state = US_STATES[String(ship.state || '').toUpperCase()] || ship.state;
     const q = new URLSearchParams({ 'shipping_address[zip]': ship.postal_code, 'shipping_address[country]': 'United States', 'shipping_address[province]': state });
     const get = (path, init = {}) => fetchImpl(`${origin}${path}?${q}`, { ...init, headers: { cookie, accept: 'application/json', ...init.headers }, redirect: 'error', signal: AbortSignal.timeout(8000) });
-    const cents = (body) => (body?.shipping_rates || []).map((r) => Math.round(Number(r.price) * 100)).filter((c) => Number.isFinite(c) && c >= 0);
+    const day = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : null);
+    const cents = (body) =>
+      (body?.shipping_rates || [])
+        .map((r) => ({ name: String(r.name || r.presentment_name || '').slice(0, 80), cents: Math.round(Number(r.price) * 100), min_date: day(r.delivery_range?.[0]), max_date: day(r.delivery_range?.[1] || r.delivery_range?.[0]) }))
+        .filter((r) => Number.isFinite(r.cents) && r.cents >= 0);
     let rates = [];
     const res = await get('/cart/shipping_rates.json');
     if (res.ok) rates = cents(await res.json().catch(() => null));
@@ -218,7 +230,7 @@ export async function cartShippingCents(storeUrl, lines, ship, { fetchImpl = fet
     }
     // Leave nothing behind in the store's cart.
     await fetchImpl(`${origin}/cart/clear.js`, { method: 'POST', headers: { cookie, accept: 'application/json' }, signal: AbortSignal.timeout(5000) }).catch(() => {});
-    return rates.length ? Math.min(...rates) : null;
+    return rates.length ? rates : null;
   } catch {
     return null;
   }

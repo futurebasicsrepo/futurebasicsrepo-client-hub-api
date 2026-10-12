@@ -30,6 +30,7 @@ import { createStoreFacts, siteOf } from './storefacts.js';
 import { createWatches } from './watches.js';
 import { createReviews } from './reviews.js';
 import { createCompare } from './compare.js';
+import { createDelivery } from './delivery.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -178,6 +179,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('watches', watches);
   // Fit and reviews on a card, read by AI and kept two weeks (reviews.js).
   const reviews = createReviews({ db, ...(capture.reviews ? { read: capture.reviews } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  // "Arrives by": the store's own delivery dates to the shopper's address (delivery.js).
+  const delivery = createDelivery({ ...(capture.product ? { product: capture.product } : {}), ...(capture.shipRates ? { rates: capture.shipRates } : {}), policyOf: (item) => storeFacts.whenKnown(siteOf(item.url), item.store || ''), log: app.log });
   // The same product cheaper at another store (compare.js).
   const compare = createCompare({ db, ...(capture.compare ? { find: capture.compare } : {}), ...(capture.comparePrice ? { price: capture.comparePrice } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
   app.decorate('approvals', approvals);
@@ -625,6 +628,20 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const sizes = (uid && db.users.byId(uid)?.sizes) || {};
     reply.header('cache-control', 'no-store');
     return { reviews: await reviews.forShopper({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, sizes) };
+  });
+
+  // Arrives by: dates to the signed-in shopper's saved address, else the
+  // store's usual shipping time.
+  app.post('/v1/delivery', async (req, reply) => {
+    limits.quote(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const uid = accounts.userIdOf(req);
+    const sh = uid ? db.users.byId(uid)?.shipping : null;
+    const ship = sh?.postal_code ? { city: sh.city || '', state: sh.state || '', postal_code: String(sh.postal_code) } : null;
+    reply.header('cache-control', 'no-store');
+    return { delivery: await delivery.arrives({ url, variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, ship) };
   });
 
   // Cheaper elsewhere: the same product at other stores, under this price.
