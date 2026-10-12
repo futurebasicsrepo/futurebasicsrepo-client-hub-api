@@ -60,9 +60,10 @@ import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
 import { gateOn, registerGate } from './early.js';
 import { isStaff } from './staff.js';
+import { createPush, SERVICE_WORKER } from './webpush.js';
 import { createInvites } from './invites.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl, pushFetch } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
   // Who's calling, for rate limits and risk checks. X-Forwarded-For is
   // whatever the caller sends, so it's never trusted: Railway's edge puts
@@ -168,7 +169,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   spot.quotable = (cart) => (cart.merchant?.url ? spot.direct.supports(cart.merchant.url) : false);
   app.addHook('onClose', async () => fulfiller.close());
   // Texts only go to numbers confirmed with a code (a phone sign-in identity).
-  const notifier = createNotifier({ env, log: app.log, metrics, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
+  // Phone and browser notifications, for accounts that turn them on (webpush.js).
+  const push = createPush({ db, env, log: app.log, metrics, ...(pushFetch ? { fetchImpl: pushFetch } : {}) });
+  const notifier = createNotifier({ env, log: app.log, metrics, push, optouts: db.optouts, verified: (e164) => Boolean(db.identities.userId('phone', e164)), ...(notifyFetch ? { fetchImpl: notifyFetch } : {}) });
   // Early-access invites, sent from /admin (invites.js).
   const invites = createInvites(db);
   // Nightly database backups (started from the entry point, not in tests).
@@ -437,6 +440,27 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   for (const p of ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png']) app.get(p, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(180)));
   const appIcons = { 'icon-192.png': [192], 'icon-512.png': [512], 'icon-maskable-512.png': [512, { fill: 0.66 }] };
   for (const [file, spec] of Object.entries(appIcons)) app.get(`/${file}`, async (req, reply) => reply.type('image/png').header('cache-control', cacheDay).send(appIconPng(...spec)));
+  // The service worker shows notifications; it must live at the root to cover every page.
+  app.get('/sw.js', async (req, reply) => reply.type('text/javascript; charset=utf-8').header('cache-control', 'no-cache').send(SERVICE_WORKER));
+  app.get('/v1/push/key', async () => ({ key: push.publicKey() }));
+  app.post('/v1/me/push', async (req) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) throw new CartError('Sign in first', 401);
+    if (!push.subscribe(uid, req.body?.subscription, req.headers['user-agent'])) throw new CartError('That notification setup didn’t work. Try turning them on again.');
+    return { on: true, devices: push.devices(uid) };
+  });
+  app.post('/v1/me/push/remove', async (req) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) throw new CartError('Sign in first', 401);
+    push.unsubscribe(uid, req.body?.endpoint);
+    return { devices: push.devices(uid) };
+  });
+  app.post('/v1/me/push/test', async (req) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) throw new CartError('Sign in first', 401);
+    limits.card(req);
+    return { status: await push.toUser(uid, { title: 'Spot', body: 'Notifications are on 🧡 Price drops, “they paid” and your orders will show up here.', url: '/account', tag: 'test' }) };
+  });
   app.get('/manifest.webmanifest', async (req, reply) => reply.type('application/manifest+json').header('cache-control', cacheDay).send(JSON.stringify(manifest())));
   // The logo, for app directories and partner portals.
   app.get('/logo.svg', async (req, reply) => reply.type('image/svg+xml').header('cache-control', cacheDay).send(appIconSvg({ bg: null, fill: 1 })));
