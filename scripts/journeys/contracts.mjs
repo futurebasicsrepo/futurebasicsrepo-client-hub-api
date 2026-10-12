@@ -116,11 +116,12 @@ await journey('J164', 'Contracts: a fixed-fee agreement is drafted from a deal, 
   const sg5 = await P(tokenOf(s5.json.link), '/sign', { body: { name: 'Olive Owner', agree: true, esign: true } }); ok(sg5.status === 200 && sg5.json.executed === true && (await K(`/${r5.id}`)).json.contract.status === 'executed', 'then the client\'s signature makes it final at once');
 
   // many requests from one place
-  let limited = false; for (let i = 0; i < 130 && !limited; i++) limited = (await P('0000', '')).status === 429; ok(limited, 'asking again and again from one place is slowed down');
+  let limited = false; for (let i = 0; i < 130 && !limited; i++) limited = (await fetch(`${BASE}/v1/public/contracts/0000`, { headers: { 'x-forwarded-for': '203.0.113.77' } })).status === 429; ok(limited, 'asking again and again from one place is slowed down'); // from its own address, so the other journeys are not slowed down too
 });
 
 await journey('J165', 'Contracts in a browser: staff draft one from a deal with a monthly plan, send it, the client reads and signs it on a phone, staff countersign and draft the invoices', async () => {
   if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '10 Studio Way, Norristown PA', signerName: 'Kyle Riggle', signerTitle: 'Founder', governingLaw: 'Pennsylvania' } });
   const deal2 = sql(`insert into sales_deals(title,stage,value_cents,contact_id,company_id) values('Salon app ${stamp}','proposal',2400000,'${ct}','${co}') returning id`).split('\n')[0];
   const b = await playwright.chromium.launch(); const errs = [];
   try {
@@ -138,9 +139,12 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
     await page.waitForFunction(() => document.querySelectorAll('#pOut table tbody tr').length === 9, null, { timeout: 8000 }); ok(/\$2,400\.00 on signing, then 8 monthly payments of \$2,700\.00/.test(await page.innerText('#pOut')), 'a monthly plan with a deposit: 9 payments that add up', (await page.innerText('#pOut')).slice(0, 160));
     await page.fill('#feeIn', '24000.50'); await page.waitForFunction(() => /add up|monthly payments/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 }); await page.fill('#feeIn', '24000');
     await page.waitForFunction(() => /\$2,400\.00 on signing/.test(document.querySelector('#pOut')?.innerText || ''), null, { timeout: 8000 });
+    await page.locator('#feeIn').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/contract-editor.png` });
     await page.click('#ePrev'); await page.waitForSelector('#ePrevBox .preview'); ok(/Scope of work/.test(await page.innerText('#ePrevBox')) && /booking app/.test(await page.innerText('#ePrevBox')), 'Preview shows the agreement as the client will see it');
     await page.click('#eSave'); await page.waitForFunction(() => /Saved/.test(document.querySelector('#eMsg')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'Save draft');
-    await page.click('#eSend'); await page.waitForSelector('#sGo'); ok(/Sign for Future Basics now/.test(await page.innerText('#dBody')), 'sending offers to sign for Future Basics now (this teammate is a signer)');
+    await page.click('#eSend'); await page.waitForFunction(() => /Fix what is listed above/.test(document.querySelector('#eMsg')?.textContent || ''), null, { timeout: 8000 });
+    ok(/client's address/.test(await page.innerText('#probs')) && await page.locator('#sGo').count() === 0, 'a contract that is missing the client\'s address says so and is not sent');
+    await page.fill('[data-k="client.address"]', '1 Main St, Norristown PA 19401'); await page.click('#eSend'); await page.waitForSelector('#sGo'); ok(/Sign for Future Basics now/.test(await page.innerText('#dBody')), 'sending offers to sign for Future Basics now (this teammate is a signer)');
     await page.uncheck('#sNow'); await page.fill('#sNote', 'Here is the agreement for the app.'); await page.click('#sGo');
     await page.waitForSelector('#lnk', { timeout: 15000 }); const link = await page.inputValue('#lnk'); ok(/\/sign\//.test(link) && /Waiting for client/i.test(await page.innerText('#dBody')), 'sent: the contract shows the private link and “Waiting for client”');
 
@@ -153,13 +157,14 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
     await cp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/contract-phone.png`, fullPage: false });
     await cp.fill('#sName', 'Olive Owner'); await cp.check('#sAgree'); await cp.check('#sEsign'); ok(await cp.isDisabled('#sGo'), 'it stays off until the automatic-payment authorization and the payment method are chosen too');
     await cp.check('#sAuto'); await cp.check('input[name=m][value=card]'); ok(!(await cp.isDisabled('#sGo')), 'then it turns on');
+    await cp.locator('#sign').screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/contract-signform.png` });
     await cp.click('#sGo'); await cp.waitForSelector('.banner.ok', { timeout: 15000 }); ok(/You have signed/.test(await cp.innerText('.banner.ok')) && await cp.locator('#sign').count() === 0, 'signing shows a confirmation and removes the form');
 
     // staff: countersign, invoices
     await page.reload({ waitUntil: 'networkidle' }); await page.waitForSelector('#rows tr.click'); const row = page.locator('#rows tr.click', { hasText: `Salon app ${stamp}` }).first();
     ok(/Needs our signature/i.test(await row.innerText()), 'the list shows it needs our signature'); await row.click(); await page.waitForSelector('[data-a]');
     ok(/pays by card/.test(await page.innerText('#dBody')) && /autopay on/.test(await page.innerText('#dBody')), 'the contract shows who signed, the payment method they chose and that autopay is on');
-    await page.click('#acts button:has-text("Sign for Future Basics")'); await page.waitForFunction(() => /Fully signed/.test(document.querySelector('#dBody')?.innerText || ''), null, { timeout: 15000 }); ok(true, 'Sign for Future Basics: the agreement is final');
+    await page.click('#acts button:has-text("Sign for Future Basics")'); await page.waitForFunction(() => /fully signed/i.test(document.querySelector('#dBody')?.innerText || ''), null, { timeout: 15000 }); ok(true, 'Sign for Future Basics: the agreement is final');
     await page.click('#acts button:has-text("Draft the invoices")'); await page.waitForFunction(() => document.querySelectorAll('#dBody a[href^="/money?invoice="]').length === 9, null, { timeout: 15000 }); ok(true, 'Draft the invoices: nine, one per payment');
     ok(sql(`select count(*) from sales_deals where id='${deal2}' and stage='won'`) === '1', 'the deal is Won');
     await cp.reload({ waitUntil: 'networkidle' }); await cp.waitForSelector('.banner.ok'); ok(/Signed by both parties/.test(await cp.innerText('.banner.ok')) && await cp.locator('a:has-text("Download the PDF")').count() === 1, 'the client\'s page now says it is signed by both and offers the PDF');
