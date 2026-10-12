@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, linksFromText, linksToText, SEED_BUILDS, STATUSES } from '../src/builds.js';
+import { cleanBuild, cleanUrl, slugify, canSee, visibleBuilds, hasAnyAccess, highlightsFromText, highlightsToText, linksFromText, linksToText, SEED_BUILDS, MOVED_BUILD_REPOS, STATUSES } from '../src/builds.js';
 
 const NOW = Date.parse('2026-10-11T12:00:00Z'), future = '2026-11-11T00:00:00Z', past = '2026-09-01T00:00:00Z';
 const B = (over = {}) => ({ id: 'b1', slug: 's', name: 'N', visibility: 'listed', status: 'live', sort_order: 100, ...over });
@@ -71,6 +71,15 @@ test('the seed list is complete and valid: every build clean, addresses unique, 
   const slugs = new Set();
   for (const b of SEED_BUILDS) { const r = cleanBuild(b); assert.ok(!r.error, b.name + ': ' + r.error); assert.ok(STATUSES.includes(r.value.status)); assert.ok(!slugs.has(r.value.slug), 'duplicate ' + r.value.slug); slugs.add(r.value.slug); assert.ok(!b.visibility || b.visibility === 'hidden', b.name + ' must not seed as visible'); }
   for (const want of ['spot', 'bennys-beans', 'modish-nail-spa', 'nursepartners', 'common-ground', 'cuesea']) assert.ok(slugs.has(want), want);
+});
+
+test('a build whose code moved follows it to the address its seed now gives', () => {
+  for (const m of MOVED_BUILD_REPOS) {
+    const seed = SEED_BUILDS.find(b => b.slug === m.slug);
+    assert.ok(seed, m.slug + ' is a seeded build');
+    assert.equal(m.to.repoUrl, seed.repoUrl); assert.equal(m.to.repoPath, seed.repoPath || '');
+    assert.notDeepEqual(m.from, m.to);
+  }
 });
 
 test('a build tied to a client\'s own project is theirs to see, even hidden, but never when archived', async () => {

@@ -3,7 +3,7 @@
 //   viewers   /v1/builds/auth/*  sign in with an emailed code (a session cookie, not the hub's token); /v1/builds, /v1/builds/:slug, /builds/go/:slug
 //   staff     /v1/admin/builds*  builds, invites, activity (the work console's own sign-in)
 //   housed    /v1/builds/auth/check?slug=…  200 or 401, for a reverse proxy in front of a build we host (Caddy forward_auth), so a private build is private
-import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, STATUS_LABELS } from './builds.js';
+import { cleanBuild, canSee, visibleBuilds, hasAnyAccess, SEED_BUILDS, MOVED_BUILD_REPOS, STATUS_LABELS } from './builds.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { captureLead } from './sales-routes.js';
 import { syncBuilds, cleanChangeTitle } from './builds-sync.js';
@@ -261,5 +261,12 @@ export async function backfillBuildRepos(pool) {
     if (!b.repoUrl) continue;
     n += (await pool.query(`update builds set repo_url=$2, repo_path=$3 where slug=$1 and repo_url='' and repo_path=''`, [b.slug, b.repoUrl, b.repoPath || ''])).rowCount;
   }
+  return n;
+}
+
+// Builds whose code moved to its own repository follow it (only where the build still points at the old place).
+export async function moveBuildRepos(pool) {
+  let n = 0;
+  for (const m of MOVED_BUILD_REPOS) n += (await pool.query(`update builds set repo_url=$4, repo_path=$5 where slug=$1 and repo_url=$2 and repo_path=$3`, [m.slug, m.from.repoUrl, m.from.repoPath, m.to.repoUrl, m.to.repoPath])).rowCount;
   return n;
 }

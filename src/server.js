@@ -49,7 +49,7 @@ import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
-import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
+import { registerBuildRoutes, seedBuilds, backfillBuildRepos, moveBuildRepos, syncBuilds } from './builds-routes.js';
 import { PAYOUTS_QUERY } from './shopify-payouts.js';
 import { runSiteChecks, siteView } from './site-monitor.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
@@ -5789,6 +5789,7 @@ await migrate();
 billingMode=['on','off'].includes((await getSetting('techPackBilling'))?.mode)?(await getSetting('techPackBilling')).mode:null;
 await repairPendingShopifyLinks();
 if(!(await getSetting('buildReposFilled'))){await backfillBuildRepos(pool).then(async n=>{await setSetting('buildReposFilled',{at:new Date().toISOString(),n});if(n)app.log.info({n},'showcase builds now know where their code lives')}).catch(e=>app.log.warn({err:e.message},'build repositories not filled in'))}
+await moveBuildRepos(pool).then(n=>{if(n)app.log.info({n},'showcase builds follow their code to its new repository')}).catch(e=>app.log.warn({err:e.message},'moved build repositories not updated'));
 await seedSegments(pool).catch(e=>app.log.warn({err:e.message},'starter customer views not added'));
 await seedTemplates(pool).catch(e=>app.log.warn({err:e.message},'starter email templates not added'));
 await seedAutomations(pool).catch(e=>app.log.warn({err:e.message},'starter automations not added'));
