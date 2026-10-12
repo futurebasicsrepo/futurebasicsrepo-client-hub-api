@@ -173,4 +173,26 @@ await journey('J165', 'Contracts in a browser: staff draft one from a deal with 
   } finally { await b.close(); }
 });
 
+await journey('J170', 'Contracts: when Future Basics\' own details are missing, the draft says so and they can be filled in right there (no trip to Settings), then the draft can be sent', async () => {
+  if (!playwright) { ok(true, 'skipped: no browser here'); return; }
+  await C('/settings', { method: 'PUT', body: { providerName: 'Future Basics', providerAddress: '', signerName: '', signerTitle: '', governingLaw: '' } });
+  const made = await C('', { body: { content: body({ title: `Setup in place ${stamp}` }, buildPlan({ type: 'full', totalCents: 1200000, method: 'invoice' }).plan) } });
+  ok(made.status === 201 && made.json.problems.length === 3 && made.json.problems.every(p => /Contracts, Settings/.test(p)), 'a draft made before the settings exist lists the three things that are missing', made.json.problems);
+  ok((await C(`/${made.json.contract.id}/send`, { body: {} })).status === 422, 'and cannot be sent');
+  const b = await playwright.chromium.launch(); const errs = [];
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1100, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+    const page = await ctx.newPage(); page.on('pageerror', e => errs.push(String(e)));
+    await page.goto(`${BASE}/contracts?open=${made.json.contract.id}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#setupBox #uAddr', { timeout: 10000 });
+    const list = await page.locator('#probs li').allInnerTexts(); ok(list.length === 3 && list.every(t => !/Contracts, Settings/.test(t)), 'the editor lists them in plain words, with the form beside them', list);
+    await page.fill('#uAddr', '10 Studio Way, Norristown PA 19401'); await page.fill('#uSigner', 'Kyle Riggle'); await page.fill('#uTitle', 'Founder'); await page.fill('#uLaw', 'Pennsylvania'); await page.click('#uSave');
+    await page.waitForFunction(() => document.querySelector('#probs')?.classList.contains('hidden'), null, { timeout: 10000 }); ok(true, 'saving them clears the list');
+    const st = (await C('/settings')).json.settings; ok(st.providerAddress.startsWith('10 Studio Way') && st.signerName === 'Kyle Riggle' && st.governingLaw === 'Pennsylvania', 'they are kept for every contract');
+    const sent = await C(`/${made.json.contract.id}/send`, { body: {} }); ok(sent.status === 200 && sent.json.link, 'the same draft can now be sent', sent.json.error);
+    // the Settings tab opens, and says so if something goes wrong
+    const p2 = await ctx.newPage(); await p2.goto(`${BASE}/contracts`, { waitUntil: 'networkidle' }); await p2.click('.tab[data-t=settings]'); await p2.waitForSelector('#sAddr'); ok((await p2.inputValue('#sAddr')).startsWith('10 Studio Way'), 'the Settings tab shows what was saved');
+    ok(errs.length === 0, 'no page errors', errs);
+  } finally { await b.close(); }
+});
+
 const badCount = summary(); process.exit(badCount ? 1 : 0);
