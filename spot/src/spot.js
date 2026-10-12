@@ -34,7 +34,7 @@ function partialShipping(s) {
   return { ...full, line1: '' };
 }
 
-export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
+export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {}, capFor = () => null }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
   // Private links in notifications: an HMAC of the token stands in for the
   // manage key (which Spot only keeps hashed). The secret lives in the DB.
@@ -56,6 +56,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   // share still covers the card's percentage on its own amount.
   const previews = new Map(); // quote id → a wallet's price for a ZIP
   const feeCfg = (bundleIndex) => (bundleIndex ? { ...cfg, feeBps: 0, feeFixedCents: 0, cardFixedCents: 0 } : cfg);
+  // The per-ask cap for this account (higher for early-access testers).
+  const capOf = (userId) => Math.max(cfg.maxCartCents, (userId && capFor(userId)) || 0);
+  const capped = (c, userId) => ({ ...c, maxCartCents: capOf(userId) });
+  const overCap = (cap) => `Spot takes up to $${(cap / 100).toFixed(0)} per ask for now, across all its stores`;
 
   function load(token) {
     const cart = db.byToken(String(token || ''));
@@ -117,7 +121,8 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     provider,
 
     create(input, { ip, userId } = {}, limits = cfg, opts = {}) {
-      const v = validateCart(input, limits);
+      // Flights bring their own cap; goods get this account's.
+      const v = validateCart(input, limits.maxCartCents === cfg.maxCartCents ? capped(limits, userId) : limits);
       if (!opts.skipRisk) risk?.checkCreate(ip);
       const now = Date.now();
       const manageKey = opts.manageKey || randomBytes(24).toString('base64url');
@@ -301,7 +306,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       // How it's paid, and for whom, are set when the link is made: an edit
       // that changed them would price it one way and pay it another.
       if (input?.settle && input.settle !== cart.settle) throw new CartError('How it’s paid can’t change on an existing link. Make a new one instead.', 409);
-      const v = validateCart({ ...input, settle: cart.settle, for: cart.for, requester: { ...cart.requester, ...(input?.requester || {}) } }, feeCfg(cart.bundle_index || 0));
+      const v = validateCart({ ...input, settle: cart.settle, for: cart.for, requester: { ...cart.requester, ...(input?.requester || {}) } }, capped(feeCfg(cart.bundle_index || 0), cart.user_id));
       let next = { ...cart, ...v, rev: (cart.rev || 1) + 1 };
       // Paid at the store: the store's checkout has to take the new cart too,
       // and a checkout someone already opened was built from the old one.
@@ -320,7 +325,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (cart.source && JSON.stringify(v.items) !== JSON.stringify(cart.items)) next.source = { ...cart.source, verified: false, edited: true };
       if (cart.bundle_id) {
         const others = db.bundles.carts(cart.bundle_id).filter((c) => c.id !== cart.id).reduce((n, c) => n + c.cart_cents, 0);
-        if (others + next.cart_cents > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+        if (others + next.cart_cents > capOf(cart.user_id)) throw new CartError(overCap(capOf(cart.user_id)));
       }
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
       db.event(cart.id, 'edited');
@@ -449,14 +454,14 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // Shipping and tax for `ship` the way checkout prices them: the store's
     // own quote (in a few seconds at most), else the safe estimate for a
     // store that can price its checkout. Null when neither applies.
-    async _priceFor(draft, ship, buyerIp) {
+    async _priceFor(draft, ship, buyerIp, userId = draft.user_id) {
       if (!this.quoter) return null;
       let timer;
       const q = await Promise.race([this.quoter(draft, ship, { buyerIp }).catch(() => null), new Promise((r) => (timer = setTimeout(r, QUOTE_WAIT_MS, null)))]);
       clearTimeout(timer);
       if (q) return { kind: 'quote', extras_cents: Math.max(0, q.total_cents - draft.subtotal_cents) };
       if (this.quotable && (await this.quotable(draft).catch(() => false))) {
-        const room = Math.max(0, cfg.maxCartCents - draft.subtotal_cents);
+        const room = Math.max(0, capOf(userId) - draft.subtotal_cents);
         return { kind: 'estimate', extras_cents: Math.max(draft.extras_cents || 0, Math.min(safeExtrasCents(draft.subtotal_cents, ship.state), room)) };
       }
       return null;
@@ -472,23 +477,23 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // card). Several stores: the multi-store total (it isn't re-priced at
     // checkout). One store and a city/state/ZIP: priced like checkout, with a
     // quote id for prepare() so /pay charges exactly this.
-    async previewTotals({ stores, shipping = null, buyerIp = null } = {}) {
+    async previewTotals({ stores, shipping = null, buyerIp = null, userId = null } = {}) {
       const list = Array.isArray(stores) ? stores : [];
       if (!list.length) throw new CartError('Nothing to price', 400);
       if (list.length > MAX_BUNDLE_STORES) throw new CartError(`Up to ${MAX_BUNDLE_STORES} stores in one ask`);
-      const valid = list.map((st, i) => validateCart({ requester: { name: 'Spot' }, merchant: st?.merchant, items: st?.items, extras_cents: st?.extras_cents, settle: 'card', for: 'self' }, feeCfg(list.length > 1 ? i : 0)));
+      const valid = list.map((st, i) => validateCart({ requester: { name: 'Spot' }, merchant: st?.merchant, items: st?.items, extras_cents: st?.extras_cents, settle: 'card', for: 'self' }, capped(feeCfg(list.length > 1 ? i : 0), userId)));
       // Before an address: can Spot buy from every store here? (No wallet
       // button for a card that would only fail once paid.)
       const orderable = async () => (await Promise.all(valid.map((v) => Promise.resolve(this.canOrder(v)).catch(() => false)))).every(Boolean);
       if (valid.length > 1) {
-        if (valid.reduce((n, v) => n + v.cart_cents, 0) > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+        if (valid.reduce((n, v) => n + v.cart_cents, 0) > capOf(userId)) throw new CartError(overCap(capOf(userId)));
         const total_cents = valid.reduce((n, v) => n + v.total_cents, 0);
         return shipping ? { total_cents } : { total_cents, orderable: await orderable() };
       }
       const v = valid[0];
       if (!shipping) return { total_cents: v.total_cents, orderable: await orderable() };
       const ship = partialShipping(shipping);
-      const price = await this._priceFor(v, ship, buyerIp);
+      const price = await this._priceFor(v, ship, buyerIp, userId);
       if (!price) return { total_cents: v.total_cents };
       return { total_cents: computeTotals(v.items, price.extras_cents, 'card', cfg).total_cents, quote_id: this._remember(v, ship, price) };
     },
@@ -520,7 +525,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // than the estimate already on the cart). The payer is only ever
     // charged what the store takes; the rest of the hold is let go.
     safeEstimate(cart, key = quoteKey(cart)) {
-      const room = Math.max(0, cfg.maxCartCents - cart.subtotal_cents);
+      const room = Math.max(0, capOf(cart.user_id) - cart.subtotal_cents);
       const extras = Math.max(cart.extras_cents || 0, Math.min(safeExtrasCents(cart.subtotal_cents, cart.requester.shipping?.state), room));
       const next = { ...cart, ...computeTotals(cart.items, extras, 'card', cfg), estimate: { key, at: Date.now(), extras_cents: extras } };
       if (!db.save(next, 'open')) return db.byId(cart.id);
@@ -1231,9 +1236,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (b.settle && b.settle !== 'card') throw new CartError('Multi-store asks are paid on Spot, in one payment', 400);
       const forWhom = b.for === 'self' ? 'self' : 'other';
       const each = (st) => ({ requester: b.requester, merchant: st?.merchant, items: st?.items, extras_cents: st?.extras_cents, note: b.note, settle: 'card', for: forWhom, expires_minutes: b.expires_minutes });
-      const valid = stores.map((st) => validateCart(each(st), cfg));
+      const valid = stores.map((st) => validateCart(each(st), capped(cfg, userId)));
       const goods = valid.reduce((n, v) => n + v.cart_cents, 0);
-      if (goods > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+      if (goods > capOf(userId)) throw new CartError(overCap(capOf(userId)));
       risk?.checkCreate(ip);
       const manageKey = randomBytes(24).toString('base64url');
       const id = randomUUID();

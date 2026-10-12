@@ -58,7 +58,8 @@ import { standardsPage } from './standards.js';
 import { createSigning } from './signing.js';
 import { createApprovals } from './approvals.js';
 import { platformProfile } from './fulfill/ucp.js';
-import { registerGate } from './early.js';
+import { gateOn, registerGate } from './early.js';
+import { isStaff } from './staff.js';
 import { createInvites } from './invites.js';
 
 export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl } = {}) {
@@ -114,7 +115,11 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     }
   });
   const risk = createRisk({ db, env });
-  const spot = createSpot({ db, provider, flights: watched(flights, metrics, 'duffel'), risk, cfg, log: app.log });
+  // Early access is a controlled group: while the site is gated, invited and
+  // staff accounts get the tester cap (SPOT_TEST_MAX_CART_CENTS) instead of
+  // the per-ask cap. At launch (gate off) everyone is back on the cap.
+  const capFor = (userId) => (cfg.testMaxCartCents && gateOn(env, behindEdge) && (isStaff(db, env, userId) || invites.userOk(userId)) ? cfg.testMaxCartCents : null);
+  const spot = createSpot({ db, provider, flights: watched(flights, metrics, 'duffel'), risk, cfg, log: app.log, capFor });
   // Spot's UCP platform profile URL, named in every UCP request. Needs an
   // absolute URL, so it's PUBLIC_URL or the host of the latest request.
   // One public address: pages opened on www. or the Railway domain move to
@@ -449,7 +454,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     db.joinWaitlist(email, kind);
     return { ok: true };
   });
-  app.get('/new', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg })));
+  app.get('/new', async (req, reply) => html(reply, homePage({ origin: urlFor(req, ''), provider: provider.name, cfg: { ...cfg, maxCartCents: Math.max(cfg.maxCartCents, capFor(accounts.userIdOf(req)) || 0) } })));
 
   app.get('/c/:token', async (req, reply) => {
     let cart;
@@ -853,7 +858,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // and for a city/state/ZIP, priced the way checkout will price it.
   app.post('/v1/quote', async (req) => {
     limits.quote(req);
-    const r = await spot.previewTotals({ stores: req.body?.stores, shipping: req.body?.shipping || null, buyerIp: req.ip });
+    const r = await spot.previewTotals({ stores: req.body?.stores, shipping: req.body?.shipping || null, buyerIp: req.ip, userId: accounts.userIdOf(req) });
     return { ...r, publishable_key: provider.name === 'stripe' ? env.STRIPE_PUBLISHABLE_KEY || null : null };
   });
   app.post('/v1/bundles', async (req, reply) => {

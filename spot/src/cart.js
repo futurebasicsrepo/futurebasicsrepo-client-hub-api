@@ -67,6 +67,9 @@ export function config(env = process.env) {
     cardPctBps: int(env.SPOT_CARD_FEE_BPS, 290),
     cardFixedCents: int(env.SPOT_CARD_FEE_FIXED_CENTS, 30),
     maxCartCents: int(env.SPOT_MAX_CART_CENTS, 50000), // $500 cap per link while fraud controls are young
+    // Early access: invited and staff accounts get this cap instead while the
+    // site is gated (a controlled group). It goes back to the cap above at launch.
+    testMaxCartCents: int(env.SPOT_TEST_MAX_CART_CENTS, 2500000),
     maxFlightCents: int(env.SPOT_MAX_FLIGHT_CENTS, 200000), // flights are paid by the traveler themselves
     expiresHours: int(env.SPOT_EXPIRES_HOURS, 72),
   };
