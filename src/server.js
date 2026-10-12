@@ -48,6 +48,7 @@ import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
 import { PAYOUTS_QUERY } from './shopify-payouts.js';
+import { runSiteChecks, siteView } from './site-monitor.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -5708,6 +5709,23 @@ jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(poo
 // saved lead searches that are due (PROTOTYPE_SCHEDULE_TICK_MS is only shortened by the journeys)
 if(process.env.BRAVE_API_KEY)jobEvery('Lead search schedules', Number(process.env.PROTOTYPE_SCHEDULE_TICK_MS || 3 * 3600 * 1000), async()=>protos.runSchedules(), process.env.PROTOTYPE_SCHEDULE_TICK_MS?{}:{ delay: 2 * 60 * 1000 }); else declareJob('Lead search schedules', 3 * 3600 * 1000, 'switched off (no BRAVE_API_KEY)');
 jobEvery('Shopify payouts', 6 * 3600 * 1000, async()=>{const r=await money.syncPayouts();if(r.ok===false&&r.error)throw new Error(r.error);return r.added||0}, { delay: 100 * 1000 });
+// The sites we build: checked every 5 minutes. A change of state, or a certificate or domain running out, makes a console notice (and an email when it is urgent).
+const siteProbeOpts = process.env.PROTOTYPE_TEST_ORIGIN
+  ? { fetchOpts: { lookup: async () => [{ address: '93.184.216.34' }], fetchImpl: (u, o) => { const x = new URL(u); return fetch(process.env.PROTOTYPE_TEST_ORIGIN + x.pathname + x.search, { ...o, headers: { ...(o && o.headers), 'x-original-host': x.hostname } }); } },
+      tlsProbe: async h => new Date(Date.now() + (h === 'cert-soon.test' ? 5 : 90) * 86400000), rdap: async h => (h === 'domain-soon.test' ? new Date(Date.now() + 20 * 86400000) : null) }
+  : {};
+async function siteAlert(a){
+  const fb=(await pool.query(`select id from clients where slug='future-basics'`)).rows[0];
+  if(fb)await pool.query(`insert into notifications(client_id,type,title,entity_type,entity_id) values($1,'site',$2,'build',$3)`,[fb.id,a.title,a.buildId]).catch(()=>{});
+  if(a.severity==='critical'||a.key==='recovered')await notifyStaff(a.title,`<p>${emailEscape(a.body)}</p><p>${emailEscape(a.url)}</p><p>See <a href="${emailEscape(workHubUrl)}/platform">Platform health</a>.</p>`).catch(()=>{});
+}
+const runSites=()=>runSiteChecks(pool,{probeOpts:siteProbeOpts,alert:siteAlert});
+if(process.env.PROTOTYPE_TEST_ORIGIN)declareJob('Site checks', 5 * 60 * 1000, 'the test rig runs them on request'); else jobEvery('Site checks', 5 * 60 * 1000, async()=>{const r=await runSites();return r.checked}, { delay: 60 * 1000 });
+app.get('/v1/admin/sites',{preHandler:[authenticate,adminOnly]},async()=>{
+  const rows=(await pool.query(`select m.*, b.name, (select round(100.0*count(*) filter (where c.ok)/nullif(count(*),0),2)::float from site_checks c where c.build_id=m.build_id and c.at > now() - interval '30 days') up30 from site_monitors m join builds b on b.id=m.build_id order by case m.state when 'down' then 0 when 'slow' then 1 else 2 end, b.name`)).rows;
+  return {sites:rows.map(r=>siteView(r,r.up30))};
+});
+app.post('/v1/admin/sites/check',{preHandler:[authenticate,adminOnly]},async()=>({ok:true,...(await runSites())}));
 jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');

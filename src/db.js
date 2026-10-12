@@ -1547,6 +1547,25 @@ export async function migrate() {
       on conflict(tech_pack_id,version) do nothing;
     alter table quotes add column if not exists tech_pack_version integer;
     alter table production_runs add column if not exists tech_pack_version integer;
+    -- The sites we build, watched: one row of current state per build with a live address, and a short history for uptime.
+    create table if not exists site_monitors (
+      build_id uuid primary key references builds(id) on delete cascade,
+      url text not null,
+      state text not null default 'unknown' check (state in ('unknown','up','slow','down')),
+      http_status int, response_ms int,
+      last_error text not null default '',
+      checked_at timestamptz, last_up_at timestamptz, down_since timestamptz,
+      fails int not null default 0, slows int not null default 0,
+      cert_expires_at timestamptz, domain_expires_at timestamptz, domain_checked_at timestamptz,
+      alerts jsonb not null default '{}'::jsonb
+    );
+    create table if not exists site_checks (
+      id bigserial primary key,
+      build_id uuid not null references builds(id) on delete cascade,
+      at timestamptz not null default now(),
+      ok boolean not null, ms int, status int
+    );
+    create index if not exists site_checks_build_idx on site_checks (build_id, at desc);
     create table if not exists notifications (
       id bigserial primary key,
       client_id uuid not null references clients(id) on delete cascade,

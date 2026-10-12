@@ -10,7 +10,7 @@ export function projectRow(r, now = Date.now()) {
   const owner = waitingOnUs ? 'us' : sw ? stageOwner(r.stage) : 'us';
   const quietDays = Math.floor((now - new Date(r.last_message_at || r.updated_at).getTime()) / 86400_000);
   return {
-    id: r.id, clientId: r.client_id, clientName: r.client_name, name: r.name, kind: sw ? 'software' : 'product', status: r.status,
+    id: r.id, clientId: r.client_id, clientName: r.client_name, siteState: r.site_state || '', name: r.name, kind: sw ? 'software' : 'product', status: r.status,
     stage: sw ? r.stage || 'discovery' : null, stageLabel: sw ? stageLabel(r.stage || 'discovery') : String(r.milestone || ''),
     buildId: r.build_id || null, buildName: r.build_name || '', liveUrl: r.live_url || '', productCount: Number(r.product_count) || 0, targetDate: r.target_date || null,
     owner, waitingOnUs, quietDays: Number.isFinite(quietDays) ? Math.max(0, quietDays) : 0, updatedAt: r.updated_at
