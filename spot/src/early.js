@@ -74,8 +74,8 @@ export function registerGate(app, { db, env, behindEdge, origin, invites }) {
         return reply.redirect(url.pathname + (url.search || ''), 302);
       }
     }
-    if (previewing(req)) return;
     const userId = sessionUserId(db, req);
+    if (previewing(req)) return void invites.admitPreview(userId);
     // An invited browser that's signed in lets the account in everywhere.
     const invited = invites.cookieEmail(inviteCookieOf(req));
     if (invited) return void invites.admit(userId, invited);

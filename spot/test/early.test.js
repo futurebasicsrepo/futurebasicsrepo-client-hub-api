@@ -237,3 +237,31 @@ test('invites: joining two accounts keeps the confirmed email, so the gate still
   assert.equal(joined.body.user.email, 'pal@example.com');
   assert.ok(!gated(await call('GET', '/new', undefined, other)), 'still in after the accounts joined');
 });
+
+test('invites: an invited account whose email lost its confirmed mark is still in; a Facebook sign-up’s email isn’t', async (t) => {
+  const { db, call, signIn } = inviteApp(t);
+  const staff = await signIn('kyle@thefuturebasics.com');
+  await call('POST', '/v1/admin/invites', { emails: ['pal@example.com', 'fb@example.com'] }, staff);
+  const pal = await signIn('pal@example.com');
+  const id = db.users.byEmail('pal@example.com').id;
+  // What an older account merge left behind: the email, without Spot's confirmed mark.
+  db.raw.prepare('DELETE FROM settings WHERE key = ?').run(`state:email_proven:${id}`);
+  db.raw.prepare('DELETE FROM settings WHERE key = ?').run(`state:invited:${id}`);
+  assert.ok(!gated(await call('GET', '/new', undefined, pal)), 'its email still lets it in');
+  // An account made by Facebook carries an email nobody checked.
+  const fb = await signIn('fb@example.com');
+  const fid = db.users.byEmail('fb@example.com').id;
+  db.raw.prepare('DELETE FROM settings WHERE key IN (?, ?)').run(`state:email_proven:${fid}`, `state:invited:${fid}`);
+  db.identities.add('facebook', 'fb-123', fid);
+  assert.ok(gated(await call('GET', '/new', undefined, fb)));
+});
+
+test('gate on: a signed-in browser with the preview link lets that account in everywhere', async (t) => {
+  const { call, signIn } = app(t, { SITE_GATE: 'on', SITE_PREVIEW_KEY: 'k'.repeat(24) });
+  const me = await signIn('someone@example.com');
+  assert.ok(gated(await call('GET', '/new', undefined, me)));
+  const open = await call('GET', `/?preview=${'k'.repeat(24)}`, undefined, me);
+  const preview = open.headers['set-cookie'].split(';')[0];
+  assert.ok(!gated(await call('GET', '/new', undefined, { cookie: `${preview}; ${me.cookie}` })));
+  assert.ok(!gated(await call('GET', '/', undefined, me)), 'the same account on a fresh browser');
+});
