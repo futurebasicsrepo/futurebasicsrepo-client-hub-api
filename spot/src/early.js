@@ -139,16 +139,17 @@ body.joined .ea-form{display:none}body.joined .ea-done{display:block;animation:p
 // One plain example, start to finish: what Spot is, without having to work it out.
 function example() {
   return `<ol class="ea-ex" aria-label="An example, start to finish">
-    <li><span class="n">1</span><div><b>You ask your AI</b><span class="bub">“white sneakers, size 10, under $150”</span></div></li>
-    <li><span class="n">2</span><div><b>It finds a pair</b><span class="it"><i aria-hidden="true">👟</i><span>Court Sneaker, White, 10<small>Trailhead Supply · $129</small></span></span></div></li>
+    <li><span class="n">1</span><div><b>You ask Spot or your AI</b><span class="bub">“white sneakers, size 10, under $150”</span></div></li>
+    <li><span class="n">2</span><div><b>It finds a pair, already checked</b><span class="it"><i aria-hidden="true">👟</i><span>Court Sneaker, White, 10<small>Trailhead Supply · $129 · free returns · arrives Thursday</small></span></span></div></li>
     <li><span class="n">3</span><div><b>You tap yes</b><span class="yes" aria-hidden="true">Yes, buy it · $129</span></div></li>
     <li><span class="n">4</span><div><b>Spot buys it. It ships to you.</b><small>Or send the yes to someone else, like your mom or your boss, and they pay.</small></div></li>
+    <li><span class="n">5</span><div><b>The price drops? You get the difference.</b><small>Spot keeps watching after you buy, and tracks it to your door.</small></div></li>
   </ol>`;
 }
 
 export function earlyAccessPage({ origin, notice = '' }) {
   const title = 'Spot: early access';
-  const desc = 'Ask your AI for something. Tap yes, and Spot buys it for you, or sends the yes to whoever’s paying. Get early access.';
+  const desc = 'Ask Spot or your AI for something. See the store’s own policy, delivery date and best price, tap yes, and Spot buys it for you, or sends the yes to whoever’s paying. Get early access.';
   return `${siteHead({ title, desc, origin, path: '/', extraCss: EA_CSS, image: 'og-early.jpg' })}
 <div class="ea-wrapbody">
 <header class="ea-top wrap"><a class="logo" href="/"><span></span>Spot</a><a class="ea-in" href="/signin">Sign in</a></header>
@@ -156,7 +157,7 @@ export function earlyAccessPage({ origin, notice = '' }) {
   <div class="ea-spot" id="eaSpot" aria-hidden="true">${spotBuddy('ea')}<div class="ea-say" id="eaSay"></div></div>
   <span class="pill"><i></i>Early access</span>
   <h1>The yes button<br>for AI shopping.</h1>
-  <p class="lead">Ask Claude or ChatGPT for something. When it finds it, you tap yes, and Spot buys it for you. We’re letting people in a few at a time.</p>
+  <p class="lead">Ask Spot, Claude or ChatGPT for something. You see the store’s own return policy, when it arrives and the best price, you tap yes, and Spot buys it for you. We’re letting people in a few at a time.</p>
   ${example()}
   ${notice ? `<p class="ea-notice" role="status">${esc(notice)} <a href="/signin?next=/">Sign in</a></p>` : ''}
   <form class="ea-form" id="eaForm" novalidate>
@@ -170,7 +171,7 @@ export function earlyAccessPage({ origin, notice = '' }) {
     <p class="ea-msg" id="eaMsg" role="status" aria-live="polite"></p>
   </form>
   <div class="ea-done" id="eaDone" role="status"><b>You’re on the list 🧡</b><p>We’ll email you when your spot opens. Tell a friend who’s always asking “can you get me this?”</p></div>
-  <ul class="ea-proof"><li>Works in Claude and ChatGPT</li><li>A one-time card for every order</li><li>No new app</li></ul>
+  <ul class="ea-proof"><li>Works in Claude and ChatGPT</li><li>A one-time card for every order</li><li>Watches the price after you buy</li></ul>
 </main>
 <footer class="ea-foot wrap"><span>© Spot</span><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/texts">Texts</a><a href="/signin">Sign in</a></footer>
 </div>
