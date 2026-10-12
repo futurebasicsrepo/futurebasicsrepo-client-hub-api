@@ -569,11 +569,10 @@
   }
   // Spot's reply, once there's something on the shelf.
   function headline(T) {
-    const first = turns.indexOf(T) === 0;
     const stores = new Set(T.list.flatMap((e) => (e.items || [e]).map((o) => o.merchant.name))).size;
     const n = T.list.length;
     const line = T.kind === 'outfits' ? (n === 1 ? 'here’s a look I put together' : n + ' looks, from ' + stores + ' stores. my favorite’s first →') :
-      n === 1 ? 'here’s my first pick. more coming →' : (first ? 'found ' + n + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) : 'ok, ' + n + ' more') + '. my pick’s first, swipe for more →';
+      n === 1 ? 'here’s my first pick. more coming →' : 'found ' + n + ' at ' + (stores > 1 ? stores + ' stores' : T.list[0].merchant.name) + '. my pick’s first, swipe for more →';
     T.el.querySelector('.spotsay span').textContent = line;
   }
   function showUsed(T) {
@@ -1988,9 +1987,12 @@
     btn.disabled = true;
     $('#more2').value = '';
     say('on it, looking around…');
-    const T = openTurn(more, more);
+    // Everything said since the first ask, newest last: a new ask ("show me
+    // streetwear from…") replaces the first one; a tweak ("cheaper") adjusts it.
+    const thread = turns.slice(1).map((t) => t?.said).filter(Boolean).concat(more).slice(-4).map((l) => l.replace(/\s+/g, ' ').slice(0, 220)).join('\n');
+    const T = openTurn(more, thread);
     try {
-      const { done } = await fill(T, { text: ask.text, more, avoid: ask.avoid.slice(-60) });
+      const { done } = await fill(T, { text: ask.text, more: thread, avoid: ask.avoid.slice(-60) });
       if (!T.list.length) {
         T.el.innerHTML = '<div class="me">' + esc(more) + '</div>' + spotSays(done?.warning || 'I couldn’t find anything new for that. Try saying it another way.');
         spot.oops(), say('hmm, nothing new for that one');
