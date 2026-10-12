@@ -10,40 +10,42 @@
     users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 5.2a3.2 3.2 0 010 6M18 14.2c1.7.7 3 2.4 3 5.8"/>',
     box: '<path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',
     grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+    target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+    coin: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v10M14.6 9.6c-.4-1-1.4-1.6-2.6-1.6-1.5 0-2.6.8-2.6 2s1 1.7 2.6 2 2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.6-1.6"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'
   };
-  // Grouped by what the work is for, not by which page it lives on. Nothing is merged that does different jobs.
+  // Grouped by the stage of the work (my day, inbox, people, win, deliver, money, health), not by tool or by which page it lives on. Every place the old menu led to is still one click away.
   const NAV = [
-    { id: 'home', label: 'Home', href: '/home', icon: 'home' },
-    { id: 'inbox', label: 'Inbox', href: '/admin#inbox', icon: 'chat', badge: '#mcCount' },
-    { id: 'customers', label: 'Customers', icon: 'users', items: [
-      { label: 'Clients', href: '/admin#clientsHead' },
-      { label: 'Sales today', href: '/sales#today' },
+    { id: 'home', label: 'My day', href: '/home', icon: 'home' },
+    { id: 'inbox', label: 'Inbox', icon: 'chat', items: [
+      { label: 'Messages', href: '/admin#inbox', badge: '#mcCount' },
+      { label: 'Chats', href: '/sales#chats', badge: '#chatCount' }] },
+    { id: 'people', label: 'People', icon: 'users', items: [
       { label: 'Contacts', href: '/sales#contacts' },
-      { label: 'Pipeline', href: '/sales#pipeline' },
+      { label: 'Clients', href: '/admin#clientsHead' },
       { label: 'Tasks', href: '/sales#tasks', badge: '#taskCount' },
+      { label: 'Fair contacts', href: '/admin#partnersSection' }] },
+    { id: 'win', label: 'Win', icon: 'target', items: [
+      { label: 'Sales today', href: '/sales#today' },
+      { label: 'Pipeline', href: '/sales#pipeline' },
       { label: 'Opportunities', href: '/sales#opportunities', badge: '#oppCount' },
       { label: 'Intelligence', href: '/intel' },
       { label: 'Site prototypes', href: '/prototypes' },
-      { label: 'Chats', href: '/sales#chats', badge: '#chatCount' },
-      { label: 'Press', href: '/sales#press' },
-      { label: 'Automations', href: '/sales#automations' }] },
-    { id: 'production', label: 'Production', icon: 'box', items: [
-      { label: 'Factories', href: '/factories', key: 'factories' },
-      { label: 'Fair contacts', href: '/admin#partnersSection' },
+      { label: 'Builds showcase', href: '/builds/admin#builds', badge: '#newCount' },
+      { label: 'Automations', href: '/sales#automations' },
+      { label: 'Press', href: '/sales#press' }] },
+    { id: 'deliver', label: 'Deliver', icon: 'box', items: [
+      { label: 'Projects', href: '/home#projPanel' },
       { label: 'Waiting on approval', href: '/admin#approvals' },
       { label: 'Production attention', href: '/admin#production' },
+      { label: 'Factories', href: '/factories', key: 'factories' },
       { label: 'Assistant learning', href: '/admin#assistantLearning' }] },
-    { id: 'showcase', label: 'Builds showcase', icon: 'grid', items: [
-      { label: 'Builds', href: '/builds/admin#builds' },
-      { label: 'What’s new', href: '/builds/admin#updates', badge: '#newCount' },
-      { label: 'Invites', href: '/builds/admin#invites' },
-      { label: 'Who looked', href: '/builds/admin#activity' }] },
-    { id: 'settings', label: 'Settings', icon: 'gear', items: [
-      { label: 'Platform health', href: '/platform', key: 'platform' },
-      { label: 'Connections', href: '/admin#connections' },
+    { id: 'money', label: 'Money', icon: 'coin', items: [
       { label: 'Money', href: '/money', gated: 'money' },
-      { label: 'Payment gate', href: '/admin#accessPanel' }] }
+      { label: 'Payment gate', href: '/admin#accessPanel' }] },
+    { id: 'health', label: 'Sites and health', icon: 'gear', items: [
+      { label: 'Platform health', href: '/platform', key: 'platform' },
+      { label: 'Connections', href: '/admin#connections' }] }
   ];
   const DEFAULT_HASH = { '/sales': 'today', '/builds/admin': 'builds' };
   const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -101,7 +103,7 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
     const links = [];
     const item = (it, cls = '') => { links.push(it); return `<a href="${esc(it.href)}" data-nav="${esc(it.key || it.id || it.label)}" data-href="${esc(it.href)}" ${cls ? `class="${cls}"` : ''} title="${esc(it.label)}"${it.gated ? ` data-gated="${esc(it.gated)}" hidden` : ''}>${it.icon ? svg(it.icon) : ''}<span class="lbl">${esc(it.label)}</span>${it.badge ? `<span class="bdg" data-badge="${esc(it.badge)}" hidden></span>` : ''}</a>`; };
     return `<nav aria-label="Work console">${NAV.map(n => n.items
-      ? `<div class="grp"><span>${esc(n.label)}</span><a class="gicon" href="${esc(n.items[0].href)}" data-href="${esc(n.items[0].href)}" data-group="${n.id}" title="${esc(n.label)}">${svg(n.icon)}</a>${n.items.map(it => item(it)).join('')}</div>`
+      ? `<div class="grp"><span>${esc(n.label)}</span><a class="gicon" href="${esc((n.items.find(i => !i.gated) || n.items[0]).href)}" data-href="${esc((n.items.find(i => !i.gated) || n.items[0]).href)}" data-group="${n.id}" title="${esc(n.label)}">${svg(n.icon)}</a>${n.items.map(it => item(it)).join('')}</div>`
       : item(n)).join('')}</nav>
     <div class="foot"><button type="button" id="fbCollapse" aria-label="Collapse the menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg><b style="font-weight:400">Collapse</b></button></div>`;
   }
