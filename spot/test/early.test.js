@@ -193,3 +193,47 @@ test('invites: without email set up, the link comes back to share by hand', asyn
   assert.equal(r.status, 'not_configured');
   assert.match(r.link, /\/invite\/[A-Za-z0-9_-]{43}$/);
 });
+
+test('invites: once in, the account stays in on every device, however they sign in', async (t) => {
+  const { call, signIn } = inviteApp(t);
+  const staff = await signIn('kyle@thefuturebasics.com');
+  const { link } = (await call('POST', '/v1/admin/invites', { emails: ['pal@example.com'] }, staff)).body.results[0];
+  const invited = cookieOf(await call('GET', new URL(link).pathname));
+  const byPhone = async (phone) => {
+    const start = await call('POST', '/v1/auth/start', { phone, sms_consent: true });
+    const v = await call('POST', '/v1/auth/verify', { phone, code: start.body.code });
+    assert.equal(v.status, 200, JSON.stringify(v.body));
+    return { cookie: v.headers['set-cookie'].split(';')[0] };
+  };
+  // Signed in by text (no email on the account) on the invited phone…
+  const me = await byPhone('5125550101');
+  assert.ok(gated(await call('GET', '/new', undefined, me)), 'not in yet on a fresh browser');
+  assert.ok(!gated(await call('GET', '/new', undefined, { cookie: `${invited}; ${me.cookie}` })));
+  // …and now on another device with no invite link (a passkey, a new browser).
+  assert.ok(!gated(await call('GET', '/new', undefined, me)), 'the account is in now');
+  assert.equal((await call('POST', '/v1/admin/invites/revoke', { email: 'pal@example.com' }, staff)).status, 200);
+  assert.ok(gated(await call('GET', '/new', undefined, me)), 'withdrawn: the account is out too');
+});
+
+test('invites: joining two accounts keeps the confirmed email, so the gate still knows them', async (t) => {
+  const { call, signIn } = inviteApp(t);
+  const staff = await signIn('kyle@thefuturebasics.com');
+  await call('POST', '/v1/admin/invites', { emails: ['pal@example.com'] }, staff);
+  const link = async (cookie, to) => {
+    const start = await call('POST', '/v1/me/link/start', { ...to, sms_consent: true }, cookie);
+    assert.equal(start.status, 200, JSON.stringify(start.body));
+    return call('POST', '/v1/me/link/verify', { ...to, code: start.body.code }, cookie);
+  };
+  // The email account adds a phone; a text-only account then adds that same
+  // phone, so the email account is folded into the text-only one.
+  const email = await signIn('pal@example.com');
+  assert.equal((await link(email, { phone: '5125550102' })).status, 200);
+  const start = await call('POST', '/v1/auth/start', { phone: '5125550103', sms_consent: true });
+  const v = await call('POST', '/v1/auth/verify', { phone: '5125550103', code: start.body.code });
+  const other = { cookie: v.headers['set-cookie'].split(';')[0] };
+  const joined = await link(other, { phone: '5125550102' });
+  assert.equal(joined.status, 200);
+  assert.equal(joined.body.merged, true);
+  assert.equal(joined.body.user.email, 'pal@example.com');
+  assert.ok(!gated(await call('GET', '/new', undefined, other)), 'still in after the accounts joined');
+});
