@@ -30,7 +30,7 @@ The fee is fixed. A plan splits it into payments that must add up to the fee to 
 
 How the client pays is part of the plan: **invoice** for each payment (pay online), **ACH on file**, **card on file**, or **either** (the client chooses when signing). With **automatic payments** switched on, the contract carries an authorization the client agrees to separately when signing: Future Basics may charge the ACH account or card on file for each payment on its due date and for no other amount, with a receipt each time, cancellation on three business days' notice, and one retry after a failure.
 
-**What this does not do yet:** it records the choice and the authorization, but it does not collect or charge anything. Payment details are meant to be gathered through a secure payment page (the contract says so and that Future Basics does not keep card or bank numbers), and the charges need a payments processor connected to the platform. Until then each scheduled payment is a draft invoice that is paid the usual way. See "Not built yet".
+**Taking the payments:** with QuickBooks Payments switched on, the client adds the card or bank account on their signing page and each payment is taken on its due date: see [autopay.md](autopay.md). Until QuickBooks Payments is switched on, the choice and the authorization are recorded, and each scheduled payment is a draft invoice that is paid the usual way.
 
 ## Trust and the audit trail
 
@@ -56,10 +56,10 @@ Any signed-in teammate can draft, send, remind, revise, void and read contracts.
 | The client's page | `src/sign.html` at `/sign/<link>` |
 | Tables | `contracts`, `contract_events`, and `money_invoices.contract_id` |
 | Tests | `test/contracts.test.js`, journey J164 (API), J165 (browser) |
+| Automatic payments | `src/autopay.js`, `src/qb-payments.js`, see `docs/autopay.md` |
 
 ## Not built yet
 
-- **Collecting and charging ACH or card on file.** This needs a payments processor: QuickBooks Payments (the books are already in QuickBooks) or Stripe. Either way the client enters bank or card details on the processor's page, never ours, and a daily job charges the installments that fall due and records the payments against the invoices.
 - Reminders on a schedule (today staff press **Send a reminder**, once a day at most).
 - A contract template per kind of work (the one standard set is used for websites, apps and other digital work).
 - Change requests that attach to a signed contract.

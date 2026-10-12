@@ -99,6 +99,7 @@ async function openContract(id){
    <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
    ${r.link?`<div class="copy"><input class="t" readonly id="lnk" value="${esc(r.link)}"><button class="btn sm" id="cp">Copy link</button></div>`:''}
    <div class="acts" id="acts"></div><p class="msg" id="dMsg" role="status"></p>
+   ${r.autopay?autopayBox(r.autopay,c):''}
    <fieldset><legend>Trail</legend><ul class="timeline">${r.events.map(v=>`<li><time>${esc(when(v.at))}</time><span><b>${esc(v.kind.replace(/_/g,' '))}</b>${v.detail?' · '+esc(v.detail):''}${v.actor?` <span class="sub">${esc(v.actor)}</span>`:''}</span></li>`).join('')}</ul></fieldset>
    ${r.invoices.length?`<fieldset><legend>Invoices from the schedule</legend>${r.invoices.map(i=>`<div><a href="/money?invoice=${i.id}">${esc(i.number)}</a> · ${usd(i.totalCents)} · due ${esc(i.dueOn)} · ${esc(i.status)}</div>`).join('')}</fieldset>`:''}`;
   const acts=[];const mk=(label,cls,fn,dis=false)=>acts.push({label,cls,fn,dis});
@@ -111,10 +112,30 @@ async function openContract(id){
   if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
   $('#acts').innerHTML=acts.map((a,i)=>a.href?`<a class="btn sm" href="${a.href}">${esc(a.label)}</a>`:`<button class="btn sm ${a.cls||''}" data-a="${i}" ${a.dis?'disabled title="Only the people who sign for Future Basics can do this"':''}>${esc(a.label)}</button>`).join('');
   $('#acts').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b)return;try{await acts[+b.dataset.a].fn()}catch(x){msg(x.message,'bad')}};
+  const apBox=$('#apBox');if(apBox)apBox.onclick=async e=>{const b=e.target.closest('[data-ap]');if(!b)return;const act=b.dataset.ap;b.disabled=true;try{
+    if(act==='request'){const x=await api(`/v1/contracts/${id}/autopay/request-details`,{body:{}});msg(x.sent?'Asked the client to add their payment details.':'Saved, but the email could not be sent.')}
+    else if(act==='pause'){const why=prompt('Why are you pausing automatic payments? (optional)','');if(why===null){b.disabled=false;return}await api(`/v1/contracts/${id}/autopay/pause`,{body:{reason:why}});return done('Paused.',id)}
+    else if(act==='resume'){await api(`/v1/contracts/${id}/autopay/resume`,{body:{}});return done('Resumed.',id)}
+    else if(act==='charge'){const i=r.autopay.installments[+b.dataset.seq-1];if(!confirm(`Take ${usd(i.amountCents)} now from ${r.autopay.method.label}? The agreement lets us take it on its due date.`)){b.disabled=false;return}const x=await api(`/v1/contracts/${id}/autopay/charge`,{body:{seq:i.seq}});return done(x.result==='succeeded'?'Payment taken.':x.result==='pending'?'Sent to the bank: it settles in a few days.':'The payment did not go through. See the status.',id)}
+    else if(act==='delivered'){const on=prompt('Date the work was delivered (YYYY-MM-DD)',new Date().toISOString().slice(0,10));if(!on){b.disabled=false;return}await api(`/v1/contracts/${id}/delivered`,{body:{on}});return done('Delivery recorded: payments due on delivery fall due now.',id)}
+  }catch(x){msg(x.message,'bad')}b.disabled=false};
   const cp=$('#cp');if(cp)cp.onclick=async()=>{msg((await copyText($('#lnk').value))?'Link copied.':'Select the link and copy it.')};
   $('#dX').onclick=()=>dlg.close();
   function msg(t,k='ok'){const m=$('#dMsg');m.className='msg '+k;m.textContent=t}
   if(!dlg.open)dlg.showModal();
+}
+const AP_STATE={paid:['Paid','ok'],pending:['With the bank','warn'],failed:['Failed','bad'],retry:['Retrying','warn'],scheduled:['Scheduled','dim'],due:['Due','warn'],waiting:['On delivery','dim']};
+function autopayBox(a,c){
+  const stateChip=s=>{const [t,k]=AP_STATE[s]||[s,'dim'];return `<span class="chip ${k}">${esc(t)}</span>`};
+  const can=ME.signer&&!a.paused&&c.status==='executed'&&a.method;
+  const rows=a.installments.map(i=>`<tr><td>${i.seq}. ${esc(i.label)}</td><td>${i.falls?esc(day(i.falls+'T12:00:00')):'on delivery'}</td><td class="n">${usd(i.amountCents)}</td><td>${stateChip(i.state)}${i.attempts.filter(x=>x.error||x.notBooked).map(x=>`<div class="sub">${x.notBooked?'Taken, not yet in QuickBooks'+(x.bookError?': '+esc(x.bookError):''):'Try '+x.attempt+': '+esc(x.error)}</div>`).join('')}</td><td>${can&&['due','retry','failed'].includes(i.state)?`<button class="btn sm" data-ap="charge" data-seq="${i.seq}">Charge now</button>`:''}</td></tr>`).join('');
+  const waiting=a.installments.some(i=>i.state==='waiting');
+  return `<fieldset id="apBox"><legend>Automatic payments</legend>
+   ${a.ready?'':`<p class="msg bad">Payments cannot be taken yet: ${esc(a.notReadyWhy)}</p>`}
+   <div>${a.method?`On file: <b>${esc(a.method.label)}</b> <span class="sub">since ${esc(day(a.method.since))}</span>`:`<span class="sub">No payment details yet. The client adds them on their signing page once they have signed.</span> ${c.clientSignature&&c.clientSignature.autopay?'<button class="btn sm" data-ap="request">Ask for payment details</button>':''}`} ${a.paused?'<span class="chip bad">Paused</span>':''}</div>
+   <table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+   <div class="acts">${ME.signer&&c.status==='executed'?(a.paused?'<button class="btn sm go" data-ap="resume">Resume automatic payments</button>':'<button class="btn sm" data-ap="pause">Pause automatic payments</button>'):''}${ME.signer&&c.status==='executed'&&waiting?'<button class="btn sm go" data-ap="delivered">Record delivery</button>':''}</div>
+   <p class="sub">Each payment is taken on its due date, once, then once more three days later if it fails. The client gets a notice a few days before and a receipt after each one. Taken payments are recorded in QuickBooks against the invoice.</p></fieldset>`;
 }
 function mkActs(){}
 async function done(m,id){say(m);await loadList();await openContract(id)}

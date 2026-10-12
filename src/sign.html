@@ -37,6 +37,7 @@
     .opt{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}.opt label{flex:1;min-width:130px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;display:flex;gap:10px;align-items:center;background:var(--fog)}.opt input{accent-color:var(--ink)}
     .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 24px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:600;cursor:pointer;text-decoration:none;width:100%;font-size:16px}
     .btn:disabled{opacity:.4;cursor:not-allowed}.btn.light{background:#fff;color:var(--ink);width:auto;padding:11px 18px;font-size:14px}.btn.go{background:var(--cue);border-color:var(--ink);color:var(--ink)}
+    .payform .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.payform .opt{margin:6px 0 12px}.payform small.hint{display:block;color:var(--dim);font-size:13px;margin:-4px 0 12px}.onfile{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}.onfile b{font-weight:500}
     .msg{min-height:22px;margin:10px 0 0;font-size:14px;color:var(--bad)}
     .linkbtn{background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;padding:6px 0;font-size:14px}
     .bar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(20,20,22,.97);color:#fff;padding:12px clamp(14px,4vw,28px) calc(12px + env(safe-area-inset-bottom));display:flex;gap:14px;align-items:center;justify-content:space-between}
@@ -81,7 +82,7 @@
     else if(c.status==='declined')top=`<div class="banner bad"><b>This agreement was declined</b>If that was a mistake, ask ${esc(P.provider.name)} to send it again.</div>`;
     else if(c.status==='expired')top=`<div class="banner warn"><b>This link has expired</b>Ask ${esc(P.provider.name)} to send a fresh copy of the agreement.</div>`;
     else if(c.expiresAt)top=`<div class="banner"><b>Please review and sign by ${esc(day(c.expiresAt))}</b>Read the agreement below, then sign at the bottom. It takes a couple of minutes.</div>`;
-    $('#app').innerHTML=`<p class="meta">Agreement · ${esc(c.number)}</p><h1>${esc(c.title)}</h1><p class="sub">Prepared for ${esc(P.client.company)} by ${esc(P.provider.name)}</p>${top}
+    $('#app').innerHTML=`<p class="meta">Agreement · ${esc(c.number)}</p><h1>${esc(c.title)}</h1><p class="sub">Prepared for ${esc(P.client.company)} by ${esc(P.provider.name)}</p>${top}<div id="payBox"></div>
       <div class="parties"><div><span class="meta">From</span><b>${esc(P.provider.name)}</b><small>${esc(P.provider.address)}</small></div><div><span class="meta">For</span><b>${esc(P.client.company)}</b><small>${esc(P.client.address)}</small></div></div>
       <div class="fee"><span class="meta">Fixed fee</span><b>${esc(fee.totalText)}</b><span>${esc(sch.summary)}</span></div>
       <div class="pay"><h2>What you pay, and when</h2><p>${esc(sch.method==='invoice'?'You receive an invoice for each payment.':sch.autopay?'Paid automatically by '+(sch.method==='ach'?'ACH bank debit':sch.method==='card'?'card':'ACH or card, your choice')+' on file.':'Paid by '+(sch.method==='ach'?'ACH bank debit':sch.method==='card'?'card':'ACH or card')+', requested on each due date.')}</p>
@@ -89,9 +90,53 @@
       <div class="doc" id="doc">${r.sections.map(section).join('')}</div><div id="signBox"></div>`;
     $('#state').classList.add('hidden');$('#app').classList.remove('hidden');
     const pdf=$('#pdfTop');pdf.href=`/v1/public/contracts/${encodeURIComponent(TOKEN)}/pdf`;pdf.classList.remove('hidden');
+    if(c.pay)payForm(c);
     if(c.canSign){signForm(c);$('#barFee').textContent=fee.totalText;$('#bar').classList.remove('hidden')}
     else{$('#bar').classList.add('hidden');if(c.status==='executed'||c.status==='signed_by_client')$('#signBox').innerHTML=`<div class="sign done"><div class="tick">✓</div><h2>${c.status==='executed'?'Fully signed':'Waiting for '+esc(P.provider.name)}</h2><p>${c.status==='executed'?'Both parties have signed this agreement.':'You will get an email when it is final.'}</p><a class="btn light" href="${pdf.href}" target="_blank" rel="noopener">Download the PDF</a></div>`}
   }
+  // Payment details for automatic payments. The number goes from this page straight to the payment provider, which sends back a one-time token: only the token reaches us.
+  const luhn=n=>{const d=String(n).replace(/\D/g,'');if(d.length<12||d.length>19)return false;let t=0;for(let i=0;i<d.length;i++){let x=+d[d.length-1-i];if(i%2){x*=2;if(x>9)x-=9}t+=x}return t%10===0};
+  const aba=n=>{const d=String(n).replace(/\D/g,'');if(d.length!==9)return false;const a=[...d].map(Number);return(3*(a[0]+a[3]+a[6])+7*(a[1]+a[4]+a[7])+(a[2]+a[5]+a[8]))%10===0};
+  function payForm(c){
+    const p=c.pay,box=$('#payBox'),card=p.kind==='card',what=card?'card':'bank account';
+    const sched=`<table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${(p.upcoming||[]).map(x=>`<tr><td>${esc(x.label)}</td><td>${esc(x.state==='paid'?'Paid':x.falls?day(x.falls+'T12:00:00'):'On delivery')}</td><td class="n">${esc(new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(x.amountCents/100))}</td></tr>`).join('')}</tbody></table>`;
+    if(p.method){
+      box.innerHTML=`<div class="sign payform"><h2>Automatic payments are set up</h2><div class="onfile"><p style="margin:0">Each payment is taken from your <b>${esc(p.method.label)}</b> on its due date. We email a receipt each time${p.paused?'. <b>Automatic payments are paused right now.</b>':'.'}</p><button type="button" class="btn light" id="pChange" style="width:auto">Change ${what}</button></div><div id="pForm" class="hidden"></div></div>`;
+      $('#pChange').onclick=()=>{$('#pForm').classList.toggle('hidden');if(!$('#pForm').innerHTML)form($('#pForm'),p,c)};return}
+    if(!p.ready){box.innerHTML=`<div class="banner warn"><b>One more step: your ${what}</b>Payment details cannot be taken just yet. We have been told, and will email you the moment you can add them.</div>`;return}
+    box.innerHTML=`<div class="sign payform"><h2>Add your ${what}</h2><p class="lead">This is the last step. Your ${what} is used only for the payments in this agreement, shown below. The number goes straight to our payment provider: we never see it or keep it.</p>${sched}<div id="pForm"></div></div>`;form($('#pForm'),p,c);
+  }
+  function form(el,p,c){
+    const card=p.kind==='card';
+    el.innerHTML=`<form id="pf" autocomplete="on" novalidate>${card?`
+      <label class="f"><span>Name on card</span><input id="cName" autocomplete="cc-name" required></label>
+      <label class="f"><span>Card number</span><input id="cNum" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" required></label>
+      <div class="two"><label class="f"><span>Expiry (MM/YY)</span><input id="cExp" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" required></label><label class="f"><span>Security code</span><input id="cCvc" inputmode="numeric" autocomplete="cc-csc" maxlength="4" required></label></div>
+      <label class="f"><span>Billing ZIP code</span><input id="cZip" inputmode="numeric" autocomplete="postal-code" maxlength="10" required></label>`:`
+      <label class="f"><span>Name on the account</span><input id="bName" autocomplete="name" required></label>
+      <div class="two"><label class="f"><span>Routing number (9 digits)</span><input id="bRoute" inputmode="numeric" maxlength="9" required></label><label class="f"><span>Account number</span><input id="bNum" inputmode="numeric" maxlength="17" autocomplete="off" required></label></div>
+      <label class="f"><span>Account type</span><select id="bType"><option value="BUSINESS_CHECKING">Business checking</option><option value="BUSINESS_SAVINGS">Business savings</option><option value="PERSONAL_CHECKING">Personal checking</option><option value="PERSONAL_SAVINGS">Personal savings</option></select></label>
+      <label class="f"><span>Phone number</span><input id="bPhone" inputmode="tel" autocomplete="tel" required></label>`}
+      <label class="chk"><input type="checkbox" id="pAuth"><span>${esc(p.authorization)}</span></label>
+      <button class="btn go" id="pGo" disabled>Save ${card?'card':'bank account'}</button><p class="msg" id="pMsg" role="alert"></p></form>`;
+    const f=$('#pf'),ready=()=>{$('#pGo').disabled=!$('#pAuth').checked};f.addEventListener('input',ready);f.addEventListener('change',ready);
+    const fail=m=>{$('#pMsg').textContent=m;$('#pGo').disabled=false;$('#pGo').textContent='Save '+(card?'card':'bank account')};
+    f.addEventListener('submit',async e=>{e.preventDefault();$('#pMsg').textContent='';let tokenBody;
+      if(card){const num=$('#cNum').value.replace(/\s+/g,''),m=/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/.exec($('#cExp').value.trim());
+        if($('#cName').value.trim().length<2)return fail('Enter the name on the card');if(!luhn(num))return fail('That card number does not look right');if(!m||+m[1]<1||+m[1]>12)return fail('Enter the expiry as MM/YY');
+        const yr=m[2].length===2?'20'+m[2]:m[2];if(new Date(+yr,+m[1],1)<=new Date())return fail('That card has expired');if(!/^\d{3,4}$/.test($('#cCvc').value))return fail('Enter the security code from the card');if(!/^\d{5}(-\d{4})?$/.test($('#cZip').value.trim()))return fail('Enter the 5-digit billing ZIP code');
+        tokenBody={card:{number:num,expMonth:m[1].padStart(2,'0'),expYear:yr,cvc:$('#cCvc').value,name:$('#cName').value.trim(),address:{postalCode:$('#cZip').value.trim().slice(0,5),country:'US'}}}}
+      else{if($('#bName').value.trim().length<2)return fail('Enter the name on the account');if(!aba($('#bRoute').value))return fail('That routing number does not look right: it is the 9 digits at the bottom left of a check');if(!/^\d{4,17}$/.test($('#bNum').value.replace(/\s+/g,'')))return fail('Enter the account number');if($('#bPhone').value.replace(/\D/g,'').length<10)return fail('Enter a phone number with area code');
+        tokenBody={bankAccount:{name:$('#bName').value.trim(),routingNumber:$('#bRoute').value.replace(/\D/g,''),accountNumber:$('#bNum').value.replace(/\s+/g,''),accountType:$('#bType').value,phone:$('#bPhone').value.replace(/\D/g,'').slice(-10)}}}
+      $('#pGo').disabled=true;$('#pGo').textContent='Saving…';
+      try{
+        const tr=await fetch(p.tokensUrl,{method:'POST',headers:{'content-type':'application/json','request-id':crypto.randomUUID()},body:JSON.stringify(tokenBody)}).catch(()=>null);tokenBody=null;
+        const tj=tr?await tr.json().catch(()=>({})):{};if(!tr||!tr.ok||!tj.value)return fail(tr&&tr.status<500?'Those details were not accepted. Check them and try again.':'Could not reach the payment service. Try again in a minute.');
+        for(const i of f.querySelectorAll('input'))if(i.type!=='checkbox')i.value='';
+        await api('/payment-method',{body:{kind:p.kind,token:tj.value}});const d=await api('');render(d);toast('Saved. Your automatic payments are set up.')}
+      catch(x){fail(x.message)}});
+  }
+  function toast(m){const t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#141416;color:#fff;padding:12px 18px;border-radius:10px;z-index:30;font-size:15px';document.body.appendChild(t);setTimeout(()=>t.remove(),4000)}
   function signForm(c){
     const sg=c.signer,pl=c.plan;
     $('#signBox').innerHTML=`<form class="sign" id="sign" autocomplete="off"><h2>Sign this agreement</h2><p class="lead">Type your full name to sign. It is your signature, with the same effect as signing on paper.</p>

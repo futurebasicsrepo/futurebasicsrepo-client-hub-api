@@ -21,6 +21,9 @@ import { cleanContent, renderContract, sendProblems, docHash, signToken, readTok
 import { contractPdf } from './contract-pdf.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
 import { fireTrigger } from './sales-automations-engine.js';
+import { createAutopay, authorizationText } from './autopay.js';
+import { processor as paymentProcessor, tokensUrl } from './qb-payments.js';
+import { qbConfig } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -30,7 +33,7 @@ const STATUS_FILTER = ['draft', 'sent', 'signed_by_client', 'executed', 'decline
 
 export function registerContractRoutes(app, d) {
   const { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
-    secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', env = process.env, throttle = () => true, log = console } = d;
+    money = null, proc = paymentProcessor, secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', env = process.env, throttle = () => true, log = console } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const pre = [authenticate, adminOnly], actorId = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const userOf = async req => (await pool.query('select id, email, name from users where id=$1', [actorId(req)]).catch(() => ({ rows: [] }))).rows[0] || null;
@@ -48,6 +51,8 @@ export function registerContractRoutes(app, d) {
   const cleanSettings = i => ({ providerName: clip(i?.providerName, 120) || DEFAULTS.providerName, providerAddress: String(i?.providerAddress ?? '').trim().slice(0, 300), signerName: clip(i?.signerName, 120), signerTitle: clip(i?.signerTitle, 120), governingLaw: clip(i?.governingLaw, 120) });
 
   const one = async id => (await pool.query('select c.*, d.title deal_title, p.name project_name from contracts c left join sales_deals d on d.id=c.deal_id left join projects p on p.id=c.project_id where c.id=$1', [id])).rows[0];
+  // Automatic payments (autopay.js). Without the Money routes (no QuickBooks) there is nothing to charge through, and the contract simply says so.
+  const autopay = money ? createAutopay({ pool, proc, money, draftInvoices: async r => { const out = await draftInvoices(r, 'autopay'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'autopay', detail: out.error }); return out; }, reload: one, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret, publicUrl, workUrl, log, env }) : null;
   // A contract that was sent and ran past its date is expired from then on (found out when it is next looked at, so no clock is needed).
   async function fresh(r) {
     if (r && r.status === 'sent' && r.expires_at && new Date(r.expires_at) < new Date()) {
@@ -148,7 +153,8 @@ export function registerContractRoutes(app, d) {
   }
   const detail = async (r) => {
     const st = await settings(), rendered = await renderOf(r, st), invoices = (await pool.query(`select id, number, status, total_cents, due_on, contract_seq from money_invoices where contract_id=$1 order by contract_seq, created_at`, [r.id])).rows;
-    return { contract: view(r), content: r.content, rendered, problems: r.status === 'draft' ? [...cleanContent(r.content, { settings: st, lenient: true }).errors, ...sendProblems(r.content, st)] : [],
+    const ap = autopay ? await autopay.overview(r) : null, rd = ap ? await autopay.readiness() : null;
+    return { contract: view(r), content: r.content, rendered, autopay: ap ? { ...ap, ready: rd.ready, notReadyWhy: rd.why } : null, problems: r.status === 'draft' ? [...cleanContent(r.content, { settings: st, lenient: true }).errors, ...sendProblems(r.content, st)] : [],
       events: (await pool.query('select kind, actor, detail, at, ip from contract_events where contract_id=$1 order by at, id', [r.id])).rows.map(e => ({ kind: e.kind, actor: e.actor, detail: e.detail, at: e.at, ip: e.ip })),
       link: OPEN.includes(r.status) || r.status === 'executed' ? linkOf(r) : null, invoices: invoices.map(i => ({ id: i.id, number: i.number, status: i.status, totalCents: Number(i.total_cents), dueOn: iso(i.due_on), seq: i.contract_seq })) };
   };
@@ -242,6 +248,7 @@ export function registerContractRoutes(app, d) {
         if (deal.contact_id) { await pool.query(`insert into sales_activities(contact_id,deal_id,kind,text,meta) values($1,$2,'stage',$3,$4::jsonb)`, [deal.contact_id, deal.id, `Moved from ${deal.stage} to won: ${r.number} was signed by both parties`, JSON.stringify({ from: deal.stage, to: 'won', contractId: r.id })]).catch(() => {}); await fireTrigger(pool, { type: 'deal_stage', contactId: deal.contact_id, dealId: deal.id, stage: 'won' }, { deliberate: true }).catch(() => {}); }
       }
     }
+    if (autopay && r.content.plan.autopay && await autopay.activeMethod(r.id)) autopay.runFor(r.id).catch(() => {}); // details were added before Future Basics signed: what is already due is taken now
     const fresh2 = await one(r.id), c = fresh2.content, link = linkOf(fresh2);
     await sendHubEmail({ to: c.client.signerEmail, subject: `Signed by both parties: ${c.title} (${r.number})`, html: hubEmailShell(`Signed: ${c.title}`, `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>The agreement <b>${emailEscape(c.title)}</b> (${emailEscape(r.number)}) is now signed by both parties. You can open it and download the signed copy any time:</p>${hubButton(link, 'Open the signed agreement')}<p style="font-size:12px;color:#717177">Keep this email: the link is your copy.</p>`) }).catch(() => {});
     await notifyStaff(`Signed by both parties: ${r.number} (${c.client.company})`, `<p><b>${emailEscape(c.title)}</b> is fully signed (${emailEscape(dollars(r.total_cents, r.currency))}).</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}<p>Next: draft the invoices from the payment schedule, and start the project.</p>`);
@@ -261,11 +268,9 @@ export function registerContractRoutes(app, d) {
   });
 
   // ---- invoices from the payment schedule -----------------------------------------------------------------------------------------------------------
-  app.post('/v1/contracts/:id/invoices', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
-    if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
-    if (r.status !== 'executed') return bad(reply, 'Invoices are drafted from a contract that both parties have signed', 409);
-    if (r.invoices_at) return bad(reply, 'The invoices for this contract were already drafted', 409);
-    const c = r.content, signedOn = iso(r.client_signature?.at || r.executed_at) || todayISO(), plan = schedule(c.plan, { signedOn, deliveryOn: c.timeline.completionOn || null });
+  // One draft invoice for every payment in the schedule. A contract with automatic payments gets them from the payments job (the charges need them); otherwise a signer asks.
+  async function draftInvoices(r, actor, userId = null) {
+    const c = r.content, signedOn = iso(r.client_signature?.at || r.executed_at) || todayISO(), plan = schedule(c.plan, { signedOn, deliveryOn: iso(r.delivered_on) || c.timeline.completionOn || null });
     const db = await pool.connect(); const made = [];
     try {
       await db.query('begin'); await db.query('select pg_advisory_xact_lock(7731)');
@@ -278,13 +283,67 @@ export function registerContractRoutes(app, d) {
           lines: [{ description: `${c.title}: ${p.label} (agreement ${r.number})`, qty: 1, rateCents: p.amountCents }], notes: [payNote, p.event === 'delivery' && !p.dueOn ? 'Due when the work is delivered.' : ''].filter(Boolean).join(' '), currency: c.fee.currency, workKind: 'software', projectId: r.project_id });
         if (inv.error) throw new Error(inv.error); const v = inv.value;
         const row = (await db.query(`insert into money_invoices(number,company,contact_name,contact_email,address,issued_on,terms,due_on,lines,tax_rate,charge_tax,credits,due_now_label,due_now_cents,subtotal_cents,tax_cents,total_cents,notes,currency,status,source,created_by,client_id,contact_id,deal_id,project_id,work_kind,contract_id,contract_seq)
-          values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,'software',$25,$26) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, actorId(req), r.client_id, r.contact_id, r.deal_id, r.project_id, r.id, n])).rows[0];
+          values($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,'draft','app',$20,$21,$22,$23,$24,'software',$25,$26) returning id, number`, [v.number, v.company, v.contactName || contact?.name || '', v.contactEmail || contact?.email || '', v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency, userId, r.client_id, r.contact_id, r.deal_id, r.project_id, r.id, n])).rows[0];
         made.push({ id: row.id, number: row.number });
       }
       await db.query('update contracts set invoices_at=now(), updated_at=now() where id=$1', [r.id]); await db.query('commit');
-    } catch (e) { await db.query('rollback').catch(() => {}); return bad(reply, e.message || 'Could not draft the invoices', 422); } finally { db.release(); }
-    await ev(r.id, 'invoices_drafted', { actor: req.signer.email, detail: `${made.length} invoice${made.length === 1 ? '' : 's'}: ${made.map(m => m.number).join(', ')}` });
-    return { ...(await detail(await one(r.id))), made };
+    } catch (e) { await db.query('rollback').catch(() => {}); return { error: e.message || 'Could not draft the invoices' }; } finally { db.release(); }
+    await ev(r.id, 'invoices_drafted', { actor, detail: `${made.length} invoice${made.length === 1 ? '' : 's'}: ${made.map(m => m.number).join(', ')}` });
+    return { made };
+  }
+  app.post('/v1/contracts/:id/invoices', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404);
+    if (r.status !== 'executed') return bad(reply, 'Invoices are drafted from a contract that both parties have signed', 409);
+    if (r.invoices_at) return bad(reply, 'The invoices for this contract were already drafted', 409);
+    const out = await draftInvoices(r, req.signer.email, req.signer.id); if (out.error) return bad(reply, out.error, 422);
+    return { ...(await detail(await one(r.id))), made: out.made };
+  });
+
+  // What the client's page needs to take payment details: only once they have signed an agreement with automatic payments.
+  const payInfo = async r => {
+    if (!autopay || !r.content.plan.autopay || !r.client_signature?.autopay || !['signed_by_client', 'executed'].includes(r.status)) return null;
+    const rd = await autopay.readiness(), m = await autopay.activeMethod(r.id), kind = (r.content.plan.method === 'either' ? r.client_signature.method : r.content.plan.method) === 'card' ? 'card' : 'bank', ov = await autopay.overview(r);
+    return { kind, ready: rd.ready, tokensUrl: rd.ready ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
+      upcoming: ov.installments.map(i => ({ label: i.label, amountCents: i.amountCents, falls: i.falls, state: i.state })) };
+  };
+
+  // ---- automatic payments: staff -------------------------------------------------------------------------------------------------------------------
+  const apOnly = async (req, reply) => { if (!needId(req, reply)) return null; const r = await fresh(await one(req.params.id)); if (!r) { bad(reply, 'Not found', 404); return null; } if (!autopay || !r.content.plan.autopay) { bad(reply, 'This contract does not have automatic payments', 409); return null; } return r; };
+  app.post('/v1/contracts/:id/autopay/pause', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    const r = await apOnly(req, reply); if (!r) return; if (r.autopay_paused_at) return bad(reply, 'Automatic payments are already paused', 409);
+    await pool.query('update contracts set autopay_paused_at=now(), autopay_paused_by=$2, updated_at=now() where id=$1', [r.id, req.signer.email]); await ev(r.id, 'autopay_paused', { actor: req.signer.email, detail: clip(req.body?.reason, 300) });
+    return detail(await one(r.id));
+  });
+  app.post('/v1/contracts/:id/autopay/resume', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    const r = await apOnly(req, reply); if (!r) return; if (!r.autopay_paused_at) return bad(reply, 'Automatic payments are not paused', 409);
+    await pool.query('update contracts set autopay_paused_at=null, autopay_paused_by=null, updated_at=now() where id=$1', [r.id]); await ev(r.id, 'autopay_resumed', { actor: req.signer.email });
+    return detail(await one(r.id));
+  });
+  app.post('/v1/contracts/:id/autopay/charge', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    const r = await apOnly(req, reply); if (!r) return; if (r.status !== 'executed') return bad(reply, 'Payments are taken once both parties have signed', 409);
+    if (r.autopay_paused_at) return bad(reply, 'Automatic payments are paused: resume them first', 409);
+    const seq = Number(req.body?.seq); if (!Number.isInteger(seq) || seq < 1) return bad(reply, 'Which payment?');
+    const out = await autopay.chargeNow(r, seq, { today: env.AUTOPAY_TEST_CLOCK === '1' && /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.today || '')) ? req.body.today : undefined }); if (out.error) return bad(reply, out.error, out.status || 409);
+    await ev(r.id, 'autopay_charge_now', { actor: req.signer.email, detail: `payment ${seq}: ${out.result}` });
+    return { ...(await detail(await one(r.id))), result: out.result };
+  });
+  app.post('/v1/contracts/:id/autopay/request-details', { preHandler: pre }, async (req, reply) => {
+    const r = await apOnly(req, reply); if (!r) return; if (!['signed_by_client', 'executed'].includes(r.status) || !r.client_signature?.autopay) return bad(reply, 'The client has to sign first', 409);
+    if (await autopay.activeMethod(r.id)) return bad(reply, 'Payment details are already on file', 409);
+    const c = r.content, sent = await sendHubEmail({ to: c.client.signerEmail, subject: `Add your payment details: ${c.title} (${r.number})`, html: hubEmailShell('Add your payment details', `<p>Hi ${emailEscape(firstName(c.client.signerName))},</p><p>To finish setting up the automatic payments for <b>${emailEscape(c.title)}</b>, please add your ${r.content.plan.method === 'card' || r.client_signature.method === 'card' ? 'card' : 'bank account'} on your agreement page. It goes straight to our payment provider: we never see or keep the number.</p>${hubButton(linkOf(r), 'Add payment details')}`) }).catch(() => false);
+    await ev(r.id, 'payment_details_requested', { actor: (await userOf(req))?.email || '', detail: c.client.signerEmail });
+    return { ok: true, sent: Boolean(sent) };
+  });
+  app.post('/v1/contracts/:id/delivered', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!needId(req, reply)) return; const r = await fresh(await one(req.params.id)); if (!r) return bad(reply, 'Not found', 404); if (r.status !== 'executed') return bad(reply, 'The work is delivered under a signed agreement', 409);
+    const on = req.body?.on ? String(req.body.on).slice(0, 10) : todayISO(); if (!/^\d{4}-\d{2}-\d{2}$/.test(on) || Number.isNaN(Date.parse(on))) return bad(reply, 'That is not a date');
+    await pool.query('update contracts set delivered_on=$2, updated_at=now() where id=$1', [r.id, on]); await ev(r.id, 'delivered', { actor: req.signer.email, detail: `Delivered on ${on}: payments due on delivery fall due now` });
+    return detail(await one(r.id));
+  });
+  // Run the payments job now (the job runs by itself every hour). `today` is honoured only on the journey servers.
+  app.post('/v1/contracts/autopay/run', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    if (!autopay) return bad(reply, 'Automatic payments are not set up', 409);
+    return { ok: true, ...(await autopay.run({ today: env.AUTOPAY_TEST_CLOCK === '1' && /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.today || '')) ? req.body.today : undefined })) };
   });
 
   // ---- the client ------------------------------------------------------------------------------------------------------------------------------------
@@ -304,7 +363,7 @@ export function registerContractRoutes(app, d) {
     }
     const rendered = await renderOf(r), c = r.content;
     return reply.header('cache-control', 'no-store').send({ status: r.status, number: r.number, title: r.title, rendered, expiresAt: r.expires_at, sentAt: r.sent_at, canSign: r.status === 'sent', plan: { method: c.plan.method, autopay: !!c.plan.autopay },
-      signer: { name: c.client.signerName, title: c.client.signerTitle, email: c.client.signerEmail }, clientSignature: sigView(r.client_signature), providerSignature: sigView(r.provider_signature), declined: r.declined ? { at: r.declined.at } : null, executedAt: r.executed_at, hash: r.doc_hash });
+      pay: await payInfo(r), signer: { name: c.client.signerName, title: c.client.signerTitle, email: c.client.signerEmail }, clientSignature: sigView(r.client_signature), providerSignature: sigView(r.provider_signature), declined: r.declined ? { at: r.declined.at } : null, executedAt: r.executed_at, hash: r.doc_hash });
   });
   app.get('/v1/public/contracts/:token/pdf', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (['void', 'draft'].includes(r.status)) return bad(reply, 'This agreement is no longer open', 404);
@@ -326,6 +385,18 @@ export function registerContractRoutes(app, d) {
     const now = await one(r.id);
     return { ok: true, status: now.status, executed: now.status === 'executed', signedAt: sig.at };
   });
+  app.post('/v1/public/contracts/:token/payment-method', async (req, reply) => {
+    const r = await byToken(req, reply); if (!r) return;
+    if (!throttle(`contract-pay:${req.ip}`, { limit: 20, windowMs: 3600_000 })) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    if (!autopay) return bad(reply, 'Automatic payments are not set up', 409);
+    const kind = req.body?.kind === 'card' ? 'card' : req.body?.kind === 'bank' ? 'bank' : '', token = String(req.body?.token || '');
+    if (!kind) return bad(reply, 'Choose a card or a bank account'); if (!/^[\w.\-=+/]{8,4000}$/.test(token)) return bad(reply, 'The payment details did not arrive. Try again.');
+    const out = await autopay.saveMethod(r, { kind, token, ip: ipOf(req), ua: uaOf(req) });
+    if (out.notReady) await notifyStaff(`${r.content.client.company} tried to add payment details for ${r.number}`, `<p>${emailEscape(out.notReady)}</p>${hubButton(`${workUrl}/money#settings`, 'Open Money settings')}`);
+    if (out.error) return bad(reply, out.error, out.status || 422);
+    if (r.status === 'executed') await autopay.runFor(r.id).catch(() => {}); // a payment already due (the deposit on signing) is taken now, not at the next hourly run
+    return { ok: true, method: out.method };
+  });
   app.post('/v1/public/contracts/:token/decline', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (r.status !== 'sent') return bad(reply, 'This agreement is not open for signing.', 409);
     const reason = clip(req.body?.reason, 500), decl = { at: new Date().toISOString(), reason, ip: ipOf(req) };
@@ -334,4 +405,5 @@ export function registerContractRoutes(app, d) {
     await notifyStaff(`${r.content.client.signerName || 'The client'} declined ${r.number}`, `<p><b>${emailEscape(r.title)}</b> was declined${reason ? `: ${emailEscape(reason)}` : '.'}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
     return { ok: true };
   });
+  return { autopay, draftInvoices };
 }
