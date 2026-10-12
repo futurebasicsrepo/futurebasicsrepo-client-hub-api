@@ -12,7 +12,10 @@
 //                                              cancel-for-a-refund link until it's ordered
 //   refunded         payer      email          a full refund (canceled, couldn't be ordered…)
 //                    requester  email
-//   refunded_part    payer      email          unused money or a store return, sent back
+//   refunded_part    payer      email          unused money, a store return or a matched
+//                                              lower price, sent back
+//   price_claimed    payer      email          the store lowered its price after the order;
+//                                              staff asked it for the difference (pricewatch.js)
 //   thanks           payer      email          the requester's thank-you, with a link to
 //                                              the payer's receipt (where it shows too)
 //
@@ -270,13 +273,33 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
             html: mail({ preheader: `Your card is charged ${usd(charged)}`, title: `Charged ${usd(charged)}, not ${usd(cart.total_cents)}`, lines: [`${esc(store)} charged less than the most it could have come to for <b>${esc(item)}</b>, so your card is charged ${usd(charged)}. The other ${usd(extra.amount_cents)} of the hold was never charged and drops off your card, usually within a few days.`] }),
           }];
         }
-        const what = extra.reason === 'store_refund' ? `${store} refunded a return` : `${store} charged less than expected`;
+        const what = extra.reason === 'price_adjustment' ? `${store} matched its lower price` : extra.reason === 'store_refund' ? `${store} refunded a return` : `${store} charged less than expected`;
         return [{
           key: `refund_${extra.key}`,
           to: { email },
           subject: `${usd(extra.amount_cents)} back from Spot`,
           text: `${what}, so we sent ${usd(extra.amount_cents)} back to your card.`,
           html: mail({ preheader: `${usd(extra.amount_cents)} back to your card`, title: `${usd(extra.amount_cents)} back to your card`, lines: [`${esc(what)} for <b>${esc(item)}</b>, so we sent the difference back to your card. It usually shows in 5–10 business days.`] }),
+        }];
+      }
+      case 'price_claimed': {
+        const email = cart.payer_contact?.email || (cart.for === 'self' ? requesterContact(cart).email : null);
+        const drop = cart.price_watch?.drop;
+        if (!email || !drop?.cents) return [];
+        const what = drop.items.length === 1 ? drop.items[0].title || item : item;
+        return [{
+          key: 'price_claimed',
+          to: { email },
+          subject: `${store} lowered the price. We asked for ${usd(drop.cents)} back`,
+          text: `${store} lowered the price of ${what} by ${usd(drop.cents)} after you bought it, so Spot asked them for the difference. If they pay it, it goes straight back to your card and we'll email you. Nothing for you to do.`,
+          html: mail({
+            preheader: `We asked ${store} for ${usd(drop.cents)} back`,
+            title: `We asked for ${usd(drop.cents)} back`,
+            lines: [
+              `${esc(store)} lowered the price of <b>${esc(what)}</b> by ${usd(drop.cents)} after you bought it, so Spot asked them for the difference.`,
+              `If they pay it, it goes straight back to your card and we'll email you. Nothing for you to do.`,
+            ],
+          }),
         }];
       }
       case 'thanks': {

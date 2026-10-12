@@ -30,8 +30,14 @@ One Stripe payment covers several store carts. Each store's cart has its own car
    - **Store charged after the payer was refunded:** Spot paid the store but the payer has their money. Contact the store to cancel the order, or recover it from the requester. This should be rare, and the race fix prevents the common case.
    - **Store charged more than paid for the goods:** shouldn't be possible (the card limit is the same number). Check the Stripe Issuing transaction.
    - **Disputed:** see below.
-2. Check the **Issuing balance** in Stripe (Balances → Issuing). Cards spend from it, while payer money lands in the payments balance. Top it up before it runs low. A card authorization fails if the balance can't cover it.
-3. **Backups** on /admin should be green.
+2. **Price drops to claim** lists orders whose store lowered the price within 30 days of the order (Spot checks each one daily: the exact size and colour bought, from the store's own data). For each:
+   - Ask the store for the difference under its price-adjustment policy, by chat, email or phone, with the order number shown. Ask for it back on the original card.
+   - Tap **Claimed, tell the payer**. Only now is the payer emailed ("we asked for $X back"), so nobody is promised money we haven't asked for.
+   - When the store pays, it lands on Spot's paused card and Spot passes it to the payer automatically ("matched its lower price"). The drop leaves the list.
+   - **Dismiss** if it isn't worth it (or the store has no such policy); **Store said no** on a claimed one. If a store pays some other way (a gift card, store credit), refund the payer by hand from Stripe.
+   - A drop counts at $1 and 3% under what was paid. If the price goes back up before you claim it, it drops off the list (most stores only match a live price).
+3. Check the **Issuing balance** in Stripe (Balances → Issuing). Cards spend from it, while payer money lands in the payments balance. Top it up before it runs low. A card authorization fails if the balance can't cover it.
+4. **Backups** on /admin should be green.
 
 ## Returns
 

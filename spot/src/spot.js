@@ -874,8 +874,11 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         return this._retireOnce(cur);
       }
       if (type === 'refund') {
-        const next = await this.refundPart(cart.id, cents, `return_${id}`, 'store_refund');
-        return next;
+        // After staff claimed a price drop (pricewatch.js), a store refund is
+        // the store matching its lower price, not a return.
+        const matched = cart.price_watch?.state === 'claimed';
+        const next = await this.refundPart(cart.id, cents, `return_${id}`, matched ? 'price_adjustment' : 'store_refund');
+        return matched ? this.patch(cart.id, (c) => ({ ...c, price_watch: { ...c.price_watch, state: 'refunded', refunded_cents: cents, refunded_at: Date.now() } }), 'price_refunded') : next;
       }
       return cart;
     },

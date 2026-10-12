@@ -283,6 +283,8 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_CARD_BILLING` | | The company cardholder's billing address as `line1|city|state|zip` (or `line1|line2|city|state|zip` with a suite), used when a store checks it |
 | `SPOT_ORDER_DEADLINE_HOURS` | `72` | A paid card cart Spot hasn't ordered by then is refunded in full |
 | `SPOT_CARD_KEEP_DAYS` | `60` | How long a used card stays paused (new charges declined, store refunds still land) before it is canceled for good |
+| `SPOT_PRICE_WATCH_DAYS` | `30` | How long after an order Spot checks the store's price daily for a drop to claim (docs/money-ops.md) |
+| `SPOT_PRICE_WATCH` | on | `0` turns the daily price checks off |
 | `SPOT_FLIGHTS_LIVE` | off | With a live Stripe key, flights are refused unless this is `on` |
 | `SPOT_APPROVAL_KEY` | made on first start | Ed25519 private key (PKCS#8 PEM) for signed approvals. Set it to pin the key across database restores |
 | `SPOT_REQUEST_KEY` | made on first start | Ed25519 private key (PKCS#8 PEM) for signing requests to stores |
