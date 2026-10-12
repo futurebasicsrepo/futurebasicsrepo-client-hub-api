@@ -1989,7 +1989,7 @@
     say('on it, looking around…');
     // Everything said since the first ask, newest last: a new ask ("show me
     // streetwear from…") replaces the first one; a tweak ("cheaper") adjusts it.
-    const thread = turns.slice(1).map((t) => t?.said).filter(Boolean).concat(more).slice(-4).map((l) => l.replace(/\s+/g, ' ').slice(0, 220)).join('\n');
+    const thread = turns.slice(1).map((t) => t?.said).filter(Boolean).concat(more).slice(-4).map((l) => l.replace(/\s+/g, ' ').slice(0, 400)).join('\n');
     const T = openTurn(more, thread);
     try {
       const { done } = await fill(T, { text: ask.text, more: thread, avoid: ask.avoid.slice(-60) });

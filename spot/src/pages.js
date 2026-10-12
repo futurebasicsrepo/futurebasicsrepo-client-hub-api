@@ -113,7 +113,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .pc .btn{margin-top:8px;padding:11px 12px;font-size:15px;white-space:nowrap}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
 .pc.sk .ph,.pc.sk .ln{background:linear-gradient(90deg,var(--line),color-mix(in srgb,var(--line) 40%,transparent),var(--line));background-size:200% 100%;animation:sk 1.2s linear infinite}.pc.sk .ln{height:12px;border-radius:6px;margin:6px 0}@keyframes sk{to{background-position:-200% 0}}
 .railnav{display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:700;color:var(--muted)}.railnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px;cursor:pointer}.railnav button:disabled{opacity:.35;cursor:default}
-.askbar{display:flex;gap:8px;position:sticky;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.08)}.askbar input{flex:1;min-width:0;border:0;background:transparent;margin:0;box-shadow:none}.askbar .btn{width:auto;margin:0;flex:none;padding:10px 16px}
+.askbar{display:flex;gap:8px;position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.08)}.askbar input{flex:1;min-width:0;border:0;background:transparent;margin:0;box-shadow:none}.askbar .btn{width:auto;margin:0;flex:none;padding:10px 16px}
 .picknav{display:flex;justify-content:space-between;margin-top:12px}.backpicks{margin:0 0 8px;font-weight:700}
 @media (min-width:600px){.pc{flex-basis:46%}}
 @media (min-width:760px){.shelf{width:min(980px,calc(100vw - 48px));left:50%;transform:translateX(-50%)}.rail{margin:0;padding:2px 0 10px;scroll-padding:0}.pc{flex-basis:calc((100% - 36px) / 3.25)}.shelf.looks .pc{flex-basis:calc((100% - 24px) / 2.3)}}
@@ -341,7 +341,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 
 <section id="picks" hidden>
   <div id="thread" aria-live="polite" data-face="${assetUrl('spot-face.webp')}"></div>
-  <form class="askbar" id="askMore"><input id="more2" maxlength="300" enterkeyhint="send" placeholder="cheaper? in black? add a hat?" aria-label="Ask for more, or add something else"><button class="btn small" id="askGo">Ask</button></form>
+  <form class="askbar" id="askMore"><input id="more2" maxlength="400" enterkeyhint="send" placeholder="cheaper? in black? add a hat?" aria-label="Ask for more, or add something else"><button class="btn small" id="askGo">Ask</button></form>
   <p class="small muted picknav"><button class="textlink" id="picksOver" type="button">start over</button><button class="textlink" id="picksManual" type="button">type it in myself</button></p>
   <form class="sheet" id="nameSheet" hidden><button class="sheetx" id="sheetX" type="button" aria-label="Close">×</button><label for="sheetName">What’s your name?</label><p class="small muted">So they know who’s asking. Spot remembers it on this phone.</p><input id="sheetName" autocomplete="given-name" enterkeyhint="go" placeholder="First name"><button class="btn">Continue</button></form>
 </section>
