@@ -14,7 +14,7 @@ const kyle = await forge({ sub: await staff('kyle@thefuturebasics.com'), clientI
 const C = (path, o = {}) => call('/v1/contracts' + path, { token: colby, ...o }), K = (path, o = {}) => call('/v1/contracts' + path, { token: kyle, ...o });
 const tokenOf = link => String(link).split('/sign/')[1], P = (token, path = '', o = {}) => call(`/v1/public/contracts/${token}${path}`, o);
 const outbox = async to => (await call(`/v1/dev/outbox?to=${encodeURIComponent(to)}`)).json.emails || [];
-const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`;
+const SIGNER = `pay-${stamp}@salon.test`, SIGNER2 = `pay2-${stamp}@salon.test`, SIGNER3 = `pay3-${stamp}@salon.test`;
 const body = (n, email, plan, over = {}) => ({ title: `Autopay site ${n} ${stamp}`, kind: 'website', client: { company: `Pay Salon ${n} ${stamp}`, address: '1 Main St, Norristown PA 19401', signerName: 'Pat Payer', signerTitle: 'Owner', signerEmail: email }, project: { name: 'Salon website' }, scope: ['A five-page website', 'Booking link'], fee: { totalCents: 300000 }, timeline: { effectiveOn: '2026-11-01', startOn: '2026-11-03', completionOn: '2027-02-15' }, plan, ...over });
 const sign = (o = {}) => ({ name: 'Pat Payer', title: 'Owner', agree: true, esign: true, autopay: true, ...o });
 const CARD = { card: { number: '4111111111111111', expMonth: '08', expYear: '2031', cvc: '123', name: 'Pat Payer', address: { postalCode: '19401', country: 'US' } } };
@@ -240,6 +240,21 @@ try {
       const txt = await sp.locator('#apBox').evaluate(el => el.textContent.replace(/\s+/g, ' ')); ok(/Visa ending 1111/i.test(txt) && /Paid/i.test(txt) && /Scheduled/i.test(txt) && /Pause automatic payments/i.test(txt), 'staff see the card on file, which payment is paid, which are scheduled, and the pause button', txt.slice(0, 200));
       if (process.env.JOURNEY_SHOT_DIR) await sp.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR}/autopay-staff.png` });
     } finally { await browser.close(); }
+  });
+
+  await journey('J172', 'Payment details still owed: the signer is emailed an hour after signing and reminded every three days, three times at most, and never again once the details are on file', async () => {
+    const D = await make('D', SIGNER3, planCard);
+    ok((await P(D.token, '/sign', { body: sign() })).status === 200 && (await K(`/${D.id}/countersign`, { body: {} })).status === 200, 'signed by both, with automatic payments agreed and no details yet');
+    const asks = async () => (await outbox(SIGNER3)).filter(e => /Add your payment details/.test(e.subject));
+    await run(new Date().toISOString().slice(0, 10)); ok((await asks()).length === 0, 'nothing is sent in the first hour: they may be adding them right now');
+    await run('2030-01-01'); ok((await asks()).length === 1 && !/^Reminder/.test((await asks())[0].subject), 'later, one email asks for the details');
+    await run('2030-01-02'); ok((await asks()).length === 1, 'and a second run the next day sends nothing more');
+    await run('2030-01-04'); ok((await asks()).length === 2 && (await asks()).filter(e => /^Reminder/.test(e.subject)).length === 1, 'three days on there is a reminder');
+    await run('2030-01-07'); await run('2030-01-10'); ok((await asks()).length === 4, 'three reminders in all');
+    await run('2030-01-13'); await run('2030-02-20'); ok((await asks()).length === 4, 'and then it stops');
+    const E2 = await make('E2', SIGNER3.replace('pay3', 'pay4'), planCard); await P(E2.token, '/sign', { body: sign() }); await K(`/${E2.id}/countersign`, { body: {} });
+    await connect(); ok((await P(E2.token, '/payment-method', { body: { kind: 'card', token: await tokenFor(CARD) } })).status === 200, 'another client adds a card');
+    await run('2031-01-01'); ok((await outbox(SIGNER3.replace('pay3', 'pay4'))).every(e => !/Add your payment details/.test(e.subject)), 'and is never asked once the details are on file');
   });
 } finally { mock.close(); }
 const bad = summary(); process.exit(bad ? 1 : 0);

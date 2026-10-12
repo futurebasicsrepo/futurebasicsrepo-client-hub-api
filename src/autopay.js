@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { schedule, dollars, longDate, todayISO, addDays, signToken } from './contracts.js';
 import { ensureCustomer } from './quickbooks.js';
 
-export const MAX_ATTEMPTS = 2, RETRY_DAYS = 3, NOTICE_DAYS = 3, LOCK = 7732;
+export const MAX_ATTEMPTS = 2, RETRY_DAYS = 3, NOTICE_DAYS = 3, REMIND_DAYS = 3, REMIND_MAX = 3, LOCK = 7732;
 
 export const authorizationText = (kind, providerName = 'Future Basics') => `I authorize ${providerName} to ${kind === 'bank' ? 'debit this bank account (ACH)' : 'charge this card'} for each payment in the payment schedule of this agreement, on the date it falls due, and for no other amount. ${providerName} emails a receipt for every payment and an advance notice a few days before each one. I can ask to stop automatic payments by giving three business days' notice.`;
 
@@ -168,6 +168,20 @@ export function createAutopay(d) {
     }
   }
 
+  // Payment details still owed: the signer is emailed (an hour after signing, so nobody who is adding them right now gets one), then reminded every REMIND_DAYS days, at most REMIND_MAX times.
+  // Staff asking by hand counts as one of them. Returns true when an email went out.
+  async function askForDetails(r, now = new Date()) {
+    if (!r.content.plan.autopay || !r.client_signature?.autopay || await activeMethod(r.id)) return false;
+    const signedAt = new Date(r.client_signature.at || r.executed_at || 0); if (!(now - signedAt >= 3600_000)) return false;
+    const asked = (await pool.query(`select coalesce(meta->>'asOf', at::text) at from contract_events where contract_id=$1 and kind='payment_details_requested' order by at desc, id desc`, [r.id])).rows;
+    if (asked.length > REMIND_MAX || (asked.length && now - new Date(asked[0].at) < REMIND_DAYS * 86400_000)) return false;
+    const c = r.content, bank = (c.plan.method === 'bank' || r.client_signature.method === 'bank'), again = asked.length > 0;
+    const sent = await email(r, `${again ? 'Reminder: ' : ''}Add your payment details: ${c.title} (${r.number})`, 'Add your payment details',
+      `<p>${again ? 'A reminder: to' : 'To'} finish setting up the automatic payments for <b>${emailEscape(c.title)}</b>, please add your ${bank ? 'bank account' : 'card'}. It takes a minute, and it goes straight to our payment provider: we never see or keep the number.</p>${hubButton(linkOf(r), 'Add payment details')}`);
+    if (sent) await ev(r.id, 'payment_details_requested', { detail: c.client.signerEmail, meta: { auto: true, n: asked.length + 1, asOf: now.toISOString() } });
+    return Boolean(sent);
+  }
+
   // The whole picture for one contract (the staff page and the client's page both show it).
   async function overview(r, today = todayISO()) {
     const plan = r.content.plan; if (!plan.autopay) return null;
@@ -184,6 +198,7 @@ export function createAutopay(d) {
       const m = await activeMethod(r.id), charges = (await pool.query('select * from contract_charges where contract_id=$1 order by seq, attempt', [r.id])).rows;
       for (const c of charges.filter(x => x.status === 'succeeded' && !x.booked_at)) { const inv = await invoiceFor(r.id, c.seq), cm = (await pool.query('select * from contract_payment_methods where id=$1', [c.method_id])).rows[0]; if (inv && cm && await book(r, c, inv, cm, today)) out.booked++; }
       const plan = planDue({ sched: sched(r), charges, today, paused: Boolean(r.autopay_paused_at), hasMethod: Boolean(m) });
+      if (!m && await askForDetails(r, today === todayISO() ? new Date() : new Date(`${today}T12:00:00Z`))) out.asked++;
       if (m) { const count = async () => (await pool.query(`select count(*)::int n from contract_events where contract_id=$1 and kind='autopay_upcoming'`, [r.id])).rows[0].n, before = await count(); await notices(r, m, plan); out.notices += (await count()) - before; }
       for (const p of plan) {
         if (p.action === 'poll') { await poll(r, p.last, today); out.polled++; }
@@ -193,7 +208,7 @@ export function createAutopay(d) {
   }
   // The hourly run: every signed contract with automatic payments. Safe to run any number of times and from several servers at once (only one gets the lock).
   async function run({ today = todayISO(), only = null } = {}) {
-    const lock = await pool.connect(), out = { charged: 0, polled: 0, booked: 0, notices: 0, skipped: [] };
+    const lock = await pool.connect(), out = { charged: 0, polled: 0, booked: 0, notices: 0, asked: 0, skipped: [] };
     try {
       if (!(await lock.query('select pg_try_advisory_lock($1) ok', [LOCK])).rows[0].ok) return { ...out, locked: true };
       const rows = (await pool.query(`select * from contracts where status='executed' and (content->'plan'->>'autopay')='true' ${only ? 'and id=$1' : ''} order by executed_at`, only ? [only] : [])).rows;
@@ -215,5 +230,5 @@ export function createAutopay(d) {
     const res = await attempt(r, seq, Number(prior) + 1, 'staff', today); return res.tried ? { ok: true, result: res.tried } : { error: res.skipped, status: 409 };
   }
 
-  return { saveMethod, run, runFor, chargeNow, overview, readiness, activeMethod, sched, linkOf };
+  return { saveMethod, run, runFor, chargeNow, overview, readiness, activeMethod, askForDetails, sched, linkOf };
 }
