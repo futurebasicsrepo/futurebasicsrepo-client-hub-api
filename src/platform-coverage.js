@@ -124,7 +124,7 @@ export function quickbooksVerdict({ configured, sealing, row, now = Date.now() }
 // Shopify Payments payouts: can the app read them, and have they been read lately. Judged from what is stored (no call is made).
 export function payoutsVerdict({ configured, st = {}, p = {}, now = Date.now() }) {
   if (!configured) return { status: 'off', summary: 'Shopify is not connected, so payouts are not read' };
-  if (st.needsScope) return { status: 'warn', summary: 'Shopify will not let the app read payouts: add the read_shopify_payments access scope to the Shopify app and approve it' };
+  if (st.needsScope) return { status: 'warn', summary: 'Shopify will not let the app read payouts: add the read_shopify_payments_payouts access scope to the Shopify app and approve it' };
   if (st.lastError) return { status: 'warn', summary: `The last payout read failed: ${String(st.lastError).slice(0, 140)}` };
   if (st.noAccount) return { status: 'off', summary: 'The store is not on Shopify Payments: there are no payouts to read' };
   if (!st.lastSyncAt) return { status: 'off', summary: 'Not read yet: payouts are read every 6 hours, or press Read payouts now in Money → Payouts' };
@@ -270,7 +270,7 @@ export async function coverageChecks(d) {
   listing.push(row('shopifypayouts', 'Bank payouts and fees', 'sales', async () => {
     const st = (await getSetting('moneyPayouts').catch(() => null)) || {}, p = await one(`select count(*)::int total, coalesce(sum(fee_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float fee30, coalesce(sum(gross_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float gross30 from money_payouts`);
     const linked = Boolean(env.SHOPIFY_STORE_DOMAIN && (env.SHOPIFY_ADMIN_ACCESS_TOKEN || (env.SHOPIFY_CLIENT_ID && env.SHOPIFY_CLIENT_SECRET))), v = payoutsVerdict({ configured: linked, st, p });
-    return { ...v, facts: [['Store', linked ? 'connected' : 'not connected'], ['Payouts read', String(p.total)], ['Last read', st.lastSyncAt ? ago(st.lastSyncAt) : 'not yet'], ['Needs the read_shopify_payments scope', st.needsScope ? 'yes' : 'no']] };
+    return { ...v, facts: [['Store', linked ? 'connected' : 'not connected'], ['Payouts read', String(p.total)], ['Last read', st.lastSyncAt ? ago(st.lastSyncAt) : 'not yet'], ['Needs the read_shopify_payments_payouts scope', st.needsScope ? 'yes' : 'no']] };
   }));
 
   // Site prototypes and the lead search that feeds them.

@@ -199,7 +199,7 @@ async function loadLedger(){
 const PST={paid:['Paid','ok'],scheduled:['Scheduled',''],failed:['Failed','bad'],canceled:['Canceled','']};
 async function loadPayouts(){
   const r=await api('/v1/money/payouts'),t=r.totals.d30,t90=r.totals.d90,when=iso=>iso?new Date(iso).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'never';
-  const msg=r.needsScope?`<div class="panel" style="border-color:#e6a8a0;background:#fff4f2"><b>Shopify will not let this app read payouts yet.</b> <span class="sub">In the Shopify app's settings add the <code>read_shopify_payments</code> access scope, approve it on the store, then press Read payouts now.</span></div>`
+  const msg=r.needsScope?`<div class="panel" style="border-color:#e6a8a0;background:#fff4f2"><b>Shopify will not let this app read payouts yet.</b> <span class="sub">In the Shopify app's settings add the <code>read_shopify_payments_payouts</code> access scope, approve it on the store, then press Read payouts now. If Shopify still refuses, what it said is shown here and names the scope it wants.</span>${r.lastError?`<div class="sub" style="margin-top:6px">${esc(r.lastError)}</div>`:''}</div>`
     :r.lastError?`<div class="panel" style="border-color:#e6d27a;background:#fffbea"><b>The last read failed.</b> <span class="sub">${esc(r.lastError)}</span></div>`
     :r.noAccount?'<div class="panel"><b>This store is not on Shopify Payments.</b> <span class="sub">There are no payouts to read.</span></div>'
     :!r.configured?'<div class="panel"><b>Shopify is not connected.</b> <span class="sub">Connect the store on the service to read payouts.</span></div>':'';

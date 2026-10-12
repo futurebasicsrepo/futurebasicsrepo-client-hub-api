@@ -394,7 +394,7 @@ export function registerMoneyRoutes(app, d) {
       await setSetting(PAYOUT_STATE, { lastSyncAt: at, lastAttemptAt: at, lastError: '', needsScope: false, noAccount });
       return { ok: true, seen, added, noAccount };
     } catch (e) {
-      const scope = needsScope(e.message), msg = scope ? 'Shopify says this app cannot read payouts yet: add the read_shopify_payments access scope to the Shopify app and approve it' : String(e.message || 'Shopify did not answer').slice(0, 200);
+      const scope = needsScope(e.message), msg = scope ? `Shopify says this app cannot read payouts yet: add the read_shopify_payments_payouts access scope to the Shopify app and approve it. Shopify said: ${String(e.message).slice(0, 220)}` : String(e.message || 'Shopify did not answer').slice(0, 200);
       await setSetting(PAYOUT_STATE, { ...prev, lastAttemptAt: at, lastError: msg, needsScope: scope, noAccount: false });
       log.warn?.({ err: e.message }, 'Shopify payouts not read'); return { ok: false, error: msg, needsScope: scope };
     }
