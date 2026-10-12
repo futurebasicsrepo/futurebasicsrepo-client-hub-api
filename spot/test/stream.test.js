@@ -214,12 +214,12 @@ test('the endpoint streams one JSON line per event, with what it used first', as
 test('a category or search page in place of the product: the product on that store, found and swapped in', async () => {
   const { resolveListing, parseProductHtml, looksLikeListing, cleanVariant } = await import('../src/capture.js');
   // Shopify's product search knows it: its own page gives the real price and photo.
-  const productPage = { items: [{ title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg', url: 'https://vessi.example/products/weekend' }], offers: [{ words: new Set(), in: true }], links: [] };
+  const productPage = { items: [{ title: 'Weekend Sneaker - Waterproof - Size 8', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg', url: 'https://vessi.example/products/weekend' }], offers: [{ words: new Set(), in: true }], links: [] };
   const r = await resolveListing(
     { url: 'https://vessi.example/collections/womens', title: 'Weekend Waterproof Sneakers' },
-    { fromUrl: async (u) => (u === 'https://vessi.example/products/weekend' ? productPage : null), suggest: async () => [{ url: 'https://vessi.example/products/cityscape', text: 'Cityscape Classic' }, { url: 'https://vessi.example/products/weekend', text: 'Weekend Sneaker - Waterproof' }] },
+    { fromUrl: async (u) => (u === 'https://vessi.example/products/weekend' ? productPage : null), suggest: async () => [{ url: 'https://vessi.example/products/cityscape', text: 'Cityscape Classic' }, { url: 'https://vessi.example/products/weekend', text: 'Weekend Sneaker - Waterproof', named: true }] },
   );
-  assert.deepEqual(r, { url: 'https://vessi.example/products/weekend', title: 'Weekend Sneaker', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg' });
+  assert.deepEqual(r, { url: 'https://vessi.example/products/weekend', title: 'Weekend Sneaker - Waterproof', price_cents: 13500, image_url: 'https://cdn.vessi.example/w.jpg' }, "the store's name for it, not the size its page opened on");
 
   // Not Shopify: the listing page's own links, by name.
   const listing = parseProductHtml(
@@ -232,6 +232,10 @@ test('a category or search page in place of the product: the product on that sto
   const r2 = await resolveListing({ url: 'https://shop.example/us/en/women/outerwear', title: 'UV Protection Cardigan' }, { fromUrl: async (u) => pages[u] || null, suggest: async () => [] });
   assert.equal(r2.url, 'https://shop.example/us/en/products/E123');
   assert.equal(r2.price_cents, 2990);
+  const { withoutSize } = await import('../src/capture.js');
+  assert.equal(withoutSize("Men's Tree Runner - Mist (White Sole) - Size 8"), "Men's Tree Runner - Mist (White Sole)");
+  assert.equal(withoutSize('Scoop-Neck Midi Dress | Deep Navy - XXS'), 'Scoop-Neck Midi Dress | Deep Navy');
+  assert.equal(withoutSize('Air Max 90'), 'Air Max 90');
 
   // A real product page stays: it has offers, or a price, or its own name.
   const real = { items: [{ title: 'Tee', price_cents: 2000 }], offers: [{ words: new Set(), in: true }], links: [{ url: 'https://shop.example/p/2', text: 'Black Tee Two' }] };
