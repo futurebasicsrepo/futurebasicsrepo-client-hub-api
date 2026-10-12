@@ -173,9 +173,18 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
     async order(direct, orderId) {
       if (!direct?.endpoint || !orderId) return null;
       const call = await client({ endpoint: direct.endpoint, transport: direct.transport || 'rest' }, direct.buyer_ip || null);
-      return call('GET', `/orders/${encodeURIComponent(orderId)}`);
+      return call('GET', `/orders/${encodeURIComponent(shopifyOrderId(direct.endpoint, orderId))}`);
     },
   };
+}
+
+// Shopify's Get Order takes 'gid://shopify/Order/123'; a bare number is that order.
+export function shopifyOrderId(endpoint, id) {
+  let host = '';
+  try {
+    host = new URL(endpoint).hostname;
+  } catch {}
+  return /(^|\.)myshopify\.com$/i.test(host) && /^\d+$/.test(String(id)) ? `gid://shopify/Order/${id}` : String(id);
 }
 
 // A Shopify store's cheapest shipping rate for these variants and address,

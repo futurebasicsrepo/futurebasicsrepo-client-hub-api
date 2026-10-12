@@ -82,7 +82,9 @@ export function createTracker({ db, spot, getOrder = async () => null, findOrder
             }
             c = spot.patch(c.id, (x) => ({ ...x, fulfillment: { ...x.fulfillment, order_id: String(orderId).slice(0, 200) } }));
           }
-          const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id }, 'order status read failed'), null));
+          // The id's shape (digits and letters masked), to see what a store didn't accept.
+          const shape = String(c.fulfillment.order_id).replace(/[0-9]/g, '9').replace(/[a-z]/gi, 'a').slice(0, 60);
+          const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id, order_id_shape: shape }, 'order status read failed'), null));
           apply(c, fromOrder(order), now);
         }
       } finally {
