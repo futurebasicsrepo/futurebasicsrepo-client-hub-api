@@ -429,3 +429,22 @@ export function chipProgress(cart) {
   const raised = held.reduce((n, c) => n + c.cents, 0);
   return { raised_cents: raised, left_cents: Math.max(0, (cart.total_cents || 0) - raised), people: held.length, names: held.map((c) => c.name).filter(Boolean).slice(0, 8) };
 }
+
+// Who paid, to show and thank: never the requester themselves. Before
+// direct.by_requester, a checkout the requester opened on their own page
+// recorded their shipping name and email as the payer's, so a full name
+// that matches theirs is theirs, not the payer's (and so is an email:
+// requesterEmail, for events.js).
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+export function payerIsRequester(cart) {
+  if (cart.paid_by_requester) return true;
+  const n = norm(cart.payer?.name);
+  return n.includes(' ') && (n === norm(cart.requester?.shipping?.name) || n === norm(cart.requester?.name));
+}
+export function requesterEmail(cart, email) {
+  const e = norm(email);
+  return Boolean(e && (e === norm(cart.requester?.shipping?.email) || e === norm(cart.requester?.email)));
+}
+export function payerName(cart) {
+  return cart.payer?.name && !payerIsRequester(cart) ? cart.payer.name : null;
+}

@@ -100,3 +100,47 @@ test('a tracking number pasted in: the carrier and link, shipped, and only on th
   const made = (await call('POST', '/v1/carts', { requester: { name: 'Kyle' }, merchant: { name: 'Tecovas' }, items: [{ title: 'Belt', price_cents: 9500 }] })).body;
   assert.equal((await call('POST', `/v1/carts/${made.cart.token}/manage/tracking`, { k: made.manage_key, number: '1Z999AA10123456784' })).status, 409);
 });
+
+test('paid on the store’s own checkout: Spot finds the order, follows it, and pushes to the requester’s devices as it ships', async (t) => {
+  const pushes = [];
+  const emails = [];
+  const db = openDb(':memory:');
+  let found = 0;
+  const events = [];
+  const a = buildApp({
+    db,
+    provider: sandboxProvider(),
+    cfg: { feeBps: 0, feeFixedCents: 200, maxCartCents: 50000, expiresHours: 72 },
+    logger: false,
+    env,
+    notifyFetch: async (url, init) => (String(url).includes('resend') && emails.push(JSON.parse(String(init.body))), new Response('{}', { status: 200 })),
+    pushFetch: async (url, init) => (pushes.push({ url, init }), new Response('', { status: 201 })),
+    capture: { findOrderId: async (c) => (found++, c.direct?.checkout_id === 'co_7' ? 'ord_7' : null), getOrder: async (c) => (c.fulfillment.order_id === 'ord_7' ? { id: 'ord_7', fulfillment: { events } } : null) },
+  });
+  t.after(() => a.close());
+  const post = (url, payload) => a.inject({ method: 'POST', url, payload });
+  // Kyle's account, with notifications turned on in one browser.
+  db.users.create('u_kyle', 'kyle@example.com');
+  const { createECDH, randomBytes } = await import('node:crypto');
+  const ecdh = createECDH('prime256v1');
+  ecdh.generateKeys();
+  db.pushSubs.add({ endpoint: 'https://web.push.apple.com/abc', user_id: 'u_kyle', p256dh: ecdh.getPublicKey().toString('base64url'), auth: randomBytes(16).toString('base64url'), ua: 'test' });
+  const made = (await post('/v1/carts', { requester: { name: 'Kyle' }, merchant: { name: 'Sports Basement', url: 'https://www.sportsbasement.com' }, items: [{ title: '49ers tee', price_cents: 2300 }] })).json();
+  a.spot.patch(a.spot.load(made.cart.token).id, (c) => ({ ...c, user_id: 'u_kyle' }));
+  const id = a.spot.load(made.cart.token).id;
+  await post(`/v1/carts/${made.cart.token}/sandbox-pay`, { payer_name: 'Danielle' });
+  // Completed on the store's checkout before Spot kept the store's order id.
+  a.spot.patch(id, (c) => ({ ...c, direct: { checkout_id: 'co_7', endpoint: 'https://www.sportsbasement.com/ucp' }, fulfillment: { state: 'placed', method: 'direct', order_number: '1001', placed_at: Date.now() - HOUR } }));
+  const mine = (await a.inject({ method: 'GET', url: `/v1/carts/${made.cart.token}/manage?k=${made.manage_key}` })).json().cart;
+  assert.equal(mine.tracking_auto, true, 'the page says Spot is watching, not “paste a number”');
+  const t0 = Date.now();
+  await a.tracker.sweep(t0);
+  assert.equal(found, 1);
+  assert.equal(a.spot.byId(id).fulfillment.order_id, 'ord_7', 'kept, so it isn’t looked up again');
+  events.push(ev('shipped', '2026-10-13T10:00:00Z', { carrier: 'UPS', tracking_number: '1Z999AA10123456784', tracking_url: 'https://www.ups.com/track?tracknum=1Z999AA10123456784' }));
+  await a.tracker.sweep(t0 + 7 * HOUR);
+  assert.equal(found, 1);
+  assert.equal(a.spot.byId(id).tracking.status, 'shipped');
+  await until(() => pushes.length && emails.some((m) => /is on its way/.test(m.subject)), 'push and email');
+  assert.equal(pushes[0].url, 'https://web.push.apple.com/abc', 'to the device they turned on');
+});

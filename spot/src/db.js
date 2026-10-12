@@ -572,7 +572,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     // Orders placed through agent checkout since `since`, not yet delivered (tracking.js).
     idsToTrack: (since) =>
       db
-        .prepare(`SELECT id FROM carts WHERE json_extract(doc, '$.fulfillment.state') = 'placed' AND json_extract(doc, '$.fulfillment.order_id') IS NOT NULL
+        .prepare(`SELECT id FROM carts WHERE json_extract(doc, '$.fulfillment.state') = 'placed'
+                  AND (json_extract(doc, '$.fulfillment.order_id') IS NOT NULL OR (json_extract(doc, '$.fulfillment.method') = 'direct' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL))
                   AND json_extract(doc, '$.fulfillment.placed_at') > ? AND COALESCE(json_extract(doc, '$.tracking.status'), '') != 'delivered'
                   ORDER BY COALESCE(json_extract(doc, '$.tracking.checked_at'), 0) LIMIT 500`)
         .all(since)

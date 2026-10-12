@@ -193,7 +193,16 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), policyOf: (c) => storeFacts.known(siteOf(c.items?.find((i) => i?.url)?.url || c.merchant?.url || '')), log: app.log });
   app.decorate('priceWatch', priceWatch);
   // Where each order is (tracking.js): the store's own order status, or a tracking number pasted in.
-  const tracker = createTracker({ db, spot, getOrder: capture.getOrder || ((c) => getUcpOrder({ storeUrl: c.merchant?.url, orderId: c.fulfillment.order_id, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), ...(fulfill.ucp?.allowPrivate ? { allowPrivate: true } : {}) })), log: app.log });
+  // Paid on the store's own checkout: asked through that checkout's connection (direct.js).
+  const paidAtStore = (c) => c.fulfillment?.method === 'direct' && Boolean(c.direct?.endpoint && spot.direct);
+  const ucpOrder = (c) => getUcpOrder({ storeUrl: c.merchant?.url, orderId: c.fulfillment.order_id, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), ...(fulfill.ucp?.allowPrivate ? { allowPrivate: true } : {}) });
+  const tracker = createTracker({
+    db,
+    spot,
+    getOrder: capture.getOrder || ((c) => (paidAtStore(c) ? spot.direct.order(c.direct, c.fulfillment.order_id) : ucpOrder(c))),
+    findOrderId: capture.findOrderId || (async (c) => (paidAtStore(c) ? (await spot.direct.status(c.direct)).order_id : null)),
+    log: app.log,
+  });
   app.decorate('tracker', tracker);
   // "Watch this": price drops and restocks on products a shopper picked (watches.js).
   const watches = createWatches({ db, notifier, baseUrl, ...(capture.watchPrice ? { price: capture.watchPrice } : {}), ...(capture.watchStock ? { stock: capture.watchStock } : {}), log: app.log });
@@ -858,7 +867,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.pay(req);
     const email = req.body?.email ? String(req.body.email).trim().toLowerCase().slice(0, 200) : null;
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new CartError('That email looks wrong');
-    const out = await spot.directStart(req.params.token, { email, name: req.body?.name || null, ip: req.ip });
+    // From the requester's own page (their key or session): they pay it themselves, so they're never thanked as the payer.
+    let byRequester = false;
+    try {
+      byRequester = Boolean(spot.loadManaged(req.params.token, keyOf(req)));
+    } catch {}
+    const out = await spot.directStart(req.params.token, { email, name: req.body?.name || null, ip: req.ip, byRequester });
     // The payer goes to the store through the affiliate link, if the store has one.
     const a = affiliate.wrap(out.continue_url, { ref: req.params.token });
     if (a.via) db.event(spot.load(req.params.token).id, 'affiliate_link', { via: a.via });

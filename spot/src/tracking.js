@@ -1,5 +1,6 @@
 // One order tracker: where each order Spot placed is, across stores.
-//   From the store   orders placed through agent checkout (UCP): Spot asks
+//   From the store   orders placed through agent checkout (UCP), by Spot or
+//                    by the payer on the store's own checkout: Spot asks
 //                    the store for the order (Get Order), whose fulfillment
 //                    events carry each shipment's status, carrier and link.
 //                    About every six hours for 45 days, until delivered.
@@ -49,7 +50,9 @@ export function fromOrder(order) {
 
 const rank = (s) => (s === 'problem' ? 2.5 : STAGES.indexOf(s));
 
-export function createTracker({ db, spot, getOrder = async () => null, log = console }) {
+// findOrderId(cart): the store's order id for a paid-at-the-store order
+// that completed before Spot kept it (read back from the store's checkout).
+export function createTracker({ db, spot, getOrder = async () => null, findOrderId = async () => null, log = console }) {
   let running = false;
   function apply(cart, next, now) {
     const prev = cart.tracking || null;
@@ -67,10 +70,18 @@ export function createTracker({ db, spot, getOrder = async () => null, log = con
       try {
         for (const id of db.idsToTrack(now - WINDOW)) {
           if (n >= BATCH) break;
-          const c = db.byId(id);
-          if (!c?.fulfillment?.order_id || c.tracking?.status === 'delivered') continue;
+          let c = db.byId(id);
+          if (!c?.fulfillment || c.tracking?.status === 'delivered') continue;
           if (c.tracking?.checked_at && now - c.tracking.checked_at < EVERY_MS) continue;
           n++;
+          if (!c.fulfillment.order_id) {
+            const orderId = await findOrderId(c).catch((err) => (log.warn?.({ err, cart: id }, 'order id read failed'), null));
+            if (!orderId) {
+              apply(c, null, now);
+              continue;
+            }
+            c = spot.patch(c.id, (x) => ({ ...x, fulfillment: { ...x.fulfillment, order_id: String(orderId).slice(0, 200) } }));
+          }
           const order = await getOrder(c).catch((err) => (log.warn?.({ err, cart: id }, 'order status read failed'), null));
           apply(c, fromOrder(order), now);
         }

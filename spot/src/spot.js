@@ -3,7 +3,7 @@
 // the sandbox simulator.
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { agentLabel } from './approvals.js';
-import { COVER_MAX_CENTS, CartError, cardLimitCents, chipProgress, splitCents, usd, computeTotals, config, decideAuthorization, goodsCents, safeExtrasCents, transition, validateCart } from './cart.js';
+import { COVER_MAX_CENTS, CartError, cardLimitCents, chipProgress, payerName, splitCents, usd, computeTotals, config, decideAuthorization, goodsCents, safeExtrasCents, transition, validateCart } from './cart.js';
 import { flightTitle, flightVariant, publicFlight, validateTravelers } from './flights.js';
 import { minutesUntilCutoff, trainTitle, trainVariant, validateRiders, validateTrain } from './trains.js';
 import { validateShipping } from './fulfill/index.js';
@@ -861,7 +861,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
 
     // The payer taps "Pay <store>": build the store's checkout (reused for 30
     // minutes) and send them to it. Spot never takes this payment.
-    async directStart(token, { email = null, name = null, ip = null } = {}) {
+    // byRequester: the requester's own page (their manage key), paying it
+    // themselves. They're never recorded as the payer.
+    async directStart(token, { email = null, name = null, ip = null, byRequester = false } = {}) {
       const cart = load(token);
       if (pausedByReports(cart)) throw new CartError(PAUSED, 423);
       if (cart.settle !== 'direct') throw new CartError('This cart isn’t paid at the store', 409);
@@ -874,10 +876,15 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         // Reuse it only for the same side: a checkout the requester started
         // for themselves carries their name and email, so once the ask is
         // sent on, the payer gets a fresh one.
-        if (now.direct?.checkout_id && now.direct.for === cart.for) return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
+        // The same goes for a checkout the requester opened on their own page:
+        // the payer never pays on it, or Spot would thank the requester.
+        if (now.direct?.checkout_id && now.direct.for === cart.for && Boolean(now.direct.by_requester) === Boolean(byRequester)) {
+          if (!byRequester && name) this.patch(cart.id, (c) => ({ ...c, direct: { ...c.direct, payer_name: String(name).trim().slice(0, 40) || c.direct.payer_name, payer_email: email ? String(email).toLowerCase() : c.direct.payer_email } }));
+          return { continue_url: now.direct.continue_url, total_cents: now.direct.total_cents };
+        }
       }
       const started = await this.direct.start(cart, { email, buyerIp: ip });
-      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), for: cart.for, payer_email: email ? String(email).toLowerCase() : null, payer_name: name ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
+      this.patch(cart.id, (c) => ({ ...c, direct: { ...started, started_at: Date.now(), for: cart.for, by_requester: Boolean(byRequester), payer_email: email && !byRequester ? String(email).toLowerCase() : null, payer_name: name && !byRequester ? String(name).trim().slice(0, 40) || null : null } }), 'store_checkout_started');
       return { continue_url: started.continue_url, total_cents: started.total_cents };
     },
 
@@ -898,10 +905,12 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       if (st.status === 'completed') {
         const done = move(db.byId(cart.id), 'store_paid', {
           paid_at: Date.now(),
-          // Paid for themselves: no payer to thank.
-          payer: cart.payer || (d.payer_name && cart.for !== 'self' ? { name: d.payer_name } : null),
-          payer_contact: d.payer_email ? { email: d.payer_email } : cart.payer_contact || null,
-          fulfillment: { state: 'placed', method: 'direct', order_number: st.order_number, order_url: st.order_url, total_cents: st.total_cents, placed_at: Date.now() },
+          // Paid for themselves (or on their own page): no payer to thank.
+          payer: cart.payer || (d.payer_name && cart.for !== 'self' && !d.by_requester ? { name: d.payer_name } : null),
+          payer_contact: d.payer_email && !d.by_requester ? { email: d.payer_email } : cart.payer_contact || null,
+          ...(d.by_requester && cart.for !== 'self' ? { paid_by_requester: true } : {}),
+          // The store's order id lets the tracker follow it (tracking.js).
+          fulfillment: { state: 'placed', method: 'direct', order_number: st.order_number, order_url: st.order_url, ...(st.order_id ? { order_id: st.order_id } : {}), total_cents: st.total_cents, placed_at: Date.now() },
         }, { order_number: st.order_number });
         this.emit('approved', done.id, { by: cart.for === 'self' ? 'requester' : 'payer', amount_cents: st.total_cents, how: 'paid_at_store' });
         this.emit('ordered', done.id);
@@ -1590,7 +1599,7 @@ export function publicCart(cart) {
     pay_at_store: cart.settle === 'direct' ? { ready: Boolean(cart.requester.shipping), started: Boolean(cart.direct?.checkout_id), store_total_cents: cart.direct?.total_cents ?? null } : null,
     total_cents: cart.total_cents,
     expires_at: cart.expires_at,
-    payer_name: cart.payer?.name || null,
+    payer_name: payerName(cart),
     // Several people paying a part each: how far along it is (first names only).
     chip_in: Boolean(cart.chip_in),
     chips: cart.chip_in ? chipProgress(cart) : null,
@@ -1615,7 +1624,7 @@ export function publicCart(cart) {
 export const THANKS_MAX = 280;
 export const THANKS_EMOJI = ['🙏', '❤️', '🎉', '😭', '🥹'];
 export function canThank(cart) {
-  return !cart.thanks && cart.for !== 'self' && cart.settle !== 'handoff' && !cart.bundle_id && Boolean(cart.paid_at) && ['paid', 'card_issued', 'completed'].includes(cart.status);
+  return !cart.thanks && cart.for !== 'self' && !cart.paid_by_requester && cart.settle !== 'handoff' && !cart.bundle_id && Boolean(cart.paid_at) && ['paid', 'card_issued', 'completed'].includes(cart.status);
 }
 // One line of plain text: no control or invisible formatting characters.
 export function cleanThanks(raw) {
@@ -1640,6 +1649,8 @@ export function ownerCart(cart) {
     released: Boolean(cart.released),
     spent_at: cart.spent_at || null,
     tracking: cart.tracking ? (({ checked_at, ...t }) => t)(cart.tracking) : null,
+    // Spot follows this order at the store (tracking.js), so nobody has to paste a number.
+    tracking_auto: cart.fulfillment?.state === 'placed' && Boolean(cart.fulfillment.order_id || (cart.fulfillment.method === 'direct' && cart.direct?.checkout_id)),
     return: cart.return || null,
     can_return: cart.settle === 'card' && (cart.kind || 'goods') === 'goods' && ['card_issued', 'completed'].includes(cart.status) && Boolean(cart.fulfillment?.state === 'placed' || cart.spent_at) && (!cart.return || cart.return.state === 'closed'),
     // The price watch (pricewatch.js), as the requester may see it: that
