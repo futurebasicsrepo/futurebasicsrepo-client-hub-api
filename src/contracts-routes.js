@@ -23,6 +23,7 @@ import { moneyAllowed, cleanInvoice, nextInvoiceNumber } from './money.js';
 import { fireTrigger } from './sales-automations-engine.js';
 import { createAutopay, authorizationText } from './autopay.js';
 import { processor as paymentProcessor, tokensUrl } from './qb-payments.js';
+import { createStripe, verifyWebhook as verifyStripeWebhook } from './stripe-payments.js';
 import { qbConfig } from './quickbooks.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -34,6 +35,7 @@ const STATUS_FILTER = ['draft', 'sent', 'signed_by_client', 'executed', 'decline
 export function registerContractRoutes(app, d) {
   const { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail = async () => false, hubEmailShell = (t, b) => b, hubButton = () => '', emailEscape = s => String(s), notifyStaff = async () => false,
     money = null, proc = paymentProcessor, secret = 'dev', publicUrl = 'https://hub.thefuturebasics.com', workUrl = 'https://work.thefuturebasics.com', env = process.env, throttle = () => true, log = console } = d;
+  const stripe = d.stripe || createStripe({ env, log });
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   const pre = [authenticate, adminOnly], actorId = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const userOf = async req => (await pool.query('select id, email, name from users where id=$1', [actorId(req)]).catch(() => ({ rows: [] }))).rows[0] || null;
@@ -52,7 +54,7 @@ export function registerContractRoutes(app, d) {
 
   const one = async id => (await pool.query('select c.*, d.title deal_title, p.name project_name from contracts c left join sales_deals d on d.id=c.deal_id left join projects p on p.id=c.project_id where c.id=$1', [id])).rows[0];
   // Automatic payments (autopay.js). Without the Money routes (no QuickBooks) there is nothing to charge through, and the contract simply says so.
-  const autopay = money ? createAutopay({ pool, proc, money, draftInvoices: async r => { const out = await draftInvoices(r, 'autopay'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'autopay', detail: out.error }); return out; }, reload: one, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret, publicUrl, workUrl, log, env }) : null;
+  const autopay = money ? createAutopay({ pool, proc, stripe, getSetting, money, draftInvoices: async r => { const out = await draftInvoices(r, 'autopay'); if (out.error) await ev(r.id, 'invoices_failed', { actor: 'autopay', detail: out.error }); return out; }, reload: one, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret, publicUrl, workUrl, log, env }) : null;
   // A contract that was sent and ran past its date is expired from then on (found out when it is next looked at, so no clock is needed).
   async function fresh(r) {
     if (r && r.status === 'sent' && r.expires_at && new Date(r.expires_at) < new Date()) {
@@ -89,7 +91,17 @@ export function registerContractRoutes(app, d) {
     return { content, dealId: deal?.id || null, projectId: project?.id || null, clientId: project?.client_id || null, contactId: deal?.contact_id || null };
   }
 
-  app.get('/v1/contracts/settings', { preHandler: pre }, async () => ({ settings: await settings() }));
+  // Which payment processor takes new card and bank details (QuickBooks Payments or Stripe), and whether each is ready. Only the signers can change it.
+  const paymentsView = async () => ({ processor: autopay ? await autopay.chosen() : 'quickbooks', stripe: { configured: stripe.configured(), live: stripe.live(), webhook: Boolean(stripe.webhookSecret()), webhookUrl: `${publicUrl}/v1/stripe/webhook` }, quickbooks: { ready: autopay ? (await autopay.readiness('quickbooks')).ready : false } });
+  app.get('/v1/contracts/settings', { preHandler: pre }, async () => ({ settings: await settings(), payments: await paymentsView() }));
+  app.put('/v1/contracts/autopay/processor', { preHandler: [...pre, signerOnly] }, async (req, reply) => {
+    const processor = req.body?.processor === 'stripe' ? 'stripe' : req.body?.processor === 'quickbooks' ? 'quickbooks' : '';
+    if (!processor) return bad(reply, 'Choose QuickBooks Payments or Stripe');
+    if (processor === 'stripe' && !stripe.configured()) return bad(reply, 'Stripe is not set up yet: add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET to the service first', 409);
+    if (processor === 'stripe' && !stripe.webhookSecret()) return bad(reply, 'Add STRIPE_WEBHOOK_SECRET to the service first: Stripe tells us about bank debits that settle later', 409);
+    await setSetting('autopayProcessor', { processor, by: req.signer.email, at: new Date().toISOString() });
+    return { payments: await paymentsView() };
+  });
   app.put('/v1/contracts/settings', { preHandler: pre }, async (req) => { const v = cleanSettings(req.body); await setSetting('contractSettings', v); return { settings: v }; });
 
   app.get('/v1/contracts/sources', { preHandler: pre }, async () => {
@@ -318,7 +330,8 @@ export function registerContractRoutes(app, d) {
   const payInfo = async r => {
     if (!autopay || !r.content.plan.autopay || !r.client_signature?.autopay || !['signed_by_client', 'executed'].includes(r.status)) return null;
     const rd = await autopay.readiness(), m = await autopay.activeMethod(r.id), kind = (r.content.plan.method === 'either' ? r.client_signature.method : r.content.plan.method) === 'card' ? 'card' : 'bank', ov = await autopay.overview(r);
-    return { kind, ready: rd.ready, testMode: qbConfig(env).mode !== 'production', tokensUrl: rd.ready ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
+    const hosted = (await autopay.chosen()) === 'stripe';
+    return { kind, ready: rd.ready, hosted, processor: await autopay.chosen(), testMode: hosted ? !stripe.live() : qbConfig(env).mode !== 'production', tokensUrl: rd.ready && !hosted ? tokensUrl(qbConfig(env)) : null, method: m ? { label: m.label, kind: m.kind } : null, authorization: authorizationText(kind, r.content.provider?.name || 'Future Basics'), paused: ov.paused,
       upcoming: ov.installments.map(i => ({ label: i.label, amountCents: i.amountCents, falls: i.falls, state: i.state })) };
   };
 
@@ -431,6 +444,37 @@ export function registerContractRoutes(app, d) {
     if (out.error) return bad(reply, out.error, out.status || 422);
     if (r.status === 'executed') await autopay.runFor(r.id).catch(() => {}); // a payment already due (the deposit on signing) is taken now, not at the next hourly run
     return { ok: true, method: out.method };
+  });
+  // ---- Stripe: the client adds their card (Apple Pay and Google Pay come with it) or bank account on Stripe's own page, and comes back here ----
+  app.post('/v1/public/contracts/:token/payment-session', async (req, reply) => {
+    const r = await byToken(req, reply); if (!r) return;
+    if (!throttle(`contract-pay-start:${req.ip}`, { limit: 30, windowMs: 3600_000 })) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    if (!autopay || (await autopay.chosen()) !== 'stripe') return bad(reply, 'Automatic payments are not set up', 409);
+    if (req.body?.agree !== true) return bad(reply, 'Please tick the box to authorize the payments');
+    const out = await autopay.startStripeSetup(r, { returnUrl: `${publicUrl}/sign/${req.params.token}`, kind: req.body?.kind === 'card' ? 'card' : req.body?.kind === 'bank' ? 'bank' : null, ip: ipOf(req) });
+    if (out.notReady) await notifyStaff(`${r.content.client.company} tried to add payment details for ${r.number}`, `<p>${emailEscape(out.notReady)}</p>${hubButton(`${workUrl}/money#settings`, 'Open Money settings')}`);
+    if (out.error) return bad(reply, out.error, out.status || 422);
+    return { ok: true, url: out.url };
+  });
+  app.post('/v1/public/contracts/:token/payment-session/complete', async (req, reply) => {
+    const r = await byToken(req, reply); if (!r) return;
+    if (!throttle(`contract-pay-back:${req.ip}`, { limit: 40, windowMs: 3600_000 })) return bad(reply, 'Too many tries from here. Please wait a few minutes.', 429);
+    const sessionId = String(req.body?.sessionId || ''); if (!/^cs_[\w]{8,300}$/.test(sessionId)) return bad(reply, 'The payment page did not say what happened. Try again.');
+    if (!autopay || !stripe.configured()) return bad(reply, 'Automatic payments are not set up', 409);
+    const out = await autopay.completeStripePage(r, sessionId, { ip: ipOf(req), ua: uaOf(req) });
+    if (out.pending) return reply.code(202).send({ ok: true, pending: true, message: out.message });
+    if (out.error) return bad(reply, out.error, out.status || 422);
+    if (!out.already && r.status === 'executed') await autopay.runFor(r.id).catch(() => {}); // a payment already due (the deposit on signing) is taken now
+    return { ok: true, method: out.method };
+  });
+  // Stripe tells us what happened (details saved, a bank account confirmed, a debit settled or refused). Signed with the webhook secret; anything else is refused.
+  app.post('/v1/stripe/webhook', { preParsing: async (req, _reply, payload) => { const chunks = []; for await (const c of payload) chunks.push(c); req.rawBody = Buffer.concat(chunks); const { Readable } = await import('node:stream'); return Readable.from(req.rawBody); } }, async (req, reply) => {
+    const raw = req.rawBody?.toString('utf8') || '';
+    if (!verifyStripeWebhook({ rawBody: raw, header: req.headers['stripe-signature'], secret: stripe.webhookSecret() })) return bad(reply, 'Bad signature', 401);
+    let evt; try { evt = JSON.parse(raw); } catch { return bad(reply, 'Bad body', 400); }
+    if (!autopay) return { ok: true };
+    try { const out = await autopay.stripeEvent(evt); return { ok: true, ...(out?.ignored ? { ignored: out.ignored } : {}) }; }
+    catch (e) { log.warn?.({ stripe: true, err: String(e.message).slice(0, 200), type: evt?.type }, 'Stripe webhook failed'); return reply.code(500).send({ error: 'Try again' }); }
   });
   app.post('/v1/public/contracts/:token/decline', async (req, reply) => {
     const r = await byToken(req, reply); if (!r) return; if (r.status !== 'sent') return bad(reply, 'This agreement is not open for signing.', 409);

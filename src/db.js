@@ -1647,6 +1647,8 @@ export async function migrate() {
       settled_at timestamptz,
       unique (contract_id, seq, attempt)
     );
+    alter table contract_charges add column if not exists fee_cents bigint;
+    alter table contract_charges add column if not exists net_cents bigint;
     alter table money_connections add column if not exists scope text not null default 'com.intuit.quickbooks.accounting';
     -- a contract made before it was tied to a client room (a blank one, or one whose signer sits in a room): tie it by the signer's own sign-in so it shows in their hub
     update contracts c set client_id = u.client_id from users u join clients cl on cl.id = u.client_id
