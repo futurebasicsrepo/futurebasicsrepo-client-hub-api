@@ -13,6 +13,8 @@
 //   revealCard(cart)             → { number, cvc, exp_month, exp_year }
 //                                  (checkout only: never sent to a browser)
 //   cancelCard(cart)             → void
+//   pauseCard(cart)              → void   (used: no new charge goes through,
+//                                  but a store refund still lands)
 //   setCardLimit(ref, cents)     → void   (Spot covering a difference)
 //   refund(cart, amountCents?, key?) → 'released' | 'refunded'
 //                                  (whole payment when no amount; a hold is
@@ -109,6 +111,11 @@ export function sandboxProvider() {
     async cancelCard(cart) {
       if (cart.card_ref) this.canceled.push(cart.card_ref);
       this.canceled.splice(0, this.canceled.length - 200);
+    },
+    paused: [],
+    async pauseCard(cart) {
+      if (cart.card_ref) this.paused.push(cart.card_ref);
+      this.paused.splice(0, this.paused.length - 200);
     },
     limits: new Map(),
     async setCardLimit(ref, cents) {
@@ -302,6 +309,15 @@ export function stripeProvider(env = process.env) {
       await stripe.issuing.cards.update(ref, {
         spending_controls: { spending_limits: [{ amount: cents, interval: 'all_time' }], blocked_categories: BLOCKED_CATEGORIES },
       });
+    },
+
+    // Used: switched off ("inactive"), so Stripe declines any new charge,
+    // while a store refund (a return, a price adjustment) still lands on it.
+    // Stripe only says a canceled card can get refunds "in certain
+    // scenarios", so a used card is paused first and canceled later.
+    async pauseCard(cart) {
+      if (!cart.card_ref) return;
+      await stripe.issuing.cards.update(cart.card_ref, { status: 'inactive' });
     },
 
     async cancelCard(cart) {

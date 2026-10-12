@@ -192,6 +192,7 @@ function stripeLike(log = []) {
     createPayment: async (c) => ({ ref: `pi_${c.token}`, client: { mode: 'stripe', client_secret: `pi_${c.token}_secret` } }),
     issueCard: async (c) => ({ ...(await sbx.issueCard(c)), ref: `ic_${c.token}` }),
     cancelCard: async (c) => { log.push(['cancel', c.card_ref]); },
+    pauseCard: async (c) => { log.push(['pause', c.card_ref]); },
     refund: async (c, amount, key) => { log.push(['refund', c.payment_ref, amount ?? 'all', key ?? null]); },
     verifyWebhook: (raw, sig) => {
       if (sig !== 'good') throw new Error('bad sig');
@@ -289,7 +290,7 @@ test('a refund that fails stays `refunding` and is retried by the sweep', async 
   assert.equal(log.filter((x) => x[0] === 'refund').length, 1);
 });
 
-test('after the store charges: the card is canceled, unused money and returns go back to the payer (once), fee kept', async (t) => {
+test('after the store charges: the card is paused (no new charge, refunds still land), unused money and returns go back to the payer (once), fee kept; canceled after 60 days', async (t) => {
   const provider = stripeLike();
   const { app, call } = stripeSetup(provider);
   t.after(() => app.close());
@@ -301,7 +302,7 @@ test('after the store charges: the card is canceled, unused money and returns go
   const capture = { type: 'issuing_transaction.created', data: { object: { id: 'ipi_cap', card, authorization: 'iauth_ok', type: 'capture', amount: -27600, merchant_data: { name: 'ARITZIA' } } } };
   await hook(capture);
   await hook(capture);
-  assert.deepEqual(provider.log.filter((x) => x[0] === 'cancel'), [['cancel', card]], 'canceled once, right after the charge');
+  assert.deepEqual(provider.log.filter((x) => ['cancel', 'pause'].includes(x[0])), [['pause', card]], 'paused once, right after the charge, not canceled');
   // The authorization closes: $276 charged of $284.55 paid for the goods.
   await hook({ type: 'issuing_authorization.updated', data: { object: { id: 'iauth_ok', card, status: 'closed', approved: true, transactions: [{ id: 'ipi_cap', type: 'capture', amount: -27600 }] } } });
   // A return later.
@@ -320,6 +321,15 @@ test('after the store charges: the card is canceled, unused money and returns go
   await hook({ type: 'issuing_transaction.created', data: { object: { id: 'ipi_ret2', card, type: 'refund', amount: 999999 } } });
   const after = await call('GET', `/v1/carts/${token}/manage?k=${a.manage_key}`);
   assert.equal(after.body.cart.refunded_cents, 27100 + 1355, 'capped at what was paid for the goods; the fee stays');
+  // Single use still: a new charge on the paused card is declined.
+  await hook({ type: 'issuing_authorization.request', data: { object: { id: 'iauth_again', card: { id: card }, pending_request: { amount: 1000, currency: 'usd' }, merchant_data: { name: 'ARITZIA' } } } });
+  assert.deepEqual(provider.log.filter((x) => x[0] === 'answer' && x[1] === 'iauth_again'), [['answer', 'iauth_again', false]]);
+  // Kept for its refunds, then canceled for good (once).
+  await app.spot.sweepMoney(Date.now() + 59 * 86400_000);
+  assert.equal(provider.log.filter((x) => x[0] === 'cancel').length, 0, 'still paused within the window');
+  await app.spot.sweepMoney(Date.now() + 61 * 86400_000);
+  await app.spot.sweepMoney(Date.now() + 62 * 86400_000);
+  assert.deepEqual(provider.log.filter((x) => x[0] === 'cancel'), [['cancel', card]], 'canceled once, after the window');
 });
 
 test('a reversed authorization refunds the payer in full; an expired one waits 30 days for a late charge', async (t) => {
