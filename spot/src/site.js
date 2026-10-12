@@ -197,6 +197,19 @@ pre .k{color:#ffb347}pre .s{color:#8fd6a8}pre .c{color:#7d7368}
 .sd-line{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}.sd-line.total{font-weight:800;border-bottom:0}
 .sd-btn{margin-top:10px;border-radius:999px;padding:14px;text-align:center;font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px}.sd-btn.dark{background:var(--ink);color:var(--bg)}.sd-btn.spot{background:#ff5a36;color:#fff}.sd-btn i{width:11px;height:11px;border-radius:50%;background:#fff}
 .storedemo small{display:block;text-align:center;color:var(--muted);font-size:12px;margin-top:6px}
+/* shop with Spot */
+.shopdemo{position:relative;background:var(--card);border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:0 24px 60px -34px rgba(0,0,0,.4);max-width:380px;width:100%;justify-self:center}
+.shopdemo .ph{aspect-ratio:4/3;display:grid;place-items:center;font-size:86px;background:linear-gradient(160deg,#efe6d8,#f6efe5)}
+.shopdemo .badge{position:absolute;top:12px;left:12px;background:var(--ink);color:var(--bg);font-weight:800;font-size:12px;border-radius:99px;padding:5px 10px}
+.shopdemo .pb{padding:16px 18px 18px}.shopdemo .st{font-size:13px;font-weight:700;color:var(--muted);display:flex;gap:8px;align-items:center}.shopdemo .st i{font-style:normal;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);border-radius:99px;padding:2px 8px;font-size:12px}
+.shopdemo .t{font-weight:800;font-size:19px;margin-top:4px;letter-spacing:-.01em}.shopdemo .v{color:var(--muted);font-size:14px}
+.shopdemo ul{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:7px;font-size:14px}.shopdemo li{display:flex;gap:8px;align-items:flex-start}.shopdemo li span{flex:none;width:20px;text-align:center}.shopdemo li a{color:var(--muted);font-size:12px;margin-left:4px}
+.shopdemo .pr{display:flex;align-items:baseline;gap:8px;margin-top:14px;font-weight:800;font-size:24px}.shopdemo .pr s{font-size:15px;color:var(--muted);font-weight:600}.shopdemo .pr small{font-size:12px;font-weight:800;color:var(--ok)}
+.shopdemo .b1,.shopdemo .b2{display:block;text-align:center;border-radius:999px;padding:12px;font-weight:800;margin-top:10px}.shopdemo .b1{background:#ff5a36;color:#fff}.shopdemo .b2{border:1px solid var(--line)}
+.shopdemo .tl{display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:13px;color:var(--muted);font-weight:600}
+.after{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:48px}.after>div{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px}.after .e{font-size:26px}.after h3{font-size:18px;margin:8px 0 6px}.after p{color:var(--muted);font-size:15px;margin:0}
+.afterh{margin-top:64px;font-size:clamp(24px,3.2vw,34px);letter-spacing:-.02em}
+@media (max-width:860px){.after{grid-template-columns:1fr}.shopsec .grid{grid-template-columns:1fr}}
 .safe{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:46px}
 .safe div{border-top:3px solid var(--spot);padding-top:16px}
 .safe p{color:var(--muted);margin-top:8px;font-size:16px}
@@ -230,8 +243,8 @@ details p{color:var(--muted);margin-top:12px}
 .mode:hover{transform:translateY(-2px) rotate(-.5deg);border-color:var(--spot);box-shadow:0 12px 26px rgba(27,23,18,.1)}
 .mode .mi{font-size:26px;line-height:1}.mode b{display:block;font-size:17px}.mode small{display:block;color:var(--muted);font-size:14px;line-height:1.35;margin-top:2px}
 @media (max-width:520px){.modes{grid-template-columns:1fr}}
-.handoff .grid,#rules .grid,.stores .grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
-@media (max-width:900px){.handoff .grid,#rules .grid,.stores .grid{grid-template-columns:1fr}}
+.handoff .grid,#rules .grid,.stores .grid,.shopsec .grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+@media (max-width:900px){.handoff .grid,#rules .grid,.stores .grid,.shopsec .grid{grid-template-columns:1fr}}
 .handoff .phone{transform:rotate(-2deg)}
 .ticks{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px}
 .ticks li{position:relative;padding-left:34px;color:var(--muted)}.ticks li b{color:var(--ink)}
@@ -368,7 +381,7 @@ ${siteNav()}
   <div>
     <span class="pill"><i></i>The yes button for AI shopping${provider === 'sandbox' ? ' · test mode' : ''}</span>
     <h1 style="margin-top:22px">Your AI shops.<br>You say <em class="circled">yes${circleMark}</em>.</h1>
-    <p class="lead">Add Spot to <b>Claude</b> or <b>ChatGPT</b> and ask for anything: sneakers, a flight, the 7am train to New York. When you, or whoever’s paying, taps yes, Spot buys it with <b>a card made for that one order</b>.</p>
+    <p class="lead">Ask Spot for anything, right here or inside <b>Claude</b> and <b>ChatGPT</b>: sneakers, a sofa, the 7am train to New York. When you, or whoever’s paying, taps yes, Spot buys it with <b>a card made for that one order</b>, then watches the price.</p>
     <div class="cta"><a class="btn primary" href="/connect">Add Spot to your AI →</a><a class="btn ghost" href="/new">Make a Spot</a></div>
     <ul class="proof"><li>${tick}Your AI never sees a card</li><li>${tick}Capped at the order</li><li>${tick}Every yes is signed</li></ul>
     <p class="works">Works in <b>Claude</b>, <b>ChatGPT</b> and any MCP app, in about a minute. The person paying doesn’t need an account.</p>
@@ -380,6 +393,48 @@ ${siteNav()}
   <div class="mrow"><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">👟</div><div><b>Trail runners, size 10.5</b><small>Trailhead Supply · birthday</small></div><span class="amt">$200</span></div><div class="ask"><div class="em">🛏️</div><div><b>Dorm bedding set</b><small>Hearth & Loom · move-in</small></div><span class="amt">$118</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎙️</div><div><b>Podcast mic</b><small>Signal Goods · creator fund</small></div><span class="amt">$129</span></div><div class="ask"><div class="em">💄</div><div><b>Skincare restock</b><small>Dewdrop · “pls 🥺”</small></div><span class="amt">$64</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div></div>
   <div class="mrow rev" aria-hidden="true"><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎮</div><div><b>Wireless controller</b><small>Pixel Depot · good grades</small></div><span class="amt">$69</span></div><div class="ask"><div class="em">📚</div><div><b>Semester textbooks</b><small>Campus Books</small></div><span class="amt">$142</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🧥</div><div><b>The Super Puff jacket</b><small>Kiln & Co. · it’s cold</small></div><span class="amt">$250</span></div><div class="ask"><div class="em">🪴</div><div><b>Monstera + pot</b><small>Leaf Lab · housewarming</small></div><span class="amt">$58</span><span class=tag>spotted</span></div><div class="ask"><div class="em">🎨</div><div><b>Gouache set</b><small>Paper Fox · art class</small></div><span class="amt">$46</span></div><div class="ask"><div class="em">🎧</div><div><b>Noise-cancelling headphones</b><small>Northwind Audio · “for the flight”</small></div><span class="amt">$249</span><span class=tag>spotted</span></div></div>
 </section>
+
+<section class="sec alt shopsec" id="shop" data-say="I read the fine print so you don’t have to 🔎"><div class="wrap"><div class="grid">
+  <div>
+    <p class="kicker reveal">Shop with Spot</p>
+    <h2 class="reveal">Everything you’d check,<br>already checked.</h2>
+    <p class="lead reveal">Ask Spot for anything and every pick comes with what you’d normally open five tabs for, read from the store’s own pages, with the link to prove it.</p>
+    <ul class="ticks reveal">
+      <li><b>The store’s own policy.</b> Price protection, free returns and how long you have, linked to the page Spot read.</li>
+      <li><b>When it gets to you.</b> A delivery date for your address, not “3–7 business days.”</li>
+      <li><b>Fit and reviews.</b> What buyers say, and the size to order based on the size you saved.</li>
+      <li><b>The best price.</b> Spot checks other stores for the exact same thing, and tries promo codes before you pay.</li>
+      <li><b>Your taste, out in the open.</b> What you open, keep and pass on shapes what Spot shows next. See what it learned and edit it any time.</li>
+      <li><b>Picks aren’t for sale.</b> What Spot earns never changes what it shows you. If a cheaper store pays Spot nothing, Spot still sends you there.</li>
+    </ul>
+    <div class="cta reveal" style="margin-top:28px;display:flex;gap:12px;flex-wrap:wrap"><a class="btn primary" href="/new">Start shopping →</a></div>
+  </div>
+  <div class="shopdemo tilt reveal" aria-label="Example: a product card on Spot">
+    <span class="badge">Spot’s pick</span>
+    <div class="ph" aria-hidden="true">👟</div>
+    <div class="pb">
+      <div class="st">Trailhead Supply <i>In stock</i></div>
+      <div class="t">XT Trail Runner</div><div class="v">Black · 10.5</div>
+      <ul>
+        <li><span>🛡️</span><div>Price protection, 14 days <a href="#shop">source</a></div></li>
+        <li><span>↩️</span><div>Free returns within 30 days</div></li>
+        <li><span>🚚</span><div>Arrives Thursday</div></li>
+        <li><span>⭐</span><div>4.7 from 2,140 buyers · runs half small, we’d get you an 11</div></li>
+        <li><span>🏷️</span><div>Code TRAIL10 takes $13 off. Spot tried it.</div></li>
+      </ul>
+      <div class="pr">$129 <s>$160</s><small>lowest Spot has seen</small></div>
+      <span class="b1">Pay with Spot</span><span class="b2">Let someone else pay</span>
+      <div class="tl"><span>👀 Watch price</span><span>At the store ↗</span></div>
+    </div>
+  </div>
+</div>
+  <h3 class="afterh reveal">After you buy, Spot keeps working.</h3>
+  <div class="after">
+    <div class="reveal"><div class="e">📉</div><h3>Price drops</h3><p>Spot watches the price for as long as the store adjusts it, then asks the store for the difference. It goes back to whoever paid.</p></div>
+    <div class="reveal"><div class="e">📦</div><h3>Every order, one list</h3><p>Every store’s order in one place, with tracking from the carrier.</p></div>
+    <div class="reveal"><div class="e">↩️</div><h3>Returns</h3><p>Start a return from your order and Spot takes it from there. The refund goes back to whoever paid.</p></div>
+  </div>
+</div></section>
 
 ${handoffSection()}
 
@@ -449,6 +504,8 @@ ${storySection(spotBuddy("story"))}
       <tr><td>Spending rules and an approver for your AI</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Signed proof of who approved what</td><td class="us">${check}</td><td>${cross}</td><td>${cross}</td><td>${cross}</td></tr>
       <tr><td>Ordered for you</td><td class="us">${check}</td><td>${check}</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>The store’s own policy, with the source</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>${cross}</td></tr>
+      <tr><td>Claims price drops after you buy</td><td class="us">${check}</td><td>Some</td><td>${cross}</td><td>${cross}</td></tr>
       <tr class="cost"><td>What it costs</td><td class="us">$2 + card fee</td><td>Free</td><td>Free</td><td>Free</td></tr>
     </tbody>
   </table></div>
@@ -544,6 +601,9 @@ ${noteSection()}
     <details><summary>Can my AI spend my money without me?</summary><p>Not unless you turn that on. By default every purchase waits for a person: you tap Approve, or whoever’s paying does. You can opt in to let one AI pay on its own, but only inside a cap per order you set, and “Stop all AI spending” on your account turns it off at once. Either way your AI never gets a card number: Spot makes a new card for each order, capped at it and locked to that store.</p></details>
     <details><summary>How do I add Spot to Claude or ChatGPT?</summary><p>The quick start at <a href=\"/connect\">spotmeplease.com/connect</a> walks you through it. In Claude, go to Settings → Connectors → Add custom connector. In ChatGPT, go to Settings → Apps &amp; Connectors → Create. Paste <code>${origin}/mcp</code>, sign in to Spot and tap Allow. That’s it: no key to copy. Your AI then shows up on your account, where you can set its rules or disconnect it.</p></details>
     <details><summary>Can my AI buy train tickets?</summary><p>Yes. Ask for a train and your AI picks the exact one (Amtrak and other operators that sell online). You add who’s riding, pay, and Spot buys that train for you. You see the operator’s real total before anything is bought, and the e-ticket comes straight to your email.</p></details>
+    <details><summary>Does Spot get paid to recommend things?</summary><p>No store can pay to be picked. Spot’s picks come from what fits your ask and your taste, and Spot will point you to a cheaper store even when that store pays Spot nothing. When someone pays at a store through Spot’s link, the store may pay Spot a small commission; the price is the same for them, and the pay page says so.</p></details>
+    <details><summary>What if the price drops after I buy?</summary><p>When Spot buys it, Spot keeps checking the price for as long as the store offers price adjustments (or 30 days). If it drops by at least $1 and 3%, Spot asks the store for the difference, and when the store pays it, it goes straight back to whoever paid.</p></details>
+    <details><summary>Where do the return policy and delivery dates come from?</summary><p>From the store itself. Spot reads the store’s own policy pages and shows the link next to what it found. Delivery dates come from the store’s shipping options for your address when it has them, otherwise from its stated shipping times. If Spot can’t find it, it doesn’t guess.</p></details>
     <details><summary>Does the person paying need an account?</summary><p>No. They open your link and pay with Apple Pay, Google Pay or a card. That’s it.</p></details>
     <details><summary>Why does Spot buy it instead of sending money?</summary><p>For stores that can’t take the payment directly, it’s what makes people comfortable saying yes: their money buys exactly what you asked for, and you can’t get cash instead. The person paying gets a receipt from Spot, and returns go through Spot. It also shuts out the fraud that plagues cash transfers.</p></details>
     <details><summary>What if I change my mind?</summary><p>Until Spot places the order, you can cancel from your Spot page, and the person who paid can cancel from their receipt. Either way they get a full refund. After that, returns go through Spot: when the store refunds Spot, Spot refunds whoever paid. Paid the store directly? Then the store’s own cancellation and return policy applies.</p></details>
