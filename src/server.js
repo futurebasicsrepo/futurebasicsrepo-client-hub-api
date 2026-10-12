@@ -20,6 +20,7 @@ import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTI
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
+import { registerContractRoutes } from './contracts-routes.js'
 import { registerFactoryRoutes } from './factories-routes.js'
 import { registerProtoRoutes } from './proto-routes.js'
 import { stubEdit } from './proto-build.js';
@@ -663,6 +664,10 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
     const o = d.order, paid = o?.displayFinancialStatus === 'PAID' || d.status === 'COMPLETED';
     return { paid, amountCents: Math.round(Number((o || d).totalPriceSet?.shopMoney?.amount || 0) * 100), paidAt: d.updatedAt, orderName: o?.name || d.name };
   } });
+// Contracts for digital work: built from a deal, signed from a private link (see contracts-routes.js, docs/contracts.md)
+registerContractRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret: process.env.JWT_SECRET || 'dev', publicUrl: clientHubUrl, workUrl: workHubUrl, throttle, log: app.log });
+app.get('/contracts', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./contracts.html', import.meta.url), 'utf8')));
+app.get('/sign/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./sign.html', import.meta.url), 'utf8')));
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
 app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./prototypes.html', import.meta.url), 'utf8')));

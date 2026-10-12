@@ -262,6 +262,22 @@
         { target: tab('check'), title: 'The independent check', optional: true, do: 'Open Check: the photo beside the render, a score, and what to fix. Run it from its button.', why: 'A second opinion before the pack goes to the client.', done: 'click', after: 'Check open.' },
         { target: tab('sign'), title: 'Sign-off', do: 'Open Sign.', why: 'Publishing, the client’s approval and the factory’s countersignature are tracked here. Once every signature is in, the pack locks.', done: 'click', after: 'Sign-off open.' }
       ]
+    },
+    {
+      id: 'staff-contracts', title: 'Send a contract for signature',
+      match: () => path() === '/contracts' && shown('#app'),
+      steps: [
+        { target: '#newBtn', title: 'Start a contract', do: 'Press “+ New contract”.', why: 'A contract starts from a deal, so the client, the signer and the fee come with it.', done: dialogOpen('#dlg'), after: 'Now pick where it starts.' },
+        { target: '#dBody [data-deal]', title: 'Pick the deal', wait: 'Open “+ New contract” first.', do: 'Press Start beside the deal this contract is for.', why: 'Deals in meeting, proposal or won are listed, with any contract already made for them.', done: () => shown('#eBody [data-k="client.company"]'), after: 'The editor is open.' },
+        { target: '#eBody [data-k="client.signerEmail"]', title: 'Check who signs', wait: 'Pick a deal first.', do: 'Make sure the signer and their email are right. The signing link goes to that address.', why: 'The link is the key: it opens this agreement and nothing else.' },
+        { target: '#eBody [data-k="scopeText"]', title: 'List what is delivered', wait: 'Pick a deal first.', do: 'One deliverable per line.', why: 'Anything not listed is out of scope, so be specific: it makes a later change request easy to say yes or no to.' },
+        { target: '#feeIn', title: 'Set the fixed fee', wait: 'Pick a deal first.', do: 'Enter the fixed bid. It starts from the deal’s value.', why: 'It is a fixed price: it does not move with the hours it takes us.' },
+        { target: '#pType', title: 'Choose how it is paid', wait: 'Pick a deal first.', do: 'Pay in full, deposit and balance, monthly, or by milestone.', why: 'The schedule below updates and always adds up to the fee to the cent.' },
+        { target: '#pMethod', title: 'How they pay', wait: 'Pick a deal first.', do: 'Invoice, ACH on file, card on file, or let the client choose. Tick automatic payments for the client to authorize each charge.', why: 'Their authorization is part of what they sign.' },
+        { target: '#ePrev', title: 'Preview it', wait: 'Pick a deal first.', do: 'Press Preview to read it as the client will.', why: 'Once it is sent the text is fixed, so read it now.', done: 'click', after: 'Read it through.' },
+        { target: '#eSend', title: 'Send for signature', wait: 'Pick a deal first.', do: 'Press “Send for signature…”.', why: 'The signer gets an email with the fee, the payments and a link to read and sign on any device.', done: 'click', after: 'Choose how to send it.' }
+      ],
+      outro: 'You will see when it is opened. When the client signs, open the contract and sign for Future Basics: the deal moves to Won. Then draft the invoices from the schedule.'
     }
   ];
 
