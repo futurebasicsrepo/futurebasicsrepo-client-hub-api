@@ -1,12 +1,13 @@
 // GET /v1/admin/home: what the work console's home page shows beyond the Sales overview (which it also reads): leads waiting for a first reply, prototypes and
 // how warm they are, projects in flight (software and product), and what is waiting elsewhere. Staff only.
-import { projectRow, orderProjects, prototypeRow, trend, accountRow, orderAccounts, LEAD_SOURCES_EXCLUDED } from './home.js';
+import { projectRow, orderProjects, prototypeRow, firstName, trend, accountRow, orderAccounts, LEAD_SOURCES_EXCLUDED } from './home.js';
 
 export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
   const pre = [authenticate, adminOnly];
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   app.get('/v1/admin/home', { preHandler: pre }, async (req) => {
     const me = UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null;
+    const meRow = me ? (await pool.query('select name, email from users where id=$1', [me]).catch(() => ({ rows: [] }))).rows[0] : null;
     const q = async (sql, args = []) => (await pool.query(sql, args)).rows;
     const ex = LEAD_SOURCES_EXCLUDED;
     const [cur] = await q(`select count(*)::int n from sales_contacts where created_at > now() - interval '7 days' and not (source = any($1))`, [ex]);
@@ -58,6 +59,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       where c.owner_id is null and c.archived_at is null and c.status='active' and c.slug <> 'future-basics' and exists (select 1 from projects p where p.client_id=c.id and ${LIVE} and p.name <> 'General development')
       order by c.name limit 12`);
     return {
+      me: { firstName: firstName(meRow?.name, meRow?.email || req.auth?.email) },
       myAccounts: orderAccounts(mine.map(r => accountRow(r))),
       unownedAccounts: unowned.map(r => ({ id: r.id, name: r.name, projects: r.projects })),
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),

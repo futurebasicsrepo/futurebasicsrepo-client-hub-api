@@ -28,6 +28,14 @@ export function prototypeRow(r) {
 }
 
 export const trend = (cur, prev) => (prev === 0 ? (cur > 0 ? { dir: 'up', text: 'new this week' } : { dir: 'flat', text: 'no change' }) : cur === prev ? { dir: 'flat', text: 'same as last week' } : { dir: cur > prev ? 'up' : 'down', text: `${cur > prev ? '+' : ''}${cur - prev} on last week` });
+// The name a teammate is greeted by: the first word of their name, or, when the name is empty or just their address, the start of their email (colby@… and mary.jones@… become Colby and Mary).
+export function firstName(name, email) {
+  const clean = s => String(s || '').trim(), cap = w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  let n = clean(name); if (n.includes('@')) n = '';
+  let w = n.split(/\s+/)[0].replace(/[^\p{L}'’-]/gu, '');
+  if (!w) w = clean(email).split('@')[0].split(/[._+\-0-9]/)[0].replace(/[^\p{L}]/gu, '');
+  return w.length > 1 ? (w === w.toLowerCase() || w === w.toUpperCase() ? cap(w) : w) : '';
+}
 export const greeting = (hourUtc, offset = -4) => { const h = (hourUtc + offset + 24) % 24; return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
 
 // One account the signed-in teammate owns: what needs them, in words. Quiet ones sort last.
