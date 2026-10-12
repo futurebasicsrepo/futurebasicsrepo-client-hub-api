@@ -63,6 +63,7 @@
       if (!me.name && u.name) me = { ...me, name: u.name };
       if (!me.email && u.email) me = { ...me, email: u.email };
       renderProfile();
+      loadWatches();
     })
     .catch(() => renderProfile());
   let contacts = load('spot:contacts', []);
@@ -467,7 +468,7 @@
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
       (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
-      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' +
+      '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
   function outfitCard(look, k, top) {
@@ -756,6 +757,57 @@
     const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
     if (hits.length) details(hits);
   }
+  // ─── Watch this ─────────────────────────────────────────────────────────
+  // 👀 on any card: Spot checks the store twice a day and texts or emails
+  // them when the price drops or their size is back (watches.js). Signed in
+  // only, so alerts go to their own account.
+  const watched = new Map();
+  async function loadWatches() {
+    if (!account) return;
+    const r = await api('/v1/me/watches').catch(() => null);
+    if (!r) return;
+    watched.clear();
+    for (const w of r.watches || []) watched.set(w.url, w);
+    for (const u of new Set([...document.querySelectorAll('[data-watch]')].map((b) => b.dataset.watch))) paintWatch(u);
+  }
+  const watchBtn = (url, k) => '<button class="textlink watch' + (watched.has(url) ? ' on' : '') + '" type="button" data-act="watch" data-k="' + k + '" data-watch="' + esc(url) + '">' + (watched.has(url) ? '👀 Watching ✓' : '👀 Watch price') + '</button>';
+  function paintWatch(url) {
+    for (const b of document.querySelectorAll('[data-watch="' + CSS.escape(url) + '"]')) {
+      b.classList.toggle('on', watched.has(url));
+      b.textContent = watched.has(url) ? '👀 Watching ✓' : '👀 Watch price';
+    }
+  }
+  async function toggleWatch(b) {
+    const url = b.dataset.watch;
+    if (!account) {
+      quip('sign in and I’ll watch it for you 👀', 2600);
+      keepShelf();
+      return (location.href = '/signin?next=' + encodeURIComponent('/new'));
+    }
+    const { e } = entryOf(b.dataset.k);
+    const o = (e?.items || [e]).find((x) => x?.item?.url === url);
+    b.disabled = true;
+    try {
+      const had = watched.get(url);
+      if (had) {
+        await api('/v1/me/watches/' + encodeURIComponent(had.id) + '/stop', {});
+        watched.delete(url);
+        quip('okay, I’ll stop watching it', 1800);
+      } else {
+        const r = await api('/v1/me/watches', { url, title: o?.item.title || '', image_url: o?.item.image_url || '', variant: o?.item.variant || '', price_cents: o?.item.price_cents || null, store: o?.merchant?.name || '', store_url: o?.merchant?.url || '', stock: o?.stock || '' });
+        watched.set(url, r.watch);
+        quip(r.watch.stock === 'out' ? 'I’ll tell you the second it’s back 👀' : 'I’ll keep an eye on the price 👀', 2400);
+        s3?.play('peek');
+      }
+      paintWatch(url);
+      if (screen === 'shop') renderShop();
+    } catch (err) {
+      quip(err.message, 2600);
+    } finally {
+      b.disabled = false;
+    }
+  }
+
   // ─── Card facts ─────────────────────────────────────────────────────────
   // What the store's own data and Spot's AI add to a card, asked for after it
   // shows (/v1/facts): sizes and colours in stock, the store's price now and
@@ -889,15 +941,31 @@
     }
     shopList = [...byUrl.values()].sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0));
   }
-  const shopTile = (o, i) =>
-    '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + '</div>' +
-    '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div></div></button>';
+  const shopTile = (o, i) => {
+    const w = watched.get(o.item.url);
+    const moved = w && w.start_cents && w.now_cents && w.now_cents < w.start_cents ? '<div class="wdrop">↓ ' + usd(w.start_cents - w.now_cents) + ' since you started watching</div>' : '';
+    return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
+      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div>' + moved + '</div></button>';
+  };
+  let shopFilter = 'all';
   function renderShop() {
     const grid = $('#shopGrid');
+    // Watching: what they asked Spot to keep an eye on, as Spot last saw it.
+    if (shopFilter === 'watch') {
+      const seen = new Map(shopList.map((o) => [o.item.url, o]));
+      shopList = [...watched.values()].map((w) => ({ ...(seen.get(w.url) || {}), merchant: { name: w.store || seen.get(w.url)?.merchant?.name || '' }, item: { ...(seen.get(w.url)?.item || {}), title: w.title, url: w.url, image_url: w.image_url || seen.get(w.url)?.item?.image_url, variant: w.variant, price_cents: w.now_cents || seen.get(w.url)?.item?.price_cents || null, quantity: 1 }, stock: w.stock, seen_at: w.at })).filter((o) => o.item.image_url);
+    }
     grid.innerHTML = shopList.map(shopTile).join('');
-    $('#shopEmpty').hidden = shopList.length > 0;
-    $('#shopSub').textContent = shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
+    $('#shopEmpty').hidden = shopList.length > 0 || shopFilter === 'watch';
+    $('#fWatch').textContent = '👀 Watching' + (watched.size ? ' ' + watched.size : '');
+    $('#fAll').setAttribute('aria-pressed', String(shopFilter === 'all'));
+    $('#fWatch').setAttribute('aria-pressed', String(shopFilter === 'watch'));
+    $('#shopSub').textContent = shopFilter === 'watch'
+      ? (watched.size ? 'Spot checks these twice a day and tells you when the price drops or your size is back.' : account ? 'Tap 👀 Watch price on anything, and Spot tells you when it drops or comes back.' : 'Sign in, then tap 👀 Watch price on anything.')
+      : shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
   }
+  $('#fAll').onclick = () => ((shopFilter = 'all'), loadShop().then(renderShop));
+  $('#fWatch').onclick = () => ((shopFilter = 'watch'), loadWatches().then(renderShop));
   function setView(v) {
     $('#shopGrid').classList.toggle('one', v === 'one');
     $('#viewGrid').setAttribute('aria-pressed', String(v !== 'one'));
@@ -941,6 +1009,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
+    if (b.dataset.act === 'watch') return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1097,6 +1166,7 @@
     if (b) actOn(b);
   });
   function actOn(b) {
+    if (b.dataset.act === 'watch') return toggleWatch(b);
     if (b.dataset.act === 'edit') {
       const { e } = entryOf(b.dataset.k);
       draft = { ...toDraft({ source: 'lookup', merchant: e.merchant, items: [{ ...e.item }], in_stock: e.stock === 'in' }), fromPicks: true };
