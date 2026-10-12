@@ -133,6 +133,19 @@ export function payoutsVerdict({ configured, st = {}, p = {}, now = Date.now() }
   return { status: 'ok', summary: `${plural(Number(p.total || 0), 'payout')} read · fees in the last 30 days ${usd(fee)}${gross > 0 ? ` (${(Math.round(fee / gross * 1000) / 10)}% of sales)` : ''} · last read ${ago(st.lastSyncAt)}` };
 }
 
+// The sites we build and watch: down is a problem, slow or a certificate or domain running out is a warning. Judged from what is stored (no call is made).
+export function sitesVerdict({ sites = [], now = Date.now() }) {
+  if (!sites.length) return { status: 'off', summary: 'No site is being watched yet: add a live address to a build and it is checked every 5 minutes' };
+  const down = sites.filter(s => s.state === 'down'), slow = sites.filter(s => s.state === 'slow'), certs = sites.filter(s => s.certDays != null && s.certDays <= 21), doms = sites.filter(s => s.domainDays != null && s.domainDays <= 30);
+  const names = a => a.slice(0, 3).map(s => s.name).join(', ') + (a.length > 3 ? ` and ${a.length - 3} more` : '');
+  const stale = sites.filter(s => s.checkedAt && now - new Date(s.checkedAt).getTime() > 30 * 60_000);
+  if (down.length) return { status: 'down', summary: `${down.length === 1 ? '1 site is' : `${down.length} sites are`} down: ${names(down)}` };
+  if (stale.length === sites.length) return { status: 'warn', summary: `Sites have not been checked since ${ago(stale[0].checkedAt)}: see Background jobs` };
+  const warn = [slow.length && `${plural(slow.length, 'site')} slow (${names(slow)})`, certs.length && `${plural(certs.length, 'certificate')} running out soon (${names(certs)})`, doms.length && `${plural(doms.length, 'domain name')} running out soon (${names(doms)})`].filter(Boolean);
+  if (warn.length) return { status: 'warn', summary: warn.join('; ') };
+  return { status: 'ok', summary: `${plural(sites.length, 'site')} watched, all up` };
+}
+
 export function githubVerdict({ hasToken, probe, job }) {
   if (!hasToken) return { status: 'off', summary: 'Not connected: the showcase does not follow app updates (add BUILDS_GITHUB_TOKEN)' };
   if (probe?.error) return { status: 'warn', summary: probe.error };
@@ -267,6 +280,13 @@ export async function coverageChecks(d) {
     return { ...v, facts: [['Invoices', String(c.total)], ['Sent and open', String(c.open)], ['Overdue', String(c.overdue)], ['Drafts', String(c.drafts)], ['Past invoices with no payment recorded', String(c.unrecorded)], ['Payment instructions on invoices', String(stored.instructions || '').trim() ? 'saved' : 'not saved'], ['People who can open Money', String(access.length)]] };
   }));
 
+  listing.push(row('sites', 'Client sites', 'delivery', async () => {
+    const rows = (await pool.query(`select m.state, m.http_status, m.response_ms, m.checked_at, m.cert_expires_at, m.domain_expires_at, m.url, b.name from site_monitors m join builds b on b.id=m.build_id order by case m.state when 'down' then 0 when 'slow' then 1 else 2 end, b.name`)).rows;
+    const day = 86400000, left = at => (at ? Math.floor((new Date(at).getTime() - Date.now()) / day) : null);
+    const sites = rows.map(r => ({ name: r.name, state: r.state, checkedAt: r.checked_at, certDays: left(r.cert_expires_at), domainDays: left(r.domain_expires_at), ms: r.response_ms, url: r.url }));
+    const v = sitesVerdict({ sites }), sj = job('Site checks');
+    return { ...v, facts: [...sites.slice(0, 12).map(s => [s.name, `${s.state === 'unknown' ? 'not checked yet' : s.state}${s.ms ? ` · ${s.ms} ms` : ''}${s.certDays != null ? ` · certificate ${s.certDays} days` : ''}${s.domainDays != null ? ` · domain ${s.domainDays} days` : ''}`]), ['Check job', sj ? (sj.disabled ? 'off' : `every 5 minutes, ${jobHealth(sj)}`) : 'not started']] };
+  }));
   listing.push(row('shopifypayouts', 'Bank payouts and fees', 'sales', async () => {
     const st = (await getSetting('moneyPayouts').catch(() => null)) || {}, p = await one(`select count(*)::int total, coalesce(sum(fee_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float fee30, coalesce(sum(gross_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float gross30 from money_payouts`);
     const linked = Boolean(env.SHOPIFY_STORE_DOMAIN && (env.SHOPIFY_ADMIN_ACCESS_TOKEN || (env.SHOPIFY_CLIENT_ID && env.SHOPIFY_CLIENT_SECRET))), v = payoutsVerdict({ configured: linked, st, p });

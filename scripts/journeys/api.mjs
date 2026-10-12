@@ -2070,6 +2070,53 @@ await journey('J153', 'Money: an invoice starts from a won deal or a project, fi
   ok((await M('/sources')).json.projects.some(p => p.id === proj), 'live projects are in the picker');
 });
 
+await journey('J159', 'Watching client sites: each build with a live address is checked, one failure is a blip and two is down with one alert, slow, certificate and domain warnings, recovery, and it shows on Platform health and on Home', async () => {
+  const room = await newRoom('159', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const uid = sql(`insert into users(client_id,email,name,role) values('${cid}','mon159-${stamp}@thefuturebasics.com','Mona Monitor','admin') returning id`).split('\n')[0];
+  const admin = await forge({ sub: uid, clientId: cid, role: 'admin', email: `mon159-${stamp}@thefuturebasics.com` });
+  sql(`insert into clients(name,slug,status) values('Future Basics','future-basics','active') on conflict (slug) do nothing`);
+  const mkBuild = (name, url, status = 'live') => sql(`insert into builds(slug,name,status,visibility,live_url) values('${name.toLowerCase().replace(/ /g, '-')}-${stamp}','${name} ${stamp}','${status}','hidden','${url}') returning id`).split('\n')[0];
+  const bUp = mkBuild('Up Site', 'https://up-site.test/'), bFlaky = mkBuild('Flaky Site', 'https://flaky-site.test/'), bSlow = mkBuild('Slow Site', 'https://slow-site.test/'), bCert = mkBuild('Cert Soon', 'https://cert-soon.test/'), bDom = mkBuild('Domain Soon', 'https://domain-soon.test/');
+  const bNone = mkBuild('No Address', ''), bGone = mkBuild('Archived Site', 'https://up-site.test/old', 'archived');
+  const http = (await import('node:http')).default, state = { flaky: true }, seen = [];
+  const site = http.createServer(async (req, res) => { const h = String(req.headers['x-original-host'] || ''); seen.push(h); if (h === 'flaky-site.test' && state.flaky) { res.writeHead(500); return res.end('boom'); } if (h === 'slow-site.test') await new Promise(r => setTimeout(r, 400)); res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html><title>ok</title></html>'); });
+  await new Promise(r => site.listen(3134, '127.0.0.1', r));
+  const A = (path, o = {}) => call('/v1/admin' + path, { token: admin, ...o });
+  const notes = () => sql(`select title from notifications where type='site' and entity_id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}') order by id`).split('\n').filter(Boolean);
+  try {
+    ok((await call('/v1/admin/sites', { token: room.token })).status === 403 && (await call('/v1/admin/sites/check', { token: room.token, body: {} })).status === 403, 'only staff can see or run site checks');
+    const r1 = (await A('/sites/check', { body: {} })).json;
+    ok(r1.ok && r1.checked >= 5 && !seen.includes('up-site.test/old'), 'a sweep checks the builds that have an address', JSON.stringify(r1));
+    const mine = new Set([bUp, bFlaky, bSlow, bCert, bDom, bNone, bGone]); let list = (await A('/sites')).json.sites.filter(s => mine.has(s.buildId)), by = id => list.find(s => s.buildId === id);
+    ok(list.length === 5 && !by(bNone) && !by(bGone) && by(bUp).state === 'up' && by(bUp).httpStatus === 200 && by(bUp).responseMs >= 0 && by(bUp).uptime30 === 100, 'the list has them, the good one is up with its answer time and full uptime', JSON.stringify(by(bUp)));
+    ok(by(bFlaky).state === 'unknown' && by(bFlaky).lastError === 'answered 500' && notes().length === 2, 'one failure is only a blip: no down alert yet (the only alerts are the certificate and domain warnings below)', JSON.stringify([by(bFlaky), notes()]));
+    ok(by(bCert).certDays === 4 || by(bCert).certDays === 5, 'a certificate five days from running out is read', by(bCert).certDays);
+    ok(notes().some(t => /Cert Soon .*certificate runs out in [45] days/.test(t)) && notes().some(t => /Domain Soon .*domain name runs out in 19 days|Domain Soon .*domain name runs out in 20 days/.test(t)), 'a certificate inside a week and a domain inside a month each make one alert', JSON.stringify(notes()));
+
+    await A('/sites/check', { body: {} }); await A('/sites/check', { body: {} });
+    list = (await A('/sites')).json.sites.filter(s => mine.has(s.buildId));
+    ok(by(bFlaky).state === 'down' && by(bFlaky).downSince && by(bSlow).state === 'slow' && by(bUp).state === 'up', 'two failures in a row is down; three slow answers in a row is slow; the good site stays up', JSON.stringify(list.map(s => [s.name, s.state])));
+    const n = notes(); ok(n.filter(t => /Flaky Site .* is down/.test(t)).length === 1 && n.filter(t => /Slow Site .* is slow/.test(t)).length === 1 && n.length === 4, 'each problem is said once, however many checks see it', JSON.stringify(n));
+    ok(sql(`select count(*) from site_checks where build_id='${bFlaky}' and ok=false`) === '3', 'every check is kept for the uptime figure');
+    ok((await A('/sites')).json.sites.find(s => s.buildId === bFlaky).uptime30 === 0, 'the down site shows no uptime');
+
+    // it is back
+    state.flaky = false; await A('/sites/check', { body: {} });
+    list = (await A('/sites')).json.sites.filter(s => mine.has(s.buildId)); ok(by(bFlaky).state === 'up' && by(bFlaky).downSince === null && notes().filter(t => /Flaky Site .* is back up/.test(t)).length === 1, 'when it answers again it is up and the recovery is said once');
+    state.flaky = true; await A('/sites/check', { body: {} }); await A('/sites/check', { body: {} });
+    ok(notes().filter(t => /Flaky Site .* is down/.test(t)).length === 2, 'a second outage is said again');
+
+    // Platform health and Home
+    const h = (await A('/platform/health?fresh=1')).json, card = (h.checks || []).find(x => x.id === 'sites');
+    ok(card && card.status === 'down' && /1 site is down: Flaky Site/.test(card.summary) && card.facts.some(f => /Slow Site/.test(f[0]) && /slow/.test(f[1])), 'Platform health has a Client sites card that names the site that is down', JSON.stringify(card));
+    const pj = sql(`insert into projects(client_id,name,status,milestone,kind,build_id,stage) values('${cid}','Monitored ${stamp}','active','Build','software','${bUp}','build') returning id`).split('\n')[0];
+    const home = (await A('/home')).json, row = (home.projects || []).find(p => p.id === pj);
+    ok(row && row.siteState === 'up', 'Home shows the state of the site on its project row', JSON.stringify(row));
+    sql(`update builds set live_url='' where id='${bSlow}'`); await A('/sites/check', { body: {} });
+    ok(!(await A('/sites')).json.sites.some(s => s.buildId === bSlow), 'a build whose address is removed stops being watched');
+  } finally { await new Promise(r => site.close(r)); sql(`delete from notifications where type='site' and entity_id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}')`); sql(`delete from projects where build_id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}')`); sql(`delete from builds where id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}','${bNone}','${bGone}')`); } // leave nothing down for the journeys after
+});
+
 await journey('J157', 'Won deal to work: Start project makes the client room, a project and (for software) a build, the person who won it owns the account, it will not start twice by accident, and Home shows the owner', async () => {
   const room = await newRoom('157', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
   const uid = sql(`insert into users(client_id,email,name,role) values('${cid}','owner157-${stamp}@thefuturebasics.com','Olive Owner','admin') returning id`).split('\n')[0];
