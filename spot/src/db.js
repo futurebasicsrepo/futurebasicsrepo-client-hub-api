@@ -253,6 +253,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       ref      TEXT PRIMARY KEY,
       cart_id  TEXT NOT NULL
     );
+    -- Browsers an account turned notifications on in (webpush.js).
+    CREATE TABLE IF NOT EXISTS push_subs (
+      endpoint TEXT PRIMARY KEY,
+      user_id  TEXT NOT NULL,
+      p256dh   TEXT NOT NULL,
+      auth     TEXT NOT NULL,
+      ua       TEXT,
+      at       INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS push_subs_user ON push_subs (user_id);
     -- Fit and reviews per product page, as an AI read them (reviews.js).
     CREATE TABLE IF NOT EXISTS review_digests (
       url  TEXT PRIMARY KEY,
@@ -483,7 +493,7 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
         db.exec('BEGIN');
         try {
           db.prepare("UPDATE carts SET doc = json_set(doc, '$.user_id', ?) WHERE json_extract(doc, '$.user_id') = ?").run(intoId, fromId);
-          for (const t of ['api_keys', 'identities', 'passkeys', 'sessions']) db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).run(intoId, fromId);
+          for (const t of ['api_keys', 'identities', 'passkeys', 'sessions', 'push_subs']) db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id = ?`).run(intoId, fromId);
           // Account settings kept outside the users row: the saved card, the
           // approver, the AI kill switch, the confirmed email (it moves with
           // the email, below) and early access. Keep the surviving account's
@@ -574,6 +584,13 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    pushSubs: {
+      // A browser moves to whoever signed in on it last.
+      add: (s) => db.prepare('INSERT INTO push_subs (endpoint, user_id, p256dh, auth, ua, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth, ua = excluded.ua, at = excluded.at').run(s.endpoint, s.user_id, s.p256dh, s.auth, s.ua || null, Date.now()),
+      ofUser: (userId) => db.prepare('SELECT * FROM push_subs WHERE user_id = ? ORDER BY at DESC LIMIT 10').all(String(userId)),
+      remove: (endpoint) => db.prepare('DELETE FROM push_subs WHERE endpoint = ?').run(String(endpoint)),
+      removeFor: (userId, endpoint) => db.prepare('DELETE FROM push_subs WHERE user_id = ? AND endpoint = ?').run(String(userId), String(endpoint)).changes > 0,
+    },
     watches: {
       row: (r) => r && { ...JSON.parse(r.doc), id: r.id, user_id: r.user_id, url: r.url, state: r.state, next_at: r.next_at, at: r.at },
       byId(id) {

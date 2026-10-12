@@ -38,11 +38,13 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
     return {
       email: u?.email || cart.requester?.email || cart.requester?.shipping?.email || cart.flight?.contact?.email || cart.notify?.email || null,
       phone: u?.phone || cart.notify?.phone || cart.flight?.contact?.phone || cart.requester?.shipping?.phone || null,
+      userId: u?.id || null,
     };
   }
 
   async function tell(cart, key, to, msg) {
-    if ((!to.email || !msg.html) && (!to.phone || !msg.sms)) return null;
+    const devices = to.userId ? db.pushSubs?.ofUser(to.userId).length : 0;
+    if ((!to.email || !msg.html) && (!to.phone || !msg.sms) && !devices) return null;
     // Claim first, so a duplicate trigger can't double-send.
     if (!db.notices.claim(cart.id, key)) return null;
     const out = await notifier.send(to, msg);
@@ -184,7 +186,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       case 'needs_you':
         return [{
           key: `needs_you_${f.started_at || ''}`,
-          to: { email: requesterContact(cart).email },
+          to: { email: requesterContact(cart).email, userId: requesterContact(cart).userId },
           subject: `Your ${store} order needs a nudge`,
           text: `Spot couldn't place your ${store} order automatically (${f.reason || 'the store needs a person'}). Try again from your Spot. If it can't be ordered within 3 days, the payer is refunded in full. ${link}`,
           html: mail({ preheader: 'Try again, or we refund', title: `Your ${store} order needs a nudge`, lines: [`Spot couldn’t place the order automatically: ${esc(f.reason || 'the store needs a person')}.`, 'Try again from your Spot page. If it can’t be ordered within 3 days, the payer is refunded in full.'], cta: { label: 'Open your Spot →', url: link } }),
@@ -192,7 +194,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       case 'ordered': {
         const out = [{
           key: 'ordered',
-          to: { email: requesterContact(cart).email },
+          to: { email: requesterContact(cart).email, userId: requesterContact(cart).userId },
           subject: cart.kind === 'train' ? `🚆 Booked: ${item}` : `📦 Ordered: ${item}`,
           text: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` #${f.order_number}` : ''}. ${cart.kind === 'train' ? `${store} emails your e-ticket.` : 'Watch your email for tracking.'} ${link}`,
           html: mail({ preheader: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}`, title: cart.kind === 'train' ? '🚆 Booked!' : '📦 Ordered!', lines: [`${esc(store)} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, cart.kind === 'train' ? `${esc(store)} emails your e-ticket. Show it on your phone when you board.` : 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
@@ -223,7 +225,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       case 'booking_failed':
         return [{
           key: 'booking_failed',
-          to: { email: requesterContact(cart).email },
+          to: { email: requesterContact(cart).email, userId: requesterContact(cart).userId },
           subject: 'We couldn’t book your flight',
           text: `${fl?.error || 'The airline couldn’t book it.'} You've been refunded in full. ${link}`,
           html: mail({ preheader: 'You’ve been refunded in full', title: 'We couldn’t book this one', lines: [esc(fl?.error || 'The airline couldn’t book it.'), 'You’ve been refunded in full. Ask your AI to find another flight.'], cta: { label: 'See details', url: link } }),
@@ -234,7 +236,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         return [{
           key: 'ready',
           // An Approve button goes by text too: it's the moment the AI waits on.
-          to: tap ? requesterContact(cart) : { email: extra?.email || requesterContact(cart).email },
+          to: tap ? requesterContact(cart) : { email: extra?.email || requesterContact(cart).email, userId: requesterContact(cart).userId },
           subject: tap ? `🤖 Approve ${usd(cart.total_cents)} at ${store}?` : `🤖 ${msg.subject}`,
           text: tap ? `Your AI wants ${item} from ${store}, ${usd(cart.total_cents)}. Tap Approve and your ${tap.label} pays: ${link}` : msg.text,
           ...(tap ? { sms: `Spot: Your AI assistant requested ${item} from ${store}, ${usd(cart.total_cents)}. Review and approve it here: ${link}` } : {}),

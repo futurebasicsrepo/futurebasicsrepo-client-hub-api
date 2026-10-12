@@ -75,7 +75,17 @@ ${note ? `<p style="margin:16px 0 0;font:14px/1.5 -apple-system,BlinkMacSystemFo
 </table></td></tr></table></body></html>`;
 }
 
-export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null, verified = null, metrics = null } = {}) {
+// A text, as a phone notification: "Spot: " and the link come off the
+// words, and the link is what a tap opens.
+// An email-only message uses its subject line.
+export function pushFrom(msg) {
+  const link = (s) => (String(s || '').match(/https?:\/\/[^\s"'<>)]+/) || [])[0] || null;
+  const url = msg.url || link(msg.sms) || link(msg.text) || link(msg.html) || '/account';
+  const body = msg.sms ? String(msg.sms).replace(/^Spot:\s*/, '').replace(/https?:\/\/\S+/g, '').replace(/[\s:]+$/, '').trim() : String(msg.subject || '');
+  return { title: msg.push_title || 'Spot', body: body || String(msg.subject || ''), url, tag: msg.tag };
+}
+
+export function createNotifier({ env = process.env, fetchImpl = fetch, log = console, optouts = null, verified = null, metrics = null, push = null } = {}) {
   // Every text but a sign-in code: only to a confirmed number.
   const textTo = async (phone, body) => {
     const e164 = normalizePhone(phone);
@@ -160,17 +170,25 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
       return sms(phone, `Spot: ${code} is your sign-in code. It works for 10 minutes. Don't share it.${SMS_FOOTER}${bound}`).catch(() => 'failed');
     },
 
-    // Any message to a person: { email?, phone? } × { subject, text, html, sms }.
-    // Returns { email?: status, text?: status } for the channels used.
-    async send({ email: to, phone } = {}, msg) {
+    // Any message to a person: { email?, phone?, userId? } × { subject, text, html, sms }.
+    // With an account, it also goes to every device that turned on
+    // notifications (no texting service needed). Returns { email?, text?,
+    // push? } statuses for the channels used.
+    async send({ email: to, phone, userId } = {}, msg) {
       const out = {};
       if (to && msg.html) out.email = await email(to, { subject: msg.subject, text: msg.text, html: msg.html }).catch(() => 'failed');
       if (phone && msg.sms) out.text = await textTo(phone, msg.sms + SMS_FOOTER);
+      if (userId && push && (msg.sms || msg.subject || msg.push_body)) {
+        const p = await push.toUser(userId, msg.push_body ? { title: msg.push_title || 'Spot', body: msg.push_body, url: msg.url, tag: msg.tag } : pushFrom(msg)).catch(() => 'failed');
+        if (p !== 'none') out.push = p;
+      }
       return out;
     },
 
-    // Returns { email?: status, text?: status } for the channels asked for.
-    async sendFinishLink(cart, link, { email: to, phone } = {}) {
+    // Returns { email?: status, text?: status, push? } for the channels asked
+    // for. fallbackEmail (the account's) is used when the text didn't go:
+    // while texting is down or not approved yet, the link still arrives.
+    async sendFinishLink(cart, link, { email: to, phone, userId, fallbackEmail } = {}) {
       const msg = finishMessage(cart, link);
       const out = {};
       if (to) {
@@ -188,6 +206,11 @@ export function createNotifier({ env = process.env, fetchImpl = fetch, log = con
         }).catch(() => 'failed');
       }
       if (phone) out.text = await textTo(phone, msg.text + SMS_FOOTER);
+      if (!to && fallbackEmail && out.text !== 'sent') return { ...out, ...(await this.sendFinishLink(cart, link, { email: fallbackEmail })) };
+      if (userId && push) {
+        const p = await push.toUser(userId, { title: 'Spot', body: msg.subject, url: link }).catch(() => 'failed');
+        if (p !== 'none') out.push = p;
+      }
       return out;
     },
   };
