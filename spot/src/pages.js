@@ -28,7 +28,16 @@ p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}
 .tabs{display:flex;gap:6px;background:var(--line);padding:4px;border-radius:14px;margin-bottom:14px}
 .tabs button{flex:1;border:0;background:transparent;padding:10px 6px;border-radius:10px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}
 .tabs button[aria-selected=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
-.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:25;margin:-20px -16px 6px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:color-mix(in srgb,var(--bg) 86%,transparent);-webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid transparent;transition:border-color .2s}
+body.scrolled .topbar{border-bottom-color:var(--line)}
+.fab{display:none;position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(18px + env(safe-area-inset-bottom));z-index:24;align-items:center;gap:7px;border:0;border-radius:999px;padding:13px 18px;font:inherit;font-weight:800;font-size:15px;background:var(--ink);color:var(--bg);box-shadow:0 8px 24px rgba(0,0,0,.25);cursor:pointer}
+body.shopping .fab{display:inline-flex}.fab b{display:none;min-width:20px;height:20px;border-radius:10px;background:var(--spot);color:#fff;font-size:12px;line-height:20px;text-align:center;padding:0 5px}.fab.on b{display:inline-block}
+.tools{max-height:86svh;overflow:auto;padding-top:22px}.tools h3{font-size:15px;margin:16px 0 8px}.tools h3:first-child{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}.chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.colls{display:grid;gap:6px}.coll{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 10px}.coll.off{opacity:.55}.collname{flex:1;min-width:0;text-align:left;border:0;background:none;font:inherit;font-size:14px;font-weight:700;color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.collname .eye{color:var(--spot)}.collx{border:0;background:none;color:var(--muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 8px}
+.toolsfoot{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:space-between;margin:16px -18px calc(-18px - env(safe-area-inset-bottom));padding:12px 18px calc(12px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line)}.toolsfoot .btn{margin:0;width:auto;flex:1}
+.tile .tbadges{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}.tile .tbadges span{font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 6px;background:var(--line);color:var(--ink)}.tile .tbadges .tb-sale{background:color-mix(in srgb,var(--spot) 16%,transparent);color:var(--spot)}.tile .tbadges .tb-out{background:color-mix(in srgb,#d92d20 14%,transparent);color:#d92d20}.tile .pr s{font-size:13px;font-weight:600;color:var(--muted)}
+#shop{padding-bottom:72px}
 .tabs.modes{margin:0;flex:0 0 auto;width:168px;padding:3px;border-radius:12px}.tabs.modes button{padding:7px 10px;font-size:15px}
 body.shopping main{max-width:1200px}body.shopping #hero,body.shopping .sandbox,body.shopping .anypage,body.shopping #mine{display:none}
 .shophead{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
@@ -199,9 +208,11 @@ export function homePage({ origin, provider, cfg }) {
 <div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div></div>
 <section id="shop" hidden>
   <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
-    <div class="shopfilter" role="group" aria-label="Show"><button type="button" id="fAll" aria-pressed="true">All</button><button type="button" id="fWatch" aria-pressed="false">👀 Watching</button></div>
     <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid">▦</button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time">▢</button></div></div>
   <div class="grid" id="shopGrid"></div>
+  <div class="shopempty" id="shopNone" hidden><p><b>Nothing matches.</b></p><p class="muted">Loosen a filter, or show a hidden collection.</p></div>
+  <button class="fab" id="shopFab" type="button" aria-label="Sort and filter"><span aria-hidden="true">⇅</span> Sort &amp; filter <b id="fabN"></b></button>
+  <div class="sheet tools" id="shopTools" hidden role="dialog" aria-label="Sort and filter"><button class="sheetx" id="shopToolsX" type="button" aria-label="Close">×</button><div id="toolsBody"></div></div>
   <div class="shopempty" id="shopEmpty" hidden><p><b>Nothing here yet.</b></p><p class="muted">Ask Spot for something, and everything it finds shows up here to come back to.</p><button class="btn" type="button" id="shopStart">Ask Spot →</button></div>
   <div class="sheet shopsheet" id="shopSheet" hidden role="dialog" aria-label="Product"><button class="sheetx" id="shopSheetX" type="button" aria-label="Close">×</button><div id="shopCard"></div></div>
 </section>

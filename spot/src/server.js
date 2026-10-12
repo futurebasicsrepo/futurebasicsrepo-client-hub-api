@@ -34,6 +34,7 @@ import { createDelivery } from './delivery.js';
 import { createPromos } from './promos.js';
 import { createTracker } from './tracking.js';
 import { getUcpOrder } from './fulfill/ucp.js';
+import { cleanTaste, promptLine, summary as tasteSummary } from './taste.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -599,6 +600,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const opts = {
       sizes: profile.sizes,
       shipTo: profile.ship_to,
+      // What Spot has learned of their taste (taste.js), as a gentle hint.
+      ...(uid ? { taste: promptLine(db.tastes.get(uid)) } : {}),
       more: typeof b.more === 'string' ? b.more : '',
       avoid: Array.isArray(b.avoid) ? b.avoid.filter((u) => typeof u === 'string') : [],
       count: Number(b.count) || undefined,
@@ -610,6 +613,50 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       write({ type: 'done', kind: null, count: 0, not_found: true, warning: err instanceof CaptureError ? err.message : 'Something went wrong. Try again' });
     }
     reply.raw.end();
+  });
+
+  // Spot's read on a shopper's taste (taste.js): learned in their browser,
+  // kept on their account, and used to shape new searches.
+  app.get('/v1/me/taste', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in first' });
+    reply.header('cache-control', 'no-store');
+    const taste = db.tastes.get(uid);
+    return { taste, summary: tasteSummary(taste) };
+  });
+  app.post('/v1/me/taste', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in first' });
+    limits.facts(req);
+    if (req.body?.reset === true) {
+      db.tastes.clear(uid);
+      return { taste: null, summary: null };
+    }
+    const taste = cleanTaste(req.body?.taste);
+    if (!taste) throw new CartError('Nothing to save');
+    db.tastes.set(uid, taste);
+    return { taste, summary: tasteSummary(taste) };
+  });
+  // Shop page clean-up: a whole collection (one ask) or one product.
+  app.post('/v1/me/shop/remove', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in first' });
+    const b = req.body || {};
+    if (typeof b.asked === 'string') return { removed: db.seen.removeAsked(uid, b.asked.slice(0, 120)) };
+    if (typeof b.url === 'string') return { removed: db.seen.removeUrl(uid, b.url.slice(0, 1000)) };
+    throw new CartError('Which collection or product?');
+  });
+  // Reviews Spot already read, for sorting and filtering (no new AI reads).
+  app.post('/v1/reviews/cached', async (req, reply) => {
+    limits.facts(req);
+    const urls = (Array.isArray(req.body?.urls) ? req.body.urls : []).filter((u) => typeof u === 'string').slice(0, 300);
+    const out = {};
+    for (const u of urls) {
+      const d = db.reviews.get(u.slice(0, 1000));
+      if (d && !d.none) out[u] = { rating: d.rating ?? null, count: d.count ?? null, fit: d.fit ?? null };
+    }
+    reply.header('cache-control', 'no-store');
+    return { reviews: out };
   });
 
   // Card facts for the products on screen: options, the store's price now
