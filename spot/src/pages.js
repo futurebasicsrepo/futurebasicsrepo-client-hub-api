@@ -165,7 +165,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 
 <section id="picks" hidden>
   <div id="thread" aria-live="polite" data-face="${assetUrl('spot-face.webp')}"></div>
-  <form class="askbar" id="askMore"><input id="more2" maxlength="300" enterkeyhint="send" placeholder="cheaper? in green? size 3T?" aria-label="Ask for something else"><button class="btn small" id="askGo">Ask</button></form>
+  <form class="askbar" id="askMore"><input id="more2" maxlength="300" enterkeyhint="send" placeholder="cheaper? in black? add a hat?" aria-label="Ask for more, or add something else"><button class="btn small" id="askGo">Ask</button></form>
   <p class="small muted picknav"><button class="textlink" id="picksOver" type="button">start over</button><button class="textlink" id="picksManual" type="button">type it in myself</button></p>
   <form class="sheet" id="nameSheet" hidden><button class="sheetx" id="sheetX" type="button" aria-label="Close">×</button><label for="sheetName">What’s your name?</label><p class="small muted">So they know who’s asking. Spot remembers it on this phone.</p><input id="sheetName" autocomplete="given-name" enterkeyhint="go" placeholder="First name"><button class="btn">Continue</button></form>
 </section>

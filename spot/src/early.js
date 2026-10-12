@@ -92,6 +92,17 @@ const EA_CSS = `
 .ea-main h1{font-size:clamp(40px,7vw,80px);line-height:.98;letter-spacing:-.045em;margin-top:18px}
 .ea-main .lead{margin:18px auto 0;max-width:560px}
 .ea-form{width:100%;max-width:520px;margin-top:30px}
+.ea-ex{list-style:none;margin:26px auto 0;padding:0;width:100%;max-width:520px;display:grid;gap:10px;text-align:left}
+.ea-ex li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:18px;background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-1)}
+.ea-ex .n{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--spot);color:#fff;font-weight:800;font-size:14px;margin-top:1px}
+.ea-ex li>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ea-ex b{font-size:16px;letter-spacing:-.01em}
+.ea-ex small{color:var(--muted);font-size:13.5px;line-height:1.4}
+.ea-ex .bub{align-self:flex-start;background:var(--ink);color:var(--bg);font-weight:600;font-size:14.5px;padding:8px 12px;border-radius:16px 16px 16px 4px}
+.ea-ex .it{display:flex;gap:10px;align-items:center;font-weight:700;font-size:14.5px}
+.ea-ex .it i{font-style:normal;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--bg2);font-size:22px;flex:none}
+.ea-ex .it span{display:flex;flex-direction:column}
+.ea-ex .yes{align-self:flex-start;background:var(--spot);color:#fff;font-weight:800;font-size:14.5px;padding:8px 16px;border-radius:999px}
 .ea-row{display:flex;gap:8px;padding:6px;border-radius:999px;background:var(--card);border:1px solid var(--line);box-shadow:0 18px 40px -24px rgba(27,23,18,.35);transition:border-color .2s,box-shadow .2s}
 .ea-row:focus-within{border-color:color-mix(in srgb,var(--spot) 55%,var(--line));box-shadow:0 0 0 4px color-mix(in srgb,var(--spot) 16%,transparent),0 18px 40px -24px rgba(27,23,18,.35)}
 .ea-row input{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:17px;padding:0 16px;color:var(--ink);outline:none}
@@ -120,9 +131,19 @@ body.joined .ea-form{display:none}body.joined .ea-done{display:block;animation:p
 @media (max-width:520px){.ea-row{flex-direction:column;border-radius:22px}.ea-row input{min-height:48px}.ea-say{right:56%;max-width:140px;font-size:12.5px}}
 `;
 
+// One plain example, start to finish: what Spot is, without having to work it out.
+function example() {
+  return `<ol class="ea-ex" aria-label="An example, start to finish">
+    <li><span class="n">1</span><div><b>You ask your AI</b><span class="bub">“white sneakers, size 10, under $150”</span></div></li>
+    <li><span class="n">2</span><div><b>It finds a pair</b><span class="it"><i aria-hidden="true">👟</i><span>Court Sneaker, White, 10<small>Trailhead Supply · $129</small></span></span></div></li>
+    <li><span class="n">3</span><div><b>You tap yes</b><span class="yes" aria-hidden="true">Yes, buy it · $129</span></div></li>
+    <li><span class="n">4</span><div><b>Spot buys it. It ships to you.</b><small>Or send the yes to someone else, like your mom or your boss, and they pay.</small></div></li>
+  </ol>`;
+}
+
 export function earlyAccessPage({ origin, notice = '' }) {
   const title = 'Spot: early access';
-  const desc = 'The yes button for AI shopping. Your AI finds it, whoever’s paying taps yes, and Spot buys it with a card made for that one order. Get early access.';
+  const desc = 'Ask your AI for something. Tap yes, and Spot buys it for you, or sends the yes to whoever’s paying. Get early access.';
   return `${siteHead({ title, desc, origin, path: '/', extraCss: EA_CSS, image: 'og-early.jpg' })}
 <div class="ea-wrapbody">
 <header class="ea-top wrap"><a class="logo" href="/"><span></span>Spot</a><a class="ea-in" href="/signin">Sign in</a></header>
@@ -130,7 +151,8 @@ export function earlyAccessPage({ origin, notice = '' }) {
   <div class="ea-spot" id="eaSpot" aria-hidden="true">${spotBuddy('ea')}<div class="ea-say" id="eaSay"></div></div>
   <span class="pill"><i></i>Early access</span>
   <h1>The yes button<br>for AI shopping.</h1>
-  <p class="lead">Your AI finds it. You, or whoever’s paying, tap yes. Spot buys it with a card made for that one order, and it shows up. We’re letting people in a few at a time.</p>
+  <p class="lead">Ask Claude or ChatGPT for something. When it finds it, you tap yes, and Spot buys it for you. We’re letting people in a few at a time.</p>
+  ${example()}
   ${notice ? `<p class="ea-notice" role="status">${esc(notice)} <a href="/signin?next=/">Sign in</a></p>` : ''}
   <form class="ea-form" id="eaForm" novalidate>
     <div class="ea-row"><input type="email" name="email" id="eaEmail" required placeholder="you@email.com" autocomplete="email" inputmode="email" aria-label="Your email"><button class="btn primary" type="submit" id="eaGo">Get early access</button></div>

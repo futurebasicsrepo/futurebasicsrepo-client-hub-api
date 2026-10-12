@@ -274,6 +274,8 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
     <label class="f" id="dContactRow"><span class="mono">Contact</span><select class="t" id="dContact"><option value="">Nobody yet</option></select></label>
     <label class="f wide hidden" id="dLostRow"><span class="mono">Why was it lost?</span><input class="t" id="dLost" placeholder="Went with their nephew"></label>
   </div>
+  <div class="panel hidden" id="dProject" style="margin:0 0 12px;padding:14px;display:grid;gap:8px"><b>Won: start the work</b><span class="sub" id="dProjectSub">This makes the client's room (or uses theirs), a project in it, and for software a build record. You become the account owner.</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="t" id="dProjectKind" aria-label="Kind of work"><option value="software">Software development</option><option value="product">Product development</option></select><button class="btn go" type="button" id="dProjectGo">Start project</button><a class="btn hidden" id="dProjectOpen" href="#">Open the project</a></div></div>
   <p class="msg" id="dMsg" role="status"></p>
   <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><a class="btn hidden" id="dInvoice" href="/money" title="Open Money with an invoice started from this deal (Money is open to the people named for it)">Make an invoice</a><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
 </form></dialog>
@@ -330,7 +332,11 @@ $('#dStage').onchange=()=>$('#dLostRow').classList.toggle('hidden',$('#dStage').
 let EDIT_DEAL=null,DEAL_CONTACT=null;
 async function openDeal(id,contactId){
   const d=id?DEALS.find(x=>x.id===id)||(await api('/v1/sales/deals')).deals.find(x=>x.id===id):null;EDIT_DEAL=d||null;DEAL_CONTACT=contactId||d?.contact_id||null;
-  $('#dTitle').textContent=d?d.title:'New deal';$('#dName').value=d?.title||'';$('#dStage').value=d?.stage||'new';$('#dValue').value=d?.value_cents?String(Math.round(d.value_cents/100)):'';$('#dClose').value=d?.expected_close?String(d.expected_close).slice(0,10):'';$('#dLost').value=d?.lost_reason||'';$('#dLostRow').classList.toggle('hidden',(d?.stage||'new')!=='lost');$('#dMsg').textContent='';$('#dDelete').classList.toggle('hidden',!d);$('#dInvoice').classList.toggle('hidden',!(d&&d.stage==='won'));if(d)$('#dInvoice').href='/money?deal='+encodeURIComponent(d.id);
+  $('#dTitle').textContent=d?d.title:'New deal';$('#dName').value=d?.title||'';$('#dStage').value=d?.stage||'new';$('#dValue').value=d?.value_cents?String(Math.round(d.value_cents/100)):'';$('#dClose').value=d?.expected_close?String(d.expected_close).slice(0,10):'';$('#dLost').value=d?.lost_reason||'';$('#dLostRow').classList.toggle('hidden',(d?.stage||'new')!=='lost');$('#dMsg').textContent='';$('#dDelete').classList.toggle('hidden',!d);
+  {const won=Boolean(d&&d.stage==='won'),started=Boolean(d&&d.project_id);$('#dProject').classList.toggle('hidden',!won);
+   $('#dProjectGo').classList.toggle('hidden',started);$('#dProjectKind').classList.toggle('hidden',started);$('#dProjectOpen').classList.toggle('hidden',!started);
+   if(started)$('#dProjectOpen').href='/clients/'+d.project_client_id+'#project='+d.project_id;
+   $('#dProjectSub').textContent=started?'The project for this deal has started'+(d.owner_name?'. Account owner: '+d.owner_name+'.':'.'):"This makes the client's room (or uses theirs), a project in it, and for software a build record. You become the account owner."}$('#dInvoice').classList.toggle('hidden',!(d&&d.stage==='won'));if(d)$('#dInvoice').href='/money?deal='+encodeURIComponent(d.id);
   await fillContactOptions('#dContact',DEAL_CONTACT);$('#dContactRow').classList.toggle('hidden',Boolean(d));
   if($('#cdlg').open)$('#cdlg').close();$('#ddlg').showModal();$('#dName').focus();
 }
@@ -338,6 +344,9 @@ $('#newDeal').onclick=()=>openDeal(null);
 $('#dform').addEventListener('submit',async e=>{e.preventDefault();const m=$('#dMsg');m.className='msg';m.textContent='Saving…';
   const body={title:$('#dName').value,stage:$('#dStage').value,value:$('#dValue').value,expectedClose:$('#dClose').value,lostReason:$('#dLost').value};
   try{if(EDIT_DEAL)await api('/v1/sales/deals/'+EDIT_DEAL.id,{method:'PUT',body});else await api('/v1/sales/deals',{body:{...body,contactId:$('#dContact').value||DEAL_CONTACT||null}});$('#ddlg').close();await refresh()}catch(x){m.className='msg bad';m.textContent=x.message}});
+$('#dProjectGo').onclick=async()=>{const m=$('#dMsg'),b=$('#dProjectGo');b.disabled=true;m.className='msg';m.textContent='Starting…';
+  try{const r=await api('/v1/sales/deals/'+EDIT_DEAL.id+'/start-project',{body:{kind:$('#dProjectKind').value}});m.className='msg ok';m.textContent=(r.client.created?'Made a new room for '+r.client.name+'. ':'Added to '+r.client.name+"'s room. ")+'Opening the project…';location.href=r.roomUrl}
+  catch(x){m.className='msg bad';m.textContent=x.message;b.disabled=false}};
 $('#dDelete').onclick=async()=>{if(!confirm('Delete this deal?'))return;try{await api('/v1/sales/deals/'+EDIT_DEAL.id,{method:'DELETE'});$('#ddlg').close();await refresh()}catch(x){alert(x.message)}};
 
 // ---------- contacts ----------

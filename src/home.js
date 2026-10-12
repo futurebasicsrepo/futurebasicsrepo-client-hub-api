@@ -10,7 +10,7 @@ export function projectRow(r, now = Date.now()) {
   const owner = waitingOnUs ? 'us' : sw ? stageOwner(r.stage) : 'us';
   const quietDays = Math.floor((now - new Date(r.last_message_at || r.updated_at).getTime()) / 86400_000);
   return {
-    id: r.id, clientId: r.client_id, clientName: r.client_name, siteState: r.site_state || '', name: r.name, kind: sw ? 'software' : 'product', status: r.status,
+    id: r.id, clientId: r.client_id, clientName: r.client_name, accountOwner: r.account_owner || '', siteState: r.site_state || '', name: r.name, kind: sw ? 'software' : 'product', status: r.status,
     stage: sw ? r.stage || 'discovery' : null, stageLabel: sw ? stageLabel(r.stage || 'discovery') : String(r.milestone || ''),
     buildId: r.build_id || null, buildName: r.build_name || '', liveUrl: r.live_url || '', productCount: Number(r.product_count) || 0, targetDate: r.target_date || null,
     owner, waitingOnUs, quietDays: Number.isFinite(quietDays) ? Math.max(0, quietDays) : 0, updatedAt: r.updated_at
@@ -29,3 +29,14 @@ export function prototypeRow(r) {
 
 export const trend = (cur, prev) => (prev === 0 ? (cur > 0 ? { dir: 'up', text: 'new this week' } : { dir: 'flat', text: 'no change' }) : cur === prev ? { dir: 'flat', text: 'same as last week' } : { dir: cur > prev ? 'up' : 'down', text: `${cur > prev ? '+' : ''}${cur - prev} on last week` });
 export const greeting = (hourUtc, offset = -4) => { const h = (hourUtc + offset + 24) % 24; return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+
+// One account the signed-in teammate owns: what needs them, in words. Quiet ones sort last.
+export function accountRow(r, now = Date.now()) {
+  const last = r.last_message_at ? new Date(r.last_message_at).getTime() : null, quietDays = last ? Math.max(0, Math.floor((now - last) / 86400_000)) : null;
+  const needs = [];
+  if (r.waiting_on_us) needs.push(`${r.waiting_on_us} project${r.waiting_on_us === 1 ? '' : 's'} waiting on you`);
+  if (r.approvals) needs.push(`${r.approvals} approval${r.approvals === 1 ? '' : 's'} waiting`);
+  if (r.tasks_due) needs.push(`${r.tasks_due} task${r.tasks_due === 1 ? '' : 's'} due`);
+  return { id: r.id, name: r.name, projects: Number(r.projects) || 0, waitingOnUs: Number(r.waiting_on_us) || 0, approvals: Number(r.approvals) || 0, tasksDue: Number(r.tasks_due) || 0, quietDays, needs, needsYou: needs.length > 0 };
+}
+export const orderAccounts = rows => rows.slice().sort((a, b) => Number(b.needsYou) - Number(a.needsYou) || (b.waitingOnUs - a.waitingOnUs) || (b.approvals - a.approvals) || (b.tasksDue - a.tasksDue) || String(a.name).localeCompare(String(b.name)));

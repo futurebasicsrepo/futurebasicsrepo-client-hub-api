@@ -2117,6 +2117,46 @@ await journey('J159', 'Watching client sites: each build with a live address is 
   } finally { await new Promise(r => site.close(r)); sql(`delete from notifications where type='site' and entity_id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}')`); sql(`delete from projects where build_id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}')`); sql(`delete from builds where id in ('${bUp}','${bFlaky}','${bSlow}','${bCert}','${bDom}','${bNone}','${bGone}')`); } // leave nothing down for the journeys after
 });
 
+await journey('J157', 'Won deal to work: Start project makes the client room, a project and (for software) a build, the person who won it owns the account, it will not start twice by accident, and Home shows the owner', async () => {
+  const room = await newRoom('157', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const uid = sql(`insert into users(client_id,email,name,role) values('${cid}','owner157-${stamp}@thefuturebasics.com','Olive Owner','admin') returning id`).split('\n')[0];
+  const olive = await forge({ sub: uid, clientId: cid, role: 'admin', email: `owner157-${stamp}@thefuturebasics.com` });
+  const S = (path, o = {}) => call('/v1/sales' + path, { token: olive, ...o });
+  const co = sql(`insert into sales_companies(name) values('Cedar Dental ${stamp}') returning id`).split('\n')[0];
+  const ct = sql(`insert into sales_contacts(name,email,company_id) values('Dr Cedar','cedar-${stamp}@cedar.test','${co}') returning id`).split('\n')[0];
+  const mk = (title, stage) => sql(`insert into sales_deals(title,stage,value_cents,contact_id,company_id) values('${title}','${stage}',900000,'${ct}','${co}') returning id`).split('\n')[0];
+  const open = mk(`Open deal ${stamp}`, 'proposal'), won = mk(`Cedar site ${stamp}`, 'won');
+
+  ok((await call(`/v1/sales/deals/${won}/start-project`, { body: {} })).status === 401 && (await call(`/v1/sales/deals/${won}/start-project`, { token: room.token, body: {} })).status === 403, 'only staff can start a project from a deal');
+  const early = await S(`/deals/${open}/start-project`, { body: {} }); ok(early.status === 409 && /Won/.test(early.json.error), 'a deal that is not won is refused, with what to do', early.json);
+  ok((await S('/deals/00000000-0000-4000-8000-000000000000/start-project', { body: {} })).status === 404, 'an unknown deal is not found');
+
+  const r = await S(`/deals/${won}/start-project`, { body: { kind: 'software' } });
+  ok(r.status === 201 && r.json.client.created === true && r.json.client.name === `Cedar Dental ${stamp}` && r.json.project.kind === 'software' && r.json.roomUrl === `/clients/${r.json.client.id}#project=${r.json.project.id}`, 'it makes the client room and a software project and says where to open it', JSON.stringify(r.json));
+  const clientId = r.json.client.id, projId = r.json.project.id;
+  const room1 = sql(`select allowed_emails::text||'|'||status||'|'||(owner_id='${uid}')::text from clients where id='${clientId}'`);
+  ok(room1 === `{cedar-${stamp}@cedar.test}|active|true`, 'the contact can sign in to the new room, and the owner of the deal owns the account', room1);
+  const pr = sql(`select kind||'|'||stage||'|'||(build_id is not null)::text||'|'||status from projects where id='${projId}'`); ok(pr === 'software|discovery|true|active', 'the project starts at discovery with a hidden build record', pr);
+  ok(sql(`select (project_id='${projId}' and owner_id='${uid}')::text from sales_deals where id='${won}'`) === 'true' && sql(`select (client_id='${clientId}')::text from sales_contacts where id='${ct}'`) === 'true', 'the deal remembers its project and owner, and the contact is tied to the room');
+  ok(Number(sql(`select count(*) from sales_activities where deal_id='${won}' and kind='system' and text like 'Project started%'`)) === 1, 'the timeline says the project started');
+  const dl = (await S('/deals')).json.deals.find(d => d.id === won); ok(dl && dl.owner_name === 'Olive Owner' && dl.project_id === projId && dl.project_client_id === clientId, 'the deals list carries the owner and the project', JSON.stringify(dl));
+
+  const twice = await S(`/deals/${won}/start-project`, { body: {} }); ok(twice.status === 409 && /already started/.test(twice.json.error) && twice.json.existing.projectId === projId, 'asking again does not make a second project, and points at the first');
+  const same = await S(`/deals/${won}/start-project`, { body: { again: true, name: `Cedar site ${stamp}` } }); ok(same.status === 409 && /already has a project called/.test(same.json.error), 'even when forced, the same name in the same room is refused');
+  const more = await S(`/deals/${won}/start-project`, { body: { again: true, kind: 'product', name: `Cedar merch ${stamp}` } });
+  ok(more.status === 201 && more.json.client.created === false && more.json.client.id === clientId && more.json.project.kind === 'product', 'a second piece of work goes in the same room, as product development');
+
+  // a company that already has a room is reused, not duplicated
+  const co2 = sql(`insert into sales_companies(name) values('Cedar Dental ${stamp}x') returning id`).split('\n')[0];
+  const d3 = sql(`insert into sales_deals(title,stage,value_cents,company_id) values('Walk-in ${stamp}','won',100,'${co2}') returning id`).split('\n')[0];
+  sql(`update clients set name='Cedar Dental ${stamp}x' where id='${clientId}'`);
+  const reuse = await S(`/deals/${d3}/start-project`, { body: { kind: 'software', newBuild: false } });
+  ok(reuse.status === 201 && reuse.json.client.id === clientId && reuse.json.client.created === false && sql(`select (build_id is null)::text from projects where id='${reuse.json.project.id}'`) === 'true', 'a company that already has a room is reused (found by name, even with no contact), and a build record is optional');
+
+  const home = (await call('/v1/admin/home', { token: olive })).json, row = (home.projects || []).find(p => p.id === projId);
+  ok(row && row.accountOwner === 'Olive Owner', 'Home shows the account owner on the project row', JSON.stringify(row));
+});
+
 await journey('J144', 'Site prototypes: paste a tired site, get a score and a pitch, build a new one for its trade, check it against the standard, publish it sandboxed onto Builds, share it, and take it down', async () => {
   const room = await newRoom('144', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
   const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };

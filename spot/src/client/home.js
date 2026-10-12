@@ -92,7 +92,12 @@
     }
   });
 
+  let screen = 'compose';
   const show = (id) => {
+    // Into a pick's details from the shelf: a step in the history, so going
+    // back (a swipe, the back button) lands on the shelf, not off the page.
+    if (screen === 'picks' && (id === 'check' || id === 'ready') && !history.state?.spot) history.pushState({ spot: id }, '');
+    screen = id;
     for (const s of ['compose', 'picks', 'check', 'ready']) $('#' + s).hidden = s !== id;
     $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -164,6 +169,7 @@
     try {
       // Typed: the shelf opens right away and fills as the AI finds things.
       if (!image && !/https?:\/\//.test(text)) {
+        forgetShelf();
         ask = { text, avoid: [] };
         made = null;
         $('#thread').innerHTML = '';
@@ -405,6 +411,7 @@
     headline(T);
     T.sync();
     walletWatch();
+    keepShelf();
     return true;
   }
   // A store check, or the AI's read of a page Spot couldn't open, came back:
@@ -429,6 +436,7 @@
         el.insertAdjacentHTML('afterbegin', '<img src="' + esc(p.image_url) + '" alt="" referrerpolicy="no-referrer">');
       }
     }
+    keepShelf();
     if (o.stock === 'out') for (const c of document.querySelectorAll('#thread .pc:not(.look) [data-url="' + CSS.escape(p.url) + '"]')) {
       const card = c.closest('.pc');
       card.classList.add('gone');
@@ -456,6 +464,7 @@
       });
     });
     walletWatch();
+    keepShelf();
   }
   // One batch into a turn, card by card as it streams.
   async function fill(T, body) {
@@ -479,6 +488,7 @@
       for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
       if (!added.length || ++T.page > BATCHES) T.done = true;
       T.sync();
+      keepShelf();
     }
     if (T.list.length > 1) say('swipe for more →');
     details(added);
@@ -496,6 +506,42 @@
       T.sync();
     }
   }
+  // The shelf survives leaving the page (into a store, checkout, a swipe
+  // back, the app closed): kept on this phone for a few hours, so they can
+  // keep shopping it and ask for more.
+  const SHELF = 'spot:shelf';
+  const SHELF_TTL = 6 * 3600e3;
+  function keepShelf() {
+    const kept = turns.filter((T) => T?.list.length).map((T) => ({ kind: T.kind, list: T.list, said: T.said, more: T.more, page: T.page, done: T.done, profile: T.profile }));
+    if (kept.length) save(SHELF, { at: Date.now(), ask, turns: kept });
+  }
+  function forgetShelf() {
+    try {
+      localStorage.removeItem(SHELF);
+    } catch {}
+  }
+  function restoreShelf() {
+    const s = load(SHELF, null);
+    if (!s || !Array.isArray(s.turns) || !s.turns.length || !(Date.now() - s.at < SHELF_TTL)) return false;
+    ask = { text: String(s.ask?.text || ''), avoid: Array.isArray(s.ask?.avoid) ? s.ask.avoid : [] };
+    $('#thread').innerHTML = '';
+    turns.length = 0;
+    show('picks');
+    for (const t of s.turns) {
+      const T = openTurn(t.said, t.more || '');
+      T.profile = t.profile || null;
+      showUsed(T);
+      for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
+      for (const e of t.list || []) addEntry(T, t.kind, e);
+      T.page = t.page || 1;
+      T.done = Boolean(t.done);
+      T.sync();
+    }
+    window.scrollTo({ top: 0 });
+    say('your picks are still here. swipe, or ask for more ↓');
+    return true;
+  }
+
   // A whole answer at once (a link or a screenshot that came back as several).
   function shelfFrom(said, d) {
     const got = listOf(d);
@@ -714,6 +760,7 @@
   }
   $('#askMore').addEventListener('submit', askMore);
   $('#picksOver').onclick = () => {
+    forgetShelf();
     turns.length = 0;
     $('#thread').innerHTML = '';
     q.value = '';
@@ -725,11 +772,13 @@
     made = null;
     check('');
   };
-  $('#backPicks').onclick = () => {
+  function toPicks() {
     show('picks');
     for (const T of turns) T.sync?.();
     say('swipe for more →');
-  };
+  }
+  $('#backPicks').onclick = () => (history.state?.spot ? history.back() : toPicks());
+  addEventListener('popstate', () => screen !== 'picks' && turns.some((T) => T?.list.length) && toPicks());
 
   // "Not quite": what they say about this find, and everything shown so far,
   // go back for another look (a sold-out find is never offered again).
@@ -1134,6 +1183,8 @@
   } else if (incoming) {
     q.value = incoming;
     go();
+  } else if (restoreShelf()) {
+    // Back to the shelf they were shopping.
   } else if (me.name) {
     say('hey ' + me.name + '! what do you want?');
   }

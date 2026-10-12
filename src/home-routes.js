@@ -1,10 +1,12 @@
 // GET /v1/admin/home: what the work console's home page shows beyond the Sales overview (which it also reads): leads waiting for a first reply, prototypes and
 // how warm they are, projects in flight (software and product), and what is waiting elsewhere. Staff only.
-import { projectRow, orderProjects, prototypeRow, trend, LEAD_SOURCES_EXCLUDED } from './home.js';
+import { projectRow, orderProjects, prototypeRow, trend, accountRow, orderAccounts, LEAD_SOURCES_EXCLUDED } from './home.js';
 
 export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
   const pre = [authenticate, adminOnly];
-  app.get('/v1/admin/home', { preHandler: pre }, async () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  app.get('/v1/admin/home', { preHandler: pre }, async (req) => {
+    const me = UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null;
     const q = async (sql, args = []) => (await pool.query(sql, args)).rows;
     const ex = LEAD_SOURCES_EXCLUDED;
     const [cur] = await q(`select count(*)::int n from sales_contacts where created_at > now() - interval '7 days' and not (source = any($1))`, [ex]);
@@ -30,7 +32,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const showNow = await q(`select b.id,b.slug,b.name,b.tagline,b.status,b.visibility,b.live_url,b.stack,jsonb_exists(b.media,'cover') has_cover,0 products,
         (select count(*) from build_views v where v.build_id=b.id and v.created_at > now() - interval '30 days')::int views7, 0 lookers7, null::timestamptz last_look, 0 invites, '[]'::json clients
       from builds b where b.status='live' and b.visibility <> 'hidden' order by views7 desc, b.sort_order limit 3`);
-    const projects = await q(`select pr.id,pr.name,pr.kind,pr.status,pr.milestone,pr.stage,pr.target_date,pr.updated_at,pr.build_id,c.id client_id,c.name client_name,(select m.state from site_monitors m where m.build_id=pr.build_id) site_state,b.name build_name,b.live_url,
+    const projects = await q(`select pr.id,pr.name,pr.kind,pr.status,pr.milestone,pr.stage,pr.target_date,pr.updated_at,pr.build_id,c.id client_id,c.name client_name,(select u.name from users u where u.id=c.owner_id) account_owner,(select m.state from site_monitors m where m.build_id=pr.build_id) site_state,b.name build_name,b.live_url,
         (select count(*) from products p where p.project_id=pr.id)::int product_count,
         (select pm.author_role from project_messages pm where pm.project_id=pr.id order by pm.created_at desc limit 1) last_author,
         (select max(pm.created_at) from project_messages pm where pm.project_id=pr.id) last_message_at
@@ -43,7 +45,21 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     // saved lead searches that found quick-turn sites nobody has opened yet
     const leadSearches = await q(`select id, trade, place, created_at, (select count(*) from jsonb_array_elements(results) r where (r->>'reachable')::boolean and (r->>'quickTurn')::boolean and coalesce((r->>'lead')::boolean, (r->>'score')::int < 80))::int quick
       from prototype_searches where schedule_id is not null and status='done' and seen_at is null and created_at > now() - interval '14 days' order by created_at desc limit 20`).then(r => r.filter(x => x.quick > 0).slice(0, 3)).catch(() => []);
+    // The accounts this person owns and what each needs from them; and the live ones nobody owns yet (anyone can take one).
+    const LIVE = `p.archived_at is null and p.status not in ('archive','archived','complete')`;
+    const mine = me ? await q(`select c.id, c.name,
+        (select count(*) from projects p where p.client_id=c.id and ${LIVE})::int projects,
+        (select count(*) from projects p where p.client_id=c.id and ${LIVE} and (select pm.author_role from project_messages pm where pm.project_id=p.id order by pm.created_at desc limit 1)='client')::int waiting_on_us,
+        (select count(*) from approvals a join products pr on pr.id=a.product_id where pr.client_id=c.id and a.status='pending')::int approvals,
+        (select count(*) from sales_tasks t join sales_contacts ct on ct.id=t.contact_id where ct.client_id=c.id and t.done_at is null and t.due_at is not null and t.due_at < now() + interval '1 day')::int tasks_due,
+        (select max(pm.created_at) from project_messages pm join projects p on p.id=pm.project_id where p.client_id=c.id) last_message_at
+      from clients c where c.owner_id=$1 and c.archived_at is null and c.status='active' and c.slug <> 'future-basics'`, [me]) : [];
+    const unowned = await q(`select c.id, c.name, (select count(*) from projects p where p.client_id=c.id and ${LIVE})::int projects from clients c
+      where c.owner_id is null and c.archived_at is null and c.status='active' and c.slug <> 'future-basics' and exists (select 1 from projects p where p.client_id=c.id and ${LIVE} and p.name <> 'General development')
+      order by c.name limit 12`);
     return {
+      myAccounts: orderAccounts(mine.map(r => accountRow(r))),
+      unownedAccounts: unowned.map(r => ({ id: r.id, name: r.name, projects: r.projects })),
       leadSearches: leadSearches.map(r => ({ id: r.id, trade: r.trade, place: r.place, quick: r.quick, at: r.created_at })),
       signals: { total: sc.total, overdue: sc.overdue, top: sigs.map(r => ({ id: r.id, source: r.source, title: r.title, summary: r.summary, score: r.score, status: r.status, ownerName: r.owner_name || '', foundAt: r.found_at, postedAt: r.posted_at })) },
       funnel: { newLeads7: cur.n, newLeadsPrev7: prev.n, trend: trend(cur.n, prev.n), lookers7: look.lookers, demos7: look.demos, won30: { count: won.n, valueCents: Number(won.v) } },
@@ -52,5 +68,14 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
       projects: orderProjects(projects.map(r => projectRow(r))),
       waiting: { approvals: appr.n, production: prod.n }
     };
+  });
+  // Take an account (or give it to someone): the owner is the one voice the client hears from and the person Home asks about it.
+  app.put('/v1/admin/clients/:id/owner', { preHandler: pre }, async (req, reply) => {
+    if (!UUID.test(String(req.params.id))) return reply.code(404).send({ error: 'Client not found' });
+    const b = req.body || {}, who = b.userId === null || b.userId === '' ? null : b.userId === undefined ? (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null) : String(b.userId);
+    if (who && !UUID.test(who)) return reply.code(400).send({ error: 'Choose a person' });
+    if (who && !(await pool.query(`select 1 from users where id=$1 and role='admin'`, [who])).rowCount) return reply.code(404).send({ error: 'That person is not on the team' });
+    const row = (await pool.query(`update clients set owner_id=$2 where id=$1 and slug <> 'future-basics' returning id`, [req.params.id, who])).rows[0];
+    return row ? { ok: true, ownerId: who } : reply.code(404).send({ error: 'Client not found' });
   });
 }

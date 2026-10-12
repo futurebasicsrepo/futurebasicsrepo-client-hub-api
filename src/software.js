@@ -55,3 +55,10 @@ export function softwareView(project, build = null) {
     build: build ? { id: build.id, slug: build.slug, name: build.name, status: build.status, liveUrl: build.live_url || '', stack: build.stack || [], features: (build.highlights || []).map(h => h.title).filter(Boolean).slice(0, 6), tagline: build.tagline || '' } : null
   };
 }
+
+// A hidden, in-progress build record for a software project, with a slug nobody else has.
+export async function newBuildFor(db, name) {
+  const base = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'build'; let slug = base;
+  for (let n = 2; (await db.query('select 1 from builds where slug=$1', [slug])).rowCount; n++) slug = `${base}-${n}`;
+  return (await db.query(`insert into builds(slug,name,status,visibility,sort_order) values($1,$2,'in-progress','hidden',100) returning id`, [slug, String(name).slice(0, 80)])).rows[0].id;
+}

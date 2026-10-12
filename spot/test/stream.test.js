@@ -74,7 +74,7 @@ test('each pick goes out once its store check is back, with the store’s own ph
   assert.equal(events.filter((e) => e.type === 'update').length, 0, 'nothing to patch: each card is whole when it goes up');
   assert.deepEqual(events.at(-1), { type: 'done', kind: 'products', count: 3 });
   assert.equal(calls[0].model, 'claude-sonnet-5-5', 'the quicker model by default');
-  assert.match(calls[0].messages[0].content, /up to 6 products/, 'a small first batch');
+  assert.match(calls[0].messages[0].content, /up to 8 products/, 'a small first batch');
   assert.match(calls[0].messages[0].content, /their sizes are tops M\./);
   assert.match(calls[0].messages[0].content, /Never answer a shopping request with an empty list/);
   assert.match(calls[0].messages[0].content, /Prefer the brand's own online store and shops that sell direct/, 'stores Spot can buy from and show');
@@ -469,4 +469,52 @@ test('an outfit piece with no link isn’t shown; names lose search-result clutt
   assert.deepEqual(outfit.items.map((o) => o.item.url), ['https://gap.example/p2', 'https://nike.example/p3']);
   assert.match(calls[0].messages[0].content, /a real product you found for sale/);
   assert.match(calls[0].messages[0].content, /brand and model/);
+});
+
+test('a brand site’s page titled without the brand still counts, by its own link words; without a photo in the index Spot reads that page', async () => {
+  const { pageSearch } = await import('../src/capture.js');
+  const brave = (results) => async () => ({ ok: true, json: async () => ({ web: { results } }) });
+  const results = [
+    { title: 'Polarized Sunglasses | Maui Jim®', url: 'https://www.mauijim.com/us/en/sunglasses/polarized', thumbnail: { original: 'https://www.mauijim.com/cat.jpg' } },
+    { title: 'Pehu | Maui Jim®', url: 'https://www.mauijim.com/us/en/sunglasses/pehu-polarized-sunglasses/MJ602.html' },
+  ];
+  const hit = await pageSearch({ title: 'Maui Jim Pehu Polarized Sunglasses', url: 'https://www.mauijim.com' }, { fetchImpl: brave(results), key: 'k' });
+  assert.deepEqual(hit, { url: 'https://www.mauijim.com/us/en/sunglasses/pehu-polarized-sunglasses/MJ602.html', title: 'Pehu', image_url: null, thumb: null });
+
+  // On the shelf: a home-page link moves to that page, with the photo Spot reads off it.
+  const { client } = streamer([{ kind: 'products', products: [{ ...P(1, 'mauijim'), product_url: 'https://www.mauijim.com', title: 'Maui Jim Pehu Polarized Sunglasses', image_url: '' }] }]);
+  const pages = { 'https://www.mauijim.com/us/en/sunglasses/pehu-polarized-sunglasses/MJ602.html': { items: [{ title: 'Pehu', image_url: 'http://www.mauijim.com/pehu.jpg' }], offers: [] } };
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('polarized sunglasses', { client, fromUrl: async (u) => pages[u] || { items: [{ title: 'Maui Jim' }], offers: [] }, product: noShopify, resolve: async () => null, pdp: async () => hit, photos: async () => null, verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  const item = events.find((e) => e.type === 'pick').option.item;
+  assert.equal(item.url, 'https://www.mauijim.com/us/en/sunglasses/pehu-polarized-sunglasses/MJ602.html');
+  assert.equal(item.image_url, 'https://www.mauijim.com/pehu.jpg', 'https, so it shows on a secure page');
+});
+
+test('two looks can share a piece; a brand’s blog isn’t its store; a category link with CN= isn’t a product; no store name on the end of a name', async () => {
+  const heel = P(9, 'stevemadden');
+  const looks = { kind: 'outfits', outfits: [{ name: 'Satin', items: [P(1, 'ap'), heel] }, { name: 'Velvet', items: [P(2, 'lulus'), heel] }] };
+  const { client } = streamer([looks]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('fall wedding guest outfit', { client, fromUrl: slowPage(1), product: noShopify, resolve: async () => null, pdp: async () => null, photos: async () => null, verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  assert.deepEqual(events.filter((e) => e.type === 'outfit').map((e) => e.outfit.name).sort(), ['Satin', 'Velvet']);
+
+  const { pageSearch, looksLikeListing, withoutStore } = await import('../src/capture.js');
+  const brave = async () => ({ ok: true, json: async () => ({ web: { results: [{ title: 'Pehu Classic Polarized Sunglasses', url: 'https://livealoha.mauijim.com/spotlights/pehu-classic-polarized-sunglasses', thumbnail: { original: 'https://livealoha.mauijim.com/pehu.jpg' } }] } }) });
+  assert.equal(await pageSearch({ title: 'Maui Jim Pehu Polarized Sunglasses', url: 'https://www.mauijim.com' }, { fetchImpl: brave, key: 'k' }), null);
+  assert.equal(looksLikeListing('https://www.kohls.com/catalog/cowboy-boots-shoes.jsp?CN=Silhouette:Cowboy'), true);
+  assert.equal(looksLikeListing('https://en.pieddebiche-paris.com/catalog/p/arthur-blanc.html'), false);
+  assert.equal(withoutStore('Cleo + Wolf Ivy Western Boots | Boot Barn', 'Boot Barn'), 'Cleo + Wolf Ivy Western Boots');
 });
