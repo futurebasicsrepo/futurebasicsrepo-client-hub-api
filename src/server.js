@@ -1980,9 +1980,13 @@ app.get('/v1/dashboard', { preHandler: authenticate }, async (req,reply) => {
     pool.query('select * from activities where client_id=$1 order by created_at desc limit 50', [id])
   ]);
   const waiting=await clientWaiting(id,{products:products.rows,quotes:quotes.rows,approvals:approvals.rows,invoices:invoices.rows});
+  // their agreements (contracts for digital work): shown in the hub, and the ones that need the signer's attention join "Waiting on you"
+  const agreements=await contracts.hubContracts({clientId:id,userId:req.auth.sub,preview:Boolean(req.auth.preview)}).catch(e=>{app.log.warn({err:e.message},'hub agreements failed');return []});
+  for(const a of agreements)if(a.needs&&a.link)waiting.push({kind:'contract',id:`ct-${a.id}`,needs:a.needs,title:a.needs==='sign'?`Sign ${a.title}`:'Add your payment details',product:a.title,at:a.needs==='sign'?a.sentAt:a.executedAt||a.sentAt,href:a.link,totalCents:a.totalCents,summary:a.summary,number:a.number});
+  waiting.sort((a,b)=>new Date(b.at)-new Date(a.at));
   return { requests: requests.rows, invoices: invoices.rows, projects: projects.rows.map(withSoftware),projectFinancials:projectFinancialRollups(projects.rows,products.rows,quotes.rows,invoices.rows),projectMessages: projectMessages.rows,projectFiles:projectFiles.rows,
     productComments:productComments.rows, products: products.rows.map(withRendering),
-    approvals: approvals.rows, activities: activities.rows, waiting,
+    approvals: approvals.rows, activities: activities.rows, waiting, agreements,
     actions: [
       ...approvals.rows.map(a=>({type:'approval',id:a.id,title:'Approve '+a.product_title+' — '+(a.asset_name?`${a.asset_name} v${a.asset_version}`:a.title),due:null})),
       ...invoices.rows.filter(x=>x.status==='due').map(x=>({type:'invoice',id:x.id,title:'Invoice '+x.number+' due',due:x.due_date}))
