@@ -99,10 +99,15 @@
   });
 
   let screen = 'compose';
+  let cameFrom = null; // 'picks' or 'shop': where going back from details lands
   const show = (id) => {
-    // Into a pick's details from the shelf: a step in the history, so going
-    // back (a swipe, the back button) lands on the shelf, not off the page.
-    if (screen === 'picks' && (id === 'check' || id === 'ready') && !history.state?.spot) history.pushState({ spot: id }, '');
+    // Into a pick's details from the shelf or the shop: a step in the
+    // history, so going back (a swipe, the back button) lands where they
+    // were, not off the page.
+    if ((screen === 'picks' || screen === 'shop') && (id === 'check' || id === 'ready') && !history.state?.spot) {
+      cameFrom = screen;
+      history.pushState({ spot: id }, '');
+    }
     screen = id;
     for (const s of ['compose', 'picks', 'check', 'ready', 'shop']) $('#' + s).hidden = s !== id;
     $('#mine').hidden = id !== 'compose' || (!load('spot:mine', []).length && !myOrders.length);
@@ -456,6 +461,7 @@
     cents > CFG.max ? '<div class="overcap">Over Spot’s ' + usd(CFG.max) + ' limit for now. Buy it at the store.</div>' :
     (sold ? '' : '<div class="wpay" data-k="' + k + '" hidden></div>') +
     '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
+    '<button class="btn ghost small addcart" type="button" data-act="add" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>🛒 Add to cart</button>' +
     '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
   const total = (items) => items.reduce((n, o) => n + (o.item.price_cents || 0), 0);
   // The size picked is one of theirs ("M" in "Black / M", "10.5" in "US 10.5").
@@ -1419,24 +1425,60 @@
     $('#viewOne').setAttribute('aria-pressed', String(v === 'one'));
     save('spot:shopView', v);
   }
-  function setMode(mode) {
+  // The mode is in the URL (#shop): the page reloads when they come back to
+  // it (a swipe back from an order page), and lands where they were, at the
+  // same place in the shop.
+  const SHOP_Y = 'spot:shopY';
+  function setMode(mode, { restore = false } = {}) {
     const shop = mode === 'shop';
     $('#modeSpot').setAttribute('aria-selected', String(!shop));
     $('#modeShop').setAttribute('aria-selected', String(shop));
     document.body.classList.toggle('shopping', shop);
+    history.replaceState(history.state, '', location.pathname + location.search + (shop ? '#shop' : ''));
     if (shop) {
-      if (screen !== 'shop') lastScreen = screen;
+      if (screen !== 'shop') lastScreen = screen === 'check' || screen === 'ready' ? (turns.length ? 'picks' : 'compose') : screen;
+      cameFrom = null;
       show('shop');
       renderShop();
-      loadShop().then(renderShop);
+      loadShop().then(() => {
+        renderShop();
+        let y = 0;
+        try {
+          y = restore ? Number(sessionStorage.getItem(SHOP_Y)) || 0 : 0;
+        } catch {}
+        if (y) scrollTo({ top: y, behavior: 'instant' });
+      });
     } else {
-      $('#shopSheet').hidden = true;
+      hideProduct();
       show(lastScreen === 'shop' ? 'compose' : lastScreen);
       for (const T of turns) T?.sync?.();
     }
   }
+  // Out of the shop's look (a choice from it carries on in Spot), without leaving the screen yet.
+  function leaveShopUi() {
+    hideProduct();
+    document.body.classList.remove('shopping');
+    $('#modeSpot').setAttribute('aria-selected', 'true');
+    $('#modeShop').setAttribute('aria-selected', 'false');
+    history.replaceState(history.state, '', location.pathname + location.search);
+  }
   // The Spot / Shop bar stays put; a hairline under it once the page scrolls.
-  addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 4), { passive: true });
+  let yT = 0;
+  addEventListener(
+    'scroll',
+    () => {
+      document.body.classList.toggle('scrolled', scrollY > 4);
+      if (screen === 'shop') {
+        clearTimeout(yT);
+        yT = setTimeout(() => {
+          try {
+            sessionStorage.setItem(SHOP_Y, String(Math.round(scrollY)));
+          } catch {}
+        }, 150);
+      }
+    },
+    { passive: true },
+  );
   $('#modeShop').onclick = () => setMode('shop');
   $('#modeSpot').onclick = () => setMode('spot');
   $('#viewGrid').onclick = () => setView('grid');
@@ -1455,19 +1497,27 @@
     loadDelivery(shopList[i]);
     loadPromos(shopList[i]);
     $('#shopSheet').hidden = false;
+    if (history.state?.sheet !== 'product') history.pushState({ sheet: 'product' }, '');
     walletWatch();
   });
-  $('#shopSheetX').onclick = () => ($('#shopSheet').hidden = true);
-  document.addEventListener('keydown', (e) => e.key === 'Escape' && ($('#shopSheet').hidden = true));
+  // Closing a sheet is a step back, so a swipe back closes it too.
+  const closeSheet = (name, hide) => (history.state?.sheet === name ? history.back() : hide());
+  function hideProduct() {
+    $('#shopSheet').hidden = true;
+    if (history.state?.sheet === 'product') history.replaceState({}, '');
+  }
+  $('#shopSheetX').onclick = () => closeSheet('product', hideProduct);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('#cartSheet').hidden) closeSheet('cart', hideCart);
+    else if (!$('#shopSheet').hidden) closeSheet('product', hideProduct);
+  });
   // Paying or making a link from here carries on in Spot, as from the shelf.
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos', 'nope'].includes(b.dataset.act)) return actOn(b);
-    $('#shopSheet').hidden = true;
-    document.body.classList.remove('shopping');
-    $('#modeSpot').setAttribute('aria-selected', 'true');
-    $('#modeShop').setAttribute('aria-selected', 'false');
+    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos', 'nope', 'add'].includes(b.dataset.act)) return actOn(b);
+    leaveShopUi();
     actOn(b);
   });
   // One tap from the shelf: the link is made right here (a look from several
@@ -1483,44 +1533,203 @@
     }
     return [...byStore.values()];
   }
-  async function oneTap(act, k, btn) {
-    const { T, e } = entryOf(k);
-    if (!(await ensureName())) return;
-    const stores = storesOf(e);
-    const last = stores.pop();
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = act === 'pay' ? 'opening checkout…' : 'making your link…';
-    say(act === 'pay' ? 'one sec, getting checkout ready…' : 'making your link…');
+  // Carts per store to one order. One store is one cart; several are one
+  // multi-store ask: one payment, then Spot buys each store's cart with its
+  // own card (so every store is paid exactly its part, and one that can't
+  // be ordered is refunded on its own). Paying themselves goes to their
+  // order page for the shipping address, then pays; otherwise the link is
+  // ready to send.
+  async function checkout(stores, act) {
+    const last = stores[stores.length - 1];
     const settle = me.settle;
     me.settle = 'card'; // Spot buys it, whoever pays
     try {
-      basket = stores;
+      basket = stores.slice(0, -1);
       draft = { merchant: last.merchant, items: last.items, extras_cents: 0, note: '', source: 'lookup', fromPicks: true };
       made = null;
-      await create();
+      await create({ self: act === 'pay' });
       if (act === 'pay') {
-        if (made.bundle) location.href = made.link;
-        else {
-          await api('/v1/carts/' + made.token + '/manage/pay-yourself', { k: made.key });
-          location.href = made.manage;
-        }
+        if (!made.bundle) await api('/v1/carts/' + made.token + '/manage/pay-yourself', { k: made.key });
+        location.href = made.manage;
         return;
       }
       ready();
     } catch (err) {
-      // Something to fix first (a missing price, a store Spot can't buy
-      // from): the details screen, with the reason.
       basket = [];
       renderBasket();
+      throw err;
+    } finally {
+      me.settle = settle;
+    }
+  }
+  async function oneTap(act, k, btn) {
+    const { e } = entryOf(k);
+    if (!(await ensureName())) return;
+    const stores = storesOf(e);
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = act === 'pay' ? 'opening checkout…' : 'making your link…';
+    say(act === 'pay' ? 'one sec, getting checkout ready…' : 'making your link…');
+    try {
+      await checkout(stores, act);
+    } catch (err) {
+      // Something to fix first (a missing price, a store Spot can't buy
+      // from): the details screen, with the reason.
+      const last = stores[stores.length - 1];
       draft = { ...toDraft({ source: 'lookup', merchant: last.merchant, items: last.items }), fromPicks: true };
       check(err.message);
     } finally {
-      me.settle = settle;
       btn.disabled = false;
       btn.textContent = label;
     }
   }
+  // ─── Cart: keep shopping, check out once ─────────────────────────────────
+  // Anything on the shelf or in the shop goes in one cart, kept on this
+  // phone. Checking out is one payment (checkout above): Spot buys each
+  // store's part with its own card and ships it all to one address.
+  const CART = 'spot:cart';
+  const CART_MAX = 30;
+  const CART_STORES = 5; // a multi-store ask's limit (spot.js MAX_BUNDLE_STORES)
+  let cart = load(CART, []).filter((o) => o?.item?.title && o.merchant);
+  const cartKey = (o) => (o.item.url || (o.merchant.name || '') + '|' + o.item.title) + '|' + (o.item.variant || '');
+  const storeKey = (o) => o.merchant.url || o.merchant.name;
+  const cartCount = () => cart.reduce((n, o) => n + (o.item.quantity || 1), 0);
+  function saveCart() {
+    save(CART, cart);
+    renderCartBtn();
+    if (!$('#cartSheet').hidden) renderCart();
+  }
+  function renderCartBtn() {
+    const n = cartCount();
+    $('#cartBtn').hidden = !n;
+    $('#cartN').textContent = n ? String(n) : '';
+  }
+  function addToCart(k, btn) {
+    const { e } = entryOf(k);
+    if (!e) return;
+    const pieces = (e.items || [e]).filter((o) => o?.item?.title && o.stock !== 'out');
+    for (const o of pieces) {
+      const had = cart.find((x) => cartKey(x) === cartKey(o));
+      if (had) had.item.quantity = Math.min(10, (had.item.quantity || 1) + 1);
+      else if (cart.length < CART_MAX) cart.push({ merchant: o.merchant, item: { ...o.item, quantity: 1 }, stock: o.stock || null, added_at: Date.now() });
+      learn(o, 2);
+    }
+    saveCart();
+    const c = $('#cartBtn');
+    c.classList.remove('bump');
+    void c.offsetWidth;
+    c.classList.add('bump');
+    if (btn) {
+      btn.classList.add('on');
+      btn.textContent = '✓ In your cart';
+      setTimeout(() => {
+        btn.classList.remove('on');
+        btn.textContent = '🛒 Add to cart';
+      }, 1800);
+    }
+    const n = new Set(cart.map(storeKey)).size;
+    say(n > 1 ? 'in your cart! ' + n + ' stores, one checkout' : 'in your cart! keep shopping');
+  }
+  // Why the cart can't check out as it is, if it can't.
+  function cartProblem(stores, goods) {
+    const noPrice = cart.find((o) => o.stock !== 'out' && !(o.item.price_cents > 0));
+    if (noPrice) return 'Spot needs a price for “' + noPrice.item.title + '”. Take it out, or open it and tap Edit details.';
+    if (stores.length > CART_STORES) return 'Up to ' + CART_STORES + ' stores in one checkout. Take one store out to go on.';
+    if (goods > CFG.max) return 'That’s over Spot’s ' + usd(CFG.max) + ' limit for one checkout. Take something out to go on.';
+    return '';
+  }
+  function renderCart(err = '') {
+    let h = '<h2>Your cart</h2>';
+    if (!cart.length) {
+      $('#cartBody').innerHTML = h + '<p class="muted">Nothing here yet. Tap “Add to cart” on anything Spot finds, and check out once.</p>';
+      return;
+    }
+    const stores = storesOf({ items: cart });
+    const goods = stores.reduce((n, st) => n + goodsOf(st), 0);
+    const groups = new Map();
+    cart.forEach((o, i) => {
+      if (!groups.has(storeKey(o))) groups.set(storeKey(o), { name: o.merchant.name || 'Store', rows: [] });
+      groups.get(storeKey(o)).rows.push(i);
+    });
+    h += '<p class="small muted">' + (stores.length > 1 ? stores.length + ' stores, one payment. Spot pays each store its part and ships everything to you.' : 'One payment. Spot buys it' + (stores[0] ? ' from ' + esc(stores[0].merchant.name || 'the store') : '') + ' and ships it to you.') + '</p>';
+    for (const g of groups.values()) {
+      const sub = g.rows.reduce((n, i) => n + (cart[i].stock === 'out' ? 0 : (cart[i].item.price_cents || 0) * (cart[i].item.quantity || 1)), 0);
+      h += '<div class="cstore"><h3>' + esc(g.name) + '<span>' + usd(sub) + '</span></h3>' +
+        g.rows.map((i) => {
+          const o = cart[i];
+          const it = o.item;
+          return '<div class="citem">' + (it.image_url ? '<img src="' + esc(it.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '<span class="ci0"></span>') +
+            '<div><div class="ct">' + esc(it.title) + '</div>' + (it.variant ? '<div class="cv">' + esc(it.variant) + '</div>' : '') + (o.stock === 'out' ? '<div class="cv" style="color:#d92d20">Sold out: it won’t be ordered</div>' : '') +
+            '<div class="cq"><button type="button" data-cq="-1" data-ci="' + i + '" aria-label="' + ((it.quantity || 1) > 1 ? 'One less' : 'Remove') + '">' + ((it.quantity || 1) > 1 ? '−' : '×') + '</button><span>' + (it.quantity || 1) + '</span><button type="button" data-cq="1" data-ci="' + i + '" aria-label="One more">+</button></div></div>' +
+            '<div class="cp">' + (it.price_cents ? usd(it.price_cents * (it.quantity || 1)) : '—') + '</div></div>';
+        }).join('') + '</div>';
+    }
+    const problem = cartProblem(stores, goods);
+    const off = problem || !stores.length ? ' disabled' : '';
+    h += '<div class="cartfoot"><div class="sum total"><span>Items</span><span>' + usd(goods) + '</span></div><p class="small muted" style="margin:2px 0 0">Shipping, tax and Spot’s fee are added before you pay.</p>' +
+      (problem ? '<p class="err">' + esc(problem) + '</p>' : '') + '<p class="err" id="cartErr">' + esc(err) + '</p>' +
+      '<button class="btn" type="button" id="cartPay"' + off + '>Pay with Spot</button><button class="btn ghost" type="button" id="cartAsk"' + off + '>Let someone else pay</button></div>';
+    $('#cartBody').innerHTML = h;
+  }
+  function openCart() {
+    renderCart();
+    $('#cartSheet').hidden = false;
+    document.body.classList.add('sheeton');
+    if (history.state?.sheet !== 'cart') history.pushState({ sheet: 'cart' }, '');
+  }
+  function hideCart() {
+    $('#cartSheet').hidden = true;
+    document.body.classList.remove('sheeton');
+    if (history.state?.sheet === 'cart') history.replaceState({}, '');
+  }
+  $('#cartBtn').onclick = openCart;
+  $('#cartX').onclick = () => closeSheet('cart', hideCart);
+  $('#cartBody').addEventListener('click', async (ev) => {
+    const q = ev.target.closest('[data-cq]');
+    if (q) {
+      const o = cart[Number(q.dataset.ci)];
+      if (!o) return;
+      o.item.quantity = Math.min(10, (o.item.quantity || 1) + Number(q.dataset.cq));
+      if (o.item.quantity < 1) cart.splice(Number(q.dataset.ci), 1);
+      return saveCart();
+    }
+    const b = ev.target.closest('#cartPay, #cartAsk');
+    if (!b || b.disabled) return;
+    const act = b.id === 'cartPay' ? 'pay' : 'ask';
+    if (!(await ensureName())) return;
+    const label = b.textContent;
+    b.disabled = true;
+    b.textContent = act === 'pay' ? 'opening checkout…' : 'making your link…';
+    const kept = cart;
+    try {
+      const stores = storesOf({ items: cart });
+      if (act === 'ask') {
+        hideCart();
+        hideProduct();
+        if (screen === 'shop') leaveShopUi();
+      }
+      await checkout(stores, act);
+      cart = [];
+      saveCart();
+    } catch (err) {
+      cart = kept;
+      if (act === 'ask' && screen === 'shop') setMode('shop');
+      if ($('#cartSheet').hidden) openCart();
+      renderCart(err.message);
+    } finally {
+      b.disabled = false;
+      b.textContent = label;
+    }
+  });
+  renderCartBtn();
+  // Another tab (or the order page) changed it.
+  addEventListener('storage', (e) => {
+    if (e.key !== CART) return;
+    cart = load(CART, []);
+    renderCartBtn();
+    if (!$('#cartSheet').hidden) renderCart();
+  });
+
   // ─── Apple Pay / Google Pay on the card ──────────────────────────────────
   // A card in view gets the wallet's own button: one tap, the wallet has the
   // address, Spot prices it for that ZIP, makes the order and charges exactly
@@ -1620,6 +1829,7 @@
     if (b) actOn(b);
   });
   function actOn(b) {
+    if (b.dataset.act === 'add') return addToCart(b.dataset.k, b);
     if (b.dataset.act === 'watch') return toggleWatch(b);
     if (b.dataset.act === 'nope') return notForMe(b);
     if (b.dataset.act === 'switch') return switchStore(b);
@@ -1701,7 +1911,16 @@
     say('swipe for more →');
   }
   $('#backPicks').onclick = () => (history.state?.spot ? history.back() : toPicks());
-  addEventListener('popstate', () => screen !== 'picks' && turns.some((T) => T?.list.length) && toPicks());
+  // Going back: a sheet closes first; from details or a ready link, back to
+  // the shop or the shelf they came from.
+  addEventListener('popstate', () => {
+    const st = history.state || {};
+    if (!$('#cartSheet').hidden && st.sheet !== 'cart') return hideCart();
+    if (!$('#shopSheet').hidden && st.sheet !== 'product') return ($('#shopSheet').hidden = true);
+    if (screen === 'picks' || screen === 'shop' || st.spot) return;
+    if (cameFrom === 'shop') return setMode('shop');
+    if (turns.some((T) => T?.list.length)) toPicks();
+  });
 
   // "Not quite": what they say about this find, and everything shown so far,
   // go back for another look (a sold-out find is never offered again).
@@ -1944,11 +2163,11 @@
     q.focus();
   };
 
-  async function create() {
+  async function create({ self = false } = {}) {
     if (basket.length) {
       // One link for every store: Spot buys each store's cart, one payment.
       const b = body();
-      const r = await api('/v1/bundles', { requester: b.requester, note: b.note || basket.map((st) => st.note).find(Boolean) || '', stores: [...basket, { merchant: draft.merchant, items: draft.items, extras_cents: draft.extras_cents }] });
+      const r = await api('/v1/bundles', { requester: b.requester, for: self ? 'self' : 'other', note: b.note || basket.map((st) => st.note).find(Boolean) || '', stores: [...basket, { merchant: draft.merchant, items: draft.items, extras_cents: draft.extras_cents }] });
       made = { token: r.bundle.token, key: r.manage_key, link: r.link, manage: r.manage_link, rev: 1, total: r.bundle.total_cents, bundle: r.bundle.stores.length };
       const mine = load('spot:mine', []);
       mine.unshift({ token: made.token, manage: made.manage, title: r.bundle.items[0].title + ' +' + (r.bundle.items.length - 1), merchant: r.bundle.stores.length + ' stores', total: r.bundle.cart_cents, at: Date.now() });
@@ -2131,6 +2350,10 @@
   } else if (incoming) {
     q.value = incoming;
     go();
+  } else if (location.hash === '#shop') {
+    // Back in the shop where they were (a swipe back from an order page).
+    restoreShelf();
+    setMode('shop', { restore: true });
   } else if (restoreShelf()) {
     // Back to the shelf they were shopping.
   } else if (me.name) {
