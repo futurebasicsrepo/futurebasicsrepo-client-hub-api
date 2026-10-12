@@ -187,7 +187,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // Where their things ship ("Austin, TX"), so a lookup sticks to stores that deliver there.
   const shipToOf = (userId) => {
     const sh = userId ? db.users.byId(userId)?.shipping : null;
-    return sh?.city ? [sh.city, sh.state].filter(Boolean).join(', ') : '';
+    // "Philadelphia," + "PA" reads "Philadelphia, PA", not "Philadelphia,, PA".
+    const tidy = (x) => String(x || '').replace(/^[\s,]+|[\s,]+$/g, '');
+    return sh?.city ? [tidy(sh.city), tidy(sh.state)].filter(Boolean).join(', ') : '';
   };
 
   // Keep the raw body: Stripe signs the exact bytes it sent.
@@ -558,7 +560,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     limits.capture(req);
     // Each page with the size or option picked for them, so stock is for that size.
     const urls = Array.isArray(req.body?.urls)
-      ? req.body.urls.map((u) => (typeof u === 'string' ? u : u && typeof u.url === 'string' ? { url: u.url, variant: typeof u.variant === 'string' ? u.variant.slice(0, 80) : '' } : null)).filter(Boolean).slice(0, 8)
+      ? req.body.urls.map((u) => (typeof u === 'string' ? u : u && typeof u.url === 'string' ? { url: u.url, variant: typeof u.variant === 'string' ? u.variant.slice(0, 80) : '', ...(typeof u.title === 'string' && u.title ? { title: u.title.slice(0, 140) } : {}) } : null)).filter(Boolean).slice(0, 8)
       : [];
     return capture.details ? capture.details(urls) : pageDetails(urls, aiHooks);
   });

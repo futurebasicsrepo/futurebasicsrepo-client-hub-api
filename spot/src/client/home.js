@@ -470,7 +470,7 @@
           const entry = e.option || e.outfit;
           if (addEntry(T, e.type === 'pick' ? 'products' : 'outfits', entry)) added.push(entry);
           if (T.list.length === 1) say(T.kind === 'outfits' ? 'first look’s up. more coming →' : 'first pick’s up. more coming →');
-        } else if (e.type === 'update') applyPage(e, true);
+        } else if (e.type === 'update') applyPage(e, true), photoFor(e.new_url || e.url);
         else if (e.type === 'done') done = e;
       });
     } finally {
@@ -516,10 +516,16 @@
     for (let i = 0; i < need.length; i += 8) {
       const chunk = need.slice(i, i + 8);
       for (const o of chunk) asked.add(o.item.url);
-      api('/v1/capture/details', { urls: chunk.map((o) => ({ url: o.item.url, variant: o.item.variant || '' })) })
+      api('/v1/capture/details', { urls: chunk.map((o) => ({ url: o.item.url, variant: o.item.variant || '', title: o.item.title || '' })) })
         .then((r) => (r.pages || []).forEach((p) => applyPage(p)))
         .catch(() => {});
     }
+  }
+  // A store check that came back without a photo (the store doesn't let
+  // Spot read its pages): the AI reads that page now, not after the search.
+  function photoFor(url) {
+    const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
+    if (hits.length) details(hits);
   }
   // A photo that won't load shows the store's tile underneath instead.
   $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
