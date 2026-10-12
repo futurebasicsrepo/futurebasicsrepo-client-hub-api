@@ -17,7 +17,7 @@
   async function api(path, body) {
     const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || 'Error ' + r.status);
+    if (!r.ok) throw Object.assign(new Error(j.error || 'Error ' + r.status), { status: r.status });
     return j;
   }
   // Device memory. Every access is guarded: private mode or blocked storage
@@ -461,7 +461,7 @@
     cents > CFG.max ? '<div class="overcap">Over Spot’s ' + usd(CFG.max) + ' limit for now. Buy it at the store.</div>' :
     (sold ? '' : '<div class="wpay" data-k="' + k + '" hidden></div>') +
     '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
-    '<button class="btn ghost small addcart" type="button" data-act="add" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>🛒 Add to cart</button>' +
+    '<button class="btn ghost small addcart" type="button" data-act="add" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>' + BAG + 'Add to cart</button>' +
     '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
   const total = (items) => items.reduce((n, o) => n + (o.item.price_cents || 0), 0);
   // The size picked is one of theirs ("M" in "Black / M", "10.5" in "US 10.5").
@@ -480,11 +480,11 @@
       '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
       '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
-      (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
-      (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
-      (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
-      (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
-      (it.url && /^https?:/i.test(it.url) ? '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') +
+      (it.url ? '<div class="insg">' + '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' +
+      (/^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' +
+      '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' +
+      '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' +
+      '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out', (it.price_cents || 0) * (it.quantity || 1)) +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') + (String(k).startsWith('s:') ? '<button class="textlink" type="button" data-act="nope" data-k="' + k + '">👎 Not for me</button>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
@@ -776,16 +776,116 @@
     const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
     if (hits.length) details(hits);
   }
+  // ─── What Spot knows about a product, without being asked ───────────────
+  // Reviews and fit, other stores' prices, when it arrives and promo codes
+  // load on their own for the products in view (cards on the shelf, tiles
+  // in the shop), a few at a time. The server keeps each answer (reviews two
+  // weeks, prices a day, codes 12 hours), so a product anyone looked at
+  // before is instant. A "slow down" from the server pauses the line a
+  // minute and those wait their turn again.
+  const SKL = '<span class="skl" aria-hidden="true"></span>';
+  const BAG = '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.2 6.5h11.6l-.9 10.2a1.5 1.5 0 0 1-1.5 1.3H6.6a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M7.2 8.5V5.8a2.8 2.8 0 0 1 5.6 0v2.7"/></svg>';
+  const AUTO_AT_ONCE = 3;
+  const autoQ = [];
+  let autoBusy = 0;
+  let autoPauseUntil = 0;
+  const later = (err) => err?.status === 429 && ((autoPauseUntil = Date.now() + 60_000), setTimeout(pumpAuto, 61_000), true);
+  function wantInsights(o) {
+    if (!o?.item?.url || !/^https?:/i.test(o.item.url)) return;
+    const u = o.item.url;
+    for (const [map, load] of [[reviewsBy, loadReviews], [compareBy, loadCompare], [deliveryBy, loadDelivery], [promoBy, loadPromos]]) {
+      if (!map.has(u) && !autoQ.some((x) => x.u === u && x.load === load)) autoQ.push({ u, o, load });
+    }
+    pumpAuto();
+  }
+  function pumpAuto() {
+    while (autoBusy < AUTO_AT_ONCE && autoQ.length && Date.now() >= autoPauseUntil) {
+      const { o, load } = autoQ.shift();
+      autoBusy++;
+      Promise.resolve(load(o, { quiet: true }))
+        .catch(() => {})
+        .finally(() => {
+          autoBusy--;
+          pumpAuto();
+        });
+    }
+  }
+  // A card or tile that stays in view for a moment asks for its product's details.
+  const inView = 'IntersectionObserver' in window
+    ? new IntersectionObserver(
+        (xs) => {
+          for (const x of xs) {
+            const el = x.target;
+            clearTimeout(el._dwell);
+            if (!x.isIntersecting) continue;
+            el._dwell = setTimeout(() => {
+              inView.unobserve(el);
+              if (el.classList.contains('tile')) return wantInsights(shopList[Number(el.dataset.i)]);
+              let e = null;
+              try {
+                e = entryOf(el.dataset.card).e;
+              } catch {}
+              for (const piece of (e?.items || (e ? [e] : [])).slice(0, 4)) wantInsights(piece);
+            }, 250);
+          }
+        },
+        { threshold: 0.35 },
+      )
+    : null;
+  if (inView) {
+    const watchNew = (root) => new MutationObserver(() => root.querySelectorAll('.tile:not([data-io]), .pc[data-card]:not([data-io])').forEach((el) => ((el.dataset.io = '1'), inView.observe(el)))).observe(root, { childList: true, subtree: true });
+    watchNew($('#shopGrid'));
+    watchNew($('#thread'));
+  }
+  // On a shop tile, in a line or three: how it's rated and fits, a better
+  // price or a code that works, and when it would arrive.
+  function tileInsights(o) {
+    const u = o.item.url;
+    const pending = (m) => !m.has(u) || m.get(u) === 'loading';
+    const rv = reviewsBy.get(u);
+    const cached = rvCache.get(u);
+    const lines = [];
+    if (rv && rv !== 'loading' && rv.rating) {
+      const fit = rv.fit === 'small' ? 'Runs small' : rv.fit === 'large' ? 'Runs large' : rv.fit === 'true' ? 'True to size' : '';
+      lines.push('<span class="ti"><b class="star">★ ' + rv.rating.toFixed(1) + '</b>' + (rv.count ? ' <span>(' + compact(rv.count) + ')</span>' : '') + (fit ? ' · ' + fit : '') + '</span>');
+    } else if (cached?.rating) lines.push('<span class="ti"><b class="star">★ ' + cached.rating.toFixed(1) + '</b>' + (cached.count ? ' <span>(' + compact(cached.count) + ')</span>' : '') + '</span>');
+    else if (pending(reviewsBy)) lines.push(SKL);
+    const pr = promoBy.get(u);
+    const cmp = compareBy.get(u);
+    const best = cmp && cmp !== 'loading' && !cmp.error ? cmp.offers.filter((x) => x.cents <= (o.item.price_cents || 0) - 100)[0] : null;
+    if (pr?.working?.length) lines.push('<span class="ti"><span class="code">' + esc(pr.working[0].code) + '</span> ' + usd(pr.working[0].cents_off) + ' off</span>');
+    else if (best) lines.push('<span class="ti deal">' + usd(o.item.price_cents - best.cents) + ' less at ' + esc(best.store) + '</span>');
+    else if (cmp && cmp !== 'loading' && !cmp.error) lines.push('<span class="ti good">✓ Best price</span>');
+    else if (o.item.price_cents && (pending(compareBy) || pending(promoBy))) lines.push(SKL);
+    const dl = deliveryBy.get(u);
+    if (dl && dl !== 'loading' && !dl.none && !dl.error) {
+      const c = dl.source === 'store' ? dl.cheapest : dl;
+      const when = c.max_date ? (dl.source === 'store' ? 'Arrives ' : 'Usually by ') + shortDay(c.max_date) : '';
+      const free = dl.source === 'store' ? c.cents === 0 : dl.free_over_cents === 0;
+      if (when || free) lines.push('<span class="ti">' + [when, free ? 'Free shipping' : ''].filter(Boolean).join(' · ') + '</span>');
+    } else if (pending(deliveryBy)) lines.push(SKL);
+    return lines.join('');
+  }
+  const compact = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n));
+  const shortDay = (iso) => {
+    const [y, m, d] = String(iso).split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  function paintTile(url) {
+    for (const el of document.querySelectorAll('.tins[data-u="' + CSS.escape(url) + '"]')) {
+      const o = shopList[Number(el.dataset.i)];
+      if (o?.item.url === url) el.innerHTML = tileInsights(o);
+    }
+  }
+
   // ─── Fit and reviews ─────────────────────────────────────────────────────
   // What buyers say, read by AI: the rating, how it fits (and the size Spot
   // would get them, from their saved sizes), what people love and don't.
-  // Spot's own pick and the Shop page's open card load it right away; the
-  // rest on a tap, since each new product is a fresh read.
   const reviewsBy = new Map();
   function reviewsHtml(o, k) {
     const d = reviewsBy.get(o.item.url);
-    if (d === 'loading') return '<div class="rvl wait">Reading what buyers say…</div>';
-    if (!d) return '<button class="textlink rvgo" type="button" data-act="reviews" data-k="' + k + '">⭐ Fit &amp; reviews</button>';
+    if (d === 'loading') return SKL;
+    if (!d) return SKL;
     if (d.none || d.error) return '<div class="rvl muted">' + (d.error ? 'Couldn’t read reviews just now.' : 'No reviews Spot could find for this one yet.') + '</div>';
     const out = [];
     const fit = d.fit === 'small' ? 'Runs small' : d.fit === 'large' ? 'Runs large' : d.fit === 'true' ? 'True to size' : '';
@@ -797,12 +897,13 @@
     return out.join('');
   }
   function paintReviews(url) {
+    paintTile(url);
     for (const el of document.querySelectorAll('.rv[data-rv="' + CSS.escape(url) + '"]')) {
       const o = entryAt(el.dataset.k, url);
       if (o) el.innerHTML = reviewsHtml(o, el.dataset.k);
     }
   }
-  async function loadReviews(o) {
+  async function loadReviews(o, { quiet = false } = {}) {
     const url = o?.item?.url;
     if (!url || reviewsBy.has(url)) return;
     reviewsBy.set(url, 'loading');
@@ -811,9 +912,10 @@
       const r = await api('/v1/reviews', { url, title: o.item.title || '', store: o.merchant?.name || '' });
       reviewsBy.set(url, r.reviews || { error: true });
       // His own pick, and buyers love it: he's chuffed.
-      if (r.reviews?.rating >= 4.5 && r.reviews.count >= 50) quip('people love this one ⭐', 1800);
-    } catch {
-      reviewsBy.set(url, { error: true });
+      if (!quiet && r.reviews?.rating >= 4.5 && r.reviews.count >= 50) quip('people love this one ⭐', 1800);
+    } catch (err) {
+      if (later(err)) reviewsBy.delete(url);
+      else reviewsBy.set(url, { error: true });
     }
     paintReviews(url);
   }
@@ -824,8 +926,8 @@
   const promoBy = new Map();
   function promoHtml(o, k) {
     const d = promoBy.get(o.item.url);
-    if (d === 'loading') return '<div class="pl wait">Trying promo codes…</div>';
-    if (!d) return '<button class="textlink plgo" type="button" data-act="promos" data-k="' + k + '">🏷️ Any promo codes?</button>';
+    if (d === 'loading') return SKL;
+    if (!d) return SKL;
     if (d.off) return '';
     if (d.error) return '<div class="pl muted">Couldn’t try codes just now.</div>';
     if (d.working?.length) {
@@ -836,12 +938,13 @@
     return '<div class="pl muted">' + (d.found ? 'Spot tried ' + d.found + (d.found === 1 ? ' code' : ' codes') + ': none work on this right now.' : 'No promo codes for this store right now.') + '</div>';
   }
   function paintPromo(url) {
+    paintTile(url);
     for (const el of document.querySelectorAll('.promo[data-promo="' + CSS.escape(url) + '"]')) {
       const o = entryAt(el.dataset.k, url);
       if (o) el.innerHTML = promoHtml(o, el.dataset.k);
     }
   }
-  async function loadPromos(o) {
+  async function loadPromos(o, { quiet = false } = {}) {
     const url = o?.item?.url;
     if (!url || promoBy.has(url)) return;
     promoBy.set(url, 'loading');
@@ -849,9 +952,10 @@
     try {
       const r = await api('/v1/promos', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
       promoBy.set(url, r.promos || { error: true });
-      if (r.promos?.working?.length) quip('a code works! ' + usd(r.promos.working[0].cents_off) + ' off 🏷️', 2000);
-    } catch {
-      promoBy.set(url, { error: true });
+      if (!quiet && r.promos?.working?.length) quip('a code works! ' + usd(r.promos.working[0].cents_off) + ' off 🏷️', 2000);
+    } catch (err) {
+      if (later(err)) promoBy.delete(url);
+      else promoBy.set(url, { error: true });
     }
     paintPromo(url);
   }
@@ -867,8 +971,8 @@
   const span = (a, b) => (a && b && a !== b ? day(a) + ' – ' + day(b) : day(b || a));
   function deliveryHtml(o, k) {
     const d = deliveryBy.get(o.item.url);
-    if (d === 'loading') return '<div class="dll wait">Checking delivery…</div>';
-    if (!d) return '<button class="textlink dlgo" type="button" data-act="delivery" data-k="' + k + '">🚚 When would it arrive?</button>';
+    if (d === 'loading') return SKL;
+    if (!d) return SKL;
     if (d.none || d.error) return '<div class="dll muted">' + (account ? 'The store doesn’t say when it would arrive.' : '<a href="/signin?next=/new">Sign in</a> to see when it would arrive at your door.') + '</div>';
     const to = d.to ? ' to ' + esc(d.to) : '';
     if (d.source === 'store') {
@@ -881,6 +985,7 @@
     return '<div class="dll">🚚 Usually arrives <b>' + span(d.min_date, d.max_date) + '</b>' + (d.free_over_cents === 0 ? ' · free shipping' : d.free_over_cents ? ' · free shipping over ' + usd(d.free_over_cents) : '') + (account ? '' : ' · <a href="/signin?next=/new">sign in</a> for your exact date') + '</div>';
   }
   function paintDelivery(url) {
+    paintTile(url);
     for (const el of document.querySelectorAll('.dl[data-dl="' + CSS.escape(url) + '"]')) {
       const o = entryAt(el.dataset.k, url);
       if (o) el.innerHTML = deliveryHtml(o, el.dataset.k);
@@ -894,8 +999,9 @@
     try {
       const r = await api('/v1/delivery', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
       deliveryBy.set(url, r.delivery || { error: true });
-    } catch {
-      deliveryBy.set(url, { error: true });
+    } catch (err) {
+      if (later(err)) deliveryBy.delete(url);
+      else deliveryBy.set(url, { error: true });
     }
     paintDelivery(url);
   }
@@ -907,8 +1013,8 @@
   const compareBy = new Map();
   function compareHtml(o, k) {
     const d = compareBy.get(o.item.url);
-    if (d === 'loading') return '<div class="cl wait">Checking other stores…</div>';
-    if (!d) return o.item.price_cents ? '<button class="textlink cmpgo" type="button" data-act="compare" data-k="' + k + '">💸 Cheaper elsewhere?</button>' : '';
+    if (d === 'loading') return SKL;
+    if (!d) return o.item.price_cents ? SKL : '';
     if (d.error) return '<div class="cl muted">Couldn’t check other stores just now.</div>';
     // Against the price on the card now (the store's own may have replaced the search's).
     const offers = d.offers.map((x, i) => ({ ...x, i })).filter((x) => x.cents <= o.item.price_cents - 100);
@@ -916,12 +1022,13 @@
     return offers.map((x) => '<div class="cl offer"><span>💸 <b>' + usd(o.item.price_cents - x.cents) + ' less</b> at ' + esc(x.store) + ': ' + (x.verified ? '' : 'about ') + usd(x.cents) + ' <a href="' + esc(x.url) + '" target="_blank" rel="noopener">↗</a></span><button class="btn ghost tiny" type="button" data-act="switch" data-k="' + k + '" data-i="' + x.i + '">Switch</button></div>').join('');
   }
   function paintCompare(url) {
+    paintTile(url);
     for (const el of document.querySelectorAll('.cmp[data-cmp="' + CSS.escape(url) + '"]')) {
       const o = entryAt(el.dataset.k, url);
       if (o) el.innerHTML = compareHtml(o, el.dataset.k);
     }
   }
-  async function loadCompare(o) {
+  async function loadCompare(o, { quiet = false } = {}) {
     const url = o?.item?.url;
     if (!url || !o.item.price_cents || compareBy.has(url)) return;
     compareBy.set(url, 'loading');
@@ -929,9 +1036,10 @@
     try {
       const r = await api('/v1/compare', { url, title: o.item.title || '', store: o.merchant?.name || '', variant: o.item.variant || '', price_cents: o.item.price_cents });
       compareBy.set(url, r.compare || { error: true });
-      if (r.compare?.offers?.length) quip('ooh, found it cheaper 💸', 1800);
-    } catch {
-      compareBy.set(url, { error: true });
+      if (!quiet && r.compare?.offers?.length) quip('ooh, found it cheaper 💸', 1800);
+    } catch (err) {
+      if (later(err)) compareBy.delete(url);
+      else compareBy.set(url, { error: true });
     }
     paintCompare(url);
   }
@@ -1119,6 +1227,7 @@
   // A photo that won't load shows the store's tile underneath instead.
   $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
   $('#shop').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
+  $('#cartBody').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.replaceWith(Object.assign(document.createElement('span'), { className: 'ci0' })), true);
 
   const entryOf = (k) => {
     if (String(k).startsWith('s:')) return { T: null, e: shopList[Number(String(k).slice(2))] };
@@ -1246,9 +1355,11 @@
     const w = watched.get(o.item.url);
     const d = dataOf(o);
     const moved = w && w.start_cents && w.now_cents && w.now_cents < w.start_cents ? '<div class="wdrop">↓ ' + usd(w.start_cents - w.now_cents) + ' since you started watching</div>' : '';
-    const badges = [d.was ? '<span class="tb-sale">' + Math.round(d.deal * 100) + '% off</span>' : '', d.rating ? '<span>★ ' + d.rating.toFixed(1) + '</span>' : '', d.protect ? '<span title="Price drop protection">🛡️' + (d.protectDays ? ' ' + d.protectDays + 'd' : '') + '</span>' : '', d.freeReturns ? '<span>Free returns</span>' : '', d.stock === 'out' ? '<span class="tb-out">Sold out</span>' : ''].filter(Boolean).join('');
-    return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
-      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (d.price ? usd(d.price) : 'Price at store') + (d.was ? ' <s>' + usd(d.was) + '</s>' : '') + '</div>' + (badges ? '<div class="tbadges">' + badges + '</div>' : '') + moved + '</div></button>';
+    const flag = d.stock === 'out' ? '<span class="pflag out">Sold out</span>' : d.was ? '<span class="pflag sale">' + Math.round(d.deal * 100) + '% off</span>' : '';
+    const badges = [d.protect ? '<span title="Price drop protection">🛡️ Price protection' + (d.protectDays ? ' ' + d.protectDays + 'd' : '') + '</span>' : '', d.freeReturns ? '<span>Free returns</span>' : ''].filter(Boolean).join('');
+    return '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + flag + (w ? '<span class="wtag" title="Watching">👀</span>' : '') + '</div>' +
+      '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (d.price ? usd(d.price) : 'Price at store') + (d.was ? ' <s>' + usd(d.was) + '</s>' : '') + '</div>' +
+      '<div class="tins" data-u="' + esc(o.item.url) + '" data-i="' + i + '">' + tileInsights(o) + '</div>' + (badges ? '<div class="tbadges">' + badges + '</div>' : '') + moved + '</div></button>';
   };
   let renderT = 0;
   const renderSoon = () => (clearTimeout(renderT), (renderT = setTimeout(() => screen === 'shop' && renderShop(), 300)));
@@ -1621,10 +1732,10 @@
     c.classList.add('bump');
     if (btn) {
       btn.classList.add('on');
-      btn.textContent = '✓ In your cart';
+      btn.textContent = '✓ Added';
       setTimeout(() => {
         btn.classList.remove('on');
-        btn.textContent = '🛒 Add to cart';
+        btn.innerHTML = BAG + 'Add to cart';
       }, 1800);
     }
     const n = new Set(cart.map(storeKey)).size;
