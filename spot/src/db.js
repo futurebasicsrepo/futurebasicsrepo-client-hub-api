@@ -219,6 +219,22 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       PRIMARY KEY (user_id, url)
     );
     CREATE INDEX IF NOT EXISTS seen_products_recent ON seen_products (user_id, at DESC);
+    -- Each store's price-adjustment and return policy, as its own policy
+    -- page says (storefacts.js), re-read monthly. Keyed by site (tecovas.com).
+    CREATE TABLE IF NOT EXISTS store_policies (
+      site  TEXT PRIMARY KEY,
+      doc   TEXT NOT NULL,
+      at    INTEGER NOT NULL
+    );
+    -- Prices Spot has seen for a product page: one row per page per day,
+    -- the day's low and high, for "lowest Spot has seen" on the card.
+    CREATE TABLE IF NOT EXISTS price_seen (
+      url   TEXT NOT NULL,
+      day   INTEGER NOT NULL,
+      low   INTEGER NOT NULL,
+      high  INTEGER NOT NULL,
+      PRIMARY KEY (url, day)
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -499,6 +515,28 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    policies: {
+      get(site) {
+        const r = db.prepare('SELECT doc, at FROM store_policies WHERE site = ?').get(site);
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(site, doc, at = Date.now()) {
+        db.prepare('INSERT INTO store_policies (site, doc, at) VALUES (?, ?, ?) ON CONFLICT (site) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(site, JSON.stringify(doc), at);
+      },
+    },
+    prices: {
+      add(url, cents, at = Date.now()) {
+        if (!url || !Number.isInteger(cents) || cents <= 0) return;
+        const day = Math.floor(at / 86_400_000);
+        db.prepare('INSERT INTO price_seen (url, day, low, high) VALUES (?, ?, ?, ?) ON CONFLICT (url, day) DO UPDATE SET low = MIN(low, excluded.low), high = MAX(high, excluded.high)').run(String(url).slice(0, 1000), day, cents, cents);
+      },
+      // Low, high and since when, over the last `days`.
+      of(url, days = 90, at = Date.now()) {
+        const since = Math.floor(at / 86_400_000) - days;
+        const r = db.prepare('SELECT MIN(low) AS low, MAX(high) AS high, MIN(day) AS first, COUNT(*) AS days FROM price_seen WHERE url = ? AND day >= ?').get(String(url), since);
+        return r?.days ? { low_cents: r.low, high_cents: r.high, since: r.first * 86_400_000, days: r.days } : null;
+      },
+    },
     // A shopper's Shop page: every product Spot has shown them, newest first.
     seen: {
       KEEP: 300,

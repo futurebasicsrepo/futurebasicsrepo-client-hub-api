@@ -298,7 +298,8 @@
       '<div class="pb"><div class="st">' + esc(o.merchant.name || '') + ' <span class="stk" data-url="' + esc(it.url || '') + '">' + stockTag(o) + '</span></div>' +
       '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
-      '<div class="pr">' + (it.price_cents ? usd(it.price_cents) : 'Price at store') + '</div>' + buttons(k, o.stock === 'out') +
+      (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
+      '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
   }
@@ -493,6 +494,7 @@
     }
     if (T.list.length > 1) say('swipe for more →');
     details(added);
+    wantFacts(added);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -560,6 +562,7 @@
     T.done = true;
     T.sync();
     details(T.list);
+    wantFacts(T.list);
   }
 
   // Photos and stock for stores that don't let Spot read their pages: asked
@@ -581,6 +584,104 @@
     const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
     if (hits.length) details(hits);
   }
+  // ─── Card facts ─────────────────────────────────────────────────────────
+  // What the store's own data and Spot's AI add to a card, asked for after it
+  // shows (/v1/facts): sizes and colours in stock, the store's price now and
+  // its sale price, the lowest price Spot has seen, and the store's price-
+  // adjustment and return policy (read off its own policy page).
+  const factsBy = new Map();
+  const factsWanted = new Map();
+  let factsTimer = null;
+  function wantFacts(list, again = false) {
+    for (const o of list.flatMap((e) => e.items || [e])) {
+      const u = o?.item?.url;
+      if (!u || !/^https?:/i.test(u) || (!again && (factsBy.has(u) || factsWanted.has(u)))) continue;
+      factsWanted.set(u, { url: u, variant: o.item.variant || '', store: o.merchant?.name || '' });
+    }
+    clearTimeout(factsTimer);
+    factsTimer = setTimeout(askFacts, 250);
+  }
+  const factsTries = new Map();
+  function askFacts() {
+    const all = [...factsWanted.values()];
+    factsWanted.clear();
+    for (let i = 0; i < all.length; i += 12) {
+      api('/v1/facts', { items: all.slice(i, i + 12) })
+        .then((r) => {
+          const pending = [];
+          for (const f of r.facts || []) {
+            factsBy.set(f.url, f);
+            paintFacts(f.url);
+            // A store Spot hasn't read the policy of yet: ask again in a bit.
+            const n = factsTries.get(f.url) || 0;
+            if (f.policy_pending && n < 3) factsTries.set(f.url, n + 1), pending.push(all.find((x) => x.url === f.url));
+          }
+          if (pending.length) setTimeout(() => (pending.forEach((x) => factsWanted.set(x.url, x)), askFacts()), 15000);
+        })
+        .catch(() => {});
+    }
+  }
+  const optWords = (s) => new Set(String(s || '').toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean));
+  function factsHtml(o, k) {
+    const f = factsBy.get(o.item.url);
+    if (!f) return '';
+    const out = [];
+    const picked = optWords(o.item.variant);
+    for (const op of (f.options || []).slice(0, 2)) {
+      const vals = op.values.slice(0, 10);
+      const chosen = (v) => picked.size && [...optWords(v.value)].every((w) => picked.has(w));
+      out.push('<div class="opts"><b>' + esc(op.name) + '</b>' + vals.map((v) => '<span class="' + (chosen(v) ? 'on' : '') + (v.in ? '' : ' no') + '"' + (v.in ? '' : ' title="Sold out"') + '>' + esc(v.value) + '</span>').join('') + (op.values.length > vals.length ? '<span class="more">+' + (op.values.length - vals.length) + '</span>' : '') + '</div>');
+    }
+    const now = f.now_cents || o.item.price_cents;
+    const seen = f.seen;
+    if (seen && seen.days >= 3 && now && now <= seen.low_cents) out.push('<div class="fl good">↓ Lowest price Spot has seen since ' + new Date(seen.since).toLocaleDateString([], { month: 'short', day: 'numeric' }) + '</div>');
+    else if (seen && seen.days >= 3 && seen.low_cents < now) out.push('<div class="fl">Spot has seen it for ' + usd(seen.low_cents) + (seen.high_cents > seen.low_cents ? '–' + usd(seen.high_cents) : '') + '</div>');
+    const p = f.policy;
+    const store = esc(o.merchant?.name || 'The store');
+    const src = p?.source_url ? ' <a href="' + esc(p.source_url) + '" target="_blank" rel="noopener">policy ↗</a>' : '';
+    if (p?.price_adjustment === true) out.push('<div class="fl shield">🛡️ Price drop protection' + (p.adjustment_days ? ' for ' + p.adjustment_days + ' days' : '') + '. Pay with Spot and Spot watches the price and asks ' + store + ' for the difference.' + src + '</div>');
+    else if (p?.price_adjustment === false) out.push('<div class="fl">No price adjustments at ' + store + '.' + src + '</div>');
+    if (p && (p.returns_days || p.free_returns)) out.push('<div class="fl">↩︎ ' + (p.free_returns ? 'Free returns' : 'Returns') + (p.returns_days ? ' within ' + p.returns_days + ' days' : '') + (p.price_adjustment == null ? src : '') + '</div>');
+    else if (!p && f.policy_pending) out.push('<div class="fl wait">Reading ' + store + '’s price and return policy…</div>');
+    return out.join('');
+  }
+  // The store's own price beats the estimate a search gave; on the Shop
+  // page, how it moved since Spot showed it to them.
+  function priceHtml(o, k) {
+    const f = factsBy.get(o.item.url);
+    const was = o.item.price_cents;
+    const now = f?.now_cents || was;
+    if (!now) return 'Price at store';
+    let h = usd(now);
+    if (f?.was_cents && f.was_cents > now) h += ' <s>' + usd(f.was_cents) + '</s> <span class="tag sale">Sale</span>';
+    if (String(k).startsWith('s:') && was && f?.now_cents && Math.abs(f.now_cents - was) >= 100) h += '<small class="moved ' + (f.now_cents < was ? 'down' : 'up') + '">' + (f.now_cents < was ? '↓ ' + usd(was - f.now_cents) + ' less' : '↑ ' + usd(f.now_cents - was) + ' more') + ' than when you saw it</small>';
+    return h;
+  }
+  function paintFacts(url) {
+    const f = factsBy.get(url);
+    const sel = (a) => '[' + a + '="' + CSS.escape(url) + '"]';
+    for (const el of document.querySelectorAll('.facts' + sel('data-facts'))) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = factsHtml(o, el.dataset.k);
+    }
+    for (const el of document.querySelectorAll('.pr' + sel('data-pr'))) {
+      const card = el.closest('[data-card]');
+      const o = card && entryAt(card.dataset.card, url);
+      if (o) el.innerHTML = priceHtml(o, card.dataset.card);
+    }
+    // Paying uses the store's price, not the search's guess (not on the Shop
+    // page, where the price they saw is kept to compare).
+    if (f?.now_cents) for (const o of turns.flatMap((T) => (T ? T.list : [])).flatMap((e) => e.items || [e])) if (o.item.url === url) o.item.price_cents = f.now_cents;
+  }
+  const entryAt = (k, url) => {
+    try {
+      const { e } = entryOf(k);
+      return e && (e.items || [e]).find((o) => o.item.url === url);
+    } catch {
+      return null;
+    }
+  };
+
   // A photo that won't load shows the store's tile underneath instead.
   $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
   $('#shop').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
@@ -658,6 +759,7 @@
     if (!b) return;
     const i = Number(b.dataset.i);
     $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
+    wantFacts([shopList[i]]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
