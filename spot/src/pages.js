@@ -1079,6 +1079,8 @@ export function bundleManagePage({ token }) {
 <footer>Keep this page private. Anyone with it can manage this Spot.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
   const script = `${SHARED_JS}
 const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k');
+const saved=()=>{try{return JSON.parse(localStorage.getItem('spot:ship'))||{}}catch{return {}}};
+let AUTO=false;
 const ST={open:'Waiting',paid:'Paid, getting ready',card_issued:'Covered! Ready to order',completed:'Ordered',canceled:'Canceled',expired:'Expired',refunding:'Refunding…',refunded:'Refunded'};
 const q='?k='+encodeURIComponent(K||'');
 async function draw(){
@@ -1088,7 +1090,11 @@ async function draw(){
     +(b.for==='self'?'':'<section class="card"><p class="small muted" style="margin-top:0">Share this link. One payment covers every store.</p><div class="row"><input readonly value="'+esc(location.origin+'/b/'+TOKEN)+'" id="link"><button class="btn ghost" id="copy" style="width:auto">Copy</button></div></section>');
   const ship=r.stores[0].requester.shipping;
   if(b.status==='open'){
-    const s=ship||{};const f=(n,ph,ac,x)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(x||'')+'>';
+    // The address they saved (their account, or this phone), as on a single store's page.
+    const P=r.profile||{};
+    const s=ship||Object.assign({name:r.stores[0].requester.name||'',email:P.email||''},saved(),P.shipping||{});
+    // Their own order and a full saved address: use it, so Pay is one tap (they can still change it).
+    if(!ship&&b.for==='self'&&!AUTO&&['name','line1','city','state','postal_code','email'].every(k=>s[k])){AUTO=true;try{await api('/v1/bundles/'+TOKEN+'/manage/prepare',{k:K,shipping:s});return draw()}catch(e){}}const f=(n,ph,ac,x)=>'<input name="'+n+'" placeholder="'+ph+'" autocomplete="'+ac+'" value="'+esc(s[n]||'')+'" '+(x||'')+'>';
     h+='<section class="card"><h2>Ship everything to</h2><form id="ship">'+f('name','Full name','name','required')+'<div style="height:6px"></div>'+f('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+f('line2','Apt, suite (optional)','address-line2')
       +'<div class="row" style="margin-top:6px">'+f('city','City','address-level2','required')+f('state','State','address-level1','required')+f('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div><div class="row" style="margin-top:6px">'+f('email','Email','email','required type="email"')+f('phone','Phone (optional)','tel','type="tel"')+'</div>'
       +'<button class="btn" style="margin-top:10px">'+(ship?'Update address':'Save address')+'</button><div class="err" id="shipErr"></div></form></section>';
@@ -1104,7 +1110,7 @@ async function draw(){
   if(r.stores.some(c=>['paid','card_issued'].includes(c.status)))h+='<button class="btn ghost" id="refund">Cancel what isn’t ordered yet (refunds the payer)</button>';
   $('#app').innerHTML=h;
   if($('#copy'))$('#copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#link').value);$('#copy').textContent='Copied'}catch{}};
-  const sf=$('#ship');if(sf)sf.onsubmit=async e=>{e.preventDefault();try{await api('/v1/bundles/'+TOKEN+'/manage/prepare',{k:K,shipping:Object.fromEntries(new FormData(sf))});draw()}catch(err){$('#shipErr').textContent=err.message}};
+  const sf=$('#ship');if(sf)sf.onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(sf));try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}try{await api('/v1/bundles/'+TOKEN+'/manage/prepare',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message}};
   const c=$('#cancel');if(c)c.onclick=async()=>{if(!confirm('Cancel this Spot?'))return;await api('/v1/bundles/'+TOKEN+'/manage/cancel',{k:K});draw()};
   const rf=$('#refund');if(rf)rf.onclick=async()=>{if(!confirm('Cancel everything not ordered yet and refund the payer for it?'))return;try{await api('/v1/bundles/'+TOKEN+'/manage/refund',{k:K})}catch(err){alert(err.message)}draw()};
 }

@@ -62,3 +62,19 @@ test('a cart from too many stores is turned away before anything is made', async
   assert.equal(r.status, 400);
   assert.match(r.body.error, /Up to 5 stores/);
 });
+
+test('a signed-in shopper’s saved address comes with their multi-store order, to pre-fill it', async (t) => {
+  const { a } = app(t);
+  const post = (url, payload, headers) => a.inject({ method: 'POST', url, payload, headers });
+  const start = (await post('/v1/auth/start', { email: 'kyle@example.com' })).json();
+  const v = await post('/v1/auth/verify', { email: 'kyle@example.com', code: start.code });
+  const H = { cookie: v.headers['set-cookie'].split(';')[0] };
+  assert.equal((await post('/v1/me', { name: 'Kyle Riggle', shipping: SHIP }, H)).statusCode, 200);
+  const stores = [store('Todd Snyder', 'www.toddsnyder.com', 'Merino crewneck', 14800), store('Clarks', 'www.clarks.com', 'Desert Boot', 15000)];
+  const made = (await post('/v1/bundles', { requester: { name: 'Kyle' }, for: 'self', stores }, H)).json();
+  const mine = await a.inject({ method: 'GET', url: `/v1/bundles/${made.bundle.token}/manage?k=${made.manage_key}`, headers: H });
+  assert.equal(mine.json().profile.shipping.postal_code, '78701');
+  // Someone else holding the link doesn't see it.
+  const other = await a.inject({ method: 'GET', url: `/v1/bundles/${made.bundle.token}/manage?k=${made.manage_key}` });
+  assert.equal(other.json().profile, null);
+});
