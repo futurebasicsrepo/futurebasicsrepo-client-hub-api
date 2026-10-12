@@ -466,6 +466,7 @@
       await streamed(body, (e) => {
         if (e.type === 'profile') (T.profile = e.profile), showUsed(T);
         else if (e.type === 'searching') say(T.list.length ? 'finding more…' : 'searching stores…');
+        else if (e.type === 'checking') !T.list.length && say('found some. getting their photos…');
         else if (e.type === 'pick' || e.type === 'outfit') {
           const entry = e.option || e.outfit;
           if (addEntry(T, e.type === 'pick' ? 'products' : 'outfits', entry)) added.push(entry);

@@ -251,6 +251,78 @@ export async function photoSearch({ title, store = '', url = '' }, { fetchImpl =
   }
 }
 
+// The product's own page at that store, from Brave's web index. Brave has
+// already read pages that turn Spot away (Walmart, Target, Amazon…), and
+// each result carries that page's own photo. { url, title, image_url, thumb }
+// for a product page on the same site named for this product, else null.
+// A category or search link gets the product's real page this way too.
+export async function pageSearch({ title, url }, { fetchImpl = fetch, key = process.env.BRAVE_SEARCH_API_KEY } = {}) {
+  const root = rootOf(hostOf(url));
+  if (!key || !title || !root) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PHOTO_SEARCH_MS);
+  try {
+    const q = `${String(title).slice(0, 150)} site:${root}`;
+    const res = await fetchImpl(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=10&country=us&safesearch=strict&result_filter=web`, { headers: { accept: 'application/json', 'x-subscription-token': key }, signal: ctrl.signal });
+    if (!res.ok) {
+      console.error('page search failed', res.status);
+      return null;
+    }
+    const j = await res.json();
+    const specific = specificWords(title, { url });
+    const bare = (u) => String(u || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
+    const https = (u) => (typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(u) ? u.slice(0, 1000) : null);
+    const found = (j?.web?.results || [])
+      .map((r) => {
+        const name = pageTitle(r?.title, root);
+        const original = https(r?.thumbnail?.original);
+        const thumb = https(r?.thumbnail?.src);
+        const logo = r?.thumbnail?.logo || LOGO.test(original || '');
+        return { url: https(r?.url), name, image_url: logo ? null : original || thumb, thumb: logo ? null : thumb, score: titleMatch(title, name), same: bare(r?.url) === bare(url) };
+      })
+      .filter((r) => r.url && r.image_url && rootOf(hostOf(r.url)) === root && !looksLikeListing(r.url) && namesIt(specific, r.name));
+    const hit = found.find((r) => r.same && r.score >= 0.4) || found.filter((r) => r.score >= 0.6).sort((a, b) => b.score - a.score)[0];
+    return hit ? { url: hit.url, title: hit.name, image_url: hit.image_url, thumb: hit.thumb } : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// "Original Wayfarer Sunglasses - Walmart.com" → "Original Wayfarer Sunglasses".
+function pageTitle(t, root) {
+  const label = String(root).split('.')[0].replace(/[^a-z0-9]/g, '');
+  const parts = String(t || '').replace(/<[^>]+>/g, '').split(/\s+[|–—-]\s+/);
+  while (parts.length > 1 && (parts.at(-1).toLowerCase().replace(/[^a-z0-9]/g, '').includes(label) || /^(shop|buy|free shipping|official)/i.test(parts.at(-1).trim()))) parts.pop();
+  return decode(parts.join(' - ')).trim().slice(0, 140);
+}
+
+// A photo address from somewhere other than the store's page (the AI's
+// note, a search): only if it really is an image. Best effort, quick.
+export async function imageOk(u, { fetchImpl = fetch } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 2500);
+  try {
+    let at = new URL(u);
+    for (let hop = 0; hop < 3; hop++) {
+      if (at.protocol !== 'https:') return false;
+      await assertPublicHost(at.hostname);
+      const res = await fetchImpl(at.href, { method: 'GET', redirect: 'manual', headers: { range: 'bytes=0-0', accept: 'image/*' }, signal: ctrl.signal });
+      res.body?.cancel?.().catch?.(() => {});
+      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+        at = new URL(res.headers.get('location'), at);
+        continue;
+      }
+      return res.ok && /^image\//i.test(res.headers.get('content-type') || '');
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Listing pages ──────────────────────────────────────────────────────────
 // Search sees result snippets, so it sometimes links a category or search
 // page ("hoodies under $50") instead of the product. Find the product it named
@@ -287,7 +359,12 @@ const GENERIC = new Set(['sunglasse', 'glasse', 'polarized', 'sneaker', 'shoe', 
 export function specificWords(title, { store = '', url = '' } = {}) {
   const host = hostOf(url).toLowerCase();
   const brand = new Set(keyWords(store));
-  return keyWords(title).filter((w) => !GENERIC.has(w) && !brand.has(w) && !(w.length > 2 && host.includes(w)));
+  const words = keyWords(title).filter((w) => !GENERIC.has(w) && !brand.has(w) && !(w.length > 2 && host.includes(w)));
+  // A name usually leads with its brand ("Ray-Ban Clubmaster"): the brand
+  // alone doesn't make it this product, when there's more to go on.
+  const lead = new Set(keyWords(String(title).trim().split(/\s+/)[0] || ''));
+  const rest = words.filter((w) => !lead.has(w));
+  return rest.length ? rest : words;
 }
 // A candidate names the same product when its own name (not just its
 // description) has one of those words, if there are any.
@@ -948,9 +1025,12 @@ export async function pageDetails(urls, { client, onUsage, onError } = {}) {
   // store that blocks readers, the image search usually does.
   const pages = await Promise.all(
     list.map(async (url) => {
-      const [read, img] = await Promise.all([pageDetail(anthropic, url, byUrl.get(url), { onUsage, onError }), byUrl.get(url).title ? photoSearch({ title: byUrl.get(url).title, url }).catch(() => null) : null]);
-      if (!read) return img ? { url, image_url: img, stock: 'unknown', price_cents: null } : null;
-      return { ...read, image_url: read.image_url || img };
+      const { title } = byUrl.get(url);
+      const [read, indexed, img] = await Promise.all([pageDetail(anthropic, url, byUrl.get(url), { onUsage, onError }), title ? pageSearch({ title, url }).catch(() => null) : null, title ? photoSearch({ title, url }).catch(() => null) : null]);
+      // The store's page as Brave's index has it beats an image search.
+      const photo = indexed?.image_url || img;
+      if (!read) return photo ? { url, image_url: photo, stock: 'unknown', price_cents: null } : null;
+      return { ...read, image_url: read.image_url || photo };
     }),
   );
   return { pages: pages.filter(Boolean) };
@@ -1009,11 +1089,13 @@ Use empty or null for anything the page doesn't show or couldn't be opened.`;
 // the whole answer and every store check (≈40s to the first card before).
 // Events, in order:
 //   { type: 'searching' }                          a web search started
-//   { type: 'pick', option } | { type: 'outfit', outfit }   as each is written
-//   { type: 'update', url, stock, image_url, price_cents }  a store check came back
+//   { type: 'checking' }                           the first pick is written; its photo is being found
+//   { type: 'pick', option } | { type: 'outfit', outfit }   each once its store check is back,
+//                                                  with its photo (no photo: not shown)
 //   { type: 'done', kind, count, not_found?, warning? }
 export const FIRST_BATCH = 6; // quick to write; the shelf asks for more as they swipe
-const CHECK_WAIT_MS = 8000; // store checks still out after the answer get this long
+const CHECK_MS = 9000; // one pick's store check, at most
+const CHECK_WAIT_MS = 10_000; // store checks still out after the answer get this long
 
 // Complete JSON objects, as text streams in: each one in the answer's list
 // ({"products": [{…}, {…}]} or a bare [{…}]), the moment its last brace lands.
@@ -1074,7 +1156,7 @@ export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {
   };
 }
 
-export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
+export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, pdp = pageSearch, verify = imageOk, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
   const { text } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
@@ -1099,7 +1181,9 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   const seen = new Set(avoid);
   const sent = []; // what went out, kept up to date for the cache
   const checks = [];
-  const stats = { searches: 0, steps: 0, objects: 0, unusable: 0, repeats: 0 };
+  const stats = { searches: 0, steps: 0, objects: 0, unusable: 0, repeats: 0, dropped: 0, slow: 0, photos: {} };
+  let taken = 0; // picks and looks written so far (each shown once its check is back)
+  let closed = false;
   let kind = null;
   // Pages they've already seen are out; in this answer, the same page and
   // title twice is a repeat (one listing page can hold several products).
@@ -1110,41 +1194,59 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     seen.add(k);
     return true;
   };
-  // Photo and stock from the store's own page, after the card is already up.
-  // A category or search page in place of the product: the product itself
-  // first (its link, price and photo), then the checks on that page.
-  const check = (d, opt) =>
-    checks.push(
-      resolve(d.items[0], { fromUrl: page })
-        .catch(() => null)
-        .then((r) => {
-          if (!r) return { d, moved: null };
-          const was = d.items[0].url;
-          d = { ...d, items: [{ ...d.items[0], url: r.url, title: r.title, price_cents: r.price_cents || d.items[0].price_cents, image_url: r.image_url || null }, ...d.items.slice(1)] };
-          return { d, moved: { from: was, r } };
-        })
-        .then(({ d, moved }) => Promise.all([withPhoto(d, page, undefined, null).catch(() => d), stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown'), moved]))
-        .then(async ([withPic, stock, moved]) => {
-          let it = withPic.items[0];
-          // The store's page gave no photo (it doesn't let Spot read it): an image search.
-          if (!it.image_url && !opt.item.image_url) {
-            const img = await photos({ title: it.title, store: d.merchant?.name || '', url: it.url }).catch(() => null);
-            if (img) it = { ...it, image_url: img };
-          }
-          const u = { type: 'update', url: moved ? moved.from : it.url, stock, image_url: it.image_url && it.image_url !== opt.item.image_url ? it.image_url : null, price_cents: !opt.item.price_cents && it.price_cents ? it.price_cents : null };
-          if (moved) {
-            // The store's own price beats the estimate search gave.
-            Object.assign(u, { new_url: it.url, title: it.title, price_cents: it.price_cents || null });
-            Object.assign(opt.item, { url: it.url, title: it.title });
-            if (it.price_cents) (opt.item.price_cents = it.price_cents), opt.why && (opt.why = opt.why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null);
-          }
-          opt.stock = stock;
-          if (u.image_url) opt.item.image_url = u.image_url;
-          if (u.price_cents) opt.item.price_cents = u.price_cents;
-          emit(u);
-        }),
-    );
-  const optionOfDraft = (d) => ({ merchant: d.merchant, item: { ...d.items[0], image_url: d.hint_image || null }, stock: 'unknown', why: d.why });
+  // Every card has the product's real photo, or it isn't shown: each pick
+  // goes out once its store check is back (≈1–3s), with the photo, stock and
+  // the product's own link. Where the photo comes from, best first:
+  //  1. the store's page, read by Spot (its colour's photo on Shopify);
+  //  2. the store's page as Brave's index has it (stores that turn Spot away);
+  //  3. the photo the AI noted, if it really is an image;
+  //  4. an image search, only for a plain match from a store people know.
+  // A category or search link moves to the product's own page on the way.
+  const check = async (d0) => {
+    const it0 = d0.items[0];
+    const r = await resolve(it0, { fromUrl: page }).catch(() => null);
+    let d = r ? { ...d0, items: [{ ...it0, url: r.url, title: r.title, price_cents: r.price_cents || it0.price_cents, image_url: r.image_url || null }, ...d0.items.slice(1)] } : { ...d0, items: [{ ...it0, image_url: null }, ...d0.items.slice(1)] };
+    const [withPic, stock0, found] = await Promise.all([
+      withPhoto(d, page, undefined, null).catch(() => d),
+      stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown'),
+      pdp({ title: d.items[0].title, url: d.items[0].url }).catch(() => null),
+    ]);
+    let it = withPic.items[0];
+    let stock = stock0;
+    let from = it.image_url ? 'page' : null;
+    if (!it.image_url && found) {
+      // Brave's copy of the product's page: its photo, and its link if the
+      // one we had wasn't the product's own page.
+      // The store's own image address; Brave's copy of it if that won't load here.
+      const img = (await verify(found.image_url)) ? found.image_url : found.thumb;
+      if (img) {
+        if (found.url !== it.url) (it = { ...it, url: found.url }), (stock = 'unknown');
+        it = { ...it, image_url: img };
+        from = 'index';
+      }
+    }
+    if (!it.image_url && d0.hint_image && (await verify(d0.hint_image))) (it = { ...it, image_url: d0.hint_image }), (from = 'noted');
+    if (!it.image_url) {
+      const img = await photos({ title: it.title, store: d.merchant?.name || '', url: it.url }).catch(() => null);
+      if (img && (await verify(img))) (it = { ...it, image_url: img }), (from = 'image search');
+    }
+    if (!it.image_url) return stats.dropped++, null;
+    stats.photos[from] = (stats.photos[from] || 0) + 1;
+    let why = d0.why;
+    // The store's own price beats the estimate search gave.
+    if (r?.price_cents && why) why = why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null;
+    return { merchant: d.merchant, item: { ...it, image_url: it.image_url }, stock, why };
+  };
+  // Each check, capped, so one slow store doesn't hold the rest.
+  const checked = (d) => {
+    let timer;
+    return Promise.race([check(d).catch(() => null), new Promise((r) => (timer = setTimeout(() => (stats.slow++, r(null)), CHECK_MS)))]).finally(() => clearTimeout(timer));
+  };
+  const show = (e) => {
+    if (closed) return;
+    sent.push(e);
+    emit(structuredClone(e));
+  };
   const take = (json) => {
     let o;
     stats.objects++;
@@ -1159,10 +1261,17 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
       const items = pieces.slice(0, 6).map((p) => pick(p, text)).filter(Boolean).filter(fresh);
       if (items.length < 2) return stats.unusable++;
       kind = 'outfits';
-      const outfit = { name: String(o.name || o.title || 'A look').trim().slice(0, 60), why: String(o.why || o.description || '').trim().slice(0, 120) || null, items: items.map(optionOfDraft) };
-      sent.push({ type: 'outfit', outfit });
-      emit({ type: 'outfit', outfit: structuredClone(outfit) }); // as it is now; the checks update `sent` for the cache
-      items.forEach((d, i) => check(d, outfit.items[i]));
+      if (!taken++) emit({ type: 'checking' });
+      const name = String(o.name || o.title || 'A look').trim().slice(0, 60);
+      const why = String(o.why || o.description || '').trim().slice(0, 120) || null;
+      // A look goes out with the pieces that have their photo (two at least).
+      checks.push(
+        Promise.all(items.map(checked)).then((got) => {
+          const ok = got.filter(Boolean);
+          if (ok.length >= 2) show({ type: 'outfit', outfit: { name, why, items: ok } });
+          else stats.dropped++;
+        }),
+      );
       return;
     }
     if (kind === 'outfits') return;
@@ -1170,10 +1279,8 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     if (!d) return stats.unusable++;
     if (!fresh(d)) return;
     kind = 'products';
-    const option = optionOfDraft(d);
-    sent.push({ type: 'pick', option });
-    emit({ type: 'pick', option: structuredClone(option) });
-    check(d, option);
+    if (!taken++) emit({ type: 'checking' });
+    checks.push(checked(d).then((option) => option && show({ type: 'pick', option })));
   };
 
   let model = process.env.SPOT_LOOKUP_MODEL || 'claude-sonnet-5-5';
@@ -1220,7 +1327,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     } catch (err) {
       onError?.(err);
       // The quicker model isn't on this account: the bigger one, once.
-      if (err instanceof Anthropic.APIError && (err.status === 404 || /model/i.test(err.message)) && model !== big && !sent.length) {
+      if (err instanceof Anthropic.APIError && (err.status === 404 || /model/i.test(err.message)) && model !== big && !taken) {
         console.error('lookup model unavailable, using', big, err.status, err.message);
         model = big;
         attempt--;
@@ -1228,12 +1335,12 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
       }
       if (err instanceof Anthropic.APIError) {
         console.error('stream lookup failed', err.status, err.message);
-        if (!sent.length) return emit({ type: 'done', kind: null, count: 0, not_found: true, warning: 'I couldn’t look that up right now. Try again in a minute, or paste a link' });
+        if (!taken) return emit({ type: 'done', kind: null, count: 0, not_found: true, warning: 'I couldn’t look that up right now. Try again in a minute, or paste a link' });
         break;
       }
       throw err;
     }
-    if (sent.length || response?.stop_reason === 'refusal' || attempt === 1 || now() - started > FIND_BUDGET_MS / 2) break;
+    if (taken || response?.stop_reason === 'refusal' || attempt === 1 || now() - started > FIND_BUDGET_MS / 2) break;
     // Nothing usable came back: say what it looked like, then one looser try.
     const out = (response?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     console.error('lookup answer had no picks', response?.stop_reason, out.slice(0, 400).replace(/\s+/g, ' '));
@@ -1242,12 +1349,18 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     else messages.push({ role: 'assistant', content: response?.content || [] });
     messages.push({ role: 'user', content: `That gave me nothing I could show. Give your best picks from what you found, even from roundups or category pages, and even if you couldn't confirm stock or the exact price: Spot checks the store pages itself, and close is better than nothing. Reply with ONLY the JSON, exactly in this shape:\n${LOOKUP_SCHEMA_HINT}` });
   }
-  console.log('stream lookup', `${now() - started}ms`, model, JSON.stringify({ ...stats, sent: sent.length, asked: count }), sent.length < Math.min(count, 3) ? said.slice(-500).replace(/\s+/g, ' ') : '');
-  if (!sent.length) return nothing();
-  // Store checks still out: a few more seconds, so their photos and stock land before "done".
+  if (!taken) {
+    console.log('stream lookup', `${now() - started}ms`, model, JSON.stringify({ ...stats, sent: 0, asked: count }), said.slice(-500).replace(/\s+/g, ' '));
+    return nothing();
+  }
+  // The last store checks: each is capped, so this is a few seconds at most.
   let timer;
   await Promise.race([Promise.all(checks), new Promise((r) => (timer = setTimeout(r, CHECK_WAIT_MS)))]);
   clearTimeout(timer);
+  closed = true;
+  console.log('stream lookup', `${now() - started}ms`, model, JSON.stringify({ ...stats, taken, sent: sent.length, asked: count }), sent.length < Math.min(count, 3) ? said.slice(-500).replace(/\s+/g, ' ') : '');
+  // Found some, but none with a real photo: say so, rather than show blanks.
+  if (!sent.length) return emit({ type: 'done', kind: null, count: 0, not_found: true, warning: followUp ? 'I couldn’t find anything new with a photo. Try saying it another way' : 'I found a few, but couldn’t get their photos. Try different words, or paste a link' });
   const done = { type: 'done', kind, count: sent.length };
   emit(done);
   if (key) cache.set(key, [...sent, done]);

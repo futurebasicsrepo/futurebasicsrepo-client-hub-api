@@ -58,7 +58,7 @@ function servicesConfig(env) {
     { name: 'anthropic', label: 'Claude (lookups, screenshots, checkout agent)', configured: has('ANTHROPIC_API_KEY') || has('ANTHROPIC_AUTH_TOKEN'), why: 'ANTHROPIC_API_KEY' },
     { name: 'shopify_app', label: 'Spot app for Shopify', configured: has('SHOPIFY_APP_CLIENT_ID', 'SHOPIFY_APP_CLIENT_SECRET'), why: 'SHOPIFY_APP_CLIENT_ID / _SECRET' },
     { name: 'checkout_agent', label: 'Spot’s checkout agent', configured: has('ANTHROPIC_API_KEY') || has('ANTHROPIC_AUTH_TOKEN'), why: 'ANTHROPIC_API_KEY' },
-    { name: 'brave', label: 'Product photos (Brave image search)', configured: has('BRAVE_SEARCH_API_KEY'), why: 'BRAVE_SEARCH_API_KEY' },
+    { name: 'brave', label: 'Product photos (Brave search)', configured: has('BRAVE_SEARCH_API_KEY'), why: 'BRAVE_SEARCH_API_KEY' },
     { name: 'resend', label: 'Email (Resend)', configured: has('RESEND_API_KEY'), why: 'RESEND_API_KEY' },
     { name: 'twilio', label: 'Texts (Twilio)', configured: has('TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM'), why: 'TWILIO_ACCOUNT_SID / _AUTH_TOKEN / _FROM' },
     { name: 'duffel', label: 'Flights (Duffel)', configured: has('DUFFEL_ACCESS_TOKEN'), why: 'DUFFEL_ACCESS_TOKEN' },

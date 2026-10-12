@@ -256,7 +256,7 @@ MCP is streamable HTTP at `POST /mcp` (stateless). To list it in MCP directories
 | `SPOT_API_KEYS` | | `name:secret,name2:secret2` for the agent API / MCP |
 | `SPOT_OPEN_KEYS` | on | Self-serve agent keys from `/integrations#mcp` (`POST /v1/agent/keys`). Set `off` to allow only `SPOT_API_KEYS` |
 | `SPOT_KEY_ASKS_PER_DAY` / `SPOT_KEY_MESSAGES_PER_DAY` / `SPOT_KEY_SEARCHES_PER_DAY` | `100` / `20` / `200` | Daily quotas for self-serve keys; `SPOT_API_KEYS` partners have none |
-| `BRAVE_SEARCH_API_KEY` | | Product photos for stores that don't let Spot read their pages (image search) |
+| `BRAVE_SEARCH_API_KEY` | | Product photos for stores that don't let Spot read their pages: the product's page in Brave's web index, then an image search. Without it, picks from those stores aren't shown (no photo, no card) |
 | `RESEND_API_KEY` | | Emails finish links |
 | `SPOT_FROM_EMAIL` | `Spot <spot@resend.dev>` | From address (a domain verified in Resend) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Texts finish links. Texts start with “Spot:” and end with “Reply STOP to opt out.” Set the number's incoming-message webhook to `POST /v1/webhooks/twilio` (signed), and Spot will never text a number that replied STOP |
