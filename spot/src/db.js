@@ -472,7 +472,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsForMoneySweep: () =>
       db
         .prepare(`SELECT id FROM carts WHERE status IN ('refunding', 'paid', 'card_issued')
-                  OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR json_extract(doc, '$.capture_due') IS NOT NULL OR doc LIKE '%"state":"failed"%')) LIMIT 2000`)
+                  OR (status = 'completed' AND (json_extract(doc, '$.release_after') IS NOT NULL OR json_extract(doc, '$.capture_due') IS NOT NULL OR doc LIKE '%"state":"failed"%'))
+                  OR json_extract(doc, '$.card_cancel_after') IS NOT NULL LIMIT 2000`)
         .all()
         .map((r) => r.id),
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),

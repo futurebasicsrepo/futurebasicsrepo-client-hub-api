@@ -45,6 +45,10 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   const payerSig = (token) => `p${createHmac('sha256', linkSecret).update(`payer:${token}`).digest('base64url').slice(0, 32)}`;
   const HOUR = 3600_000;
   const orderDeadlineMs = Number(process.env.SPOT_ORDER_DEADLINE_HOURS || 72) * HOUR;
+  // How long a used card stays paused (store refunds can still land) before
+  // it's canceled for good: past most stores' return and price-adjustment
+  // windows (30 days, from delivery), with room for the refund to post.
+  const CARD_KEEP_MS = Number(process.env.SPOT_CARD_KEEP_DAYS || 60) * 24 * HOUR;
   // Once Spot is placing the order (or has), a cancel could race the store charge.
   const ordering = (cart) => ['starting', 'working', 'awaiting_confirm', 'placed'].includes(cart.fulfillment?.state);
   // The Spot fee is per ask: a multi-store ask carries the $2 (and the card's
@@ -867,7 +871,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
         }
         cur = await this.capture(cur);
         // Single use: once the store has charged, nothing else can.
-        return this._cancelOnce(cur);
+        return this._retireOnce(cur);
       }
       if (type === 'refund') {
         const next = await this.refundPart(cart.id, cents, `return_${id}`, 'store_refund');
@@ -927,6 +931,23 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       });
     },
 
+    // A used card: switched off, so no new charge can go through (Stripe
+    // declines a paused card, and decideAuthorization only approves a card
+    // still waiting for its order), but a store refund (a return, a price
+    // adjustment) still lands and goes to the payer. Canceled for good after
+    // CARD_KEEP_MS (sweepMoney). If pausing fails, it's canceled now.
+    async _retireOnce(cart) {
+      if (cart.card_canceled || cart.card_paused || !cart.card_ref) return cart;
+      if (!provider.pauseCard) return this._cancelOnce(cart);
+      try {
+        await provider.pauseCard(cart);
+        return this.patch(cart.id, (c) => ({ ...c, card_paused: Date.now(), card_cancel_after: Date.now() + CARD_KEEP_MS }), 'card_paused');
+      } catch (err) {
+        log.error?.({ err, cart: cart.id }, 'card pause failed; canceling');
+        return this._cancelOnce(cart);
+      }
+    },
+
     async _cancelOnce(cart) {
       if (cart.card_canceled || !cart.card_ref) return cart;
       try {
@@ -948,8 +969,9 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
       for (const t of transactions) await this.recordIssuingTxn({ ...t, card, authorization: id });
       let cur = db.byId(cart.id);
       if (cur.status !== 'completed') return cur;
-      cur = await this._cancelOnce(cur);
       const { captured } = db.issuing.totals(cur.id);
+      // Charged (or may still be, late): kept for its refunds. Never charged: done with.
+      cur = captured || status === 'expired' ? await this._retireOnce(cur) : await this._cancelOnce(cur);
       if (!captured) {
         if (status === 'expired') return this.patch(cur.id, (c) => ({ ...c, release_after: Date.now() + 30 * 24 * HOUR }), 'authorization_expired');
         return this.refundCart(cur, { reason: status === 'reversed' ? 'store_reversed' : 'store_released' });
@@ -1010,7 +1032,11 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
               done.push(await this.refundCart(this.patch(cart.id, (c) => ({ ...c, release_after: null })), { reason: 'store_never_charged' }));
             }
           }
-          const cur = db.byId(id);
+          let cur = db.byId(id);
+          if (cur.card_cancel_after && now > cur.card_cancel_after) {
+            if (!cur.card_canceled) cur = await this._cancelOnce(cur);
+            if (cur.card_canceled) cur = this.patch(id, (c) => ({ ...c, card_cancel_after: null }));
+          }
           if (cur.capture_due && !cur.payment_captured_at && now - cur.capture_due > 60_000) done.push(await this.capture(cur));
           for (const r of cart.refunds || []) if (r.state === 'failed' && now - r.at > 5 * 60_000) done.push(await this._sendPart(db.byId(id), r.key));
         } catch (err) {
