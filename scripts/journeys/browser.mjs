@@ -800,6 +800,14 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1, 'on a phone the menu is closed behind a button and nothing sticks out', await over());
   await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /customers/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-phone.png` }).catch(() => {});
+  // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
+  await ph.setViewportSize({ width: 390, height: 600 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
+  const swipe = async (x, y0, dy) => { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] }); for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 + dy * i / 12 }] }); await sleep(16); } await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600); };
+  const state = () => ph.evaluate(() => { const a = document.querySelector('.fbside'), links = [...a.querySelectorAll('nav a')].filter(x => x.offsetParent); return { page: Math.round(scrollY), aside: Math.round(a.scrollTop), room: a.scrollHeight - a.clientHeight, tall: Math.round(a.getBoundingClientRect().height), vh: innerHeight, last: Math.round(links[links.length - 1].getBoundingClientRect().bottom) }; });
+  const s0 = await state(); ok(s0.room > 0 && s0.tall === s0.vh, 'on a short phone the drawer is as tall as the screen and has more below', JSON.stringify(s0));
+  await swipe(350, 300, -150); ok((await state()).page === 0, 'dragging the dimmed page behind the drawer does not scroll the page');
+  await swipe(100, 520, -480); await swipe(100, 520, -480); const s1 = await state(); ok(s1.aside > 0 && s1.last <= s1.vh - 8, 'a finger scrolls the drawer to its last item, clear of the screen edge', JSON.stringify(s1));
+  await ph.setViewportSize({ width: 390, height: 844 }); await sleep(300);
   await ph.click('.fbside a[data-href="/sales#contacts"]:not(.gicon)'); await sleep(500);
   ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await ph.isVisible('#t-contacts'), 'choosing an item closes it and goes there');
   ok(ph.errs.length === 0, 'no script errors on the phone', ph.errs); await pc.close();

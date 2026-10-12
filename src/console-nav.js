@@ -83,9 +83,12 @@ body.fbcollapsed .fbside a{justify-content:center;padding:10px}body.fbcollapsed 
 @media(max-width:900px){
  body.fbnav{padding-left:0}body.fbnav>header{margin-left:0}
  .fbburger{display:inline-flex}
- .fbside{top:0;width:min(300px,86vw);transform:translateX(-102%);transition:transform .22s;z-index:40;box-shadow:0 20px 60px rgba(20,20,22,.3)}
+ /* The drawer is its own scroller: a block (not a flex column), exactly as tall as what is visible (dvh follows the phone's address bar), with room under the last item for the home indicator, and a drag on it or on the dimmed page never moves the page behind. */
+ .fbside{top:0;bottom:auto;height:100vh;height:100dvh;display:block;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;width:min(300px,86vw);transform:translateX(-102%);transition:transform .22s;z-index:40;box-shadow:0 20px 60px rgba(20,20,22,.3)}
+ .fbside nav{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+ body.fbopen{overflow:hidden}html:has(body.fbopen){overflow:hidden}
  body.fbopen .fbside{transform:none}
- body.fbopen .fbscrim{display:block;position:fixed;inset:0;background:rgba(20,20,22,.5);z-index:35}
+ body.fbopen .fbscrim{display:block;position:fixed;inset:0;background:rgba(20,20,22,.5);z-index:35;touch-action:none;overscroll-behavior:contain}
  body.fbcollapsed .fbside .grp>span,body.fbcollapsed .fbside .grp a,body.fbcollapsed .fbside .lbl{display:revert}
  body.fbcollapsed .fbside .grp>span{display:block}body.fbcollapsed .fbside .grp a{display:flex}body.fbcollapsed .fbside .grp a.gicon{display:none}body.fbcollapsed .fbside a{justify-content:flex-start;padding:8px 10px}body.fbcollapsed .fbside .grp a{padding:6px 10px 6px 14px}
  .fbside .foot{display:none}
