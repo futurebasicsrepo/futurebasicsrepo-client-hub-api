@@ -183,6 +183,49 @@ export async function stockOf(item, { fromUrl = captureFromUrl, product = shopif
   return stockFrom(page.offers, item.variant, item.title);
 }
 
+// ─── Photos by image search ─────────────────────────────────────────────────
+// Big stores (Amazon, Walmart, Ray-Ban…) don't let anyone read their pages,
+// AI included, so their photos come from an image search (Brave): the
+// product's name and store, a result from that store's own site first, else
+// one that's plainly the same product. Off without BRAVE_SEARCH_API_KEY.
+const PHOTO_SEARCH_MS = 4000;
+const rootOf = (host) => String(host || '').toLowerCase().replace(/^www\./, '').split('.').slice(-2).join('.');
+const hostOf = (u) => {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return '';
+  }
+};
+export async function photoSearch({ title, store = '', url = '' }, { fetchImpl = fetch, key = process.env.BRAVE_SEARCH_API_KEY } = {}) {
+  if (!key || !title) return null;
+  const q = `${title} ${store}`.trim().slice(0, 200);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PHOTO_SEARCH_MS);
+  try {
+    const res = await fetchImpl(`https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(q)}&count=20&safesearch=strict&country=us`, { headers: { accept: 'application/json', 'x-subscription-token': key }, signal: ctrl.signal });
+    if (!res.ok) {
+      console.error('photo search failed', res.status);
+      return null;
+    }
+    const j = await res.json();
+    const want = rootOf(hostOf(url));
+    const found = (j?.results || [])
+      .map((r) => ({
+        img: [r?.properties?.url, r?.thumbnail?.src].find((u) => typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(u)),
+        host: rootOf(r?.meta_url?.hostname || hostOf(r?.url)),
+        score: titleMatch(title, `${r?.title || ''}`),
+      }))
+      .filter((r) => r.img);
+    const hit = found.find((r) => want && r.host === want && r.score >= 0.4) || found.find((r) => r.score >= 0.75);
+    return hit ? hit.img.slice(0, 1000) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Listing pages ──────────────────────────────────────────────────────────
 // Search sees result snippets, so it sometimes links a category or search
 // page ("hoodies under $50") instead of the product. Find the product it named
@@ -618,6 +661,7 @@ export function lookupPrompt({ text, more = '', sizes = '', shipTo = '', avoid =
 Using web search, find things for sale at US online stores that match. Read it the way a great personal shopper would: a budget ("under $50") is a price limit, an occasion or place ("for Coachella", "beach wedding") sets the style.
 - If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${outfits}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
 - Otherwise reply with up to ${count} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
+Prefer the brand's own online store and shops that sell direct (many run on Shopify) over marketplaces like Amazon, Walmart, Target or eBay: Spot can buy from those and show their photos. Use a big marketplace only when it's clearly the best or only place to get it.
 ${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Skip anything you saw marked sold out, but don't hold back for want of proof: Spot checks each store's own page for stock, size and price before anyone pays. Products named in roundups, gift guides, or category and search pages count: use them, with the best link you have and the price you saw (or your best estimate). Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
 ${LOOKUP_SCHEMA_HINT}
 Never answer a shopping request with an empty list: give your best picks from what you found, even if you're unsure of stock or the exact price.`;
@@ -861,7 +905,15 @@ export async function pageDetails(urls, { client, onUsage, onError } = {}) {
   const anthropic = client ?? anthropicClient();
   // One page per call, all at once, on the quicker model: a shelf of photos
   // in the time one page takes, not one after another (15–50s before).
-  const pages = await Promise.all(list.map((url) => pageDetail(anthropic, url, byUrl.get(url), { onUsage, onError })));
+  // An image search alongside each read: the AI rarely gets a photo from a
+  // store that blocks readers, the image search usually does.
+  const pages = await Promise.all(
+    list.map(async (url) => {
+      const [read, img] = await Promise.all([pageDetail(anthropic, url, byUrl.get(url), { onUsage, onError }), byUrl.get(url).title ? photoSearch({ title: byUrl.get(url).title, url }).catch(() => null) : null]);
+      if (!read) return img ? { url, image_url: img, stock: 'unknown', price_cents: null } : null;
+      return { ...read, image_url: read.image_url || img };
+    }),
+  );
   return { pages: pages.filter(Boolean) };
 }
 async function pageDetail(anthropic, url, { variant, title }, { onUsage, onError }) {
@@ -983,7 +1035,7 @@ export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {
   };
 }
 
-export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
+export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, photos = photoSearch, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
   const { text } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
@@ -1033,8 +1085,13 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
           return { d, moved: { from: was, r } };
         })
         .then(({ d, moved }) => Promise.all([withPhoto(d, page, undefined, null).catch(() => d), stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown'), moved]))
-        .then(([withPic, stock, moved]) => {
-          const it = withPic.items[0];
+        .then(async ([withPic, stock, moved]) => {
+          let it = withPic.items[0];
+          // The store's page gave no photo (it doesn't let Spot read it): an image search.
+          if (!it.image_url && !opt.item.image_url) {
+            const img = await photos({ title: it.title, store: d.merchant?.name || '', url: it.url }).catch(() => null);
+            if (img) it = { ...it, image_url: img };
+          }
           const u = { type: 'update', url: moved ? moved.from : it.url, stock, image_url: it.image_url && it.image_url !== opt.item.image_url ? it.image_url : null, price_cents: !opt.item.price_cents && it.price_cents ? it.price_cents : null };
           if (moved) {
             // The store's own price beats the estimate search gave.
