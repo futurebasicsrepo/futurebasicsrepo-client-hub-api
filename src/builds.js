@@ -102,7 +102,12 @@ export const SEED_BUILDS = [
     summary: 'A from-scratch Shopify theme for a consignment and trade-in store, with a mega menu of every collection, filters that work, a Sell page that sends items with photos to an offers system, and a staff counter for making offers.',
     highlights: [{ title: 'Real filtering', text: 'Brand, type, size grid, price, availability, colour and tags over AJAX' }, { title: 'Sell and trade-in', text: 'Sellers send photos and get an offer thread on a private link' }], stack: ['Shopify Online Store 2.0', 'Liquid', 'Fastify', 'Postgres'] },
   { slug: 'cuesea', name: 'Cuesea', tagline: '', sector: '', status: 'live', hosting: 'other', liveUrl: 'https://cuesea.ai', summary: 'To fill in.', highlights: [], stack: [] },
-  { slug: 'incha-tv', repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv', name: 'incha.tv', tagline: 'A fan-first media platform by INCHA Studios.', sector: 'Media', status: 'in-progress', hosting: 'vercel',
+  { slug: 'incha-tv', repoUrl: 'https://github.com/futurebasicsrepo/incha-tv', name: 'incha.tv', tagline: 'A fan-first media platform by INCHA Studios.', sector: 'Media', status: 'in-progress', hosting: 'vercel',
     summary: 'Fans upload clips and photos, lightly edit them, and publish publicly, unlisted or privately. Videos are converted in the background to play on any phone; others can upvote, comment and share.',
     highlights: [{ title: 'Any phone video', text: 'iPhone HEVC and others converted to H.264 in the background' }, { title: 'Private by default', text: 'Every upload starts as a private draft' }], stack: ['Next.js', 'Fastify', 'Postgres', 'ffmpeg', 'Vercel', 'Railway'] }
+];
+
+// Builds whose code has moved to another repository. A build still pointing at the old place follows it; one staff have pointed elsewhere is left alone.
+export const MOVED_BUILD_REPOS = [
+  { slug: 'incha-tv', from: { repoUrl: 'https://github.com/futurebasicsrepo/futurebasicsrepo-client-hub-api', repoPath: 'incha-tv' }, to: { repoUrl: 'https://github.com/futurebasicsrepo/incha-tv', repoPath: '' } }
 ];
