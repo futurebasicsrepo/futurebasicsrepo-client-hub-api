@@ -25,6 +25,7 @@ import { createNotifier, normalizePhone } from './notify.js';
 import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
+import { createPriceWatch } from './pricewatch.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -51,7 +52,7 @@ import { platformProfile } from './fulfill/ucp.js';
 import { registerGate } from './early.js';
 import { createInvites } from './invites.js';
 
-export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch } = {}) {
+export function buildApp({ db = openDb(), provider = pickProvider(), cfg = config(), capture = {}, logger = true, fulfill = {}, env = process.env, notifyFetch, oauthFetch, flights = createFlights({ env }), backupDir, backupFetch, merchantFetch, papFetch, shopifyFetch, priceNowImpl } = {}) {
   const app = Fastify({ logger, bodyLimit: 256 * 1024, trustProxy: true });
   // Who's calling, for rate limits and risk checks. X-Forwarded-For is
   // whatever the caller sends, so it's never trusted: Railway's edge puts
@@ -160,6 +161,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('spot', spot);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
   const approvals = createApprovals({ db, spot, signing, baseUrl, log: app.log });
+  // Daily price checks on Spot-card orders, for staff to claim drops (pricewatch.js).
+  const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), log: app.log });
+  app.decorate('priceWatch', priceWatch);
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
     // A person said yes: record a signed approval of exactly what they approved.
@@ -251,6 +255,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     if (sweeps % 2 === 0) spot.sweepDirect().catch((err) => app.log.error({ err }, 'store checkout sweep failed'));
     // Paid carts whose card didn't issue (a provider hiccup) get it once it works.
     spot.sweepIssue().catch((err) => app.log.error({ err }, 'issue sweep failed'));
+    // Store prices on recent Spot-card orders, a few each half hour.
+    if (sweeps % 30 === 0 && env.SPOT_PRICE_WATCH !== '0') priceWatch.sweep().catch((err) => app.log.error({ err }, 'price watch failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -938,7 +944,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     launchBrowser: fulfill.launch || (async () => (await import('playwright')).chromium.launch({ args: ['--no-sandbox'] })),
     ...(fulfill.liveFetch ? { fetchImpl: fulfill.liveFetch } : {}),
   });
-  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller, liveChecks, invites, notifier });
+  registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fulfiller, liveChecks, invites, notifier, priceWatch });
   const accounts = registerAccounts(app, { db, env, notifier, provider, urlFor, spot });
   registerFunding(app, { db, provider, spot, log: app.log });
   registerPasskeys(app, { db, urlFor });

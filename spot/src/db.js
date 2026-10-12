@@ -486,6 +486,16 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
                   OR json_extract(doc, '$.card_cancel_after') IS NOT NULL LIMIT 2000`)
         .all()
         .map((r) => r.id),
+    // Spot-card orders placed since `since`, for the price watch (pricewatch.js).
+    idsForPriceWatch: (since) =>
+      db
+        .prepare(`SELECT id FROM carts WHERE settle = 'card' AND status IN ('card_issued', 'completed')
+                  AND (json_extract(doc, '$.fulfillment.placed_at') > ? OR json_extract(doc, '$.spent_at') > ?)
+                  ORDER BY json_extract(doc, '$.price_watch.last_at') IS NOT NULL, json_extract(doc, '$.price_watch.last_at') LIMIT 2000`)
+        .all(since, since)
+        .map((r) => r.id),
+    // Price drops waiting on staff (found, not yet claimed or dismissed).
+    idsPriceDrops: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.price_watch.state') IN ('dropped', 'claimed') LIMIT 500").all().map((r) => r.id),
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,

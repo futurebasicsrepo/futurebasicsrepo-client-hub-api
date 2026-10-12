@@ -183,6 +183,32 @@ export async function stockOf(item, { fromUrl = captureFromUrl, product = shopif
   return stockFrom(page.offers, item.variant, item.title);
 }
 
+// What the store asks for this item today, in cents, for the price watch
+// (pricewatch.js). Also from the store's own data: the exact option bought
+// on Shopify stores (sold out or not), else the product page's price.
+// null when it can't be told: a blocked page, a gone product, or options
+// at different prices and no way to tell which one was bought.
+export async function priceNow(item, { fromUrl = captureFromUrl, product = shopifyProduct } = {}) {
+  if (!item?.url) return null;
+  const ok = (cents, source) => (Number.isInteger(cents) && cents > 0 ? { cents, source } : null);
+  const p = await product(item.url).catch(() => null);
+  if (p?.variants?.length) {
+    const { matchVariant } = await import('./fulfill/shopify.js');
+    let linked = null;
+    try {
+      linked = new URL(item.url).searchParams.get('variant');
+    } catch {}
+    const all = p.variants.map((v) => ({ ...v, available: true }));
+    const v = (linked && all.find((x) => String(x.id) === linked)) || matchVariant(all, item.variant, p.title);
+    const prices = new Set(p.variants.map((x) => Number(x.price)));
+    return ok(v ? Number(v.price) : prices.size === 1 ? [...prices][0] : null, 'store');
+  }
+  const page = await fromUrl(item.url).catch(() => null);
+  if (!page || page.warning?.includes('doesn’t let Spot')) return null;
+  const seen = new Set((page.items || []).map((i) => i.price_cents).filter(Boolean));
+  return ok(seen.size === 1 ? [...seen][0] : null, 'page');
+}
+
 // ─── Photos by image search ─────────────────────────────────────────────────
 // Big stores (Amazon, Walmart, Ray-Ban…) don't let anyone read their pages,
 // AI included, so their photos come from an image search (Brave): the
