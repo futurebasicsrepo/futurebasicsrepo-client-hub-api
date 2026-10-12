@@ -1533,6 +1533,57 @@ export async function migrate() {
       connected_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- Contracts for digital work: a fixed-fee agreement built from a deal and its project, signed from a private link (see contracts.js). The signing link is
+    -- never stored (it is made from the contract's id, a version and the server's secret); what was signed is the content as it stood when it was sent, and doc_hash proves it has not changed since.
+    create table if not exists contracts (
+      id uuid primary key default gen_random_uuid(),
+      number text not null unique,
+      version integer not null default 1,
+      supersedes_id uuid references contracts(id) on delete set null,
+      kind text not null default 'other' check (kind in ('website','app','other')),
+      title text not null,
+      status text not null default 'draft' check (status in ('draft','sent','signed_by_client','executed','declined','void','expired')),
+      deal_id uuid references sales_deals(id) on delete set null,
+      project_id uuid references projects(id) on delete set null,
+      client_id uuid references clients(id) on delete set null,
+      contact_id uuid references sales_contacts(id) on delete set null,
+      content jsonb not null,
+      total_cents bigint not null,
+      currency text not null default 'USD',
+      token_version integer not null default 1,
+      doc_hash text,
+      sent_at timestamptz,
+      sent_to text,
+      expires_at timestamptz,
+      last_reminder_at timestamptz,
+      first_viewed_at timestamptz,
+      last_viewed_at timestamptz,
+      view_count integer not null default 0,
+      client_signature jsonb,
+      provider_signature jsonb,
+      declined jsonb,
+      void_reason text not null default '',
+      executed_at timestamptz,
+      invoices_at timestamptz,
+      created_by uuid references users(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists contracts_deal_idx on contracts (deal_id) where deal_id is not null;
+    create index if not exists contracts_status_idx on contracts (status, updated_at desc);
+    create table if not exists contract_events (
+      id bigserial primary key,
+      contract_id uuid not null references contracts(id) on delete cascade,
+      kind text not null,
+      actor text not null default '',
+      detail text not null default '',
+      meta jsonb not null default '{}'::jsonb,
+      ip text not null default '',
+      at timestamptz not null default now()
+    );
+    create index if not exists contract_events_idx on contract_events (contract_id, at);
+    alter table money_invoices add column if not exists contract_id uuid references contracts(id) on delete set null;
+    alter table money_invoices add column if not exists contract_seq integer;
     create index if not exists shopify_exports_store_idx on shopify_exports(store_id, product_id, created_at desc);
     create table if not exists tech_pack_versions (
       id uuid primary key default gen_random_uuid(),

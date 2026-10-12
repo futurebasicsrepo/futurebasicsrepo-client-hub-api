@@ -28,6 +28,7 @@
     { id: 'win', label: 'Win', icon: 'target', items: [
       { label: 'Sales today', href: '/sales#today' },
       { label: 'Pipeline', href: '/sales#pipeline' },
+      { label: 'Contracts', href: '/contracts' },
       { label: 'Opportunities', href: '/sales#opportunities', badge: '#oppCount' },
       { label: 'Intelligence', href: '/intel' },
       { label: 'Site prototypes', href: '/prototypes' },

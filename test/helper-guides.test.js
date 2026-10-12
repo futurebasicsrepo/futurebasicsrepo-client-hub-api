@@ -12,7 +12,7 @@ vm.runInNewContext(src('helper.js'), ctx);
 const FILES = {
   'hub-': ['client.html', 'chat.js'], 'tp-': ['techpack.html'], 'staff-pack': ['techpack.html'], 'staff-home': ['work-home.html', 'console-nav.js'], 'staff-sales': ['sales.html'],
   'staff-prototype': ['prototypes.html'], 'staff-leads': ['prototypes.html'], 'staff-money': ['money.html'], 'staff-intel': ['intel.html'], 'staff-factories': ['factories.html'],
-  'staff-builds': ['builds-admin.html'], 'staff-console': ['admin.html'], 'staff-health': ['admin.html']
+  'staff-builds': ['builds-admin.html'], 'staff-console': ['admin.html'], 'staff-health': ['admin.html'], 'staff-contracts': ['contracts.html']
 };
 const filesFor = id => Object.entries(FILES).find(([k]) => id.startsWith(k))?.[1];
 const text = v => typeof v === 'function' ? 'x' : v;
