@@ -229,7 +229,9 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
       try {
         const cart = spot.byId(cartId);
         // Promo codes to try at the store's checkout (promos.js); never holds up the order.
-        const codes = typeof ucp.codesFor === 'function' ? await Promise.race([ucp.codesFor(cart).catch(() => []), new Promise((r) => setTimeout(r, 20000, []))]) : [];
+        let codeTimer;
+        const codes = typeof ucp.codesFor === 'function' ? await Promise.race([ucp.codesFor(cart).catch(() => []), new Promise((r) => (codeTimer = setTimeout(r, 20000, [])))]) : [];
+        clearTimeout(codeTimer);
         const outcome = await runUcpCheckout({
           codes,
           discovery: store,

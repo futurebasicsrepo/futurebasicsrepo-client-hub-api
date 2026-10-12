@@ -153,6 +153,15 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       };
     });
 
+  // Returns under way: what's going back, why, and the store's own steps.
+  const returnsOpen = () =>
+    (db.idsReturns?.() || []).map((id) => db.byId(id)).filter(Boolean).map((c) => ({
+      ...summary(c),
+      ret: { state: c.return.state, items: c.return.items.map((i) => c.items[i]?.title || 'item'), reason: c.return.reason, note: c.return.note || '', at: c.return.at, past_window: c.return.past_window, tracking: c.return.tracking || null, returns_url: c.return.policy?.returns_url || c.return.policy?.source_url || null },
+      order_number: c.fulfillment?.order_number || null,
+      email: c.requester?.shipping?.email || c.requester?.email || null,
+    }));
+
   // Open links someone said they don't know the sender of; two reports pause it.
   const reportedLinks = () =>
     db.raw
@@ -221,6 +230,7 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
       backups: backups?.status() || null,
       money: moneyChecks(),
       prices: priceDrops(),
+      returns: returnsOpen(),
       reported: reportedLinks(),
     };
   });
@@ -279,6 +289,11 @@ export function registerAdmin(app, { db, spot, env, urlFor, backups, metrics, fu
     if (!why) throw new CartError('Nothing to dismiss on this cart', 409);
     const next = spot.patch(req.params.id, (c) => ({ ...c, money_dismissed: { at: Date.now(), why } }), 'money_dismissed');
     return { cart: summary(next) };
+  });
+  // A return finished another way (store credit, a check), or not going ahead.
+  app.post('/v1/admin/carts/:id/return-close', async (req) => {
+    guard(req);
+    return { cart: summary(spot.closeReturn(req.params.id)) };
   });
   // Staff asked the store for a price drop's difference: the payer is emailed.
   app.post('/v1/admin/carts/:id/price-claimed', async (req) => {
@@ -406,6 +421,7 @@ ${siteNav()}
   <div class="stats" id="stats"></div>
   <section class="panel"><h2>Needs you</h2><div class="held" id="held"><p class="muted">Loading…</p></div></section>
   <section class="panel"><h2>Money to check</h2><p class="muted" style="margin-top:0">Refunds in flight, disputes, stuck orders and anything that doesn’t add up. Spot retries refunds by itself; refund here to give back whatever’s left.</p><div class="held" id="money"></div></section>
+  <section class="panel"><h2>Returns</h2><p class="muted" style="margin-top:0">Requesters start returns from their order page and get the store’s own steps. When the store refunds Spot’s card, Spot refunds the payer by itself. Step in if a store needs Spot to start it, or close one that ended another way.</p><div class="held" id="returns"></div></section>
   <section class="panel"><h2>Price drops to claim</h2><p class="muted" style="margin-top:0">Spot orders whose store lowered the price inside its 30-day window, checked daily. Ask the store for the difference (most do it by chat, email or phone with the order number), then tap Claimed: that's when the payer is told. If the store pays, it lands on Spot’s card and goes straight back to them.</p><div class="held" id="prices"></div></section>
   <section class="panel"><h2>Recent carts</h2><div class="tw"><table><thead><tr><th>When</th><th>Status</th><th>What</th><th>Store</th><th>Requester</th><th>Payer</th><th class="num">Total</th><th>Notes</th><th></th></tr></thead><tbody id="recent"></tbody></table></div></section>
   <section class="panel"><h2>Block list</h2>
@@ -434,6 +450,8 @@ async function load(){
   const c=d.counts,n=k=>c[k]||0;
   $('#stats').innerHTML=[['Needs you',d.held.length+(d.reported||[]).length],['Open',n('open')],['Paid',n('paid')+n('card_issued')],['Done',n('completed')],['Refunded',n('refunded')],['Signups',d.signup_total]].map(([l,v])=>'<div class="stat"><b>'+v+'</b><span>'+l+'</span></div>').join('');
   $('#money').innerHTML=d.money.length?d.money.map(m=>'<div class="hcard"><div class="why">'+m.why.map(esc).join('<br>')+'</div><div><b>'+usd(m.total_cents)+'</b> paid · '+esc(m.item||'cart')+' at '+esc(m.merchant)+' · <span class="pill '+esc(m.status)+'">'+esc(m.status)+'</span></div><div class="meta">store charged '+usd(m.captured_cents)+(m.returned_cents?' · store refunded '+usd(m.returned_cents):'')+' · refunded to payer '+usd(m.refunded_cents)+(m.payer_email?' · '+esc(m.payer_email):'')+' · '+when(m.created_at)+'</div>'+'<div class="row">'+(m.status==='card_issued'&&m.order_state==='needs_you'?'<button class="ab" data-act="cover" data-id="'+m.id+'">Spot covers the difference…</button>':'')+(['paid','card_issued','completed','refunding'].includes(m.status)&&m.refunded_cents<m.total_cents?'<button class="ab no" data-act="refund" data-id="'+m.id+'">Refund the rest</button>':'')+'<button class="ab" data-act="dismiss" data-id="'+m.id+'">Dismiss</button></div>'+'</div>').join(''):'<p class="muted">All square. ✅</p>';
+  const RS={doesnt_fit:'doesn’t fit',changed_mind:'changed their mind',damaged:'arrived damaged',wrong_item:'wrong item',other:'other'};
+  $('#returns').innerHTML=(d.returns||[]).length?d.returns.map(x=>'<div class="hcard"><div class="why">'+(x.ret.state==='shipped'?'Shipped back'+(x.ret.tracking?' ('+esc(x.ret.tracking)+')':'')+': waiting on '+esc(x.merchant):'Return requested: '+esc(RS[x.ret.reason]||x.ret.reason))+(x.ret.past_window?' · past the store’s window':'')+'</div><div><b>'+x.ret.items.map(esc).join(', ')+'</b> at '+esc(x.merchant)+'</div>'+(x.ret.note?'<div class="meta">“'+esc(x.ret.note)+'”</div>':'')+'<div class="meta">'+(x.order_number?'order '+esc(x.order_number)+' · ':'')+(x.email?esc(x.email)+' · ':'')+when(x.ret.at)+(x.ret.returns_url?' · <a href="'+esc(x.ret.returns_url)+'" target="_blank" rel="noopener">store’s returns</a>':'')+'</div><div class="row"><button class="ab" data-act="returnclose" data-id="'+x.id+'">Done another way</button></div></div>').join(''):'<p class="muted">No returns under way.</p>';
   const pd=d.prices||[],days=t=>Math.max(0,Math.ceil((t-Date.now())/864e5));
   $('#prices').innerHTML=pd.length?pd.map(p=>'<div class="hcard"><div class="why">'+(p.state==='claimed'?'Claimed '+when(p.claimed_at)+': waiting on '+esc(p.merchant):usd(p.drop_cents)+' to claim from '+esc(p.merchant)+' · '+days(p.until)+' days left')+'</div>'+p.drops.map(x=>'<div><b>'+esc(x.title||'item')+'</b>'+(x.variant?' ('+esc(x.variant)+')':'')+': paid '+usd(x.paid_cents)+', now '+usd(x.now_cents)+(x.quantity>1?' × '+x.quantity:'')+'</div>').join('')+(p.policy?'<div class="meta">'+(p.policy.price_adjustment===true?'Policy: adjusts prices'+(p.policy.days?' for '+p.policy.days+' days':'')+(p.policy.how?' · '+esc(p.policy.how):''):p.policy.price_adjustment===false?'Policy says no price adjustments: ask anyway, or dismiss':'Policy doesn’t say')+(p.policy.source_url?' · <a href="'+esc(p.policy.source_url)+'" target="_blank" rel="noopener">policy page</a>':'')+'</div>':'')+'<div class="meta">'+(p.order_number?'order '+esc(p.order_number)+' · ':'')+'bought '+when(p.bought_at)+' · checked '+when(p.checked_at)+(p.email||p.payer_email?' · '+esc(p.email||p.payer_email):'')+(p.store_url?' · <a href="'+esc(p.store_url)+'" target="_blank" rel="noopener">store</a>':'')+(p.order_url?' · <a href="'+esc(p.order_url)+'" target="_blank" rel="noopener">order</a>':'')+'</div><div class="row">'+(p.state==='dropped'?'<button class="ab go" data-act="priceclaim" data-id="'+p.id+'">Claimed, tell the payer</button>':'')+'<button class="ab" data-act="pricedismiss" data-id="'+p.id+'">'+(p.state==='claimed'?'Store said no':'Dismiss')+'</button></div></div>').join(''):'<p class="muted">No price drops right now.</p>';
   $('#held').innerHTML=d.held.length?d.held.map(h=>'<div class="hcard"><div class="why">'+esc(h.hold)+'</div><div><b>'+usd(h.total_cents)+'</b> · '+esc(h.item||'cart')+' at '+esc(h.merchant)+'</div><div class="meta">'+esc(h.requester)+' asked'+(h.payer?' · '+esc(h.payer)+' paid':'')+' · '+when(h.created_at)+(h.fingerprint?' · card '+esc(h.fingerprint):'')+(h.payer_email?' · '+esc(h.payer_email):'')+'</div><div class="row"><button class="ab go" data-act="release" data-id="'+h.id+'">Looks fine, release</button><button class="ab no" data-act="refund" data-id="'+h.id+'">Refund</button>'+(h.fingerprint?'<button class="ab" data-act="blockcard" data-v="'+esc(h.fingerprint)+'" data-id="'+h.id+'">Refund + block card</button>':'')+'</div></div>').join(''):'<p class="muted">Nothing held. 🎉</p>';
@@ -465,6 +483,7 @@ document.addEventListener('click',async e=>{
     if(a==='clearreports')await post('/v1/admin/carts/'+b.dataset.id+'/clear-reports');
     if(a==='refund')await post('/v1/admin/carts/'+b.dataset.id+'/refund');
     if(a==='dismiss')await post('/v1/admin/carts/'+b.dataset.id+'/dismiss');
+    if(a==='returnclose')await post('/v1/admin/carts/'+b.dataset.id+'/return-close');
     if(a==='priceclaim')await post('/v1/admin/carts/'+b.dataset.id+'/price-claimed');
     if(a==='pricedismiss')await post('/v1/admin/carts/'+b.dataset.id+'/price-dismiss');
     if(a==='cover'){const v=prompt('How much should Spot cover on this order, in dollars? (up to $25; the payer isn’t charged)');if(!v){b.disabled=false;return}const r=await post('/v1/admin/carts/'+b.dataset.id+'/cover',{cents:Math.round(parseFloat(v.replace(/[^0-9.]/g,''))*100)});alert(r.retried?'Covered. Spot is retrying the order now.':'Covered. Tap Try again on the order to retry.')}

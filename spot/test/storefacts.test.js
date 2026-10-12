@@ -24,7 +24,7 @@ const TECOVAS = { price_adjustment: true, adjustment_days: 14, adjustment_how: '
 test('a policy is kept only with a source on the store’s own site, and sane numbers', () => {
   assert.equal(siteOf(BOOTS), 'tecovas.com');
   assert.equal(siteOf('https://www.marksandspencer.co.uk/x'), 'marksandspencer.co.uk');
-  assert.deepEqual(policyFrom(TECOVAS, 'tecovas.com'), { ...TECOVAS, adjustment_how: 'email support with your order number', ship_days_min: null, ship_days_max: null, free_shipping_over: null });
+  assert.deepEqual(policyFrom(TECOVAS, 'tecovas.com'), { ...TECOVAS, adjustment_how: 'email support with your order number', returns_how: null, returns_url: null, ship_days_min: null, ship_days_max: null, free_shipping_over: null });
   assert.deepEqual((({ ship_days_min, ship_days_max, free_shipping_over }) => ({ ship_days_min, ship_days_max, free_shipping_over }))(policyFrom({ ...TECOVAS, ship_days_min: 5, ship_days_max: 2, free_shipping_over: 75 }, 'tecovas.com')), { ship_days_min: 2, ship_days_max: 5, free_shipping_over: 7500 });
   assert.equal(policyFrom({ ...TECOVAS, source_url: 'https://www.reddit.com/r/boots' }, 'tecovas.com'), null, 'not the store’s page');
   assert.equal(policyFrom({ ...TECOVAS, source_url: 'http://tecovas.com/p' }, 'tecovas.com'), null, 'https only');
