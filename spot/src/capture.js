@@ -278,9 +278,12 @@ export async function pageSearch({ title, url }, { fetchImpl = fetch, key = proc
         const original = https(r?.thumbnail?.original);
         const thumb = https(r?.thumbnail?.src);
         const logo = r?.thumbnail?.logo || LOGO.test(original || '');
-        return { url: https(r?.url), name, image_url: logo ? null : original || thumb, thumb: logo ? null : thumb, score: titleMatch(title, name), same: bare(r?.url) === bare(url) };
+        // Brand sites title a page "Pehu | Maui Jim": weigh the name and the
+        // link's own words, without the brand the site already is.
+        const said = `${name} ${slugOf(r?.url)}`;
+        return { url: https(r?.url), name, image_url: logo ? null : original || thumb, thumb: logo ? null : thumb, score: Math.max(titleMatch(title, name), titleMatch(sansSite(title, root), said)), same: bare(r?.url) === bare(url), said };
       })
-      .filter((r) => r.url && r.image_url && rootOf(hostOf(r.url)) === root && !looksLikeListing(r.url) && namesIt(specific, r.name));
+      .filter((r) => r.url && rootOf(hostOf(r.url)) === root && !looksLikeListing(r.url) && namesIt(specific, r.said));
     const hit = found.find((r) => r.same && r.score >= 0.4) || found.filter((r) => r.score >= 0.6).sort((a, b) => b.score - a.score)[0];
     return hit ? { url: hit.url, title: hit.name, image_url: hit.image_url, thumb: hit.thumb } : null;
   } catch {
@@ -289,6 +292,19 @@ export async function pageSearch({ title, url }, { fetchImpl = fetch, key = proc
     clearTimeout(timer);
   }
 }
+// A page address's words: /us/en/sunglasses/pehu-polarized/MJ602.html → "us en sunglasses pehu polarized mj602".
+const slugOf = (u) => {
+  try {
+    return decodeURIComponent(new URL(u).pathname).replace(/\.(html?|php|aspx?)$/i, '').replace(/[^a-z0-9]+/gi, ' ');
+  } catch {
+    return '';
+  }
+};
+// The name without the words the site's own name already says.
+const sansSite = (title, root) => {
+  const label = String(root).split('.')[0].replace(/[^a-z0-9]/g, '');
+  return String(title || '').split(/\s+/).filter((w) => !(w.length > 2 && label.includes(w.toLowerCase().replace(/[^a-z0-9]/g, '')))).join(' ') || title;
+};
 // "Original Wayfarer Sunglasses - Walmart.com" → "Original Wayfarer Sunglasses".
 function pageTitle(t, root) {
   const label = String(root).split('.')[0].replace(/[^a-z0-9]/g, '');
@@ -1104,7 +1120,7 @@ Use empty or null for anything the page doesn't show or couldn't be opened.`;
 //   { type: 'pick', option } | { type: 'outfit', outfit }   each once its store check is back,
 //                                                  with its photo (no photo: not shown)
 //   { type: 'done', kind, count, not_found?, warning? }
-export const FIRST_BATCH = 6; // quick to write; the shelf asks for more as they swipe
+export const FIRST_BATCH = 8; // quick to write (picks with no real photo or page are left out); the shelf asks for more as they swipe
 const CHECK_MS = 9000; // one pick's store check, at most
 const CHECK_WAIT_MS = 10_000; // store checks still out after the answer get this long
 
@@ -1229,11 +1245,15 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
       // Brave's copy of the product's page: its photo, and its link if the
       // one we had wasn't the product's own page.
       // The store's own image address; Brave's copy of it if that won't load here.
-      const img = (await verify(found.image_url)) ? found.image_url : found.thumb;
+      const img = found.image_url && (await verify(found.image_url)) ? found.image_url : found.thumb;
       if (img) {
         if (found.url !== it.url) (it = { ...it, url: found.url }), (stock = 'unknown');
         it = { ...it, image_url: img };
         from = 'index';
+      } else if (found.url !== it.url) {
+        // The product's page, with no photo in the index: Spot reads that page.
+        const read = await withPhoto({ ...d, items: [{ ...it, url: found.url, image_url: null }, ...d.items.slice(1)] }, page, undefined, null).catch(() => null);
+        if (read?.items[0].image_url) (it = { ...it, url: found.url, image_url: read.items[0].image_url }), (stock = 'unknown'), (from = 'page');
       }
     }
     if (!it.image_url && d0.hint_image && (await verify(d0.hint_image))) (it = { ...it, image_url: d0.hint_image }), (from = 'noted');
@@ -1248,7 +1268,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     let why = d0.why;
     // The store's own price beats the estimate search gave.
     if (r?.price_cents && why) why = why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null;
-    return { merchant: d.merchant, item: { ...it, image_url: it.image_url }, stock, why };
+    return { merchant: d.merchant, item: { ...it, image_url: it.image_url.replace(/^http:\/\//i, 'https://') }, stock, why };
   };
   // Each check, capped, so one slow store doesn't hold the rest.
   const checked = (d) => {
