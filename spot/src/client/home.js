@@ -272,6 +272,7 @@
   const tile = (o) => '<span class="stile" style="--h:' + hue(o.merchant.name) + '"><b>' + esc(initials(o.merchant.name)) + '</b><small>' + esc(o.merchant.name || '') + '</small></span>';
   const photo = (o, cls) => '<div class="' + cls + '" data-url="' + esc(o.item.url || '') + '">' + (o.item.image_url ? '<img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + tile(o) + '</div>';
   const buttons = (k, sold) =>
+    (sold ? '' : '<div class="wpay" data-k="' + k + '" hidden></div>') +
     '<button class="btn small pay" type="button" data-act="pay" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Pay with Spot</button><div class="wallets">' + wallet + '</div>' +
     '<button class="btn ghost small" type="button" data-act="ask" data-k="' + k + '"' + (sold ? ' disabled' : '') + '>Let someone else pay</button>';
   const total = (items) => items.reduce((n, o) => n + (o.item.price_cents || 0), 0);
@@ -403,6 +404,7 @@
     if (i === 0) T.rail.scrollLeft = 0; // the first pick in view, not the placeholder it pushed along
     headline(T);
     T.sync();
+    walletWatch();
     return true;
   }
   // A store check, or the AI's read of a page Spot couldn't open, came back:
@@ -453,6 +455,7 @@
         if (el) el.outerHTML = (e.items ? outfitCard : productCard)(e, t + ':' + i, i === 0);
       });
     });
+    walletWatch();
   }
   // One batch into a turn, card by card as it streams.
   async function fill(T, body) {
@@ -528,17 +531,20 @@
   // One tap from the shelf: the link is made right here (a look from several
   // stores is one link, one payment); then either they pay it themselves, or
   // it's ready to send.
-  async function oneTap(act, k, btn) {
-    const { T, e } = entryOf(k);
-    const pieces = (e.items || [e]).filter((o) => o.stock !== 'out');
-    if (!(await ensureName())) return;
+  // A card's pieces, a cart per store (sold-out ones left out).
+  function storesOf(e) {
     const byStore = new Map();
-    for (const o of pieces) {
+    for (const o of (e.items || [e]).filter((x) => x.stock !== 'out')) {
       const key = o.merchant.url || o.merchant.name;
       if (!byStore.has(key)) byStore.set(key, { merchant: o.merchant, items: [], extras_cents: 0 });
       byStore.get(key).items.push({ ...o.item, quantity: o.item.quantity || 1 });
     }
-    const stores = [...byStore.values()];
+    return [...byStore.values()];
+  }
+  async function oneTap(act, k, btn) {
+    const { T, e } = entryOf(k);
+    if (!(await ensureName())) return;
+    const stores = storesOf(e);
     const last = stores.pop();
     const label = btn.textContent;
     btn.disabled = true;
@@ -572,6 +578,77 @@
       btn.disabled = false;
       btn.textContent = label;
     }
+  }
+  // ─── Apple Pay / Google Pay on the card ──────────────────────────────────
+  // A card in view gets the wallet's own button: one tap, the wallet has the
+  // address, Spot prices it for that ZIP, makes the order and charges exactly
+  // what the sheet said. Pay with card stays for everyone else.
+  // The card is watched (the slot itself has no size until a wallet shows).
+  const seenCards = 'IntersectionObserver' in window ? new IntersectionObserver((xs) => xs.forEach((x) => x.isIntersecting && mountWallet(x.target)), { threshold: 0.5 }) : null;
+  function walletWatch() {
+    if (!seenCards || !window.spotWallet) return;
+    for (const slot of document.querySelectorAll('#thread .wpay:not([data-on])')) (slot.dataset.on = '1'), seenCards.observe(slot.closest('.pc'));
+  }
+  async function mountWallet(card) {
+    seenCards.unobserve(card);
+    const slot = card.querySelector('.wpay');
+    if (!slot) return;
+    const k = slot.dataset.k;
+    const stores = () => storesOf(entryOf(k).e);
+    if (!stores().length) return;
+    let q;
+    try {
+      q = await api('/v1/quote', { stores: stores() });
+      if (!q.publishable_key || !q.orderable) return;
+      await window.spotStripe();
+    } catch {
+      return;
+    }
+    window.spotWallet({
+      el: slot,
+      pk: q.publishable_key,
+      amount: q.total_cents,
+      quote: (a) => api('/v1/quote', { stores: stores(), shipping: a }),
+      pay: (sh, id) => walletOrder(stores(), sh, id),
+      done: async (p) => {
+        say('paid! ordering it…');
+        await api(p.paid, {}).catch(() => {});
+        location.href = p.manage;
+      },
+      // Checkout came to another total: its own page shows it, one more tap pays.
+      failed: (m, p) => (p ? (location.href = p.manage) : say(m)),
+      shown: (yes) => {
+        slot.hidden = !yes;
+        const pay = card?.querySelector('[data-act="pay"]');
+        if (pay && yes) (pay.textContent = 'Pay with card'), pay.classList.add('ghost');
+        const w = card?.querySelector('.wallets');
+        if (w) w.hidden = yes;
+      },
+    });
+  }
+  // The order behind a wallet payment: a cart (or one per store), for them,
+  // shipped where the wallet said, priced as the sheet showed.
+  async function walletOrder(stores, ship, quoteId) {
+    if (!me.name) (me = { ...me, name: String(ship.name || '').split(' ')[0] || 'Me' }), save('spot:me', me);
+    const requester = { name: me.name, email: me.email || ship.email };
+    const mine = load('spot:mine', []);
+    if (stores.length > 1) {
+      const r = await api('/v1/bundles', { requester, note: '', stores, for: 'self' });
+      mine.unshift({ token: r.bundle.token, manage: r.manage_link, title: r.bundle.items[0].title + ' +' + (r.bundle.items.length - 1), merchant: r.bundle.stores.length + ' stores', total: r.bundle.cart_cents, at: Date.now() });
+      save('spot:mine', mine.slice(0, 20));
+      const b = '/v1/bundles/' + r.bundle.token;
+      await api(b + '/manage/prepare', { k: r.manage_key, shipping: ship });
+      const c = await api(b + '/pay', {});
+      return { client_secret: c.client_secret, total_cents: r.bundle.total_cents, manage: r.manage_link, paid: b + '/paid' };
+    }
+    const st = stores[0];
+    const r = await api('/v1/carts', { requester, merchant: st.merchant, items: st.items, extras_cents: 0, settle: 'card', for: 'self', note: '' });
+    mine.unshift({ token: r.cart.token, manage: r.manage_link, title: st.items[0].title, merchant: st.merchant.name, total: r.cart.cart_cents, at: Date.now() });
+    save('spot:mine', mine.slice(0, 20));
+    const c = '/v1/carts/' + r.cart.token;
+    await api(c + '/manage/prepare', { k: r.manage_key, shipping: ship, quote_id: quoteId });
+    const p = await api(c + '/pay', {});
+    return { client_secret: p.client_secret, total_cents: p.total_cents, manage: r.manage_link, paid: c + '/paid' };
   }
   // Their name goes on the link ("Kyle asked for…"): asked once, remembered.
   function ensureName() {
