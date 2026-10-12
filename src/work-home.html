@@ -143,7 +143,7 @@ $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f
   try{
     const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;
     $('#app').classList.remove('hidden');
-    $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet();
+    $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet()+(h.me&&h.me.firstName?', '+h.me.firstName:'');
     renderFunnel(o,h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
     // late invoices join the list once Money answers (it is not waited for: the page is already up, and most people are not allowed in)
     api('/v1/money/overview').then(m=>{MONEY=m;renderReach(o,h)}).catch(()=>{});

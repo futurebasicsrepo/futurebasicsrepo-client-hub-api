@@ -1884,5 +1884,18 @@ await journey('J158', 'Start project in a browser: a won deal offers it, one cli
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#ddlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the deal window fits the screen'); } finally { await pc.close(); }
 });
 
+await journey('J161', 'Home greets the teammate by first name: Good morning, Colby; from their name, or their email when the name is empty', async () => {
+  const r = await room('161', { wait: false }), W = 'http://work.localhost:3123', tag = `gr${stamp}`;
+  const mk = (name, email) => sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${email}','${name}','admin') returning id`).split('\n')[0];
+  const colbyId = mk('Colby Rowe', `colby-${tag}@thefuturebasics.com`), noName = mk('', `mary.jones${tag}@thefuturebasics.com`);
+  const colby = await forge({ sub: colbyId, clientId: r.clientId, role: 'admin', email: `colby-${tag}@thefuturebasics.com` }), mary = await forge({ sub: noName, clientId: r.clientId, role: 'admin', email: `mary.jones${tag}@thefuturebasics.com` });
+  ok((await call('/v1/admin/home', { token: colby })).json.me.firstName === 'Colby' && (await call('/v1/admin/home', { token: mary })).json.me.firstName === 'Mary', 'the home data carries the first name, from the name or else the email');
+  for (const [tok, want] of [[colby, 'Colby'], [mary, 'Mary']]) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, tok);
+    const page = await ctx.newPage(); await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
+    const t = (await page.innerText('#hello')).trim(); ok(new RegExp(`^Good (morning|afternoon|evening), ${want}$`).test(t), `${want} is greeted as “Good …, ${want}”`, t); await ctx.close();
+  }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);

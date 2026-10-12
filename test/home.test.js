@@ -35,3 +35,17 @@ test('greeting follows the hour and people who are already clients are not new l
   assert.equal(greeting(14), 'Good morning'); assert.equal(greeting(20), 'Good afternoon'); assert.equal(greeting(2), 'Good evening');
   assert.deepEqual(LEAD_SOURCES_EXCLUDED, ['hub', 'import']);
 });
+
+test('a teammate is greeted by their first name, from their name or else their email', async () => {
+  const { firstName } = await import('../src/home.js');
+  assert.equal(firstName('Colby Rowe', 'colby@thefuturebasics.com'), 'Colby');
+  assert.equal(firstName('colby', ''), 'Colby');
+  assert.equal(firstName('', 'mary.jones@thefuturebasics.com'), 'Mary');
+  assert.equal(firstName('kyle@thefuturebasics.com', 'kyle@thefuturebasics.com'), 'Kyle');
+  assert.equal(firstName('  Danielle   Smith ', 'x@y.z'), 'Danielle');
+  assert.equal(firstName('Zoë Álvarez', ''), 'Zoë');
+  assert.equal(firstName('McKenzie Lee', ''), 'McKenzie', 'a name with its own capitals is left as written');
+  assert.equal(firstName('', 'ops-12345@thefuturebasics.com'), 'Ops');
+  assert.equal(firstName('', ''), '');
+  assert.equal(firstName('1234', ''), '');
+});
