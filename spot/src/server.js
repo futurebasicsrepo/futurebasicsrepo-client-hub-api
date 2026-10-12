@@ -944,7 +944,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const ownerBundle = (req, b) => ({ bundle: publicBundle(b), stores: b.carts.map((c) => ownerCart(c)) });
   app.get('/v1/bundles/:token/manage', async (req, reply) => {
     reply.header('cache-control', 'no-store');
-    return ownerBundle(req, spot.loadBundleManaged(req.params.token, keyOf(req)));
+    const b = spot.loadBundleManaged(req.params.token, keyOf(req));
+    // Saved details to pre-fill the address, when the owner is signed in (as on a cart's page).
+    const uid = accounts.userIdOf(req);
+    const owner = b.carts[0]?.user_id;
+    const u = uid && (!owner || owner === uid) ? db.users.byId(uid) : null;
+    return { ...ownerBundle(req, b), profile: u ? { email: u.email, name: u.name || null, shipping: u.shipping || null } : null };
   });
   app.post('/v1/bundles/:token/manage/prepare', async (req) => ownerBundle(req, spot.prepareBundle(req.params.token, keyOf(req), req.body?.shipping)));
   app.post('/v1/bundles/:token/manage/cancel', async (req) => ownerBundle(req, spot.cancelBundle(req.params.token, keyOf(req))));
