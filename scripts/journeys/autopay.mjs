@@ -42,7 +42,7 @@ const mock = http.createServer((req, res) => {
       if (!/^Bearer AT\d$/.test(auth)) return send(res, 401, { errors: [{ code: 'AuthenticationFailed' }] });
       if (!rid) return send(res, 400, { errors: [{ message: 'Request-Id is required' }] });
       let m = /^\/quickbooks\/v4\/customers\/(\d+)\/(cards|bank-accounts)\/createFromToken$/.exec(u.pathname);
-      if (m && req.method === 'POST') { const t = qbm.tokens[j().value]; if (!t) return send(res, 400, { errors: [{ code: 'PMT-5000', message: 'unknown token' }] }); delete qbm.tokens[j().value]; const id = `${m[2] === 'cards' ? 'CARD' : 'BANK'}${Object.keys(qbm.instruments).length + 1}`; qbm.instruments[id] = { ...t, customer: m[1] };
+      if (m && req.method === 'POST') { const t = qbm.tokens[j().value]; if (!t) return send(res, 400, { errors: [{ code: 'PMT-5000', message: 'unknown token', detail: 'unknown token' }] }); delete qbm.tokens[j().value]; const id = `${m[2] === 'cards' ? 'CARD' : 'BANK'}${Object.keys(qbm.instruments).length + 1}`; qbm.instruments[id] = { ...t, customer: m[1] };
         return send(res, 201, m[2] === 'cards' ? { id, number: `xxxxxxxxxxxx${t.number.slice(-4)}`, cardType: t.number.startsWith('4') ? 'Visa' : 'MasterCard', expMonth: '08', expYear: '2031' } : { id, accountNumber: `xxxxx${t.number.slice(-4)}`, accountType: t.type }); }
       m = /^\/quickbooks\/v4\/customers\/(\d+)\/(cards|bank-accounts)\/([A-Z0-9]+)$/.exec(u.pathname); if (m && req.method === 'DELETE') { qbm.deleted.push(m[3]); return send(res, 204, {}); }
       if (u.pathname === '/quickbooks/v4/payments/charges' && req.method === 'POST') {
@@ -111,6 +111,7 @@ try {
     ok((await P(A.token, '/payment-method', { body: { kind: 'bank', token: await tokenFor(BANK) } })).status === 422, 'a bank account is refused when the agreement is paid by card');
     ok((await P(A.token, '/payment-method', { body: { kind: 'card', token: 'no spaces allowed!!' } })).status === 422, 'something that is not a token is refused');
     ok((await P(A.token, '/payment-method', { body: { kind: 'card', token: 'tok_neverissued' } })).status === 422, 'a token the provider does not know is refused with a plain message');
+    const evs = (await K(`/${A.id}`)).json.events; ok(evs.some(e => e.kind === 'payment_method_failed' && /unknown token/.test(e.detail) && /PMT-5000/.test(e.detail)) && (await outbox('')).some(e => /Saving payment details failed/.test(e.subject) && /unknown token/.test(e.text)), 'what the provider said is on the contract\'s trail and in an email to staff, so the cause is visible without digging in logs');
     const saved = await P(A.token, '/payment-method', { body: { kind: 'card', token: await tokenFor(CARD) } });
     ok(saved.status === 200 && saved.json.method.label === 'Visa ending 1111' && saved.json.method.last4 === '1111', 'the card is saved on file and shown as "Visa ending 1111"', saved.json);
     ok(!qbm.seen.some(b => b.includes('4111111111111111')) && sql(`select count(*) from contract_payment_methods where consent::text like '%4111111%' or label like '%4111111%'`) === '0' && !JSON.stringify(saved.json).includes('4111111111111111'), 'the card number never reached us: not in anything we sent, stored or returned');

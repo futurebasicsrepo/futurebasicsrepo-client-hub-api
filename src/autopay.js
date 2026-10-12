@@ -67,7 +67,12 @@ export function createAutopay(d) {
     const c = r.content.client;
     let cust; try { cust = await ensureCustomer(rd.ctx, { company: c.company, contact_name: c.signerName, contact_email: c.signerEmail, address: c.address }); } catch (e) { await money.qbFailed(e); return { error: 'Could not reach the payment service. Try again in a minute.', status: 502 }; }
     let inst; try { inst = await proc.saveInstrument(rd.ctx, { customerId: cust.id, kind: k, token, requestId: `fb-pm-${r.id}-${randomUUID()}` }); }
-    catch (e) { log.warn?.({ payments: true, err: String(e.message).slice(0, 200) }, 'saving payment details failed'); return { error: e.status === 400 || e.status === 422 ? 'Those payment details were not accepted. Check them and try again.' : 'Could not save the payment details. Try again in a minute.', status: e.status === 400 || e.status === 422 ? 422 : 502 }; }
+    catch (e) {
+      log.warn?.({ payments: true, err: String(e.message).slice(0, 200), code: e.code, intuit_tid: e.tid }, 'saving payment details failed');
+      // what Intuit said goes on the contract's trail and to staff (never the client's details: Intuit's message does not contain them), so the cause can be seen without digging in logs
+      await ev(r.id, 'payment_method_failed', { actor: sig.name, detail: `${String(e.message).replace(/^QuickBooks Payments: /, '').slice(0, 300)}${e.code ? ` [${e.code}]` : ''}${e.tid ? ` (intuit_tid ${e.tid})` : ''}`, meta: { kind: k, status: e.status || null } });
+      await notifyStaff(`Saving payment details failed for ${r.number} (${c.company})`, `<p>${emailEscape(String(e.message).slice(0, 400))}${e.code ? ` <code>${emailEscape(e.code)}</code>` : ''}${e.tid ? ` (intuit_tid ${emailEscape(e.tid)})` : ''}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
+      return { error: e.status === 400 || e.status === 422 ? 'Those payment details were not accepted. Check them and try again.' : 'Could not save the payment details. Try again in a minute.', status: e.status === 400 || e.status === 422 ? 422 : 502 }; }
     const authorization = { by: sig.name, at: new Date().toISOString(), ip, ua: String(ua).slice(0, 300), contractHash: r.doc_hash, text: authorizationText(k, r.content.provider?.name || 'Future Basics') };
     const db = await pool.connect(); let old = null;
     try {
