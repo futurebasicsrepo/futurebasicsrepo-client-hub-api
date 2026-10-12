@@ -51,6 +51,11 @@ export function createInvites(db) {
     waiting: db.raw.prepare('SELECT COUNT(DISTINCT email) AS n FROM signups WHERE email NOT IN (SELECT email FROM invites)'),
   };
   const live = (inv) => Boolean(inv && !inv.revoked_at);
+  const accountEmail = (userId) => {
+    const u = db.users.byId(userId);
+    if (!u?.email || db.identities.providersOf(userId).includes('facebook')) return null;
+    return normEmail(u.email);
+  };
   const admit = (userId, email) => {
     if (userId && email && !db.state.get(admitKey(userId))) db.state.set(admitKey(userId), { email: normEmail(email), at: Date.now() });
   };
@@ -94,16 +99,24 @@ export function createInvites(db) {
     // Once in, the account stays in: on any device, however they sign in
     // (passkey, text, Google), until the invite is withdrawn.
     admit,
+    // A browser with the team's preview link, signed in: that account is in too.
+    admitPreview(userId) {
+      if (userId && !db.state.get(admitKey(userId))) db.state.set(admitKey(userId), { via: 'preview', at: Date.now() });
+    },
     userOk(userId) {
       if (!userId) return false;
-      const email = provenEmail(db, userId);
+      // The account's email: confirmed by Spot, or one that could only have
+      // got there by a code, Google or joining accounts (a Facebook sign-up's
+      // email was never checked, so it doesn't count).
+      const email = provenEmail(db, userId) || accountEmail(userId);
       if (email && live(q.get.get(email))) {
         q.opened.run(Date.now(), email);
         admit(userId, email);
         return true;
       }
-      const was = db.state.get(admitKey(userId))?.email;
-      return Boolean(was) && live(q.get.get(was));
+      const was = db.state.get(admitKey(userId));
+      if (was?.via === 'preview') return true;
+      return Boolean(was?.email) && live(q.get.get(was.email));
     },
   };
 }
