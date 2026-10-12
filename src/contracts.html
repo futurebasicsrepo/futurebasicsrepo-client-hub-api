@@ -253,12 +253,18 @@ async function sendFlow(){const r=await save();if(r.problems&&r.problems.length)
   $('#dlg').showModal()}
 
 // ---------- settings ----------
-async function loadSettings(){const s=(await api('/v1/contracts/settings')).settings;
+async function loadSettings(){const all=await api('/v1/contracts/settings'),s=all.settings,pay=all.payments||{processor:'quickbooks',stripe:{},quickbooks:{}};
   $('#t-settings').innerHTML=`<div class="panel"><h2>Who signs, and where</h2><p class="note">These fill the contract wording. Have a lawyer read the standard clauses before the first contract goes out: they are a sensible starting point, not legal advice.</p>
    <div class="g2" style="margin-top:12px"><label class="f"><span>Company name in contracts</span><input class="t" id="sProv" value="${esc(s.providerName)}"></label><label class="f"><span>Address</span><input class="t" id="sAddr" value="${esc(s.providerAddress)}"></label>
    <label class="f"><span>Who signs for us</span><input class="t" id="sSigner" value="${esc(s.signerName)}"></label><label class="f"><span>Their title</span><input class="t" id="sTitle" value="${esc(s.signerTitle)}"></label>
    <label class="f"><span>Governing law (state)</span><input class="t" id="sLaw" value="${esc(s.governingLaw)}" placeholder="Pennsylvania"></label></div>
-   <div class="acts" style="margin-top:12px"><button class="btn go" id="sSave">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>`;
+   <div class="acts" style="margin-top:12px"><button class="btn go" id="sSave">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>
+   <div class="panel" style="margin-top:14px"><h2>How clients pay automatically</h2><p class="note">Where a client's card or bank account is kept and charged. Every payment that is taken is booked in QuickBooks either way, so your accountant keeps reconciling there. Details already saved stay with the one that holds them.</p>
+    <div class="opt" style="margin:10px 0;display:grid;gap:8px"><label><input type="radio" name="proc" value="quickbooks" ${pay.processor==='quickbooks'?'checked':''}> <b>QuickBooks Payments</b> <span class="note">cards and bank debits, on our own form. ${pay.quickbooks.ready?'Ready.':'Not ready: connect QuickBooks with payments switched on (Money, Settings).'}</span></label>
+    <label><input type="radio" name="proc" value="stripe" ${pay.processor==='stripe'?'checked':''}> <b>Stripe</b> <span class="note">cards, Apple Pay, Google Pay and bank debits (ACH), on Stripe's secure page. ${pay.stripe.configured&&pay.stripe.webhook?`Ready (${pay.stripe.live?'live':'test'} keys).`:'Not ready: add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET to the service.'}</span></label></div>
+    ${pay.stripe.configured?`<p class="note">In Stripe (Developers, Webhooks) send <code>checkout.session.completed</code>, <code>setup_intent.succeeded</code>, <code>payment_intent.succeeded</code>, <code>payment_intent.payment_failed</code> and <code>payment_intent.processing</code> to <code>${esc(pay.stripe.webhookUrl)}</code>.</p>`:''}
+    <div class="acts"><button class="btn go" id="pSave">Use this</button><span class="msg" id="pMsg" role="status"></span></div></div>`;
+  $('#pSave').onclick=async()=>{try{await api('/v1/contracts/autopay/processor',{method:'PUT',body:{processor:document.querySelector('input[name=proc]:checked').value}});$('#pMsg').className='msg ok';$('#pMsg').textContent='Saved.'}catch(x){$('#pMsg').className='msg bad';$('#pMsg').textContent=x.message}};
   $('#sSave').onclick=async()=>{try{await api('/v1/contracts/settings',{method:'PUT',body:{providerName:$('#sProv').value,providerAddress:$('#sAddr').value,signerName:$('#sSigner').value,signerTitle:$('#sTitle').value,governingLaw:$('#sLaw').value}});$('#sMsg').className='msg ok';$('#sMsg').textContent='Saved.'}catch(x){$('#sMsg').className='msg bad';$('#sMsg').textContent=x.message}}}
 
 const LOAD={list:loadList,settings:loadSettings};
