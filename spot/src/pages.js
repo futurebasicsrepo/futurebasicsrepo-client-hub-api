@@ -66,6 +66,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .pieces{list-style:none;margin:6px 0 0;padding:0;font-size:13px}.pieces li{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px dashed var(--line)}.pieces a{color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.pieces span{color:var(--muted);white-space:nowrap}.pieces li.gone a{text-decoration:line-through;color:var(--muted)}
 .pc.gone{opacity:.55}.used{margin:-4px 0 10px 38px;font-size:13px;font-weight:600;color:var(--ok)}.profilechip{margin:8px 2px 0}.profilechip a{color:inherit;font-weight:700}.pieces i{font-style:normal;color:var(--muted)}.pr small{font-size:13px;font-weight:600;color:var(--muted)}
 .wallets{font-size:12px;font-weight:600;color:var(--muted);text-align:center;margin-top:5px}
+.wpay{min-height:48px;margin-bottom:8px}.wpay[hidden]{display:none}
 .cardlinks{display:flex;justify-content:space-between;gap:8px;margin-top:10px;font-size:13px}.cardlinks a{color:var(--muted);font-weight:600}.cardlinks .textlink{font-size:13px}
 .shelf.looks .pc{flex-basis:84%}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:30;max-width:520px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(0,0,0,.15)}.sheet label{font-weight:800;font-size:18px}.sheet p{margin:4px 0 10px}.sheetx{position:absolute;top:10px;right:14px;border:0;background:none;font-size:24px;color:var(--muted);cursor:pointer}
@@ -218,7 +219,7 @@ ${provider === 'sandbox' ? '<div class="sandbox">Test mode: no real money moves.
 </section>
 <footer>Spot · cart links for anyone, anywhere<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
 <script>window.SPOT=${json({ feeBps: cfg.feeBps, feeFixed: cfg.feeFixedCents, cardPct: cfg.cardPctBps || 0, cardFixed: cfg.cardFixedCents || 0, max: cfg.maxCartCents, cushionBps: AUTH_TOLERANCE_BPS, cushionMax: AUTH_TOLERANCE_MAX_CENTS, provider })}</script>
-<script src="/client/home.js" defer></script>`;
+${provider === 'stripe' ? '<script src="/client/wallet.js" defer></script>' : ''}<script src="/client/home.js" defer></script>`;
   return shell({ title: 'Spot: cover my cart', body, head: `<meta name="description" content="Turn any cart into a link someone else can pay."><style>${HOME_CSS}</style>` });
 }
 
@@ -540,13 +541,13 @@ const THX_CSS = `
 `;
 
 // ─── Requester page ─────────────────────────────────────────────────────────
-export function managePage({ token, provider }) {
+export function managePage({ token, provider, pk = null }) {
   const body = `
 <a class="brand" href="/"><span class="dot"></span>Spot</a>
 <div id="app"><p class="muted" style="margin-top:28px">Loading…</p></div>
 <footer>Keep this page private. Anyone with it can manage this Spot.<br><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>`;
   const script = `${SHARED_JS}
-const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)};
+const TOKEN=${json(token)},K=new URLSearchParams(location.search).get('k'),MODE=${json(provider)},PK=${json(pk)};
 const STATUS={open:['Waiting for someone to cover it',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Covered! Ready to order','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
 const FLIGHT_STATUS={open:['Ready for you',''],paid:['Paid, booking…','warn'],completed:['Booked','ok'],canceled:['Canceled',''],expired:['Expired',''],refunded:['Not booked, refunded','']};
 const SELF_STATUS={open:['Ready for you',''],paid:['Paid! getting ready to order…','warn'],card_issued:['Paid, ordering it for you','ok'],completed:['Ordered','ok'],canceled:['Canceled',''],expired:['Expired',''],refunding:['Refunding…','warn'],refunded:['Refunded','']};
@@ -587,12 +588,14 @@ function finishPanel(c,notice){
   else if(tr)h+='<section class="card">'+trainCard(c.train)+totals(c)+'</section>';
   else h+='<section class="card">'+c.items.map(i=>'<div class="item"><div class="thumb" '+(i.image_url?'style="background-image:url(&quot;'+esc(String(i.image_url).replace(/["'()\\\\\\s]/g,function(c){return '%'+c.charCodeAt(0).toString(16).padStart(2,'0')}))+'&quot;)"':'')+'></div><div><div class="t">'+esc(i.title)+'</div><div class="v">'+esc([i.variant,i.quantity>1?'Qty '+i.quantity:''].filter(Boolean).join(' · '))+'</div></div><div class="p">'+usd(i.price_cents*i.quantity)+'</div></div>').join('')
     +'<div style="margin-top:8px">'+(c.extras_cents?'<div class="sum"><span>Shipping + tax'+(c.shipping_confirmed?'':' (est.)')+'</span><span>'+usd(c.extras_cents)+'</span></div>':'')+(c.cushion_cents?'<div class="sum"><span>Tax and price changes (unused comes back)</span><span>up to '+usd(c.cushion_cents)+'</span></div>':'')+(c.fee_cents?'<div class="sum"><span>Spot fee</span><span>'+usd(c.fee_cents)+'</span></div>':'')+'<div class="sum total"><span>Total</span><span>'+usd(c.total_cents)+'</span></div></div></section>';
+  // Apple Pay / Google Pay up top: the wallet has the address, one tap pays.
+  const wallet=MODE==='stripe'&&PK&&!fl&&!tr&&c.settle==='card'&&!c.bundle_id&&Boolean(window.spotWallet);
   const payLabel=(MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents));
   if(fl)h+='<section class="card"><h2>Who’s flying</h2><form id="finish">'+travelersForm(c,s)
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+payLabel+'</button><div class="err" id="finErr"></div></form>'
     +'<p class="small muted">Spot re-checks the fare with '+esc(c.merchant.name)+' before you pay, then books it the moment you do. You’ll get the confirmation code right here.</p></section>'
     +'<button class="btn ghost" id="cancel">Not now</button>';
-  else h+='<section class="card">'+(tr?'<h2>Who’s riding</h2><form id="finish">'+ridersForm(c,s):'<h2>Ship it to</h2><form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
+  else h+='<section class="card">'+(tr?'<h2>Who’s riding</h2><form id="finish">'+ridersForm(c,s):'<h2>Ship it to</h2>'+(wallet?'<div id="wallet" hidden><div id="walletBtn"></div><p class="small muted" style="text-align:center;margin:12px 0 4px">or type where it ships</p></div>':'')+'<form id="finish">'+field('name','Full name','name','required')+'<div style="height:6px"></div>'+field('line1','Street','address-line1','required')+'<div style="height:6px"></div>'+field('line2','Apt, suite (optional)','address-line2')
     +'<div class="row" style="margin-top:6px">'+field('city','City','address-level2','required')+field('state','State','address-level1','required')+field('postal_code','ZIP','postal-code','required inputmode="numeric"')+'</div>'
     +'<div class="row" style="margin-top:6px">'+field('email','Email for the receipt','email','required type="email"')+field('phone','Phone (optional)','tel','type="tel"')+'</div>')
     +'<div id="payEl" style="margin-top:12px"></div><button class="btn" id="payBtn">'+(SAVED?'Approve '+usd(c.total_cents)+' · '+esc(SAVED.label):c.settle==='direct'?'Pay at '+esc(c.merchant.name):MODE==='sandbox'?'Pay '+usd(c.total_cents)+' (test)':'Continue to pay '+usd(c.total_cents))+'</button>'+(SAVED?'<button type="button" id="otherPay" style="display:block;margin:10px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer">Pay another way</button>':'')+'<div class="err" id="finErr"></div></form>'
@@ -601,6 +604,15 @@ function finishPanel(c,notice){
     +'<button class="btn ghost" id="cancel">Not now</button>';
   $('#app').innerHTML=h;
   clearInterval(tick);
+  if(wallet)spotWallet({el:$('#walletBtn'),pk:PK,amount:c.total_cents,
+    quote:(a)=>api('/v1/carts/'+TOKEN+'/manage/quote',{k:K,shipping:a}),
+    pay:async(sh,q)=>{try{localStorage.setItem('spot:ship',JSON.stringify(sh))}catch{}
+      await api('/v1/carts/'+TOKEN+'/manage/prepare',{k:K,shipping:sh,quote_id:q});return api('/v1/carts/'+TOKEN+'/pay',{})},
+    done:async()=>{await api('/v1/carts/'+TOKEN+'/paid',{}).catch(()=>{});
+      for(let i=0;i<20;i++){const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(r.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}draw()},
+    // Checkout came to another total: the page shows it, the next tap pays it.
+    failed:async(m,p)=>{if(p){const r=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K)).catch(()=>null);if(r)return finishPanel(r.cart,m)}$('#finErr').textContent=m},
+    shown:(y)=>{const w=$('#wallet');if(w)w.hidden=!y}});
   if(held){const upd=()=>{const el=$('#left');if(!el)return clearInterval(tick);const ms=c.expires_at-Date.now();if(ms<=0){clearInterval(tick);return draw()}const m=Math.floor(ms/60000),sec=Math.floor(ms/1000)%60;el.textContent=(m>=60?Math.floor(m/60)+'h '+(m%60)+'m':m+':'+String(sec).padStart(2,'0'))};upd();tick=setInterval(upd,1000)}
   const on=(id,fn)=>{const el=$('#'+id);if(el)el.onclick=fn};
   on('cancel',async()=>{if(confirm('Drop this cart?')){await api('/v1/carts/'+TOKEN+'/manage/cancel',{k:K});draw()}});
@@ -760,7 +772,7 @@ async function draw(){
   if(['open','paid','refunding'].includes(c.status)||live)setTimeout(function again(){const typing=['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);typing?setTimeout(again,4000):draw()},live?2000:4000);
 }
 draw().catch(e=>{$('#app').innerHTML=K?'<p class="err">'+esc(e.message)+'</p>':'<section class="card"><h2>Sign in to see this Spot</h2><p class="muted">It’s in your Spot account.</p><a class="btn" href="/signin?next='+encodeURIComponent(location.pathname)+'">Sign in</a></section>'});`;
-  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script>' : ''}<style>${THX_CSS}.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  return shell({ title: 'My Spot', body, script, head: `<meta name="robots" content="noindex"><meta name="referrer" content="no-referrer">${provider === 'stripe' ? '<script src="https://js.stripe.com/v3/"></script><script src="/client/wallet.js"></script>' : ''}<style>${THX_CSS}.pill.warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .leg{padding:10px 0;border-bottom:1px dashed var(--line)}.leg:last-of-type{border-bottom:0}
 .route{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin:6px 0}.route b{display:block;font-size:20px}.route span{font-size:13px;color:var(--muted);font-weight:700;letter-spacing:.04em}
 .route .line{position:relative;text-align:center;min-width:0}.route .line i{display:block;height:2px;background:var(--line);margin:0 4px;position:relative}.route .line i::after{content:'✈';position:absolute;right:-4px;top:-10px;font-style:normal;font-size:14px;color:var(--accent,#ff5a36)}

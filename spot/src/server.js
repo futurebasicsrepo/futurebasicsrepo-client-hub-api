@@ -229,6 +229,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     capture: limit('capture', Number(process.env.SPOT_CAPTURE_PER_10M || 30), 600_000),
     create: limit('create', Number(process.env.SPOT_CREATE_PER_10M || 20), 600_000),
     pay: limit('pay', 60, 600_000),
+    // Wallet prices: one per card in view, more as the address changes.
+    quote: limit('quote', Number(process.env.SPOT_QUOTE_PER_10M || 200), 600_000),
     thanks: limit('thanks', 20, 600_000),
     // Each of these makes Spot fetch from somewhere else.
     check: limit('check', 60, 600_000),
@@ -257,6 +259,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
 
   const homeJs = readFileSync(new URL('./client/home.js', import.meta.url));
   app.get('/client/home.js', async (req, reply) => reply.type('text/javascript; charset=utf-8').header('cache-control', 'public, max-age=300').send(homeJs));
+  const walletJs = readFileSync(new URL('./client/wallet.js', import.meta.url));
+  app.get('/client/wallet.js', async (req, reply) => reply.type('text/javascript; charset=utf-8').header('cache-control', 'public, max-age=300').send(walletJs));
 
   // ─── Pages ────────────────────────────────────────────────────────────────
   // ─── Website ──────────────────────────────────────────────────────────────
@@ -491,7 +495,7 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       if (!req.query.k && !accounts.userIdOf(req)) return reply.redirect(`/signin?next=${encodeURIComponent(req.url)}`);
       return html(reply, notFoundPage(), 404);
     }
-    return html(reply, managePage({ token: req.params.token, provider: provider.name }));
+    return html(reply, managePage({ token: req.params.token, provider: provider.name, pk: provider.name === 'stripe' ? env.STRIPE_PUBLISHABLE_KEY || null : null }));
   });
 
   // ─── Capture ──────────────────────────────────────────────────────────────
@@ -646,6 +650,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
 
   // ─── Multi-store asks (bundles) ──────────────────────────────────────────
+  // Apple Pay on a product card: what it comes to before any cart exists,
+  // and for a city/state/ZIP, priced the way checkout will price it.
+  app.post('/v1/quote', async (req) => {
+    limits.quote(req);
+    const r = await spot.previewTotals({ stores: req.body?.stores, shipping: req.body?.shipping || null, buyerIp: req.ip });
+    return { ...r, publishable_key: provider.name === 'stripe' ? env.STRIPE_PUBLISHABLE_KEY || null : null };
+  });
   app.post('/v1/bundles', async (req, reply) => {
     limits.create(req);
     const { bundle, manageKey } = spot.createBundle(req.body, { ip: req.ip, userId: accounts.userIdOf(req) });
@@ -793,7 +804,12 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     };
   });
 
-  app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping)) }));
+  app.post('/v1/carts/:token/manage/prepare', async (req) => ({ cart: ownerCart(spot.prepare(req.params.token, keyOf(req), req.body?.shipping, { quoteId: req.body?.quote_id })) }));
+  // Apple Pay on the cart's own page: the total for the ZIP the wallet shares.
+  app.post('/v1/carts/:token/manage/quote', async (req) => {
+    limits.quote(req);
+    return spot.previewCart(req.params.token, keyOf(req), req.body?.shipping, { buyerIp: req.ip });
+  });
   app.post('/v1/carts/:token/manage/reassign', async (req) => {
     const cart = spot.reassign(req.params.token, keyOf(req));
     const link = urlFor(req, `/c/${cart.token}`);

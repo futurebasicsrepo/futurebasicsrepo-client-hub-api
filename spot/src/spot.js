@@ -20,6 +20,20 @@ export function quoteKey(cart) {
   return createHash('sha256').update(JSON.stringify([cart.merchant?.url || '', items, [s.line1, s.line2 || '', s.city, s.state, s.postal_code]])).digest('hex').slice(0, 16);
 }
 
+// Apple Pay's sheet shows a total before checkout has a street: priced for a
+// city, state and ZIP, remembered so the order is charged exactly that.
+const QUOTE_WAIT_MS = 9000;
+const PREVIEW_TTL_MS = 20 * 60_000;
+function previewKey(url, items, ship) {
+  const list = (items || []).map((i) => [i.title, i.variant || '', i.quantity, i.price_cents, i.url || '']);
+  return createHash('sha256').update(JSON.stringify([url || '', list, ship.state, String(ship.postal_code).slice(0, 5)])).digest('hex').slice(0, 16);
+}
+// City, state and ZIP (all a wallet shares before the payer confirms).
+function partialShipping(s) {
+  const full = validateShipping({ name: 'Spot shopper', line1: '-', city: String(s?.city || '').trim() || '-', state: s?.state, postal_code: String(s?.postal_code || '').trim().slice(0, 5), email: 'quote@spotmeplease.com' });
+  return { ...full, line1: '' };
+}
+
 export function createSpot({ db, provider, flights = null, risk = null, cfg = config(), log = console, onCardIssued = () => {} }) {
   const hash = (k) => createHash('sha256').update(k).digest('hex');
   // Private links in notifications: an HMAC of the token stands in for the
@@ -36,6 +50,7 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
   // The Spot fee is per ask: a multi-store ask carries the $2 (and the card's
   // fixed fee: it's one payment) on its first store's cart; every store's
   // share still covers the card's percentage on its own amount.
+  const previews = new Map(); // quote id → a wallet's price for a ZIP
   const feeCfg = (bundleIndex) => (bundleIndex ? { ...cfg, feeBps: 0, feeFixedCents: 0, cardFixedCents: 0 } : cfg);
 
   function load(token) {
@@ -311,15 +326,23 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     onCardIssued,
 
     // "For me" carts: the requester confirms where it ships before paying.
-    prepare(token, key, shippingInput) {
+    prepare(token, key, shippingInput, { quoteId = null } = {}) {
       const cart = loadManaged(token, key);
       if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
       if (cart.kind === 'flight') throw new CartError('Flights don\'t ship. Add who\'s flying instead.', 400);
       if (cart.kind === 'train') throw new CartError('Train tickets don\'t ship. Add who\'s riding instead.', 400);
       const shipping = validateShipping(shippingInput);
-      const next = { ...cart, requester: { ...cart.requester, shipping, email: cart.requester.email || shipping.email } };
+      let next = { ...cart, requester: { ...cart.requester, shipping, email: cart.requester.email || shipping.email } };
+      // Priced for this ZIP a moment ago (the total Apple Pay showed): that
+      // price, marked as this address's quote so /pay doesn't price it again.
+      const p = quoteId && previews.get(String(quoteId));
+      if (p && Date.now() - p.at < PREVIEW_TTL_MS && p.key === previewKey(cart.merchant?.url, cart.items, shipping) && cart.settle === 'card' && (cart.kind || 'goods') === 'goods' && !cart.bundle_id) {
+        const at = Date.now();
+        const k = quoteKey(next);
+        next = { ...next, ...computeTotals(cart.items, p.extras_cents, 'card', cfg), ...(p.kind === 'quote' ? { quote: { total_cents: cart.subtotal_cents + p.extras_cents, key: k, at, for_zip: true } } : { estimate: { key: k, at, extras_cents: p.extras_cents } }) };
+      }
       if (!db.save(next, 'open')) throw new CartError('Cart changed, try again', 409);
-      db.event(cart.id, 'shipping_set');
+      db.event(cart.id, 'shipping_set', p ? { priced: p.kind, total_cents: next.total_cents } : undefined);
       return next;
     },
 
@@ -419,6 +442,63 @@ export function createSpot({ db, provider, flights = null, risk = null, cfg = co
     // requester, and the cart is priced at that, so Spot's card covers what
     // the store will really charge. Reused for 30 minutes while the items
     // and address stay the same; without an answer the estimate stands.
+    // Shipping and tax for `ship` the way checkout prices them: the store's
+    // own quote (in a few seconds at most), else the safe estimate for a
+    // store that can price its checkout. Null when neither applies.
+    async _priceFor(draft, ship, buyerIp) {
+      if (!this.quoter) return null;
+      let timer;
+      const q = await Promise.race([this.quoter(draft, ship, { buyerIp }).catch(() => null), new Promise((r) => (timer = setTimeout(r, QUOTE_WAIT_MS, null)))]);
+      clearTimeout(timer);
+      if (q) return { kind: 'quote', extras_cents: Math.max(0, q.total_cents - draft.subtotal_cents) };
+      if (this.quotable && (await this.quotable(draft).catch(() => false))) {
+        const room = Math.max(0, cfg.maxCartCents - draft.subtotal_cents);
+        return { kind: 'estimate', extras_cents: Math.max(draft.extras_cents || 0, Math.min(safeExtrasCents(draft.subtotal_cents, ship.state), room)) };
+      }
+      return null;
+    },
+    _remember(draft, ship, price) {
+      const id = randomBytes(12).toString('base64url');
+      const now = Date.now();
+      for (const [k, v] of previews) if (now - v.at > PREVIEW_TTL_MS || previews.size > 2000) previews.delete(k);
+      previews.set(id, { ...price, key: previewKey(draft.merchant?.url, draft.items, ship), at: now });
+      return id;
+    },
+    // What Spot would charge, before any cart exists (Apple Pay on a product
+    // card). Several stores: the multi-store total (it isn't re-priced at
+    // checkout). One store and a city/state/ZIP: priced like checkout, with a
+    // quote id for prepare() so /pay charges exactly this.
+    async previewTotals({ stores, shipping = null, buyerIp = null } = {}) {
+      const list = Array.isArray(stores) ? stores : [];
+      if (!list.length) throw new CartError('Nothing to price', 400);
+      if (list.length > MAX_BUNDLE_STORES) throw new CartError(`Up to ${MAX_BUNDLE_STORES} stores in one ask`);
+      const valid = list.map((st, i) => validateCart({ requester: { name: 'Spot' }, merchant: st?.merchant, items: st?.items, extras_cents: st?.extras_cents, settle: 'card', for: 'self' }, feeCfg(list.length > 1 ? i : 0)));
+      // Before an address: can Spot buy from every store here? (No wallet
+      // button for a card that would only fail once paid.)
+      const orderable = async () => (await Promise.all(valid.map((v) => Promise.resolve(this.canOrder(v)).catch(() => false)))).every(Boolean);
+      if (valid.length > 1) {
+        if (valid.reduce((n, v) => n + v.cart_cents, 0) > cfg.maxCartCents) throw new CartError(`Spot takes up to $${(cfg.maxCartCents / 100).toFixed(0)} per ask for now, across all its stores`);
+        const total_cents = valid.reduce((n, v) => n + v.total_cents, 0);
+        return shipping ? { total_cents } : { total_cents, orderable: await orderable() };
+      }
+      const v = valid[0];
+      if (!shipping) return { total_cents: v.total_cents, orderable: await orderable() };
+      const ship = partialShipping(shipping);
+      const price = await this._priceFor(v, ship, buyerIp);
+      if (!price) return { total_cents: v.total_cents };
+      return { total_cents: computeTotals(v.items, price.extras_cents, 'card', cfg).total_cents, quote_id: this._remember(v, ship, price) };
+    },
+    // The same for a cart that exists (Apple Pay on its own page).
+    async previewCart(token, key, shipping, { buyerIp = null } = {}) {
+      const cart = loadManaged(token, key);
+      if (cart.status !== 'open') throw new CartError(closedWhy(cart), 409);
+      if (cart.settle !== 'card' || (cart.kind || 'goods') !== 'goods' || cart.bundle_id) return { total_cents: cart.total_cents };
+      const ship = partialShipping(shipping);
+      const price = await this._priceFor(cart, ship, buyerIp);
+      if (!price) return { total_cents: cart.total_cents };
+      return { total_cents: computeTotals(cart.items, price.extras_cents, 'card', cfg).total_cents, quote_id: this._remember(cart, ship, price) };
+    },
+
     async confirmTotal(cart, { buyerIp = null } = {}) {
       if (!this.quoter || cart.status !== 'open' || cart.settle !== 'card' || (cart.kind || 'goods') !== 'goods' || cart.bundle_id || !cart.requester?.shipping) return cart;
       const key = quoteKey(cart);
