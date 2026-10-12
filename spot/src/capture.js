@@ -822,7 +822,7 @@ export function draftFromDescription(text) {
 // for Coachella") come back as outfits: whole looks, pieces from any store.
 const PRODUCT_HINT = `{"merchant_name": "", "merchant_url": "https://…", "product_url": "https://… its own page if you saw it, else the store page you found it on", "title": "its name as the store sells it (brand and model), not a description", "variant": "", "unit_price": "$0.00", "image_url": "https://… or empty", "why": "short reason, under 60 characters"}`;
 const LOOKUP_SCHEMA_HINT = `{"kind": "products", "products": [${PRODUCT_HINT}]}  or  {"kind": "outfits", "outfits": [{"name": "short look name", "why": "one line", "items": [${PRODUCT_HINT}]}]}`;
-export const MORE_MAX = 900; // what they said after the first ask: up to the last few follow-ups, one per line
+export const MORE_MAX = 1700; // what they said after the first ask: up to the last few follow-ups, one per line
 export const MAX_OPTIONS = 12; // per batch; the shelf asks for more as they swipe
 export const MAX_OUTFITS = 4;
 
