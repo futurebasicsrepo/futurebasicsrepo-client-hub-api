@@ -29,6 +29,9 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
 .tile .tr{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.tile .tr.up{color:var(--ok)}.tile .tr.down{color:var(--bad)}
 .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start;margin-bottom:16px}
 @media(max-width:960px){.cols{grid-template-columns:minmax(0,1fr)}}
+.acct{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:center;padding:12px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none}.acct:first-of-type{border-top:0}.acct:hover b{text-decoration:underline}.acct .needs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.unowned{display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}.take{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 12px}.take a{color:inherit}
+@media(max-width:700px){.acct{grid-template-columns:minmax(0,1fr)}.acct .needs{justify-content:flex-start}}
 .panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px)}
 .ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px;flex-wrap:wrap}
 .list{display:grid;margin-top:8px}
@@ -62,6 +65,10 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
 
     <section class="tiles" id="funnel" aria-label="This week"></section>
 
+    <section class="panel" id="myPanel"><div class="ph"><h2>My accounts</h2><span class="sub" id="myCount"></span></div>
+      <p class="sub" style="margin:0">The customers you own, with what each needs from you today. The first ones are waiting on you.</p>
+      <div id="myList"></div><div id="unownedBox"></div></section>
+
     <div class="cols">
       <section class="panel" id="reach"><div class="ph"><h2>Reach out today</h2><a class="sub" href="/sales#today">Everything in Sales ›</a></div><p class="sub" style="margin:0">Who is most likely to become a customer, and who has been waiting for an answer.</p><div class="list" id="reachList"></div></section>
       <section class="panel" id="protoPanel"><div class="ph"><h2>Prototypes that can close deals</h2><a class="sub" href="/builds/admin#builds">All builds ›</a></div><p class="sub" style="margin:0">Builds in progress and who has looked. Show a prospect something real.</p><div class="protos" id="protoList"></div><div id="showNow"></div></section>
@@ -77,7 +84,7 @@ h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
-async function api(path){const r=await fetch(path,{headers:{Authorization:'Bearer '+TOKEN()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{Authorization:'Bearer '+TOKEN(),...(o.body!==undefined?{'Content-Type':'application/json'}:{})},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong'),{status:r.status});return j}
 const money=c=>'$'+Math.round(Number(c||0)/100).toLocaleString();
 const ago=v=>{if(!v)return '';const d=(Date.now()-new Date(v))/864e5;return d<1?'today':d<2?'yesterday':Math.floor(d)+' days ago'};
 const SW=['discovery','prototype','build','review','launch','live','maintenance'];
@@ -131,6 +138,14 @@ function renderProjects(){
       <div class="mid"><div class="sub"><b style="color:var(--ink)">${esc(p.stageLabel||p.status)}</b>${p.quietDays>=7?` · quiet for ${p.quietDays} days`:''}</div>${mini}</div>
       <span class="chip ${p.waitingOnUs?'us':p.owner==='client'?'client':''}">${p.waitingOnUs?'Waiting on us':p.owner==='client'?'Client has it':'In progress'}</span></a>`}).join(''):`<p class="empty">${all.length?'Nothing matches this filter.':'No projects in flight. Start one from a client room.'}</p>`;
 }
+function renderMine(h){
+  const mine=h.myAccounts||[],un=h.unownedAccounts||[],need=mine.filter(a=>a.needsYou).length;
+  $('#myCount').textContent=mine.length?`${mine.length} account${mine.length===1?'':'s'}${need?` · ${need} need${need===1?'s':''} you`:' · nothing waiting'}`:'';
+  $('#myList').innerHTML=mine.length?mine.map(a=>`<a class="acct" href="/clients/${esc(a.id)}"><div><b>${esc(a.name)}</b><div class="sub">${a.projects} project${a.projects===1?'':'s'}${a.quietDays!=null?` · last message ${a.quietDays===0?'today':a.quietDays+' day'+(a.quietDays===1?'':'s')+' ago'}`:''}</div></div><div class="needs">${a.needs.length?a.needs.map(n=>`<span class="chip us">${esc(n)}</span>`).join(''):'<span class="chip">All clear</span>'}</div></a>`).join(''):'<p class="empty">No accounts are yours yet. When you win a deal press Start project on it, or take one of the accounts below.</p>';
+  $('#unownedBox').innerHTML=un.length?`<div class="unowned"><span class="sub">Accounts nobody owns yet:</span>${un.map(a=>`<span class="take"><a href="/clients/${esc(a.id)}">${esc(a.name)}</a><button class="btn sm" type="button" data-take="${esc(a.id)}" aria-label="Take ${esc(a.name)}">Take</button></span>`).join('')}</div>`:'';
+}
+$('#unownedBox').addEventListener('click',async e=>{const b=e.target.closest('[data-take]');if(!b)return;b.disabled=true;
+  try{await api('/v1/admin/clients/'+b.dataset.take+'/owner',{method:'PUT',body:{}});HOME=await api('/v1/admin/home');renderMine(HOME);renderProjects()}catch(x){b.disabled=false;b.textContent='Could not'}});
 function renderWait(h){
   const w=h.waiting,bits=[];
   if(w.approvals)bits.push(`<a class="chip us" href="/admin#approvals">${w.approvals} approval${w.approvals===1?'':'s'} waiting</a>`);
@@ -144,7 +159,7 @@ $('#projFilters').addEventListener('click',e=>{const b=e.target.closest('[data-f
     const [o,h]=await Promise.all([api('/v1/sales/overview'),api('/v1/admin/home')]);HOME=h;
     $('#app').classList.remove('hidden');
     $('#date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});$('#hello').textContent=greet()+(h.me&&h.me.firstName?', '+h.me.firstName:'');
-    renderFunnel(o,h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
+    renderFunnel(o,h);renderMine(h);renderReach(o,h);renderProtos(h);renderProjects();renderWait(h);
     // late invoices join the list once Money answers (it is not waited for: the page is already up, and most people are not allowed in)
     api('/v1/money/overview').then(m=>{MONEY=m;renderReach(o,h)}).catch(()=>{});
   }catch(x){$('#needSignin').classList.remove('hidden')}

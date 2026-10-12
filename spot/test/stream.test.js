@@ -496,3 +496,25 @@ test('a brand site’s page titled without the brand still counts, by its own li
   assert.equal(item.url, 'https://www.mauijim.com/us/en/sunglasses/pehu-polarized-sunglasses/MJ602.html');
   assert.equal(item.image_url, 'https://www.mauijim.com/pehu.jpg', 'https, so it shows on a secure page');
 });
+
+test('two looks can share a piece; a brand’s blog isn’t its store; a category link with CN= isn’t a product; no store name on the end of a name', async () => {
+  const heel = P(9, 'stevemadden');
+  const looks = { kind: 'outfits', outfits: [{ name: 'Satin', items: [P(1, 'ap'), heel] }, { name: 'Velvet', items: [P(2, 'lulus'), heel] }] };
+  const { client } = streamer([looks]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('fall wedding guest outfit', { client, fromUrl: slowPage(1), product: noShopify, resolve: async () => null, pdp: async () => null, photos: async () => null, verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  assert.deepEqual(events.filter((e) => e.type === 'outfit').map((e) => e.outfit.name).sort(), ['Satin', 'Velvet']);
+
+  const { pageSearch, looksLikeListing, withoutStore } = await import('../src/capture.js');
+  const brave = async () => ({ ok: true, json: async () => ({ web: { results: [{ title: 'Pehu Classic Polarized Sunglasses', url: 'https://livealoha.mauijim.com/spotlights/pehu-classic-polarized-sunglasses', thumbnail: { original: 'https://livealoha.mauijim.com/pehu.jpg' } }] } }) });
+  assert.equal(await pageSearch({ title: 'Maui Jim Pehu Polarized Sunglasses', url: 'https://www.mauijim.com' }, { fetchImpl: brave, key: 'k' }), null);
+  assert.equal(looksLikeListing('https://www.kohls.com/catalog/cowboy-boots-shoes.jsp?CN=Silhouette:Cowboy'), true);
+  assert.equal(looksLikeListing('https://en.pieddebiche-paris.com/catalog/p/arthur-blanc.html'), false);
+  assert.equal(withoutStore('Cleo + Wolf Ivy Western Boots | Boot Barn', 'Boot Barn'), 'Cleo + Wolf Ivy Western Boots');
+});

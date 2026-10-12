@@ -49,3 +49,14 @@ test('a teammate is greeted by their first name, from their name or else their e
   assert.equal(firstName('', ''), '');
   assert.equal(firstName('1234', ''), '');
 });
+
+test('an account row says what needs the owner in words, and the ones that need them sort first', async () => {
+  const { accountRow, orderAccounts } = await import('../src/home.js');
+  const NOW = Date.parse('2026-10-12T12:00:00Z');
+  const busy = accountRow({ id: 'a', name: 'Busy Co', projects: 2, waiting_on_us: 1, approvals: 2, tasks_due: 0, last_message_at: '2026-10-09T12:00:00Z' }, NOW);
+  assert.deepEqual(busy.needs, ['1 project waiting on you', '2 approvals waiting']); assert.equal(busy.needsYou, true); assert.equal(busy.quietDays, 3);
+  const calm = accountRow({ id: 'b', name: 'Calm Co', projects: 1, waiting_on_us: 0, approvals: 0, tasks_due: 0, last_message_at: null }, NOW);
+  assert.deepEqual([calm.needs, calm.needsYou, calm.quietDays], [[], false, null]);
+  const task = accountRow({ id: 'c', name: 'Alpha', projects: 1, waiting_on_us: 0, approvals: 0, tasks_due: 2 }, NOW); assert.deepEqual(task.needs, ['2 tasks due']);
+  assert.deepEqual(orderAccounts([calm, task, busy]).map(a => a.name), ['Busy Co', 'Alpha', 'Calm Co']);
+});

@@ -283,7 +283,7 @@ export async function pageSearch({ title, url }, { fetchImpl = fetch, key = proc
         const said = `${name} ${slugOf(r?.url)}`;
         return { url: https(r?.url), name, image_url: logo ? null : original || thumb, thumb: logo ? null : thumb, score: Math.max(titleMatch(title, name), titleMatch(sansSite(title, root), said)), same: bare(r?.url) === bare(url), said };
       })
-      .filter((r) => r.url && rootOf(hostOf(r.url)) === root && !looksLikeListing(r.url) && namesIt(specific, r.said));
+      .filter((r) => r.url && sameSite(r.url, url) && !looksLikeListing(r.url) && namesIt(specific, r.said));
     const hit = found.find((r) => r.same && r.score >= 0.4) || found.filter((r) => r.score >= 0.6).sort((a, b) => b.score - a.score)[0];
     return hit ? { url: hit.url, title: hit.name, image_url: hit.image_url, thumb: hit.thumb } : null;
   } catch {
@@ -299,6 +299,12 @@ const slugOf = (u) => {
   } catch {
     return '';
   }
+};
+// The store's own site, not another part of it (a brand's blog at
+// livealoha.mauijim.com is not www.mauijim.com).
+const sameSite = (a, b) => {
+  const h = (u) => hostOf(u).toLowerCase().replace(/^www\./, '');
+  return h(a) === h(b);
 };
 // The name without the words the site's own name already says.
 const sansSite = (title, root) => {
@@ -344,7 +350,7 @@ export async function imageOk(u, { fetchImpl = fetch } = {}) {
 // page ("hoodies under $50") instead of the product. Find the product it named
 // on that store: Shopify's own product search first, then the page's links.
 const EDITORIAL = /\/(learn|blogs?|articles?|guides?|expert-advice|stories|journal|news|reviews?|pages)(\/|$)/i;
-const LISTING = /\/(collections|category|categories|c|shop|browse|search|s)(\/|$)|[?&](q|k|query|keyword|keywords|searchterm|text|search)=|-l\d+\.html$/i;
+const LISTING = /\/(collections|category|categories|c|shop|browse|search|s)(\/|$)|[?&](q|k|query|keyword|keywords|searchterm|text|search|cn)=|-l\d+\.html$/i;
 export function looksLikeListing(url) {
   try {
     const u = new URL(url);
@@ -933,6 +939,13 @@ export const cleanVariant = (v) =>
     : v;
 // Models don't always use the exact keys asked for: take the usual synonyms.
 const first = (o, keys) => keys.map((k) => o[k]).find((v) => v != null && v !== '');
+// "… Western Boots | Boot Barn": the store's name isn't part of the product's.
+export const withoutStore = (t, store) => {
+  const name = typeof store === 'string' ? store.trim() : '';
+  if (!name) return t;
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(t).replace(new RegExp(`\\s+[|–—-]\\s*${esc}\\s*$`, 'i'), '').trim() || t;
+};
 // Search-result clutter in a name: "Options Options - Simple Modern 18oz…",
 // "Deal, Hawsaiy 12oz Kids Bottle… From $8".
 export const tidyTitle = (t) =>
@@ -953,7 +966,7 @@ function pick(p, text) {
     image_url: first(p, ['image_url', 'image', 'photo', 'img']),
   };
   if (typeof p.title !== 'string' || typeof p.merchant_name === 'object') p.title = typeof p.title === 'string' ? p.title : '';
-  p.title = tidyTitle(p.title);
+  p.title = withoutStore(tidyTitle(p.title), p.merchant_name);
   const d = draftFromLookup({ found: true, ...p }, text);
   if (d.source !== 'lookup') return null;
   const img = typeof p.image_url === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(p.image_url) ? p.image_url.slice(0, 1000) : null;
@@ -1291,7 +1304,18 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     const pieces = first(o, ['items', 'pieces', 'products']);
     if (Array.isArray(pieces)) {
       if (kind === 'products') return;
-      const items = pieces.slice(0, 6).map((p) => pick(p, text)).filter(Boolean).filter(fresh);
+      // A piece can be in more than one look (the same heel goes with two
+      // dresses): only repeats within this look, or already-seen links, are out.
+      const inLook = new Set();
+      const items = pieces
+        .slice(0, 6)
+        .map((p) => pick(p, text))
+        .filter(Boolean)
+        .filter((d) => {
+          const k = `${d.items[0].url}|${String(d.items[0].title).toLowerCase()}`;
+          if ((d.items[0].url && avoid.includes(d.items[0].url)) || inLook.has(k)) return stats.repeats++, false;
+          return inLook.add(k), seen.add(k), true;
+        });
       if (items.length < 2) return stats.unusable++;
       kind = 'outfits';
       if (!taken++) emit({ type: 'checking' });

@@ -750,8 +750,8 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
   await page.goto(`${W}/admin`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await page.waitForSelector('.fbside nav', { timeout: 5000 });
   const labels = await page.$$eval('.fbside a[data-nav] .lbl', e => e.map(x => x.textContent));
-  ok(['Home', 'Inbox', 'Clients', 'Contacts', 'Pipeline', 'Tasks', 'Factories', 'Waiting on approval', 'Production attention', 'Builds', 'Platform health', 'Connections', 'Payment gate'].every(l => labels.includes(l)), 'the menu has Home, Inbox, Customers, Production, Builds showcase and Settings', labels);
-  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Customers|Production|Builds showcase|Settings', 'grouped under four headings');
+  ok(['My day', 'Messages', 'Chats', 'Contacts', 'Clients', 'Tasks', 'Fair contacts', 'Sales today', 'Pipeline', 'Opportunities', 'Intelligence', 'Site prototypes', 'Builds showcase', 'Automations', 'Press', 'Projects', 'Waiting on approval', 'Production attention', 'Factories', 'Assistant learning', 'Payment gate', 'Platform health', 'Connections'].every(l => labels.includes(l)), 'every place the old menu led to is still in the menu', labels);
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health', 'grouped by stage: Inbox, People, Win, Deliver, Money, Sites and health');
   ok(await page.$eval('header', h => h.getBoundingClientRect().left) <= 1 && await page.$eval('#app', a => a.getBoundingClientRect().left) >= 230, 'the header spans the page and the content sits to the right of the menu');
   ok(await page.locator('.homenav, a.platformlink').count() === 0, 'the old header links are gone');
   ok(await page.locator('.fbside a.on:not(.gicon)').count() === 1 && /Clients/.test(await page.locator('.fbside a.on:not(.gicon)').innerText()), 'at the top of the clients and production page, Clients is marked as where you are');
@@ -776,9 +776,9 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   await page.click('.fbside a[data-href="/sales#pipeline"]:not(.gicon)'); await page.waitForSelector('#t-pipeline:not(.hidden)', { timeout: 10000 });
   ok(/Pipeline/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && page.url().endsWith('#pipeline'), 'Pipeline switches the tab without reloading, and the address follows');
   await page.click('.tab[data-t="tasks"]'); await sleep(300); ok(/Tasks/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'using the page tabs moves the marker too');
-  await page.click('.fbside a[data-href="/builds/admin#updates"]:not(.gicon)'); await page.waitForURL(/\/builds\/admin#updates/, { timeout: 10000 }); await page.waitForSelector('#t-updates:not(.hidden)', { timeout: 10000 });
-  ok(/What.s new/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'What’s new opens the builds page on that tab');
-  ok(await page.locator('.fbside .grp:has-text("Customers")').count() === 1, 'the same menu is on the builds page');
+  await page.click('.fbside a[data-href="/builds/admin#builds"]:not(.gicon)'); await page.waitForURL(/\/builds\/admin#builds/, { timeout: 10000 }); await page.waitForSelector('#t-builds:not(.hidden)', { timeout: 10000 });
+  ok(/Builds showcase/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'Builds showcase opens the builds page, menu marked');
+  ok(await page.locator('.fbside .grp:has-text("People")').count() === 1, 'the same menu is on the builds page');
   await page.click('.fbside a[data-href="/admin#approvals"]:not(.gicon)'); await page.waitForURL(/\/admin/, { timeout: 10000 }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
   await sleep(1200); ok(await page.$eval('#approvals', e => { const t = e.getBoundingClientRect().top; return t >= -5 && t < 300; }), 'arriving from another page at a section scrolls to it once the page has loaded');
 
@@ -798,7 +798,7 @@ await journey('J118', 'the work console menu down the left: grouped, the same on
   const ph = await pc.newPage(); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message)); const over = () => ph.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForSelector('.tiles', { timeout: 15000 });
   ok(await ph.locator('.fbburger').isVisible() && await ph.$eval('.fbside', e => e.getBoundingClientRect().right) <= 1 && await over() <= 1, 'on a phone the menu is closed behind a button and nothing sticks out', await over());
-  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /customers/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
+  await ph.click('.fbburger'); await sleep(350); ok(await ph.$eval('.fbside', e => e.getBoundingClientRect().left) >= -1 && /people/i.test(await ph.innerText('.fbside')), 'the button opens the drawer');
   await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || S}/j118-phone.png` }).catch(() => {});
   // on a short phone the drawer scrolls under a finger to its last item, and a drag on the dimmed page does not move the page behind it
   await ph.setViewportSize({ width: 390, height: 600 }); await sleep(300); const cdp = await pc.newCDPSession(ph);
@@ -1344,7 +1344,7 @@ await journey('J133', 'the work home in a browser: the week at a glance, who to 
   const sgn = sql(`insert into intel_signals(source,external_id,url,title,summary,scored_at,relevant,score,model,status) values('reddit','ui-home-${tag}','https://example.com/ui-home-${tag}','Salon needs an app ${tag}','A salon owner needs a booking app',now(),true,100,'fixture','new') returning id`).split('\n')[0];
   await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden) .tile', { timeout: 15000 });
   ok(await page.locator('#funnel .tile').count() === 4 && /Good (morning|afternoon|evening)/.test(await page.innerText('#hello')), 'the home greets and shows four numbers for the week');
-  ok(/Home/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks Home');
+  ok(/My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the left menu marks My day');
   ok(await page.locator('#aLead').getAttribute('href') === '/sales#contacts' && /builds\/admin\?new=1/.test(await page.locator('#aProto').getAttribute('href')), 'the three quick actions are there: add a lead, new prototype, new project');
   const row = page.locator(`#reachList .row:has-text("Lena ${tag}")`); ok(await row.count() === 1 && /No reply yet/i.test(await row.innerText()), 'a lead nobody has answered is in "Reach out today"');
   const srow = page.locator(`#reachList .row:has-text("Salon needs an app ${tag}")`); ok(await srow.count() === 1 && /Post · 100/i.test(await srow.innerText()) && await srow.getAttribute('href') === `/intel?signal=${sgn}`, 'one Today list: a post worth a look sits beside the tasks and leads, and links to that post in Intelligence');
@@ -1895,6 +1895,46 @@ await journey('J161', 'Home greets the teammate by first name: Good morning, Col
     const page = await ctx.newPage(); await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#app:not(.hidden)', { timeout: 15000 });
     const t = (await page.innerText('#hello')).trim(); ok(new RegExp(`^Good (morning|afternoon|evening), ${want}$`).test(t), `${want} is greeted as “Good …, ${want}”`, t); await ctx.close();
   }
+});
+
+await journey('J160', 'My accounts on Home: the customers you own with what each needs from you, the ones nobody owns can be taken, only team members can own an account, and the menu is by stage', async () => {
+  const r = await room('160', { wait: false }), W = 'http://work.localhost:3123', tag = `ma${stamp}`;
+  const mkUser = (n, e) => sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${e}','${n}','admin') returning id`).split('\n')[0];
+  const oliveId = mkUser('Olive Owner', `olive-${tag}@thefuturebasics.com`), patId = mkUser('Pat Other', `pat-${tag}@thefuturebasics.com`);
+  const olive = await forge({ sub: oliveId, clientId: r.clientId, role: 'admin', email: `olive-${tag}@thefuturebasics.com` }), pat = await forge({ sub: patId, clientId: r.clientId, role: 'admin', email: `pat-${tag}@thefuturebasics.com` });
+  const mkClient = (name, owner) => sql(`insert into clients(name,slug,status,owner_id) values('${name} ${tag}','${name.toLowerCase().replace(/ /g, '-')}-${tag}','active',${owner ? `'${owner}'` : 'null'}) returning id`).split('\n')[0];
+  const mkProj = (cid, name) => sql(`insert into projects(client_id,name,status,milestone,kind,stage) values('${cid}','${name}','active','Build','software','build') returning id`).split('\n')[0];
+  const busy = mkClient('Busy Bakery', oliveId), calm = mkClient('Calm Cafe', oliveId), free = mkClient('Free Florist', null);
+  const pBusy = mkProj(busy, 'Busy site'); mkProj(calm, 'Calm site'); mkProj(free, 'Free site');
+  sql(`insert into project_messages(project_id,client_id,author_role,body) values('${pBusy}','${busy}','client','When can we see it?')`);
+  const H = (t, path = '/home') => call('/v1/admin' + path, { token: t });
+
+  const h = (await H(olive)).json;
+  ok(h.myAccounts.length === 2 && h.myAccounts[0].name === `Busy Bakery ${tag}` && h.myAccounts[0].needsYou && h.myAccounts[0].needs[0] === '1 project waiting on you' && !h.myAccounts[1].needsYou, 'my accounts lists mine, the one waiting on me first', JSON.stringify(h.myAccounts));
+  ok(h.unownedAccounts.some(a => a.id === free) && !h.unownedAccounts.some(a => a.id === busy), 'accounts nobody owns are listed apart');
+  ok((await H(pat)).json.myAccounts.length === 0, 'someone else sees none of mine as theirs');
+
+  ok((await call(`/v1/admin/clients/${free}/owner`, { token: r.token, method: 'PUT', body: {} })).status === 403 && (await call(`/v1/admin/clients/not-an-id/owner`, { token: pat, method: 'PUT', body: {} })).status === 404, 'a client cannot take an account and a bad address is not found');
+  ok((await call(`/v1/admin/clients/${free}/owner`, { token: pat, method: 'PUT', body: { userId: r.clientId } })).status === 404, 'only a member of the team can be made owner');
+  const take = await call(`/v1/admin/clients/${free}/owner`, { token: pat, method: 'PUT', body: {} }); ok(take.status === 200 && take.json.ownerId === patId && sql(`select (owner_id='${patId}')::text from clients where id='${free}'`) === 'true', 'taking an account makes you the owner');
+  ok((await H(pat)).json.myAccounts.some(a => a.id === free) && !(await H(olive)).json.unownedAccounts.some(a => a.id === free), 'it moves into my accounts and out of the unowned list');
+  const give = await call(`/v1/admin/clients/${free}/owner`, { token: olive, method: 'PUT', body: { userId: oliveId } }); ok(give.status === 200 && give.json.ownerId === oliveId, 'an owner can be changed to another team member');
+  const none = await call(`/v1/admin/clients/${free}/owner`, { token: olive, method: 'PUT', body: { userId: null } }); ok(none.status === 200 && none.json.ownerId === null, 'and removed');
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, olive);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message));
+  await page.goto(`${W}/home`, { waitUntil: 'networkidle' }); await page.waitForSelector('#myList .acct', { timeout: 15000 });
+  const t = await page.innerText('#myPanel');
+  ok(/My accounts/i.test(t) && /Busy Bakery/i.test(t) && /1 project waiting on you/i.test(t) && /All clear/i.test(t) && /Accounts nobody owns/i.test(t) && /Free Florist/i.test(t), 'Home shows My accounts with what each needs and the accounts nobody owns', t.slice(0, 300));
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-home.png` }).catch(() => {});
+  await page.click(`[data-take] >> nth=0`); await page.waitForFunction(() => !document.querySelector('#unownedBox [data-take]') || document.querySelectorAll('#myList .acct').length >= 3, null, { timeout: 8000 });
+  ok(await page.locator('#myList .acct').count() >= 3, 'pressing Take moves the account into my accounts on the page');
+  ok((await page.$$eval('.fbside .grp > span', e => e.map(x => x.textContent))).join('|') === 'Inbox|People|Win|Deliver|Money|Sites and health' && /My day/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()), 'the menu is by stage and marks My day');
+  await page.click('.fbside a[data-href="/home#projPanel"]:not(.gicon)'); await sleep(500);
+  ok(/Projects/.test(await page.locator('.fbside a.on:not(.gicon)').first().innerText()) && await page.locator('#projPanel').isVisible(), 'Projects in the menu goes to the projects on Home');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, olive); await ph.goto(`${W}/home`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#myList .acct', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j160-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
 await browser.close();
