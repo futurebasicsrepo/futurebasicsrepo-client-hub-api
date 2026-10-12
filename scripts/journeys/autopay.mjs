@@ -40,7 +40,8 @@ const mock = http.createServer((req, res) => {
     }
     if (u.pathname.startsWith('/quickbooks/v4/')) {
       if (!/^Bearer AT\d$/.test(auth)) return send(res, 401, { errors: [{ code: 'AuthenticationFailed' }] });
-      if (!rid) return send(res, 400, { errors: [{ message: 'Request-Id is required' }] });
+      if (!rid) return send(res, 400, { errors: [{ code: 'PMT-4000', message: 'Request-Id is required', detail: 'requestId' }] });
+      if (rid.length > 40) return send(res, 400, { errors: [{ code: 'PMT-4000', message: 'requestId is too long', detail: 'requestId' }] }); // what Intuit does
       let m = /^\/quickbooks\/v4\/customers\/(\d+)\/(cards|bank-accounts)\/createFromToken$/.exec(u.pathname);
       if (m && req.method === 'POST') { const t = qbm.tokens[j().value]; if (!t) return send(res, 400, { errors: [{ code: 'PMT-5000', message: 'unknown token', detail: 'unknown token' }] }); delete qbm.tokens[j().value]; const id = `${m[2] === 'cards' ? 'CARD' : 'BANK'}${Object.keys(qbm.instruments).length + 1}`; qbm.instruments[id] = { ...t, customer: m[1] };
         return send(res, 201, m[2] === 'cards' ? { id, number: `xxxxxxxxxxxx${t.number.slice(-4)}`, cardType: t.number.startsWith('4') ? 'Visa' : 'MasterCard', expMonth: '08', expYear: '2031' } : { id, accountNumber: `xxxxx${t.number.slice(-4)}`, accountType: t.type }); }
@@ -118,7 +119,7 @@ try {
     const am = sql(`select kind||'|'||last4||'|'||instrument_id||'|'||(consent->>'by')||'|'||(consent->>'text' like '%charge this card%')::text from contract_payment_methods where contract_id='${A.id}' and status='active'`); ok(am === 'card|1111|CARD1|Pat Payer|true', 'we keep the provider\'s id, the last four digits and the authorization that was shown', am);
 
     // saving the card took the deposit that was already due, straight away, once, and booked it
-    const ch1 = qbm.charges; ok(ch1.length === 1 && ch1[0].body.amount === '600.00' && ch1[0].body.cardOnFile === 'CARD1' && /^fb-ch-/.test(ch1[0].rid), 'the deposit was taken as soon as the card was saved ($600.00, with its own request id)', ch1.map(c => [c.body.amount, c.rid]));
+    const ch1 = qbm.charges; ok(ch1.length === 1 && ch1[0].body.amount === '600.00' && ch1[0].body.cardOnFile === 'CARD1' && /^fb-[0-9a-f]{36}$/.test(ch1[0].rid), 'the deposit was taken as soon as the card was saved ($600.00, with its own request id)', ch1.map(c => [c.body.amount, c.rid]));
     ok(qbm.invoices.length === 1 && qbm.payments.length === 1 && qbm.payments[0].body.TotalAmt === 600 && qbm.payments[0].body.Line[0].LinkedTxn[0].TxnId === qbm.invoices[0].id && qbm.payments[0].body.PaymentRefNum === 'CH1', 'it is recorded in QuickBooks as a payment on that invoice, with the charge id', qbm.payments.map(p => p.body));
     ok(sql(`select count(*) from money_payments where qb_id='${qbm.payments[0].id}:${qbm.invoices[0].id}' and source='quickbooks' and method='card' and amount_cents=60000`) === '1', 'and in our ledger, once, under the key the QuickBooks sync uses');
     ok(sql(`select status from money_invoices where contract_id='${A.id}' and contract_seq=1`) === 'paid', 'the invoice is paid');

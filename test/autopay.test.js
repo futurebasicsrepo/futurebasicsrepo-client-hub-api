@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { planDue, authorizationText, MAX_ATTEMPTS } from '../src/autopay.js';
-import { luhn, abaOk, tokensUrl, saveInstrument, charge, status } from '../src/qb-payments.js';
+import { luhn, abaOk, tokensUrl, saveInstrument, charge, status, requestIdFor } from '../src/qb-payments.js';
 import { qbConfig, authUrl, SCOPE, PAYMENT_SCOPE } from '../src/quickbooks.js';
 
 const sched = [{ seq: 1, amountCents: 50000, falls: '2026-01-10' }, { seq: 2, amountCents: 25000, falls: '2026-02-10' }, { seq: 3, amountCents: 25000, falls: null }];
@@ -84,4 +84,18 @@ test('a card payment answers at once; a bank debit is pending until it settles; 
   b.answers.push({ status: 200, body: { id: 'E1', status: 'DECLINED' } }); assert.equal((await status(b.ctx, { kind: 'bank', chargeId: 'E1' })).status, 'declined');
   b.answers.push({ status: 400, body: { errors: [{ code: 'PMT-4000', message: 'bad', detail: 'The amount is invalid' }] } });
   await assert.rejects(() => charge(b.ctx, { kind: 'card', instrumentId: 'C1', amountCents: 1, requestId: 'q4' }), e => e.status === 400 && /The amount is invalid/.test(e.message) && e.code === 'PMT-4000');
+});
+
+test('the Request-Id sent to Intuit is never longer than 40 characters, and the same attempt always gets the same one', async () => {
+  const long = `fb-ch-0b1f3a52-6a1e-4c0f-9c3a-5a7a0d3a9a11-12-2`;
+  assert.ok(long.length > 40); assert.ok(requestIdFor(long).length <= 40); assert.equal(requestIdFor(long), requestIdFor(long)); assert.notEqual(requestIdFor(long), requestIdFor(long.replace(/-2$/, '-3')));
+  assert.equal(requestIdFor('short-id'), 'short-id'); assert.ok(requestIdFor('').length <= 40);
+  const b = bank(); b.answers.push({ status: 201, body: { id: 'C1', number: 'xxxxxxxxxxxx4242', cardType: 'Visa' } });
+  await saveInstrument(b.ctx, { customerId: '55', kind: 'card', token: 'tok_123456789', requestId: `fb-pm-${'a'.repeat(36)}-${'b'.repeat(36)}` });
+  assert.ok(b.calls[0].headers['Request-Id'].length <= 40, b.calls[0].headers['Request-Id']);
+  b.answers.push({ status: 201, body: { id: 'CH1', status: 'CAPTURED' } });
+  await charge(b.ctx, { kind: 'card', instrumentId: 'C1', amountCents: 100, requestId: long });
+  const again = b.calls.length; b.answers.push({ status: 201, body: { id: 'CH1', status: 'CAPTURED' } });
+  await charge(b.ctx, { kind: 'card', instrumentId: 'C1', amountCents: 100, requestId: long });
+  assert.equal(b.calls[1].headers['Request-Id'], b.calls[again].headers['Request-Id']);
 });
