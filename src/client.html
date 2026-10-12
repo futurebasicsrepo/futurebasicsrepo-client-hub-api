@@ -450,5 +450,6 @@ header{display:flex;align-items:center;gap:20px}header .homelink{color:inherit;t
     requestForm.onsubmit=async event=>{event.preventDefault();requestMessage.textContent='Submitting…';try{await api('/v1/requests',{method:'POST',body:JSON.stringify({productId:requestProduct.value,type:requestType.value,title:requestTitle.value,details:requestDetails.value})});requestMessage.textContent='Request submitted.';requestForm.reset();setTimeout(()=>requestDialog.close(),700);dashboard=await api('/v1/dashboard');renderList()}catch(error){requestMessage.textContent=error.message}};
     (async()=>{await loadConfig();try{await exchangePreview()}catch(error){showError(error)}if(token)await load(true)})();
   </script>
+<script src="/helper.js" defer></script>
 </body>
 </html>

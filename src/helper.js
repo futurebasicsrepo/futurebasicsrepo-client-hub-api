@@ -1,0 +1,349 @@
+// Pip, the helper mouse: a small guide that follows the pointer and walks a person through the page they are on, one step at a time.
+// A page adds <script src="/helper.js" defer></script> and nothing else: this file draws the on/off pill, the mouse and its speech bubble,
+// picks the guide that fits what is on screen, and moves to the next step when the person has done the current one.
+// Each step says what to do, why, and what comes next. Guides are plain data in TOURS below; see docs/helper-mouse.md to add one.
+(() => {
+  if (window.fbHelper) return;
+  if (window.top !== window || /^\/tp\//.test(location.pathname)) return; // not inside a frame, and not on a factory's private link
+  const NAME = 'Pip';
+  const K_ON = 'fb.helper.on', K_PROG = 'fb.helper.prog', K_NEXT = 'fb.helper.next';
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const shown = el => { if (typeof el === 'string') el = $(el); return !!(el && el.getClientRects().length && !el.closest('.hidden,[hidden]')); };
+  const safe = (f, d = false) => { try { return f(); } catch { return d; } };
+  const val = (v, ...a) => typeof v === 'function' ? safe(() => v(...a), '') : v;
+  const path = () => location.pathname.replace(/\/$/, '') || '/';
+  const onWork = () => /^work\./i.test(location.hostname) || document.body.classList.contains('fbnav');
+
+  // ---- the guides --------------------------------------------------------------------------------------------------------------------------
+  // tour: { id, title, match(), steps[], next?: { tour, label, href? }, outro? }
+  // step: { target: selector | [selectors] | fn, title, do, why, wait?, done?: 'click' | 'input' | fn, after?, optional? }
+  //   do/why/title/after may be functions. A step with no `done` is for reading: the person presses Next.
+  //   `optional` steps are skipped when their target is not on screen (for example an empty panel).
+  const dialogOpen = id => () => !!$(id + '[open]');
+  const tab = k => `#tabs [data-tab="${k}"]`;
+  const clientPack = () => shown('#tabs button[data-tab]') && !onWork();
+  const TOURS = [
+    {
+      id: 'hub-signin', title: 'Sign in to your room',
+      match: () => shown('#send') || shown('#verify'),
+      steps: [
+        { target: '#email', title: 'Type your work email', do: 'Enter the email you use for work.', why: 'Your room is private to your company. We email a six-digit code instead of a password, so there is nothing to remember.', done: () => /.+@.+\..+/.test(($('#email') || {}).value || ''), after: 'Got it.' },
+        { target: '#send button', title: 'Send the access code', do: 'Press “Send access code”.', why: 'The code proves the email is yours. It arrives in under a minute.', done: 'click', after: 'The code is on its way.' },
+        { target: '#code', title: 'Type the six digits', do: 'Open the email from Future Basics and type the code here.', why: 'This opens the room assigned to your company, with all your products in one place.', wait: 'Waiting for the code box…', done: () => (($('#code') || {}).value || '').replace(/\D/g, '').length >= 6, after: 'That looks right.' },
+        { target: '#verify button', title: 'Enter your room', do: 'Press “Enter client hub”.', why: 'You land on your projects, the page you will come back to every time.', done: () => !shown('#send') && !shown('#verify'), after: 'You are in.' }
+      ],
+      outro: 'New here without an account? Open /start on your phone and add a screenshot: your room is created around your first tech pack.',
+      next: { tour: 'hub-start', label: 'Start your first tech pack' }
+    },
+    {
+      id: 'hub-start', title: 'Start a tech pack',
+      match: () => shown('#newTechPack') || shown('#techPackDialog'),
+      steps: [
+        { target: '#newTechPack', title: 'Start a tech pack', do: 'Press “Start a tech pack”.', why: 'Every product begins here. A photo or screenshot becomes a first draft in about a minute.', done: dialogOpen('#techPackDialog'), after: 'The form is open.' },
+        { target: '#tpDrop', title: 'Add your design', do: 'Choose a photo, sketch or screenshot of what you want made (up to four).', why: 'The assistant reads it and drafts callouts, measurements, materials and colours for you. App bars and captions are trimmed away. No picture yet? Press Next and start blank.', done: () => !!$('#tpShots .tp-shot'), after: 'The picture is in.' },
+        { target: '#tpProject', title: 'Pick a project', do: 'Choose one of your projects, or choose a new one and give it a name.', why: 'A project groups the products you develop together, so quotes, files and messages stay in one room.', optional: true },
+        { target: '#techPackForm [name="title"]', title: 'Name the product', do: 'Give it a working name, like “Court Mid”.', why: 'It is how you and the factory will refer to it on every page. You can change it later.', done: 'input', after: 'Nice name.' },
+        { target: '#techPackForm [name="description"]', title: 'Say what it is (optional)', do: 'In a sentence or two: what it is, who it is for, what must be true about it.', why: 'The more the assistant knows, the closer the first draft is. Press Next to skip.', optional: true },
+        { target: '#tpSubmit', title: 'Create it', do: () => `Press “${($('#tpSubmit') || {}).textContent || 'Create my tech pack'}”.`, why: 'You land in your draft straight away. It is read-only for about a minute while the assistant works.', done: 'click', after: 'Creating your tech pack…' }
+      ],
+      next: { tour: 'tp-client', label: 'Check your draft' }
+    },
+    {
+      id: 'hub-around', title: 'Find your way around',
+      match: () => shown('#newTechPack'),
+      steps: [
+        { target: '#products', title: 'Your projects', do: 'Each card is a project, a line of products you develop with us. Tap one to open its room.', why: 'Tech packs, the quote, messages and files for a product all live in its room, so nothing is lost in an email thread.' },
+        { target: '#waiting', title: 'Waiting on you', optional: true, do: 'When we need an approval, a quote OK or a payment, it shows up here first.', why: 'It is the one place to look to know whether the ball is in your court.' },
+        { target: '#actions', title: 'Needs attention', do: 'Open actions across every product are listed here.', why: 'Clear them and the work moves on to the factory.' },
+        { target: '#invoices', title: 'Invoices', do: 'Deposit invoices and payment links, with a PDF for each.', why: 'Sampling starts as soon as the deposit is paid, so this is where to pay.' },
+        { target: '.hub-foot a[href="/help"]', title: 'The full guide', do: 'This link opens the whole guide with screenshots and answers to common questions.', why: 'Pip can walk you through it, and the guide is there when you want to read ahead.' }
+      ]
+    },
+    {
+      id: 'tp-client', title: 'Check your tech pack draft',
+      match: () => clientPack() && /submit/i.test(($(tab('sign') + ' b') || {}).textContent || ''),
+      steps: [
+        { target: '#noteSlot', title: 'The assistant is working', optional: true, do: 'For about a minute the draft is read-only while the assistant reads your photo.', why: 'It is filling the callouts, measurements, materials and colours so you start from 80% instead of from nothing.' },
+        { target: tab('calls'), title: 'Check the callouts', do: 'Open Callouts. Tap a pin or card to edit it, drag a pin to move it, or press “+ Callout” and tap the spot.', why: 'Callouts are the details the factory must get exactly right.', done: 'click', after: 'Callouts open.' },
+        { target: tab('poms'), title: 'Check the measurements', do: 'Open Measure and compare each number with your sample size. The size run is graded for you.', why: 'A wrong number becomes a wrong sample. Anything you type wins over the assistant’s guess.', done: 'click', after: 'Measurements open.' },
+        { target: tab('bom'), title: 'Check materials and trims', do: 'Open Materials and look over the fabrics, trims and colours.', why: 'These set the cost and the look. Change any line that is not what you have in mind.', done: 'click', after: 'Materials open.' },
+        { target: tab('sign'), title: 'Submit to Future Basics', do: 'Open Submit. It shows what is still thin; you can submit anyway and we fill the gaps with you.', why: 'We finish the pack and publish version 1. While we work it is read-only; message us in the project thread if something must change.', done: 'click', after: 'Submit is open.' }
+      ],
+      outro: 'When version 1 is ready you get an email. Open the pack, go to Sign, type your full name and press Approve: your approval is your signature. Then you get a quote and a deposit invoice.'
+    },
+    {
+      id: 'staff-home', title: 'Your day',
+      match: () => path() === '/home' && shown('#app'),
+      steps: [
+        { target: '#actions', title: 'Start something', do: 'Three buttons you will use most: add a lead, start a prototype, start a project.', why: 'Relationships are the sales process. These start one in two clicks, so you can be personal and quick.' },
+        { target: '#myPanel', title: 'My accounts', optional: true, do: 'The customers you own. Any account with no owner shows a Take button: press it and it is yours.', why: 'One owner per account means nobody is surprised and nothing goes quiet.' },
+        { target: '#reach', title: 'Reach out today', do: 'Who is most likely to buy, and who has been waiting for an answer. Open one and send a personal note.', why: 'A note from a person who read their situation beats any campaign.' },
+        { target: '#protoPanel', title: 'Prototypes that close deals', optional: true, do: 'Prototypes sent to prospects, with who has opened them.', why: 'Showing a prospect a working version of their own site makes the conversation easy.' },
+        { target: '#projPanel', title: 'Projects in flight', do: 'Every software and product project you are delivering. Filter by state.', why: 'It keeps delivery in view while you sell.' },
+        { target: '.fbside', title: 'The menu follows the work', optional: true, do: 'Left menu: My day, Inbox, People, Win, Deliver, Money, Sites and health.', why: 'It is ordered the way a day goes, from who wrote to you, to winning work, to delivering it and getting paid.' }
+      ]
+    },
+    {
+      id: 'staff-sales', title: 'Win a deal',
+      match: () => path() === '/sales' && shown('#app'),
+      steps: [
+        { target: '.tab[data-t="contacts"]', title: 'Open Contacts', do: 'Open the Contacts tab.', why: 'Every deal starts with a person. Add them first, with what you know.', done: 'click', after: 'Contacts open.' },
+        { target: '#newContact', title: 'Add a person', do: 'Press “+ Add”.', why: 'Write down who they are while it is fresh. The timeline keeps every email, chat and task from here on.', done: dialogOpen('#ndlg'), after: 'The form is open.' },
+        { target: '#nName', title: 'Their name', do: 'Type their name.', why: 'You will use it to open every note.', done: 'input', after: 'Got it.' },
+        { target: '#nEmail', title: 'Their email', do: 'Type their email so mail you send lands in their timeline and replies come back.', why: 'Replies and unsubscribes are handled for you.', done: 'input', after: 'Saved to the form.' },
+        { target: '.tab[data-t="pipeline"]', title: 'Follow the pipeline', do: 'Open the Pipeline tab.', why: 'A deal is a promise you are working on. Moving it across the board tells the team where it stands.', done: 'click', after: 'Pipeline open.' },
+        { target: '#board', title: 'Move deals across', do: 'Open a deal, or drag a card to the next stage as the conversation moves.', why: 'When a deal is won you can start its project from the card: room, project and build in one press, and the account owner is kept.' }
+      ]
+    }
+  ];
+
+  // ---- state -------------------------------------------------------------------------------------------------------------------------------
+  let lost = 0, on = store.get(K_ON) === '1', tour = null, i = 0, phase = 'doing', cheerAt = 0, listOpen = false;
+  let root, tog, ring, group, bubble, mouse, built = false, lastTick = 0;
+  let px = innerWidth / 2, py = innerHeight / 2, gx = innerWidth / 2, gy = innerHeight / 2, mode = 'go', goFrom = null, frozen = false, face = 1, lastKey = '';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const coarse = () => matchMedia('(pointer: coarse)').matches || innerWidth < 700;
+  const prog = () => { try { return JSON.parse(store.get(K_PROG) || '{}') || {}; } catch { return {}; } };
+  const save = (id, p) => { const all = prog(); all[id] = { ...(all[id] || {}), ...p }; store.set(K_PROG, JSON.stringify(all)); };
+  const tourById = id => TOURS.find(t => t.id === id);
+  const stepEl = s => { const list = Array.isArray(s.target) ? s.target : [s.target]; for (const t of list) { const e = typeof t === 'function' ? safe(t, null) : $(t); if (e && shown(e)) return e; } return null; };
+
+  // ---- drawing -----------------------------------------------------------------------------------------------------------------------------
+  const MOUSE = `<svg viewBox="0 0 64 46" width="48" height="35" aria-hidden="true"><g class="tail"><path d="M10 33C-2 34-1 17 8 18" fill="none" stroke="#141416" stroke-width="2.6" stroke-linecap="round"/></g><ellipse cx="34" cy="30" rx="22" ry="13.5" fill="#ececf0" stroke="#141416" stroke-width="2.6"/><circle cx="40" cy="13" r="8.5" fill="#ececf0" stroke="#141416" stroke-width="2.6"/><circle cx="40" cy="13" r="4.6" fill="#ffb8c9"/><circle cx="52" cy="17" r="7.5" fill="#ececf0" stroke="#141416" stroke-width="2.6"/><circle cx="52" cy="17" r="3.9" fill="#ffb8c9"/><path d="M50 27.5c3-2.2 8-2.2 10.4.2" fill="none" stroke="none"/><circle cx="58.6" cy="29" r="3" fill="#ff8fab" stroke="#141416" stroke-width="1.8"/><circle cx="49" cy="26" r="2.1" fill="#141416"/><path d="M56 31l7-2.5M56 32.5l7 1.5" stroke="#141416" stroke-width="1.5" stroke-linecap="round"/><ellipse cx="26" cy="43" rx="5" ry="2.6" fill="#ffb8c9" stroke="#141416" stroke-width="2"/><ellipse cx="44" cy="43" rx="5" ry="2.6" fill="#ffb8c9" stroke="#141416" stroke-width="2"/></svg>`;
+  const CSS = `
+.fbh,.fbh *{box-sizing:border-box}
+.fbh{position:fixed;inset:0;z-index:2147483000;pointer-events:none;font:400 14px/1.45 'Space Grotesk',system-ui,sans-serif;color:#141416}
+.fbh-tog{position:fixed;bottom:14px;left:14px;pointer-events:auto;display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border:1px solid rgba(20,20,22,.2);border-radius:999px;background:#fff;color:#141416;font:500 13px 'Space Grotesk',system-ui,sans-serif;cursor:pointer;box-shadow:0 6px 24px rgba(20,20,22,.16);transition:transform .15s}
+body.fbnav .fbh-tog{left:calc(var(--fbw,236px) + 14px)}
+dialog .fbh-tog.on{display:none}
+@media(max-width:900px){body.fbnav .fbh-tog{left:14px}}
+.fbh-tog:hover{transform:translateY(-1px)}.fbh-tog:focus-visible,.fbh button:focus-visible{outline:3px solid #4bff9a;outline-offset:2px}
+.fbh-tog .face{width:30px;height:24px;display:block}.fbh-tog .face svg{width:100%;height:100%;display:block}
+.fbh-tog .sw{width:30px;height:18px;border-radius:999px;background:#c9c9ce;position:relative;transition:background .2s}.fbh-tog .sw:after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}
+.fbh-tog[aria-pressed="true"] .sw{background:#141416}.fbh-tog[aria-pressed="true"] .sw:after{left:14px;background:#4bff9a}
+.fbh-ring{position:fixed;border-radius:14px;border:3px solid #4bff9a;box-shadow:0 0 0 2px #141416,0 0 0 8px rgba(75,255,154,.3);display:none;animation:fbh-pulse 1.4s ease-in-out infinite}
+@keyframes fbh-pulse{50%{box-shadow:0 0 0 2px #141416,0 0 0 13px rgba(75,255,154,.12)}}
+.fbh-g{position:fixed;left:0;top:0;display:none;flex-direction:column;align-items:flex-start;gap:4px;width:var(--bw,320px);will-change:transform}
+.fbh-g.up{flex-direction:column-reverse}.fbh-g.rev{align-items:flex-end}
+.fbh-mouse{width:48px;height:36px;flex:none;pointer-events:none;transition:transform .15s}.fbh-mouse svg{display:block;overflow:visible}
+.fbh-mouse.l{transform:scaleX(-1)}.fbh-g.moving .fbh-mouse svg{animation:fbh-hop .32s ease-in-out infinite}.fbh-g .tail{transform-origin:10px 30px;animation:fbh-wag 1.6s ease-in-out infinite}
+@keyframes fbh-hop{50%{transform:translateY(-3px)}}@keyframes fbh-wag{50%{transform:rotate(-14deg)}}
+.fbh-b{width:100%;pointer-events:auto;background:#fff;border:1px solid rgba(20,20,22,.18);border-radius:18px;padding:12px 14px 12px;box-shadow:0 14px 44px rgba(20,20,22,.22);max-height:min(60vh,420px);overflow:auto}
+.fbh-b .meta{display:flex;justify-content:space-between;gap:8px;font:500 10px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:#717177}
+.fbh-b .dots{display:flex;gap:3px;margin:6px 0 2px}.fbh-b .dots i{flex:1;height:3px;border-radius:2px;background:#dcdce0}.fbh-b .dots i.d{background:#141416}.fbh-b .dots i.c{background:#4bff9a;box-shadow:0 0 0 1px #141416 inset}
+.fbh-b h3{margin:6px 0 4px;font:500 17px/1.2 'Space Grotesk',system-ui,sans-serif;letter-spacing:-.01em}
+.fbh-b p{margin:5px 0;color:#2d2d31}.fbh-b p b{display:inline-block;min-width:34px;font:600 10px 'IBM Plex Mono',ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:#717177}
+.fbh-b .nx{margin:8px 0 0;padding:7px 10px;border-radius:10px;background:#f5f5f2;font-size:12.5px;color:#2d2d31}
+.fbh-b .cheer{margin:6px 0;padding:8px 10px;border-radius:10px;background:#e9fff2;border:1px solid #4bff9a;font-weight:500}
+.fbh-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.fbh-acts button,.fbh-list button{font:500 12.5px 'Space Grotesk',system-ui,sans-serif;padding:6px 12px;border-radius:999px;border:1px solid rgba(20,20,22,.25);background:#fff;color:#141416;cursor:pointer}
+.fbh-acts button.go{background:#141416;color:#fff;border-color:#141416}.fbh-acts button.q{margin-left:auto;border-color:transparent;color:#717177}
+.fbh-acts button:disabled{opacity:.4;cursor:default}
+.fbh-list{display:grid;gap:4px;margin-top:8px}.fbh-list button{text-align:left;border-radius:12px;display:flex;justify-content:space-between;gap:8px}.fbh-list button small{color:#717177}
+.fbh-g.sheet{left:8px;right:8px;width:auto;bottom:58px;top:auto;transform:none}.fbh-g.sheet .fbh-mouse{margin-left:12px}.fbh-g.sheet .fbh-b{max-height:44vh}
+@media(prefers-reduced-motion:reduce){.fbh-ring,.fbh-g .tail,.fbh-g.moving .fbh-mouse svg{animation:none}.fbh-tog,.fbh-tog .sw:after{transition:none}}
+@media print{.fbh{display:none}}`;
+
+  function build() {
+    if (built) return; built = true;
+    const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+    root = document.createElement('div'); root.className = 'fbh'; root.setAttribute('data-fbh', '');
+    root.innerHTML = `<div class="fbh-ring"></div><div class="fbh-g"><div class="fbh-mouse">${MOUSE}</div><div class="fbh-b" role="status" aria-live="polite"></div></div><button type="button" class="fbh-tog" aria-pressed="false" title="Turn the helper mouse on or off"><span class="face">${MOUSE}</span><span>Guide</span><span class="sw" aria-hidden="true"></span></button>`;
+    document.body.appendChild(root);
+    ring = $('.fbh-ring', root); group = $('.fbh-g', root); bubble = $('.fbh-b', root); mouse = $('.fbh-mouse', root); tog = $('.fbh-tog', root);
+    tog.addEventListener('click', () => set(!on));
+    bubble.addEventListener('click', onBubbleClick);
+    bubble.addEventListener('pointerenter', () => { frozen = true; });
+    bubble.addEventListener('pointerleave', () => { frozen = bubble.contains(document.activeElement); });
+    bubble.addEventListener('focusin', () => { frozen = true; });
+    bubble.addEventListener('focusout', () => { frozen = bubble.matches(':hover'); });
+    addEventListener('pointermove', e => { if (e.pointerType === 'touch') return; px = e.clientX; py = e.clientY; if (mode === 'go' && goFrom && Date.now() - goFrom.at > 700 && Math.hypot(px - goFrom.x, py - goFrom.y) > 70) mode = 'follow'; }, { passive: true });
+    addEventListener('resize', () => { lastKey = ''; });
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('input', () => setTimeout(check, 30), true);
+    document.addEventListener('change', () => setTimeout(check, 30), true);
+    addEventListener('keydown', e => { if (e.altKey && e.shiftKey && (e.key === 'G' || e.key === 'g')) { e.preventDefault(); set(!on); } });
+    paintToggle();
+  }
+
+  // The mouse lives inside an open modal dialog while there is one: a modal makes the rest of the page inert and paints over it.
+  function host() {
+    const dlgs = document.querySelectorAll('dialog[open]');
+    const h = dlgs.length ? dlgs[dlgs.length - 1] : document.body;
+    if (root.parentNode !== h) h.appendChild(root);
+  }
+
+  // ---- choosing and running a guide ----------------------------------------------------------------------------------------------------------
+  function pick() {
+    const avail = TOURS.filter(t => safe(t.match));
+    // a page redraws itself now and then (the hub refreshes its lists), so a guide is dropped only after its page has been gone for a few ticks
+    if (tour && avail.includes(tour)) { lost = 0; return; }
+    if (tour && ++lost < 4) return;
+    lost = 0;
+    const queued = store.get(K_NEXT);
+    let t = null;
+    if (queued) { t = avail.find(x => x.id === queued); if (t) store.del(K_NEXT); }
+    const p = prog();
+    t = t || avail.find(x => !(p[x.id] && p[x.id].done)) || avail[0] || null;
+    if (t !== tour) { tour = t; i = tour ? Math.min((p[tour.id] || {}).i || 0, tour.steps.length) : 0; phase = 'doing'; if (tour && (p[tour.id] || {}).done) i = tour.steps.length; if (tour) save(tour.id, { i }); enterStep(); }
+  }
+  function curStep() { return tour && i < tour.steps.length ? tour.steps[i] : null; }
+  function enterStep() {
+    phase = tour && i >= tour.steps.length ? 'end' : 'doing'; lastKey = ''; mode = 'go'; goFrom = { x: px, y: py, at: Date.now() }; scrolled = false;
+    if (tour) save(tour.id, { i, done: phase === 'end' });
+  }
+  let scrolled = false;
+  function goTo(n) { if (!tour) return; i = Math.max(0, Math.min(tour.steps.length, n)); enterStep(); render(); }
+  function advance() {
+    if (!tour) return;
+    let n = i + 1;
+    while (n < tour.steps.length && tour.steps[n].optional && !stepEl(tour.steps[n])) n++;
+    if (n >= tour.steps.length && tour.next) store.set(K_NEXT, tour.next.tour);
+    goTo(n);
+  }
+  function done() {
+    const s = curStep(); if (!s || phase !== 'doing') return; phase = 'cheer'; cheerAt = Date.now();
+    // the last step often leaves the page (creating a pack opens the editor), so remember the finish and what comes next now
+    if (i === tour.steps.length - 1) { save(tour.id, { i: tour.steps.length, done: true }); if (tour.next) store.set(K_NEXT, tour.next.tour); }
+    render();
+  }
+  function isDone(s) {
+    if (typeof s.done === 'function') return !!safe(s.done);
+    if (s.done === 'input') { const e = stepEl(s); return !!(e && String(e.value || '').trim().length >= (s.min || 1)); }
+    return false;
+  }
+  function check() { const s = curStep(); if (on && s && phase === 'doing' && isDone(s)) done(); }
+  function onDocClick(e) {
+    if (!on || root.contains(e.target)) return;
+    const s = curStep(); if (!s || phase !== 'doing') return;
+    if (s.done === 'click') { const el = stepEl(s); if (el && el.contains(e.target)) { setTimeout(() => { if (on && curStep() === s && phase === 'doing') done(); }, 60); return; } }
+    // someone who gets ahead of the guide (presses what a later step asks for) is not held back: the mouse catches up to that step
+    for (let k = i + 1; k < tour.steps.length; k++) {
+      const t = tour.steps[k]; if (t.done !== 'click') continue;
+      const el = stepEl(t); if (el && el.contains(e.target)) { setTimeout(() => { if (on && curStep() === s && phase === 'doing') { i = k; enterStep(); done(); } }, 60); return; }
+    }
+  }
+  function onBubbleClick(e) {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    const a = b.dataset.a;
+    if (a === 'next') advance();
+    else if (a === 'back') goTo(i - 1);
+    else if (a === 'off') set(false);
+    else if (a === 'replay') { save(tour.id, { done: false }); goTo(0); }
+    else if (a === 'guides') { listOpen = !listOpen; render(); }
+    else if (a === 'tour') { const t = tourById(b.dataset.id); if (!t) return; if (safe(t.match)) { tour = t; listOpen = false; goTo(0); } else { store.set(K_NEXT, t.id); if (b.dataset.href) location.href = b.dataset.href; } }
+    else if (a === 'next-tour') { const t = tourById(tour.next.tour); if (t && safe(t.match)) { tour = t; goTo(0); } else { store.set(K_NEXT, tour.next.tour); if (tour.next.href) location.href = tour.next.href; } }
+  }
+
+  // ---- bubble ------------------------------------------------------------------------------------------------------------------------------
+  function render() {
+    if (!built) return;
+    listOpen = listOpen && !!tour;
+    if (!on) { group.style.display = 'none'; ring.style.display = 'none'; return; }
+    let h = '';
+    if (!tour) {
+      h = `<div class="meta"><span>${NAME} the helper mouse</span></div><h3>No guide for this page yet</h3><p>${NAME} follows you around, and the guides appear where there is something to walk through. Try My day or the client hub.</p>${tail(false)}`;
+    } else if (listOpen) {
+      const p = prog();
+      h = `<div class="meta"><span>All guides</span></div>` + `<div class="fbh-list">${TOURS.map(t => { const here = safe(t.match), d = (p[t.id] || {}).done; return `<button type="button" data-a="tour" data-id="${t.id}"${t.href ? ` data-href="${esc(t.href)}"` : ''}${here ? '' : ' disabled'}><span>${d ? '✓ ' : ''}${esc(t.title)}</span><small>${here ? 'on this page' : 'other page'}</small></button>`; }).join('')}</div>` + `<div class="fbh-acts"><button type="button" data-a="guides">Close</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
+    } else if (phase === 'end') {
+      const nx = tour.next && tourById(tour.next.tour);
+      h = `<div class="meta"><span>${esc(tour.title)}</span><span>Done</span></div><h3>That is the whole route</h3>${tour.outro ? `<p>${esc(tour.outro)}</p>` : '<p>You have been through every step on this page.</p>'}${nx ? `<p class="nx"><b>Next</b> ${esc(tour.next.label || nx.title)}</p>` : ''}<div class="fbh-acts">${nx ? '<button type="button" class="go" data-a="next-tour">Show me</button>' : ''}<button type="button" data-a="replay">Replay</button><button type="button" data-a="guides">Guides</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
+    } else {
+      const s = curStep(), n = tour.steps.length, nxt = tour.steps.slice(i + 1).find(x => !x.optional || stepEl(x));
+      const missing = !stepEl(s);
+      const dots = tour.steps.map((_, k) => `<i class="${k < i ? 'c' : k === i ? 'd' : ''}"></i>`).join('');
+      h = `<div class="meta"><span>${esc(tour.title)}</span><span>Step ${i + 1} of ${n}</span></div><div class="dots">${dots}</div><h3>${esc(val(s.title))}</h3>`;
+      if (phase === 'cheer') h += `<div class="cheer">✓ ${esc(val(s.after) || 'Done.')}</div>`;
+      else if (missing) h += `<p>${esc(s.wait || 'Looking for that on this page…')}</p>`;
+      else h += `<p><b>Do</b> ${esc(val(s.do))}</p><p><b>Why</b> ${esc(val(s.why))}</p>`;
+      h += `<p class="nx"><b>${nxt ? 'Next' : 'Last'}</b> ${nxt ? esc(val(nxt.title)) : (tour.next ? esc(tour.next.label) : 'That finishes this guide')}</p>`;
+      h += `<div class="fbh-acts"><button type="button" data-a="back"${i ? '' : ' disabled'}>Back</button><button type="button" class="go" data-a="next">${s.done && phase === 'doing' ? 'Skip' : 'Next'}</button><button type="button" data-a="guides">Guides</button><button type="button" class="q" data-a="off">Turn off</button></div>`;
+    }
+    if (bubble.dataset.h !== h) { const hadFocus = bubble.contains(document.activeElement); bubble.innerHTML = h; bubble.dataset.h = h; if (hadFocus) { const g = $('button.go', bubble) || $('button', bubble); if (g) g.focus({ preventScroll: true }); } }
+    group.style.display = 'flex';
+  }
+  function tail() { return `<div class="fbh-acts"><button type="button" class="q" data-a="off">Turn off</button></div>`; }
+  function paintToggle() { if (!tog) return; tog.setAttribute('aria-pressed', on ? 'true' : 'false'); tog.classList.toggle('on', on); tog.title = on ? `${NAME} is on. Press to turn off (Alt+Shift+G)` : `Turn on ${NAME}, the helper mouse (Alt+Shift+G)`; }
+  function set(v) {
+    on = !!v; store.set(K_ON, on ? '1' : '0'); build(); paintToggle();
+    if (on) { tour = null; pick(); render(); } else { render(); }
+  }
+
+  // ---- motion ------------------------------------------------------------------------------------------------------------------------------
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (!built) return;
+    const dt = Math.min(0.1, (t - (frame.t || t)) / 1000); frame.t = t;
+    if (t - lastTick > 400) { lastTick = t; tick(); }
+    if (!on) return;
+    const s = phase === 'doing' || phase === 'cheer' ? curStep() : null, el = s && stepEl(s), r = el ? el.getBoundingClientRect() : null;
+    // inside a dialog that is animated or transformed, fixed positions are measured from the dialog, not the screen: take that offset off
+    const o = root.getBoundingClientRect(), ox = o.left, oy = o.top;
+    if (r) {
+      ring.style.display = 'block';
+      ring.style.left = r.left - 6 - ox + 'px'; ring.style.top = r.top - 6 - oy + 'px'; ring.style.width = r.width + 12 + 'px'; ring.style.height = r.height + 12 + 'px';
+    } else ring.style.display = 'none';
+    if (el && !scrolled) { scrolled = true; const out = r.top < 70 || r.bottom > innerHeight - (coarse() ? 300 : 90); if (out) el.scrollIntoView({ block: coarse() ? 'start' : 'center', behavior: reduced.matches ? 'auto' : 'smooth' }); }
+    const sheet = coarse(); group.classList.toggle('sheet', sheet);
+    if (sheet) { group.style.transform = ''; group.classList.remove('moving'); return; }
+    // everything below is worked out inside the box the mouse lives in (the screen, or the open dialog) and moved back at the end
+    const vw = o.width, vh = o.height, bw = Math.min(320, vw - 24); group.style.setProperty('--bw', bw + 'px');
+    const bh = group.offsetHeight || 160, pl = { x: px - ox, y: py - oy }, rl = r && { left: r.left - ox, right: r.right - ox, top: r.top - oy, bottom: r.bottom - oy };
+    let ax, ay, up = false, rev = false;
+    const near = rl && rl.right - rl.left < 420 && rl.bottom - rl.top < 160 && pl.x > rl.left - 50 && pl.x < rl.right + 50 && pl.y > rl.top - 50 && pl.y < rl.bottom + 50;
+    if (rl && (mode === 'go' || near)) {
+      // beside the thing to press, never on top of it
+      ax = Math.max(8, Math.min(rl.left, vw - bw - 8)); ay = rl.bottom + 14;
+      if (ay + bh > vh - 8) { ay = rl.top - 14 - bh; up = true; if (ay < 8) { ay = Math.max(8, Math.min(rl.bottom - bh, vh - bh - 8)); ax = rl.right + 14 + bw < vw ? rl.right + 14 : Math.max(8, rl.left - bw - 14); up = false; } }
+    } else if (!rl && mode === 'go') { mode = 'follow'; }
+    else {
+      ax = pl.x + 22; ay = pl.y + 22;
+      if (ax + bw > vw - 8) { ax = pl.x - 22 - bw; rev = true; }
+      if (ay + bh > vh - 8) { ay = pl.y - 22 - bh; up = true; }
+      ax = Math.max(8, ax); ay = Math.max(8, ay);
+    }
+    if (ax === undefined) return;
+    ax += ox; ay += oy;
+    if (!frozen) {
+      const k = 1 - Math.exp(-dt * 7), fx = gx, fy = gy;
+      gx += (ax - gx) * k; gy += (ay - gy) * k;
+      group.classList.toggle('moving', Math.hypot(gx - fx, gy - fy) > 0.6);
+      if (Math.abs(ax - gx) > 6) face = ax > gx ? 1 : -1;
+    } else group.classList.remove('moving');
+    group.classList.toggle('up', up); group.classList.toggle('rev', rev);
+    mouse.classList.toggle('l', face < 0);
+    group.style.transform = `translate(${Math.round(gx - ox)}px,${Math.round(gy - oy)}px)`;
+  }
+  function tick() {
+    if (!built) return;
+    host();
+    if (!on) return;
+    pick();
+    const s = curStep();
+    if (s && phase === 'doing') {
+      if (s.optional && !stepEl(s) && !s.done) { advance(); return; }
+      if (isDone(s) && s.done) done();
+    }
+    if (s && phase === 'cheer' && Date.now() - cheerAt > 1500) advance();
+    // keep the bubble's text current (a step's text can depend on the page)
+    const key = [tour && tour.id, i, phase, listOpen, !!(s && stepEl(s))].join('|');
+    if (key !== lastKey) { lastKey = key; render(); }
+  }
+
+  window.fbHelper = { on: () => on, set, tours: TOURS, goTo };
+  const start = () => {
+    build();
+    const q = new URLSearchParams(location.search).get('guide');
+    if (q === 'on' || q === '1') { on = true; store.set(K_ON, '1'); } else if (q === 'off' || q === '0') { on = false; store.set(K_ON, '0'); }
+    paintToggle(); host(); if (on) { pick(); render(); }
+    requestAnimationFrame(frame);
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
