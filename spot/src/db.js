@@ -260,6 +260,12 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       doc  TEXT NOT NULL,
       at   INTEGER NOT NULL
     );
+    -- A store's current promo codes, as an AI found them (promos.js).
+    CREATE TABLE IF NOT EXISTS promo_codes (
+      site  TEXT PRIMARY KEY,
+      doc   TEXT NOT NULL,
+      at    INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -579,6 +585,15 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       },
       set(key, doc, at = Date.now()) {
         db.prepare('INSERT INTO compare_offers (key, doc, at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(key).slice(0, 1200), JSON.stringify(doc), at);
+      },
+    },
+    promos: {
+      get(site) {
+        const r = db.prepare('SELECT doc, at FROM promo_codes WHERE site = ?').get(String(site));
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(site, doc, at = Date.now()) {
+        db.prepare('INSERT INTO promo_codes (site, doc, at) VALUES (?, ?, ?) ON CONFLICT (site) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(site), JSON.stringify(doc), at);
       },
     },
     policies: {

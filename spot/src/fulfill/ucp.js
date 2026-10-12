@@ -37,6 +37,7 @@ export function platformProfile(base) {
         'dev.ucp.shopping.checkout': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/checkout/`, schema: `${SCHEMAS}/shopping/checkout.json` }],
         'dev.ucp.shopping.fulfillment': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/extensions/fulfillment/`, schema: `${SCHEMAS}/shopping/fulfillment.json`, extends: 'dev.ucp.shopping.checkout' }],
         'dev.ucp.shopping.catalog.lookup': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/catalog/lookup/`, schema: `${SCHEMAS}/shopping/catalog_lookup.json` }],
+        'dev.ucp.shopping.discount': [{ version: UCP_VERSION, spec: `${SPEC}/shopping/extensions/discount/`, schema: `${SCHEMAS}/shopping/discount.json`, extends: 'dev.ucp.shopping.checkout' }],
       },
       payment_handlers: {},
     },
@@ -136,6 +137,7 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
       version: rest.version || ucp.version,
       lookup: Boolean(caps['dev.ucp.shopping.catalog.lookup']),
       fulfillment: !Object.keys(caps).length || Boolean(caps['dev.ucp.shopping.fulfillment']),
+      discount: Boolean(caps['dev.ucp.shopping.discount']),
     };
   } catch {
     return null;
@@ -355,12 +357,37 @@ export function buyer(ship) {
 }
 
 // PUT replaces the session, so every update resends the whole state.
-export function state(co, ship, fulfillment) {
+export function state(co, ship, fulfillment, codes = null) {
   return {
     buyer: buyer(ship),
     line_items: co.line_items.map((li) => ({ id: li.id, item: { id: li.item.id }, quantity: li.quantity })),
     ...(fulfillment ? { fulfillment } : {}),
+    ...(codes ? { discounts: { codes } } : {}),
   };
+}
+
+// What the store's discount codes took off (UCP discount extension): the
+// code-based ones in discounts.applied, in minor units.
+export function codesOff(co) {
+  return (co?.discounts?.applied || []).filter((d) => d?.code && !d.automatic && !d.provisional).reduce((n, d) => n + (Number.isFinite(Number(d.amount)) ? Number(d.amount) : 0), 0);
+}
+
+// Promo codes, one at a time: the one that takes the most off stays on the
+// checkout (PUT resends the whole state, so it goes with the shipping).
+async function bestCode(call, co, ship, fulfillment, codes, progress) {
+  let best = null;
+  let bestCo = co;
+  for (const code of codes.slice(0, 3)) {
+    const tried = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, fulfillment, [code])).catch(() => null);
+    const off = codesOff(tried);
+    if (tried && off > (best?.off || 0)) (best = { code, off }), (bestCo = tried);
+  }
+  if (!best) return await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, fulfillment, [])).catch(() => co);
+  // The best one is on the session if it was the last tried; otherwise put it back.
+  const last = codes.slice(0, 3).filter((c) => c).at(-1);
+  if (best.code !== last) bestCo = (await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, ship, fulfillment, [best.code])).catch(() => null)) || bestCo;
+  progress(`Used code ${best.code}: ${usd(codesOff(bestCo) || best.off)} off`);
+  return bestCo;
 }
 
 // The first shipping step: where it goes, for every line (Shopify requires
@@ -414,7 +441,7 @@ export async function runUcpCheckout(opts) {
   return out;
 }
 
-async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false, sign = null, fallback = false }) {
+async function checkout({ discovery, cart, shipping, getCard, billing = null, profileUrl, limit, confirm, progress = () => {}, fetchImpl = fetch, allowPrivate = false, sign = null, fallback = false, codes = [] }) {
   const call = ucpClient({ endpoint: discovery.endpoint, transport: discovery.transport, profileUrl, fetchImpl, allowPrivate, sign });
   if (!discovery.lookup) return null;
   const resolved = await resolveItems(call, cart, { fetchImpl, allowPrivate }).catch(() => null);
@@ -430,6 +457,7 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
       const pick = selectShipping(co);
       if (pick) co = await call('PUT', `/checkout-sessions/${encodeURIComponent(co.id)}`, state(co, shipping, pick));
       progress('Added your address and the cheapest shipping');
+      if (discovery.discount && codes?.length) co = await bestCode(call, co, shipping, pick || selectShipping(co), codes, progress);
     }
   } catch (err) {
     return { status: 'needs_you', method: 'ucp', reason: `${cart.merchant.name}'s checkout said: ${err.message}`, manual_url: err.continueUrl || co?.continue_url || null };

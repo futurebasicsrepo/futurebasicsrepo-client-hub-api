@@ -238,7 +238,7 @@ export async function cartShippingRates(storeUrl, lines, ship, { fetchImpl = fet
 
 // Where a store's storefront really answers: its home page's last redirect
 // (bare domain → www, http → https), checked public at every hop.
-async function storeOrigin(origin, { fetchImpl, allowPrivate }) {
+export async function storeOrigin(origin, { fetchImpl = fetch, allowPrivate = false } = {}) {
   let u = new URL('/', origin);
   for (let hop = 0; hop < 4; hop++) {
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;

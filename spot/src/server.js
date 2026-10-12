@@ -31,6 +31,7 @@ import { createWatches } from './watches.js';
 import { createReviews } from './reviews.js';
 import { createCompare } from './compare.js';
 import { createDelivery } from './delivery.js';
+import { createPromos } from './promos.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -142,7 +143,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   const signing = createSigning({ db, env, origin: baseUrl });
   const signRequest = (u) => signing.signRequest(u);
   app.decorate('signing', signing);
-  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, ...(fulfill.ucp || {}) } });
+  // Promo codes: found by AI per store, tried on the card and at checkout (promos.js).
+  const promos = createPromos({ db, env, ...(capture.promoFind ? { find: capture.promoFind } : {}), ...(capture.promoTry ? { tryCodes: capture.promoTry } : {}), ...(capture.product ? { product: capture.product } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  const fulfiller = createFulfiller({ spot, provider, env, log: app.log, metrics, ...fulfill, ucp: { profileUrl, sign: signRequest, codesFor: (cart) => promos.forCart(cart), ...(fulfill.ucp || {}) } });
   // Paying the store directly: Spot builds the store's checkout, the payer pays there.
   const shopifyAuth = fulfill.shopifyAuth || createShopifyAuth({ env, log: console, metrics });
   spot.direct = createDirect({ profileUrl, sign: signRequest, shopifyAuth, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), allowPrivate: Boolean(fulfill.ucp?.allowPrivate) || env.SPOT_ALLOW_PRIVATE_FETCH === '1' });
@@ -642,6 +645,16 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const ship = sh?.postal_code ? { city: sh.city || '', state: sh.state || '', postal_code: String(sh.postal_code) } : null;
     reply.header('cache-control', 'no-store');
     return { delivery: await delivery.arrives({ url, variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, ship) };
+  });
+
+  // Promo codes for one product: the ones that took money off it just now.
+  app.post('/v1/promos', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    reply.header('cache-control', 'no-store');
+    return { promos: await promos.forItem({ url, variant: typeof b.variant === 'string' ? b.variant.slice(0, 80) : '', store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }) };
   });
 
   // Cheaper elsewhere: the same product at other stores, under this price.
