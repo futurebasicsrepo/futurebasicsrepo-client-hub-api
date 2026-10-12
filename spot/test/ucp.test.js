@@ -362,6 +362,8 @@ test('pay the store directly: Spot builds the store’s checkout, the payer pays
   assert.equal(mine.cart.fulfillment.state, 'placed');
   assert.equal(mine.cart.fulfillment.method, 'direct');
   assert.equal(mine.cart.fulfillment.order_number, 'ord_888');
+  assert.equal(app.spot.load(token).fulfillment.order_id, 'ord_888', 'the store’s order id, so Spot can follow the shipping');
+  assert.equal(mine.cart.tracking_auto, true);
   assert.equal(mine.cart.card_ready, false, 'no card was ever issued');
 });
 

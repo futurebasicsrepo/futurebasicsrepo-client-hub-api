@@ -9,7 +9,8 @@
 //
 //   supports(url)          → does this store take UCP checkout?
 //   start(cart, { email }) → { checkout_id, continue_url, total_cents }
-//   status(checkoutId)     → { status, order_number, order_url, total_cents }
+//   status(checkoutId)     → { status, order_number, order_url, order_id, total_cents }
+//   order(direct, orderId) → the store's order, for tracking.js
 //   quote(cart, ship)      → { total_cents, subtotal_cents, shipping_cents, tax_cents } | null
 import { buyer, discover, orderRef, shipTo, link, resolveItems, selectShipping, state, totalOf, ucpClient } from './fulfill/ucp.js';
 import { CartError } from './cart.js';
@@ -163,7 +164,16 @@ export function createDirect({ profileUrl, fetchImpl = fetch, allowPrivate = fal
         total_cents: totalOf(co),
         order_number: orderRef(co.order),
         order_url: link(co.order?.permalink_url, allowPrivate),
+        order_id: co.order?.id ? String(co.order.id).slice(0, 200) : null,
       };
+    },
+
+    // The store's order (UCP Get Order), for the tracker: its fulfillment
+    // events carry the shipments. Asked the same way the checkout was made.
+    async order(direct, orderId) {
+      if (!direct?.endpoint || !orderId) return null;
+      const call = await client({ endpoint: direct.endpoint, transport: direct.transport || 'rest' }, direct.buyer_ip || null);
+      return call('GET', `/orders/${encodeURIComponent(orderId)}`);
     },
   };
 }

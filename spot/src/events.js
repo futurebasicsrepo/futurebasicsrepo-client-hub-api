@@ -24,7 +24,7 @@
 // Each (cart, event, person) is told once: sends are recorded in the
 // notices table. Texts go only to numbers that haven't replied STOP (notify.js).
 // Sending never blocks or breaks the flow that triggered it.
-import { chipProgress, usd } from './cart.js';
+import { chipProgress, payerIsRequester, requesterEmail, usd } from './cart.js';
 import { emailLayout, finishMessage } from './notify.js';
 import { agentLabel } from './approvals.js';
 
@@ -57,7 +57,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
     const link = `${base}${spot.privatePath(cart)}`;
     const item = cart.items?.[0]?.title || 'your cart';
     const store = cart.merchant?.name || 'the store';
-    const payer = cart.payer?.name || 'Someone';
+    const payer = (!payerIsRequester(cart) && cart.payer?.name) || 'Someone';
     const who = cart.requester?.name || 'your friend';
     const f = cart.fulfillment || {};
     const fl = cart.flight;
@@ -196,8 +196,8 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           key: 'ordered',
           to: { email: requesterContact(cart).email, userId: requesterContact(cart).userId },
           subject: cart.kind === 'train' ? `🚆 Booked: ${item}` : `📦 Ordered: ${item}`,
-          text: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` #${f.order_number}` : ''}. ${cart.kind === 'train' ? `${store} emails your e-ticket.` : 'Watch your email for tracking.'} ${link}`,
-          html: mail({ preheader: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}`, title: cart.kind === 'train' ? '🚆 Booked!' : '📦 Ordered!', lines: [`${esc(store)} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, cart.kind === 'train' ? `${esc(store)} emails your e-ticket. Show it on your phone when you board.` : 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
+          text: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` #${f.order_number}` : ''}. ${cart.kind === 'train' ? `${store} emails your e-ticket.` : f.order_id ? 'Spot lets you know when it ships.' : 'Watch your email for tracking.'} ${link}`,
+          html: mail({ preheader: `${store} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}`, title: cart.kind === 'train' ? '🚆 Booked!' : '📦 Ordered!', lines: [`${esc(store)} confirmed your ${cart.kind === 'train' ? 'ticket' : 'order'}${f.order_number ? ` <b>#${esc(f.order_number)}</b>` : ''} for <b>${esc(item)}</b>.`, cart.kind === 'train' ? `${esc(store)} emails your e-ticket. Show it on your phone when you board.` : f.order_id ? 'Spot keeps an eye on the shipping and lets you know when it’s on its way.' : 'Watch your email for tracking from the store.', trail ? `<span style="font-size:13px;color:#8a8175">${trail}</span>` : ''].filter(Boolean), cta: { label: f.order_url ? 'View your order →' : 'Open your Spot →', url: f.order_url || link } }),
         }];
         if (cart.for !== 'self' && cart.payer_contact?.email) {
           out.push({
@@ -336,7 +336,7 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
         const t = cart.tracking;
         const to = requesterContact(cart).email;
         const st = extra?.status;
-        if (!t || !to || !st) return [];
+        if (!t || !st || (!to && !requesterContact(cart).userId)) return [];
         const track = t.url ? { cta: { label: `Track it${t.carrier ? ` with ${t.carrier}` : ''} →`, url: t.url } } : { cta: { label: 'See your order →', url: link } };
         const say = {
           shipped: [`📦 ${item} is on its way`, `${store} shipped it${t.carrier ? ` with ${t.carrier}` : ''}.`],
@@ -345,7 +345,8 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
           problem: [`⚠️ A problem delivering ${item}`, `${t.description || `${t.carrier || 'The carrier'} had trouble delivering it`}. Check the tracking, or reply and we’ll help.`],
         }[st];
         if (!say) return [];
-        return [{ key: `ship_${st}`, to: { email: to }, subject: say[0], text: `${say[1]} ${t.url || link}`, html: mail({ preheader: say[1], title: esc(say[0]), lines: [esc(say[1])], ...track }) }];
+        // And a push to their phone or computer, when they turned it on.
+        return [{ key: `ship_${st}`, to: { email: to, userId: requesterContact(cart).userId }, subject: say[0], push_title: say[0], push_body: say[1], url: t.url || link, tag: `ship-${cart.id}`, text: `${say[1]} ${t.url || link}`, html: mail({ preheader: say[1], title: esc(say[0]), lines: [esc(say[1])], ...track }) }];
       }
       case 'return_requested': {
         const r = cart.return;
@@ -391,7 +392,9 @@ export function createEvents({ db, spot, notifier, baseUrl, log = console }) {
       }
       case 'thanks': {
         const t = cart.thanks;
-        const c = cart.payer_contact || {};
+        // Never the requester's own address (an older direct checkout could record theirs as the payer's).
+        const c = { ...(cart.payer_contact || {}) };
+        if (requesterEmail(cart, c.email)) c.email = null;
         const from = String(cart.requester?.name || 'Your friend').trim().split(/\s+/)[0];
         const says = `${from} says thanks${t?.emoji ? ` ${t.emoji}` : ''}`;
         // Chipped in: everyone who gave an email hears it.

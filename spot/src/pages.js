@@ -760,7 +760,7 @@ function finishPanel(c,notice){
           await api('/v1/carts/'+TOKEN+'/paid',{}).catch(()=>{});
           for(let i=0;i<20;i++){const x=await api('/v1/carts/'+TOKEN+'/manage?k='+encodeURIComponent(K));if(x.cart.status!=='open')break;await new Promise(z=>setTimeout(z,1500))}}
         return draw()}
-      if(c.settle==='direct'){b.textContent='opening '+c.merchant.name+'…';const r=await api('/v1/carts/'+TOKEN+'/direct/start',{email:v.email,name:v.name});location.href=r.continue_url;return}
+      if(c.settle==='direct'){b.textContent='opening '+c.merchant.name+'…';const r=await api('/v1/carts/'+TOKEN+'/direct/start',{k:K,email:v.email,name:v.name});location.href=r.continue_url;return}
       if(MODE==='sandbox'){b.textContent='paying…';await api('/v1/carts/'+TOKEN+'/sandbox-pay',{payer_name:v.name.split(' ')[0]});return draw()}
       if(!stripeReady){const p=await api('/v1/carts/'+TOKEN+'/pay',{});const stripe=Stripe(p.publishable_key);
         const elements=stripe.elements({clientSecret:p.client_secret,appearance:{variables:{colorPrimary:'#ff5a36',borderRadius:'12px'}}});
@@ -837,7 +837,10 @@ function trackLine(c){
   const [n,label]=S[(t&&t.status)||'ordered']||S.ordered;
   let h='<div class="trk"><div class="track s'+n+(t&&t.status==='problem'?' bad':'')+'"><i></i><i></i><i></i><i></i></div><div class="small"><b>'+label+'</b>'+(t&&t.description&&t.description.toLowerCase()!==label.toLowerCase()?': '+esc(t.description):'')+(t&&t.carrier?' · '+esc(t.carrier):'')+(t&&t.number?' '+esc(t.number):'')+'</div>';
   if(t&&t.url)h+='<a class="btn ghost small" href="'+esc(t.url)+'" target="_blank" rel="noopener" style="margin-top:8px">Track it →</a>';
-  if(!t||!t.number)h+='<div class="row" style="gap:6px;margin-top:8px"><input id="trkNum" placeholder="Tracking number from '+esc(c.merchant.name)+'’s email" style="margin:0;flex:1"><button class="btn ghost small" id="trkAdd" style="margin:0;width:auto">Add</button></div><p class="err" id="trkErr"></p>';
+  const add='<div class="row" style="gap:6px;margin-top:8px"><input id="trkNum" placeholder="Tracking number from '+esc(c.merchant.name)+'’s email" style="margin:0;flex:1"><button class="btn ghost small" id="trkAdd" style="margin:0;width:auto">Add</button></div><p class="err" id="trkErr"></p>';
+  // Spot follows it at the store (the Ordered line says so). Pasting a number stays possible, tucked away.
+  if((!t||!t.number)&&c.tracking_auto)h+='<details class="small muted" style="margin-top:8px"><summary>Have the tracking number already?</summary>'+add+'</details>';
+  else if(!t||!t.number)h+=add;
   return h+'</div>';
 }
 // Returns: start one here; then the store's own steps, with the order number.
@@ -856,7 +859,7 @@ function returnLine(c,f){
   return '<button class="textlink" id="retOpen" style="margin-top:10px">↩︎ Need to send it back?</button><form class="retbox" id="retForm" hidden><h3>Start a return</h3>'+items+'<select name="reason" aria-label="Why"><option value="doesnt_fit">It doesn’t fit</option><option value="changed_mind">Changed my mind</option><option value="damaged">It arrived damaged</option><option value="wrong_item">Wrong item</option><option value="other">Something else</option></select><textarea name="note" rows="2" maxlength="300" placeholder="Anything else? (optional)"></textarea><button class="btn">Get the return steps</button><p class="err" id="retErr"></p></form>';
 }
 function placedBox(c,f,tr){
-  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. '+(c.tracking_auto?'Spot lets you know when it ships.':'Watch your email for tracking.')+'</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
 }
 function orderBoxRest(c,f,agentOn,st,tr){
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
