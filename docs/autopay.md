@@ -50,3 +50,7 @@ This was built against Intuit's published API and a stand-in server, not a live 
 - the card form can reach Intuit's tokens address from the browser (the signing page already allows it in its content security policy);
 - the charge and the bank debit go through, and the bank debit's status changes from pending to succeeded;
 - the Payment recorded in QuickBooks against the invoice matches the deposit that Intuit makes to the bank. If the accountant would rather have the charge recorded another way, only `recordPayment` in `src/quickbooks.js` changes.
+
+## Payment details still owed
+
+When a client signed with automatic payments but has not put a card or bank account on file, the hourly run emails the signer (an hour after signing, so nobody adding them right now gets one) and reminds them every 3 days, at most 3 times (`askForDetails`, `REMIND_DAYS`, `REMIND_MAX`). Staff asking by hand ("Ask for details") counts as one of the emails. The email stops as soon as details are on file. The hub also shows "Add your payment details" under Waiting on you, and the hub's top menu has an Agreements link. Journey J172.

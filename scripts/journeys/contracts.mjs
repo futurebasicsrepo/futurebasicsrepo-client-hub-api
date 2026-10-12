@@ -232,9 +232,13 @@ await journey('J171', 'The client hub carries the agreement: a contract is tied 
   // the hub page itself
   if (playwright) {
     const b = await playwright.chromium.launch();
-    try { const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.token', t); localStorage.setItem('token', t); localStorage.setItem('fb.hub.token', t); } catch {} }, room.token);
+    try { const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, room.token);
       const pg = await ctx.newPage(); const errs = []; pg.on('pageerror', e => errs.push(String(e))); await pg.goto(`${BASE}/`, { waitUntil: 'networkidle' });
-      if (await pg.locator('#agreements').count()) { await pg.waitForSelector('#agreements:not(.hidden)', { timeout: 8000 }).catch(() => {}); const txt = await pg.locator('#agreements').innerText().catch(() => ''); ok(!txt || /Hub agreement/i.test(txt), 'the hub page lists the agreement when signed in', txt.slice(0, 120)); }
+      await pg.waitForSelector('#agreements:not(.hidden)', { timeout: 10000 }).catch(() => {}); const txt = await pg.locator('#agreements').innerText().catch(() => '');
+      ok(/Hub agreement/i.test(txt) && /Hub autopay/i.test(txt), 'the hub page lists the agreements when signed in', txt.slice(0, 160));
+      ok(/Add your payment details/i.test(await pg.locator('#waiting').innerText().catch(() => '')), 'and Waiting on you asks for the payment details');
+      ok(await pg.locator('#navAgreements').isVisible(), 'the top menu has an Agreements link'); await pg.click('#navAgreements'); await sleep(900);
+      ok(await pg.evaluate(() => { const r = document.getElementById('agreements').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), 'and it takes them to the agreements');
       ok(errs.length === 0, 'no page errors on the hub', errs);
     } finally { await b.close(); }
   }
