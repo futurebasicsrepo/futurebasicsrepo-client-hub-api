@@ -19,13 +19,13 @@ export const abaOk = r => { const d = String(r).replace(/\D/g, ''); if (d.length
 // ---- what Intuit sends back, in one plain shape ----
 const failure = (res, j, fallback) => {
   const e = j?.errors?.[0] || {}, detail = String(e.detail || e.message || fallback || `answered ${res.status}`).slice(0, 240);
-  return Object.assign(new Error(`QuickBooks Payments: ${detail}`), { status: res.status, code: e.code || '', refused: res.status === 401 || res.status === 403, tid: res.headers?.get?.('intuit_tid') || '' });
+  return Object.assign(new Error(`QuickBooks Payments: ${detail}`), { status: res.status, code: e.code || '', detail, refused: res.status === 401 || res.status === 403, tid: res.headers?.get?.('intuit_tid') || '' });
 };
 async function call(ctx, cfg, path, { method = 'GET', body, requestId } = {}) {
   const res = await authed(ctx, `${cfg.paymentsOrigin}${path}`, { method, headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), 'Request-Id': requestId || randomUUID() }, body: body !== undefined ? JSON.stringify(body) : undefined });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) {
-    ctx.log?.warn?.({ quickbooks: true, payments: true, status: res.status, intuit_tid: res.headers?.get?.('intuit_tid') || '', code: j?.errors?.[0]?.code, method, path: path.replace(/\/[0-9A-Za-z-]{8,}/g, '/{id}') }, 'QuickBooks Payments call failed');
+    ctx.log?.warn?.({ quickbooks: true, payments: true, status: res.status, intuit_tid: res.headers?.get?.('intuit_tid') || '', code: j?.errors?.[0]?.code, message: String(j?.errors?.[0]?.message || '').slice(0, 200), detail: String(j?.errors?.[0]?.detail || '').slice(0, 300), moreInfo: String(j?.errors?.[0]?.moreInfo || '').slice(0, 200), method, path: path.replace(/\/[0-9A-Za-z-]{8,}/g, '/{id}') }, 'QuickBooks Payments call failed');
     throw failure(res, j);
   }
   return j;

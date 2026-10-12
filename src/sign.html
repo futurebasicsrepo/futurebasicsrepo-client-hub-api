@@ -37,7 +37,7 @@
     .opt{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}.opt label{flex:1;min-width:130px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;cursor:pointer;display:flex;gap:10px;align-items:center;background:var(--fog)}.opt input{accent-color:var(--ink)}
     .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 24px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:600;cursor:pointer;text-decoration:none;width:100%;font-size:16px}
     .btn:disabled{opacity:.4;cursor:not-allowed}.btn.light{background:#fff;color:var(--ink);width:auto;padding:11px 18px;font-size:14px}.btn.go{background:var(--cue);border-color:var(--ink);color:var(--ink)}
-    .payform .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.payform .opt{margin:6px 0 12px}.payform small.hint{display:block;color:var(--dim);font-size:13px;margin:-4px 0 12px}.onfile{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}.onfile b{font-weight:500}
+    .payform .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.payform .two>*,.payform .f{min-width:0}.payform input:not([type=checkbox]),.payform select{width:100%;max-width:100%;box-sizing:border-box}.payform .testnote{background:#fff7d6;border:1px solid #e6d27a;border-radius:10px;padding:8px 12px;font-size:14px;margin:0 0 12px}.payform .opt{margin:6px 0 12px}.payform small.hint{display:block;color:var(--dim);font-size:13px;margin:-4px 0 12px}.onfile{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between}.onfile b{font-weight:500}
     .msg{min-height:22px;margin:10px 0 0;font-size:14px;color:var(--bad)}
     .linkbtn{background:none;border:0;color:var(--dim);text-decoration:underline;cursor:pointer;padding:6px 0;font-size:14px}
     .bar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:rgba(20,20,22,.97);color:#fff;padding:12px clamp(14px,4vw,28px) calc(12px + env(safe-area-inset-bottom));display:flex;gap:14px;align-items:center;justify-content:space-between}
@@ -97,6 +97,10 @@
   // Payment details for automatic payments. The number goes from this page straight to the payment provider, which sends back a one-time token: only the token reaches us.
   const luhn=n=>{const d=String(n).replace(/\D/g,'');if(d.length<12||d.length>19)return false;let t=0;for(let i=0;i<d.length;i++){let x=+d[d.length-1-i];if(i%2){x*=2;if(x>9)x-=9}t+=x}return t%10===0};
   const aba=n=>{const d=String(n).replace(/\D/g,'');if(d.length!==9)return false;const a=[...d].map(Number);return(3*(a[0]+a[3]+a[6])+7*(a[1]+a[4]+a[7])+(a[2]+a[5]+a[8]))%10===0};
+  const digits=v=>String(v||'').replace(/\D/g,'');
+  // typing helpers: the card number is grouped as people read it, the expiry gets its slash, and every number box takes digits only
+  const fmtCard=v=>{const d=digits(v).slice(0,19);return /^3[47]/.test(d)?[d.slice(0,4),d.slice(4,10),d.slice(10,15)].filter(Boolean).join(' '):(d.match(/.{1,4}/g)||[]).join(' ')};
+  const fmtExp=(v,back)=>{let d=digits(v).slice(0,6);if(d.length>=5)return d.slice(0,2)+'/'+d.slice(-2);d=d.slice(0,4);if(d.length===1&&+d>1)d='0'+d;return d.length>=3?d.slice(0,2)+'/'+d.slice(2):(d.length===2&&!back?d+'/':d)};
   function payForm(c){
     const p=c.pay,box=$('#payBox'),card=p.kind==='card',what=card?'card':'bank account';
     const sched=`<table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${(p.upcoming||[]).map(x=>`<tr><td>${esc(x.label)}</td><td>${esc(x.state==='paid'?'Paid':x.falls?day(x.falls+'T12:00:00'):'On delivery')}</td><td class="n">${esc(new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(x.amountCents/100))}</td></tr>`).join('')}</tbody></table>`;
@@ -104,14 +108,14 @@
       box.innerHTML=`<div class="sign payform"><h2>Automatic payments are set up</h2><div class="onfile"><p style="margin:0">Each payment is taken from your <b>${esc(p.method.label)}</b> on its due date. We email a receipt each time${p.paused?'. <b>Automatic payments are paused right now.</b>':'.'}</p><button type="button" class="btn light" id="pChange" style="width:auto">Change ${what}</button></div><div id="pForm" class="hidden"></div></div>`;
       $('#pChange').onclick=()=>{$('#pForm').classList.toggle('hidden');if(!$('#pForm').innerHTML)form($('#pForm'),p,c)};return}
     if(!p.ready){box.innerHTML=`<div class="banner warn"><b>One more step: your ${what}</b>Payment details cannot be taken just yet. We have been told, and will email you the moment you can add them.</div>`;return}
-    box.innerHTML=`<div class="sign payform"><h2>Add your ${what}</h2><p class="lead">This is the last step. Your ${what} is used only for the payments in this agreement, shown below. The number goes straight to our payment provider: we never see it or keep it.</p>${sched}<div id="pForm"></div></div>`;form($('#pForm'),p,c);
+    box.innerHTML=`<div class="sign payform"><h2>Add your ${what}</h2><p class="lead">This is the last step. Your ${what} is used only for the payments in this agreement, shown below. The number goes straight to our payment provider: we never see it or keep it.</p>${sched}${p.testMode&&card?'<p class="testnote"><b>Test mode.</b> Real cards are refused here. Use the test card <b>4111 1111 1111 1111</b>, any future expiry, any 3-digit code and any ZIP.</p>':''}<div id="pForm"></div></div>`;form($('#pForm'),p,c);
   }
   function form(el,p,c){
     const card=p.kind==='card';
     el.innerHTML=`<form id="pf" autocomplete="on" novalidate>${card?`
       <label class="f"><span>Name on card</span><input id="cName" autocomplete="cc-name" required></label>
-      <label class="f"><span>Card number</span><input id="cNum" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" required></label>
-      <div class="two"><label class="f"><span>Expiry (MM/YY)</span><input id="cExp" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" required></label><label class="f"><span>Security code</span><input id="cCvc" inputmode="numeric" autocomplete="cc-csc" maxlength="4" required></label></div>
+      <label class="f"><span>Card number</span><input id="cNum" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23" required></label>
+      <div class="two"><label class="f"><span>Expiry (MM/YY)</span><input id="cExp" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="7" required></label><label class="f"><span>Security code</span><input id="cCvc" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" required></label></div>
       <label class="f"><span>Billing ZIP code</span><input id="cZip" inputmode="numeric" autocomplete="postal-code" maxlength="10" required></label>`:`
       <label class="f"><span>Name on the account</span><input id="bName" autocomplete="name" required></label>
       <div class="two"><label class="f"><span>Routing number (9 digits)</span><input id="bRoute" inputmode="numeric" maxlength="9" required></label><label class="f"><span>Account number</span><input id="bNum" inputmode="numeric" maxlength="17" autocomplete="off" required></label></div>
@@ -120,9 +124,11 @@
       <label class="chk"><input type="checkbox" id="pAuth"><span>${esc(p.authorization)}</span></label>
       <button class="btn go" id="pGo" disabled>Save ${card?'card':'bank account'}</button><p class="msg" id="pMsg" role="alert"></p></form>`;
     const f=$('#pf'),ready=()=>{$('#pGo').disabled=!$('#pAuth').checked};f.addEventListener('input',ready);f.addEventListener('change',ready);
+    const only=(id,fn)=>{const el=$(id);if(el)el.addEventListener('input',e=>{el.value=fn(el.value,e.inputType==='deleteContentBackward')})};
+    only('#cNum',fmtCard);only('#cExp',fmtExp);only('#cCvc',v=>digits(v).slice(0,4));only('#cZip',v=>String(v).replace(/[^\d-]/g,'').slice(0,10));only('#bRoute',v=>digits(v).slice(0,9));only('#bNum',v=>digits(v).slice(0,17));only('#bPhone',v=>digits(v).slice(0,10));
     const fail=m=>{$('#pMsg').textContent=m;$('#pGo').disabled=false;$('#pGo').textContent='Save '+(card?'card':'bank account')};
     f.addEventListener('submit',async e=>{e.preventDefault();$('#pMsg').textContent='';let tokenBody;
-      if(card){const num=$('#cNum').value.replace(/\s+/g,''),m=/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/.exec($('#cExp').value.trim());
+      if(card){const num=digits($('#cNum').value),ed=digits($('#cExp').value),m=ed.length===4||ed.length===6?[0,ed.slice(0,2),ed.slice(2)]:null;
         if($('#cName').value.trim().length<2)return fail('Enter the name on the card');if(!luhn(num))return fail('That card number does not look right');if(!m||+m[1]<1||+m[1]>12)return fail('Enter the expiry as MM/YY');
         const yr=m[2].length===2?'20'+m[2]:m[2];if(new Date(+yr,+m[1],1)<=new Date())return fail('That card has expired');if(!/^\d{3,4}$/.test($('#cCvc').value))return fail('Enter the security code from the card');if(!/^\d{5}(-\d{4})?$/.test($('#cZip').value.trim()))return fail('Enter the 5-digit billing ZIP code');
         tokenBody={card:{number:num,expMonth:m[1].padStart(2,'0'),expYear:yr,cvc:$('#cCvc').value,name:$('#cName').value.trim(),address:{postalCode:$('#cZip').value.trim().slice(0,5),country:'US'}}}}
@@ -131,7 +137,7 @@
       $('#pGo').disabled=true;$('#pGo').textContent='Saving…';
       try{
         const tr=await fetch(p.tokensUrl,{method:'POST',headers:{'content-type':'application/json','request-id':crypto.randomUUID()},body:JSON.stringify(tokenBody)}).catch(()=>null);tokenBody=null;
-        const tj=tr?await tr.json().catch(()=>({})):{};if(!tr||!tr.ok||!tj.value)return fail(tr&&tr.status<500?'Those details were not accepted. Check them and try again.':'Could not reach the payment service. Try again in a minute.');
+        const tj=tr?await tr.json().catch(()=>({})):{};if(!tr||!tr.ok||!tj.value){const said=String((tj.errors&&tj.errors[0]&&(tj.errors[0].detail||tj.errors[0].message))||'').slice(0,160).replace(/\.$/,'');return fail(tr&&tr.status<500?'Those details were not accepted'+(said?' ('+said+')':'')+'. Check them and try again.':'Could not reach the payment service. Try again in a minute.')}
         for(const i of f.querySelectorAll('input'))if(i.type!=='checkbox')i.value='';
         await api('/payment-method',{body:{kind:p.kind,token:tj.value}});const d=await api('');render(d);toast('Saved. Your automatic payments are set up.')}
       catch(x){fail(x.message)}});
