@@ -47,6 +47,8 @@
     .done{display:grid;gap:12px;justify-items:start}
     .linkrow{display:flex;gap:8px;width:100%}.linkrow input{flex:1;font:400 13px var(--mono)}.linkrow button{flex:none;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:999px;padding:0 16px;cursor:pointer}
     .qr{padding:14px;background:#fff;border-radius:18px;border:1px solid var(--line)}.qr img,.qr canvas{display:block;width:200px;height:200px;image-rendering:pixelated}
+    .scan{display:flex;align-items:center;gap:16px;padding:14px;border:1px dashed var(--line);border-radius:20px}.scan .qr{flex:none;padding:6px;border-radius:14px}.scan .qr img,.scan .qr canvas{width:132px;height:132px}
+    .scan b{display:block;font-weight:500}.scan p{margin:4px 0 0;color:var(--dim);font-size:14px}
     .how{display:grid;gap:14px}
     .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--ink)}
     .steps li{display:grid;gap:6px;align-content:start;padding:16px 16px 0 0;min-width:0}.steps li+li{padding-left:16px;border-left:1px solid var(--line)}
@@ -80,6 +82,7 @@
         <h2 id="factoryH" data-i18n="fair.factoryH">Get a complete, clear tech pack before you cut anything.</h2>
         <p data-i18n="fair.factoryP">Overseas buyers often send unclear specs, and samples go round and round. Sign up and get your own link. Send it to your buyers: their tech packs come to you with a Chinese version.</p>
         <p data-i18n-html="fair.alibaba"><b>Works with Alibaba too.</b> When a buyer messages you there, send them your link: they get a clear tech pack and you get fewer sample rounds. Know other factories? Pass this page on.</p>
+        <div class="scan" id="scanBox"><div class="qr" id="pageQr" role="img" aria-label="QR code for this page"></div><div><b data-i18n="fair.scanH">Scan to open this page on your phone</b><p data-i18n="fair.scanP">Point your phone camera at the code to open this sign-up page.</p></div></div>
         <form id="factoryForm" novalidate>
           <label class="full"><span data-i18n="fair.f1">Company name</span><input id="company" name="company" required maxlength="160" autocomplete="organization"></label>
           <label><span data-i18n="fair.f2">Contact name</span><input id="contact" name="contact" maxlength="140" autocomplete="name"></label>
@@ -129,6 +132,10 @@
     // a visitor reading Chinese is most likely a factory: on a phone its door comes first (the brand door is one scroll away)
     const order=()=>document.body.classList.toggle('zh-first',/^zh/.test(HubI18n.lang)&&side!=='brand');
     order();document.addEventListener('hub:lang',order);
+    // a QR for this very page (the factory door, in the reader's language) so the person across the table can open it on their own phone
+    function pageQr(){const u=new URLSearchParams({side:'factory'});if(HubI18n.lang!=='en')u.set('lang',HubI18n.lang);u.set('src',src==='tile'?'tile-qr':src);
+      const qr=qrcode(0,'M');qr.addData(`${location.origin}/fair?${u}`);qr.make();document.getElementById('pageQr').innerHTML=qr.createImgTag(4,8,'')}
+    pageQr();document.addEventListener('hub:lang',pageQr);
     paint();document.addEventListener('hub:lang',paint);
     if(side==='factory')document.getElementById('factoryH').scrollIntoView({block:'start'});
     const form=document.getElementById('factoryForm'),msg=document.getElementById('factoryMsg'),go=document.getElementById('factoryGo');

@@ -653,6 +653,7 @@ await journey('J58', 'trade fairs: a factory signs up for its own link, buyers i
   const tile = await call('/factory-signup.webmanifest');
   ok(tile.status === 200 && tile.json.start_url === '/fair?side=factory&lang=zh&src=tile' && tile.json.display === 'standalone' && tile.json.icons.length === 3, 'the fair page can be added to a phone as a factory sign-up tile that opens the Chinese factory door', tile.json);
   ok(/rel="apple-touch-icon"/.test(page.text) && /factory-signup\.webmanifest/.test(page.text) && /apple-mobile-web-app-title" content="FB Factory"/.test(page.text), 'and the page names the tile and gives it an icon');
+  ok(/id="pageQr"/.test(page.text) && /fair\.scanH/.test(page.text) && /'fair\.scanH'/.test((await call('/hub-i18n.js')).text), 'the factory door carries a QR for the page itself, in all three languages');
 });
 
 
