@@ -214,7 +214,7 @@ export function registerProtoRoutes(app, d) {
     const emails = req.body?.emails; let invites = null;
     if (emails && String(Array.isArray(emails) ? emails.join('') : emails).trim()) {
       await pool.query(`update builds set visibility=case when visibility='hidden' then 'invite' else visibility end, updated_at=now() where id=$1`, [r.build_id]);
-      const res = await app.inject({ method: 'POST', url: '/v1/admin/builds/invites', headers: { authorization: req.headers.authorization, 'content-type': 'application/json' }, payload: { emails, buildId: r.build_id, days: req.body?.days || 30, note: req.body?.note || '', send: req.body?.send !== false } });
+      const res = await app.inject({ method: 'POST', url: '/v1/admin/builds/invites', headers: { authorization: req.headers.authorization, ...(req.headers['cf-access-jwt-assertion'] ? { 'cf-access-jwt-assertion': req.headers['cf-access-jwt-assertion'] } : {}), 'content-type': 'application/json' }, payload: { emails, buildId: r.build_id, days: req.body?.days || 30, note: req.body?.note || '', send: req.body?.send !== false } });
       let j = {}; try { j = res.json(); } catch { /* the showcase answered with something else */ }
       if (res.statusCode >= 400) return reply.code(res.statusCode).send({ error: j.error || 'The invitation could not be sent' });
       invites = j;

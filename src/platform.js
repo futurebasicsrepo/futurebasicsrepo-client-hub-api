@@ -3,6 +3,7 @@
 // Everything here is read-only. No secret is ever returned, only whether it is set.
 import { statfs } from 'node:fs/promises';
 import { vaultReady } from './vault.js';
+import { staffGateConfig } from './staff-gate.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { overallStatus } from './telemetry.js';
 
@@ -137,6 +138,9 @@ export function configChecks(d) {
   add('unsub', 'Email unsubscribe secret', env.UNSUBSCRIBE_SECRET ? 'ok' : 'warn', env.UNSUBSCRIBE_SECRET ? 'Set.' : 'UNSUBSCRIBE_SECRET is not set, so unsubscribe links fall back to a weaker key.');
   add('followups', 'Photo follow-up emails', env.FOLLOWUPS_DISABLED === 'true' ? 'info' : 'ok', env.FOLLOWUPS_DISABLED === 'true' ? 'Switched off.' : 'On.');
   add('nurture', 'Follow-up email sequence', env.NURTURE_DISABLED === 'true' ? 'info' : 'ok', env.NURTURE_DISABLED === 'true' ? 'Switched off.' : 'On.');
+  const gate = staffGateConfig(env);
+  add('staffgate', 'Staff network gate (Cloudflare Access)', gate.partial ? 'warn' : !gate.configured ? 'info' : gate.mode === 'log' ? 'warn' : 'ok',
+    gate.partial ? 'Only one of CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD is set, so the gate is off.' : !gate.configured ? 'Off: staff sessions work from any address. Set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD to require Cloudflare Access.' : gate.mode === 'log' ? `Watching only (CF_ACCESS_MODE=log): staff requests that skip ${gate.issuer.replace(/^https:\/\//, '')} are logged, not refused.` : `On: staff tools only answer through Cloudflare Access (${gate.issuer.replace(/^https:\/\//, '')}).`);
   add('origins', 'Allowed web origins', env.ALLOWED_ORIGINS ? 'ok' : 'info', env.ALLOWED_ORIGINS ? `${env.ALLOWED_ORIGINS.split(',').length} listed.` : 'Using the defaults.');
   return out;
 }
