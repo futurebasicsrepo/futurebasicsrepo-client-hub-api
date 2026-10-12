@@ -59,6 +59,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .thumb{width:56px;height:56px;border-radius:12px;background:var(--line) center/cover no-repeat;flex:none}
 .item .t{font-weight:600}.item .v{color:var(--muted);font-size:14px}
 .item .p{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.retbox{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px;text-align:left}.retbox h3{margin:0 0 6px;font-size:16px}.retbox ol{margin:0 0 10px;padding-left:18px;display:grid;gap:4px}.retbox select,.retbox textarea{width:100%;margin:6px 0}
 .sum{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0;font-variant-numeric:tabular-nums}
 .sum.total{color:var(--ink);font-weight:800;font-size:20px;padding-top:10px;border-top:1px solid var(--line);margin-top:8px}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:5px 10px;border-radius:99px;background:var(--line)}
@@ -745,7 +746,7 @@ function ridersForm(c,s){
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
   const tr=c.kind==='train';
-  if(st==='placed')return placedBox(c,f,tr)+watchLine(c);
+  if(st==='placed')return placedBox(c,f,tr)+watchLine(c)+returnLine(c,f);
   return orderBoxRest(c,f,agentOn,st,tr);
 }
 // The price watch on an order Spot paid for: on until when, or what was asked for.
@@ -756,6 +757,21 @@ function watchLine(c){
   if(w.state==='refunded')return '<p class="small" style="margin:10px 0 0">📉 '+store+' matched a lower price: '+usd(w.refunded_cents||w.claimed_cents||0)+' went back to the card that paid.</p>';
   if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so Spot asked them for '+usd(w.claimed_cents||0)+' back. If they pay it, it goes back to the card that paid.</p>';
   return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot asks for the difference.</p>';
+}
+// Returns: start one here; then the store's own steps, with the order number.
+function returnLine(c,f){
+  const r=c.return,store=esc(c.merchant.name);
+  if(r&&r.state==='refunded')return '<p class="small" style="margin:10px 0 0">↩︎ '+store+' refunded the return: '+usd(r.refunded_cents||0)+' went back to the card that paid.</p>';
+  if(r&&r.state==='shipped')return '<p class="small" style="margin:10px 0 0">↩︎ Shipped back'+(r.tracking?' ('+esc(r.tracking)+')':'')+'. When '+store+' refunds it, Spot sends the money back to the card that paid.</p>';
+  if(r&&r.state==='requested'){
+    const p=r.policy||{},where=p.returns_url||p.source_url||c.merchant.url||'';
+    const email=(c.requester&&((c.requester.shipping&&c.requester.shipping.email)||c.requester.email))||'';
+    const steps=['Start it on '+store+'’s site'+(where?' (<a href="'+esc(where)+'" target="_blank" rel="noopener">'+esc(where.replace(/^https:\\/\\//,''))+'</a>)':'')+' with'+(f.order_number?' order <b>'+esc(f.order_number)+'</b>':' your order number')+(email?' and <b>'+esc(email)+'</b>':'')+'.',p.returns_how?esc(p.returns_how):'',p.free_returns===true?'Returns are free: use the label they give you.':p.free_returns===false?'Return shipping may cost a few dollars.':'','When '+store+' refunds it, Spot sends the money back to the card that paid, usually within 5–10 business days.'].filter(Boolean);
+    return '<div class="retbox"><h3>↩︎ Your return</h3>'+(r.past_window?'<p class="small" style="color:var(--warn)">It’s past '+store+'’s usual return window, so they may say no.</p>':'')+'<ol class="small">'+steps.map(x=>'<li>'+x+'</li>').join('')+'</ol>'+(where?'<a class="btn small" href="'+esc(where)+'" target="_blank" rel="noopener">Start it at '+store+' →</a>':'')+'<div class="row" style="gap:6px;margin-top:8px"><input id="retTrack" placeholder="Tracking number (optional)" style="margin:0;flex:1"><button class="btn ghost small" id="retShipped" style="margin:0;width:auto">I shipped it</button></div></div>';
+  }
+  if(!c.can_return)return '';
+  const items=c.items.length>1?'<div class="small" style="margin:6px 0">'+c.items.map((it,i)=>'<label style="display:block"><input type="checkbox" name="ri" value="'+i+'" checked> '+esc(it.title)+'</label>').join('')+'</div>':'';
+  return '<button class="textlink" id="retOpen" style="margin-top:10px">↩︎ Need to send it back?</button><form class="retbox" id="retForm" hidden><h3>Start a return</h3>'+items+'<select name="reason" aria-label="Why"><option value="doesnt_fit">It doesn’t fit</option><option value="changed_mind">Changed my mind</option><option value="damaged">It arrived damaged</option><option value="wrong_item">Wrong item</option><option value="other">Something else</option></select><textarea name="note" rows="2" maxlength="300" placeholder="Anything else? (optional)"></textarea><button class="btn">Get the return steps</button><p class="err" id="retErr"></p></form>';
 }
 function placedBox(c,f,tr){
   return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
@@ -833,6 +849,10 @@ async function draw(){
   const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));if(Object.keys(v).length)try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('retOpen',()=>{$('#retForm').hidden=false;$('#retOpen').remove()});
+  const rf0=$('#retForm');if(rf0)rf0.onsubmit=async(e)=>{e.preventDefault();const fd=new FormData(rf0);const items=[...rf0.querySelectorAll('input[name=ri]')].filter(x=>x.checked).map(x=>Number(x.value));const b=rf0.querySelector('button');b.disabled=true;b.textContent='getting the steps…';
+    try{await api('/v1/carts/'+TOKEN+'/manage/return',{k:K,reason:fd.get('reason'),note:fd.get('note')||'',...(rf0.querySelector('input[name=ri]')?{items}:{})});draw()}catch(err){$('#retErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('retShipped',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/return/shipped',{k:K,tracking:($('#retTrack')||{}).value||''});draw()}catch(err){alert(err.message)}});
   on('placeIt',async()=>{$('#placeIt').disabled=true;$('#placeIt').textContent='placing…';await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:true});draw()});
   on('notYet',async()=>{await api('/v1/carts/'+TOKEN+'/manage/order/confirm',{k:K,place:false});draw()});
   on('got',async()=>{await api('/v1/carts/'+TOKEN+'/manage/received',{k:K});draw()});

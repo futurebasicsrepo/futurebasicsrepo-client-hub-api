@@ -41,6 +41,9 @@ export function policyFrom(v, site) {
     free_returns: yes(v.free_returns),
     source_url: v.source_url.slice(0, 500),
     // Standard shipping, order to door, in business days; free over $X.
+    // How to send something back, in the store's words, and where to start it.
+    returns_how: typeof v.returns_how === 'string' ? v.returns_how.replace(/\s+/g, ' ').trim().slice(0, 200) || null : null,
+    returns_url: typeof v.returns_url === 'string' && /^https:\/\//i.test(v.returns_url) && siteOf(v.returns_url) === site ? v.returns_url.slice(0, 500) : null,
     ship_days_min: days(v.ship_days_min),
     ship_days_max: days(v.ship_days_max),
     free_shipping_over: Number.isFinite(Number(v.free_shipping_over)) && Number(v.free_shipping_over) >= 0 && Number(v.free_shipping_over) < 10000 && v.free_shipping_over !== null && v.free_shipping_over !== '' ? Math.round(Number(v.free_shipping_over) * 100) : null,
@@ -57,10 +60,11 @@ async function readPolicy(site, name, { client, onUsage, onError } = {}) {
   const content = `Find ${who}'s own customer policies on its own site:
 1. Price adjustments: if ${site} lowers its price after someone buys, does it refund the difference? For how many days after purchase, and how do you ask?
 2. Returns: how many days, and are returns free?
+2b. How to start a return online (the page or portal, and what to have ready, like the order number and email).
 3. Standard shipping in the US: how many business days from order to delivery (processing plus transit), and the order total over which shipping is free.
 Read the policy page itself (help center, FAQ, returns or price policy). Price matching a competitor is not a price adjustment.
 Reply with ONLY this JSON:
-{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "ship_days_min": number or null, "ship_days_max": number or null, "free_shipping_over": dollars as a number (0 if always free) or null, "source_url": "the https address of the policy page you read, on ${site}"}
+{"price_adjustment": true | false | null, "adjustment_days": number or null, "adjustment_how": "a few words, e.g. contact customer service with your order number" or "", "returns_days": number or null, "free_returns": true | false | null, "returns_how": "one or two short sentences on how to start a return online" or "", "returns_url": "https address where a return is started, on ${site}" or "", "ship_days_min": number or null, "ship_days_max": number or null, "free_shipping_over": dollars as a number (0 if always free) or null, "source_url": "the https address of the policy page you read, on ${site}"}
 Say true or false only when the page says so (for example "we do not offer price adjustments"); null when it doesn't say.`;
   const messages = [{ role: 'user', content }];
   try {
@@ -198,7 +202,11 @@ export function createStoreFacts({ db, client = null, product = shopifyProduct, 
       if (!site) return null;
       policy(site, name);
       const p = inflight.get(site);
-      if (p) await Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
+      if (p) {
+        let timer;
+        await Promise.race([p, new Promise((r) => (timer = setTimeout(r, ms)))]);
+        clearTimeout(timer);
+      }
       const got = db.policies.get(site);
       return got && !got.unknown ? got : null;
     },

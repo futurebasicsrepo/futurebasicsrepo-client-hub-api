@@ -541,6 +541,8 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
                   ORDER BY json_extract(doc, '$.price_watch.last_at') IS NOT NULL, json_extract(doc, '$.price_watch.last_at') LIMIT 2000`)
         .all(since, since)
         .map((r) => r.id),
+    // Returns under way (spot.requestReturn), for /admin.
+    idsReturns: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.return.state') IN ('requested', 'shipped') LIMIT 500").all().map((r) => r.id),
     // Price drops waiting on staff (found, not yet claimed or dismissed).
     idsPriceDrops: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.price_watch.state') IN ('dropped', 'claimed') LIMIT 500").all().map((r) => r.id),
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),

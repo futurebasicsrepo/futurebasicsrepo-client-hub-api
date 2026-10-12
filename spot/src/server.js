@@ -992,6 +992,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   });
   app.post('/v1/carts/:token/manage/received', async (req) => ({ cart: ownerCart(spot.markReceived(req.params.token, keyOf(req))) }));
   app.post('/v1/carts/:token/manage/cancel', async (req) => ({ cart: ownerCart(await spot.cancel(req.params.token, keyOf(req))) }));
+  // Returns: the requester starts one; Spot gives them the store's own steps.
+  app.post('/v1/carts/:token/manage/return', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    const url = cart.items?.find((i) => i?.url)?.url || cart.merchant?.url || '';
+    const policy = await storeFacts.whenKnown(siteOf(url), cart.merchant?.name || '', 15000).catch(() => null);
+    return { cart: ownerCart(spot.requestReturn(req.params.token, keyOf(req), req.body || {}, { policy })) };
+  });
+  app.post('/v1/carts/:token/manage/return/shipped', async (req) => ({ cart: ownerCart(spot.returnShipped(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));
 
   // Sandbox only: simulate the merchant running the issued card at checkout.

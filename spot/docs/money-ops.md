@@ -41,7 +41,9 @@ One Stripe payment covers several store carts. Each store's cart has its own car
 
 ## Returns
 
-The Terms say returns go through Spot. When a payer or requester emails hello@:
+The Terms say returns go through Spot. Most start themselves: on the order page, the requester taps **Need to send it back?**, picks the item and why, and gets the store's own return steps (read by AI off the store's policy page) with the order number and their email filled in, by email too. It shows on **/admin → Returns**. When the store refunds Spot's (paused) card, Spot refunds the payer by itself and the return leaves the list. Step in when a store needs Spot itself to start it (the order was placed in Spot's name), and use **Done another way** for store credit, a check, or a return that isn't going ahead.
+
+When a payer or requester emails hello@ instead:
 
 1. Find the cart on /admin (search the recent list by store or item).
 2. Start the return with the store under its policy, using the order number on the cart. The item ships back from the requester.
