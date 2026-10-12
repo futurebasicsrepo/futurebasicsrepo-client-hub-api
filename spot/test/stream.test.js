@@ -518,3 +518,21 @@ test('two looks can share a piece; a brand’s blog isn’t its store; a categor
   assert.equal(looksLikeListing('https://en.pieddebiche-paris.com/catalog/p/arthur-blanc.html'), false);
   assert.equal(withoutStore('Cleo + Wolf Ivy Western Boots | Boot Barn', 'Boot Barn'), 'Cleo + Wolf Ivy Western Boots');
 });
+
+test('names and photo addresses go out without page-markup leftovers', async () => {
+  const { tidyTitle } = await import('../src/capture.js');
+  assert.equal(tidyTitle('The Abby Women&#x27;s Mocha Goat Cowgirl Boot Price: $395'), 'The Abby Women’s Mocha Goat Cowgirl Boot'.replace('’', "'"));
+  assert.equal(tidyTitle('Price Is Right Board Game'), 'Price Is Right Board Game');
+  const { client } = streamer([{ kind: 'products', products: [{ ...P(1, 'kohls'), title: 'LC Lauren Conrad Women&#x27;s Boots Price: $89', image_url: '' }] }]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('cowboy boots', { client, fromUrl: async () => ({ items: [{ title: 'x', image_url: 'https://media.kohlsimg.example/is/image/kohls/1?wid=1000&amp;hei=1000' }], offers: [] }), product: noShopify, resolve: async () => null, pdp: async () => null, photos: async () => null, verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  const item = events.find((e) => e.type === 'pick').option.item;
+  assert.equal(item.title, "LC Lauren Conrad Women's Boots");
+  assert.equal(item.image_url, 'https://media.kohlsimg.example/is/image/kohls/1?wid=1000&hei=1000');
+});
