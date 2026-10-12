@@ -1884,6 +1884,44 @@ await journey('J158', 'Start project in a browser: a won deal offers it, one cli
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#ddlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the deal window fits the screen'); } finally { await pc.close(); }
 });
 
+await journey('J163', 'Pip, more guides: the client’s quote, messages and request on the hub, and a guide on each page of the work console', async () => {
+  const r = await room('163', { wait: false }), W = 'http://work.localhost:3123', tag = `pg${stamp}`;
+  const title = async pg => (await pg.locator('.fbh-b h3').first().innerText().catch(() => '')).trim(), meta = async pg => (await pg.locator('.fbh-b .meta').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  const open = async (ctx, url, sel) => { const pg = await ctx.newPage(); pg.errs = []; pg.on('pageerror', e => pg.errs.push(String(e))); await pg.goto(url, { waitUntil: 'networkidle' }); if (sel) await pg.waitForSelector(sel, { timeout: 15000 }); await pg.waitForSelector('.fbh-b h3', { timeout: 10000 }); return pg; };
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.helper.on', '1'); } catch {} }, r.token);
+  // the project room: Quote & deposit, then Messages
+  const pr = await open(ctx, `${BASE}/projects/${r.projectId}`, '#workbar');
+  ok((await title(pr)) === 'Open Quote & deposit' && /approve the quote and pay the deposit/i.test(await meta(pr)), 'in a project room the guide starts at Quote & deposit', `${await title(pr)} · ${await meta(pr)}`);
+  await pr.click('.wb[data-sel="money"]'); await pr.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Approve the quote', null, { timeout: 8000 });
+  ok(/no quote yet/i.test(await pr.innerText('.fbh-b')), 'with no quote yet it says so and when one comes, instead of pointing at nothing');
+  await pr.click('.fbh-b button[data-a="next"]'); ok((await title(pr)) === 'Pay the deposit', 'Next moves past the quote'); await pr.click('.fbh-b button[data-a="next"]');
+  ok(/whole route/i.test(await title(pr)) && /sampling begins/i.test(await pr.innerText('.fbh-b')), 'the end of the guide says what happens next');
+  await pr.click('.fbh-b button[data-a="next-tour"]'); await pr.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Open Messages', null, { timeout: 5000 }); ok(true, '“Show me” carries on with the next guide, Message the team');
+  await pr.click('.wb[data-sel="thread"]'); await pr.waitForSelector('#projectPageBody .mc-compose textarea', { timeout: 10000 }); await pr.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Write to us', null, { timeout: 8000 });
+  await pr.fill('#projectPageBody .mc-compose textarea', 'Hello from the guide'); await pr.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Send it', null, { timeout: 8000 }); ok(true, 'typing a message moves on to “Send it”');
+  await pr.click('#projectPageBody .mc-send'); await pr.waitForFunction(() => /sent/i.test(document.querySelector('.fbh-b')?.innerText || ''), null, { timeout: 8000 }); ok(true, 'sending completes the guide');
+  ok(pr.errs.length === 0, 'no script errors in the project room', pr.errs.join(' | ')); await pr.close();
+  // the hub home: pick a guide from the list
+  const hub = await open(ctx, `${BASE}/hub`, '#newRequest'); await hub.click('.fbh-b button[data-a="guides"]');
+  const listed = await hub.locator('.fbh-list button:not([disabled])').allInnerTexts(); ok(listed.some(t => /ask for something/i.test(t)) && listed.some(t => /start a tech pack/i.test(t)), 'the Guides list offers the guides that fit this page first', listed.join(' | '));
+  await hub.click('.fbh-list button[data-id="hub-request"]'); await hub.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Start a request', null, { timeout: 5000 });
+  await hub.click('#newRequest'); await hub.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Which product', null, { timeout: 8000 }); ok(await hub.evaluate(() => document.querySelector('.fbh').parentElement.tagName === 'DIALOG'), 'the request form: the guide moves into the dialog and carries on', await title(hub)); await hub.close();
+  await ctx.close();
+  // the work console: each page opens its own guide and rings a real control
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','pg-${tag}@thefuturebasics.com','Guide Tester','admin') returning id`).split('\n')[0], tok = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: `pg-${tag}@thefuturebasics.com` });
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '1'); } catch {} }, tok);
+  const pages = [['/prototypes', '#app:not(.hidden)', /build a prototype for a prospect/i, 'Paste their website'], ['/factories', '#app:not(.hidden)', /find the right factory/i, 'Where they are'], ['/intel', '#app:not(.hidden)', /find people worth talking to/i, 'Listen now'], ['/builds/admin', '#app:not(.hidden)', /builds showcase/i, 'Your builds'], ['/admin', '#app:not(.hidden)', /the console/i, null], ['/platform', '#platformPage:not(.hidden)', /platform health/i, 'Everything we depend on']];
+  for (const [path, ready, re, first] of pages) {
+    const pg = await open(sctx, `${W}${path}`, ready); await sleep(500);
+    const t = await title(pg), m = await meta(pg), ring = await pg.locator('.fbh-ring').boundingBox().catch(() => null);
+    ok(re.test(m) && (first ? t === first : !!t) && ring && ring.width > 10, `${path}: its own guide opens (“${t}”) with a ring on a real control`, `${m} · ${t} · ${JSON.stringify(ring)}`);
+    if (path === '/prototypes') { await pg.fill('#url', 'joesplumbing.com'); await pg.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Check the trade', null, { timeout: 8000 }); ok(true, '/prototypes: typing the address completes the step'); }
+    if (path === '/factories') { await pg.fill('#q', 'x'); await pg.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Narrow by what they make', null, { timeout: 8000 }); ok(true, '/factories: searching completes the step'); }
+    ok(pg.errs.length === 0, `${path}: no script errors`, pg.errs.join(' | ')); await pg.close();
+  }
+  await sctx.close();
+});
+
 await journey('J162', 'Pip the helper mouse: a switch anyone can flip, a mouse that follows the pointer and walks a client through the first tech pack step by step, then the staff home', async () => {
   const r = await room('162', { wait: false }), W = 'http://work.localhost:3123', tag = `pip${stamp}`;
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
