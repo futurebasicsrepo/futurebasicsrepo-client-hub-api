@@ -24,13 +24,15 @@ async function accessToken(){
 }
 
 export const shopifyGraphql = (query, variables = {}) => timed('shopify', () => shopifyGraphqlRaw(query, variables));
-async function shopifyGraphqlRaw(query, variables = {}) {
+async function shopifyGraphqlRaw(query, variables = {}, retried = false) {
   if (!shopifyConfigured()) throw Object.assign(new Error('Connect Shopify to Railway to enable live sync'), { statusCode: 503 });
   const request=async()=>fetch(`${origin()}/admin/api/${version()}/graphql.json`, {method:'POST',headers:{'Content-Type':'application/json','X-Shopify-Access-Token':await accessToken()},body:JSON.stringify({query,variables})});
   let response=await request();
   if(response.status===401&&!staticToken()){cachedToken={value:'',expiresAt:0};response=await request()}
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw Object.assign(new Error(`Shopify request failed (${response.status})`), { statusCode: 502 });
+  // A token fetched before the app was given a new scope does not carry it (it lasts about a day): on an access-denied answer fetch a fresh one and ask once more.
+  if (!retried && payload.errors?.length && !staticToken() && payload.errors.some(x => /access denied/i.test(String(x.message || '')))) { cachedToken = { value: '', expiresAt: 0 }; return shopifyGraphqlRaw(query, variables, true); }
   if (payload.errors?.length) throw Object.assign(new Error(payload.errors.map(x => x.message).join('; ')), { statusCode: 502 });
   return payload.data;
 }
