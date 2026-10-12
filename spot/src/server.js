@@ -28,6 +28,7 @@ import { registerAdmin } from './admin.js';
 import { createPriceWatch } from './pricewatch.js';
 import { createStoreFacts, siteOf } from './storefacts.js';
 import { createWatches } from './watches.js';
+import { createReviews } from './reviews.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -174,6 +175,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // "Watch this": price drops and restocks on products a shopper picked (watches.js).
   const watches = createWatches({ db, notifier, baseUrl, ...(capture.watchPrice ? { price: capture.watchPrice } : {}), ...(capture.watchStock ? { stock: capture.watchStock } : {}), log: app.log });
   app.decorate('watches', watches);
+  // Fit and reviews on a card, read by AI and kept two weeks (reviews.js).
+  const reviews = createReviews({ db, ...(capture.reviews ? { read: capture.reviews } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
     // A person said yes: record a signed approval of exactly what they approved.
@@ -252,6 +255,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     check: limit('check', 60, 600_000),
     // Card facts: one per batch of cards on screen, and once more for a new store's policy.
     facts: limit('facts', 300, 600_000),
+    // Fit and reviews: an AI read per product not seen in two weeks.
+    reviews: limit('reviews', 40, 600_000),
     card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
@@ -603,6 +608,20 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       .map((i) => ({ url: i.url.slice(0, 1000), variant: typeof i.variant === 'string' ? i.variant.slice(0, 80) : '', store: typeof i.store === 'string' ? i.store.slice(0, 80) : '' }));
     reply.header('cache-control', 'no-store');
     return { facts: await storeFacts.facts(clean) };
+  });
+
+  // Fit and reviews for one product, with the shopper's size worked out
+  // from their saved sizes when reviewers agree on how it fits.
+  app.post('/v1/reviews', async (req, reply) => {
+    limits.reviews(req);
+    const b = req.body || {};
+    const url = typeof b.url === 'string' ? b.url.slice(0, 1000) : '';
+    if (!/^https?:\/\//i.test(url)) throw new CartError('That’s not a product link');
+    const title = typeof b.title === 'string' ? b.title.slice(0, 140) : '';
+    const uid = accounts.userIdOf(req);
+    const sizes = (uid && db.users.byId(uid)?.sizes) || {};
+    reply.header('cache-control', 'no-store');
+    return { reviews: await reviews.forShopper({ url, title, store: typeof b.store === 'string' ? b.store.slice(0, 80) : '' }, sizes) };
   });
 
   // "Watch this": a signed-in shopper's watched products.

@@ -248,6 +248,12 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       UNIQUE (user_id, url)
     );
     CREATE INDEX IF NOT EXISTS watches_due ON watches (state, next_at);
+    -- Fit and reviews per product page, as an AI read them (reviews.js).
+    CREATE TABLE IF NOT EXISTS review_digests (
+      url  TEXT PRIMARY KEY,
+      doc  TEXT NOT NULL,
+      at   INTEGER NOT NULL
+    );
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -549,6 +555,15 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
         const { id, user_id, url, state, next_at, at, ...doc } = w;
         db.prepare('INSERT INTO watches (id, user_id, url, doc, state, next_at, at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET doc = excluded.doc, state = excluded.state, next_at = excluded.next_at').run(id, user_id, url, JSON.stringify(doc), state, next_at, at);
         return this.byId(id);
+      },
+    },
+    reviews: {
+      get(url) {
+        const r = db.prepare('SELECT doc, at FROM review_digests WHERE url = ?').get(String(url));
+        return r ? { ...JSON.parse(r.doc), at: r.at } : null;
+      },
+      set(url, doc, at = Date.now()) {
+        db.prepare('INSERT INTO review_digests (url, doc, at) VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET doc = excluded.doc, at = excluded.at').run(String(url).slice(0, 1000), JSON.stringify(doc), at);
       },
     },
     policies: {

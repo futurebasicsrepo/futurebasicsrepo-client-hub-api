@@ -467,6 +467,7 @@
       '<div class="t">' + esc(it.title) + '</div>' + (it.variant ? '<div class="v">' + esc(it.variant) + (yours(it.variant) ? ' <span class="tag in">your size</span>' : '') + '</div>' : '') +
       (o.why ? '<div class="why">' + esc(o.why) + '</div>' : '') +
       (it.url ? '<div class="facts" data-facts="' + esc(it.url) + '" data-k="' + k + '">' + factsHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
@@ -668,6 +669,7 @@
     if (T.list.length > 1) say('swipe for more →');
     details(added);
     wantFacts(added);
+    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -757,6 +759,48 @@
     const hits = turns.flatMap((T) => (T ? T.list : [])).filter((e) => (e.items || [e]).some((o) => o.item.url === url && !o.item.image_url));
     if (hits.length) details(hits);
   }
+  // ─── Fit and reviews ─────────────────────────────────────────────────────
+  // What buyers say, read by AI: the rating, how it fits (and the size Spot
+  // would get them, from their saved sizes), what people love and don't.
+  // Spot's own pick and the Shop page's open card load it right away; the
+  // rest on a tap, since each new product is a fresh read.
+  const reviewsBy = new Map();
+  function reviewsHtml(o, k) {
+    const d = reviewsBy.get(o.item.url);
+    if (d === 'loading') return '<div class="rvl wait">Reading what buyers say…</div>';
+    if (!d) return '<button class="textlink rvgo" type="button" data-act="reviews" data-k="' + k + '">⭐ Fit &amp; reviews</button>';
+    if (d.none || d.error) return '<div class="rvl muted">' + (d.error ? 'Couldn’t read reviews just now.' : 'No reviews Spot could find for this one yet.') + '</div>';
+    const out = [];
+    const fit = d.fit === 'small' ? 'Runs small' : d.fit === 'large' ? 'Runs large' : d.fit === 'true' ? 'True to size' : '';
+    const size = d.your_size && d.saved_size && d.your_size !== d.saved_size ? ': we’d get <b>' + esc(d.your_size) + '</b> for you (your usual ' + esc(d.saved_size) + ')' : d.your_size && d.fit === 'true' ? ': your usual <b>' + esc(d.your_size) + '</b>' : d.fit_note ? ': ' + esc(d.fit_note) : '';
+    out.push('<div class="rvl">' + (d.rating ? '<b class="stars">★ ' + d.rating.toFixed(1) + '</b>' + (d.count ? ' <span class="muted">(' + d.count.toLocaleString() + ')</span>' : '') : '') + (fit ? (d.rating ? ' · ' : '') + '<span class="fit">' + fit + size + '</span>' : '') + '</div>');
+    if (d.pros?.length) out.push('<div class="rvl">👍 ' + d.pros.map(esc).join(' · ') + '</div>');
+    if (d.cons?.length) out.push('<div class="rvl">👎 ' + d.cons.map(esc).join(' · ') + '</div>');
+    if (d.source_url) out.push('<div class="rvl"><a href="' + esc(d.source_url) + '" target="_blank" rel="noopener">reviews ↗</a></div>');
+    return out.join('');
+  }
+  function paintReviews(url) {
+    for (const el of document.querySelectorAll('.rv[data-rv="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = reviewsHtml(o, el.dataset.k);
+    }
+  }
+  async function loadReviews(o) {
+    const url = o?.item?.url;
+    if (!url || reviewsBy.has(url)) return;
+    reviewsBy.set(url, 'loading');
+    paintReviews(url);
+    try {
+      const r = await api('/v1/reviews', { url, title: o.item.title || '', store: o.merchant?.name || '' });
+      reviewsBy.set(url, r.reviews || { error: true });
+      // His own pick, and buyers love it: he's chuffed.
+      if (r.reviews?.rating >= 4.5 && r.reviews.count >= 50) quip('people love this one ⭐', 1800);
+    } catch {
+      reviewsBy.set(url, { error: true });
+    }
+    paintReviews(url);
+  }
+
   // ─── Watch this ─────────────────────────────────────────────────────────
   // 👀 on any card: Spot checks the store twice a day and texts or emails
   // them when the price drops or their size is back (watches.js). Signed in
@@ -1000,6 +1044,7 @@
     const i = Number(b.dataset.i);
     $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
     wantFacts([shopList[i]]);
+    loadReviews(shopList[i]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
@@ -1009,7 +1054,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (b.dataset.act === 'watch') return actOn(b);
+    if (b.dataset.act === 'watch' || b.dataset.act === 'reviews') return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1167,6 +1212,10 @@
   });
   function actOn(b) {
     if (b.dataset.act === 'watch') return toggleWatch(b);
+    if (b.dataset.act === 'reviews') {
+      const { e } = entryOf(b.dataset.k);
+      return loadReviews((e?.items || [e])[0]);
+    }
     if (b.dataset.act === 'edit') {
       const { e } = entryOf(b.dataset.k);
       draft = { ...toDraft({ source: 'lookup', merchant: e.merchant, items: [{ ...e.item }], in_stock: e.stock === 'in' }), fromPicks: true };
