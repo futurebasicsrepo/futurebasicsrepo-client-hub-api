@@ -11,6 +11,7 @@
 //   state: 'watching' | 'dropped' | 'claimed' | 'dismissed' | 'refunded',
 //   items: [{ i, title, variant, url, quantity, paid_cents, now_cents, low_cents, source, at }],
 //   drop: { cents, found_at, items: [{ i, title, variant, paid_cents, now_cents, quantity }] } | null,
+//   policy: { price_adjustment, days, how, source_url } | null   (the store's, when known)
 //   claimed_at, dismissed_at, refunded_cents
 // }
 import { priceNow } from './capture.js';
@@ -23,8 +24,20 @@ const BATCH = 15; // stores checked per run; the server runs it every 30 minutes
 // Worth asking a store for: at least $1 and 3% under what was paid.
 export const isDrop = (paid, now) => Number.isInteger(now) && now > 0 && paid - now >= Math.max(100, Math.round(paid * 0.03));
 
-export function createPriceWatch({ db, spot, price = priceNow, days = Number(process.env.SPOT_PRICE_WATCH_DAYS || 30), log = console }) {
+// The store's own window when its policy page gives one (storefacts.js),
+// up to 90 days; otherwise SPOT_PRICE_WATCH_DAYS.
+const MAX_DAYS = 90;
+
+export function createPriceWatch({ db, spot, price = priceNow, policyOf = () => null, days = Number(process.env.SPOT_PRICE_WATCH_DAYS || 30), log = console }) {
   const windowMs = days * DAY;
+  const policyFor = (c) => {
+    try {
+      return policyOf(c) || null;
+    } catch {
+      return null;
+    }
+  };
+  const windowOf = (pol) => (pol?.price_adjustment && pol.adjustment_days ? Math.min(pol.adjustment_days, MAX_DAYS) * DAY : windowMs);
   const boughtAt = (c) => c.fulfillment?.placed_at || c.spent_at || null;
   // Only orders Spot paid with its own card and the store accepted, still
   // intact: nothing returned, disputed or refunded in full.
@@ -41,7 +54,8 @@ export function createPriceWatch({ db, spot, price = priceNow, days = Number(pro
   async function check(cart, now = Date.now()) {
     const at = boughtAt(cart);
     if (!watchable(cart) || !at) return cart;
-    const until = at + windowMs;
+    const pol = policyFor(cart);
+    const until = at + windowOf(pol);
     const prev = cart.price_watch || { state: 'watching', items: [] };
     if (now > until || !['watching', 'dropped'].includes(prev.state)) return cart;
     const items = [];
@@ -50,6 +64,7 @@ export function createPriceWatch({ db, spot, price = priceNow, days = Number(pro
       const got = await price(it).catch(() => null);
       const before = prev.items?.find((x) => x.i === i);
       const nowCents = got?.cents ?? null;
+      if (nowCents) db.prices?.add(it.url, nowCents, now);
       const lows = [before?.low_cents, nowCents].filter((x) => x != null);
       items.push({
         i,
@@ -75,7 +90,8 @@ export function createPriceWatch({ db, spot, price = priceNow, days = Number(pro
         const cur = c.price_watch || prev;
         // Staff acted while the store was being read: theirs stands.
         if (!['watching', 'dropped'].includes(cur.state)) return c;
-        return { ...c, price_watch: { ...cur, until, last_at: now, items, drop, state: drop ? 'dropped' : 'watching' } };
+        const policy = pol ? { price_adjustment: pol.price_adjustment, days: pol.adjustment_days || null, how: pol.adjustment_how || null, source_url: pol.source_url || null } : cur.policy || null;
+        return { ...c, price_watch: { ...cur, until, last_at: now, items, drop, policy, state: drop ? 'dropped' : 'watching' } };
       },
       fresh ? 'price_drop' : null,
     );
@@ -92,7 +108,7 @@ export function createPriceWatch({ db, spot, price = priceNow, days = Number(pro
       running = true;
       let n = 0;
       try {
-        for (const id of db.idsForPriceWatch(now - windowMs)) {
+        for (const id of db.idsForPriceWatch(now - Math.max(windowMs, MAX_DAYS * DAY))) {
           if (n >= BATCH) break;
           const c = db.byId(id);
           const pw = c?.price_watch;

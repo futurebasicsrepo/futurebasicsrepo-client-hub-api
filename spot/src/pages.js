@@ -89,7 +89,11 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 @media (prefers-color-scheme:dark){.stile{background:hsl(var(--h) 30% 22%);color:hsl(var(--h) 70% 82%)}}
 .pc .pb{padding:12px 14px 14px;display:flex;flex-direction:column;gap:3px;flex:1}.pc .st{font-size:12px;font-weight:700;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .pc .t{font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pc .v{font-size:13px;color:var(--muted)}.pc .why{font-size:13px;color:var(--muted);font-style:italic}
-.pc .pr{font-size:20px;font-weight:800;margin-top:auto;padding-top:6px}.pc .btn{margin-top:8px;padding:11px 12px;font-size:15px;white-space:nowrap}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
+.pc .pr{font-size:20px;font-weight:800;margin-top:auto;padding-top:6px}.pc .pr s{font-size:14px;font-weight:600;color:var(--muted);margin-left:2px}.pc .pr .sale{vertical-align:3px;margin-left:4px;background:color-mix(in srgb,var(--spot) 16%,transparent);color:var(--spot)}.pc .pr .moved{display:block;font-size:12px;font-weight:700}.pc .pr .moved.down{color:var(--ok)}.pc .pr .moved.up{color:var(--warn)}
+.pc:has(.facts .opts .on) .v{display:none}.facts{display:flex;flex-direction:column;gap:5px;margin-top:6px;font-size:12.5px;line-height:1.35;color:var(--muted)}.facts:empty{display:none}
+.facts .opts{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.facts .opts b{font-weight:700;color:var(--ink);margin-right:2px}.facts .opts span{border:1px solid var(--line);border-radius:7px;padding:1px 6px;font-weight:600;color:var(--ink)}.facts .opts span.on{border-color:var(--ink);background:var(--ink);color:var(--bg)}.facts .opts span.no{color:var(--muted);text-decoration:line-through;opacity:.7}.facts .opts span.more{border:0;color:var(--muted)}
+.facts .fl a{color:inherit;font-weight:600}.facts .good{color:var(--ok);font-weight:700}.facts .shield{color:var(--ink)}.facts .wait{font-style:italic}
+.pc .btn{margin-top:8px;padding:11px 12px;font-size:15px;white-space:nowrap}.pc a.see{font-size:13px;font-weight:600;color:var(--muted);text-align:center;margin-top:8px}
 .pc.sk .ph,.pc.sk .ln{background:linear-gradient(90deg,var(--line),color-mix(in srgb,var(--line) 40%,transparent),var(--line));background-size:200% 100%;animation:sk 1.2s linear infinite}.pc.sk .ln{height:12px;border-radius:6px;margin:6px 0}@keyframes sk{to{background-position:-200% 0}}
 .railnav{display:flex;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:700;color:var(--muted)}.railnav button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-size:16px;cursor:pointer}.railnav button:disabled{opacity:.35;cursor:default}
 .askbar{display:flex;gap:8px;position:sticky;bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:6px;box-shadow:0 6px 20px rgba(0,0,0,.08)}.askbar input{flex:1;min-width:0;border:0;background:transparent;margin:0;box-shadow:none}.askbar .btn{width:auto;margin:0;flex:none;padding:10px 16px}
@@ -712,7 +716,22 @@ function ridersForm(c,s){
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
   const tr=c.kind==='train';
-  if(st==='placed')return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+  if(st==='placed')return placedBox(c,f,tr)+watchLine(c);
+  return orderBoxRest(c,f,agentOn,st,tr);
+}
+// The price watch on an order Spot paid for: on until when, or what was asked for.
+function watchLine(c){
+  const w=c.price_watch;if(!w)return '';
+  const day=t=>new Date(t).toLocaleDateString([], {month:'short',day:'numeric'});
+  const store=esc(c.merchant.name);
+  if(w.state==='refunded')return '<p class="small" style="margin:10px 0 0">📉 '+store+' matched a lower price: '+usd(w.refunded_cents||w.claimed_cents||0)+' went back to the card that paid.</p>';
+  if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so Spot asked them for '+usd(w.claimed_cents||0)+' back. If they pay it, it goes back to the card that paid.</p>';
+  return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot asks for the difference.</p>';
+}
+function placedBox(c,f,tr){
+  return (tr?'<h2>🚆 Booked!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your ticket'+(f.order_number?' <b>'+esc(f.order_number)+'</b>':'')+'. Your e-ticket is on its way to '+esc(c.contact?.email||'your email')+'.</p>':'<h2>📦 Ordered!</h2><p class="muted" style="margin:0">'+esc(c.merchant.name)+' confirmed your order'+(f.order_number&&!/[:/]/.test(f.order_number)?' <b>#'+esc(f.order_number)+'</b>':'')+'. Watch your email for tracking.</p>')+(f.order_url?'<a class="btn dark" href="'+esc(f.order_url)+'" target="_blank" rel="noopener">View your order</a>':'');
+}
+function orderBoxRest(c,f,agentOn,st,tr){
   if(st==='awaiting_confirm')return '<h2>Place your order?</h2>'+(f.has_shot?'<img src="/v1/carts/'+TOKEN+'/manage/order/shot.png?k='+encodeURIComponent(K)+'&t='+f.updated_at+'" alt="The store checkout, filled in" style="width:100%;border-radius:12px;border:1px solid var(--line)">':'')
     +'<div class="sum total"><span>'+esc(c.merchant.name)+' total</span><span>'+usd(f.total_cents)+'</span></div><p class="small muted">'+esc(f.summary||'')+'</p><button class="btn" id="placeIt">Place order</button><button class="btn ghost" id="notYet">Not yet</button>';
   if(st==='starting'||st==='working')return '<h2><span class="spin"></span> '+(tr?'Buying your ticket on ':'Ordering at ')+esc(c.merchant.name)+'…</h2>'+(f.steps||[]).map(x=>'<div class="sum"><span>'+esc(x.text)+'</span><span>✓</span></div>').join('')+'<p class="small muted">Spot is filling in the store’s checkout. You’ll confirm before anything is placed.</p>';

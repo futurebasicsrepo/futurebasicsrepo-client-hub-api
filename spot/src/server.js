@@ -26,6 +26,7 @@ import { createFlights } from './flights.js';
 import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { createPriceWatch } from './pricewatch.js';
+import { createStoreFacts, siteOf } from './storefacts.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -161,8 +162,13 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   app.decorate('spot', spot);
   const events = createEvents({ db, spot, notifier, baseUrl: () => (env.PUBLIC_URL || '').replace(/\/+$/, '') || seenOrigin || 'http://localhost:3000', log: app.log });
   const approvals = createApprovals({ db, spot, signing, baseUrl, log: app.log });
-  // Daily price checks on Spot-card orders, for staff to claim drops (pricewatch.js).
-  const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), log: app.log });
+  // What a product card shows beyond the pick: options, sale and seen
+  // prices, the store's price-adjustment and return policy (storefacts.js).
+  const storeFacts = createStoreFacts({ db, ...(capture.policy ? { read: capture.policy } : {}), ...(capture.product ? { product: capture.product } : {}), onUsage: (model, usage) => (metrics.ok('anthropic'), metrics.ai(model, usage)), onError: (err) => metrics.fail('anthropic', err), log: app.log });
+  app.decorate('storeFacts', storeFacts);
+  // Daily price checks on Spot-card orders, for staff to claim drops (pricewatch.js),
+  // for as long as the store's own policy allows.
+  const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), policyOf: (c) => storeFacts.known(siteOf(c.items?.find((i) => i?.url)?.url || c.merchant?.url || '')), log: app.log });
   app.decorate('priceWatch', priceWatch);
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
@@ -240,6 +246,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     thanks: limit('thanks', 20, 600_000),
     // Each of these makes Spot fetch from somewhere else.
     check: limit('check', 60, 600_000),
+    // Card facts: one per batch of cards on screen, and once more for a new store's policy.
+    facts: limit('facts', 300, 600_000),
     card: limit('card', 120, 600_000),
   };
   let sweeps = 0;
@@ -575,6 +583,20 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       write({ type: 'done', kind: null, count: 0, not_found: true, warning: err instanceof CaptureError ? err.message : 'Something went wrong. Try again' });
     }
     reply.raw.end();
+  });
+
+  // Card facts for the products on screen: options, the store's price now
+  // and on sale, the prices Spot has seen, and the store's policies. A
+  // store's policy is read once a month; until then policy_pending says ask
+  // again in a bit.
+  app.post('/v1/facts', async (req, reply) => {
+    limits.facts(req);
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const clean = items
+      .filter((i) => i && typeof i.url === 'string' && /^https?:\/\//i.test(i.url))
+      .map((i) => ({ url: i.url.slice(0, 1000), variant: typeof i.variant === 'string' ? i.variant.slice(0, 80) : '', store: typeof i.store === 'string' ? i.store.slice(0, 80) : '' }));
+    reply.header('cache-control', 'no-store');
+    return { facts: await storeFacts.facts(clean) };
   });
 
   // The Shop page: every product Spot has shown this shopper, newest first.

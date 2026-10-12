@@ -215,7 +215,12 @@ export async function priceNow(item, { fromUrl = captureFromUrl, product = shopi
 // product's name and store, a result from that store's own site first, else
 // one that's plainly the same product. Off without BRAVE_SEARCH_API_KEY.
 const PHOTO_SEARCH_MS = 4000;
-const rootOf = (host) => String(host || '').toLowerCase().replace(/^www\./, '').split('.').slice(-2).join('.');
+// The site a page belongs to: shop.tecovas.com → tecovas.com, but
+// marksandspencer.co.uk stays whole.
+export const rootOf = (host) => {
+  const parts = String(host || '').toLowerCase().replace(/^www\./, '').split('.');
+  return parts.slice(/^(co|com|org|net|ac|gov)$/.test(parts.at(-2) || '') && (parts.at(-1) || '').length === 2 ? -3 : -2).join('.');
+};
 const hostOf = (u) => {
   try {
     return new URL(u).hostname;
@@ -1485,10 +1490,10 @@ async function searchWith(anthropic, messages, onUsage, model) {
 
 // The photo of the colour asked for, not the product's first one: Shopify
 // stores list each variant's own image at /products/<handle>.js.
-async function shopifyProduct(url) {
+export async function shopifyProduct(url) {
   const { loadShopifyProduct } = await import('./fulfill/shopify.js');
   const product = await loadShopifyProduct(url, {});
-  return product && { title: product.title, variants: product.variants };
+  return product && { title: product.title, variants: product.variants, options: product.options };
 }
 const shopifyVariantPhoto = shopifyProduct;
 async function colorPhoto(item, variantPhoto) {
