@@ -327,11 +327,14 @@ export async function imageOk(u, { fetchImpl = fetch } = {}) {
 // Search sees result snippets, so it sometimes links a category or search
 // page ("hoodies under $50") instead of the product. Find the product it named
 // on that store: Shopify's own product search first, then the page's links.
+const EDITORIAL = /\/(learn|blogs?|articles?|guides?|expert-advice|stories|journal|news|reviews?|pages)(\/|$)/i;
 const LISTING = /\/(collections|category|categories|c|shop|browse|search|s)(\/|$)|[?&](q|k|query|keyword|keywords|searchterm|text|search)=|-l\d+\.html$/i;
 export function looksLikeListing(url) {
   try {
     const u = new URL(url);
     if (/\/products\/[^/]+/.test(u.pathname)) return false;
+    // The store's home page, or a guide or story about products: not one.
+    if (/^\/?([a-z]{2}([-_][a-z]{2})?\/?)?$/i.test(u.pathname) || EDITORIAL.test(u.pathname)) return true;
     return LISTING.test(u.pathname + u.search);
   } catch {
     return false;
@@ -778,7 +781,7 @@ Using web search, find things for sale at US online stores that match. Read it t
 - If they want a look, an outfit, or clothes for an occasion or a trip, reply with outfits (as many as they ask for, up to ${outfits}): each a complete look of 3 to 5 pieces (for example top or dress, bottoms, shoes, one accessory) that suit the occasion, pieces from any stores.
 - Otherwise reply with up to ${count} products, from as many different stores as you can (the brand's own store counts), your recommendation first.
 Prefer the brand's own online store and shops that sell direct (many run on Shopify) over marketplaces like Amazon, Walmart, Target or eBay: Spot can buy from those and show their photos. Use a big marketplace only when it's clearly the best or only place to get it.
-${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Skip anything you saw marked sold out, but don't hold back for want of proof: Spot checks each store's own page for stock, size and price before anyone pays. Products named in roundups, gift guides, or category and search pages count: use them, with the best link you have and the price you saw (or your best estimate). Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
+${sizes || shipTo ? `What you know about them:${sizes ? ` their sizes are ${q(sizes).slice(0, 300)}.` : ''}${shipTo ? ` They live in ${q(shipTo).slice(0, 80)}, so only pick stores that ship there.` : ''}\n` : ''}Use the size, colour or options they gave.${sizes ? ` For every clothing or shoe piece they didn't give a size for, pick the right one from their sizes (adult or kids' sizing to match what they asked for) and put it in "variant".` : ' Put the size or option you picked in "variant".'} Skip anything you saw marked sold out, but don't hold back for want of proof: Spot checks each store's own page for stock, size and price before anyone pays. Products named in roundups, gift guides, or category and search pages count: use them, with a link on the selling store's own site (the product's page if you saw it, else that store's home page: Spot finds the product there) and the price you saw (or your best estimate). Give each product's main photo in "image_url" if you saw its address, else leave it empty.${avoid.length ? ` They've already seen these, so don't suggest them again: ${avoid.join(' , ')}` : ''} Reply with ONLY this JSON and nothing else, writing each product as soon as you've found it:
 ${LOOKUP_SCHEMA_HINT}
 Never answer a shopping request with an empty list: give your best picks from what you found, even if you're unsure of stock or the exact price.`;
 }
@@ -1181,7 +1184,7 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
   const seen = new Set(avoid);
   const sent = []; // what went out, kept up to date for the cache
   const checks = [];
-  const stats = { searches: 0, steps: 0, objects: 0, unusable: 0, repeats: 0, dropped: 0, slow: 0, photos: {} };
+  const stats = { searches: 0, steps: 0, objects: 0, unusable: 0, repeats: 0, dropped: 0, notProduct: 0, slow: 0, photos: {} };
   let taken = 0; // picks and looks written so far (each shown once its check is back)
   let closed = false;
   let kind = null;
@@ -1231,6 +1234,8 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
       if (img && (await verify(img))) (it = { ...it, image_url: img }), (from = 'image search');
     }
     if (!it.image_url) return stats.dropped++, null;
+    // Still a home page, category or article, not the product: nothing to show or buy.
+    if (looksLikeListing(it.url)) return stats.notProduct++, null;
     stats.photos[from] = (stats.photos[from] || 0) + 1;
     let why = d0.why;
     // The store's own price beats the estimate search gave.

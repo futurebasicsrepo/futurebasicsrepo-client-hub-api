@@ -248,6 +248,9 @@ test('a category or search page in place of the product: the product on that sto
 
   assert.equal(looksLikeListing('https://www.amazon.com/s?k=umbrella'), true);
   assert.equal(looksLikeListing('https://shop.example/collections/a/products/b'), false);
+  // A store's home page, or a guide about products, isn't a product page either.
+  for (const u of ['https://www.smithoptics.com', 'https://www.quayaustralia.com/', 'https://www.costadelmar.com/en-us/', 'https://www.rei.com/learn/expert-advice/best-sunglasses.html', 'https://sunski.com/blogs/news/x']) assert.equal(looksLikeListing(u), true, u);
+  for (const u of ['https://www.costadelmar.com/en-us/rinconcito/6S9117.html', 'https://www.walmart.com/ip/x/123', 'https://www.target.com/p/x/-/A-1', 'https://www.amazon.com/dp/B00']) assert.equal(looksLikeListing(u), false, u);
   assert.equal(cleanVariant('Your size, White'), 'White');
   assert.equal(cleanVariant('Black / your size'), 'Black');
   assert.equal(cleanVariant('M, Light Gray'), 'M, Light Gray');
@@ -365,6 +368,20 @@ test('on the shelf: a store that turns Spot away gets the photo from its page in
   assert.equal(picks.find((i) => i.title === 'Tee 2').image_url, 'https://target.scene7.example/tee2.jpg');
   assert.equal(picks.find((i) => i.title === 'Tee 3'), undefined, 'a made-up photo address is no photo: not shown');
   assert.deepEqual(events.at(-1), { type: 'done', kind: 'products', count: 2 });
+});
+
+test('a link that never gets to the product’s own page (a home page, an article) isn’t shown, photo or not', async () => {
+  const home = { ...P(1, 'smith'), product_url: 'https://www.smithoptics.com/' };
+  const { client } = streamer([{ kind: 'products', products: [home, P(2, 'gap')] }]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('sunglasses', { client, fromUrl: slowPage(1), product: noShopify, resolve: async () => null, pdp: async () => null, photos: async () => null, verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  assert.deepEqual(events.filter((e) => e.type === 'pick').map((e) => e.option.item.url), ['https://gap.example/p2']);
 });
 
 test('no photo for any of them: said plainly, no blank cards; a look keeps the pieces that have one', async () => {
