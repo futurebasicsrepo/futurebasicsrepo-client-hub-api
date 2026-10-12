@@ -701,6 +701,8 @@ app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+// Pip, the helper mouse: a guide that follows the pointer and walks a person through the page (see helper.js and docs/helper-mouse.md)
+app.get('/helper.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
 app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));

@@ -1884,6 +1884,61 @@ await journey('J158', 'Start project in a browser: a won deal offers it, one cli
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#ddlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the deal window fits the screen'); } finally { await pc.close(); }
 });
 
+await journey('J162', 'Pip the helper mouse: a switch anyone can flip, a mouse that follows the pointer and walks a client through the first tech pack step by step, then the staff home', async () => {
+  const r = await room('162', { wait: false }), W = 'http://work.localhost:3123', tag = `pip${stamp}`;
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); } catch {} }, r.token);
+  const page = await ctx.newPage(); const errs = []; page.on('pageerror', e => errs.push(String(e))); await page.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await page.waitForSelector('#newTechPack', { timeout: 15000 });
+  const title = async () => (await page.locator('.fbh-b h3').first().innerText().catch(() => '')).trim(), meta = async () => (await page.locator('.fbh-b .meta').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  const shown = async () => page.evaluate(() => { const g = document.querySelector('.fbh-g'); return !!g && getComputedStyle(g).display !== 'none'; });
+  ok(await page.locator('.fbh-tog').count() === 1 && await page.getAttribute('.fbh-tog', 'aria-pressed') === 'false' && !(await shown()), 'the hub has a Guide switch, and the mouse is off until someone turns it on');
+  const defs = await page.evaluate(() => window.fbHelper.tours.map(t => ({ id: t.id, steps: t.steps.length, bad: t.steps.filter(s => !s.title || !s.do || !s.why || !s.target).length, next: t.next && t.next.tour })));
+  const ids = defs.map(d => d.id); ok(defs.length >= 6 && new Set(ids).size === ids.length && defs.every(d => d.bad === 0 && d.steps >= 3 && (!d.next || ids.includes(d.next))), 'every guide has a title, what to do and why on each step, and points at a guide that exists', JSON.stringify(defs.filter(d => d.bad)));
+  const badSel = await page.evaluate(() => { const bad = []; for (const t of window.fbHelper.tours) for (const s of t.steps) for (const x of [].concat(s.target)) if (typeof x === 'string') { try { document.querySelector(x); } catch { bad.push(x); } } return bad; }); ok(!badSel.length, 'every step points at a valid selector', badSel.join(' '));
+
+  await page.click('.fbh-tog'); await page.waitForSelector('.fbh-g', { state: 'visible' });
+  ok(await page.getAttribute('.fbh-tog', 'aria-pressed') === 'true' && (await title()) === 'Start a tech pack' && /step 1 of 6/i.test(await meta()), 'turning it on starts the first-tech-pack guide at step 1', `${await title()} · ${await meta()}`);
+  const bub = await page.innerText('.fbh-b'); ok(/\bdo\b/i.test(bub) && /\bwhy\b/i.test(bub) && /next\s+add your design/i.test(bub), 'each step says what to do, why, and what comes next', bub.replace(/\s+/g, ' ').slice(0, 220));
+  const ringBox = await page.locator('.fbh-ring').boundingBox(), btnBox = await page.locator('#newTechPack').boundingBox();
+  ok(ringBox && Math.abs(ringBox.x + 6 - btnBox.x) < 3 && ringBox.width >= btnBox.width, 'a ring is drawn around the thing to press', JSON.stringify([ringBox, btnBox]));
+  ok(await page.evaluate(() => localStorage.getItem('fb.helper.on')) === '1', 'the choice is remembered');
+  // it follows the pointer once the person moves away from where it walked to
+  await page.mouse.move(300, 700); await page.mouse.move(900, 760, { steps: 8 }); await sleep(1800);
+  const gb = await page.locator('.fbh-mouse').boundingBox(); ok(gb && Math.hypot(gb.x - 900, gb.y - 760) < 140, 'the mouse follows the pointer', JSON.stringify(gb));
+  await page.mouse.move(640, 300); await sleep(1500); const gb2 = await page.locator('.fbh-mouse').boundingBox(); ok(gb2 && Math.hypot(gb2.x - 640, gb2.y - 300) < 140, 'and keeps following', JSON.stringify(gb2));
+
+  await page.click('#newTechPack'); await page.waitForFunction(() => /form is open/i.test(document.querySelector('.fbh-b')?.innerText || ''), null, { timeout: 5000 }); ok(true, 'doing the step is noticed: “The form is open.”');
+  await page.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Add your design', null, { timeout: 6000 }); ok(await page.evaluate(() => document.querySelector('.fbh').parentElement.tagName === 'DIALOG'), 'it moves into the open dialog so it is still on top and clickable');
+  await page.setInputFiles('#tpPhotos', `${FX}/ig-screenshot.png`); await page.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Pick a project', null, { timeout: 8000 }); ok(true, 'adding the photo moves on to “Pick a project”');
+  await page.click('.fbh-b button[data-a="next"]'); await page.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Name the product', null, { timeout: 5000 }); ok(/step 4 of 6/i.test(await meta()), 'Next moves on by hand (step 4 of 6)', await meta());
+  await page.fill('#techPackForm [name="title"]', 'Pip Runner'); await page.waitForFunction(() => /say what it is/i.test(document.querySelector('.fbh-b h3')?.textContent || ''), null, { timeout: 6000 }); ok(true, 'typing the name completes that step');
+  await page.click('.fbh-b button[data-a="next"]'); await page.waitForFunction(() => document.querySelector('.fbh-b h3')?.textContent === 'Create it', null, { timeout: 5000 });
+  await page.click('.fbh-b button[data-a="back"]'); ok(/say what it is/i.test(await title()), 'Back goes to the step before'); await page.click('.fbh-b button[data-a="next"]');
+  await page.click('#tpSubmit'); await page.waitForURL(/\/tech-packs\//, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('.fbh-b h3') && /check the callouts|the assistant is working/i.test(document.querySelector('.fbh-b h3').textContent), null, { timeout: 25000 });
+  ok(/check your tech pack draft/i.test(await meta()), 'creating the pack opens the editor and the mouse carries on with the next guide', await meta());
+  await page.waitForSelector('#tabs [data-tab="calls"]', { timeout: 20000 }); await page.click('#tabs [data-tab="calls"]');
+  await page.waitForFunction(() => /check the measurements/i.test(document.querySelector('.fbh-b h3')?.textContent || ''), null, { timeout: 8000 }); ok(true, 'opening Callouts completes that step and points to Measure');
+
+  await page.click('.fbh-b button[data-a="off"]'); await sleep(300); ok(!(await shown()) && await page.getAttribute('.fbh-tog', 'aria-pressed') === 'false' && await page.evaluate(() => localStorage.getItem('fb.helper.on')) === '0', 'Turn off hides the mouse and keeps it off');
+  await page.reload({ waitUntil: 'networkidle' }); await sleep(600); ok(!(await shown()), 'still off after a reload');
+  await page.goto(`${BASE}/tech-packs/${(page.url().match(/tech-packs\/([^/?#]+)/) || [])[1] || ''}?guide=on`, { waitUntil: 'networkidle' }); await sleep(900); ok(await shown(), '?guide=on turns it on from a link');
+  await page.keyboard.press('Alt+Shift+G'); await sleep(300); ok(!(await shown()), 'Alt+Shift+G flips it from the keyboard');
+  ok(errs.length === 0, 'no script errors on either page', errs.join(' | ')); await ctx.close();
+
+  // a phone: the mouse sits in a sheet above the switch, inside the screen
+  const ph = await phone(); await ph.page.addInitScript(t => { try { localStorage.setItem('fb.client.token', t); localStorage.setItem('fb.helper.on', '1'); } catch {} }, r.token); await ph.page.goto(`${BASE}/hub`, { waitUntil: 'networkidle' }); await ph.page.waitForSelector('.fbh-g', { state: 'visible', timeout: 8000 });
+  const bx = await ph.page.locator('.fbh-b').boundingBox(); ok(bx && bx.x >= 0 && bx.x + bx.width <= 390 && bx.y >= 0 && bx.y + bx.height <= 844, 'on a phone the guide fits the screen', JSON.stringify(bx)); await ph.ctx.close();
+
+  // the team's side: the same mouse on Home, and it skips the panels that are empty
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','pip-${tag}@thefuturebasics.com','Pip Tester','admin') returning id`).split('\n')[0], tok = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: `pip-${tag}@thefuturebasics.com` });
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await sctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); localStorage.setItem('fb.helper.on', '1'); } catch {} }, tok);
+  const sp = await sctx.newPage(); await sp.goto(`${W}/home`, { waitUntil: 'networkidle' }); await sp.waitForSelector('#app:not(.hidden)', { timeout: 15000 }); await sp.waitForSelector('.fbh-b h3', { timeout: 8000 });
+  ok((await sp.locator('.fbh-b h3').innerText()) === 'Start something' && /your day/i.test(await sp.locator('.fbh-b .meta').first().innerText()), 'Home opens its own guide, “Start something”', await sp.locator('.fbh-b h3').innerText());
+  const seen = []; for (let k = 0; k < 8; k++) { seen.push((await sp.locator('.fbh-b h3').innerText()).trim()); const done = await sp.locator('.fbh-b button[data-a="next-tour"], .fbh-b button[data-a="replay"]').count(); if (done) break; await sp.click('.fbh-b button[data-a="next"]'); await sleep(250); }
+  ok(seen.includes('Reach out today') && seen.includes('Projects in flight') && /whole route/i.test(await sp.locator('.fbh-b h3').innerText()), 'Next walks the whole Home guide to its end', seen.join(' › '));
+  await sp.click('.fbh-b button[data-a="guides"]'); ok(await sp.locator('.fbh-list button').count() === defs.length, 'the Guides list shows every guide'); await sctx.close();
+});
+
 await journey('J161', 'Home greets the teammate by first name: Good morning, Colby; from their name, or their email when the name is empty', async () => {
   const r = await room('161', { wait: false }), W = 'http://work.localhost:3123', tag = `gr${stamp}`;
   const mk = (name, email) => sql(`insert into users(client_id,email,name,role) values('${r.clientId}','${email}','${name}','admin') returning id`).split('\n')[0];
