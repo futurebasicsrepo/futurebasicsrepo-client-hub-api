@@ -66,8 +66,16 @@ export function parseProductHtml(html, pageUrl) {
 
   const items = [];
   const offers = [];
+  const links = []; // on a listing page: the products it links to, for resolveListing
   for (const node of jsonLdNodes(html)) {
     const types = [].concat(node['@type'] || []).map(String);
+    if (types.includes('ItemList') && Array.isArray(node.itemListElement)) {
+      for (const el of node.itemListElement.slice(0, 200)) {
+        const x = el?.item && typeof el.item === 'object' ? el.item : el;
+        const url = absolute(x?.url || el?.url, pageUrl);
+        if (url && x?.name) links.push({ url, text: decode(String(x.name)) });
+      }
+    }
     if (types.includes('Product')) offers.push(...offersOf(node));
     if (types.includes('ProductGroup') && Array.isArray(node.hasVariant)) for (const v of node.hasVariant) offers.push(...offersOf({ ...v, name: v?.name || node.name }));
     if (types.includes('Product')) {
@@ -124,6 +132,7 @@ export function parseProductHtml(html, pageUrl) {
   };
   // What the page says about stock, per option, for stockOf (not sent to the browser).
   Object.defineProperty(out, 'offers', { value: offers, enumerable: false });
+  Object.defineProperty(out, 'links', { value: [...links, ...anchorsOf(html, pageUrl)], enumerable: false });
   return out;
 }
 
@@ -174,6 +183,101 @@ export async function stockOf(item, { fromUrl = captureFromUrl, product = shopif
   return stockFrom(page.offers, item.variant, item.title);
 }
 
+// ─── Listing pages ──────────────────────────────────────────────────────────
+// Search sees result snippets, so it sometimes links a category or search
+// page ("hoodies under $50") instead of the product. Find the product it named
+// on that store: Shopify's own product search first, then the page's links.
+const LISTING = /\/(collections|category|categories|c|shop|browse|search|s)(\/|$)|[?&](q|k|query|keyword|keywords|searchterm|text|search)=|-l\d+\.html$/i;
+export function looksLikeListing(url) {
+  try {
+    const u = new URL(url);
+    if (/\/products\/[^/]+/.test(u.pathname)) return false;
+    return LISTING.test(u.pathname + u.search);
+  } catch {
+    return false;
+  }
+}
+const FILLER = new Set(['the', 'and', 'for', 'with', 'in', 'of', 'a', 'an', 'to', 'by', 'mens', 'men', 'womens', 'women', 's', 'unisex', 'new']);
+const keyWords = (t) => [...wordsOf(String(t).replace(/['’]/g, ''))].filter((w) => w.length > 1 && !FILLER.has(w)).map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w));
+// How much of the product's name a link's text carries: 0..1.
+export function titleMatch(title, text) {
+  const want = keyWords(title);
+  if (!want.length) return 0;
+  const have = new Set(keyWords(text));
+  const hits = want.filter((w) => have.has(w)).length;
+  return hits < Math.min(2, want.length) ? 0 : hits / want.length;
+}
+// "women" or "men", if the words say which.
+const genderOf = (s) => (/\b(wom[ae]n|ladies|her)['’]?s?\b/i.test(s) ? 'women' : /\bm[ae]n['’]?s?\b/i.test(s) ? 'men' : null);
+// `match` (when a store gives more than a name: type, description) is scored;
+// `text` is the name. A men's or women's page prefers that side.
+const bestMatch = (title, cands, hint = null, min = 0.6) =>
+  cands
+    .map((c) => {
+      const score = titleMatch(title, c.match || c.text);
+      const g = hint && genderOf(c.text);
+      return { ...c, score, rank: score + (g ? (g === hint ? 0.05 : -0.05) : 0) };
+    })
+    .filter((c) => c.score >= min)
+    .sort((a, b) => b.rank - a.rank || a.text.length - b.text.length)[0] || null;
+// Shopify's search adds tracking to its links and sizes its photos down.
+const tidyUrl = (u) => {
+  try {
+    const x = new URL(u);
+    for (const k of ['_pos', '_psq', '_psid', '_ss', '_sid', '_fid']) x.searchParams.delete(k);
+    return x.toString();
+  } catch {
+    return u;
+  }
+};
+const tidyImage = (u) => (u && /\/cdn\/shop\/|cdn\.shopify\.com/.test(u) ? u.replace(/([?&])width=\d+&?/, '$1').replace(/[?&]$/, '') : u);
+
+async function shopifySuggest(origin, q) {
+  const { fetchJson } = await import('./fulfill/shopify.js');
+  const r = await fetchJson(`${origin}/search/suggest.json?q=${encodeURIComponent(q)}&resources[type]=product&resources[limit]=6`);
+  return (r?.resources?.results?.products || [])
+    .map((p) => ({
+      url: absolute(p.url, origin),
+      text: String(p.title || ''),
+      match: `${p.title || ''} ${p.product_type || ''} ${String(p.body || '').replace(/<[^>]+>/g, ' ').slice(0, 300)}`,
+      price_cents: dollarsToCents(p.price) || null,
+      image_url: absolute(p.image || p.featured_image?.url, origin),
+    }))
+    .filter((p) => p.url);
+}
+
+// The product page for an item whose link is a listing page, or null.
+// { url, title, price_cents, image_url }: what that page (or the store) says.
+export async function resolveListing(item, { fromUrl = captureFromUrl, suggest = shopifySuggest } = {}) {
+  if (!item?.url || !item.title) return null;
+  let page = null;
+  if (!looksLikeListing(item.url)) {
+    // A product page is fine as it is; a page with no product on it may be a listing.
+    page = await fromUrl(item.url).catch(() => null);
+    const own = page?.items?.[0];
+    if (!page || page.warning || page.offers?.length || !page.links?.length || own?.price_cents || titleMatch(item.title, own?.title || '') >= 0.6) return null;
+  }
+  const origin = new URL(item.url).origin;
+  const hint = genderOf(`${item.url} ${item.title}`);
+  let hit = bestMatch(item.title, await suggest(origin, item.title).catch(() => []), hint);
+  if (!hit) {
+    page ||= await fromUrl(item.url).catch(() => null);
+    hit = page && !page.warning ? bestMatch(item.title, (page.links || []).filter((l) => !looksLikeListing(l.url)), hint) : null;
+  }
+  if (!hit || hit.url === item.url) return null;
+  const url = tidyUrl(hit.url);
+  const product = await fromUrl(url).catch(() => null);
+  // Its own page, if Spot can read it and it is that product (not a bot check).
+  const own = product && !product.warning ? product.items?.[0] : null;
+  const found = own && Math.max(titleMatch(hit.text, own.title), titleMatch(item.title, own.title)) >= 0.5 ? own : null;
+  return {
+    url,
+    title: found?.title || hit.text.slice(0, 140),
+    price_cents: found?.price_cents || hit.price_cents || null,
+    image_url: tidyImage(found?.image_url || hit.image_url || null),
+  };
+}
+
 const BOT_WALL = /^\s*(robot or human\??|are you (a )?(robot|human)\??|just a moment\.*…?|access denied|attention required!?|pardon our interruption|verify you are (a )?human|please verify you are a human|security check|captcha)\b/i;
 
 function productFromLd(p, pageUrl) {
@@ -193,6 +297,24 @@ function productFromLd(p, pageUrl) {
     image_url: absolute(typeof image === 'object' ? image?.url : image, pageUrl),
     url: absolute(p.url, pageUrl) || pageUrl,
   };
+}
+
+// Links on the page to the same store, with their text (or label), for
+// finding a product named on a category or search page.
+function anchorsOf(html, pageUrl) {
+  const host = new URL(pageUrl).hostname.replace(/^www\./, '');
+  const out = [];
+  const re = /<a\b([^>]*?)href=["']([^"'#]+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 600) {
+    const url = absolute(decode(m[2]), pageUrl);
+    if (!url || url === pageUrl) continue;
+    if (new URL(url).hostname.replace(/^www\./, '') !== host) continue;
+    const label = `${m[1]} ${m[3]}`.match(/(?:aria-label|title)=["']([^"']+)["']/i)?.[1] || '';
+    const text = decode(`${m[4].replace(/<[^>]+>/g, ' ')} ${label}`).replace(/\s+/g, ' ').trim();
+    if (text) out.push({ url, text: text.slice(0, 200) });
+  }
+  return out;
 }
 
 function* jsonLdNodes(html) {
@@ -618,6 +740,11 @@ function picksOf(response, text) {
   if (!products.length) console.error('lookup answer had no picks', response.stop_reason, Object.keys(v).join(','), out.slice(0, 400).replace(/\s+/g, ' '));
   return { products };
 }
+// "Your size, White" when their sizes aren't known: say only what was picked.
+export const cleanVariant = (v) =>
+  typeof v === 'string'
+    ? v.replace(/\b(?:in\s+)?(?:your|their)\s+size\b/gi, '').replace(/\s*([,/;])\s*(?=[,/;]|$)/g, '').replace(/^[\s,/;·-]+|[\s,/;·-]+$/g, '').trim()
+    : v;
 // Models don't always use the exact keys asked for: take the usual synonyms.
 const first = (o, keys) => keys.map((k) => o[k]).find((v) => v != null && v !== '');
 function pick(p, text) {
@@ -629,7 +756,7 @@ function pick(p, text) {
     merchant_name: first(p, ['merchant_name', 'store', 'merchant', 'retailer', 'store_name', 'brand']),
     merchant_url: first(p, ['merchant_url', 'store_url', 'retailer_url']),
     unit_price: first(p, ['unit_price', 'price', 'sale_price']),
-    variant: first(p, ['variant', 'size', 'option']),
+    variant: cleanVariant(first(p, ['variant', 'size', 'option'])),
     image_url: first(p, ['image_url', 'image', 'photo', 'img']),
   };
   if (typeof p.title !== 'string' || typeof p.merchant_name === 'object') p.title = typeof p.title === 'string' ? p.title : '';
@@ -844,7 +971,7 @@ export function lookupCache({ max = 200, ttl = 30 * 60_000, now = Date.now } = {
   };
 }
 
-export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
+export async function streamLookup(raw, { client, fromUrl = captureFromUrl, product = shopifyProduct, resolve = resolveListing, sizes = '', shipTo = '', more = '', avoid = [], count = FIRST_BATCH, cache = null, onUsage, onError, now = Date.now } = {}, emit = () => {}) {
   const { text } = splitText(raw);
   if (!text) throw new CaptureError('Paste a link, drop a screenshot, or describe what you want');
   more = String(more || '').trim().slice(0, 300);
@@ -881,16 +1008,33 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     return true;
   };
   // Photo and stock from the store's own page, after the card is already up.
+  // A category or search page in place of the product: the product itself
+  // first (its link, price and photo), then the checks on that page.
   const check = (d, opt) =>
     checks.push(
-      Promise.all([withPhoto(d, page, undefined, null).catch(() => d), stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown')]).then(([withPic, stock]) => {
-        const it = withPic.items[0];
-        const u = { type: 'update', url: it.url, stock, image_url: it.image_url && it.image_url !== opt.item.image_url ? it.image_url : null, price_cents: !opt.item.price_cents && it.price_cents ? it.price_cents : null };
-        opt.stock = stock;
-        if (u.image_url) opt.item.image_url = u.image_url;
-        if (u.price_cents) opt.item.price_cents = u.price_cents;
-        emit(u);
-      }),
+      resolve(d.items[0], { fromUrl: page })
+        .catch(() => null)
+        .then((r) => {
+          if (!r) return { d, moved: null };
+          const was = d.items[0].url;
+          d = { ...d, items: [{ ...d.items[0], url: r.url, title: r.title, price_cents: r.price_cents || d.items[0].price_cents, image_url: r.image_url || null }, ...d.items.slice(1)] };
+          return { d, moved: { from: was, r } };
+        })
+        .then(({ d, moved }) => Promise.all([withPhoto(d, page, undefined, null).catch(() => d), stockOf(d.items[0], { fromUrl: page, product }).catch(() => 'unknown'), moved]))
+        .then(([withPic, stock, moved]) => {
+          const it = withPic.items[0];
+          const u = { type: 'update', url: moved ? moved.from : it.url, stock, image_url: it.image_url && it.image_url !== opt.item.image_url ? it.image_url : null, price_cents: !opt.item.price_cents && it.price_cents ? it.price_cents : null };
+          if (moved) {
+            // The store's own price beats the estimate search gave.
+            Object.assign(u, { new_url: it.url, title: it.title, price_cents: it.price_cents || null });
+            Object.assign(opt.item, { url: it.url, title: it.title });
+            if (it.price_cents) (opt.item.price_cents = it.price_cents), opt.why && (opt.why = opt.why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null);
+          }
+          opt.stock = stock;
+          if (u.image_url) opt.item.image_url = u.image_url;
+          if (u.price_cents) opt.item.price_cents = u.price_cents;
+          emit(u);
+        }),
     );
   const optionOfDraft = (d) => ({ merchant: d.merchant, item: { ...d.items[0], image_url: d.hint_image || null }, stock: 'unknown', why: d.why });
   const take = (json) => {
