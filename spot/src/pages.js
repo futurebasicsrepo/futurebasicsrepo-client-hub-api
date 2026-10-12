@@ -31,7 +31,7 @@ p.lead{color:var(--muted);margin:0 0 22px;font-size:17px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .tabs.modes{margin:0;flex:0 0 auto;width:168px;padding:3px;border-radius:12px}.tabs.modes button{padding:7px 10px;font-size:15px}
 body.shopping main{max-width:1200px}body.shopping #hero,body.shopping .sandbox,body.shopping .anypage,body.shopping #mine{display:none}
-.shophead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
+.shophead{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:22px 0 14px}.shoptitle{margin:0 0 2px;font-size:30px}.shophead p{margin:0}
 .views{display:flex;gap:4px;background:var(--line);padding:3px;border-radius:10px}.views button{border:0;background:transparent;width:36px;height:32px;border-radius:8px;font-size:17px;line-height:1;color:var(--muted);cursor:pointer}.views button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (min-width:900px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}}
@@ -142,7 +142,9 @@ const HOME_CSS = `
 @keyframes spotjoy{0%,100%{transform:none}35%{transform:translateY(-14px) scale(.96,1.06)}70%{transform:translateY(0) scale(1.06,.94)}}
 @keyframes spotthink{0%,100%{transform:rotate(0)}30%{transform:rotate(-7deg) translateY(-2px)}70%{transform:rotate(6deg)}}
 @keyframes spotshake{0%,100%{transform:none}25%{transform:translateX(-4px) rotate(-4deg)}75%{transform:translateX(4px) rotate(4deg)}}
-.pc .ph{position:relative}.cardspot{position:absolute;left:50%;bottom:-6px;width:96px;margin-left:-48px;z-index:3;pointer-events:none;animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both}.ph .cardspot img{position:static;inset:auto;display:block;width:100%;height:auto;padding:0;background:none;object-fit:initial;z-index:auto;filter:drop-shadow(0 6px 10px #0004)}
+.pc .ph{position:relative}.cardlinks .watch.on{color:var(--ok);font-weight:700}.tile .ph{position:relative}.tile .wtag{position:absolute;top:8px;right:8px;z-index:2;background:var(--card);border-radius:999px;padding:3px 7px;font-size:14px;box-shadow:0 1px 4px #0002}.tile .wdrop{font-size:12px;font-weight:700;color:var(--ok)}
+.shopfilter{display:flex;gap:4px;background:var(--line);padding:3px;border-radius:10px}.shopfilter button{border:0;background:transparent;height:32px;padding:0 10px;border-radius:8px;font:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap}.shopfilter button[aria-pressed=true]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px #0001}
+.cardspot{position:absolute;left:50%;bottom:-6px;width:96px;margin-left:-48px;z-index:3;pointer-events:none;animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both}.ph .cardspot img{position:static;inset:auto;display:block;width:100%;height:auto;padding:0;background:none;object-fit:initial;z-index:auto;filter:drop-shadow(0 6px 10px #0004)}
 .cardspot .cs-say{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:2px;white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-weight:800;font-size:14px;box-shadow:0 4px 14px #0003}
 .cardspot.mine{animation:cspop .5s cubic-bezier(.3,1.6,.5,1) both,csjump .5s .5s cubic-bezier(.3,1.6,.5,1) 2}.cardspot b{position:absolute;top:30%;left:50%;font-size:18px;opacity:0;animation:csheart 1.4s ease-out forwards}.cardspot b:nth-of-type(1){--hx:-46px;animation-delay:.2s}.cardspot b:nth-of-type(2){--hx:30px;animation-delay:.45s}.cardspot b:nth-of-type(3){--hx:-12px;animation-delay:.75s}.cardspot b:nth-of-type(4){--hx:44px;animation-delay:1s}
 .cardspot.bye{animation:csbye .45s ease-in forwards}
@@ -190,6 +192,7 @@ export function homePage({ origin, provider, cfg }) {
 <div class="topbar"><a class="brand" href="/"><span class="dot"></span>Spot</a><div class="tabs modes" role="tablist" aria-label="Spot or Shop"><button type="button" role="tab" id="modeSpot" aria-selected="true">Spot</button><button type="button" role="tab" id="modeShop" aria-selected="false">Shop</button></div></div>
 <section id="shop" hidden>
   <div class="shophead"><div><h1 class="shoptitle">Shop</h1><p class="small muted" id="shopSub">Everything Spot has shown you.</p></div>
+    <div class="shopfilter" role="group" aria-label="Show"><button type="button" id="fAll" aria-pressed="true">All</button><button type="button" id="fWatch" aria-pressed="false">👀 Watching</button></div>
     <div class="views" role="group" aria-label="Layout"><button type="button" id="viewGrid" aria-pressed="true" aria-label="Grid">▦</button><button type="button" id="viewOne" aria-pressed="false" aria-label="One at a time">▢</button></div></div>
   <div class="grid" id="shopGrid"></div>
   <div class="shopempty" id="shopEmpty" hidden><p><b>Nothing here yet.</b></p><p class="muted">Ask Spot for something, and everything it finds shows up here to come back to.</p><button class="btn" type="button" id="shopStart">Ask Spot →</button></div>

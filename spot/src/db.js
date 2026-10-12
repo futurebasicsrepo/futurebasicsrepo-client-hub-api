@@ -235,6 +235,19 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
       high  INTEGER NOT NULL,
       PRIMARY KEY (url, day)
     );
+    -- "Watch this": products a signed-in shopper asked Spot to keep an eye
+    -- on (watches.js), checked about twice a day until next_at says.
+    CREATE TABLE IF NOT EXISTS watches (
+      id       TEXT PRIMARY KEY,
+      user_id  TEXT NOT NULL,
+      url      TEXT NOT NULL,
+      doc      TEXT NOT NULL,
+      state    TEXT NOT NULL,
+      next_at  INTEGER NOT NULL,
+      at       INTEGER NOT NULL,
+      UNIQUE (user_id, url)
+    );
+    CREATE INDEX IF NOT EXISTS watches_due ON watches (state, next_at);
     -- Self-serve agent API keys (only the SHA-256 is kept).
     CREATE TABLE IF NOT EXISTS api_keys (
       hash        TEXT PRIMARY KEY,
@@ -515,6 +528,29 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
     idsDirectOpen: () => db.prepare("SELECT id FROM carts WHERE status = 'open' AND json_extract(doc, '$.direct.checkout_id') IS NOT NULL LIMIT 500").all().map((r) => r.id),
     idsByStatus: (statuses) => db.prepare(`SELECT id FROM carts WHERE status IN (${statuses.map(() => '?').join(',')}) LIMIT 2000`).all(...statuses).map((r) => r.id),
     keyByHash: (hash) => q.keyByHash.get(hash) || null,
+    watches: {
+      row: (r) => r && { ...JSON.parse(r.doc), id: r.id, user_id: r.user_id, url: r.url, state: r.state, next_at: r.next_at, at: r.at },
+      byId(id) {
+        return this.row(db.prepare('SELECT * FROM watches WHERE id = ?').get(String(id)));
+      },
+      of(userId, url) {
+        return this.row(db.prepare('SELECT * FROM watches WHERE user_id = ? AND url = ?').get(userId, url));
+      },
+      list(userId) {
+        return db.prepare("SELECT * FROM watches WHERE user_id = ? AND state = 'on' ORDER BY at DESC LIMIT 100").all(userId).map((r) => this.row(r));
+      },
+      count(userId) {
+        return db.prepare("SELECT COUNT(*) AS n FROM watches WHERE user_id = ? AND state = 'on'").get(userId).n;
+      },
+      due(now, limit = 20) {
+        return db.prepare("SELECT * FROM watches WHERE state = 'on' AND next_at <= ? ORDER BY next_at LIMIT ?").all(now, limit).map((r) => this.row(r));
+      },
+      save(w) {
+        const { id, user_id, url, state, next_at, at, ...doc } = w;
+        db.prepare('INSERT INTO watches (id, user_id, url, doc, state, next_at, at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET doc = excluded.doc, state = excluded.state, next_at = excluded.next_at').run(id, user_id, url, JSON.stringify(doc), state, next_at, at);
+        return this.byId(id);
+      },
+    },
     policies: {
       get(site) {
         const r = db.prepare('SELECT doc, at FROM store_policies WHERE site = ?').get(site);

@@ -27,6 +27,7 @@ import { createRisk } from './risk.js';
 import { registerAdmin } from './admin.js';
 import { createPriceWatch } from './pricewatch.js';
 import { createStoreFacts, siteOf } from './storefacts.js';
+import { createWatches } from './watches.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -170,6 +171,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // for as long as the store's own policy allows.
   const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), policyOf: (c) => storeFacts.known(siteOf(c.items?.find((i) => i?.url)?.url || c.merchant?.url || '')), log: app.log });
   app.decorate('priceWatch', priceWatch);
+  // "Watch this": price drops and restocks on products a shopper picked (watches.js).
+  const watches = createWatches({ db, notifier, baseUrl, ...(capture.watchPrice ? { price: capture.watchPrice } : {}), ...(capture.watchStock ? { stock: capture.watchStock } : {}), log: app.log });
+  app.decorate('watches', watches);
   app.decorate('approvals', approvals);
   spot.emit = (kind, id, extra) => {
     // A person said yes: record a signed approval of exactly what they approved.
@@ -265,6 +269,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     spot.sweepIssue().catch((err) => app.log.error({ err }, 'issue sweep failed'));
     // Store prices on recent Spot-card orders, a few each half hour.
     if (sweeps % 30 === 0 && env.SPOT_PRICE_WATCH !== '0') priceWatch.sweep().catch((err) => app.log.error({ err }, 'price watch failed'));
+    // Products shoppers are watching, a few every 10 minutes.
+    if (sweeps % 10 === 0 && env.SPOT_PRICE_WATCH !== '0') watches.sweep().catch((err) => app.log.error({ err }, 'watches failed'));
   }, 60_000);
   sweeper.unref();
   app.addHook('onClose', async () => clearInterval(sweeper));
@@ -597,6 +603,25 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       .map((i) => ({ url: i.url.slice(0, 1000), variant: typeof i.variant === 'string' ? i.variant.slice(0, 80) : '', store: typeof i.store === 'string' ? i.store.slice(0, 80) : '' }));
     reply.header('cache-control', 'no-store');
     return { facts: await storeFacts.facts(clean) };
+  });
+
+  // "Watch this": a signed-in shopper's watched products.
+  app.get('/v1/me/watches', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in to watch prices' });
+    reply.header('cache-control', 'no-store');
+    return { watches: watches.list(uid) };
+  });
+  app.post('/v1/me/watches', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in to watch prices' });
+    limits.check(req);
+    return { watch: await watches.start(uid, req.body || {}) };
+  });
+  app.post('/v1/me/watches/:id/stop', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in first' });
+    return { watch: watches.stop(uid, req.params.id) };
   });
 
   // The Shop page: every product Spot has shown this shopper, newest first.
