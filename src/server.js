@@ -649,7 +649,7 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
     const draft = requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
     return { url: draft.invoiceUrl, draftId: draft.id, name: draft.name };
   },
-  // Shopify Payments payouts (needs the app's read_shopify_payments scope; a store without Shopify Payments has no account to read)
+  // Shopify Payments payouts (needs the app's read_shopify_payments_payouts scope; a store without Shopify Payments has no account to read)
   shopifyReady: shopifyConfigured,
   shopifyPayouts: async ({ after } = {}) => {
     if (!shopifyConfigured()) return null;

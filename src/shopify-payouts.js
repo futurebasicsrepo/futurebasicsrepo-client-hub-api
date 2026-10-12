@@ -1,4 +1,4 @@
-// Shopify Payments payouts: what Shopify paid into the bank, and what it kept in fees. Read-only; needs the app's `read_shopify_payments` scope.
+// Shopify Payments payouts: what Shopify paid into the bank, and what it kept in fees. Read-only; needs the app's `read_shopify_payments_payouts` scope.
 export const PAYOUTS_QUERY = `query MoneyPayouts($after: String) {
   shopifyPaymentsAccount { payouts(first: 50, after: $after, reverse: true, sortKey: ISSUED_AT) {
     nodes { id legacyResourceId issuedAt status transactionType net { amount currencyCode }
