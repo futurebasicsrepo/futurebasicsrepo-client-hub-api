@@ -554,7 +554,8 @@ function decode(s) {
     .replace(/&#0?39;|&apos;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
 }
 
 function absolute(u, base) {
@@ -949,7 +950,8 @@ export const withoutStore = (t, store) => {
 // Search-result clutter in a name: "Options Options - Simple Modern 18oz…",
 // "Deal, Hawsaiy 12oz Kids Bottle… From $8".
 export const tidyTitle = (t) =>
-  String(t || '')
+  decode(String(t || ''))
+    .replace(/\s*[|,-]?\s*price:?\s*\$\s?\d[\d.,]*\s*$/i, '')
     .replace(/^(?:(?:options|deal|sponsored|best\s*seller|clearance|rollback|popular pick)\s*[,:|–-]\s*|options\s+(?=options))+/i, '')
     .replace(/\s+(?:from|now|was|only)\s+\$\s?\d[\d.,]*.*$/i, '')
     .trim();
@@ -1281,7 +1283,8 @@ export async function streamLookup(raw, { client, fromUrl = captureFromUrl, prod
     let why = d0.why;
     // The store's own price beats the estimate search gave.
     if (r?.price_cents && why) why = why.replace(/\s*\(?est(?:imated|\.)? price\)?/i, '').trim() || null;
-    return { merchant: d.merchant, item: { ...it, image_url: it.image_url.replace(/^http:\/\//i, 'https://') }, stock, why };
+    // As it goes out: no page-markup leftovers ("Women&#x27;s", "&amp;hei=").
+    return { merchant: d.merchant, item: { ...it, title: tidyTitle(it.title) || it.title, image_url: it.image_url.replace(/^http:\/\//i, 'https://').replace(/&amp;/g, '&') }, stock, why };
   };
   // Each check, capped, so one slow store doesn't hold the rest.
   const checked = (d) => {
