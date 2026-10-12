@@ -448,3 +448,25 @@ test('a photo address from elsewhere counts only if it is an image on a public h
   const hops = [res(302, '', 'https://10.0.0.5/a.jpg')];
   assert.equal(await imageOk('https://93.184.215.14/a.jpg', { fetchImpl: async () => hops.shift() || res(200, 'image/jpeg') }), false, 'not redirected inside');
 });
+
+test('an outfit piece with no link isn’t shown; names lose search-result clutter; pieces are asked for by name', async () => {
+  const { tidyTitle } = await import('../src/capture.js');
+  assert.equal(tidyTitle('Options Options - Simple Modern 18 fl oz Water Bottle'), 'Simple Modern 18 fl oz Water Bottle');
+  assert.equal(tidyTitle('Deal, Hawsaiy 12oz Kids Water Bottle From $8'), 'Hawsaiy 12oz Kids Water Bottle');
+  assert.equal(tidyTitle('New Balance 574 Sneaker'), 'New Balance 574 Sneaker');
+  assert.equal(tidyTitle('Deal or No Deal Board Game'), 'Deal or No Deal Board Game');
+  const look = { kind: 'outfits', outfits: [{ name: 'Velvet', items: [{ ...P(1, 'macys'), product_url: '' }, P(2, 'gap'), P(3, 'nike')] }] };
+  const { client, calls } = streamer([look]);
+  const events = [];
+  const quiet = console.log;
+  console.log = () => {};
+  try {
+    await streamLookup('fall wedding guest outfit', { client, fromUrl: slowPage(1), product: noShopify, resolve: async () => null, pdp: async () => null, photos: async () => 'https://slimages.macysassets.example/d.jpg', verify: async () => true }, (e) => events.push(e));
+  } finally {
+    console.log = quiet;
+  }
+  const outfit = events.find((e) => e.type === 'outfit').outfit;
+  assert.deepEqual(outfit.items.map((o) => o.item.url), ['https://gap.example/p2', 'https://nike.example/p3']);
+  assert.match(calls[0].messages[0].content, /a real product you found for sale/);
+  assert.match(calls[0].messages[0].content, /brand and model/);
+});
