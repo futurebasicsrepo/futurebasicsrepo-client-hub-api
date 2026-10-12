@@ -41,6 +41,7 @@
   // Every search uses the sizes and ship-to (the server reads them from the
   // account); the page shows which, so it's never a guess.
   let account = null; // { sizes: { tops: 'M', … }, ship_to: 'Austin, TX' }
+  let myOrders = [];
   const SIZE_LABEL = { tops: 'Tops', bottoms: 'Pants', shoes: 'Shoes', dresses: 'Dresses' };
   const sizeLine = (z) => Object.entries(SIZE_LABEL).filter(([k]) => z?.[k]).map(([k, l]) => l + ' ' + z[k]).join(' · ');
   function renderProfile() {
@@ -64,6 +65,9 @@
       if (!me.email && u.email) me = { ...me, email: u.email };
       renderProfile();
       loadWatches();
+      // Their orders, wherever each is (tracking.js), for "Your orders".
+      myOrders = (j.carts || []).filter((c) => c.fulfillment?.state === 'placed' || c.spent_at).slice(0, 8);
+      renderMine();
     })
     .catch(() => renderProfile());
   let contacts = load('spot:contacts', []);
@@ -100,7 +104,7 @@
     if (screen === 'picks' && (id === 'check' || id === 'ready') && !history.state?.spot) history.pushState({ spot: id }, '');
     screen = id;
     for (const s of ['compose', 'picks', 'check', 'ready', 'shop']) $('#' + s).hidden = s !== id;
-    $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
+    $('#mine').hidden = id !== 'compose' || (!load('spot:mine', []).length && !myOrders.length);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   // ─── Spot, the mascot ─────────────────────────────────────────────────────
@@ -1803,7 +1807,22 @@
   };
 
   // ─── My Spots ─────────────────────────────────────────────────────────────
+  // Signed in: "Your orders", each with where it is (ordered → shipped → out
+  // for delivery → delivered). Otherwise the Spots made on this phone.
+  const STAGE = { ordered: [1, 'Ordered'], processing: [1, 'Getting it ready'], shipped: [2, 'Shipped'], in_transit: [2, 'On its way'], out_for_delivery: [3, 'Out for delivery'], delivered: [4, 'Delivered'], problem: [2, 'Delivery problem'] };
+  function orderRow(c) {
+    const t = c.tracking;
+    const [n, label] = STAGE[t?.status || 'ordered'] || STAGE.ordered;
+    const it = c.items?.[0] || {};
+    return '<a class="mine-row order" href="' + esc(c.manage_url || '#') + '"><span class="oi">' + (it.image_url ? '<img src="' + esc(it.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span><span class="ot"><b>' + esc(it.title || 'Your order') + '</b><br><span class="muted small">' + esc(c.merchant?.name || '') + (t?.carrier ? ' · ' + esc(t.carrier) : '') + '</span><span class="track s' + n + (t?.status === 'problem' ? ' bad' : '') + '"><i></i><i></i><i></i><i></i></span><span class="small ' + (t?.status === 'delivered' ? 'ok' : '') + '">' + label + (t?.description && t.description.toLowerCase() !== label.toLowerCase() ? ': ' + esc(t.description) : '') + '</span></span></a>';
+  }
   function renderMine() {
+    if (myOrders.length) {
+      $('#mine').querySelector('h2').textContent = 'Your orders';
+      $('#mineList').innerHTML = myOrders.map(orderRow).join('');
+      $('#mine').hidden = screen !== 'compose';
+      return;
+    }
     const mine = load('spot:mine', []);
     $('#mineList').innerHTML = mine
       .slice(0, 6)

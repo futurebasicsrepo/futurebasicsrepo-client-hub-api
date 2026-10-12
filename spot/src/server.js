@@ -32,6 +32,8 @@ import { createReviews } from './reviews.js';
 import { createCompare } from './compare.js';
 import { createDelivery } from './delivery.js';
 import { createPromos } from './promos.js';
+import { createTracker } from './tracking.js';
+import { getUcpOrder } from './fulfill/ucp.js';
 import { registerAssets } from './assets.js';
 import { registerMerchants } from './merchants.js';
 import { createLiveChecks } from './livechecks.js';
@@ -177,6 +179,9 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
   // for as long as the store's own policy allows.
   const priceWatch = createPriceWatch({ db, spot, ...(priceNowImpl ? { price: priceNowImpl } : {}), policyOf: (c) => storeFacts.known(siteOf(c.items?.find((i) => i?.url)?.url || c.merchant?.url || '')), log: app.log });
   app.decorate('priceWatch', priceWatch);
+  // Where each order is (tracking.js): the store's own order status, or a tracking number pasted in.
+  const tracker = createTracker({ db, spot, getOrder: capture.getOrder || ((c) => getUcpOrder({ storeUrl: c.merchant?.url, orderId: c.fulfillment.order_id, profileUrl: typeof profileUrl === 'function' ? profileUrl() : profileUrl, sign: signRequest, ...(fulfill.ucp?.fetchImpl ? { fetchImpl: fulfill.ucp.fetchImpl } : {}), ...(fulfill.ucp?.allowPrivate ? { allowPrivate: true } : {}) })), log: app.log });
+  app.decorate('tracker', tracker);
   // "Watch this": price drops and restocks on products a shopper picked (watches.js).
   const watches = createWatches({ db, notifier, baseUrl, ...(capture.watchPrice ? { price: capture.watchPrice } : {}), ...(capture.watchStock ? { stock: capture.watchStock } : {}), log: app.log });
   app.decorate('watches', watches);
@@ -283,6 +288,8 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     spot.sweepIssue().catch((err) => app.log.error({ err }, 'issue sweep failed'));
     // Store prices on recent Spot-card orders, a few each half hour.
     if (sweeps % 30 === 0 && env.SPOT_PRICE_WATCH !== '0') priceWatch.sweep().catch((err) => app.log.error({ err }, 'price watch failed'));
+    // Shipments of orders placed through agent checkout, a few every 30 minutes.
+    if (sweeps % 30 === 15) tracker.sweep().catch((err) => app.log.error({ err }, 'tracking failed'));
     // Products shoppers are watching, a few every 10 minutes.
     if (sweeps % 10 === 0 && env.SPOT_PRICE_WATCH !== '0') watches.sweep().catch((err) => app.log.error({ err }, 'watches failed'));
   }, 60_000);
@@ -998,6 +1005,16 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const url = cart.items?.find((i) => i?.url)?.url || cart.merchant?.url || '';
     const policy = await storeFacts.whenKnown(siteOf(url), cart.merchant?.name || '', 15000).catch(() => null);
     return { cart: ownerCart(spot.requestReturn(req.params.token, keyOf(req), req.body || {}, { policy })) };
+  });
+  // A tracking number from the store's shipping email.
+  app.post('/v1/carts/:token/manage/tracking', async (req) => {
+    const cart = spot.loadManaged(req.params.token, keyOf(req));
+    if (cart.fulfillment?.state !== 'placed' && !cart.spent_at) throw new CartError('It hasn’t been ordered yet', 409);
+    try {
+      return { cart: ownerCart(tracker.addNumber(cart, req.body?.number)) };
+    } catch (err) {
+      throw new CartError(err.message, err.status || 400);
+    }
   });
   app.post('/v1/carts/:token/manage/return/shipped', async (req) => ({ cart: ownerCart(spot.returnShipped(req.params.token, keyOf(req), req.body || {})) }));
   app.post('/v1/carts/:token/manage/refund', async (req) => ({ cart: ownerCart(await spot.refund(req.params.token, keyOf(req))) }));

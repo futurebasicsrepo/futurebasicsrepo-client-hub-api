@@ -541,6 +541,14 @@ export function openDb(file = process.env.SPOT_DB || './data/spot.db') {
                   ORDER BY json_extract(doc, '$.price_watch.last_at') IS NOT NULL, json_extract(doc, '$.price_watch.last_at') LIMIT 2000`)
         .all(since, since)
         .map((r) => r.id),
+    // Orders placed through agent checkout since `since`, not yet delivered (tracking.js).
+    idsToTrack: (since) =>
+      db
+        .prepare(`SELECT id FROM carts WHERE json_extract(doc, '$.fulfillment.state') = 'placed' AND json_extract(doc, '$.fulfillment.order_id') IS NOT NULL
+                  AND json_extract(doc, '$.fulfillment.placed_at') > ? AND COALESCE(json_extract(doc, '$.tracking.status'), '') != 'delivered'
+                  ORDER BY COALESCE(json_extract(doc, '$.tracking.checked_at'), 0) LIMIT 500`)
+        .all(since)
+        .map((r) => r.id),
     // Returns under way (spot.requestReturn), for /admin.
     idsReturns: () => db.prepare("SELECT id FROM carts WHERE json_extract(doc, '$.return.state') IN ('requested', 'shipped') LIMIT 500").all().map((r) => r.id),
     // Price drops waiting on staff (found, not yet claimed or dismissed).

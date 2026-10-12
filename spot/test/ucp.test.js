@@ -140,6 +140,7 @@ async function startUcpStore({ tokenizer = true, continueUrl = null, catalog = t
         return send(200, view(co));
       }
     }
+    if (req.method === 'GET' && req.url === '/ucp/orders/ord_777') return send(200, { id: 'ord_777', fulfillment: { events: [{ id: 'f1', occurred_at: '2026-10-13T15:00:00Z', type: 'shipped', line_items: [{ id: 'li_0', quantity: 1 }], carrier: 'UPS', tracking_number: '1Z999AA10123456784', tracking_url: 'https://www.ups.com/track?tracknum=1Z999AA10123456784' }] } });
     if (req.url === '/tok/tokenize') return send(200, { token: 'tok_from_store' });
     // The storefront cart (Shopify's AJAX API): rates for the cart's address.
     if (req.method === 'POST' && req.url === '/cart/add.js') {
@@ -908,4 +909,21 @@ test('promo codes: none apply, the checkout is cleared of them; a store without 
   await b.call('POST', `/v1/carts/${b.token}/manage/order`, { k: b.k, shipping });
   await b.until(['awaiting_confirm', 'needs_you']);
   assert.ok(!plain.log.some((r) => r.body?.discounts), 'not offered, not sent');
+});
+
+test('the order Spot placed is kept by id, and its shipments are read back from the store', async (t) => {
+  const { getUcpOrder } = await import('../src/fulfill/ucp.js');
+  const { fromOrder } = await import('../src/tracking.js');
+  const store = await startUcpStore();
+  const { app, call, token, k, until } = await setup(t, store);
+  await call('POST', `/v1/carts/${token}/manage/order`, { k, shipping });
+  await until(['awaiting_confirm']);
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const done = await until(['placed', 'needs_you']);
+  assert.equal(app.spot.load(token).fulfillment.order_id, 'ord_777');
+  const order = await getUcpOrder({ storeUrl: store.origin, orderId: 'ord_777', profileUrl: 'https://spot.example/.well-known/ucp', allowPrivate: true });
+  const tr = fromOrder(order);
+  assert.equal(tr.status, 'shipped');
+  assert.equal(tr.carrier, 'UPS');
+  assert.equal(done.state, 'placed');
 });

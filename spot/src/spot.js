@@ -1498,6 +1498,7 @@ export function ownerCart(cart) {
     // Refunded before the store charged: the payer's hold was released, never charged.
     released: Boolean(cart.released),
     spent_at: cart.spent_at || null,
+    tracking: cart.tracking ? (({ checked_at, ...t }) => t)(cart.tracking) : null,
     return: cart.return || null,
     can_return: cart.settle === 'card' && (cart.kind || 'goods') === 'goods' && ['card_issued', 'completed'].includes(cart.status) && Boolean(cart.fulfillment?.state === 'placed' || cart.spent_at) && (!cart.return || cart.return.state === 'closed'),
     // The price watch (pricewatch.js), as the requester may see it: that

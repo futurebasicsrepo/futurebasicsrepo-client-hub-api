@@ -59,6 +59,7 @@ input:focus,textarea:focus{outline:2px solid var(--spot);outline-offset:1px;bord
 .thumb{width:56px;height:56px;border-radius:12px;background:var(--line) center/cover no-repeat;flex:none}
 .item .t{font-weight:600}.item .v{color:var(--muted);font-size:14px}
 .item .p{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.trk{margin-top:12px;text-align:left}.trk .track{display:flex;gap:3px;margin:0 0 6px}.trk .track i{flex:1;height:5px;border-radius:3px;background:var(--line)}.trk .track.s1 i:nth-child(-n+1),.trk .track.s2 i:nth-child(-n+2),.trk .track.s3 i:nth-child(-n+3),.trk .track.s4 i{background:var(--ok)}.trk .track.bad i:nth-child(-n+2){background:var(--warn)}
 .retbox{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:12px;text-align:left}.retbox h3{margin:0 0 6px;font-size:16px}.retbox ol{margin:0 0 10px;padding-left:18px;display:grid;gap:4px}.retbox select,.retbox textarea{width:100%;margin:6px 0}
 .sum{display:flex;justify-content:space-between;color:var(--muted);padding:3px 0;font-variant-numeric:tabular-nums}
 .sum.total{color:var(--ink);font-weight:800;font-size:20px;padding-top:10px;border-top:1px solid var(--line);margin-top:8px}
@@ -140,6 +141,8 @@ const HOME_CSS = `
 .hero{display:flex;align-items:center;gap:12px;margin:18px 0 14px}
 .hero #buddy{display:block;width:92px;flex:none;animation:bob 3.2s ease-in-out infinite;margin-bottom:-10px}.buddy3d img{display:block;width:100%;height:auto}
 @keyframes bob{50%{transform:translateY(-4px)}}
+.mine-row.order{align-items:center;gap:12px;justify-content:flex-start}.mine-row .oi{width:48px;height:48px;border-radius:10px;background:#fff;flex:none;overflow:hidden;border:1px solid var(--line)}.mine-row .oi img{width:100%;height:100%;object-fit:contain}.mine-row .ot{flex:1;min-width:0}
+.track{display:flex;gap:3px;margin:6px 0 3px}.track i{flex:1;height:4px;border-radius:2px;background:var(--line)}.track.s1 i:nth-child(-n+1),.track.s2 i:nth-child(-n+2),.track.s3 i:nth-child(-n+3),.track.s4 i{background:var(--ok)}.track.bad i:nth-child(-n+2){background:var(--warn)}.mine-row .ok{color:var(--ok);font-weight:700}
 .hero #buddy{position:relative;cursor:pointer;-webkit-tap-highlight-color:transparent}.hero #buddy.has3d{animation:none}.hero #buddy.has3d img{display:none}.hero #buddy .spot3d{display:block;width:100%;height:auto}
 .hero #buddy.joy img.open{display:none!important}.hero #buddy.joy img.joy{display:block!important}.hero #buddy.joy{animation:spotjoy .5s cubic-bezier(.3,1.6,.5,1) 3}
 .hero #buddy.hop{animation:spotjoy .55s cubic-bezier(.3,1.6,.5,1)}.hero #buddy.think{animation:spotthink 1.8s ease-in-out infinite}.hero #buddy.oh{animation:spotshake .45s ease-in-out 2}
@@ -746,7 +749,7 @@ function ridersForm(c,s){
 function orderBox(c,f,agentOn){
   const st=f&&f.state;
   const tr=c.kind==='train';
-  if(st==='placed')return placedBox(c,f,tr)+watchLine(c)+returnLine(c,f);
+  if(st==='placed')return placedBox(c,f,tr)+trackLine(c)+watchLine(c)+returnLine(c,f);
   return orderBoxRest(c,f,agentOn,st,tr);
 }
 // The price watch on an order Spot paid for: on until when, or what was asked for.
@@ -757,6 +760,16 @@ function watchLine(c){
   if(w.state==='refunded')return '<p class="small" style="margin:10px 0 0">📉 '+store+' matched a lower price: '+usd(w.refunded_cents||w.claimed_cents||0)+' went back to the card that paid.</p>';
   if(w.state==='claimed')return '<p class="small" style="margin:10px 0 0">📉 '+store+' lowered the price, so Spot asked them for '+usd(w.claimed_cents||0)+' back. If they pay it, it goes back to the card that paid.</p>';
   return '<p class="small muted" style="margin:10px 0 0">📉 Spot checks '+store+'’s price daily until '+day(w.until)+'. If it drops, Spot asks for the difference.</p>';
+}
+// Where it is: the store's own shipment status, or a tracking number pasted in.
+function trackLine(c){
+  if(c.kind==='train'||c.kind==='flight')return '';
+  const t=c.tracking,S={ordered:[1,'Ordered'],processing:[1,'Getting it ready'],shipped:[2,'Shipped'],in_transit:[2,'On its way'],out_for_delivery:[3,'Out for delivery'],delivered:[4,'Delivered'],problem:[2,'Delivery problem']};
+  const [n,label]=S[(t&&t.status)||'ordered']||S.ordered;
+  let h='<div class="trk"><div class="track s'+n+(t&&t.status==='problem'?' bad':'')+'"><i></i><i></i><i></i><i></i></div><div class="small"><b>'+label+'</b>'+(t&&t.description&&t.description.toLowerCase()!==label.toLowerCase()?': '+esc(t.description):'')+(t&&t.carrier?' · '+esc(t.carrier):'')+(t&&t.number?' '+esc(t.number):'')+'</div>';
+  if(t&&t.url)h+='<a class="btn ghost small" href="'+esc(t.url)+'" target="_blank" rel="noopener" style="margin-top:8px">Track it →</a>';
+  if(!t||!t.number)h+='<div class="row" style="gap:6px;margin-top:8px"><input id="trkNum" placeholder="Tracking number from '+esc(c.merchant.name)+'’s email" style="margin:0;flex:1"><button class="btn ghost small" id="trkAdd" style="margin:0;width:auto">Add</button></div><p class="err" id="trkErr"></p>';
+  return h+'</div>';
 }
 // Returns: start one here; then the store's own steps, with the order number.
 function returnLine(c,f){
@@ -849,6 +862,7 @@ async function draw(){
   const ship=$('#shipForm');if(ship)ship.onsubmit=async(e)=>{e.preventDefault();const v=Object.fromEntries(new FormData(ship));if(Object.keys(v).length)try{localStorage.setItem('spot:ship',JSON.stringify(v))}catch{}
     const b=ship.querySelector('button');b.disabled=true;b.textContent='starting…';
     try{await api('/v1/carts/'+TOKEN+'/manage/order',{k:K,shipping:v});draw()}catch(err){$('#shipErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};
+  on('trkAdd',async()=>{try{await api('/v1/carts/'+TOKEN+'/manage/tracking',{k:K,number:$('#trkNum').value});draw()}catch(err){$('#trkErr').textContent=err.message}});
   on('retOpen',()=>{$('#retForm').hidden=false;$('#retOpen').remove()});
   const rf0=$('#retForm');if(rf0)rf0.onsubmit=async(e)=>{e.preventDefault();const fd=new FormData(rf0);const items=[...rf0.querySelectorAll('input[name=ri]')].filter(x=>x.checked).map(x=>Number(x.value));const b=rf0.querySelector('button');b.disabled=true;b.textContent='getting the steps…';
     try{await api('/v1/carts/'+TOKEN+'/manage/return',{k:K,reason:fd.get('reason'),note:fd.get('note')||'',...(rf0.querySelector('input[name=ri]')?{items}:{})});draw()}catch(err){$('#retErr').textContent=err.message;b.disabled=false;b.textContent='Try again'}};

@@ -151,6 +151,15 @@ export async function discover(storeUrl, { fetchImpl = fetch, allowPrivate = fal
 // hasn't registered with AuthenticationFailed, yet serves unsigned agents):
 // those are sent unsigned from then on.
 const unsignedHosts = new Set();
+// An order Spot placed, as the store has it now (UCP Get Order): its
+// fulfillment events carry the shipments, with carrier and tracking.
+export async function getUcpOrder({ storeUrl, orderId, profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null }) {
+  const d = await discover(storeUrl, { fetchImpl, allowPrivate });
+  if (!d || !orderId) return null;
+  const call = ucpClient({ endpoint: d.endpoint, transport: d.transport, profileUrl, fetchImpl, allowPrivate, sign });
+  return call('GET', `/orders/${encodeURIComponent(orderId)}`);
+}
+
 export function ucpClient({ endpoint, transport = 'rest', profileUrl, fetchImpl = fetch, allowPrivate = false, sign = null, auth = null }) {
   // A store-issued token (Shopify's agent access) stands in for a signature.
   // If the store won't take it, carry on the way Spot calls without one.
@@ -220,6 +229,8 @@ function restClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign }) {
 function mcpTool(method, path, body) {
   if (path === '/catalog/lookup') return ['lookup_catalog', { catalog: body }];
   if (method === 'POST' && path === '/checkout-sessions') return ['create_checkout', { checkout: body }];
+  const o = path.match(/^\/orders\/([^/]+)$/);
+  if (o && method === 'GET') return ['get_order', { id: decodeURIComponent(o[1]) }];
   const m = path.match(/^\/checkout-sessions\/([^/]+)(\/complete|\/cancel)?$/);
   if (!m) throw new UcpError(`No UCP tool for ${method} ${path}`);
   const id = decodeURIComponent(m[1]);
@@ -541,7 +552,7 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
     return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `Paying didn't go through: ${err.message}`, manual_url: err.continueUrl || manual };
   }
   if (co.status === 'completed') {
-    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: orderRef(co.order), order_url: co.order?.permalink_url || null };
+    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: orderRef(co.order), order_url: co.order?.permalink_url || null, order_id: co.order?.id ? String(co.order.id).slice(0, 200) : null };
   }
   return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: blocked(co, `${cart.merchant.name} needs you to finish paying`), manual_url: co.continue_url || manual };
 }
