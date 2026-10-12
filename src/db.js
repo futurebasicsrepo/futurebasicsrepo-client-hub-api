@@ -945,6 +945,10 @@ export async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+    -- who owns the account (the person who won it, unless someone else takes it) and the project a won deal started
+    alter table sales_deals add column if not exists owner_id uuid references users(id) on delete set null;
+    alter table sales_deals add column if not exists project_id uuid references projects(id) on delete set null;
+    alter table clients add column if not exists owner_id uuid references users(id) on delete set null;
     create index if not exists sales_deals_stage_idx on sales_deals (stage, updated_at desc);
     create index if not exists sales_deals_contact_idx on sales_deals (contact_id);
     create table if not exists sales_activities (

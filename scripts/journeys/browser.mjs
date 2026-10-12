@@ -1857,5 +1857,32 @@ await journey('J156', 'Money → Payouts: the tab shows sales, fees and what rea
   sql(`delete from money_payouts where shopify_id like '${tag}-%'`);
 });
 
+await journey('J158', 'Start project in a browser: a won deal offers it, one click makes the room and project and opens it, the deal then points at the project, and an open deal does not offer it', async () => {
+  const r = await room('158', { wait: false }), W = 'http://work.localhost:3123', tag = `sp${stamp}`;
+  const uid = sql(`insert into users(client_id,email,name,role) values('${r.clientId}','sp-${tag}@thefuturebasics.com','Sam Seller','admin') returning id`).split('\n')[0];
+  const tok = await forge({ sub: uid, clientId: r.clientId, role: 'admin', email: `sp-${tag}@thefuturebasics.com` });
+  const co = sql(`insert into sales_companies(name) values('Maple Bakery ${tag}') returning id`).split('\n')[0];
+  const won = sql(`insert into sales_deals(title,stage,value_cents,company_id,closed_at) values('Bakery site ${tag}','won',500000,'${co}',now()) returning id`).split('\n')[0];
+  const open = sql(`insert into sales_deals(title,stage,value_cents,company_id) values('Bakery maybe ${tag}','proposal',100,'${co}') returning id`).split('\n')[0];
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, tok);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof openDeal === 'function', null, { timeout: 15000 }); await page.waitForTimeout(800);
+  await page.evaluate(id => openDeal(id), open); await page.waitForSelector('#ddlg[open]');
+  ok(await page.$eval('#dProject', e => e.classList.contains('hidden')), 'an open deal does not offer Start project');
+  await page.evaluate(() => document.querySelector('#ddlg').close());
+  await page.evaluate(id => openDeal(id), won); await page.waitForSelector('#ddlg[open]');
+  ok(!(await page.$eval('#dProject', e => e.classList.contains('hidden'))) && /Start project/.test(await page.innerText('#dProject')), 'a won deal offers Start project, with the kind of work to pick');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j158-deal.png` }).catch(() => {});
+  await page.selectOption('#dProjectKind', 'software'); await page.click('#dProjectGo'); await page.waitForURL(/\/clients\/[0-9a-f-]{36}#project=/, { timeout: 15000 });
+  const row = sql(`select p.kind||'|'||c.name||'|'||(c.owner_id='${uid}')::text from sales_deals d join projects p on p.id=d.project_id join clients c on c.id=p.client_id where d.id='${won}'`);
+  ok(row === `software|Maple Bakery ${tag}|true`, 'one click made the room and a software project, owned by the person who clicked, and opened it', row);
+  await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof openDeal === 'function'); await page.waitForTimeout(800);
+  await page.evaluate(id => openDeal(id), won); await page.waitForSelector('#ddlg[open]');
+  ok(!(await page.$eval('#dProjectOpen', e => e.classList.contains('hidden'))) && await page.$eval('#dProjectGo', e => e.classList.contains('hidden')) && /Sam Seller/.test(await page.innerText('#dProjectSub')), 'afterwards the deal links to its project and names the owner instead of offering it again');
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, tok); await ph.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await ph.waitForFunction(() => typeof openDeal === 'function'); await ph.waitForTimeout(800); await ph.evaluate(id => openDeal(id), won); await ph.waitForSelector('#ddlg[open]');
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#ddlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the deal window fits the screen'); } finally { await pc.close(); }
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);
