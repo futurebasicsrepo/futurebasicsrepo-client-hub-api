@@ -72,7 +72,8 @@ export function createAutopay(d) {
       // what Intuit said goes on the contract's trail and to staff (never the client's details: Intuit's message does not contain them), so the cause can be seen without digging in logs
       await ev(r.id, 'payment_method_failed', { actor: sig.name, detail: `${String(e.message).replace(/^QuickBooks Payments: /, '').slice(0, 300)}${e.code ? ` [${e.code}]` : ''}${e.tid ? ` (intuit_tid ${e.tid})` : ''}`, meta: { kind: k, status: e.status || null } });
       await notifyStaff(`Saving payment details failed for ${r.number} (${c.company})`, `<p>${emailEscape(String(e.message).slice(0, 400))}${e.code ? ` <code>${emailEscape(e.code)}</code>` : ''}${e.tid ? ` (intuit_tid ${emailEscape(e.tid)})` : ''}</p>${hubButton(`${workUrl}/contracts?open=${r.id}`, 'Open the contract')}`);
-      return { error: e.status === 400 || e.status === 422 ? 'Those payment details were not accepted. Check them and try again.' : 'Could not save the payment details. Try again in a minute.', status: e.status === 400 || e.status === 422 ? 422 : 502 }; }
+      const said = String(e.detail || '').replace(/\s+/g, ' ').trim().slice(0, 160); // Intuit's own words (never the client's numbers) help the client fix a typo and us find the cause
+      return { error: e.status === 400 || e.status === 422 ? `Those payment details were not accepted${said ? ` (${said.replace(/\.$/, '')})` : ''}. Check them and try again.` : 'Could not save the payment details. Try again in a minute.', status: e.status === 400 || e.status === 422 ? 422 : 502 }; }
     const authorization = { by: sig.name, at: new Date().toISOString(), ip, ua: String(ua).slice(0, 300), contractHash: r.doc_hash, text: authorizationText(k, r.content.provider?.name || 'Future Basics') };
     const db = await pool.connect(); let old = null;
     try {

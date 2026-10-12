@@ -131,7 +131,7 @@
       $('#pGo').disabled=true;$('#pGo').textContent='Saving…';
       try{
         const tr=await fetch(p.tokensUrl,{method:'POST',headers:{'content-type':'application/json','request-id':crypto.randomUUID()},body:JSON.stringify(tokenBody)}).catch(()=>null);tokenBody=null;
-        const tj=tr?await tr.json().catch(()=>({})):{};if(!tr||!tr.ok||!tj.value)return fail(tr&&tr.status<500?'Those details were not accepted. Check them and try again.':'Could not reach the payment service. Try again in a minute.');
+        const tj=tr?await tr.json().catch(()=>({})):{};if(!tr||!tr.ok||!tj.value){const said=String((tj.errors&&tj.errors[0]&&(tj.errors[0].detail||tj.errors[0].message))||'').slice(0,160).replace(/\.$/,'');return fail(tr&&tr.status<500?'Those details were not accepted'+(said?' ('+said+')':'')+'. Check them and try again.':'Could not reach the payment service. Try again in a minute.')}
         for(const i of f.querySelectorAll('input'))if(i.type!=='checkbox')i.value='';
         await api('/payment-method',{body:{kind:p.kind,token:tj.value}});const d=await api('');render(d);toast('Saved. Your automatic payments are set up.')}
       catch(x){fail(x.message)}});

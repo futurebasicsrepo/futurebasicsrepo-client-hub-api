@@ -110,7 +110,7 @@ try {
     // the client adds a card: only the token reaches us
     ok((await P(A.token, '/payment-method', { body: { kind: 'bank', token: await tokenFor(BANK) } })).status === 422, 'a bank account is refused when the agreement is paid by card');
     ok((await P(A.token, '/payment-method', { body: { kind: 'card', token: 'no spaces allowed!!' } })).status === 422, 'something that is not a token is refused');
-    ok((await P(A.token, '/payment-method', { body: { kind: 'card', token: 'tok_neverissued' } })).status === 422, 'a token the provider does not know is refused with a plain message');
+    const nv = await P(A.token, '/payment-method', { body: { kind: 'card', token: 'tok_neverissued' } }); ok(nv.status === 422 && /not accepted \(unknown token\)/.test(nv.json.error), 'a token the provider does not know is refused, saying what the provider said', nv.json);
     const evs = (await K(`/${A.id}`)).json.events; ok(evs.some(e => e.kind === 'payment_method_failed' && /unknown token/.test(e.detail) && /PMT-5000/.test(e.detail)) && (await outbox('')).some(e => /Saving payment details failed/.test(e.subject) && /unknown token/.test(e.text)), 'what the provider said is on the contract\'s trail and in an email to staff, so the cause is visible without digging in logs');
     const saved = await P(A.token, '/payment-method', { body: { kind: 'card', token: await tokenFor(CARD) } });
     ok(saved.status === 200 && saved.json.method.label === 'Visa ending 1111' && saved.json.method.last4 === '1111', 'the card is saved on file and shown as "Visa ending 1111"', saved.json);
