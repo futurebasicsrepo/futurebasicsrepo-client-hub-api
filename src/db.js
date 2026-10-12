@@ -1474,6 +1474,8 @@ export async function migrate() {
     alter table money_invoices add column if not exists pay_url text not null default '';
     alter table money_invoices add column if not exists pay_channel text not null default '';
     alter table money_invoices add column if not exists shopify_draft_id text not null default '';
+    alter table money_invoices add column if not exists deal_id uuid references sales_deals(id) on delete set null;
+    create index if not exists money_invoices_deal_idx on money_invoices (deal_id) where deal_id is not null;
     create index if not exists money_invoices_status_idx on money_invoices (status, due_on);
     create index if not exists money_invoices_company_idx on money_invoices (lower(company));
     create table if not exists money_payments (
@@ -1494,6 +1496,21 @@ export async function migrate() {
     create index if not exists money_payments_invoice_idx on money_payments (invoice_id);
     create index if not exists money_payments_paid_idx on money_payments (paid_on desc);
     create unique index if not exists money_payments_qb_idx on money_payments (qb_id) where qb_id is not null;
+    -- What Shopify Payments paid out, and what it kept in fees (read from Shopify; never entered by hand).
+    create table if not exists money_payouts (
+      shopify_id text primary key,
+      issued_on date not null,
+      status text not null default '',
+      kind text not null default '',
+      currency text not null default 'USD',
+      net_cents bigint not null default 0,
+      gross_cents bigint not null default 0,
+      charges_cents bigint not null default 0,
+      refunds_cents bigint not null default 0,
+      fee_cents bigint not null default 0,
+      synced_at timestamptz not null default now()
+    );
+    create index if not exists money_payouts_issued_idx on money_payouts (issued_on desc);
     -- The one QuickBooks Online company the Money hub is connected to. Tokens are stored sealed (never plain) and never leave the server.
     create table if not exists money_connections (
       provider text primary key check (provider in ('quickbooks')),

@@ -33,6 +33,9 @@ http.createServer(async (req, res) => {
     orders.push(o); return send(res, 201, shape(o));
   }
   if (url === '/__mock/draft-paid' && req.method === 'POST') { const x = JSON.parse(body || '{}'), d = [...drafts.values()].find(y => y.id === x.id || y.name === x.name); if (!d) return send(res, 404, { error: 'no such draft' }); d.paid = x.paid !== false; d.updatedAt = new Date().toISOString(); return send(res, 200, d); }
+  if (url === '/__mock/payouts' && req.method === 'POST') { // the store's Shopify Payments: { payouts: [..], deny: bool, noAccount: bool }
+    const x = JSON.parse(body || '{}'); if (x.payouts) state.payouts = x.payouts; if ('deny' in x) state.denyPayouts = x.deny === true; if ('noAccount' in x) state.noPayoutsAccount = x.noAccount === true; return send(res, 200, { payouts: (state.payouts || []).length });
+  }
   if (url === '/__mock/drafts') return send(res, 200, { drafts: [...drafts.values()] });
   if (url === '/__mock/fail' && req.method === 'POST') { state.failing = JSON.parse(body || '{}').on === true; return send(res, 200, { failing: state.failing }); }
   if (url === '/__mock/state') return send(res, 200, { orders: orders.length, failing: state.failing });
@@ -56,6 +59,12 @@ http.createServer(async (req, res) => {
     const d = drafts.get(variables.id); if (!d) return send(res, 200, { data: { draftOrder: null } });
     const total = { shopMoney: { amount: d.amount.toFixed(2), currencyCode: 'USD' } };
     return send(res, 200, { data: { draftOrder: { id: d.id, name: d.name, invoiceUrl: d.invoiceUrl, status: d.paid ? 'COMPLETED' : 'OPEN', updatedAt: d.updatedAt, totalPriceSet: total, order: d.paid ? { id: `gid://shopify/Order/${d.id.split('/').pop()}`, name: `#P${d.id.split('/').pop()}`, displayFinancialStatus: 'PAID', displayFulfillmentStatus: 'UNFULFILLED', totalPriceSet: total } : null } } });
+  }
+  if (name === 'MoneyPayouts') {
+    if (state.denyPayouts) return send(res, 200, { data: { shopifyPaymentsAccount: null }, errors: [{ message: 'Access denied for shopifyPaymentsAccount field. Required access: the `read_shopify_payments` or the `read_shopify_payments_accounts` access scope.' }] });
+    if (state.noPayoutsAccount) return send(res, 200, { data: { shopifyPaymentsAccount: null } });
+    const all = state.payouts || [], from = Number(variables.after || 0), page = all.slice(from, from + 50), more = from + 50 < all.length;
+    return send(res, 200, { data: { shopifyPaymentsAccount: { payouts: { nodes: page, pageInfo: { hasNextPage: more, endCursor: more ? String(from + 50) : null } } } } });
   }
   if (name === 'PackShopInfo') return send(res, 200, { data: { shop: { name: 'Mock Merchant Store', myshopifyDomain: 'merchant.myshopify.com', currencyCode: 'USD' }, currentAppInstallation: { accessScopes: [{ handle: 'read_products' }, { handle: 'write_products' }] } } });
   if (name === 'PackAppUninstalledWebhook') { hooks.set(tokenHeader, variables.uri); return send(res, 200, { data: { webhookSubscriptionCreate: { webhookSubscription: { id: 'gid://shopify/WebhookSubscription/1' }, userErrors: [] } } }); }

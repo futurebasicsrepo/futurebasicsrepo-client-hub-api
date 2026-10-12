@@ -431,4 +431,39 @@ await journey('J142', 'a product development invoice gets a Shopify payment link
   ok(ed.status === 200 && ed.json.invoice.payUrl === '' && ed.json.invoice.payChannel === '', 'editing the invoice drops its Shopify link, so a stale amount is never sent', JSON.stringify(ed.json.invoice?.payUrl));
 });
 
+await journey('J155', 'Shopify Payments payouts: read into Money (sales, fees and what reached the bank), safe to read again, a missing scope or a store without Shopify Payments is said plainly, and only the people Money is open to see it', async () => {
+  const room = await call('/v1/public/start', { body: { email: `j155-${stamp}@chaos.test`, name: 'Payout Tester', title: 'Payout pack', photos: [runner] } });
+  const cid = room.json.client.id; sql('delete from money_payouts'); // other journeys put rows here too
+  const staff = async e => forge({ sub: sql(`select id from users where lower(email)='${e}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${e}','${e.split('@')[0]}','admin') returning id`).split('\n')[0], clientId: cid, role: 'admin', email: e });
+  const kyle = await staff('kyle@thefuturebasics.com'), colby = await staff('colby@thefuturebasics.com'), M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o });
+  const day = n => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10) + 'T05:00:00Z', m = a => ({ amount: String(a), currencyCode: 'USD' });
+  const node = (n, daysAgo, net, charges, status = 'PAID') => ({ id: `gid://shopify/ShopifyPaymentsPayout/${stamp}${n}`, issuedAt: day(daysAgo), status, transactionType: 'DEPOSIT', net: m(net), summary: { chargesGross: m(charges), refundsFeeGross: m(0), adjustmentsGross: m(0), advanceGross: m(0), reservedFundsGross: m(0), retriedPayoutsGross: m(0) } });
+  ok((await call('/v1/money/payouts', { token: colby })).status === 403 && (await call('/v1/money/payouts/sync', { token: colby, body: {} })).status === 403 && (await call('/v1/money/payouts')).status === 401, 'only the people Money is open to can see or read payouts');
+  const first = (await M('/payouts')).json; ok(first.configured === true && first.payouts.length === 0 && first.needsScope === false, 'before the first read there is nothing and nothing is wrong', first);
+
+  // the app has not been given the payments scope yet
+  await mock('/__mock/payouts', { deny: true });
+  const denied = (await M('/payouts/sync', { body: {} })).json; const after = (await M('/payouts')).json;
+  ok(denied.ok === false && denied.needsScope === true && /read_shopify_payments/.test(denied.error) && after.needsScope === true && /read_shopify_payments/.test(after.lastError), 'a missing access scope is said plainly, with what to add', JSON.stringify([denied, after.lastError]));
+
+  // scope granted: two paid payouts and one still on the way
+  await mock('/__mock/payouts', { deny: false, payouts: [node(1, 3, 970, 1000), node(2, 10, 485, 500), node(3, 0, 200, 206, 'SCHEDULED')] });
+  const r1 = (await M('/payouts/sync', { body: {} })).json, list = (await M('/payouts')).json;
+  ok(r1.ok && r1.seen === 3 && r1.added === 3 && list.needsScope === false && list.lastError === '' && list.lastSyncAt, 'payouts are read, and the earlier complaint is cleared', JSON.stringify(r1));
+  ok(list.totals.d30.payouts === 2 && list.totals.d30.grossCents === 150000 && list.totals.d30.feeCents === 4500 && list.totals.d30.netCents === 145500 && list.totals.d30.feePct === 3 && list.scheduledCents === 20000, 'sales, fees, what reached the bank and what is on the way add up (scheduled ones are not counted as paid)', JSON.stringify([list.totals.d30, list.scheduledCents]));
+  const row = list.payouts.find(p => p.id.endsWith(`${stamp}1`)); ok(row && row.status === 'paid' && row.feeCents === 3000 && row.netCents === 97000, 'each payout shows its sales, fee and amount paid out', JSON.stringify(row));
+  const r2 = (await M('/payouts/sync', { body: {} })).json; ok(r2.ok && r2.seen === 3 && r2.added === 0 && (await M('/payouts')).json.payouts.length === 3, 'reading again adds nothing twice');
+  await mock('/__mock/payouts', { payouts: [node(1, 3, 970, 1000), node(2, 10, 485, 500), node(3, 0, 200, 206, 'PAID')] });
+  await M('/payouts/sync', { body: {} }); const done = (await M('/payouts')).json; ok(done.scheduledCents === 0 && done.totals.d30.payouts === 3, 'a scheduled payout that is then paid is updated in place', JSON.stringify(done.totals.d30));
+
+  // more than one page
+  await mock('/__mock/payouts', { payouts: Array.from({ length: 120 }, (_, i) => node(100 + i, 20, 97, 100)) });
+  const big = (await M('/payouts/sync', { body: {} })).json; ok(big.ok && big.seen === 120 && big.added === 120, 'every page is read (120 payouts across three pages)', JSON.stringify(big));
+
+  // a store that is not on Shopify Payments
+  await mock('/__mock/payouts', { noAccount: true });
+  const none = (await M('/payouts/sync', { body: {} })).json; ok(none.ok && none.noAccount === true && (await M('/payouts')).json.noAccount === true, 'a store without Shopify Payments is told so, not an error');
+  await mock('/__mock/payouts', { noAccount: false, payouts: [] });
+});
+
 summary(); process.exit(bad ? 1 : 0);

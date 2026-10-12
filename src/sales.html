@@ -275,7 +275,7 @@ td.pick,th.pick{width:28px;padding-right:0}td.pick input{width:17px;height:17px}
     <label class="f wide hidden" id="dLostRow"><span class="mono">Why was it lost?</span><input class="t" id="dLost" placeholder="Went with their nephew"></label>
   </div>
   <p class="msg" id="dMsg" role="status"></p>
-  <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
+  <div style="display:flex;justify-content:space-between;gap:8px"><button class="btn danger hidden" type="button" id="dDelete">Delete</button><a class="btn hidden" id="dInvoice" href="/money" title="Open Money with an invoice started from this deal (Money is open to the people named for it)">Make an invoice</a><button class="btn go" type="submit" style="margin-left:auto">Save</button></div>
 </form></dialog>
 
 <script src="/chat.js"></script>
@@ -330,7 +330,7 @@ $('#dStage').onchange=()=>$('#dLostRow').classList.toggle('hidden',$('#dStage').
 let EDIT_DEAL=null,DEAL_CONTACT=null;
 async function openDeal(id,contactId){
   const d=id?DEALS.find(x=>x.id===id)||(await api('/v1/sales/deals')).deals.find(x=>x.id===id):null;EDIT_DEAL=d||null;DEAL_CONTACT=contactId||d?.contact_id||null;
-  $('#dTitle').textContent=d?d.title:'New deal';$('#dName').value=d?.title||'';$('#dStage').value=d?.stage||'new';$('#dValue').value=d?.value_cents?String(Math.round(d.value_cents/100)):'';$('#dClose').value=d?.expected_close?String(d.expected_close).slice(0,10):'';$('#dLost').value=d?.lost_reason||'';$('#dLostRow').classList.toggle('hidden',(d?.stage||'new')!=='lost');$('#dMsg').textContent='';$('#dDelete').classList.toggle('hidden',!d);
+  $('#dTitle').textContent=d?d.title:'New deal';$('#dName').value=d?.title||'';$('#dStage').value=d?.stage||'new';$('#dValue').value=d?.value_cents?String(Math.round(d.value_cents/100)):'';$('#dClose').value=d?.expected_close?String(d.expected_close).slice(0,10):'';$('#dLost').value=d?.lost_reason||'';$('#dLostRow').classList.toggle('hidden',(d?.stage||'new')!=='lost');$('#dMsg').textContent='';$('#dDelete').classList.toggle('hidden',!d);$('#dInvoice').classList.toggle('hidden',!(d&&d.stage==='won'));if(d)$('#dInvoice').href='/money?deal='+encodeURIComponent(d.id);
   await fillContactOptions('#dContact',DEAL_CONTACT);$('#dContactRow').classList.toggle('hidden',Boolean(d));
   if($('#cdlg').open)$('#cdlg').close();$('#ddlg').showModal();$('#dName').focus();
 }

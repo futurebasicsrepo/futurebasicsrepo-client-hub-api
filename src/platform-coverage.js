@@ -121,6 +121,18 @@ export function quickbooksVerdict({ configured, sealing, row, now = Date.now() }
   return { status: 'ok', summary: `Connected to ${row.company || 'QuickBooks'} (${row.mode === 'production' ? 'live books' : 'sandbox: test books'}) · payments last read ${row.last_sync_at ? ago(row.last_sync_at) : 'not yet'}` };
 }
 
+// Shopify Payments payouts: can the app read them, and have they been read lately. Judged from what is stored (no call is made).
+export function payoutsVerdict({ configured, st = {}, p = {}, now = Date.now() }) {
+  if (!configured) return { status: 'off', summary: 'Shopify is not connected, so payouts are not read' };
+  if (st.needsScope) return { status: 'warn', summary: 'Shopify will not let the app read payouts: add the read_shopify_payments access scope to the Shopify app and approve it' };
+  if (st.lastError) return { status: 'warn', summary: `The last payout read failed: ${String(st.lastError).slice(0, 140)}` };
+  if (st.noAccount) return { status: 'off', summary: 'The store is not on Shopify Payments: there are no payouts to read' };
+  if (!st.lastSyncAt) return { status: 'off', summary: 'Not read yet: payouts are read every 6 hours, or press Read payouts now in Money → Payouts' };
+  if (now - new Date(st.lastSyncAt).getTime() > 18 * 3600_000) return { status: 'warn', summary: `Payouts have not been read since ${ago(st.lastSyncAt)}` };
+  const fee = Number(p.fee30 || 0), gross = Number(p.gross30 || 0), usd = c => `$${Math.round(c / 100).toLocaleString('en-US')}`;
+  return { status: 'ok', summary: `${plural(Number(p.total || 0), 'payout')} read · fees in the last 30 days ${usd(fee)}${gross > 0 ? ` (${(Math.round(fee / gross * 1000) / 10)}% of sales)` : ''} · last read ${ago(st.lastSyncAt)}` };
+}
+
 export function githubVerdict({ hasToken, probe, job }) {
   if (!hasToken) return { status: 'off', summary: 'Not connected: the showcase does not follow app updates (add BUILDS_GITHUB_TOKEN)' };
   if (probe?.error) return { status: 'warn', summary: probe.error };
@@ -253,6 +265,12 @@ export async function coverageChecks(d) {
     const c = await one(`select count(*)::int total, count(*) filter (where status='sent')::int open, count(*) filter (where status='sent' and due_on < current_date and total_cents - coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id),0) > 0)::int overdue, count(*) filter (where status='unrecorded')::int unrecorded, count(*) filter (where status='draft')::int drafts from money_invoices i`);
     const stored = (await getSetting('moneyPayment').catch(() => null)) || {}, access = moneyAccessList(env), v = moneyVerdict({ hasInstructions: Boolean(String(stored.instructions || '').trim()), c, access });
     return { ...v, facts: [['Invoices', String(c.total)], ['Sent and open', String(c.open)], ['Overdue', String(c.overdue)], ['Drafts', String(c.drafts)], ['Past invoices with no payment recorded', String(c.unrecorded)], ['Payment instructions on invoices', String(stored.instructions || '').trim() ? 'saved' : 'not saved'], ['People who can open Money', String(access.length)]] };
+  }));
+
+  listing.push(row('shopifypayouts', 'Bank payouts and fees', 'sales', async () => {
+    const st = (await getSetting('moneyPayouts').catch(() => null)) || {}, p = await one(`select count(*)::int total, coalesce(sum(fee_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float fee30, coalesce(sum(gross_cents) filter (where status='paid' and kind<>'withdrawal' and issued_on > current_date - 30), 0)::float gross30 from money_payouts`);
+    const linked = Boolean(env.SHOPIFY_STORE_DOMAIN && (env.SHOPIFY_ADMIN_ACCESS_TOKEN || (env.SHOPIFY_CLIENT_ID && env.SHOPIFY_CLIENT_SECRET))), v = payoutsVerdict({ configured: linked, st, p });
+    return { ...v, facts: [['Store', linked ? 'connected' : 'not connected'], ['Payouts read', String(p.total)], ['Last read', st.lastSyncAt ? ago(st.lastSyncAt) : 'not yet'], ['Needs the read_shopify_payments scope', st.needsScope ? 'yes' : 'no']] };
   }));
 
   // Site prototypes and the lead search that feeds them.

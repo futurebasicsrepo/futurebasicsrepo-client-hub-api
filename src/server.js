@@ -47,6 +47,7 @@ import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js'
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
 import { runDue as intelRunDue, scorePending as intelScore, loadSettings as intelSettings, purgeOld as intelPurge } from './intel-engine.js';
 import { registerBuildRoutes, seedBuilds, backfillBuildRepos, syncBuilds } from './builds-routes.js';
+import { PAYOUTS_QUERY } from './shopify-payouts.js';
 import { shopifyConfigured, shopifyGraphql, SHOP_CONNECTION_QUERY, APP_SCOPES_QUERY, missingScopes, CUSTOMER_MEMBERSHIP_QUERY, CUSTOMER_BY_EMAIL_QUERY, exactCustomerMatch, ORDER_CUSTOMER_QUERY, DRAFT_ORDER_DELETE, VARIANTS_BULK_CREATE, VARIANTS_BULK_UPDATE, VARIANTS_BULK_DELETE, PRODUCT_SYNC_QUERY, PRODUCT_IDS_SYNC_QUERY, CUSTOMER_SYNC_QUERY, PRODUCT_CREATE, PRODUCT_UPDATE, DRAFT_ORDER_CREATE, DRAFT_INVOICE_SEND, DRAFT_ORDER_STATUS, requireNoUserErrors, OFFER_CONTEXT_QUERY, ORDER_TRANSACTIONS_QUERY, ORDER_CAPTURE, ORDER_CANCEL, requireNoOrderCancelErrors , ORDERS_PAID_QUERY } from './shopify.js';
 import { latestProductQuote, productCommercials, projectFinancialRollups, clientProductTerms, draftOrderLinesForProducts } from './commercials.js';
 import { normalizeSubmission, normalizeAmount, nextOfferState, consignmentView, formatCents } from './consign.js';
@@ -647,6 +648,13 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
     const input = { lineItems: [{ title, quantity: 1, requiresShipping: false, taxable: false, originalUnitPriceWithCurrency: { amount: (Number(amountCents) / 100).toFixed(2), currencyCode: currency || 'USD' } }], email: email || undefined, note, tags: ['future-basics-money', `invoice-${String(number).replace(/[^A-Za-z0-9_-]/g, '-')}`], visibleToCustomer: true };
     const draft = requireNoUserErrors((await shopifyGraphql(DRAFT_ORDER_CREATE, { input })).draftOrderCreate).draftOrder;
     return { url: draft.invoiceUrl, draftId: draft.id, name: draft.name };
+  },
+  // Shopify Payments payouts (needs the app's read_shopify_payments scope; a store without Shopify Payments has no account to read)
+  shopifyReady: shopifyConfigured,
+  shopifyPayouts: async ({ after } = {}) => {
+    if (!shopifyConfigured()) return null;
+    const acct = (await shopifyGraphql(PAYOUTS_QUERY, { after: after || null })).shopifyPaymentsAccount;
+    return acct ? { nodes: acct.payouts.nodes, pageInfo: acct.payouts.pageInfo } : { noAccount: true, nodes: [] };
   },
   shopifyDraftStatus: async id => {
     if (!shopifyConfigured()) return null;
@@ -5699,6 +5707,7 @@ jobEvery('Sales automations', 60 * 1000, async()=>{const r=await processRuns(poo
 // Sales intelligence: listen to each due watch and have the AI read what is new (every 15 minutes; each watch has its own interval). Switched off with INTEL_AUTO=off.
 // saved lead searches that are due (PROTOTYPE_SCHEDULE_TICK_MS is only shortened by the journeys)
 if(process.env.BRAVE_API_KEY)jobEvery('Lead search schedules', Number(process.env.PROTOTYPE_SCHEDULE_TICK_MS || 3 * 3600 * 1000), async()=>protos.runSchedules(), process.env.PROTOTYPE_SCHEDULE_TICK_MS?{}:{ delay: 2 * 60 * 1000 }); else declareJob('Lead search schedules', 3 * 3600 * 1000, 'switched off (no BRAVE_API_KEY)');
+jobEvery('Shopify payouts', 6 * 3600 * 1000, async()=>{const r=await money.syncPayouts();if(r.ok===false&&r.error)throw new Error(r.error);return r.added||0}, { delay: 100 * 1000 });
 jobEvery('Money Shopify links', 30 * 60 * 1000, async()=>{const r=await money.syncShopifyLinks();return r.added||0}, { delay: 75 * 1000 });
 if(qbConfigOf(process.env).ready)jobEvery('QuickBooks payments', 30 * 60 * 1000, async()=>{const r=await money.syncQuickBooks();return r.added||0}, { delay: 45 * 1000 }); else declareJob('QuickBooks payments', 30 * 60 * 1000, 'QuickBooks keys are not set');
 if(process.env.INTEL_AUTO!=='off')jobEvery('Sales intelligence', 15 * 60 * 1000, async()=>{const st=await intelSettings(getSetting),d={env:process.env,fetchImpl:(u,o)=>fetch(u,o),settings:st,log:app.log},w=await intelRunDue(pool,d),r=await intelScore(pool,d,{limit:40});await intelPurge(pool,st.retentionDays).catch(()=>{});return w.reduce((n,x)=>n+(x.added||0),0)+r.read}, { delay: 3 * 60 * 1000 }); else declareJob('Sales intelligence', 15 * 60 * 1000, 'switched off (INTEL_AUTO=off)');

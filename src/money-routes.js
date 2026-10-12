@@ -5,8 +5,11 @@
 //   POST /v1/money/invoices/:id/send | paid | unpaid | void      POST /v1/money/invoices/:id/payments      DELETE /v1/money/payments/:id
 //   POST /v1/money/import                      a CSV of past invoices: { csv, apply } (apply:false only previews)
 //   GET  /v1/money/payments                    the ledger: money received from every source, newest first
+//   GET  /v1/money/sources                     won deals and live projects, with the invoices already made for each      GET /v1/money/draft?deal=|project=   an invoice filled in from one
+//   GET  /v1/money/payouts   POST /v1/money/payouts/sync     Shopify Payments payouts and the fees Shopify kept
 //   GET|PUT /v1/money/settings                 the payment instructions printed on invoices
 //   GET /v1/money/quickbooks/status   POST .../connect | test | sync | disconnect   GET .../callback (Intuit sends the browser back here)   POST /v1/money/invoices/:id/quickbooks
+import { payoutRow, payoutTotals, needsScope } from './shopify-payouts.js';
 import { moneyAllowed, cleanInvoice, nextInvoiceNumber, invoiceState, aging, parseInvoiceCsv, METHODS } from './money.js';
 import { moneyInvoicePdf } from './money-pdf.js';
 import { qbConfig, signState, readState, authUrl, endpoints, exchangeCode, revoke, companyInfo, pushInvoice, invoiceLink, paymentsSince, methodOf } from './quickbooks.js';
@@ -17,7 +20,7 @@ const iso = d => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(
 const clip = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 export function registerMoneyRoutes(app, d) {
-  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null } = d;
+  const { pool, authenticate, adminOnly, getSetting, setSetting, env = process.env, onChange = async () => {}, tokenSeal, stateSecret = 'money', workUrl = 'https://work.thefuturebasics.com', fetchImpl = fetch, log = console, shopifyInvoiceLink = null, shopifyDraftStatus = null, shopifyPayouts = null, shopifyReady = () => Boolean(shopifyPayouts) } = d;
   const bad = (reply, error, code = 422) => reply.code(code).send({ error });
   async function moneyOnly(req, reply) {
     const u = (await pool.query('select email from users where id=$1', [req.auth?.sub]).catch(() => ({ rows: [] }))).rows[0];
@@ -27,13 +30,13 @@ export function registerMoneyRoutes(app, d) {
   const pre = [authenticate, adminOnly, moneyOnly], actorOf = req => (UUID.test(String(req.auth?.sub || '')) ? req.auth.sub : null);
   const needId = (req, reply) => UUID.test(req.params.id) || (bad(reply, 'Not found', 404), false);
 
-  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents, (select pr.name from projects pr where pr.id=i.project_id) project_name from money_invoices i`;
+  const SELECT = `select i.*, coalesce((select sum(p.amount_cents) from money_payments p where p.invoice_id=i.id), 0)::bigint paid_cents, (select pr.name from projects pr where pr.id=i.project_id) project_name, (select d.title from sales_deals d where d.id=i.deal_id) deal_title from money_invoices i`;
   const view = r => {
     const paid = Number(r.paid_cents || 0), st = invoiceState({ ...r, due_on: iso(r.due_on) }, paid, today());
     return { id: r.id, number: r.number, company: r.company, contactName: r.contact_name, contactEmail: r.contact_email, address: r.address, issuedOn: iso(r.issued_on), terms: r.terms, dueOn: iso(r.due_on), lines: r.lines, taxRatePct: Number(r.tax_rate), chargeTax: r.charge_tax,
       credits: r.credits, dueNowLabel: r.due_now_label, dueNowCents: r.due_now_cents == null ? null : Number(r.due_now_cents), subtotalCents: Number(r.subtotal_cents), taxCents: Number(r.tax_cents), totalCents: Number(r.total_cents), notes: r.notes, currency: r.currency,
       status: r.status, source: r.source, state: st.state, owedCents: st.owedCents, overdue: st.overdue, daysOverdue: st.daysOverdue, paidCents: paid, sentAt: r.sent_at, paidAt: r.paid_at, createdAt: r.created_at,
-      workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
+      workKind: r.work_kind || '', projectId: r.project_id || null, projectName: r.project_name || '', dealId: r.deal_id || null, dealTitle: r.deal_title || '', payUrl: r.pay_url || '', payChannel: r.pay_channel || '',
       qb: r.qb_id ? { id: r.qb_id, docNumber: r.qb_doc_number, link: r.qb_link, syncedAt: r.qb_synced_at } : null };
   };
   // What is still owed by the numbers alone, whatever status the invoice has (a paid invoice reads 0 otherwise).
@@ -54,6 +57,11 @@ export function registerMoneyRoutes(app, d) {
     const staleShopify = before.pay_channel === 'shopify';
     await pool.query(`update money_invoices set work_kind=$2, project_id=$3, client_id=coalesce($4, client_id), pay_url=case when $5 then '' else pay_url end, pay_channel=case when $5 then '' else pay_channel end, shopify_draft_id=case when $5 then '' else shopify_draft_id end where id=$1`, [id, kind, v.projectId || null, clientId, staleShopify]);
   }
+  // The won deal an invoice bills (so a deal is not billed twice by accident, and Money can say which won deals still need an invoice).
+  async function setDeal(id, dealId) {
+    const ok = UUID.test(String(dealId || '')) && (await pool.query('select 1 from sales_deals where id=$1', [dealId])).rowCount;
+    await pool.query('update money_invoices set deal_id=$2 where id=$1', [id, ok ? dealId : null]);
+  }
   app.get('/v1/money/me', { preHandler: pre }, async req => ({ ok: true, email: req.money.email }));
 
   // ---------- invoices ----------
@@ -65,7 +73,7 @@ export function registerMoneyRoutes(app, d) {
   });
   app.post('/v1/money/invoices', { preHandler: pre }, async (req, reply) => {
     const c = cleanInvoice(req.body); if (c.error) return bad(reply, c.error); const v = c.value, num = v.number || nextInvoiceNumber(await numbers());
-    try { const id = (await pool.query(INSERT, insertParams({ ...v, number: num }, { status: 'draft', source: 'app', by: actorOf(req) }))).rows[0].id; await setWork(id, v); return reply.code(201).send({ invoice: view(await one(id)) }); }
+    try { const id = (await pool.query(INSERT, insertParams({ ...v, number: num }, { status: 'draft', source: 'app', by: actorOf(req) }))).rows[0].id; await setWork(id, v); await setDeal(id, req.body?.dealId); return reply.code(201).send({ invoice: view(await one(id)) }); }
     catch (e) { if (e.code === '23505') return bad(reply, `Invoice ${num} already exists`, 409); throw e; }
   });
   app.get('/v1/money/invoices/:id', { preHandler: pre }, async (req, reply) => {
@@ -81,7 +89,7 @@ export function registerMoneyRoutes(app, d) {
       await pool.query(`update money_invoices set number=$2, company=$3, contact_name=$4, contact_email=$5, address=$6, issued_on=$7, terms=$8, due_on=$9, lines=$10::jsonb, tax_rate=$11, charge_tax=$12, credits=$13::jsonb, due_now_label=$14, due_now_cents=$15, subtotal_cents=$16, tax_cents=$17, total_cents=$18, notes=$19, currency=$20, updated_at=now() where id=$1`,
         [cur.id, v.number, v.company, v.contactName, v.contactEmail, v.address, v.issuedOn, v.terms, v.dueOn, JSON.stringify(v.lines), v.taxRatePct, v.chargeTax, JSON.stringify(v.credits), v.dueNowLabel, v.dueNowCents === v.balanceCents ? null : v.dueNowCents, v.subtotalCents, v.taxCents, v.totalCents, v.notes, v.currency]);
     } catch (e) { if (e.code === '23505') return bad(reply, `Invoice ${v.number} already exists`, 409); throw e; }
-    await setWork(cur.id, v); await onChange('edited', cur.id); return { invoice: view(await one(cur.id)) };
+    await setWork(cur.id, v); if (req.body && 'dealId' in req.body) await setDeal(cur.id, req.body.dealId); await onChange('edited', cur.id); return { invoice: view(await one(cur.id)) };
   });
   app.delete('/v1/money/invoices/:id', { preHandler: pre }, async (req, reply) => {
     if (!needId(req, reply)) return; const cur = await one(req.params.id); if (!cur) return bad(reply, 'Not found', 404);
@@ -230,6 +238,39 @@ export function registerMoneyRoutes(app, d) {
       await onChange('quickbooks', cur.id); return reply.code(201).send({ invoice: view(await one(cur.id)), emailed: r.emailed, customerCreated: r.customerCreated });
     } catch (e) { await failed(e); return bad(reply, e.message, 502); }
   });
+  // ---------- start an invoice from a won deal or a project ----------
+  // Won deals (not yet billed first) and the live projects, each with the invoice numbers already made for it.
+  app.get('/v1/money/sources', { preHandler: pre }, async () => {
+    const deals = (await pool.query(`select d.id, d.title, d.value_cents, d.closed_at, d.updated_at, co.name company, ct.name contact_name, ct.email contact_email,
+        coalesce((select array_agg(i.number order by i.created_at) from money_invoices i where i.deal_id=d.id and i.status<>'void'), '{}') numbers
+      from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id where d.stage='won'
+      order by (exists(select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void')), coalesce(d.closed_at, d.updated_at) desc limit 100`)).rows;
+    const projects = (await pool.query(`select p.id, p.name, p.kind, c.name client_name, coalesce((select array_agg(i.number order by i.created_at) from money_invoices i where i.project_id=p.id and i.status<>'void'), '{}') numbers
+      from projects p join clients c on c.id=p.client_id where p.archived_at is null and p.status not in ('archive','archived') order by c.name, p.name limit 300`)).rows;
+    return { deals: deals.map(r => ({ id: r.id, title: r.title, company: r.company || r.contact_name || '', contactName: r.contact_name || '', valueCents: Number(r.value_cents), closedAt: r.closed_at || r.updated_at, invoices: r.numbers })),
+      projects: projects.map(r => ({ id: r.id, name: r.name, kind: r.kind === 'software' ? 'software' : 'product', client: r.client_name, invoices: r.numbers })) };
+  });
+  // The invoice to start from (filled in, not saved): the editor opens on it and Save draft makes it.
+  app.get('/v1/money/draft', { preHandler: pre }, async (req, reply) => {
+    const dealId = String(req.query?.deal || ''), projectId = String(req.query?.project || '');
+    if (dealId) {
+      if (!UUID.test(dealId)) return bad(reply, 'Not found', 404);
+      const r = (await pool.query(`select d.id, d.title, d.value_cents, d.stage, co.name company, ct.name contact_name, ct.email contact_email, cl.name client_name, cl.contact_name client_contact, cl.contact_email client_email
+        from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id left join clients cl on cl.id=ct.client_id where d.id=$1`, [dealId])).rows[0];
+      if (!r) return bad(reply, 'That deal is not there', 404);
+      const billed = (await pool.query(`select number from money_invoices where deal_id=$1 and status<>'void' order by created_at`, [dealId])).rows.map(x => x.number);
+      return { draft: { dealId: r.id, company: r.company || r.client_name || r.contact_name || '', contactName: r.contact_name || r.client_contact || '', contactEmail: r.contact_email || r.client_email || '',
+        lines: [{ description: r.title, qty: 1, rateCents: Number(r.value_cents) || null }], notes: '' }, billed, stage: r.stage };
+    }
+    if (projectId) {
+      if (!UUID.test(projectId)) return bad(reply, 'Not found', 404);
+      const r = (await pool.query('select p.id, p.name, p.kind, c.name client_name, c.contact_name, c.contact_email from projects p join clients c on c.id=p.client_id where p.id=$1', [projectId])).rows[0];
+      if (!r) return bad(reply, 'That project is not there', 404);
+      const billed = (await pool.query(`select number from money_invoices where project_id=$1 and status<>'void' order by created_at`, [projectId])).rows.map(x => x.number);
+      return { draft: { projectId: r.id, workKind: r.kind === 'software' ? 'software' : 'product', company: r.client_name, contactName: r.contact_name || '', contactEmail: r.contact_email || '', lines: [{ description: r.name, qty: 1, rateCents: null }], notes: '' }, billed };
+    }
+    return bad(reply, 'Say which deal or project to start from');
+  });
   // ---------- the payment link: Shopify for product development, QuickBooks for software development ----------
   app.get('/v1/money/projects', { preHandler: pre }, async req => {
     const q = clip(req.query?.q, 60).toLowerCase();
@@ -319,13 +360,52 @@ export function registerMoneyRoutes(app, d) {
     const since = n => { const x = new Date(); x.setUTCDate(x.getUTCDate() - n); return x.toISOString().slice(0, 10); };
     const within = n => all.filter(r => r.paidOn >= since(n)), sum = rows => rows.reduce((a, r) => a + r.amountCents, 0);
     const open = invs.filter(i => ['open', 'part-paid', 'overdue'].includes(i.state)), late = open.filter(i => i.overdue);
+    // won deals in the last year that no invoice bills yet
+    const toInvoice = (await pool.query(`select d.id, d.title, d.value_cents, coalesce(d.closed_at, d.updated_at) won_at, coalesce(co.name, ct.name, '') company from sales_deals d left join sales_companies co on co.id=d.company_id left join sales_contacts ct on ct.id=d.contact_id
+      where d.stage='won' and coalesce(d.closed_at, d.updated_at) > now() - interval '365 days' and not exists (select 1 from money_invoices i where i.deal_id=d.id and i.status<>'void') order by won_at desc limit 50`)).rows
+      .map(r => ({ id: r.id, title: r.title, company: r.company, valueCents: Number(r.value_cents), wonAt: r.won_at }));
     const bySource = {}; for (const r of within(30)) bySource[r.source] = (bySource[r.source] || 0) + r.amountCents;
     const byCompany = {}; for (const r of within(90)) if (r.company) byCompany[r.company] = (byCompany[r.company] || 0) + r.amountCents;
     return { today: t, cashIn30: sum(within(30)), cashIn90: sum(within(90)), outstandingCents: open.reduce((a, i) => a + i.owedCents, 0), openCount: open.length, overdueCents: late.reduce((a, i) => a + i.owedCents, 0), overdueCount: late.length,
       aging: aging(open.map(i => ({ owedCents: i.owedCents, daysOverdue: i.daysOverdue })), t), bySource: Object.entries(bySource).map(([source, cents]) => ({ source, cents })).sort((a, b) => b.cents - a.cents),
       topClients90: Object.entries(byCompany).map(([company, cents]) => ({ company, cents })).sort((a, b) => b.cents - a.cents).slice(0, 6), lateInvoices: late.sort((a, b) => b.daysOverdue - a.daysOverdue).slice(0, 8),
-      recent: invs.filter(i => i.status !== 'void').slice().sort((a, b) => String(b.issuedOn).localeCompare(String(a.issuedOn)) || String(b.number).localeCompare(String(a.number))).slice(0, 8), unrecorded: invs.filter(i => i.state === 'unrecorded').length, drafts: invs.filter(i => i.state === 'draft').length };
+      recent: invs.filter(i => i.status !== 'void').slice().sort((a, b) => String(b.issuedOn).localeCompare(String(a.issuedOn)) || String(b.number).localeCompare(String(a.number))).slice(0, 8), toInvoice, toInvoiceCount: toInvoice.length, toInvoiceCents: toInvoice.reduce((n, x) => n + x.valueCents, 0), unrecorded: invs.filter(i => i.state === 'unrecorded').length, drafts: invs.filter(i => i.state === 'draft').length };
   });
+
+  // ---------- Shopify Payments payouts: what reached the bank, and what Shopify kept ----------
+  const PAYOUT_STATE = 'moneyPayouts';
+  const payoutState = async () => ({ lastSyncAt: null, lastAttemptAt: null, lastError: '', needsScope: false, noAccount: false, ...((await getSetting(PAYOUT_STATE).catch(() => null)) || {}) });
+  async function syncPayouts() {
+    if (!shopifyPayouts) return { ok: false, skipped: 'Shopify is not set up' };
+    const prev = await payoutState(), at = new Date().toISOString(); let after = null, seen = 0, added = 0, noAccount = false;
+    try {
+      for (let page = 0; page < 8; page++) {
+        const r = await shopifyPayouts({ after }); if (!r) return { ok: false, skipped: 'Shopify is not set up' };
+        if (r.noAccount) { noAccount = true; break; }
+        for (const n of r.nodes || []) {
+          const p = payoutRow(n); if (!p.shopifyId || !p.issuedOn) continue; seen++;
+          const res = await pool.query(`insert into money_payouts(shopify_id,issued_on,status,kind,currency,net_cents,gross_cents,charges_cents,refunds_cents,fee_cents) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            on conflict (shopify_id) do update set issued_on=excluded.issued_on, status=excluded.status, kind=excluded.kind, currency=excluded.currency, net_cents=excluded.net_cents, gross_cents=excluded.gross_cents, charges_cents=excluded.charges_cents, refunds_cents=excluded.refunds_cents, fee_cents=excluded.fee_cents, synced_at=now()
+            returning (xmax = 0) as inserted`, [p.shopifyId, p.issuedOn, p.status, p.kind, p.currency, p.netCents, p.grossCents, p.chargesCents, p.refundsCents, p.feeCents]);
+          if (res.rows[0]?.inserted) added++;
+        }
+        if (!r.pageInfo?.hasNextPage) break; after = r.pageInfo.endCursor;
+      }
+      await setSetting(PAYOUT_STATE, { lastSyncAt: at, lastAttemptAt: at, lastError: '', needsScope: false, noAccount });
+      return { ok: true, seen, added, noAccount };
+    } catch (e) {
+      const scope = needsScope(e.message), msg = scope ? 'Shopify says this app cannot read payouts yet: add the read_shopify_payments access scope to the Shopify app and approve it' : String(e.message || 'Shopify did not answer').slice(0, 200);
+      await setSetting(PAYOUT_STATE, { ...prev, lastAttemptAt: at, lastError: msg, needsScope: scope, noAccount: false });
+      log.warn?.({ err: e.message }, 'Shopify payouts not read'); return { ok: false, error: msg, needsScope: scope };
+    }
+  }
+  app.get('/v1/money/payouts', { preHandler: pre }, async () => {
+    const rows = (await pool.query(`select shopify_id, issued_on, status, kind, currency, net_cents, gross_cents, charges_cents, refunds_cents, fee_cents from money_payouts order by issued_on desc, shopify_id desc limit 200`)).rows
+      .map(r => ({ id: r.shopify_id, issuedOn: iso(r.issued_on), status: r.status, kind: r.kind, currency: r.currency, netCents: Number(r.net_cents), grossCents: Number(r.gross_cents), chargesCents: Number(r.charges_cents), refundsCents: Number(r.refunds_cents), feeCents: Number(r.fee_cents) }));
+    const st = await payoutState(), t = today();
+    return { payouts: rows, totals: { d30: payoutTotals(rows, t, 30), d90: payoutTotals(rows, t, 90) }, scheduledCents: rows.filter(r => r.status === 'scheduled').reduce((a, r) => a + r.netCents, 0), configured: Boolean(shopifyPayouts) && shopifyReady(), ...st };
+  });
+  app.post('/v1/money/payouts/sync', { preHandler: pre }, async () => ({ ...(await syncPayouts()) }));
 
   // ---------- settings ----------
   app.get('/v1/money/settings', { preHandler: pre }, async () => ({ instructions: await instructions() }));
@@ -334,5 +414,5 @@ export function registerMoneyRoutes(app, d) {
     if (lines.length > 12 || lines.some(l => l.length > 120)) return bad(reply, 'Payment instructions are at most 12 lines of 120 characters');
     await setSetting('moneyPayment', { instructions: lines.join('\n') }); return { ok: true, instructions: lines.join('\n') };
   });
-  return { syncQuickBooks, syncShopifyLinks };
+  return { syncQuickBooks, syncShopifyLinks, syncPayouts };
 }

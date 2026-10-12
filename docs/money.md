@@ -34,5 +34,18 @@ Money → Settings has a QuickBooks panel: **Connect** (sign in at Intuit; Danie
 ## On the work home Today list
 Late invoices come first in **Reach out today** on the work home, for the people Money is open to (Danielle and Kyle): up to three rows, most overdue first, each with the company, the invoice number, what is owed and how many days late, then one line for the rest ("N more late invoices, $X late in all"). A row opens that invoice (`/money?invoice=<id>`). It reads the same `/v1/money/overview` the Money page uses after the page has loaded, so everyone else gets a refusal and sees the list exactly as before. Journey J150.
 
+## Invoices from a won deal or a project
+- **From a won deal:** a won deal in Sales has a **Make an invoice** link (`/money?deal=<id>`). In Money, **From a deal or project** lists won deals (not-yet-invoiced first, each showing the invoices already made for it) and the live projects. Choosing one opens the editor filled in: the company, contact and email from the deal (or the client it belongs to), and one line at the deal's title and value. Save draft makes the invoice and ties it to the deal (`money_invoices.deal_id`).
+- **From a project:** the client, contact, kind of work (so the right payment link) and a line named for the project; the amount is left for you to enter.
+- **Not billed twice by accident:** starting from something already invoiced asks first (and names the invoice numbers). A voided invoice does not count as billing.
+- **Won, not invoiced yet** on the Money overview lists won deals from the last year that no invoice bills, each with an **Invoice it** button.
+- API: `GET /v1/money/sources`, `GET /v1/money/draft?deal=<id>|project=<id>` (a filled-in invoice, nothing saved), and `dealId` on invoice create and edit. Journeys J153 (API) and J154 (browser).
+
+## Shopify Payments payouts
+**Money → Payouts** shows what Shopify Payments paid into the bank and what it kept: sales paid out, fees (and the share of sales they are) and what reached the bank over 30 and 90 days, what is scheduled, and each payout (date, status, sales, refunds, fees, paid out). It is read every 6 hours (job **Shopify payouts**) and on **Read payouts now**; reading again never doubles a payout, and a scheduled one is updated in place when it is paid.
+- The fee on a payout is what is left between the money that moved (sales, refunds, adjustments, held and retried funds) and what was paid out, so it is right however Shopify signs each fee line.
+- **One thing to set up:** the Shopify app needs the **`read_shopify_payments`** access scope. Until it has it, Money → Payouts and Platform health say so in those words ("add the read_shopify_payments access scope to the Shopify app and approve it"); nothing else is affected. A store that is not on Shopify Payments is told so rather than shown an error.
+- API: `GET /v1/money/payouts`, `POST /v1/money/payouts/sync` (Money-only). Data: `money_payouts` (`src/shopify-payouts.js` has the query and the arithmetic, `test/money-payouts.test.js`). Platform health has a **Bank payouts and fees** card. Journeys J155 (against the stand-in store: scope refusal, paging, no double counting, no Shopify Payments) and J156 (the tab).
+
 ## Next
-Shopify Payments payouts and fees, overdue invoices on the work home's Today list, and invoices made from a won deal or a project.
+Nothing planned. Possible later: match each payout's sales to the Shopify payments in the ledger, and book fees to QuickBooks.

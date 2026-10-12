@@ -2033,6 +2033,43 @@ await journey('J140', 'Factories: each factory has what it makes, its skills and
   l = (await F('')).json; ok(l.factories.filter(f => f.partnerId === pt.id).length === 1, 'it is listed once after that');
 });
 
+await journey('J153', 'Money: an invoice starts from a won deal or a project, filled in; a deal is not billed twice by accident, and won deals with no invoice are listed until one is made', async () => {
+  const room = await newRoom('153', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
+  const staff = async email => sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0];
+  const kyle = await forge({ sub: await staff('kyle@thefuturebasics.com'), clientId: cid, role: 'admin', email: 'kyle@thefuturebasics.com' }), colby = await forge({ sub: await staff('colby@thefuturebasics.com'), clientId: cid, role: 'admin', email: 'colby@thefuturebasics.com' });
+  const M = (path, o = {}) => call('/v1/money' + path, { token: kyle, ...o });
+  const co = sql(`insert into sales_companies(name) values('Harbor Roofing ${stamp}') returning id`).split('\n')[0];
+  const ct = sql(`insert into sales_contacts(name,email,company_id) values('Rita Harbor','rita-${stamp}@harbor.test','${co}') returning id`).split('\n')[0];
+  const deal = sql(`insert into sales_deals(title,stage,value_cents,company_id,contact_id,closed_at) values('New website ${stamp}','won',480000,'${co}','${ct}',now()) returning id`).split('\n')[0];
+  const open = sql(`insert into sales_deals(title,stage,value_cents,company_id) values('Still open ${stamp}','proposal',100000,'${co}') returning id`).split('\n')[0];
+
+  ok((await call('/v1/money/sources', { token: colby })).status === 403 && (await call(`/v1/money/draft?deal=${deal}`, { token: colby })).status === 403, 'only the people Money is open to can start from a deal');
+  const ov = (await M('/overview')).json;
+  ok(ov.toInvoice.some(d => d.id === deal && d.valueCents === 480000) && !ov.toInvoice.some(d => d.id === open), 'the overview lists the won deal that has no invoice, and not the open one', ov.toInvoice);
+  const src = (await M('/sources')).json, row = src.deals.find(d => d.id === deal);
+  ok(row && row.invoices.length === 0 && row.company === `Harbor Roofing ${stamp}` && !src.deals.some(d => d.id === open), 'the picker lists won deals only, each with the invoices already made for it', row);
+
+  const dr = (await M(`/draft?deal=${deal}`)).json;
+  ok(dr.draft.dealId === deal && dr.draft.company === `Harbor Roofing ${stamp}` && dr.draft.contactEmail === `rita-${stamp}@harbor.test` && dr.draft.lines[0].description === `New website ${stamp}` && dr.draft.lines[0].rateCents === 480000 && dr.billed.length === 0, 'the draft is filled in from the deal: company, contact, one line at the deal value', dr);
+  ok((await M('/draft')).status === 422 && (await M('/draft?deal=not-an-id')).status === 404 && (await M('/draft?deal=00000000-0000-4000-8000-000000000000')).status === 404, 'a missing or unknown deal is refused');
+
+  const made = await M('/invoices', { body: { ...dr.draft, lines: dr.draft.lines } });
+  ok(made.status === 201 && made.json.invoice.dealId === deal && made.json.invoice.dealTitle === `New website ${stamp}` && made.json.invoice.totalCents === 480000, 'saving it makes a draft invoice tied to the deal', made.json);
+  const num = made.json.invoice.number;
+  ok(!(await M('/overview')).json.toInvoice.some(d => d.id === deal) && (await M('/sources')).json.deals.find(d => d.id === deal).invoices.join() === num, 'the deal leaves the not-invoiced list and the picker shows its invoice number');
+  ok((await M(`/draft?deal=${deal}`)).json.billed.join() === num, 'starting from it again warns that it is already billed');
+  ok((await M(`/invoices/${made.json.invoice.id}`, { method: 'PUT', body: { ...made.json.invoice, lines: made.json.invoice.lines } })).json.invoice.dealId === deal, 'editing the invoice keeps its deal');
+
+  await M(`/invoices/${made.json.invoice.id}/void`, { method: 'POST', body: {} });
+  ok((await M('/overview')).json.toInvoice.some(d => d.id === deal), 'a voided invoice puts the deal back on the list');
+  ok((await M('/invoices', { body: { ...dr.draft, dealId: 'rubbish' } })).json.invoice.dealId === null, 'a deal id that is not a deal is ignored');
+
+  const proj = sql(`insert into projects(client_id,name) values('${cid}','Trail shoe ${stamp}') returning id`).split('\n')[0];
+  const pr = (await M(`/draft?project=${proj}`)).json;
+  ok(pr.draft.projectId === proj && /^(product|software)$/.test(pr.draft.workKind) && pr.draft.lines[0].description === `Trail shoe ${stamp}` && pr.draft.lines[0].rateCents === null && pr.draft.company, 'a project fills in the client, the kind of work and a line for the project', pr);
+  ok((await M('/sources')).json.projects.some(p => p.id === proj), 'live projects are in the picker');
+});
+
 await journey('J144', 'Site prototypes: paste a tired site, get a score and a pitch, build a new one for its trade, check it against the standard, publish it sandboxed onto Builds, share it, and take it down', async () => {
   const room = await newRoom('144', { wait: false }), cid = sql(`select client_id from users where lower(email)='${room.email}'`);
   const staff = async email => { const id = sql(`select id from users where lower(email)='${email}'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${cid}','${email}','${email.split('@')[0]}','admin') returning id`).split('\n')[0]; return forge({ sub: id, clientId: cid, role: 'admin', email }); };

@@ -1801,5 +1801,61 @@ await journey('J150', 'Late invoices on the work home Today list: first in the l
     ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j150-phone.png` }).catch(() => {}); } finally { await pc.close(); }
 });
 
+await journey('J154', 'Money from a won deal: it is listed as not invoiced, one tap starts a filled-in invoice, saving removes it from the list, the picker and a link from the deal both work, and a phone fits', async () => {
+  const r = await room('154', { wait: false }), W = 'http://work.localhost:3123', tag = `wd${stamp}`;
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  const co = sql(`insert into sales_companies(name) values('Pine Co ${tag}') returning id`).split('\n')[0];
+  const deal = sql(`insert into sales_deals(title,stage,value_cents,company_id,closed_at) values('Pine site ${tag}','won',325000,'${co}',now()) returning id`).split('\n')[0];
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/money#overview`, { waitUntil: 'networkidle' }); await page.waitForSelector(`[data-draft-deal="${deal}"]`, { timeout: 15000 });
+  ok(/Won, not invoiced yet/.test(await page.innerText('#t-overview')) && (await page.innerText('#t-overview')).includes(`Pine site ${tag}`) && /\$3,250/.test(await page.innerText('#t-overview')), 'the overview lists the won deal that has no invoice, with its value');
+  await page.click(`[data-draft-deal="${deal}"]`); await page.waitForSelector('#dlg[open] [name=company]', { timeout: 10000 });
+  const f = await page.evaluate(() => ({ company: document.querySelector('#dBody [name=company]').value, desc: document.querySelector('#dBody [data-l=description]').value, rate: document.querySelector('#dBody [data-l=rate]').value, tot: document.querySelector('#tot').innerText }));
+  ok(f.company === `Pine Co ${tag}` && f.desc === `Pine site ${tag}` && f.rate === '3250.00' && /3,250/.test(f.tot), 'one tap opens an invoice filled in from the deal', f);
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j154-draft.png` }).catch(() => {});
+  await page.click('#dActs [type=submit]'); await page.waitForFunction(() => !document.querySelector('#dlg').open, null, { timeout: 10000 });
+  const inv = (await call('/v1/money/invoices', { token: kyle })).json.invoices.find(i => i.dealId === deal);
+  ok(inv && inv.totalCents === 325000 && inv.status === 'draft', 'saving makes the draft and ties it to the deal', inv);
+  await page.goto(`${W}/money#overview`, { waitUntil: 'networkidle' }); await page.waitForTimeout(600);
+  ok(!(await page.locator(`[data-draft-deal="${deal}"]`).count()), 'it is gone from the not-invoiced list');
+
+  // the picker
+  await page.click('#fromBtn'); await page.waitForSelector(`#dlg[open] [data-pick="deal:${deal}"]`, { timeout: 10000 });
+  ok((await page.innerText(`[data-pick="deal:${deal}"]`)).includes(inv.number), 'the picker shows the invoice already made for the deal');
+  await page.click(`[data-pick="deal:${deal}"]`); await page.waitForSelector('#dlg[open] [name=company]', { timeout: 10000 });
+  ok(await page.inputValue('#dBody [name=company]') === `Pine Co ${tag}`, 'choosing a deal that is already billed asks first, then opens another invoice for it');
+  await page.evaluate(() => document.querySelector('#dClose').click());
+
+  // a link from the deal
+  await page.goto(`${W}/money?deal=${deal}`, { waitUntil: 'networkidle' }); await page.waitForSelector('#dlg[open] [name=company]', { timeout: 10000 });
+  ok(await page.inputValue('#dBody [name=company]') === `Pine Co ${tag}` && /won deal/.test(await page.innerText('#dBody')), 'a link from the deal opens an invoice started from it');
+  ok(page.errs.length === 0, 'no script errors', page.errs);
+  // the Sales deal card offers the link, for won deals only
+  await page.goto(`${W}/sales`, { waitUntil: 'networkidle' }); await page.waitForFunction(() => typeof openDeal === 'function', null, { timeout: 15000 }); await page.waitForTimeout(800);
+  await page.evaluate(id => openDeal(id), deal); await page.waitForSelector('#ddlg[open]', { timeout: 5000 });
+  ok(await page.getAttribute('#dInvoice', 'href') === `/money?deal=${deal}` && !(await page.$eval('#dInvoice', e => e.classList.contains('hidden'))), 'a won deal in Sales has a Make an invoice link');
+  await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/money#overview`, { waitUntil: 'networkidle' }); await ph.click('#fromBtn'); await ph.waitForSelector('#dlg[open] [data-pick]', { timeout: 10000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('#dlg').getBoundingClientRect().right <= innerWidth + 1), 'on a phone the picker fits the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j154-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+});
+
+await journey('J156', 'Money → Payouts: the tab shows sales, fees and what reached the bank, says plainly when Shopify is not connected, and a phone fits', async () => {
+  const r = await room('156', { wait: false }), W = 'http://work.localhost:3123', tag = `po${stamp}`;
+  const kyle = await forge({ sub: sql(`select id from users where lower(email)='kyle@thefuturebasics.com'`).split('\n')[0] || sql(`insert into users(client_id,email,name,role) values('${r.clientId}','kyle@thefuturebasics.com','kyle','admin') returning id`).split('\n')[0], clientId: r.clientId, role: 'admin', email: 'kyle@thefuturebasics.com' });
+  sql(`insert into money_payouts(shopify_id,issued_on,status,kind,net_cents,gross_cents,charges_cents,fee_cents) values('${tag}-a', current_date - 2, 'paid', 'deposit', 97000, 100000, 100000, 3000), ('${tag}-b', current_date + 1, 'scheduled', 'deposit', 48500, 50000, 50000, 1500)`);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle);
+  const page = await ctx.newPage(); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept());
+  await page.goto(`${W}/money#payouts`, { waitUntil: 'networkidle' }); await page.waitForSelector('#t-payouts .tiles', { timeout: 15000 });
+  const text = await page.innerText('#t-payouts');
+  ok(/Shopify fees/.test(text) && /\$1,000/.test(text) && /\$30\b/.test(text) && /3% of sales/.test(text) && /\$970/.test(text) && /\$485/.test(text) && /Scheduled/i.test(text) && /Paid/i.test(text), 'the tab shows sales, fees, the share they are, what was paid out and what is on the way', text.slice(0, 300));
+  ok(/Shopify is not connected/.test(text) && await page.locator('#readPayouts').count() === 1, 'a store that is not connected says so, with a button to read');
+  await page.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j156-payouts.png` }).catch(() => {});
+  ok(page.errs.length === 0, 'no script errors', page.errs); await ctx.close();
+  const { ctx: pc, page: ph } = await phone(); try { await ph.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, kyle); await ph.goto(`${W}/money#payouts`, { waitUntil: 'networkidle' }); await ph.waitForSelector('#t-payouts .tiles', { timeout: 15000 });
+    ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'on a phone nothing is wider than the screen'); await ph.screenshot({ path: `${process.env.JOURNEY_SHOT_DIR || '/tmp'}/j156-phone.png` }).catch(() => {}); } finally { await pc.close(); }
+  sql(`delete from money_payouts where shopify_id like '${tag}-%'`);
+});
+
 await browser.close();
 const bad = summary(); process.exit(bad ? 1 : 0);
