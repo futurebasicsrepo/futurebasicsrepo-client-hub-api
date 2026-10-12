@@ -194,7 +194,7 @@ test('the same ask again comes back instantly, with what the checks found', asyn
 
 test('the endpoint streams one JSON line per event, with what it used first', async (t) => {
   const stream = async (text, o, write) => {
-    write({ type: 'pick', option: { merchant: { name: 'S' }, item: { title: text, url: 'https://s.example/1' }, stock: 'unknown' } });
+    write({ type: 'pick', option: { merchant: { name: 'S' }, item: { title: text, url: `https://s.example/${encodeURIComponent(text)}`, image_url: 'https://cdn.s.example/1.jpg', price_cents: 2500 }, stock: 'unknown' } });
     write({ type: 'done', kind: 'products', count: 1, seen: o.sizes });
   };
   const a = buildApp({ db: openDb(':memory:'), provider: sandboxProvider(), cfg: { feeBps: 400, feeFixedCents: 0, maxCartCents: 50000, expiresHours: 72 }, logger: false, env: { SPOT_AGENT: 'off' }, capture: { stream } });
@@ -212,6 +212,14 @@ test('the endpoint streams one JSON line per event, with what it used first', as
   assert.deepEqual(lines[0], { type: 'profile', profile: { sizes: 'tops M', ship_to: '' } });
   assert.equal(lines.at(-1).seen, 'tops M');
   assert.equal((await call({ text: '  ' })).statusCode, 422, 'nothing typed');
+
+  // The Shop page: everything shown to a signed-in shopper, newest first; others are asked to sign in.
+  await call({ text: 'cowboy hat' }, { cookie });
+  await call({ text: 'black tee' }, { cookie });
+  const shop = await a.inject({ method: 'GET', url: '/v1/me/shop', headers: { cookie } });
+  assert.equal(shop.statusCode, 200);
+  assert.deepEqual(shop.json().products.map((p) => [p.item.title, p.merchant.name, p.item.price_cents, p.asked]), [['black tee', 'S', 2500, 'black tee'], ['cowboy hat', 'S', 2500, 'cowboy hat']], 'each product once, latest showing first');
+  assert.equal((await a.inject({ method: 'GET', url: '/v1/me/shop' })).statusCode, 401);
 });
 
 test('a category or search page in place of the product: the product on that store, found and swapped in', async () => {

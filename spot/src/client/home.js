@@ -98,7 +98,7 @@
     // back (a swipe, the back button) lands on the shelf, not off the page.
     if (screen === 'picks' && (id === 'check' || id === 'ready') && !history.state?.spot) history.pushState({ spot: id }, '');
     screen = id;
-    for (const s of ['compose', 'picks', 'check', 'ready']) $('#' + s).hidden = s !== id;
+    for (const s of ['compose', 'picks', 'check', 'ready', 'shop']) $('#' + s).hidden = s !== id;
     $('#mine').hidden = id !== 'compose' || !load('spot:mine', []).length;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -401,6 +401,7 @@
     }
     if (kind !== T.kind) return false;
     for (const u of urlsOf(e)) if (!ask.avoid.includes(u)) ask.avoid.push(u);
+    if (!restoring) rememberSeen(e, T.said);
     const t = turns.indexOf(T);
     const i = T.list.push(e) - 1;
     const html = (kind === 'outfits' ? outfitCard : productCard)(e, t + ':' + i, i === 0);
@@ -520,6 +521,7 @@
       localStorage.removeItem(SHELF);
     } catch {}
   }
+  let restoring = false;
   function restoreShelf() {
     const s = load(SHELF, null);
     if (!s || !Array.isArray(s.turns) || !s.turns.length || !(Date.now() - s.at < SHELF_TTL)) return false;
@@ -532,7 +534,12 @@
       T.profile = t.profile || null;
       showUsed(T);
       for (const sk of T.rail.querySelectorAll('.sk')) sk.remove();
-      for (const e of t.list || []) addEntry(T, t.kind, e);
+      restoring = true;
+      try {
+        for (const e of t.list || []) addEntry(T, t.kind, e);
+      } finally {
+        restoring = false;
+      }
       T.page = t.page || 1;
       T.done = Boolean(t.done);
       T.sync();
@@ -576,11 +583,96 @@
   }
   // A photo that won't load shows the store's tile underneath instead.
   $('#thread').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
+  $('#shop').addEventListener('error', (e) => e.target.tagName === 'IMG' && e.target.remove(), true);
 
   const entryOf = (k) => {
+    if (String(k).startsWith('s:')) return { T: null, e: shopList[Number(String(k).slice(2))] };
     const [t, i] = String(k).split(':').map(Number);
     return { T: turns[t], e: turns[t].list[i] };
   };
+
+  // ─── Shop ────────────────────────────────────────────────────────────────
+  // Every product Spot has shown them, as a collection page: from their
+  // account when signed in (any device), and from this phone either way.
+  const SEEN = 'spot:seen';
+  const SEEN_KEEP = 300;
+  let shopList = [];
+  let lastScreen = 'compose';
+  function rememberSeen(e, said) {
+    const fresh = (e.items || [e]).filter((o) => o.item?.url && o.item.image_url);
+    if (!fresh.length) return;
+    const now = Date.now();
+    const urls = new Set(fresh.map((o) => o.item.url));
+    const kept = load(SEEN, []).filter((o) => o?.item?.url && !urls.has(o.item.url));
+    save(SEEN, [...fresh.map((o) => ({ merchant: o.merchant, item: o.item, stock: o.stock, why: o.why || null, asked: said || '', seen_at: now })), ...kept].slice(0, SEEN_KEEP));
+  }
+  async function loadShop() {
+    const mine = account ? await api('/v1/me/shop').then((r) => r.products || []).catch(() => []) : [];
+    const byUrl = new Map();
+    for (const o of [...mine, ...load(SEEN, [])]) {
+      if (!o?.item?.url || !o.item.image_url) continue;
+      const had = byUrl.get(o.item.url);
+      if (!had || (o.seen_at || 0) > (had.seen_at || 0)) byUrl.set(o.item.url, o);
+    }
+    shopList = [...byUrl.values()].sort((a, b) => (b.seen_at || 0) - (a.seen_at || 0));
+  }
+  const shopTile = (o, i) =>
+    '<button class="tile" type="button" data-i="' + i + '"><div class="ph"><img src="' + esc(o.item.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' + tile(o) + '</div>' +
+    '<div class="tb"><div class="st">' + esc(o.merchant?.name || '') + '</div><div class="t">' + esc(o.item.title) + '</div><div class="pr">' + (o.item.price_cents ? usd(o.item.price_cents) : 'Price at store') + '</div></div></button>';
+  function renderShop() {
+    const grid = $('#shopGrid');
+    grid.innerHTML = shopList.map(shopTile).join('');
+    $('#shopEmpty').hidden = shopList.length > 0;
+    $('#shopSub').textContent = shopList.length ? shopList.length + (shopList.length === 1 ? ' thing' : ' things') + ' Spot has shown you, newest first.' : 'Everything Spot has shown you.';
+  }
+  function setView(v) {
+    $('#shopGrid').classList.toggle('one', v === 'one');
+    $('#viewGrid').setAttribute('aria-pressed', String(v !== 'one'));
+    $('#viewOne').setAttribute('aria-pressed', String(v === 'one'));
+    save('spot:shopView', v);
+  }
+  function setMode(mode) {
+    const shop = mode === 'shop';
+    $('#modeSpot').setAttribute('aria-selected', String(!shop));
+    $('#modeShop').setAttribute('aria-selected', String(shop));
+    document.body.classList.toggle('shopping', shop);
+    if (shop) {
+      if (screen !== 'shop') lastScreen = screen;
+      show('shop');
+      renderShop();
+      loadShop().then(renderShop);
+    } else {
+      $('#shopSheet').hidden = true;
+      show(lastScreen === 'shop' ? 'compose' : lastScreen);
+      for (const T of turns) T?.sync?.();
+    }
+  }
+  $('#modeShop').onclick = () => setMode('shop');
+  $('#modeSpot').onclick = () => setMode('spot');
+  $('#viewGrid').onclick = () => setView('grid');
+  $('#viewOne').onclick = () => setView('one');
+  setView(load('spot:shopView', 'grid'));
+  $('#shopStart').onclick = () => (setMode('spot'), show(turns.length ? 'picks' : 'compose'), q.focus());
+  $('#shopGrid').addEventListener('click', (ev) => {
+    const b = ev.target.closest('.tile');
+    if (!b) return;
+    const i = Number(b.dataset.i);
+    $('#shopCard').innerHTML = productCard(shopList[i], 's:' + i, false);
+    $('#shopSheet').hidden = false;
+    walletWatch();
+  });
+  $('#shopSheetX').onclick = () => ($('#shopSheet').hidden = true);
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && ($('#shopSheet').hidden = true));
+  // Paying or making a link from here carries on in Spot, as from the shelf.
+  $('#shopCard').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b) return;
+    $('#shopSheet').hidden = true;
+    document.body.classList.remove('shopping');
+    $('#modeSpot').setAttribute('aria-selected', 'true');
+    $('#modeShop').setAttribute('aria-selected', 'false');
+    actOn(b);
+  });
   // One tap from the shelf: the link is made right here (a look from several
   // stores is one link, one payment); then either they pay it themselves, or
   // it's ready to send.
@@ -640,7 +732,7 @@
   const seenCards = 'IntersectionObserver' in window ? new IntersectionObserver((xs) => xs.forEach((x) => x.isIntersecting && mountWallet(x.target)), { threshold: 0.5 }) : null;
   function walletWatch() {
     if (!seenCards || !window.spotWallet) return;
-    for (const slot of document.querySelectorAll('#thread .wpay:not([data-on])')) (slot.dataset.on = '1'), seenCards.observe(slot.closest('.pc'));
+    for (const slot of document.querySelectorAll('#thread .wpay:not([data-on]), #shopCard .wpay:not([data-on])')) (slot.dataset.on = '1'), seenCards.observe(slot.closest('.pc'));
   }
   async function mountWallet(card) {
     seenCards.unobserve(card);
@@ -727,7 +819,9 @@
   }
   $('#thread').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
-    if (!b) return;
+    if (b) actOn(b);
+  });
+  function actOn(b) {
     if (b.dataset.act === 'edit') {
       const { e } = entryOf(b.dataset.k);
       draft = { ...toDraft({ source: 'lookup', merchant: e.merchant, items: [{ ...e.item }], in_stock: e.stock === 'in' }), fromPicks: true };
@@ -735,7 +829,7 @@
       return check(e.stock === 'in' ? '' : 'I couldn’t check stock at ' + (e.merchant.name || 'that store') + '. Tap “At the store” to make sure it’s there');
     }
     oneTap(b.dataset.act, b.dataset.k, b);
-  });
+  }
   async function askMore(e) {
     e?.preventDefault();
     const more = $('#more2').value.trim();

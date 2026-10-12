@@ -536,7 +536,24 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
     const profile = { sizes: sizesOf(uid), ship_to: shipToOf(uid) };
     reply.hijack();
     reply.raw.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
-    const write = (e) => reply.raw.destroyed || reply.raw.write(JSON.stringify(e) + '\n');
+    // Every product shown goes on a signed-in shopper's Shop page too.
+    const keep = (o) => {
+      const it = o?.item;
+      if (!it?.url || !it.image_url) return;
+      db.seen.add(uid, it.url, { merchant: { name: o.merchant?.name || '', url: o.merchant?.url || '' }, item: { title: it.title, url: it.url, image_url: it.image_url, price_cents: it.price_cents || null, variant: it.variant || null, quantity: 1 }, stock: o.stock || 'unknown', why: o.why || null, asked: text.slice(0, 120) });
+    };
+    const write = (e) => {
+      if (uid) {
+        try {
+          if (e.type === 'pick') keep(e.option);
+          else if (e.type === 'outfit') e.outfit.items.forEach(keep);
+          else if (e.type === 'done') db.seen.prune(uid);
+        } catch (err) {
+          req.log.warn({ err }, 'shop page record');
+        }
+      }
+      return reply.raw.destroyed || reply.raw.write(JSON.stringify(e) + '\n');
+    };
     if (uid) write({ type: 'profile', profile });
     const opts = {
       sizes: profile.sizes,
@@ -552,6 +569,14 @@ export function buildApp({ db = openDb(), provider = pickProvider(), cfg = confi
       write({ type: 'done', kind: null, count: 0, not_found: true, warning: err instanceof CaptureError ? err.message : 'Something went wrong. Try again' });
     }
     reply.raw.end();
+  });
+
+  // The Shop page: every product Spot has shown this shopper, newest first.
+  app.get('/v1/me/shop', async (req, reply) => {
+    const uid = accounts.userIdOf(req);
+    if (!uid) return reply.code(401).send({ error: 'Sign in to see everything Spot has shown you' });
+    reply.header('cache-control', 'no-store');
+    return { products: db.seen.list(uid) };
   });
 
   // Photos, stock and prices for product pages Spot's own reader was turned
