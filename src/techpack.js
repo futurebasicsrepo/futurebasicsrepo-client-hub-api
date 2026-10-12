@@ -265,16 +265,32 @@ export function seedTechPack({ product = {}, configuration = null, brief = null,
   return normalizeTechPack(pack);
 }
 
+// What the product is, for the words around it: a shoe has a lateral and a medial side and nothing to wear, a cap or a bag has neither a garment's front-and-back
+// nor a "garment". Nothing known about it yet keeps the general wording.
+export function productKind(d) {
+  if (isFootwearPack(d)) return 'footwear';
+  const t = `${d.style.category} ${d.style.styleName}`.toLowerCase().trim();
+  if (!t) return 'unknown';
+  if (/\b(cap|hat|beanie|visor|headwear)\b/.test(t)) return 'headwear';
+  if (/(\bbag\b|tote|backpack|pouch|duffle|duffel|crossbody|satchel|clutch|wallet|cardholder|card holder|belt bag|fanny|sling)/.test(t)) return 'bag';
+  if (ELEC.isElectronics(t)) return 'electronic';
+  if (pomTemplateFor(t) === TOPS_POM || pomTemplateFor(t) === BOTTOMS_POM) return 'apparel';
+  return 'other';
+}
+const NOUN = { footwear: 'shoe', headwear: 'cap', bag: 'bag', electronic: 'product', apparel: 'garment', other: 'product', unknown: 'garment' };
+export const productNoun = d => NOUN[productKind(d)];
+
 // Draft completeness: what the editor still needs before this is worth publishing.
 export function techPackCompleteness(data) {
-  const d = normalizeTechPack(data);
+  const d = normalizeTechPack(data), kind = productKind(d), noun = NOUN[kind], the = noun === 'garment' ? 'the garment' : `the ${noun}`;
+  const viewsLabel = kind === 'footwear' ? 'Both mockup views (lateral + medial)' : kind === 'unknown' ? 'Both mockup views (front + back, or lateral + medial)' : 'Both mockup views (front + back)';
   const checks = [
     ['style', 'Style name', Boolean(d.style.styleName)], // the style number is ours to give: it is assigned when the pack is published
-    ['sketches', 'Both mockup views (front + back, or lateral + medial)', mockupsComplete(d.sketches)],
-    ['callouts', 'Callouts placed on the garment', d.sketches.some(s => s.callouts.some(c => c.x != null))],
+    ['sketches', viewsLabel, mockupsComplete(d.sketches)],
+    ['callouts', `Callouts placed on ${the}`, d.sketches.some(s => s.callouts.some(c => c.x != null))],
     ['pom', 'Measurements with spec + tolerance', d.pom.length > 0 && d.pom.every(r => r.tolerance && Object.values(r.values).some(Boolean))],
     ['artwork', 'Artwork uploaded and Pantone matched', d.artwork.length > 0 && d.artwork.every(a => a.image && a.pantones.length)],
-    ['placement', 'Artwork placed on garment', d.artwork.some(a => a.placements.some(p => p.widthIn))],
+    ['placement', `Artwork placed on ${the}`, d.artwork.some(a => a.placements.some(p => p.widthIn))],
     ['bom', 'Bill of materials', d.bom.length > 0],
     ['colorways', 'Fabric Pantones', d.colorways.length > 0],
     ['care', 'Care instructions', Boolean(d.care.instructions)],
@@ -327,20 +343,20 @@ export function techPackReadiness(data, verification) {
   const pendingCallouts = callouts.filter(c => !v.acks[c.key]);
   const sample = d.style.sampleSize;
   const incompletePom = d.pom.filter(r => !(r.tolerance && (r.values[sample] || Object.values(r.values).some(Boolean))));
-  const footwear = isFootwearPack(d);
+  const footwear = isFootwearPack(d), kind = productKind(d), noun = NOUN[kind];
   const viewA = footwear ? 'lateral' : 'front', viewB = footwear ? 'medial' : 'back', missing = missingViews(d);
   const front = !missing.includes(viewA), back = !missing.includes(viewB);
   const noArt = !d.artwork.length; // a plain product has no artwork to approve: that is not a gap
   const artworkOk = noArt || d.artwork.every(a => a.image && a.pantones.length);
   const placed = d.artwork.flatMap(a => a.placements.filter(p => p.widthIn));
   const checks = [
-    { key: 'mockups', label: footwear ? 'Lateral + medial mockups uploaded' : 'Front + back garment mockups uploaded', ok: front && back, detail: front && back ? 'Both views uploaded' : `${[!front && viewA, !back && viewB].filter(Boolean).join(' and ')} view missing` },
+    { key: 'mockups', label: footwear ? 'Lateral + medial mockups uploaded' : kind === 'apparel' || kind === 'unknown' ? 'Front + back garment mockups uploaded' : 'Front + back mockups uploaded', ok: front && back, detail: front && back ? 'Both views uploaded' : `${[!front && viewA, !back && viewB].filter(Boolean).join(' and ')} view missing` },
     { key: 'callouts', label: `All ${callouts.length} callout${callouts.length === 1 ? '' : 's'} acknowledged by factory`, ok: callouts.length > 0 && pendingCallouts.length === 0,
       detail: !callouts.length ? 'No callouts placed yet' : pendingCallouts.length ? `${pendingCallouts.length} pending: ${pendingCallouts.map(c => c.label).join(', ')}` : 'Factory acknowledged every callout' },
     { key: 'pom', label: `All ${d.pom.length} POM${d.pom.length === 1 ? '' : 's'} have spec + tolerance`, ok: d.pom.length > 0 && incompletePom.length === 0,
       detail: !d.pom.length ? 'No points of measure' : incompletePom.length ? `${incompletePom.length} incomplete: ${incompletePom.map(r => r.code || r.name).join(', ')}` : `Sample size ${sample || '—'} specified with tolerances` },
     { key: 'artwork', label: 'Artwork uploaded and Pantone matched', ok: artworkOk, detail: noArt ? 'No printed or embroidered artwork on this product' : artworkOk ? `${d.artwork.length} artwork file${d.artwork.length === 1 ? '' : 's'} with Pantone references` : 'Artwork missing Pantone references' },
-    { key: 'placement', label: 'Artwork placed on garment with spec', ok: noArt || placed.length > 0, detail: noArt ? 'Nothing to place' : placed.length ? `${placed.length} placement${placed.length === 1 ? '' : 's'} with width in inches` : 'No placements yet — required for production' }
+    { key: 'placement', label: kind === 'apparel' || kind === 'unknown' ? 'Artwork placed on garment with spec' : `Artwork placed on the ${noun} with spec`, ok: noArt || placed.length > 0, detail: noArt ? 'Nothing to place' : placed.length ? `${placed.length} placement${placed.length === 1 ? '' : 's'} with width in inches` : 'No placements yet — required for production' }
   ];
   const ready = checks.every(c => c.ok);
   // Sign-off chain: client approves → Future Basics confirms → factory countersigns → locked.

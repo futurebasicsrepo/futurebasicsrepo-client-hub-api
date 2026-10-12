@@ -121,4 +121,37 @@ await journey('J67', 'the colourways by labelled part: once the hero is approved
   }
 });
 
+await journey('J166', 'the other views: once the hero is approved the missing lateral and medial views are drawn from it, put on the pack, and the checklist for a shoe never says garment', async () => {
+  const m = await room('166'), admin = await forge({ sub: sql(`select id from users where client_id='${m.cid}' limit 1`), clientId: m.cid, role: 'admin' }), adm = (path, o = {}) => call(path, { token: admin, ...o });
+  await waitLoop(m.token, m.id);
+  const draft = async () => (await call(`/v1/products/${m.id}/tech-pack/draft`, { token: m.token })).json;
+  let d = await draft(); const before = d.completeness.missing.join(' | ');
+  ok(/lateral \+ medial/i.test(before) && !/garment/i.test(before), 'before: the checklist asks for lateral + medial for a shoe and never says garment', before);
+  const vs0 = (await call(`/v1/products/${m.id}/tech-pack/draft/views`, { token: m.token })).json;
+  ok(vs0.hasHero === false && vs0.missing.length === 2, 'the client can see which views are missing and that no hero is approved yet', vs0);
+  ok((await call(`/v1/products/${m.id}/tech-pack/draft/views`, { method: 'POST', token: m.token, body: {} })).status === 409, 'drawing them before a hero is approved is refused, and says why');
+  const ui = async () => { // what staff see on the Callouts tab
+    if (!playwright) return null; const pb = await playwright.chromium.launch();
+    try { const ctx = await pb.newContext({ viewport: { width: 1200, height: 900 } }); await ctx.addInitScript(t => { try { localStorage.setItem('fb.admin.token', t); } catch {} }, admin);
+      const pg = await ctx.newPage(); await pg.goto(`${BASE}/tech-packs/${m.id}`, { waitUntil: 'networkidle' }); await pg.waitForSelector('#tabs button[data-tab="calls"]'); await pg.click('#tabs button[data-tab="calls"]'); await pg.waitForSelector('[data-views]', { timeout: 8000 }).catch(() => {});
+      return await pg.locator('[data-views]').allInnerTexts(); } finally { await pb.close(); }
+  };
+  const t0 = await ui(); if (t0) ok(t0.length === 1 && /lateral \(outer side\) and medial \(inner side\) views are still needed/i.test(t0[0]) && /hero image is approved/i.test(t0[0]), 'staff see the missing views and when they will be drawn', t0);
+  const hero = (await adm(`/v1/admin/products/${m.id}/tech-pack/check`)).json.hero;
+  ok((await adm(`/v1/admin/tech-pack-heroes/${hero.id}/approve`, { method: 'POST', body: {} })).status === 200, 'the hero is approved');
+  let v = null; for (let i = 0; i < 100; i++) { v = (await call(`/v1/products/${m.id}/tech-pack/draft/views`, { token: m.token })).json; if (v.run && !v.run.running) break; await sleep(400); }
+  ok(v.run && v.run.status === 'done' && v.run.made.length === 2, 'both views were drawn by themselves after the approval', v.run);
+  ok(v.sketches.length === 2 && v.sketches.every(k => /^hv-/.test(k.id) && /^data:image\/jpeg/.test(k.image) && /drawn from the approved hero/.test(k.label)), 'they are on the pack, marked as drawn, with a picture each', v.sketches.map(k => [k.view, k.label]));
+  ok(v.missing.length === 0 && !/mockup views/i.test(v.completeness.missing.join(' | ')), 'so the checklist no longer asks for the views', v.completeness.missing);
+  d = await draft(); ok(d.techPack.data.sketches.filter(k => ['lateral', 'medial'].includes(k.view) && k.image).length >= 2, 'a fresh load of the draft has both views', d.techPack.data.sketches.map(k => k.view));
+  ok(sql(`select count(*) from activities where product_id='${m.id}' and summary like 'Drew the lateral and medial views%'`) === '1', 'it is on the record');
+  ok((await call(`/v1/products/${m.id}/tech-pack/draft/views`, { method: 'POST', token: m.token, body: {} })).status === 409, 'nothing missing, nothing to draw: a second press is refused');
+  // a page that was open all along and saves its old copy must not wipe the new views
+  const old = JSON.parse(JSON.stringify(d.techPack.data)); old.sketches = old.sketches.filter(k => !/^hv-/.test(k.id));
+  const put = await call(`/v1/products/${m.id}/tech-pack/draft`, { method: 'PUT', token: m.token, body: { data: old } });
+  ok(put.status === 200 && put.json.techPack.data.sketches.some(k => /^hv-/.test(k.id)), 'a page holding an older copy saves without wiping the drawn views', put.status);
+  const t1 = await ui(); if (t1) ok(t1.length === 1 && /view(s were| was) drawn from the approved hero image/i.test(t1[0]) && !/Draw the missing/i.test(t1[0]), 'and afterwards that they were drawn from the hero, with no button', t1);
+  const staff = (await adm(`/v1/admin/products/${m.id}/tech-pack/views`)).json; ok(staff.hasHero === true && staff.run && staff.run.status === 'done', 'staff see the same run');
+});
+
 const bad = summary(); process.exit(bad ? 1 : 0);

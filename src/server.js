@@ -21,6 +21,7 @@ import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } fr
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
 import { registerContractRoutes } from './contracts-routes.js'
+import { makeViews, viewsToDraw, viewSketch, placeViews, isDrawnView } from './views.js'
 import { registerFactoryRoutes } from './factories-routes.js'
 import { registerProtoRoutes } from './proto-routes.js'
 import { stubEdit } from './proto-build.js';
@@ -2441,7 +2442,7 @@ const syncCardQuietly=(productId,data)=>syncCardFromTechPack(productId,data).cat
 app.put('/v1/admin/products/:id/tech-pack',{preHandler:[authenticate,adminOnly],bodyLimit:40_000_000},async(req,reply)=>{
   const ctx=await loadAdminTechPack(req.params.id);if(!ctx)return reply.code(404).send({error:'Product not found'});
   {const sent=req.body?.data;if(!sent||typeof sent!=='object'||Array.isArray(sent))return reply.code(400).send({error:'Nothing to save — reload the page and try again'})}
-  const data=normalizeTechPack(req.body?.data);
+  const data=await keepFreshViews(ctx.techPack?.id,normalizeTechPack(req.body?.data));
   const row=(await pool.query(`insert into tech_packs(product_id,client_id,data,created_by) values($1,$2,$3,$4)
     on conflict(product_id) do update set data=excluded.data,updated_at=now() returning *`,[ctx.product.id,ctx.product.client_id,data,req.auth.sub])).rows[0];
   // staff finishing a client's own unpublished draft: the card follows. Anything else reaches the card when it is published.
@@ -4033,6 +4034,11 @@ async function approveHero(h,{actor=null,auto=false,followUps=true}={}){
   await pool.query(`update tech_pack_heroes set status='approved',approved_by=$2,approved_at=now(),auto_approved=$3 where id=$1`,[h.id,actor,auto]);
   await pool.query(`insert into activities(client_id,product_id,actor_id,type,summary,metadata) values($1,$2,$3,'tech-pack',$4,$5)`,[h.client_id,h.product_id,actor,auto?`Hero image approved automatically for ${h.title}`:`Hero image approved for ${h.title}`,{techPackId:h.tech_pack_id,heroId:h.id,auto}]).catch(()=>{});
   await placeCalloutsOnHero(h);
+  // the picture a factory is missing (the other side of a shoe, the back of a garment) is drawn from the hero that just passed (VIEWS_AUTO=off leaves that to the button)
+  if(process.env.VIEWS_AUTO!=='off'&&heroConfig().configured){
+    const row=(await pool.query('select id,product_id,client_id,data from tech_packs where id=$1',[h.tech_pack_id])).rows[0];
+    if(row)startViews(row,{actor,trigger:auto?'auto':'hero'}).then(r=>{if(r.id&&!r.already)setImmediate(()=>runViews(r.id))}).catch(()=>{});
+  }
   if(!followUps)return;
   // with a hero a person has signed off, the colourway pictures are drawn from it, part by part (CW_AUTO=off leaves that to the button)
   if(process.env.CW_AUTO!=='off'&&cwOn()){
@@ -4142,6 +4148,94 @@ function colourwayView(r){
   return {id:r.id,status:stale?'failed':r.status,progress:r.progress||{},made:r.made,skipped:r.skipped||[],reference:r.reference||null,error:stale?'It took too long and was stopped. Try again.':r.error||null,createdAt:r.created_at,completedAt:r.completed_at,running:r.status==='running'&&!stale};
 }
 const latestColourways=async packId=>colourwayView((await pool.query('select * from tech_pack_colourways where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
+// ---- The other views, drawn from the approved hero image (views.js): starts by itself when a hero is approved and a mockup view is missing; the button asks again. ----
+const VIEWS_PER_PRODUCT_DAY=Number(process.env.VIEWS_PER_PRODUCT_DAY)||4,VIEWS_STALE_MS=15*60*1000;
+async function startViews(row,{actor=null,trigger='manual'}={}){
+  const cfg=heroConfig();
+  if(!cfg.configured)return {unavailable:cfg.provider==='off'?'Drawing views is switched off (HERO_DISABLED).':'No image model is connected: add OPENAI_API_KEY to the service.'};
+  const hero=(await pool.query(`select id from tech_pack_heroes where tech_pack_id=$1 and status='approved' order by approved_at desc nulls last limit 1`,[row.id])).rows[0];
+  if(!hero)return {noHero:true};
+  const wanted=missingViews(row.data);if(!wanted.length)return {nothingMissing:true};
+  const open=(await pool.query(`select id from tech_pack_views where tech_pack_id=$1 and status='running' and created_at>now()-interval '15 minutes' limit 1`,[row.id])).rows[0];
+  if(open)return {already:true,id:open.id};
+  const n=Number((await pool.query(`select count(*)::int n from tech_pack_views where product_id=$1 and created_at>now()-interval '24 hours'`,[row.product_id])).rows[0].n);
+  if(n>=VIEWS_PER_PRODUCT_DAY)return {limited:`That is ${VIEWS_PER_PRODUCT_DAY} runs of drawing views on this product today. Try again tomorrow.`};
+  const made=(await pool.query(`insert into tech_pack_views(tech_pack_id,product_id,client_id,hero_id,trigger,requested_by,wanted) values($1,$2,$3,$4,$5,$6,$7) returning id`,[row.id,row.product_id,row.client_id,hero.id,trigger,actor,wanted])).rows[0];
+  return {id:made.id,wanted};
+}
+// Saves one finished view onto the pack right away. The pack's edit time is left alone, as for colourways: a picture arriving is not an edit and must not make the spec check look out of date.
+async function saveDrawnView(packId,sketch){
+  const c=await pool.connect();
+  try{
+    await c.query('begin');const cur=(await c.query('select data from tech_packs where id=$1 for update',[packId])).rows[0];if(!cur){await c.query('rollback');return false}
+    const data=normalizeTechPack(cur.data),r=placeViews(data,[sketch]);
+    if(r.added.length)await c.query('update tech_packs set data=$2 where id=$1',[packId,normalizeTechPack(r.pack)]);
+    await c.query('commit');return r.added.length>0;
+  }catch(e){await c.query('rollback').catch(()=>{});throw e}finally{c.release()}
+}
+async function runViews(id){
+  const j=(await pool.query('select j.*,tp.data,p.title from tech_pack_views j join tech_packs tp on tp.id=j.tech_pack_id join products p on p.id=j.product_id where j.id=$1',[id])).rows[0];
+  if(!j||j.status!=='running')return;
+  try{
+    const pack=normalizeTechPack(j.data),hero=(await pool.query('select * from tech_pack_heroes where id=$1',[j.hero_id])).rows[0];if(!hero)throw new Error('The approved hero image is gone.');
+    const heroBuf=await heroBuffer(hero),photo=packPhotos(j.data)[0]||null,kept=[];
+    const out=await makeViews({hero:heroBuf,photo,views:viewsToDraw(j.wanted),meta:{title:j.title,category:pack.style.category},onView:async m=>{
+      const sk=await viewSketch(m,j.hero_id);if(await saveDrawnView(j.tech_pack_id,sk))kept.push(m.view);
+    }});
+    // a view request from staff clears itself once the pictures are there (the payload only counts views that are still missing)
+    await pool.query(`update tech_pack_views set status='done',made_views=$2,skipped=$3,completed_at=now() where id=$1`,[id,kept,JSON.stringify(out.skipped)]);
+    const names=kept.join(' and ');
+    await pool.query(`insert into activities(client_id,product_id,type,summary,metadata) values($1,$2,'tech-pack',$3,$4)`,[j.client_id,j.product_id,kept.length?`Drew the ${names} ${kept.length>1?'views':'view'} of ${j.title} from the approved hero image${out.skipped.length?`, ${out.skipped.length} not good enough to add`:''}`:`Could not draw the missing views of ${j.title} well enough to add them`,{techPackId:j.tech_pack_id,viewsRunId:id,skipped:out.skipped}]).catch(()=>{});
+  }catch(e){
+    app.log.warn({err:String(e.message||e).slice(0,300),viewsRunId:id},'drawing the views failed');
+    await pool.query(`update tech_pack_views set status='failed',error=$2,completed_at=now() where id=$1`,[id,checkErrorText(e).replace(/\(Anthropic\)/,'')]).catch(()=>{});
+  }
+}
+const viewsRunView=r=>{
+  if(!r)return null;const stale=r.status==='running'&&Date.now()-new Date(r.created_at)>VIEWS_STALE_MS;
+  return {id:r.id,status:stale?'failed':r.status,wanted:r.wanted||[],made:r.made_views||[],skipped:r.skipped||[],error:stale?'It took too long and was stopped. Try again.':r.error||null,running:r.status==='running'&&!stale,completedAt:r.completed_at,createdAt:r.created_at};
+};
+const latestViews=async packId=>viewsRunView((await pool.query('select * from tech_pack_views where tech_pack_id=$1 order by created_at desc limit 1',[packId])).rows[0]);
+// A page that was open while a view arrived still holds the old pack: saving it must not wipe the view that landed in the last few minutes.
+async function keepFreshViews(packId,data){
+  if(!packId)return data;
+  const r=(await pool.query(`select made_views from tech_pack_views where tech_pack_id=$1 and status='done' and completed_at>now()-interval '3 minutes' order by completed_at desc limit 1`,[packId])).rows[0];
+  if(!r||!r.made_views?.length)return data;
+  const cur=(await pool.query('select data from tech_packs where id=$1',[packId])).rows[0];if(!cur)return data;
+  const lost=normalizeTechPack(cur.data).sketches.filter(s=>isDrawnView(s)&&r.made_views.includes(s.view)&&!data.sketches.some(x=>x.id===s.id)&&!data.sketches.some(x=>x.view===s.view&&x.image));
+  if(lost.length)data.sketches=[...data.sketches,...lost].slice(0,12);
+  return data;
+}
+const viewsPayload=async row=>({run:await latestViews(row.id),sketches:normalizeTechPack(row.data).sketches.filter(isDrawnView),missing:missingViews(row.data),hasHero:Boolean((await pool.query(`select 1 from tech_pack_heroes where tech_pack_id=$1 and status='approved' limit 1`,[row.id])).rows[0]),completeness:techPackCompleteness(normalizeTechPack(row.data))});
+async function viewsStarted(reply,r,row){
+  if(r.unavailable)return reply.code(503).send({error:r.unavailable});
+  if(r.noHero)return reply.code(409).send({error:'Approve the hero image first: the other views are drawn from it.'});
+  if(r.nothingMissing)return reply.code(409).send({error:'Both views are already in the pack'});
+  if(r.limited)return reply.code(429).send({error:r.limited});
+  if(r.already)return reply.code(409).send({error:'The views are already being drawn',id:r.id});
+  setImmediate(()=>runViews(r.id));return reply.code(202).send({started:true,id:r.id,wanted:r.wanted});
+}
+app.get('/v1/admin/products/:id/tech-pack/views',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select id,product_id,client_id,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Tech pack not found'});
+  return viewsPayload(row);
+});
+app.post('/v1/admin/products/:id/tech-pack/views',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
+  if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
+  const row=(await pool.query('select id,product_id,client_id,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
+  return viewsStarted(reply,await startViews(row,{actor:req.auth.sub}),row);
+});
+app.get('/v1/products/:id/tech-pack/draft/views',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  return viewsPayload(row);
+});
+app.post('/v1/products/:id/tech-pack/draft/views',{preHandler:authenticate},async(req,reply)=>{
+  if(req.auth.role!=='client'||req.auth.preview)return reply.code(403).send({error:'Client drafts are edited from the client hub'});
+  const row=await loadClientDraft(req.params.id,req.auth.clientId);if(!row)return reply.code(404).send({error:'Tech pack draft not found'});
+  if(row.status!=='draft')return reply.code(409).send({error:'This tech pack has been submitted to Future Basics'});
+  return viewsStarted(reply,await startViews(row,{actor:req.auth.sub,trigger:'client'}),row);
+});
 app.post('/v1/admin/products/:id/tech-pack/colourways',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   if(!UUID_RE.test(String(req.params.id)))return reply.code(404).send({error:'Product not found'});
   const row=(await pool.query('select id,product_id,client_id,data from tech_packs where product_id=$1',[req.params.id])).rows[0];if(!row)return reply.code(404).send({error:'Save the tech pack first'});
@@ -4708,7 +4802,7 @@ app.put('/v1/products/:id/tech-pack/draft',{preHandler:authenticate,bodyLimit:40
   // A page opened before the assistant finished, or in another tab, holds an older pack: saving it would wipe what landed since.
   if(req.body.baseEtag&&packEtag(row)&&Math.abs(new Date(req.body.baseEtag).getTime()-new Date(packEtag(row)).getTime())>5)
     return reply.code(409).send({error:'This draft changed in another tab, or the assistant just finished it. Reload to see the latest — what you typed on this page was not saved.',code:'STALE'});
-  const data=normalizeTechPack(sent);
+  const data=await keepFreshViews(row.id,normalizeTechPack(sent));
   const updated=(await pool.query(`update tech_packs set data=$2,updated_at=now() where id=$1 returning *`,[row.id,data])).rows[0];
   if(data.style.styleName&&data.style.styleName!==row.title)await pool.query('update products set title=$2,updated_at=now() where id=$1',[row.product_id,data.style.styleName.slice(0,200)]);
   await syncCardQuietly(row.product_id,data);
