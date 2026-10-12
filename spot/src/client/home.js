@@ -470,6 +470,7 @@
       (it.url && /^https?:/i.test(it.url) ? '<div class="rv" data-rv="' + esc(it.url) + '" data-k="' + k + '">' + reviewsHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="cmp" data-cmp="' + esc(it.url) + '" data-k="' + k + '">' + compareHtml(o, k) + '</div>' : '') +
       (it.url && /^https?:/i.test(it.url) ? '<div class="dl" data-dl="' + esc(it.url) + '" data-k="' + k + '">' + deliveryHtml(o, k) + '</div>' : '') +
+      (it.url && /^https?:/i.test(it.url) ? '<div class="promo" data-promo="' + esc(it.url) + '" data-k="' + k + '">' + promoHtml(o, k) + '</div>' : '') +
       '<div class="pr" data-pr="' + esc(it.url || '') + '">' + priceHtml(o, k) + '</div>' + buttons(k, o.stock === 'out') +
       '<div class="cardlinks"><button class="textlink" type="button" data-act="edit" data-k="' + k + '">Edit details</button>' + (it.url && /^https?:/i.test(it.url) ? watchBtn(it.url, k) : '') +
       (it.url && /^https?:/i.test(it.url) ? '<a href="' + esc(it.url) + '" target="_blank" rel="noopener">At the store ↗</a>' : '') + '</div></div></article>';
@@ -671,7 +672,7 @@
     if (T.list.length > 1) say('swipe for more →');
     details(added);
     wantFacts(added);
-    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]), loadDelivery(T.list[0]);
+    if (T.kind === 'products' && T.list[0] && added.includes(T.list[0])) loadReviews(T.list[0]), loadCompare(T.list[0]), loadDelivery(T.list[0]), loadPromos(T.list[0]);
     return { added, done };
   }
   // The next batch, from stores not shown yet, onto the end of the shelf.
@@ -803,6 +804,44 @@
     paintReviews(url);
   }
 
+  // ─── Promo codes ─────────────────────────────────────────────────────────
+  // Codes the AI found for the store, tried in the store's own cart for this
+  // item: only ones that took money off show (promos.js).
+  const promoBy = new Map();
+  function promoHtml(o, k) {
+    const d = promoBy.get(o.item.url);
+    if (d === 'loading') return '<div class="pl wait">Trying promo codes…</div>';
+    if (!d) return '<button class="textlink plgo" type="button" data-act="promos" data-k="' + k + '">🏷️ Any promo codes?</button>';
+    if (d.off) return '';
+    if (d.error) return '<div class="pl muted">Couldn’t try codes just now.</div>';
+    if (d.working?.length) {
+      const w = d.working[0];
+      return '<div class="pl good">🏷️ <b class="code">' + esc(w.code) + '</b> takes <b>' + usd(w.cents_off) + '</b> off' + (w.description ? ' <span class="muted">(' + esc(w.description) + ')</span>' : '') + '<br><span class="muted">Checked at the store just now. Spot tries it when it orders for you.</span></div>';
+    }
+    if (d.untested?.length) return '<div class="pl">🏷️ Codes to try: ' + d.untested.slice(0, 3).map((c) => '<b class="code">' + esc(c.code) + '</b>').join(' ') + ' <span class="muted">(not checked)</span></div>';
+    return '<div class="pl muted">' + (d.found ? 'Spot tried ' + d.found + (d.found === 1 ? ' code' : ' codes') + ': none work on this right now.' : 'No promo codes for this store right now.') + '</div>';
+  }
+  function paintPromo(url) {
+    for (const el of document.querySelectorAll('.promo[data-promo="' + CSS.escape(url) + '"]')) {
+      const o = entryAt(el.dataset.k, url);
+      if (o) el.innerHTML = promoHtml(o, el.dataset.k);
+    }
+  }
+  async function loadPromos(o) {
+    const url = o?.item?.url;
+    if (!url || promoBy.has(url)) return;
+    promoBy.set(url, 'loading');
+    paintPromo(url);
+    try {
+      const r = await api('/v1/promos', { url, variant: o.item.variant || '', store: o.merchant?.name || '' });
+      promoBy.set(url, r.promos || { error: true });
+      if (r.promos?.working?.length) quip('a code works! ' + usd(r.promos.working[0].cents_off) + ' off 🏷️', 2000);
+    } catch {
+      promoBy.set(url, { error: true });
+    }
+    paintPromo(url);
+  }
+
   // ─── Arrives by ──────────────────────────────────────────────────────────
   // The store's own delivery dates to their saved address (Shopify stores),
   // else the store's usual shipping time from its policy page.
@@ -900,6 +939,7 @@
     o.why = 'Same one, ' + usd(was - offer.cents) + ' less here' + (o.why ? '. ' + o.why : '');
     compareBy.set(offer.url, { offers: [] });
     loadDelivery(o);
+    loadPromos(o);
     const card = document.querySelector('[data-card="' + CSS.escape(k) + '"]');
     if (card) card.outerHTML = productCard(o, k, /^\d+:0$/.test(k));
     if (String(k).startsWith('s:')) $('#shopCard').innerHTML = productCard(o, k, false);
@@ -1157,6 +1197,7 @@
     loadReviews(shopList[i]);
     loadCompare(shopList[i]);
     loadDelivery(shopList[i]);
+    loadPromos(shopList[i]);
     $('#shopSheet').hidden = false;
     walletWatch();
   });
@@ -1166,7 +1207,7 @@
   $('#shopCard').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-act]');
     if (!b) return;
-    if (['watch', 'reviews', 'compare', 'switch', 'delivery'].includes(b.dataset.act)) return actOn(b);
+    if (['watch', 'reviews', 'compare', 'switch', 'delivery', 'promos'].includes(b.dataset.act)) return actOn(b);
     $('#shopSheet').hidden = true;
     document.body.classList.remove('shopping');
     $('#modeSpot').setAttribute('aria-selected', 'true');
@@ -1325,6 +1366,10 @@
   function actOn(b) {
     if (b.dataset.act === 'watch') return toggleWatch(b);
     if (b.dataset.act === 'switch') return switchStore(b);
+    if (b.dataset.act === 'promos') {
+      const { e } = entryOf(b.dataset.k);
+      return loadPromos((e?.items || [e])[0]);
+    }
     if (b.dataset.act === 'delivery') {
       const { e } = entryOf(b.dataset.k);
       return loadDelivery((e?.items || [e])[0]);
