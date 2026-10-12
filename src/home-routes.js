@@ -30,7 +30,7 @@ export function registerHomeRoutes(app, { pool, authenticate, adminOnly }) {
     const showNow = await q(`select b.id,b.slug,b.name,b.tagline,b.status,b.visibility,b.live_url,b.stack,jsonb_exists(b.media,'cover') has_cover,0 products,
         (select count(*) from build_views v where v.build_id=b.id and v.created_at > now() - interval '30 days')::int views7, 0 lookers7, null::timestamptz last_look, 0 invites, '[]'::json clients
       from builds b where b.status='live' and b.visibility <> 'hidden' order by views7 desc, b.sort_order limit 3`);
-    const projects = await q(`select pr.id,pr.name,pr.kind,pr.status,pr.milestone,pr.stage,pr.target_date,pr.updated_at,pr.build_id,c.id client_id,c.name client_name,b.name build_name,b.live_url,
+    const projects = await q(`select pr.id,pr.name,pr.kind,pr.status,pr.milestone,pr.stage,pr.target_date,pr.updated_at,pr.build_id,c.id client_id,c.name client_name,(select u.name from users u where u.id=c.owner_id) account_owner,b.name build_name,b.live_url,
         (select count(*) from products p where p.project_id=pr.id)::int product_count,
         (select pm.author_role from project_messages pm where pm.project_id=pr.id order by pm.created_at desc limit 1) last_author,
         (select max(pm.created_at) from project_messages pm where pm.project_id=pr.id) last_message_at

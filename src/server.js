@@ -41,7 +41,7 @@ import { processRuns } from './sales-automations-engine.js';
 import { registerChatRoutes } from './chat-routes.js';
 import { registerCommerceRoutes } from './commerce-routes.js';
 import { registerHomeRoutes } from './home-routes.js';
-import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS } from './software.js';
+import { cleanProject, softwareView, STAGE_KEYS, PROJECT_KINDS, newBuildFor } from './software.js';
 import { registerPressRoutes, seedPress } from './press-routes.js';
 import { registerSalesOpportunityRoutes } from './sales-opportunities-routes.js';
 import { registerIntelRoutes, seedIntel } from './intel-routes.js';
@@ -1225,11 +1225,6 @@ app.post('/v1/admin/clients/:id/restore',{preHandler:[authenticate,adminOnly]},a
 // Software projects carry a build (the record the showcase shows) and a stage; a product project is as it always was.
 const SW_BUILD_JSON=`(select json_build_object('id',b.id,'slug',b.slug,'name',b.name,'tagline',b.tagline,'status',b.status,'visibility',b.visibility,'live_url',b.live_url,'stack',b.stack,'highlights',b.highlights,'products',jsonb_array_length(b.catalog)) from builds b where b.id=pr.build_id)`;
 const withSoftware=p=>p&&p.kind==='software'?{...p,software:softwareView(p,p.build)}:p;
-async function newBuildFor(db,name){
-  const base=String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50)||'build';let slug=base;
-  for(let n=2;(await db.query('select 1 from builds where slug=$1',[slug])).rowCount;n++)slug=`${base}-${n}`;
-  return (await db.query(`insert into builds(slug,name,status,visibility,sort_order) values($1,$2,'in-progress','hidden',100) returning id`,[slug,String(name).slice(0,80)])).rows[0].id;
-}
 app.post('/v1/admin/clients/:id/projects',{preHandler:[authenticate,adminOnly]},async(req,reply)=>{
   const {status='active',milestone,targetDate}=req.body||{};
   const r=cleanProject(req.body);if(r.error)return reply.code(400).send({error:r.error});const v=r.value;

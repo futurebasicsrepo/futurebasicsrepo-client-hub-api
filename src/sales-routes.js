@@ -2,12 +2,13 @@
 //
 //   GET  /v1/sales/overview                       today: pipeline, new leads, warm contacts, tasks due, stale deals, recent activity
 //   GET|POST /v1/sales/contacts   GET|PUT|DELETE /v1/sales/contacts/:id   POST /v1/sales/contacts/:id/activities
-//   GET|POST /v1/sales/deals      PUT|DELETE /v1/sales/deals/:id
+//   GET|POST /v1/sales/deals      PUT|DELETE /v1/sales/deals/:id      POST /v1/sales/deals/:id/start-project  (a won deal: the client room, a project, a build for software)
 //   GET|POST /v1/sales/tasks      PUT|DELETE /v1/sales/tasks/:id
 //   POST /v1/sales/import/hub     the hub's clients and leads become contacts
 //   POST /v1/sales/import/csv     a pasted list becomes contacts
 import { fireTrigger, fireTagsAdded, stopRuns } from './sales-automations-engine.js';
 import { STAGES, OPEN_STAGES, STAGE_LABELS, AUTO_TAGS, cleanContact, cleanDeal, cleanTask, cleanActivity, cleanSegment, cleanTags, cleanEmail, heat, staleDays, pipelineSummary, nextBusinessDay, parseCsv } from './sales.js';
+import { startProject } from './start-project.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEAT_KINDS = ['showcase_demo', 'showcase_view', 'email_in', 'chat_in', 'meeting', 'call'];
@@ -240,7 +241,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
   });
 
   // ---------- deals ----------
-  const DEAL_SELECT = `select d.id,d.title,d.stage,d.value_cents,d.expected_close,d.source,d.lost_reason,d.last_activity_at,d.closed_at,d.created_at,d.contact_id,c.name contact_name,c.email contact_email,co.name company_name from sales_deals d left join sales_contacts c on c.id=d.contact_id left join sales_companies co on co.id=c.company_id`;
+  const DEAL_SELECT = `select d.id,d.title,d.stage,d.value_cents,d.expected_close,d.source,d.lost_reason,d.last_activity_at,d.closed_at,d.created_at,d.contact_id,c.name contact_name,c.email contact_email,co.name company_name,d.owner_id,d.project_id,(select u.name from users u where u.id=d.owner_id) owner_name,(select p.client_id from projects p where p.id=d.project_id) project_client_id from sales_deals d left join sales_contacts c on c.id=d.contact_id left join sales_companies co on co.id=c.company_id`;
   app.get('/v1/sales/deals', { preHandler: pre }, async (req) => {
     const stage = STAGES.includes(req.query?.stage) ? req.query.stage : null;
     const rows = (await pool.query(`${DEAL_SELECT} ${stage ? 'where d.stage=$1' : ''} order by d.updated_at desc limit 500`, stage ? [stage] : [])).rows;
@@ -251,7 +252,7 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     const v = r.value, contactId = UUID.test(String(req.body?.contactId || '')) ? req.body.contactId : null;
     if (contactId && !(await pool.query('select 1 from sales_contacts where id=$1', [contactId])).rowCount) return bad(reply, 'That contact is not there', 404);
     const closed = ['won', 'lost'].includes(v.stage);
-    const row = (await pool.query(`insert into sales_deals(contact_id,title,stage,value_cents,expected_close,source,lost_reason,closed_at) values($1,$2,$3,$4,$5,$6,$7,${closed ? 'now()' : 'null'}) returning id`, [contactId, v.title, v.stage, v.value_cents || 0, v.expected_close || null, v.source || 'manual', v.lost_reason || ''])).rows[0];
+    const row = (await pool.query(`insert into sales_deals(contact_id,title,stage,value_cents,expected_close,source,lost_reason,closed_at,owner_id) values($1,$2,$3,$4,$5,$6,$7,${closed ? 'now()' : 'null'},$8) returning id`, [contactId, v.title, v.stage, v.value_cents || 0, v.expected_close || null, v.source || 'manual', v.lost_reason || '', actorOf(req)])).rows[0];
     await logActivity({ contactId, dealId: row.id, kind: 'stage', text: `Deal started: ${v.title} (${STAGE_LABELS[v.stage]})`, actor: actorOf(req) });
     return reply.code(201).send({ id: row.id });
   });
@@ -266,6 +267,13 @@ export function registerSalesRoutes(app, { pool, authenticate, adminOnly, log = 
     if (v.stage && v.stage !== prev.stage) await logActivity({ contactId: prev.contact_id, dealId: prev.id, kind: 'stage', text: `${prev.title}: ${STAGE_LABELS[prev.stage]} → ${STAGE_LABELS[v.stage]}${v.stage === 'lost' && v.lost_reason ? ` (${v.lost_reason})` : ''}`, actor: actorOf(req) });
     if (v.stage && v.stage !== prev.stage && prev.contact_id) await fireTrigger(pool, { type: 'deal_stage', contactId: prev.contact_id, dealId: prev.id, stage: v.stage }, { deliberate: true });
     return { ok: true };
+  });
+  // A won deal becomes work: the client's room, a project in it (and a build record for software), and the deal's owner as the account owner.
+  app.post('/v1/sales/deals/:id/start-project', { preHandler: pre }, async (req, reply) => {
+    if (!needId(req, reply)) return;
+    const b = req.body || {}, r = await startProject(pool, { dealId: req.params.id, actor: actorOf(req), kind: b.kind === 'product' ? 'product' : 'software', name: String(b.name || '').slice(0, 120), newBuild: b.newBuild !== false, again: b.again === true });
+    if (r.error) return reply.code(r.status).send({ error: r.error, existing: r.existing });
+    return reply.code(201).send({ client: r.client, project: r.project, roomUrl: `/clients/${r.client.id}#project=${r.project.id}` });
   });
   app.delete('/v1/sales/deals/:id', { preHandler: pre }, async (req, reply) => { if (!needId(req, reply)) return; return (await pool.query('delete from sales_deals where id=$1', [req.params.id])).rowCount ? { ok: true } : bad(reply, 'Not found', 404); });
 

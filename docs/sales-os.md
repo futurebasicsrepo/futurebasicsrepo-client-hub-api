@@ -118,3 +118,12 @@ Each card says why in plain words and offers **Make a task** (with a suggested t
 1. ~~Email~~ and ~~Automations~~ (done, above). Possible next steps for automations: a "move the deal" step, notifying staff in chat/email, and branching on a reply or a click.
 2. ~~Chat with a handoff to a person~~ (done, above). Possible next steps: attachments, notifying staff in the Message Center, a chat that continues over email, chat on the hub for clients.
 3. ~~Opportunity finder~~ (done, above; finding *new* prospects outside the CRM is not built). ~~Press comms~~ (done, above). Possible next steps for press: scheduled sends, a public press page, importing a media list from CSV, tracking opens.
+
+## Won deal to work: Start project
+Moving a deal to **Won** is where the sale ends and the work begins. In the deal window a won deal shows **Start project** with the kind of work (software or product development). One click:
+- finds the client's room (the contact's own, else one with the company's name) or makes one, and the contact can sign in to it;
+- starts a project in it (software projects start at Discovery with a hidden build record; product projects start at Kickoff);
+- records the deal's project, ties the contact to the room, and writes "Project started" on the timeline;
+- sets the **account owner**: the person who created the deal, or whoever clicks if the deal had no owner. The owner shows on the deal window and on the project rows on Home.
+
+Asking again for the same deal says it already started (and links to it); `again` starts a second project in the same room, but the same name twice in one room is refused. A deal that is not won is refused ("Move the deal to Won first"). API: `POST /v1/sales/deals/:id/start-project { kind, name?, newBuild?, again? }` (staff). Rules in `src/start-project.js`. Journeys J157 (API) and J158 (browser). The invoice is still its own step: **Make an invoice** in the same window opens Money with the deal filled in.
