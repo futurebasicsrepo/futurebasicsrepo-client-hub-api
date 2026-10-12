@@ -95,6 +95,10 @@ ${SSO_CSS}.pk-b{width:100%;display:flex;align-items:center;justify-content:cente
 .aistrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--line);border-radius:16px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .setupcard{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin:18px 0 0;padding:12px 16px;border:1.5px solid var(--spot);border-radius:16px;background:color-mix(in srgb,var(--spot) 6%,var(--card));color:var(--ink);text-decoration:none}
 .setupcard[hidden]{display:none}.setupcard small{display:block;color:var(--muted);font-size:14px}.setupcard .go2{color:var(--spot);font-weight:700;white-space:nowrap}
+.savebox{margin:16px 0 4px;padding:16px 18px;border-radius:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--ok) 14%,var(--card)),var(--card));border:1px solid color-mix(in srgb,var(--ok) 30%,var(--line))}
+.savebox .big{font-size:34px;font-weight:800;line-height:1.1;letter-spacing:-.02em;color:var(--ok)}.savebox .lbl{font-weight:700;margin-top:2px}.savebox .sub{margin:6px 0 0}
+.savebox ul{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:4px;font-size:14px}.savebox li{display:flex;justify-content:space-between;gap:10px}.savebox li b{color:var(--ok);white-space:nowrap}
+.savebox .share{margin-top:10px;border:0;background:none;color:var(--spot);font:inherit;font-weight:700;padding:0;cursor:pointer}
 .setupcard .sface{width:40px;height:40px;border-radius:50%;background:url(${assetUrl('spot-face.webp')}) 50% 46%/116% no-repeat,var(--spot)}
 #ai-card{scroll-margin-top:140px}
 .aistrip span{white-space:nowrap}.aistrip small{color:var(--muted)}.aistrip .go2{margin-left:auto;color:var(--spot);font-weight:700}
@@ -231,7 +235,7 @@ export function accountPage({ origin, provider = 'sandbox' }) {
 <a class="setupcard" id="setupCard" href="/setup" hidden><span class="sface" aria-hidden="true"></span><span><b>Finish setting up</b><small>Your name and address, for one-tap checkout.</small></span><span class="go2">Finish →</span></a>
 <button type="button" class="aistrip" id="aiStrip" hidden></button>
 <section id="readySec" class="readysec" hidden><h2 class="gt">Ready for you</h2><p class="sub">Carts and flights your AI put together. Tap to check and finish.</p><div class="ready" id="ready"></div></section>
-<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
+<nav class="tabs" role="tablist" aria-label="Account"><button type="button" role="tab" data-tab="spots" aria-selected="true">Spots</button><button type="button" role="tab" data-tab="ai" aria-selected="false">AI &amp; card</button><button type="button" role="tab" data-tab="details" aria-selected="false">Saved details</button><button type="button" role="tab" data-tab="signin" aria-selected="false">Sign-in</button></nav><section class="panel" data-panel="spots"><h2 class="sr">Your Spots</h2><div class="savebox" id="saveBox" hidden></div><p class="lead">Everything you’ve asked for, on any device, including what your AI bought or asked for.</p><div class="seg three" role="tablist" aria-label="Show" id="cartSeg" hidden><button type="button" role="tab" aria-selected="true" data-f="all">All</button><button type="button" role="tab" aria-selected="false" data-f="ai">By your AI</button><button type="button" role="tab" aria-selected="false" data-f="you">By you</button></div><div class="box list" id="carts"></div></section><section class="panel" data-panel="ai" hidden><h2 class="sr">Your AI</h2><div class="grp"><h3 class="gt">Connected AIs</h3><p class="sub">Claude, ChatGPT or any MCP app. Set rules for each one, see everything it did, and disconnect it any time. Your AI never gets a card number.</p>
   <div class="box"><div id="keys"></div><div class="btnrow" style="margin-top:10px"><button class="btn primary" id="connectAi">Connect a new AI</button></div>
     <div id="connectOut" class="connect" hidden>
       <p style="margin:14px 0 6px"><b>Add Spot to your AI app, then tap Allow.</b> No key to copy.</p>
@@ -302,9 +306,19 @@ document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.onclick=()=>{tab(b.da
 const fromHash=()=>{const h=location.hash.slice(1);const el=h&&document.getElementById(h);const p=el&&el.closest('.panel');tab(p?p.dataset.panel:h,false);if(el&&p)setTimeout(()=>el.scrollIntoView({block:'start'}),50)};
 fromHash();addEventListener('hashchange',fromHash);
 let me=null;
+// "Spot got you $X back": price drops claimed and promo codes Spot found (savings.js).
+function saveRender(s){const box=$('#saveBox');if(!box||!s)return;box.hidden=false;
+  if(!s.total_cents){box.innerHTML='<div class="lbl">💸 Spot gets money back for you</div><p class="sub">After Spot buys something, it watches the price and asks the store for the difference if it drops, and tries promo codes at checkout. What it gets you adds up here.</p>';return}
+  const what=i=>i.kind==='code'?'Code '+esc(i.code||'')+' at '+esc(i.store):'Price drop at '+esc(i.store);
+  box.innerHTML='<div class="big">'+money(s.total_cents)+'</div><div class="lbl">Spot got you back</div>'
+    +'<p class="sub">'+[s.price_drops_cents?money(s.price_drops_cents)+' in price drops':'',s.codes_cents?money(s.codes_cents)+' from promo codes':''].filter(Boolean).join(' · ')+'</p>'
+    +'<ul>'+s.items.slice(0,4).map(i=>'<li><span>'+what(i)+' · '+esc(i.title)+'</span><b>+'+money(i.cents)+'</b></li>').join('')+'</ul>'
+    +'<button type="button" class="share" id="saveShare">Share it</button>';
+  $('#saveShare').onclick=async()=>{const text='Spot has gotten me '+money(s.total_cents)+' back so far: it watches prices after I buy and tries promo codes for me.';const url=location.origin+'/';
+    try{if(navigator.share)await navigator.share({text,url});else{await navigator.clipboard.writeText(text+' '+url);$('#saveShare').textContent='Copied ✓'}}catch{}}}
 async function load(){
   const r=await fetch('/v1/me');if(r.status===401){try{localStorage.removeItem('spot:in');localStorage.removeItem('spot:staff')}catch{}location.href='/signin?next=/account';return}try{localStorage.setItem('spot:in','1')}catch{}for(const id of ['navAcct','navAcctM']){const na=document.getElementById(id);if(na){na.textContent='My Spots';na.href='/account'}}
-  me=await r.json();const u=me.user;
+  me=await r.json();const u=me.user;saveRender(me.savings);
   $('#hi').textContent=u.name?'Hi, '+u.name.split(' ')[0]:'Your Spot';$('#who').textContent='Signed in as '+(u.email||fmtPhone(u.phone));
   $('#readySec').hidden=!me.ready.length;
   // Finish it yourself, or hand it to whoever's paying: the same choice as on the cart's own page.

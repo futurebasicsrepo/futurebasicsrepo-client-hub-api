@@ -21,6 +21,7 @@
 // Codes and sessions are stored only as SHA-256 hashes. The cookie is
 // HttpOnly + SameSite=Lax, and every write needs a JSON body, so other sites
 // can't act for a signed-in visitor.
+import { savingsOf } from './savings.js';
 import { isStaff, proveEmail } from './staff.js';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { CartError, handleOk } from './cart.js';
@@ -184,13 +185,16 @@ export function registerAccounts(app, { db, env, notifier, provider, urlFor, spo
   app.get('/v1/me', async (req, reply) => {
     const user = me(req);
     reply.header('cache-control', 'no-store');
-    const carts = db.users.carts(user.id, 100).map((c) => ({ ...ownerCart(c), created_at: c.created_at, manage_url: urlFor(req, `/c/${c.token}/manage`) }));
+    const raw = db.users.carts(user.id, 100);
+    const carts = raw.map((c) => ({ ...ownerCart(c), created_at: c.created_at, manage_url: urlFor(req, `/c/${c.token}/manage`) }));
     const keys = keysOf(user.id);
     return {
       user: profile(user),
       // Open asks for you to finish, plus any your AI built (even ones meant for someone else to pay).
       ready: carts.filter((c) => c.status === 'open' && (c.for === 'self' || c.built_by)),
       carts,
+      // What Spot got back for them: price drops and promo codes (savings.js).
+      savings: savingsOf(raw),
       keys,
       approver: approverView(user.id),
       funding: fundingView(db, user.id),

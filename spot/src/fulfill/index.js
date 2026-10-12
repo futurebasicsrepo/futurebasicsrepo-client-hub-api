@@ -153,7 +153,7 @@ export function createFulfiller({ spot, provider, env = process.env, launch, cli
 
   function finish(cartId, outcome) {
     if (outcome.status === 'placed') {
-      update(cartId, { state: 'placed', order_number: outcome.order_number, order_url: outcome.order_url || null, ...(outcome.order_id ? { order_id: outcome.order_id } : {}), placed_at: Date.now() }, 'order_placed');
+      update(cartId, { state: 'placed', order_number: outcome.order_number, order_url: outcome.order_url || null, ...(outcome.order_id ? { order_id: outcome.order_id } : {}), ...(outcome.code_off_cents ? { code_off_cents: outcome.code_off_cents, code: outcome.code || null } : {}), placed_at: Date.now() }, 'order_placed');
       spot.emit?.('ordered', cartId);
     } else if (outcome.status === 'cancelled') update(cartId, { state: 'cancelled', reason: outcome.reason }, 'order_cancelled');
     else {

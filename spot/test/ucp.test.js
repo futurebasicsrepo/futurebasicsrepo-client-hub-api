@@ -894,6 +894,12 @@ test('promo codes at the store’s checkout: the one that takes most off stays; 
   assert.deepEqual(puts.map((r) => r.body.discounts?.codes), [undefined, undefined, ['NOPE10'], ['SAVE20'], ['BADCODE'], ['SAVE20']], 'each tried, then the best put back');
   assert.ok(puts.at(-1).body.fulfillment.methods[0].groups, 'with the shipping still chosen');
   assert.ok((waiting.steps || []).some((x) => /Used code SAVE20: \$50\.00 off/.test(x.text || x)), JSON.stringify(waiting.steps));
+  // Placed: what the code took off is kept, for the shopper's savings total.
+  await call('POST', `/v1/carts/${token}/manage/order/confirm`, { k, place: true });
+  const done = await until(['placed', 'needs_you']);
+  assert.equal(done.state, 'placed', JSON.stringify(done));
+  assert.equal(done.code_off_cents, 5000);
+  assert.equal(done.code, 'SAVE20');
 });
 
 test('promo codes: none apply, the checkout is cleared of them; a store without the extension is never sent any', async (t) => {

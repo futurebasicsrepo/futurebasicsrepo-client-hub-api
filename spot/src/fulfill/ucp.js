@@ -552,7 +552,9 @@ async function checkout({ discovery, cart, shipping, getCard, billing = null, pr
     return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: `Paying didn't go through: ${err.message}`, manual_url: err.continueUrl || manual };
   }
   if (co.status === 'completed') {
-    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: orderRef(co.order), order_url: co.order?.permalink_url || null, order_id: co.order?.id ? String(co.order.id).slice(0, 200) : null };
+    // What a promo code Spot found took off, for the shopper's savings total.
+    const off = codesOff(co);
+    return { status: 'placed', method: 'ucp', checkout_id: co.id, order_number: orderRef(co.order), order_url: co.order?.permalink_url || null, order_id: co.order?.id ? String(co.order.id).slice(0, 200) : null, ...(off > 0 ? { code_off_cents: off, code: (co.discounts?.applied || []).find((d) => d?.code && !d.automatic)?.code || null } : {}) };
   }
   return { status: 'needs_you', method: 'ucp', checkout_id: co.id, reason: blocked(co, `${cart.merchant.name} needs you to finish paying`), manual_url: co.continue_url || manual };
 }
