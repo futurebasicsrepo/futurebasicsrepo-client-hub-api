@@ -57,6 +57,7 @@ node scripts/journeys/studio.mjs       || RC=1
 node scripts/journeys/customer.mjs     || RC=1
 node scripts/journeys/cap.mjs          || RC=1
 node scripts/journeys/booth.mjs        || RC=1
+node scripts/journeys/contracts.mjs    || RC=1
 kill -9 $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null; wait $PA $PB $PC $PD $PE $PF $PG $PH $PM 2>/dev/null
 [ -n "$THROWAWAY" ] && psql "postgres://postgres:postgres@localhost:5432/postgres" -qAtc "drop database if exists $THROWAWAY with (force)" >/dev/null 2>&1
 echo "journeys: $([ $RC = 0 ] && echo 'all clear' || echo 'PROBLEMS FOUND')"; exit $RC

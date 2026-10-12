@@ -20,6 +20,7 @@ import { reconcile, applyChanges, revertChanges, reviseFlag, flagRow, FLAG_SECTI
 import { meshConfig, startMesh, pollMesh, fetchAsset, photoForMesh, stlInfo } from './mesh.js';
 import { paymentFromOrder, clientForPayment, recordPayment, backfillTechPackPayments, paymentSyncStatus } from './payments.js';
 import { registerMoneyRoutes } from './money-routes.js'
+import { registerContractRoutes } from './contracts-routes.js'
 import { registerFactoryRoutes } from './factories-routes.js'
 import { registerProtoRoutes } from './proto-routes.js'
 import { stubEdit } from './proto-build.js';
@@ -663,6 +664,10 @@ const money=registerMoneyRoutes(app, { pool, authenticate, adminOnly, getSetting
     const o = d.order, paid = o?.displayFinancialStatus === 'PAID' || d.status === 'COMPLETED';
     return { paid, amountCents: Math.round(Number((o || d).totalPriceSet?.shopMoney?.amount || 0) * 100), paidAt: d.updatedAt, orderName: o?.name || d.name };
   } });
+// Contracts for digital work: built from a deal, signed from a private link (see contracts-routes.js, docs/contracts.md)
+registerContractRoutes(app, { pool, authenticate, adminOnly, getSetting, setSetting, sendHubEmail, hubEmailShell, hubButton, emailEscape, notifyStaff, secret: process.env.JWT_SECRET || 'dev', publicUrl: clientHubUrl, workUrl: workHubUrl, throttle, log: app.log });
+app.get('/contracts', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').type('text/html').send(readFileSync(new URL('./contracts.html', import.meta.url), 'utf8')));
+app.get('/sign/:token', (_req, reply) => reply.header('cache-control', 'no-store, max-age=0').header('referrer-policy', 'no-referrer').type('text/html').send(readFileSync(new URL('./sign.html', import.meta.url), 'utf8')));
 app.get('/money', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./money.html', import.meta.url), 'utf8')));
 app.get('/factories', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./factories.html', import.meta.url), 'utf8')));
 app.get('/prototypes', (_req, reply) => reply.header('cache-control','no-store, max-age=0').type('text/html').send(readFileSync(new URL('./prototypes.html', import.meta.url), 'utf8')));
@@ -701,6 +706,8 @@ app.get('/icons/:file',(req,reply)=>{const f=String(req.params.file||'');if(!/^[
 app.get('/apple-touch-icon.png',(_req,reply)=>reply.redirect('/icons/apple-touch-icon.png'));
 app.get('/favicon.ico',(_req,reply)=>reply.redirect('/icons/icon-192.png'));
 // The shared chat thread (script and styles), used by the Message Center, the room's project thread and the hub's project messages.
+// Pip, the helper mouse: a guide that follows the pointer and walks a person through the page (see helper.js and docs/helper-mouse.md)
+app.get('/helper.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./helper.js',import.meta.url),'utf8')));
 app.get('/ball.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./ball.js',import.meta.url),'utf8')));
 app.get('/categories.js',(_req,reply)=>reply.header('cache-control','public, max-age=3600').type('application/javascript').send(readFileSync(new URL('./categories.js',import.meta.url),'utf8')));
 app.get('/commercial.js',(_req,reply)=>reply.header('cache-control','public, max-age=300').type('application/javascript').send(readFileSync(new URL('./commercial.js',import.meta.url),'utf8')));

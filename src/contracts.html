@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Contracts</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+@import url('/fonts/fonts.css');
+:root{--ink:#141416;--paper:#fff;--fog:#f5f5f2;--dim:#727278;--line:rgba(20,20,22,.14);--cue:#4bff9a;--warn:#ffed90;--bad:#9a2419;--ok:#23784b}
+*{box-sizing:border-box}html{background:var(--fog)}
+body{margin:0;color:var(--ink);font:400 14px/1.5 'Space Grotesk',system-ui,sans-serif;background:var(--fog);min-height:100vh}
+button,input,select,textarea{font:inherit}a{color:inherit}.hidden{display:none!important}
+.mono{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}
+header{height:72px;background:rgba(20,20,22,.96);color:#fff;padding:0 clamp(16px,4vw,48px);display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;z-index:20;backdrop-filter:blur(16px)}
+.wordmark{display:flex;align-items:center;gap:12px;position:relative;text-decoration:none;color:inherit;text-transform:uppercase;letter-spacing:.08em}.wordmark:after{content:"";position:absolute;left:0;bottom:-7px;width:64px;height:2px;background:var(--cue)}
+.brand-logo{display:block;width:200px;max-width:34vw;height:auto;max-height:30px}.brand-suffix{font:500 10px 'IBM Plex Mono',monospace;white-space:nowrap}
+main{max-width:1280px;margin:0 auto;overflow-x:clip;padding:26px clamp(14px,3vw,36px) 80px}
+h1{font-size:clamp(28px,4vw,44px);letter-spacing:-.03em;font-weight:500;margin:6px 0 4px}h2{font-size:18px;font-weight:600;margin:0}h3{margin:0;font-size:15px;font-weight:600}
+.sub{color:var(--dim);font-size:13px}.note{color:var(--dim);margin:4px 0 0}.msg{min-height:1.4em;color:var(--dim)}.msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
+.top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}.acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--ink);background:#fff;color:var(--ink);border-radius:999px;padding:9px 16px;text-decoration:none;cursor:pointer;font-weight:600}.btn:hover{background:var(--fog)}.btn.go{background:var(--ink);color:#fff}.btn.go:hover{background:#2b2b30}.btn.sm{padding:5px 12px;font-size:13px}.btn.cue{background:var(--cue)}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.bad{border-color:var(--bad);color:var(--bad)}
+.t{width:100%;border:1px solid var(--line);border-radius:12px;padding:9px 12px;background:#fff}textarea.t{min-height:90px;resize:vertical}select.t{width:100%;max-width:100%}
+.tabs{display:flex;gap:8px;margin:14px 0;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 16px;cursor:pointer;font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase}.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:clamp(16px,2.2vw,24px);margin-bottom:16px}
+.chip{display:inline-block;border-radius:999px;padding:2px 9px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);white-space:nowrap;background:#fff}.chip.ok{background:#e5f6ec;border-color:#a9dcb7;color:#17603a}.chip.warn{background:#fff6cf;border-color:#e6d27a}.chip.bad{background:#fde8e5;border-color:#e6a8a0;color:var(--bad)}.chip.dim{color:var(--dim)}.chip.info{background:#e8eefc;border-color:#aebdea}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px}.fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;margin-bottom:14px}.tile{border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:#fff}.tile b{display:block;font-size:26px;font-weight:500;letter-spacing:-.02em;line-height:1.1}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:9px 10px;border-top:1px solid var(--line);vertical-align:top}th{font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border-top:0}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}.scroll{overflow-x:auto}tr.click{cursor:pointer}tr.click:hover td{background:var(--fog)}
+dialog{border:0;border-radius:24px;padding:0;width:min(900px,96vw);max-height:94vh;box-shadow:0 30px 80px rgba(20,20,22,.35)}dialog::backdrop{background:rgba(20,20,22,.55)}
+.dwrap{padding:clamp(16px,3vw,28px);display:grid;gap:14px}.dh{display:flex;justify-content:space-between;align-items:center;gap:10px}.dh h2{font-size:22px;font-weight:500}
+.f{display:grid;gap:4px}.f>span{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.g3,.g2{grid-template-columns:1fr}}
+fieldset{border:1px solid var(--line);border-radius:16px;margin:0;padding:14px 16px;display:grid;gap:10px;min-width:0}legend{font:500 11px 'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:0 6px}
+.probs{border:1px solid #e6d27a;background:#fffbea;border-radius:14px;padding:10px 14px}.probs ul{margin:4px 0 0;padding-left:18px}
+.ms{display:grid;grid-template-columns:minmax(0,1fr) 90px 150px 32px;gap:6px;align-items:center}.ms .x{height:36px}
+.x{border:1px solid var(--line);background:#fff;border-radius:10px;cursor:pointer}
+.timeline{display:grid;gap:6px;margin:0;padding:0;list-style:none}.timeline li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;font-size:13px}.timeline time{font:500 11px 'IBM Plex Mono',monospace;color:var(--dim)}
+.preview{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;max-height:50vh;overflow:auto}.preview h4{margin:12px 0 4px;font-size:15px}.preview p{margin:0 0 8px}
+.copy{display:flex;gap:8px;align-items:center}.copy input{font:12px 'IBM Plex Mono',monospace}
+.empty{color:var(--dim);padding:14px 0}
+details.cl{border:1px solid var(--line);border-radius:14px;padding:8px 12px;background:#fff}details.cl summary{cursor:pointer;font-weight:600}details.cl textarea{margin-top:8px;min-height:120px}
+</style>
+</head>
+<body>
+<header><a class="wordmark" href="/contracts" aria-label="Contracts"><img class="brand-logo" src="https://thefuturebasics.com/cdn/shop/files/future_basics_true_vector_fixed.svg?v=1775278873&amp;width=360" alt="Future Basics"><span class="brand-suffix">/ Contracts</span></a></header>
+<main>
+  <div id="needSignin" class="panel hidden"><h1>Sign in to the work console first</h1><p class="note">This page uses your work console sign-in. Open the console, sign in, then come back here.</p><a class="btn go" href="/admin" style="margin-top:12px">Open the work console</a></div>
+  <div id="app" class="hidden">
+    <div class="top"><div><span class="mono" style="color:var(--dim)">Win</span><h1>Contracts</h1><p class="note">Fixed-fee agreements for digital work, built from a deal, signed from a private link.</p></div>
+      <div class="acts"><button class="btn go" id="newBtn">+ New contract</button></div></div>
+    <p class="msg" id="msg" role="status"></p>
+    <div class="tabs" role="tablist"><button class="tab on" data-t="list">Contracts</button><button class="tab" data-t="settings">Settings</button></div>
+    <section id="t-list"></section>
+    <section id="t-settings" class="hidden"></section>
+  </div>
+</main>
+<dialog id="dlg"><div class="dwrap" id="dBody"></div></dialog>
+<dialog id="edlg"><div class="dwrap" id="eBody"></div></dialog>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const TOKEN=()=>{try{return localStorage.getItem('fb.admin.token')||''}catch{return ''}};
+async function api(path,o={}){const r=await fetch(path,{method:o.method||(o.body!==undefined?'POST':'GET'),headers:{...(o.body!==undefined?{'Content-Type':'application/json'}:{}),Authorization:'Bearer '+TOKEN()},body:o.body!==undefined?JSON.stringify(o.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error||'Something went wrong');e.status=r.status;throw e}return j}
+const usd=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(c||0)/100),usd0=c=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Number(c||0)/100);
+const when=d=>d?new Date(d).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}):'',day=d=>d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+const toCents=v=>{const n=Number(String(v||'').replace(/[$,\s]/g,''));return Number.isFinite(n)?Math.round(n*100):NaN};
+const STATE={draft:['Draft','dim'],sent:['Waiting for client','info'],signed_by_client:['Needs our signature','warn'],executed:['Fully signed','ok'],declined:['Declined','bad'],void:['Void','dim'],expired:['Expired','warn']};
+const chip=s=>{const [l,c]=STATE[s]||[s,''];return `<span class="chip ${c}">${esc(l)}</span>`};
+const say=(t,k='ok')=>{const m=$('#msg');m.className='msg '+k;m.textContent=t};
+let F={status:'',q:''},ME={signer:false};
+
+// ---------- the list ----------
+async function loadList(){
+  const r=await api('/v1/contracts'+(F.status?'?status='+F.status:'')),c=r.counts;
+  const chips=[['','All'],['draft','Drafts'],['sent','Waiting for client'],['signed_by_client','Needs our signature'],['executed','Fully signed'],['declined','Declined'],['expired','Expired'],['void','Void']];
+  $('#t-list').innerHTML=`<div class="tiles"><div class="tile"><span class="sub">Waiting for the client</span><b>${c.awaitingClient}</b></div><div class="tile"><span class="sub">Needs our signature</span><b>${c.awaitingUs}</b></div><div class="tile"><span class="sub">Out for signature</span><b>${usd0(c.openCents)}</b></div><div class="tile"><span class="sub">Fully signed</span><b>${c.executed}</b></div></div>
+   <div class="filters" id="fl">${chips.map(([k,l])=>`<button class="fchip ${F.status===k?'on':''}" data-st="${k}">${l}</button>`).join('')}<input class="t" id="fq" placeholder="Search number, client, title" value="${esc(F.q)}" style="max-width:280px;margin-left:auto"></div>
+   <div class="panel"><div class="scroll"><table><thead><tr><th>Contract</th><th>Client</th><th class="n">Fixed fee</th><th>Status</th><th>Activity</th></tr></thead><tbody id="rows"></tbody></table></div></div>`;
+  const draw=()=>{const q=F.q.toLowerCase(),rows=r.contracts.filter(x=>!q||`${x.number} ${x.title} ${x.clientCompany} ${x.signerName}`.toLowerCase().includes(q));
+    $('#rows').innerHTML=rows.length?rows.map(x=>`<tr class="click" data-open="${x.id}"><td><b>${esc(x.title)}</b><br><span class="sub">${esc(x.number)} · ${esc(x.kindLabel)}</span></td><td>${esc(x.clientCompany)}<br><span class="sub">${esc(x.signerName)}</span></td><td class="n">${usd0(x.totalCents)}</td><td>${chip(x.status)}</td><td class="sub">${x.executedAt?'Signed '+day(x.executedAt):x.clientSignature?'Client signed '+day(x.clientSignature.at):x.firstViewedAt?'Opened '+day(x.firstViewedAt)+(x.viewCount>1?` (${x.viewCount}×)`:''):x.sentAt?'Sent '+day(x.sentAt):'Not sent'}</td></tr>`).join(''):`<tr><td colspan="5" class="empty">${r.contracts.length?'Nothing matches.':'No contracts yet. Press “+ New contract” and start from a deal.'}</td></tr>`};
+  draw();$('#fq').oninput=e=>{F.q=e.target.value;draw()};
+}
+document.addEventListener('click',async e=>{
+  const st=e.target.closest('#fl [data-st]');if(st){F.status=st.dataset.st;return loadList()}
+  const o=e.target.closest('[data-open]');if(o)return openContract(o.dataset.open);
+});
+
+// ---------- one contract ----------
+const copyText=async t=>{try{await navigator.clipboard.writeText(t);return true}catch{return false}};
+async function openContract(id){
+  const r=await api('/v1/contracts/'+id),c=r.contract,dlg=$('#dlg'),B=$('#dBody');
+  if(c.status==='draft'){return editor(r)}
+  const rows=r.rendered.sections.find(s=>s.kind==='schedule');
+  B.innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(c.number)} · ${esc(c.kindLabel)}</span><h2>${esc(c.title)}</h2></div><button class="btn sm" id="dX">Close</button></div>
+   <div>${chip(c.status)} <span class="sub">${esc(c.clientCompany)} · ${esc(c.signerName)} &lt;${esc(c.signerEmail)}&gt;</span></div>
+   <div class="g3"><div class="tile"><span class="sub">Fixed fee</span><b>${usd(c.totalCents)}</b></div><div class="tile"><span class="sub">Payments</span><b>${rows.rows.length}</b><span class="sub">${esc(rows.summary)}</span></div><div class="tile"><span class="sub">${c.status==='sent'?'Link works until':'Sent'}</span><b>${esc(c.status==='sent'?day(c.expiresAt):day(c.sentAt)||'—')}</b></div></div>
+   ${c.voidReason?`<p class="sub">Void: ${esc(c.voidReason)}</p>`:''}${c.declined?`<p class="msg bad">Declined ${esc(when(c.declined.at))}${c.declined.reason?': '+esc(c.declined.reason):''}</p>`:''}
+   <fieldset><legend>Signatures</legend><div>Future Basics: ${c.providerSignature?`<b>${esc(c.providerSignature.name)}</b> · ${esc(when(c.providerSignature.at))}`:'<span class="sub">not signed yet</span>'}</div><div>${esc(c.clientCompany)}: ${c.clientSignature?`<b>${esc(c.clientSignature.name)}</b> · ${esc(when(c.clientSignature.at))}${c.clientSignature.method?' · pays by '+(c.clientSignature.method==='ach'?'ACH':'card'):''}${c.clientSignature.autopay?' · autopay on':''}`:'<span class="sub">not signed yet</span>'}</div></fieldset>
+   ${r.link?`<div class="copy"><input class="t" readonly id="lnk" value="${esc(r.link)}"><button class="btn sm" id="cp">Copy link</button></div>`:''}
+   <div class="acts" id="acts"></div><p class="msg" id="dMsg" role="status"></p>
+   <fieldset><legend>Trail</legend><ul class="timeline">${r.events.map(v=>`<li><time>${esc(when(v.at))}</time><span><b>${esc(v.kind.replace(/_/g,' '))}</b>${v.detail?' · '+esc(v.detail):''}${v.actor?` <span class="sub">${esc(v.actor)}</span>`:''}</span></li>`).join('')}</ul></fieldset>
+   ${r.invoices.length?`<fieldset><legend>Invoices from the schedule</legend>${r.invoices.map(i=>`<div><a href="/money?invoice=${i.id}">${esc(i.number)}</a> · ${usd(i.totalCents)} · due ${esc(i.dueOn)} · ${esc(i.status)}</div>`).join('')}</fieldset>`:''}`;
+  const acts=[];const mk=(label,cls,fn,dis=false)=>acts.push({label,cls,fn,dis});
+  mk('Download PDF','',()=>pdf(id));
+  if(c.status==='sent'){mk('Send a reminder','',async()=>{const x=await api(`/v1/contracts/${id}/remind`,{body:{}});msg(x.emailed?'Reminder sent.':'Reminder saved, but the email could not be sent.')});}
+  if(c.status==='sent'||c.status==='signed_by_client'||c.status==='executed'){mk('Replace link','',async()=>{if(!confirm('The old link stops working. Replace it?'))return;await api(`/v1/contracts/${id}/link`,{body:{replace:true}});openContract(id)})}
+  if((c.status==='sent'||c.status==='signed_by_client')&&!c.providerSignature){mk('Sign for Future Basics','go',async()=>{if(!confirm('Sign this agreement for Future Basics?'))return;await api(`/v1/contracts/${id}/countersign`,{body:{}});done('Signed.',id)},!ME.signer)}
+  if(c.status==='executed'&&!c.invoicesAt){mk('Draft the invoices','go',async()=>{if(!confirm(`Draft ${rows.rows.length} invoices from the payment schedule?`))return;const x=await api(`/v1/contracts/${id}/invoices`,{body:{}});done(`${x.made.length} invoices drafted.`,id)},!ME.signer)}
+  if(c.dealId&&c.status==='executed')acts.push({href:'/sales#pipeline',label:'Open the deal'});
+  if(!['executed','void'].includes(c.status)){mk('Revise','',async()=>{const x=await api(`/v1/contracts/${id}/revise`,{body:{}});openContract(x.contract.id)});mk('Void','bad',async()=>{const reason=prompt('Why is it being voided?','');if(reason===null)return;await api(`/v1/contracts/${id}/void`,{body:{reason}});done('Voided.',id)})}
+  $('#acts').innerHTML=acts.map((a,i)=>a.href?`<a class="btn sm" href="${a.href}">${esc(a.label)}</a>`:`<button class="btn sm ${a.cls||''}" data-a="${i}" ${a.dis?'disabled title="Only the people who sign for Future Basics can do this"':''}>${esc(a.label)}</button>`).join('');
+  $('#acts').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b)return;try{await acts[+b.dataset.a].fn()}catch(x){msg(x.message,'bad')}};
+  const cp=$('#cp');if(cp)cp.onclick=async()=>{msg((await copyText($('#lnk').value))?'Link copied.':'Select the link and copy it.')};
+  $('#dX').onclick=()=>dlg.close();
+  function msg(t,k='ok'){const m=$('#dMsg');m.className='msg '+k;m.textContent=t}
+  if(!dlg.open)dlg.showModal();
+}
+function mkActs(){}
+async function done(m,id){say(m);await loadList();await openContract(id)}
+async function pdf(id){const r=await fetch(`/v1/contracts/${id}/pdf`,{headers:{Authorization:'Bearer '+TOKEN()}});if(!r.ok)throw new Error('The PDF could not be made');const u=URL.createObjectURL(await r.blob());window.open(u,'_blank')}
+
+// ---------- choosing where a contract starts ----------
+async function chooser(){
+  const s=await api('/v1/contracts/sources'),B=$('#dBody');
+  const made=x=>x.contracts.length?` <span class="chip dim">${esc(x.contracts.map(c=>c.number).join(', '))}</span>`:'';
+  B.innerHTML=`<div class="dh"><h2>New contract</h2><button class="btn sm" id="dX">Close</button></div><p class="note">Start from a deal or a project and the client, the signer and the fee come with it. Or start blank.</p>
+   <fieldset><legend>Deals (proposal, meeting, won)</legend>${s.deals.length?s.deals.map(d=>`<div class="acts" style="justify-content:space-between"><span><b>${esc(d.title)}</b> <span class="sub">${esc(d.company)} · ${esc(d.stage)} · ${usd0(d.valueCents)}</span>${made(d)}</span><button class="btn sm go" data-deal="${d.id}">Start</button></div>`).join(''):'<p class="empty">No deals in these stages yet.</p>'}</fieldset>
+   <fieldset><legend>Software projects</legend>${s.projects.length?s.projects.map(p=>`<div class="acts" style="justify-content:space-between"><span><b>${esc(p.name)}</b> <span class="sub">${esc(p.client)}</span>${made(p)}</span><button class="btn sm go" data-project="${p.id}">Start</button></div>`).join(''):'<p class="empty">No live software projects.</p>'}</fieldset>
+   <div><button class="btn" id="blank">Start blank</button></div><p class="msg bad" id="dMsg"></p>`;
+  $('#dX').onclick=()=>$('#dlg').close();
+  B.onclick=async e=>{const d=e.target.closest('[data-deal],[data-project]'),bl=e.target.closest('#blank');if(!d&&!bl)return;
+    try{const q=d?(d.dataset.deal?'deal='+d.dataset.deal:'project='+d.dataset.project):null;const r=q?await api('/v1/contracts/draft?'+q):await blankDraft();$('#dlg').close();editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId})}catch(x){$('#dMsg').textContent=x.message}};
+  $('#dlg').showModal();
+}
+async function blankDraft(){const st=(await api('/v1/contracts/settings')).settings;const r=await api('/v1/contracts/render',{body:{content:{title:'',kind:'website',client:{},scope:[],fee:{totalCents:0},provider:{name:st.providerName,address:st.providerAddress,signerName:st.signerName,signerTitle:st.signerTitle},terms:{governingLaw:st.governingLaw}}}});return {content:r.content,problems:r.problems}}
+
+// ---------- the editor ----------
+let E=null; // { id, content, plan UI, dealId, projectId }
+const PLANS={full:'Pay in full on signing',split:'Deposit, then the balance on delivery',monthly:'Monthly payments (with an optional deposit)',milestones:'By milestone'};
+const METHODS={invoice:'Invoice for each payment (pay online)',ach:'ACH bank debit on file',card:'Card on file',either:'ACH or card on file (client chooses)'};
+function planUI(c){const p=c.plan,total=c.fee.totalCents||0,ins=p?.installments||[],dep=ins.find(i=>i.event==='signing'),dated=ins.filter(i=>i.dueOn);
+  return {type:p?.type||'split',depositPct:dep&&total?Math.round(dep.amountCents/total*10000)/100:(p?.type==='monthly'?'':50),months:dated.length||6,firstDueOn:dated[0]?.dueOn||'',deliveryOn:'',method:p?.method||'invoice',autopay:!!p?.autopay,note:p?.note||'',
+    milestones:p?.type==='milestones'?ins.map(i=>({label:i.label,pct:total?Math.round(i.amountCents/total*10000)/100:0,dueOn:i.dueOn||'',event:i.event||'delivery'})):[{label:'Design approved',pct:30,dueOn:'',event:'signing'},{label:'Build complete',pct:40,dueOn:'',event:'delivery'},{label:'Launch',pct:30,dueOn:'',event:'delivery'}]}}
+function editor(r){
+  const c=JSON.parse(JSON.stringify(r.content));E={id:r.contract?.id||null,c,pu:planUI(c),dealId:r.dealId??r.contract?.dealId??null,projectId:r.projectId??r.contract?.projectId??null,problems:r.problems||[],number:r.contract?.number||''};
+  drawEditor();$('#edlg').showModal();
+}
+const val=(path)=>path.split('.').reduce((o,k)=>o?.[k],E.c);
+const setv=(path,v)=>{const ks=path.split('.'),last=ks.pop();let o=E.c;for(const k of ks){o[k]=o[k]||{};o=o[k]}o[last]=v};
+const fld=(label,path,o={})=>`<label class="f"><span>${label}</span>${o.area?`<textarea class="t" data-k="${path}" rows="${o.rows||4}" placeholder="${esc(o.ph||'')}">${esc(val(path)??'')}</textarea>`:`<input class="t" data-k="${path}" type="${o.type||'text'}" value="${esc(val(path)??'')}" placeholder="${esc(o.ph||'')}">`}</label>`;
+function drawEditor(){
+  const c=E.c,pu=E.pu,B=$('#eBody'),signNow=ME.signer;
+  B.innerHTML=`<div class="dh"><div><span class="mono" style="color:var(--dim)">${esc(E.number||'New contract')} · draft</span><h2>${esc(c.title||'New contract')}</h2></div><button class="btn sm" id="eX">Close</button></div>
+   <div class="probs ${E.problems.length?'':'hidden'}" id="probs"><b>Not ready to send yet</b><ul>${E.problems.map(p=>`<li>${esc(p)}</li>`).join('')}</ul></div>
+   <fieldset><legend>The agreement</legend><div class="g2">${fld('Title','title',{ph:'Salon website and booking'})}<label class="f"><span>Kind of work</span><select class="t" data-k="kind"><option value="website">Website</option><option value="app">App or software</option><option value="other">Other digital work</option></select></label></div></fieldset>
+   <fieldset><legend>The client</legend><div class="g2">${fld('Company','client.company')}${fld('Address (printed in the contract)','client.address')}</div><div class="g3">${fld('Who signs','client.signerName')}${fld('Their title','client.signerTitle')}${fld('Their email (the link goes here)','client.signerEmail',{type:'email'})}</div></fieldset>
+   <fieldset><legend>Scope of work</legend>${fld('What is delivered (one per line)','scopeText',{area:1,rows:6,ph:'A five-page website\nOnline booking link\nContact form'})}${fld('Not included (optional, one per line)','notText',{area:1,rows:3})}
+    <div class="g3">${fld('Agreement date','timeline.effectiveOn',{type:'date'})}${fld('Work begins','timeline.startOn',{type:'date'})}${fld('Estimated completion','timeline.completionOn',{type:'date'})}</div></fieldset>
+   <fieldset><legend>Fixed fee and how it is paid</legend><div class="g3"><label class="f"><span>Fixed fee (USD)</span><input class="t" id="feeIn" value="${c.fee.totalCents?(c.fee.totalCents/100).toFixed(2):''}" inputmode="decimal" placeholder="12000"></label>
+     <label class="f"><span>Payment plan</span><select class="t" id="pType">${Object.entries(PLANS).map(([k,l])=>`<option value="${k}" ${pu.type===k?'selected':''}>${l}</option>`).join('')}</select></label>
+     <label class="f"><span>How they pay</span><select class="t" id="pMethod">${Object.entries(METHODS).map(([k,l])=>`<option value="${k}" ${pu.method===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
+    <div id="pParams"></div>
+    <label class="chk" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pAuto" ${pu.autopay?'checked':''}> Automatic payments: the client authorizes charging the ACH account or card on file on each due date</label>
+    <div id="pOut"></div></fieldset>
+   <fieldset><legend>Hosting and maintenance (optional)</legend><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="hostOn" ${c.hosting?.included?'checked':''}> Include monthly hosting and maintenance after launch</label><div class="g2" id="hostBox" ${c.hosting?.included?'':'hidden'}><label class="f"><span>Monthly price (USD)</span><input class="t" id="hostPrice" value="${c.hosting?.monthlyCents?(c.hosting.monthlyCents/100).toFixed(2):''}"></label>${fld('Note (optional)','hosting.note')}</div></fieldset>
+   <fieldset><legend>Terms</legend><div class="g3">${fld('Governing law (state)','terms.governingLaw',{ph:'Pennsylvania'})}${fld('Warranty days','terms.warrantyDays',{type:'number'})}${fld('Link works for (days)','terms.expiresDays',{type:'number'})}</div></fieldset>
+   <details class="cl"><summary>Edit the wording of each clause</summary><p class="sub">Words in {{double braces}} are filled from the contract. The scope, timeline, fee and schedule clauses draw themselves from the fields above.</p>${c.sections.map((s,i)=>`<details class="cl"><summary>${esc(s.title)}${s.kind!=='text'?' <span class="chip dim">drawn from the fields</span>':''}</summary><label class="f"><span>Title</span><input class="t" data-sec="${i}" data-f="title" value="${esc(s.title)}"></label><textarea class="t" data-sec="${i}" data-f="body" ${s.kind!=='text'&&s.kind!=='hosting'?'placeholder="Optional introduction above the details"':''}>${esc(s.body)}</textarea></details>`).join('')}</details>
+   <div class="acts"><button class="btn" id="eSave">Save draft</button><button class="btn" id="ePrev">Preview</button><button class="btn go" id="eSend">Send for signature…</button><span class="msg" id="eMsg" role="status"></span></div><div id="ePrevBox"></div>`;
+  c.scopeText=(c.scope||[]).join('\n');c.notText=(c.notIncluded||[]).join('\n');B.querySelector('[data-k=scopeText]').value=c.scopeText;B.querySelector('[data-k=notText]').value=c.notText;B.querySelector('[data-k=kind]').value=c.kind;
+  drawParams();wire();replan();
+}
+function drawParams(){const pu=E.pu,t=pu.type,h=[];
+  if(t==='split')h.push(`<div class="g3"><label class="f"><span>Deposit on signing (% of fee)</span><input class="t" data-p="depositPct" value="${esc(pu.depositPct??50)}"></label><label class="f"><span>Balance due on delivery, or on a date</span><input class="t" type="date" data-p="deliveryOn" value="${esc(pu.deliveryOn||'')}"></label></div>`);
+  if(t==='monthly')h.push(`<div class="g3"><label class="f"><span>Deposit on signing (% of fee, blank for none)</span><input class="t" data-p="depositPct" value="${esc(pu.depositPct??'')}"></label><label class="f"><span>Number of monthly payments</span><input class="t" type="number" min="2" max="48" data-p="months" value="${esc(pu.months)}"></label><label class="f"><span>First payment date</span><input class="t" type="date" data-p="firstDueOn" value="${esc(pu.firstDueOn)}"></label></div>`);
+  if(t==='milestones')h.push(`<div id="msList">${pu.milestones.map((m,i)=>`<div class="ms"><input class="t" data-m="${i}" data-f="label" value="${esc(m.label)}" placeholder="Milestone"><input class="t" data-m="${i}" data-f="pct" value="${esc(m.pct)}" placeholder="%"><input class="t" type="date" data-m="${i}" data-f="dueOn" value="${esc(m.dueOn)}" title="Leave the date empty to bill on delivery (or on signing for the first)"><button class="x" type="button" data-rm="${i}" aria-label="Remove">×</button></div>`).join('')}</div><button class="btn sm" type="button" id="addMs">+ Milestone</button><p class="sub">Percentages add up to 100. The last milestone takes whatever is left. No date means on signing (the first) or on delivery.</p>`);
+  $('#pParams').innerHTML=h.join('');}
+let planTimer=null;
+function replan(){clearTimeout(planTimer);planTimer=setTimeout(async()=>{const pu=E.pu,total=toCents($('#feeIn').value);E.c.fee.totalCents=Number.isFinite(total)?total:0;
+  const out=$('#pOut');if(!Number.isFinite(total)||total<=0){out.innerHTML='<p class="sub">Enter the fixed fee to see the schedule.</p>';E.c.plan=null;return}
+  try{const ms=pu.type==='milestones'?pu.milestones.map((m,i)=>({label:m.label,pct:Number(m.pct)||0,dueOn:m.dueOn||undefined,event:m.dueOn?undefined:(i===0?'signing':'delivery')})):[];
+    const r=await api('/v1/contracts/plan',{body:{type:pu.type,totalCents:total,depositPct:pu.depositPct===''||pu.depositPct==null?'':Number(pu.depositPct),months:Number(pu.months),firstDueOn:pu.firstDueOn||null,deliveryOn:pu.deliveryOn||null,milestones:ms,method:pu.method,autopay:pu.autopay,note:pu.note}});
+    E.c.plan=r.plan;out.innerHTML=`<p><b>${esc(r.summary)}</b></p><div class="scroll"><table><thead><tr><th>Payment</th><th>Due</th><th class="n">Amount</th></tr></thead><tbody>${r.plan.installments.map(i=>`<tr><td>${esc(i.label)}</td><td>${esc(i.dueOn?day(i.dueOn+'T12:00:00'):i.event==='signing'?'On signing':'On delivery')}</td><td class="n">${usd(i.amountCents)}</td></tr>`).join('')}</tbody></table></div>`}
+  catch(x){E.c.plan=null;out.innerHTML=`<p class="msg bad">${esc(x.message)}</p>`}},250)}
+function wire(){const B=$('#eBody');
+  $('#eX').onclick=()=>$('#edlg').close();
+  B.oninput=B.onchange=e=>{const t=e.target;
+    if(t.dataset.k){let v=t.value;if(t.type==='number')v=Number(v);setv(t.dataset.k,v);if(t.dataset.k==='kind')E.c.kind=v;return}
+    if(t.dataset.sec!==undefined){E.c.sections[+t.dataset.sec][t.dataset.f]=t.value;return}
+    if(t.id==='feeIn'||t.id==='pType'||t.id==='pMethod'||t.id==='pAuto'){if(t.id==='pType'){E.pu.type=t.value;if(t.value==='monthly'&&E.pu.depositPct===50)E.pu.depositPct='';if(t.value==='split'&&(E.pu.depositPct===''||E.pu.depositPct==null))E.pu.depositPct=50;drawParams()}if(t.id==='pMethod'){E.pu.method=t.value;if(t.value==='invoice'){E.pu.autopay=false;$('#pAuto').checked=false}}if(t.id==='pAuto'){E.pu.autopay=t.checked;if(t.checked&&E.pu.method==='invoice'){E.pu.method='either';$('#pMethod').value='either'}}return replan()}
+    if(t.dataset.p){E.pu[t.dataset.p]=t.value;return replan()}
+    if(t.dataset.m!==undefined){E.pu.milestones[+t.dataset.m][t.dataset.f]=t.value;return replan()}
+    if(t.id==='hostOn'){E.c.hosting={...(E.c.hosting||{}),included:t.checked};$('#hostBox').hidden=!t.checked;return}
+    if(t.id==='hostPrice'){const v=toCents(t.value);E.c.hosting={...(E.c.hosting||{}),monthlyCents:Number.isFinite(v)?v:0}}
+  };
+  B.onclick=e=>{const rm=e.target.closest('[data-rm]');if(rm){E.pu.milestones.splice(+rm.dataset.rm,1);drawParams();return replan()}if(e.target.id==='addMs'){E.pu.milestones.push({label:'',pct:0,dueOn:'',event:'delivery'});drawParams();replan()}};
+  $('#eSave').onclick=()=>save().catch(x=>emsg(x.message,'bad'));$('#ePrev').onclick=()=>preview().catch(x=>emsg(x.message,'bad'));$('#eSend').onclick=()=>sendFlow().catch(x=>emsg(x.message,'bad'));
+}
+const emsg=(t,k='ok')=>{const m=$('#eMsg');if(m){m.className='msg '+k;m.textContent=t}};
+function payload(){const c=JSON.parse(JSON.stringify(E.c));c.scope=String(E.c.scopeText||'').split('\n');c.notIncluded=String(E.c.notText||'').split('\n');delete c.scopeText;delete c.notText;if(!c.plan)delete c.plan;return {content:c,dealId:E.dealId||undefined,projectId:E.projectId||undefined}}
+function showProblems(list){E.problems=list||[];const p=$('#probs');if(!p)return;p.classList.toggle('hidden',!E.problems.length);p.innerHTML=`<b>Not ready to send yet</b><ul>${E.problems.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`}
+async function save(){await flush();const r=E.id?await api('/v1/contracts/'+E.id,{method:'PUT',body:payload()}):await api('/v1/contracts',{body:payload()});E.id=r.contract.id;E.number=r.contract.number;showProblems(r.problems);emsg('Saved.');loadList();return r}
+const flush=()=>new Promise(r=>setTimeout(r,320));
+async function preview(){await flush();const r=await api('/v1/contracts/render',{body:{content:payload().content,number:E.number}});showProblems(r.problems);const d=r.rendered;
+  $('#ePrevBox').innerHTML=`<div class="preview"><h3>${esc(d.title)}</h3><p class="sub">${esc(d.parties.provider.name)} and ${esc(d.parties.client.company)}</p>${d.sections.map((s,i)=>`<h4>${i+1}. ${esc(s.title)}</h4>${String(s.body||'').split(/\n{2,}/).filter(Boolean).map(p=>`<p>${esc(p)}</p>`).join('')}${s.items?`<ul>${s.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}${s.rows&&s.kind==='schedule'?`<p><b>${esc(s.summary)}</b></p>`:''}`).join('')}${d.missing.length?`<p class="msg bad">Still empty: ${d.missing.map(m=>'{{'+m+'}}').join(', ')}</p>`:''}</div>`;
+  $('#ePrevBox').scrollIntoView({behavior:'smooth',block:'nearest'})}
+async function sendFlow(){const r=await save();if(r.problems&&r.problems.length){emsg('Fix what is listed above first.','bad');return}
+  const c=r.content,B=$('#dBody');
+  B.innerHTML=`<div class="dh"><h2>Send for signature</h2><button class="btn sm" id="dX">Cancel</button></div><p>This emails <b>${esc(c.client.signerName)}</b> at <b>${esc(c.client.signerEmail)}</b> a private link to read and sign <b>${esc(c.title)}</b>, a fixed fee of <b>${usd(c.fee.totalCents)}</b>.</p><p class="sub">Once it is sent the text is fixed: to change anything you make a new version.</p>
+   <label class="f"><span>A personal note in the email (optional)</span><textarea class="t" id="sNote" rows="3" placeholder="Great talking with you. Here is the agreement for the site."></textarea></label>
+   ${ME.signer?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="sNow" checked> Sign for Future Basics now as ${esc(c.provider.signerName)}</label>`:'<p class="sub">A signer for Future Basics countersigns once the client has signed.</p>'}
+   <div class="acts"><button class="btn go" id="sGo">Send it</button></div><p class="msg" id="dMsg" role="status"></p>`;
+  $('#dX').onclick=()=>$('#dlg').close();
+  $('#sGo').onclick=async()=>{$('#sGo').disabled=true;try{const x=await api(`/v1/contracts/${E.id}/send`,{body:{message:$('#sNote').value,signNow:!!($('#sNow')&&$('#sNow').checked)}});$('#dlg').close();$('#edlg').close();say(x.emailed?`Sent to ${c.client.signerEmail}.`:'Saved as sent, but the email could not be delivered. Copy the link from the contract and send it yourself.',x.emailed?'ok':'bad');await loadList();openContract(E.id)}catch(x){$('#dMsg').className='msg bad';$('#dMsg').textContent=x.message;$('#sGo').disabled=false}};
+  $('#dlg').showModal()}
+
+// ---------- settings ----------
+async function loadSettings(){const s=(await api('/v1/contracts/settings')).settings;
+  $('#t-settings').innerHTML=`<div class="panel"><h2>Who signs, and where</h2><p class="note">These fill the contract wording. Have a lawyer read the standard clauses before the first contract goes out: they are a sensible starting point, not legal advice.</p>
+   <div class="g2" style="margin-top:12px"><label class="f"><span>Company name in contracts</span><input class="t" id="sProv" value="${esc(s.providerName)}"></label><label class="f"><span>Address</span><input class="t" id="sAddr" value="${esc(s.providerAddress)}"></label>
+   <label class="f"><span>Who signs for us</span><input class="t" id="sSigner" value="${esc(s.signerName)}"></label><label class="f"><span>Their title</span><input class="t" id="sTitle" value="${esc(s.signerTitle)}"></label>
+   <label class="f"><span>Governing law (state)</span><input class="t" id="sLaw" value="${esc(s.governingLaw)}" placeholder="Pennsylvania"></label></div>
+   <div class="acts" style="margin-top:12px"><button class="btn go" id="sSave">Save</button><span class="msg" id="sMsg" role="status"></span></div></div>`;
+  $('#sSave').onclick=async()=>{try{await api('/v1/contracts/settings',{method:'PUT',body:{providerName:$('#sProv').value,providerAddress:$('#sAddr').value,signerName:$('#sSigner').value,signerTitle:$('#sTitle').value,governingLaw:$('#sLaw').value}});$('#sMsg').className='msg ok';$('#sMsg').textContent='Saved.'}catch(x){$('#sMsg').className='msg bad';$('#sMsg').textContent=x.message}}}
+
+const LOAD={list:loadList,settings:loadSettings};
+function show(tab){$$('.tab').forEach(x=>x.classList.toggle('on',x.dataset.t===tab));for(const k of Object.keys(LOAD))$('#t-'+k).classList.toggle('hidden',k!==tab);return LOAD[tab]()}
+$$('.tab').forEach(t=>t.onclick=()=>show(t.dataset.t));
+$('#newBtn').onclick=()=>chooser().catch(x=>say(x.message,'bad'));
+(async()=>{
+  if(!TOKEN()){$('#needSignin').classList.remove('hidden');return}
+  try{await api('/v1/contracts/settings')}catch(x){$('#needSignin').classList.remove('hidden');return}
+  try{const u=await api('/v1/money/me');ME.signer=!!u}catch{ME.signer=false}
+  $('#app').classList.remove('hidden');await show('list');
+  const qs=new URLSearchParams(location.search),open=qs.get('open'),deal=qs.get('deal'),project=qs.get('project');
+  if(open&&/^[0-9a-f-]{36}$/i.test(open))openContract(open).catch(x=>say(x.message,'bad'));
+  else if(deal||project){try{const r=await api('/v1/contracts/draft?'+(deal?'deal='+encodeURIComponent(deal):'project='+encodeURIComponent(project)));editor({contract:null,content:r.content,problems:r.problems||[],dealId:r.dealId,projectId:r.projectId})}catch(x){say(x.message,'bad')}}
+})();
+</script>
+<script src="/console-nav.js" defer></script>
+<script src="/helper.js" defer></script>
+</body>
+</html>
