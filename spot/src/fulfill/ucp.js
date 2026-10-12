@@ -45,9 +45,12 @@ export function platformProfile(base) {
 }
 
 export class UcpError extends Error {
-  constructor(message, { code = null, continueUrl = null, status = null } = {}) {
+  constructor(message, { code = null, continueUrl = null, status = null, detail = null } = {}) {
     super(message);
     this.code = code;
+    // The store's own words when it gives them as plain text (Shopify's
+    // "Invalid params" says which one in `data`): for the logs, not shown.
+    this.detail = detail;
     this.continueUrl = continueUrl;
     this.httpStatus = status;
   }
@@ -263,7 +266,7 @@ function mcpClient({ endpoint, profileUrl, fetchImpl, allowPrivate, sign }) {
     const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'ucp-agent': `profile="${profileUrl}"`, ...(sign ? sign(u) : {}) };
     const res = await send(fetchImpl, u, { method: 'POST', headers, body: JSON.stringify(rpc) });
     const json = await rpcBody(res);
-    if (json.error) throw new UcpError(json.error.data?.content || json.error.message || 'The store refused', { code: json.error.data?.code, continueUrl: json.error.data?.continue_url, status: res.status });
+    if (json.error) throw new UcpError(json.error.data?.content || json.error.message || 'The store refused', { code: json.error.data?.code, continueUrl: json.error.data?.continue_url, status: res.status, detail: typeof json.error.data === 'string' ? json.error.data.slice(0, 500) : null });
     if (!res.ok) throw new UcpError(`The store answered ${res.status}`, { status: res.status });
     const r = json.result || {};
     const text = r.content?.find((c) => c.type === 'text')?.text || '';

@@ -935,3 +935,17 @@ test('the order Spot placed is kept by id, and its shipments are read back from 
   assert.equal(tr.carrier, 'UPS');
   assert.equal(done.state, 'placed');
 });
+
+test('a store’s plain-text error detail is kept for the logs (Shopify’s “Invalid params” says which one there)', async () => {
+  const { ucpClient, UcpError } = await import('../src/fulfill/ucp.js');
+  const fetchImpl = async (u, init) => {
+    const { id } = JSON.parse(String(init.body));
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32602, message: 'Invalid params', data: 'id: order not found for this agent' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const call = ucpClient({ endpoint: 'https://shop-a.example/api/ucp/mcp', transport: 'mcp', profileUrl: 'https://spot.example/.well-known/ucp', fetchImpl, allowPrivate: true });
+  const err = await call('GET', '/orders/gid%3A%2F%2Fshopify%2FOrder%2F1').catch((e) => e);
+  assert.ok(err instanceof UcpError);
+  assert.equal(err.message, 'Invalid params', 'what people see is unchanged');
+  assert.equal(err.detail, 'id: order not found for this agent');
+  assert.match(JSON.stringify({ ...err }), /order not found for this agent/, 'logged with the error');
+});
